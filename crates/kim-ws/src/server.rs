@@ -207,10 +207,7 @@ async fn handle_http(
                 ws.set_auto_close(false);
                 ws.set_writev(true);
                 ws.set_max_message_size(1024 * 1024);
-                let conn = WsConn {
-                    ws,
-                    peer: Some(ctx.peer.to_string()),
-                };
+                let conn = WsConn::new(ws, Some(ctx.peer.to_string()));
                 if let Err(err) = handle_ws(conn, ctx).await {
                     warn!(%err, "ws session ended");
                 }

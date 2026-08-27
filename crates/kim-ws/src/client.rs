@@ -79,7 +79,7 @@ pub async fn connect_ws(url: &str) -> Result<WsHandshakeConn, Error> {
     ws.set_writev(true);
     ws.set_max_message_size(1024 * 1024);
     Ok(WsHandshakeConn {
-        inner: WsConn { ws, peer: None },
+        inner: WsConn::new(ws, None),
     })
 }
 

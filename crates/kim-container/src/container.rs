@@ -301,10 +301,10 @@ impl Container {
         let channels = pkt.get_meta(META_DEST_CHANNELS).unwrap_or("").to_string();
         pkt.del_meta(META_DEST_SERVER);
         pkt.del_meta(META_DEST_CHANNELS);
-        let hook_pkt = LogicPkt {
+        let hook_pkt = self.after_downlink.as_ref().map(|_| LogicPkt {
             header: pkt.header.clone(),
             body: pkt.body.clone(),
-        };
+        });
         let bytes = marshal(&Packet::Logic(pkt));
         let srv = self
             .server
@@ -314,8 +314,8 @@ impl Container {
         for id in channels.split(',').filter(|s| !s.is_empty()) {
             match srv.push(id, bytes.clone()).await {
                 Ok(()) => {
-                    if let Some(h) = &self.after_downlink {
-                        h.after_push(id, &hook_pkt).await;
+                    if let (Some(h), Some(p)) = (&self.after_downlink, &hook_pkt) {
+                        h.after_push(id, p).await;
                     }
                 }
                 Err(e) => warn!(%e, channel = %id, "push down failed"),

@@ -11,7 +11,7 @@ use crate::opcode::{from_ws, to_ws};
 
 pub struct WsConn<S> {
     pub ws: WebSocket<S>,
-    pub peer: Option<String>,
+    peer: Option<String>,
 }
 
 pub struct WsReadHalf<S>
@@ -26,6 +26,12 @@ where
     S: AsyncRead + AsyncWrite,
 {
     inner: WebSocketWrite<WriteHalf<S>>,
+}
+
+impl<S> WsConn<S> {
+    pub(crate) fn new(ws: WebSocket<S>, peer: Option<String>) -> Self {
+        Self { ws, peer }
+    }
 }
 
 impl<S> WsConn<S>

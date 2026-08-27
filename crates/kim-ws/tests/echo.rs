@@ -11,6 +11,13 @@ struct EchoHandler;
 #[async_trait]
 impl Acceptor for EchoHandler {
     async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+        let peer = conn
+            .peer_addr()
+            .expect("unsplit server conn must have peer_addr");
+        assert!(
+            peer.contains("127.0.0.1"),
+            "peer_addr should include client IP, got {peer}"
+        );
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
