@@ -20,6 +20,15 @@ members = [
 edition = "2021"
 license = "MIT"
 version = "0.1.0"
+rust-version = "1.95.0"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = 0 }
 
 [workspace.dependencies]
 bytes = "1"

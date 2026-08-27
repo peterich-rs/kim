@@ -6,9 +6,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use kim_core::{OpCode, Server};
 use kim_naming::{DefaultRegistration, Naming};
-use kim_protocol::{
-    marshal, read_logic, LogicPkt, Packet, META_DEST_CHANNELS, META_DEST_SERVER,
-};
+use kim_protocol::{marshal, read_logic, LogicPkt, Packet, META_DEST_CHANNELS, META_DEST_SERVER};
 use kim_tcp::{ClientOptions, TcpClient, TcpDialer};
 use tokio::sync::{Notify, RwLock};
 use tracing::{info, warn};
@@ -180,12 +178,9 @@ impl Container {
                     tokio::spawn(async move {
                         for reg in list {
                             let id = reg.service_id.clone();
-                            match this.build_client(&svc, reg).await {
-                                Ok(true) => {
-                                    tokio::time::sleep(this.adult_delay).await;
-                                    this.try_promote(&svc, &id).await;
-                                }
-                                _ => {}
+                            if let Ok(true) = this.build_client(&svc, reg).await {
+                                tokio::time::sleep(this.adult_delay).await;
+                                this.try_promote(&svc, &id).await;
                             }
                         }
                     });

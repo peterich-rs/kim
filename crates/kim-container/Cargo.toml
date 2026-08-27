@@ -3,6 +3,7 @@ name = "kim-container"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 description = "KIM 容器：拨号全部实例、Young/Adult、Forward/Push"
 
 [dependencies]
@@ -21,3 +22,6 @@ tracing.workspace = true
 [dev-dependencies]
 kim-ws.workspace = true
 tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

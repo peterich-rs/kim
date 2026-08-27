@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use kim_protocol::pkt::Flag;
-use kim_protocol::{
-    marshal, read, BasicPkt, LogicPkt, Packet, CMD_DEMO_ECHO, CODE_PONG,
-};
+use kim_protocol::{marshal, read, BasicPkt, LogicPkt, Packet, CMD_DEMO_ECHO, CODE_PONG};
 use kim_ws::{ClientOptions, WsClient, WsIdentityDialer};
 use tracing::info;
 
@@ -59,7 +57,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             assert_eq!(p.header.sequence, seq);
             assert_eq!(p.header.flag, Flag::Response as i32);
             if expect_unavailable {
-                assert_eq!(p.header.status, kim_protocol::pkt::Status::ServiceUnavailable as i32);
+                assert_eq!(
+                    p.header.status,
+                    kim_protocol::pkt::Status::ServiceUnavailable as i32
+                );
                 info!("got ServiceUnavailable as expected");
             } else {
                 assert_eq!(p.header.status, kim_protocol::pkt::Status::Success as i32);

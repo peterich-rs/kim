@@ -36,14 +36,12 @@ impl MessageListener for GatewayHandler {
     async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == kim_protocol::CODE_PING => {
-                let _ = agent
-                    .push(marshal(&Packet::Basic(BasicPkt::pong())))
-                    .await;
+                let _ = agent.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
             }
             Ok(Packet::Logic(mut logic)) => {
                 logic.header.channel_id = agent.id().to_string();
                 let svc = logic.service_name().to_string();
-                if let Err(_) = self.container.forward(&svc, logic).await {
+                if self.container.forward(&svc, logic).await.is_err() {
                     let mut resp = read_logic(&payload).unwrap();
                     resp.header.channel_id = agent.id().to_string();
                     resp.header.flag = Flag::Response as i32;
@@ -193,10 +191,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         },
     );
     client.set_dialer(Arc::new(WsIdentityDialer));
-    client
-        .connect(&format!("ws://{gw_addr}/"))
-        .await
-        .unwrap();
+    client.connect(&format!("ws://{gw_addr}/")).await.unwrap();
 
     client
         .send(marshal(&Packet::Basic(BasicPkt::ping())))
@@ -280,10 +275,7 @@ async fn unavailable_without_chat() {
         },
     );
     client.set_dialer(Arc::new(WsIdentityDialer));
-    client
-        .connect(&format!("ws://{gw_addr}/"))
-        .await
-        .unwrap();
+    client.connect(&format!("ws://{gw_addr}/")).await.unwrap();
     let req = LogicPkt::new(CMD_DEMO_ECHO, 1, Bytes::from_static(b"x"));
     client.send(marshal(&Packet::Logic(req))).await.unwrap();
     let resp = tokio::time::timeout(Duration::from_secs(2), client.read())

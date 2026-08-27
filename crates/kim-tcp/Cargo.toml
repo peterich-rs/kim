@@ -3,6 +3,7 @@ name = "kim-tcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 description = "KIM 通信层的 TCP 实现：粘包拆包、TcpServer、TcpClient"
 
 [dependencies]
@@ -15,3 +16,6 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

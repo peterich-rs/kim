@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{
-    Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener,
-};
+use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_tcp::{ClientOptions, IdentityDialer, TcpClient, TcpServer};
 
 struct EchoHandler;

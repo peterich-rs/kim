@@ -212,8 +212,11 @@ async fn handle_ws<S>(mut conn: WsConn<S>, ctx: HttpCtx) -> Result<(), Error>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let id = match tokio::time::timeout(ctx.login_wait, ctx.acceptor.accept(&mut conn, ctx.login_wait))
-        .await
+    let id = match tokio::time::timeout(
+        ctx.login_wait,
+        ctx.acceptor.accept(&mut conn, ctx.login_wait),
+    )
+    .await
     {
         Ok(Ok(id)) => id,
         Ok(Err(err)) => {

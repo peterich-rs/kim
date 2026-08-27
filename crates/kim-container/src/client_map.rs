@@ -42,5 +42,4 @@ impl ClientMap {
         v.sort_by(|a, b| a.service_id.cmp(&b.service_id));
         v
     }
-
 }

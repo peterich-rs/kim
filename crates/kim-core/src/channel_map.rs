@@ -43,6 +43,10 @@ impl ChannelMap {
     pub async fn len(&self) -> usize {
         self.inner.read().await.len()
     }
+
+    pub async fn is_empty(&self) -> bool {
+        self.inner.read().await.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -78,10 +82,12 @@ mod tests {
     #[tokio::test]
     async fn add_get_remove() {
         let map = ChannelMap::new();
+        assert!(map.is_empty().await);
         map.add(dummy_channel("a")).await;
         map.add(dummy_channel("b")).await;
         assert!(map.contains("a").await);
         assert_eq!(map.len().await, 2);
+        assert!(!map.is_empty().await);
         assert_eq!(map.get("a").await.unwrap().id(), "a");
         map.remove("a").await;
         assert!(!map.contains("a").await);

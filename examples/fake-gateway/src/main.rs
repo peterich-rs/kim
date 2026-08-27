@@ -9,9 +9,7 @@ use kim_container::{Container, ContainerOpts, InnerTcpDialer};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, Status};
-use kim_protocol::{
-    marshal, read, BasicPkt, Packet, CODE_PING, CODE_PONG,
-};
+use kim_protocol::{marshal, read, BasicPkt, Packet, CODE_PING, CODE_PONG};
 use kim_ws::WsServer;
 use serde::Deserialize;
 use tracing::{info, warn};

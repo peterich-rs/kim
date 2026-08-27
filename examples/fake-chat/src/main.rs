@@ -9,9 +9,7 @@ use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
-use kim_protocol::{
-    read_logic, CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER,
-};
+use kim_protocol::{read_logic, CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER};
 use kim_tcp::TcpServer;
 use prost::Message;
 use serde::Deserialize;

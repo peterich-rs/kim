@@ -30,7 +30,7 @@ pub struct WsClient {
     reader: Option<Mutex<WsReadHalf<UpgradedIo>>>,
     writer: Option<Arc<Mutex<WsWriteHalf<UpgradedIo>>>>,
     connected: AtomicBool,
-    options: crate::ClientOptions,
+    options: ClientOptions,
 }
 
 #[derive(Clone, Debug)]
@@ -52,10 +52,7 @@ impl Default for ClientOptions {
 
 #[async_trait]
 pub trait WsDialer: Send + Sync {
-    async fn dial_and_handshake(
-        &self,
-        ctx: DialerContext,
-    ) -> Result<WsConn<UpgradedIo>, Error>;
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsConn<UpgradedIo>, Error>;
 }
 
 impl WsClient {
@@ -139,7 +136,12 @@ impl WsClient {
     }
 
     pub async fn read(&self) -> Result<Frame, Error> {
-        let mut reader = self.reader.as_ref().ok_or(Error::NotConnected)?.lock().await;
+        let mut reader = self
+            .reader
+            .as_ref()
+            .ok_or(Error::NotConnected)?
+            .lock()
+            .await;
         loop {
             let frame = reader.read_frame().await?;
             match frame.opcode {
@@ -200,24 +202,16 @@ fn parse_ws_url(url: &str) -> Result<(String, String), Error> {
 
 #[async_trait]
 impl WsDialer for WsIdentityDialer {
-    async fn dial_and_handshake(
-        &self,
-        ctx: DialerContext,
-    ) -> Result<WsConn<UpgradedIo>, Error> {
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsConn<UpgradedIo>, Error> {
         let (hostport, path) = parse_ws_url(&ctx.address)?;
-        let stream = TcpStream::connect(&hostport)
-            .await
-            .map_err(Error::from)?;
+        let stream = TcpStream::connect(&hostport).await.map_err(Error::from)?;
         let req = Request::builder()
             .method("GET")
             .uri(format!("http://{hostport}{path}"))
             .header(HOST, hostport)
             .header(UPGRADE, "websocket")
             .header(CONNECTION, "upgrade")
-            .header(
-                "Sec-WebSocket-Key",
-                fastwebsockets::handshake::generate_key(),
-            )
+            .header("Sec-WebSocket-Key", handshake::generate_key())
             .header("Sec-WebSocket-Version", "13")
             .body(Empty::<Bytes>::new())
             .map_err(|e| Error::other(e.to_string()))?;
