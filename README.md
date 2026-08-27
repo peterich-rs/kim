@@ -14,35 +14,7 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 链路层 | **M3 已落地** | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
 | 控制层 | 以后 | 单聊、群聊、离线 |
 
-## 先看三张图
-
-clone 之后用浏览器打开 HTML，可切换深浅色、追踪关系。GitHub 上先看预览。
-
-### 1. 总图：谁在哪
-
-进程是上面一排：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。下面是 crate：`kim-ws` / `kim-tcp` 履行 `kim-core` 的 `Conn`，网关用 `kim-container` 转发。
-
-[打开交互图](docs/diagrams/kim-overview.html)
-
-[![KIM 本机 Demo 总图](docs/diagrams/kim-overview.png)](docs/diagrams/kim-overview.html)
-
-### 2. 时序：一帧怎么走
-
-网关启动时先 TCP 拨号 Chat（`InnerHandshakeReq`）。客户端 Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N` 这种 `channel_id`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。
-
-[打开交互图](docs/diagrams/pkt-demo.html)
-
-[![业务包 Demo 时序](docs/diagrams/pkt-demo.png)](docs/diagrams/pkt-demo.html)
-
-### 3. 数据流：字节怎么变成指令
-
-TCP 用 `opcode + 长度` 切开；WebSocket 帧自带边界。两种电线的 Binary payload 都进 `kim-protocol`：前 4 字节 Magic 决定心跳还是业务，`command` 第一个点号前的前缀就是服务名。
-
-[打开交互图](docs/diagrams/protocol-stack.html)
-
-[![帧与业务包数据流](docs/diagrams/protocol-stack.png)](docs/diagrams/protocol-stack.html)
-
-规格与词表在 [docs/](docs/README.md)。图和代码打架时以代码为准。
+进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
 ## 本机怎么跑
 
@@ -112,7 +84,7 @@ crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
 examples/               echo / ws-echo / fake-gateway / fake-chat / pkt-client
-docs/                   词表、分层合同、登录规格、交互图
+docs/                   词表、分层合同、登录规格
 ```
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 登录、互踢、群聊都不进 `TcpServer` / `WsServer`。

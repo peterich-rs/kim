@@ -1,6 +1,6 @@
 # 架构
 
-当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器 Demo、链路层登录（JWT / 会话 / 互踢）已落地**。可选 Redis 会话、Consul、公网部署还没有。读本文时把「以后」和「已经有」分开。交互总图：[diagrams/kim-overview.html](diagrams/kim-overview.html)。详细帧与容器规格见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
+当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器 Demo、链路层登录（JWT / 会话 / 互踢）已落地**。可选 Redis 会话、Consul、公网部署还没有。读本文时把「以后」和「已经有」分开。详细帧与容器规格见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
 
 ## 一句话
 
@@ -22,7 +22,8 @@
 ├──────────────────────────────────────────────────────────┤
 │  kim-tcp      说明书的 TCP 实现                              │
 │               向内核借 socket + 应用层分帧（粘包/半包）         │
-│  以后 kim-ws / 可选 kim-quic  同一套说明书的其它实现           │
+│  kim-ws       同一套说明书的 WebSocket 实现                    │
+│  以后可选 kim-quic                                           │
 ├──────────────────────────────────────────────────────────┤
 │  操作系统内核 TCP   三次握手、序号、ACK、重传、拥塞控制          │
 │  IP / 网卡                                                │

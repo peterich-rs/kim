@@ -1155,10 +1155,10 @@ cargo run -p pkt-client -- alice ws://127.0.0.1:8001/     # 覆盖 URL
 
 流程：
 
-1. **M2 当时：** `WsIdentityDialer` 连上，第一帧 `"alice"`。**M3：** `LoginDialer` 发 `login.signin` + JWT，等 `LoginResp`（见 [link-layer-login.md](link-layer-login.md) §9）。`e2e_echo.rs` 仍用 identity。
+1. **M2 当时：** `WsIdentityDialer` 连上，第一帧 `"alice"`。**M3：** `LoginDialer` 发 `login.signin` + JWT（sequence=1），等 `LoginResp`（见 [link-layer-login.md](link-layer-login.md) §9）。`e2e_echo.rs` 仍用 identity。
 2. 发 BasicPkt ping，读一帧，断言 MagicBasicPkt + code=2。
-3. 发 LogicPkt `{ command: chat.demo.echo, sequence: 1, flag: Request, body: "hello" }`。
-4. 读 LogicPkt，断言 sequence==1、flag==Response。默认断言 `status==Success`、body==`hello`。
+3. **M3：** 发 LogicPkt `{ command: chat.demo.echo, sequence: 2, flag: Request, body: "hello pkt" }`（登录已占用 sequence=1）。**M2 identity / `e2e_echo.rs`：** echo sequence=1。
+4. 读 LogicPkt，断言 sequence 与请求相同、flag==Response。默认断言 `status==Success`、body 原样。
 5. 退出码 0。失败打印 hex 前 32 字节。
 
 环境变量（**不用** clap，**不要**把 `--flag` 放进第二位置参数——那是 URL）：
@@ -1167,7 +1167,7 @@ cargo run -p pkt-client -- alice ws://127.0.0.1:8001/     # 覆盖 URL
 |---|---|
 | （无） | 第二位置参数可选，覆盖 URL；缺省 `ws://127.0.0.1:8001/` |
 | `KIM_PING_ONLY=1` | 只发 ping，然后退出。Chat 日志应安静 |
-| `KIM_EXPECT_UNAVAILABLE=1` | 步骤 4 断言 `status==ServiceUnavailable`（断言 7：不起 Chat） |
+| `KIM_EXPECT_UNAVAILABLE=1` | **M3：** 握手失败（LogicPkt `ServiceUnavailable` 或 Close），不再登录后再 echo。**M2 当时：** 步骤 4 断言 `status==ServiceUnavailable` |
 
 解析：`args` 里以 `ws://` / `wss://` 开头的当 URL，其余第一个当 id（默认 `alice`）。环境变量单独读。禁止 `pkt-client -- alice --expect-unavailable`。
 

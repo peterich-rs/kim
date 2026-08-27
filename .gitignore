@@ -6,6 +6,3 @@
 
 # 付费小册原文，不进公开仓库
 /books/
-
-# Archify visual-check 证据（PNG / 收据），图本身是 *.html
-docs/diagrams/*.visual-check.*

@@ -14,7 +14,7 @@ use kim_ws::{connect_ws, WsDialer, WsHandshakeConn};
 
 pub fn resolve_jwt_secret() -> String {
     match std::env::var("KIM_JWT_SECRET") {
-        Ok(s) if !s.trim().is_empty() => s,
+        Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
         _ => DEMO_DEFAULT_SECRET.to_string(),
     }
 }

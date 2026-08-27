@@ -7,7 +7,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use fake_chat::ChatHandler;
 use fake_gateway::{GatewayHandler, KickHook};
-use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
+use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, OpCode, Server};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, Status};
@@ -66,7 +66,6 @@ async fn spawn_stack() -> Stack {
     tokio::spawn(async move {
         let _ = chat_run.start().await;
     });
-    tokio::time::sleep(Duration::from_millis(30)).await;
 
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.expect("gw bind");
     let gw_addr = gw_server.local_addr();
@@ -106,7 +105,8 @@ async fn spawn_stack() -> Stack {
     tokio::spawn(async move {
         let _ = gw_run.start().await;
     });
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    wait_adult(&gw_c).await;
+    wait_ws(&ws_url(gw_addr)).await;
 
     Stack {
         gw: gw_c,
@@ -156,8 +156,38 @@ async fn spawn_gateway_only() -> (Arc<Container>, std::net::SocketAddr) {
     tokio::spawn(async move {
         let _ = gw_run.start().await;
     });
-    tokio::time::sleep(Duration::from_millis(40)).await;
+    wait_ws(&ws_url(gw_addr)).await;
     (gw_c, gw_addr)
+}
+
+async fn wait_adult(gw: &Container) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        if gw.slot_state("chat", "chat-1").await == Some(ADULT) {
+            return;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("chat slot did not become Adult");
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+async fn wait_ws(url: &str) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        match connect_ws(url).await {
+            Ok(mut conn) => {
+                let _ = conn.write_frame(OpCode::Close, Bytes::new()).await;
+                let _ = conn.shutdown().await;
+                return;
+            }
+            Err(_) if tokio::time::Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            Err(err) => panic!("ws not ready: {err}"),
+        }
+    }
 }
 
 fn ws_url(addr: std::net::SocketAddr) -> String {
@@ -327,10 +357,9 @@ async fn bad_token_unauthorized_or_close_not_added() {
     let err = client.connect(&url).await.expect_err("bad token must fail");
     let msg = err.to_string();
     assert!(
-        msg.contains("closed") || msg.contains("105") || msg.contains("status="),
-        "unexpected handshake err: {msg}"
+        msg.contains("closed") || msg.contains("status=105"),
+        "expected closed or Unauthorized status=105, got: {msg}"
     );
-    tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(
         stack.gw_server.channel_map().is_empty().await,
         "bad token must not add channel"
@@ -472,10 +501,42 @@ async fn unavailable_without_chat_fails_handshake() {
         .expect_err("handshake must fail without chat");
     let msg = err.to_string();
     assert!(
-        msg.contains("closed") || msg.contains("status=3") || msg.contains("status="),
-        "unexpected: {msg}"
+        msg.contains("closed") || msg.contains("status=3"),
+        "expected closed or ServiceUnavailable status=3, got: {msg}"
     );
     assert!(dialer.channel_id().is_none());
 
     let _ = gw.shutdown().await;
+}
+
+#[tokio::test]
+async fn echo_after_session_delete_is_session_not_found() {
+    // #10: dest.channels must be set or the client never sees 404.
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (client, dialer) = login("alice", &url).await;
+    let id = dialer.channel_id().expect("channel_id");
+    stack
+        .cache
+        .delete("alice", &id)
+        .await
+        .expect("delete session");
+
+    let req = LogicPkt::new(CMD_DEMO_ECHO, 2, Bytes::from_static(b"hello pkt"));
+    client
+        .send(marshal(&Packet::Logic(req)))
+        .await
+        .expect("echo send");
+    let resp = timeout_read(&client).await;
+    match read(&resp.payload).expect("decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::SessionNotFound as i32);
+            assert_eq!(p.header.flag, Flag::Response as i32);
+            assert_eq!(p.header.sequence, 2);
+        }
+        _ => panic!("expected SessionNotFound logic"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
 }
