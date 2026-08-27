@@ -39,24 +39,25 @@ impl MemorySessionStore {
 #[async_trait]
 impl SessionStorage for MemorySessionStore {
     async fn add(&self, session: &Session) -> Result<(), SessionError> {
-        let mut inner = self.write();
         let loc = Location {
             channel_id: session.channel_id.clone(),
             gate_id: session.gate_id.clone(),
         };
-        inner
-            .locations
-            .insert(key_location(&session.account, &session.device), loc);
-        inner
-            .sessions
-            .insert(session.channel_id.clone(), session.clone());
+        // This milestone indexes loc at login:loc:{account} only (callers pass
+        // device=""). Session.device is stored on the session record.
+        let loc_key = key_location(&session.account, "");
+        let channel_id = session.channel_id.clone();
+        let stored = session.clone();
+        let mut inner = self.write();
+        inner.locations.insert(loc_key, loc);
+        inner.sessions.insert(channel_id, stored);
         Ok(())
     }
 
     async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+        let loc_key = key_location(account, "");
         let mut inner = self.write();
         inner.sessions.remove(channel_id);
-        let loc_key = key_location(account, "");
         match inner.locations.get(&loc_key) {
             Some(loc) if loc.channel_id == channel_id => {
                 inner.locations.remove(&loc_key);
@@ -170,16 +171,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn location_key_uses_device_when_set() {
+    async fn add_keeps_device_on_session_loc_key_is_account_only() {
         let store = MemorySessionStore::new();
         let mut s = session("c1", "alice", "g");
         s.device = "phone".into();
         store.add(&s).await.unwrap();
+
+        let loc = store.get_location("alice", "").await.unwrap();
+        assert_eq!(loc.channel_id, "c1");
+        assert!(matches!(
+            store.get_location("alice", "phone").await,
+            Err(SessionError::NotFound)
+        ));
+        assert_eq!(store.get("c1").await.unwrap().device, "phone");
+
+        store.delete("alice", "c1").await.unwrap();
         assert!(matches!(
             store.get_location("alice", "").await,
             Err(SessionError::NotFound)
         ));
-        let loc = store.get_location("alice", "phone").await.unwrap();
-        assert_eq!(loc.channel_id, "c1");
+        assert!(matches!(store.get("c1").await, Err(SessionError::NotFound)));
     }
 }
