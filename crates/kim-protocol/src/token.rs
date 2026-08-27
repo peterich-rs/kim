@@ -74,6 +74,26 @@ mod tests {
             .as_secs() as i64
     }
 
+    #[derive(Serialize)]
+    struct Raw {
+        acc: String,
+        app: &'static str,
+        exp: i64,
+    }
+
+    fn mint_hs256(acc: &str, exp: i64) -> String {
+        jsonwebtoken::encode(
+            &Header::new(Algorithm::HS256),
+            &Raw {
+                acc: acc.to_string(),
+                app: "kim",
+                exp,
+            },
+            &EncodingKey::from_secret(DEMO_DEFAULT_SECRET.as_bytes()),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn roundtrip() {
         let exp = now_ts() + 3600;
@@ -113,7 +133,18 @@ mod tests {
         let none_token = format!("eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.{payload}.");
         assert!(matches!(
             parse(DEMO_DEFAULT_SECRET, &none_token),
-            Err(ProtocolError::InvalidToken | ProtocolError::TokenSignature)
+            Err(ProtocolError::InvalidToken)
+        ));
+    }
+
+    #[test]
+    fn alg_rs256_rejected() {
+        let token = generate(DEMO_DEFAULT_SECRET, "alice", "kim", now_ts() + 3600).unwrap();
+        let payload = token.split('.').nth(1).unwrap();
+        let rs256_token = format!("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.{payload}.dGVzdA");
+        assert!(matches!(
+            parse(DEMO_DEFAULT_SECRET, &rs256_token),
+            Err(ProtocolError::InvalidToken)
         ));
     }
 
@@ -124,26 +155,30 @@ mod tests {
             generate(DEMO_DEFAULT_SECRET, "", "kim", exp),
             Err(ProtocolError::InvalidAccount)
         ));
-
-        #[derive(Serialize)]
-        struct Raw {
-            acc: &'static str,
-            app: &'static str,
-            exp: i64,
-        }
-        let minted = jsonwebtoken::encode(
-            &Header::new(Algorithm::HS256),
-            &Raw {
-                acc: "",
-                app: "kim",
-                exp,
-            },
-            &EncodingKey::from_secret(DEMO_DEFAULT_SECRET.as_bytes()),
-        )
-        .unwrap();
         assert!(matches!(
-            parse(DEMO_DEFAULT_SECRET, &minted),
+            parse(DEMO_DEFAULT_SECRET, &mint_hs256("", exp)),
             Err(ProtocolError::InvalidAccount)
         ));
+    }
+
+    #[test]
+    fn control_char_account() {
+        let exp = now_ts() + 3600;
+        for acc in ["a\nb", "a\0b"] {
+            assert!(
+                matches!(
+                    generate(DEMO_DEFAULT_SECRET, acc, "kim", exp),
+                    Err(ProtocolError::InvalidAccount)
+                ),
+                "generate({acc:?})"
+            );
+            assert!(
+                matches!(
+                    parse(DEMO_DEFAULT_SECRET, &mint_hs256(acc, exp)),
+                    Err(ProtocolError::InvalidAccount)
+                ),
+                "parse({acc:?})"
+            );
+        }
     }
 }

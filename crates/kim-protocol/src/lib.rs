@@ -76,5 +76,7 @@ mod tests {
         assert_eq!(Status::InvalidCommand as i32, 103);
         assert_eq!(Status::Unauthorized as i32, 105);
         assert_eq!(Status::SessionNotFound as i32, 404);
+        assert!(Status::try_from(100).is_err());
+        assert!(Status::try_from(300).is_err());
     }
 }
