@@ -11,7 +11,7 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 通信层 | 已落地 | `kim-core` + `kim-tcp` + `kim-ws`。TCP / WS 都履行 `Conn` |
 | 容器层 | 已落地 | `kim-naming`（静态配置）+ `kim-container`（Young → Adult 后 Forward） |
 | 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
-| 链路层 | **M3 已落地** | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
+| 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
 | 控制层 | 以后 | 单聊、群聊、离线 |
 
 进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
@@ -95,7 +95,7 @@ docs/                   词表、分层合同、登录规格
 2. [docs/architecture.md](docs/architecture.md) — crate 职责、进门怎么走
 3. [docs/communication-layer.md](docs/communication-layer.md) — 两专员、查表放锁
 4. [docs/protocol-container.md](docs/protocol-container.md) — 已落地的业务包与容器
-5. [docs/link-layer-login.md](docs/link-layer-login.md) — **M3 已落地**：登录与会话
+5. [docs/link-layer-login.md](docs/link-layer-login.md) — 登录、会话、互踢
 
 ## 开发
 

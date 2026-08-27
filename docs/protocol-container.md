@@ -1,7 +1,9 @@
 # WebSocket、业务包与容器（已落地规格）
 
 面向：刚学后台、靠复刻 KIM 入门的工程师。  
-本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 M3 规格 [link-layer-login.md](link-layer-login.md)（已落地）。本文仍不含 Consul、VPS、单聊、Royal。`echo-*` / `ws-echo-*` / `e2e_echo.rs` 仍是 identity 第一帧。
+本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 [link-layer-login.md](link-layer-login.md)。本文不含 Consul、VPS、单聊、Royal。
+
+`echo-*` / `ws-echo-*` / `e2e_echo.rs` 仍是第一帧名字。`pkt-client` → `fake-gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。
 
 阅读前请先扫 [glossary.md](glossary.md) 和 [communication-layer.md](communication-layer.md)。本文出现的新词会在第一次使用时解释。
 
@@ -36,7 +38,7 @@ Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► rece
                                       └── Ping 也丢给写信箱
 ```
 
-### 1.2 本阶段要补的缺口
+### 1.2 M1b+M2 当时要补的缺口（已落地）
 
 1. **第二种 `Conn` 履行者**：HTTP Upgrade 之后的 RFC 6455 WebSocket。用 **同一个** `EchoHandler` 证明合同与传输无关。
 2. **业务包**：通信层帧的 Binary **payload** 里再套 Magic + BasicPkt / LogicPkt。心跳（BasicPkt ping）在网关本地回；业务（LogicPkt）按 `command` 前缀转给 Chat。
@@ -92,9 +94,9 @@ Cloudflare 橙云 **不转发任意 TCP**：这只决定公网 **怎么暴露** 
 - 新 crate `kim-container`：托管 `Server`；对每个依赖服务 **拨号全部实例**；Young → Adult 之后才 `Forward`。
 - Demo：本机一个假网关进程 + 一个假 Chat 进程。客户端发 LogicPkt，收到 **相同 sequence** 的 Response；BasicPkt ping **绝不出现在 Chat 日志**。
 
-### 2.2 非目标（本阶段禁止做）
+### 2.2 非目标（M2 当时禁止；登录已另文落地）
 
-- 登录 JWT、互踢、会话 Redis。
+- 登录 JWT、互踢、会话 Redis（**M3 已做**，见 [link-layer-login.md](link-layer-login.md)；本文不重复）。
 - Consul / etcd / K8s 服务发现。
 - VPS、Cloudflare 接入、`kim.ainexc.com` 上线。
 - 给公网 TGateway 套 TLS（加密外壳后做；本机明文 TCP 已有，不要用 WSS 顶替 App）。
@@ -121,8 +123,9 @@ pkt-client（Web 客户端）        fake-gateway（WGateway）          fake-ch
 
   ws://127.0.0.1:8001/                 内网 TCP 127.0.0.1:8002
   ① HTTP Upgrade 101                   ③ InnerHandshakeReq（第一帧）
-  ② 第一帧 Binary = "alice"            ④ 之后只走 LogicPkt
+  ② 第一帧 login.signin + JWT          ④ 之后只走 LogicPkt
   ⑤ Binary payload = Magic+Pkt
+     （echo / e2e_echo 仍用第一帧名字；见 link-layer-login.md）
 
 App / TGateway 路径（已有，本阶段保持）：
   echo-client ── TCP ──► echo-server :8000
@@ -132,7 +135,7 @@ App / TGateway 路径（已有，本阶段保持）：
 
 | 谁连谁 | 传输 | 握手 |
 |---|---|---|
-| Web 客户端 → WGateway | WebSocket | HTTP Upgrade，然后第一帧 Binary 内容是 channel_id 字符串（和现在 echo 一样）。**没有 JWT。** |
+| Web 客户端 → WGateway | WebSocket | HTTP Upgrade，然后第一帧 LogicPkt `login.signin` + JWT。echo 路径仍用名字字符串。 |
 | 网关 → Chat | TCP（`kim-tcp`） | TCP 连上后第一帧 Binary = protobuf `InnerHandshakeReq { service_id }`。Chat 的 `Acceptor` 读出来当 channel_id。 |
 | App 客户端 → TGateway | TCP（`kim-tcp`） | 本阶段不新做假 TGateway；继续用已有 TCP echo 证明这条 `Conn`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
 
@@ -161,12 +164,12 @@ container.forward("chat")
 fake-chat 读专员
   │  MustReadLogicPkt（不是 Logic 就 warn 丢掉）
   │  command == chat.demo.echo → Flag=Response，原 sequence，原 body
-  │  Meta dest.server="wg-1"  dest.channels="alice"
+  │  Meta dest.server="wg-1"  dest.channels="wg-1_alice_N"
   │  container.push("wg-1", pkt)   // 内部 server.push，Handler 不直接摸 Server
   ▼
 fake-gateway 的 Client 读循环（容器内部）
   │  校验 dest.server == 自己
-  │  按 dest.channels 拆开，ChannelMap.get("alice").push
+  │  按 dest.channels 拆开，ChannelMap.get("wg-1_alice_N").push
   ▼
 pkt-client 收到 LogicPkt，sequence 相同，Flag=Response
 ```
@@ -594,7 +597,7 @@ message InnerHandshakeReq {
 **为什么有 `meta`：** 小册第 14 章表格写了 `bodyLength`，第 15 章真正的 Header 还有 `Meta`。容器下行靠：
 
 - `dest.server`：这条回包要送到哪一个网关实例（Chat 的 ChannelMap 用网关 service_id 当 id）。
-- `dest.channels`：网关再拆成多个 channel_id（逗号分隔）。本阶段只有一个 `"alice"`。
+- `dest.channels`：网关再拆成多个 channel_id（逗号分隔）。登录 Demo 里是 `wg-1_alice_N`，不是账号字符串。
 
 没有 `meta`，Chat 就不知道回给哪条网关连接。本阶段 **带上**，值只有这两个 key。
 
@@ -1082,7 +1085,7 @@ meta dest.channels 逗号拆分
 server.push(gateway_id, marshal(Logic(pkt)))
 ```
 
-方向：Chat 的 Server 管 **网关连进来的 Channel**，id = `"wg-1"`。网关的 Server 管 **Web 客户端 Channel**，id = `"alice"`。
+方向：Chat 的 Server 管 **网关连进来的 Channel**，id = `"wg-1"`。网关的 Server 管 **Web 客户端 Channel**，id = `"wg-1_alice_N"`（登录后；echo 例子仍用名字）。
 
 网关 Handler 只调 `container.forward`；Chat Handler 只调 `container.push`。不要让 Handler 摸 `server` 字段。
 
@@ -1116,6 +1119,8 @@ Disconnect:
 
 ### 6.5 Chat Handler（只存在于 `examples/fake-chat`）
 
+**已被登录 Demo 替换：** 现 Receive 走 Router + 会话（`login.signin` / `login.signout` / `chat.demo.echo`）。下面是 M2 当时只回 echo 的历史。当前逻辑见 [link-layer-login.md](link-layer-login.md)。
+
 ```
 Accept:
     InnerHandshakeReq → service_id
@@ -1144,30 +1149,9 @@ Chat **没有** `Forward` 依赖。回包统一走 `Container::push`。
 
 ### 6.6 `pkt-client`（Web 客户端，不是 App）
 
-本阶段用 WS 走 M2 Demo，因为它扮演 **Web → WGateway**。App → TGateway 继续是已有 TCP echo，不必再写一个 `pkt-client-tcp`。
+`pkt-client` 扮演 **Web → WGateway**。当前握手是 JWT `login.signin`，见 [link-layer-login.md](link-layer-login.md) 与根 README。App → TGateway 继续是 TCP echo。
 
-```
-cargo run -p pkt-client -- alice                          # 默认 ws://127.0.0.1:8001/
-cargo run -p pkt-client -- alice ws://127.0.0.1:8001/     # 覆盖 URL
-```
-
-第二个参数可选，缺省与 echo-client 一样有默认地址。
-
-流程：
-
-1. **M2 当时：** `WsIdentityDialer` 连上，第一帧 `"alice"`。**M3：** `LoginDialer` 发 `login.signin` + JWT（sequence=1），等 `LoginResp`（见 [link-layer-login.md](link-layer-login.md) §9）。`e2e_echo.rs` 仍用 identity。
-2. 发 BasicPkt ping，读一帧，断言 MagicBasicPkt + code=2。
-3. **M3：** 发 LogicPkt `{ command: chat.demo.echo, sequence: 2, flag: Request, body: "hello pkt" }`（登录已占用 sequence=1）。**M2 identity / `e2e_echo.rs`：** echo sequence=1。
-4. 读 LogicPkt，断言 sequence 与请求相同、flag==Response。默认断言 `status==Success`、body 原样。
-5. 退出码 0。失败打印 hex 前 32 字节。
-
-环境变量（**不用** clap，**不要**把 `--flag` 放进第二位置参数——那是 URL）：
-
-| 开关 | 作用 |
-|---|---|
-| （无） | 第二位置参数可选，覆盖 URL；缺省 `ws://127.0.0.1:8001/` |
-| `KIM_PING_ONLY=1` | 只发 ping，然后退出。Chat 日志应安静 |
-| `KIM_EXPECT_UNAVAILABLE=1` | **M3：** 握手失败（LogicPkt `ServiceUnavailable` 或 Close），不再登录后再 echo。**M2 当时：** 步骤 4 断言 `status==ServiceUnavailable` |
+`e2e_echo.rs` 仍用 identity 第一帧（名字），不走 `pkt-client`。
 
 解析：`args` 里以 `ws://` / `wss://` 开头的当 URL，其余第一个当 id（默认 `alice`）。环境变量单独读。禁止 `pkt-client -- alice --expect-unavailable`。
 
@@ -1309,7 +1293,9 @@ RUST_LOG=info cargo run -p ws-echo-client -- alice
 2. **Find 已有实例直接 Adult**：构造 Naming 时就把 Chat 地址放进去（Chat `TcpServer` 已 listen）。`start` 之后立刻 `Forward` 成功，不等 `adult_delay`。
 3. **拨号全部 + HashSelector 稳定**：两个 `TcpServer` 听 `127.0.0.1:0`，两个 slot 都在 ClientMap。同一 `channel_id` 连续两次 `lookup` 得到同一 `service_id`（`adult_services` 按 id 排序）。
 
-### 9.5 Demo 端到端（本阶段关门条件）
+### 9.5 容器 Demo 端到端（`e2e_echo.rs`，identity 握手）
+
+登录 Demo 的关门条件见 [link-layer-login.md](link-layer-login.md) 与根 README。下面只约束 **identity** 的 `e2e_echo.rs`（第一帧仍是名字）。
 
 成功路径 **必须先起 Chat，再起网关**（静态列表不会重试 dial 失败的实例）：
 
@@ -1347,9 +1333,10 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 - 先 ping 后 echo；断言 vec 里只有 `chat.demo.echo`。
 - 第二个测试：不起 Chat，断言 `ServiceUnavailable`。
 
-### 9.6 明确不验收
+### 9.6 明确不验收（本文 / 容器层）
 
-- 浏览器页、JWT、公网 WSS、公网 TGateway TLS、多设备、断线重连 SDK、压测。
+- 浏览器页、公网 WSS、公网 TGateway TLS、多设备、断线重连 SDK、压测。
+- JWT / 互踢：见 [link-layer-login.md](link-layer-login.md)，不在 `e2e_echo.rs`。
 - 把 App 客户端改成走 WebSocket。
 - 把 `TcpClient` 写侧 Mutex 改成 mpsc（读改成 `&self` 除外）。
 
@@ -1419,7 +1406,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
    前者是第 14 章表格（本阶段用户已拍板的字段）；后者是容器寻址所必需。`dest.server` / `dest.channels` 不塞进 `dest`（`dest` 留给以后的用户/群）。
 
 8. **网关按 `command` 第一个 `.` 之前的前缀路由。**  
-   `chat.demo.echo` → 服务名 `chat`。Demo 只用这一条指令。`login.signin` 本阶段客户端不准发。
+   `chat.demo.echo` → 服务名 `chat`。登录上行必须 `forward(SN_LOGIN)`（值为 `"chat"`），禁止 `service_name("login.signin")`。
 
 9. **Naming 先静态配置；Find = 快照（Adult），Subscribe = 以后的变更（Young）。**  
    网关拨号全部 Chat 实例，不是 HTTP 负载均衡。`adult_delay` 库默认 10s，Demo 0。配置里已有的实例绝不能走 Subscribe dump。
@@ -1427,8 +1414,8 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 10. **容器是 `Arc<Container>` 不是全局单例；两阶段 `new` → 设 Handler → `attach_server` → `start`。**  
     Handler 持有 `Arc<Container>`，只调 `forward` / `push`。`attach_server` 同步，`server` 字段是 `std::sync::OnceLock`（不是 tokio Mutex）。`start` 用 `closed` AtomicBool + `Notify::notify_one` 防丢失唤醒，不是 ctrl-c。spawn `server.start()` 前后若已 closed，必须再调 `srv.shutdown()`——只退出 Container 的 wait 关不掉 accept 循环。`TcpServer`/`WsServer` 同样 closed+`notify_one`。不改 `kim-core` 的 Server trait。
 
-11. **Web 进 WGateway 的握手仍是第一帧名字；网关进 Chat 是 `InnerHandshakeReq` protobuf。**  
-    前者证明 WS `Conn` 与 echo 一致；后者区分「人」和「服务」。都没有 JWT。App 进 TGateway 继续用已有 TCP echo 握手，本阶段不另做假 TGateway。
+11. **echo 进服务端仍是第一帧名字；`pkt-client` 进 WGateway 是 JWT `login.signin`；网关进 Chat 是 `InnerHandshakeReq` protobuf。**  
+    echo 证明 WS `Conn`。登录见 [link-layer-login.md](link-layer-login.md)。App 进 TGateway 继续用 TCP echo 握手，不另做假 TGateway。
 
 12. **`TcpClient` 写侧 Mutex 保留；`read` 改成 `&self`（读半边也 Mutex）。**  
     这是 Container 能同时 Forward 和 read_loop 的前提。不要对整颗 Client 加锁，也不要把写侧改成 mpsc。

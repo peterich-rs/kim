@@ -1,6 +1,6 @@
 # 架构
 
-当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器 Demo、链路层登录（JWT / 会话 / 互踢）已落地**。可选 Redis 会话、Consul、公网部署还没有。读本文时把「以后」和「已经有」分开。详细帧与容器规格见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
+当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器、JWT 登录 / 会话 / 互踢已落地**。可选 Redis 会话、Consul、公网部署、单聊还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
 
 ## 一句话
 
@@ -89,12 +89,12 @@ im/
 
 本机跑法见根目录 `README.md`。
 
-## 以后会有、现在不要提前写进通信层的
+## 不要提前写进通信层的
 
-- **容器层（已有静态 Naming）**：Consul 以后再换实现，不要改 `TcpServer`  
-- **链路层（M3 已有）**：JWT 登录、Memory 会话、指令 Router 在 examples / `kim-router` / `kim-session`。不要把 JWT 写进 `kim-ws`  
-- **控制层**：单聊、群聊、离线  
-- **部署**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存（反向代理按域名分流）。通信层在本机跑通之前不上 VPS  
+- **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
+- **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
+- **控制层（以后）**：单聊、群聊、离线
+- **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。
 
