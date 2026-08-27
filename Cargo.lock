@@ -533,6 +533,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-router"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "kim-protocol",
+ "prost",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "kim-tcp"
 version = "0.1.0"
 dependencies = [

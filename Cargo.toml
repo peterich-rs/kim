@@ -7,6 +7,7 @@ members = [
     "crates/kim-protocol",
     "crates/kim-naming",
     "crates/kim-container",
+    "crates/kim-router",
     "examples/echo-server",
     "examples/echo-client",
     "examples/ws-echo-server",
@@ -47,3 +48,4 @@ kim-ws = { path = "crates/kim-ws" }
 kim-protocol = { path = "crates/kim-protocol" }
 kim-naming = { path = "crates/kim-naming" }
 kim-container = { path = "crates/kim-container" }
+kim-router = { path = "crates/kim-router" }
