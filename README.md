@@ -1,66 +1,139 @@
 # KIM
 
-Rust 实现的分布式即时通讯骨架，对照 King IM Cloud 的分层来学后台：通信层（TCP / WebSocket）、业务包、静态服务发现、容器转发。
+Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学后台：先把长连接、分帧、连接生命周期做对，再往上长业务包、服务发现和转发。
 
-组织：[peterich-rs](https://github.com/peterich-rs) / 仓库：`kim`
+当前本机可跑：**TCP echo**、**WebSocket echo**（第一帧仍是名字），以及 **假网关 + 假 Chat 登录 Demo**（JWT 握手、会话、互踢、登录后再 echo）。默认会话是进程内 Memory，不需要 Redis / Docker / Consul。
 
-当前进度：本机可跑 TCP echo、WebSocket echo，以及「假网关 + 假 Chat」业务包 Demo。还没有登录、Redis、Consul、公网部署。
+## 当前进度
 
-学习笔记：[docs/](docs/README.md)（词表、架构、通信层链路图、业务包与容器规格）。
+| 层 | 状态 | 仓库里对应什么 |
+|---|---|---|
+| 通信层 | 已落地 | `kim-core` + `kim-tcp` + `kim-ws`。TCP / WS 都履行 `Conn` |
+| 容器层 | 已落地 | `kim-naming`（静态配置）+ `kim-container`（Young → Adult 后 Forward） |
+| 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
+| 链路层 | **M3 已落地** | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
+| 控制层 | 以后 | 单聊、群聊、离线 |
+
+## 先看三张图
+
+clone 之后用浏览器打开 HTML，可切换深浅色、追踪关系。GitHub 上先看预览。
+
+### 1. 总图：谁在哪
+
+进程是上面一排：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。下面是 crate：`kim-ws` / `kim-tcp` 履行 `kim-core` 的 `Conn`，网关用 `kim-container` 转发。
+
+[打开交互图](docs/diagrams/kim-overview.html)
+
+[![KIM 本机 Demo 总图](docs/diagrams/kim-overview.png)](docs/diagrams/kim-overview.html)
+
+### 2. 时序：一帧怎么走
+
+网关启动时先 TCP 拨号 Chat（`InnerHandshakeReq`）。客户端 Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N` 这种 `channel_id`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。
+
+[打开交互图](docs/diagrams/pkt-demo.html)
+
+[![业务包 Demo 时序](docs/diagrams/pkt-demo.png)](docs/diagrams/pkt-demo.html)
+
+### 3. 数据流：字节怎么变成指令
+
+TCP 用 `opcode + 长度` 切开；WebSocket 帧自带边界。两种电线的 Binary payload 都进 `kim-protocol`：前 4 字节 Magic 决定心跳还是业务，`command` 第一个点号前的前缀就是服务名。
+
+[打开交互图](docs/diagrams/protocol-stack.html)
+
+[![帧与业务包数据流](docs/diagrams/protocol-stack.png)](docs/diagrams/protocol-stack.html)
+
+规格与词表在 [docs/](docs/README.md)。图和代码打架时以代码为准。
 
 ## 本机怎么跑
 
-需要 [Rust](https://rustup.rs/)。
+需要 [Rust](https://rustup.rs/)。工具链钉在 `rust-toolchain.toml`（当前 1.95.0），clone 之后 rustup 会自动用这个版本。
 
-TCP 回声（App / TGateway 路径）：
+TCP 回声（App / TGateway 路径，`:8000`，第一帧仍是名字）：
 
 ```bash
 cargo run -p echo-server
 cargo run -p echo-client -- alice
 ```
 
-WebSocket 回声（同一套 EchoHandler，换电线）：
+WebSocket 回声（同一套 `EchoHandler`，换电线，第一帧仍是名字）：
 
 ```bash
 cargo run -p ws-echo-server
 cargo run -p ws-echo-client -- alice
 ```
 
-业务包 Demo（先 Chat 再网关）：
+登录 Demo（Memory 会话。必须先 Chat 再网关，再客户端）：
 
 ```bash
-cargo run -p fake-chat
-cargo run -p fake-gateway
-cargo run -p pkt-client -- alice
+# 终端 1
+RUST_LOG=info cargo run -p fake-chat
+
+# 终端 2（等 Chat listen）
+RUST_LOG=info cargo run -p fake-gateway
+
+# 终端 3
+RUST_LOG=info cargo run -p pkt-client -- alice
 ```
+
+成功时客户端打印的 `channel_id` 形如 `wg-1_alice_1`，**不是** `"alice"`。随后本地 ping，再 `chat.demo.echo`。
 
 ```bash
-cargo test --workspace
+# 互踢：终端 A 先 HOLD，终端 B 再登录同一账号
+KIM_HOLD=1 RUST_LOG=info cargo run -p pkt-client -- alice
+RUST_LOG=info cargo run -p pkt-client -- alice
+
+# 坏 token（Unauthorized 或 WS Close）
+KIM_BAD_TOKEN=1 cargo run -p pkt-client -- alice
+
+# 登录后只 ping（不到 Chat）
+KIM_PING_ONLY=1 cargo run -p pkt-client -- alice
+
+# 只起网关、不起 Chat：握手失败（ServiceUnavailable 或 Close）
+KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ```
 
-## 开发
-
-工具链钉在 `rust-toolchain.toml`（当前 1.95.0）。clone 之后 rustup 会自动用这个版本。
+通信层 echo 的第一帧是名字；连 `fake-gateway` 的第一帧必须是 JWT `login.signin`。两条握手不要混：客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+env -u REDIS_URL cargo test --workspace
 ```
 
-push 和 pull request 会跑同一套检查（见 `.github/workflows/ci.yml`）。
+测试只构造 Memory 会话，不读 `REDIS_URL`，不需要活 Redis / Consul。
 
 ## 仓库结构
 
 ```
-crates/kim-core         通信层说明书（Conn / Channel / ChannelMap）
-crates/kim-tcp          TCP 帧与网关
+crates/kim-core         通信层说明书：Conn / Frame / Channel / ChannelMap
+crates/kim-tcp          TCP 分帧（App / 网关↔Chat）
 crates/kim-ws           WebSocket（HTTP Upgrade 之后）
-crates/kim-protocol     Magic + BasicPkt + LogicPkt
-crates/kim-naming       静态服务发现
-crates/kim-container    全连接拨号、Young/Adult、Forward
+crates/kim-protocol     Magic + BasicPkt + LogicPkt + JWT
+crates/kim-naming       静态服务发现（不是 Consul）
+crates/kim-container    全连接拨号、Young/Adult、Forward / Push
+crates/kim-router       指令 Router / Context / Dispatch
+crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
 examples/               echo / ws-echo / fake-gateway / fake-chat / pkt-client
+docs/                   词表、分层合同、登录规格、交互图
 ```
+
+原则：**换传输只加 `Conn` 实现，不改业务。** 登录、互踢、群聊都不进 `TcpServer` / `WsServer`。
+
+## 学习文档
+
+1. [docs/glossary.md](docs/glossary.md) — 进程、端口、帧、channel_id、JWT / 会话
+2. [docs/architecture.md](docs/architecture.md) — crate 职责、进门怎么走
+3. [docs/communication-layer.md](docs/communication-layer.md) — 两专员、查表放锁
+4. [docs/protocol-container.md](docs/protocol-container.md) — 已落地的业务包与容器
+5. [docs/link-layer-login.md](docs/link-layer-login.md) — **M3 已落地**：登录与会话
+
+## 开发
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+env -u REDIS_URL cargo test --workspace
+```
+
+push 和 pull request 会跑同一套检查（见 `.github/workflows/ci.yml`）。
 
 ## 许可
 

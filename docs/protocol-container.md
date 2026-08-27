@@ -1,7 +1,7 @@
 # WebSocket、业务包与容器（已落地规格）
 
 面向：刚学后台、靠复刻 KIM 入门的工程师。  
-本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。不含登录 JWT、Redis、Consul、VPS、单聊、Royal。
+本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 M3 规格 [link-layer-login.md](link-layer-login.md)（已落地）。本文仍不含 Consul、VPS、单聊、Royal。`echo-*` / `ws-echo-*` / `e2e_echo.rs` 仍是 identity 第一帧。
 
 阅读前请先扫 [glossary.md](glossary.md) 和 [communication-layer.md](communication-layer.md)。本文出现的新词会在第一次使用时解释。
 
@@ -1090,6 +1090,10 @@ server.push(gateway_id, marshal(Logic(pkt)))
 
 不要写进 `WsServer`。这是 **Web** 网关的业务插槽，不是 TGateway。
 
+**已被 M3 替换：** `fake-gateway` Accept 第一帧必须是 LogicPkt `login.signin` + JWT，生成 `wg-1_{account}_{seq}`，**不**再把 utf8 `"alice"` 当 channel_id。identity 第一帧仍用于 `echo-*` / `ws-echo-*` / `crates/kim-container/tests/e2e_echo.rs`。详见 [link-layer-login.md](link-layer-login.md) §7。
+
+M2 当时的 Accept（历史，已被登录 Demo 换掉）：
+
 ```
 Accept:
     读第一帧 Binary，utf8 trim 当 channel_id。空 → Handshake 错。
@@ -1151,7 +1155,7 @@ cargo run -p pkt-client -- alice ws://127.0.0.1:8001/     # 覆盖 URL
 
 流程：
 
-1. `WsIdentityDialer` 连上，第一帧 `"alice"`。
+1. **M2 当时：** `WsIdentityDialer` 连上，第一帧 `"alice"`。**M3：** `LoginDialer` 发 `login.signin` + JWT，等 `LoginResp`（见 [link-layer-login.md](link-layer-login.md) §9）。`e2e_echo.rs` 仍用 identity。
 2. 发 BasicPkt ping，读一帧，断言 MagicBasicPkt + code=2。
 3. 发 LogicPkt `{ command: chat.demo.echo, sequence: 1, flag: Request, body: "hello" }`。
 4. 读 LogicPkt，断言 sequence==1、flag==Response。默认断言 `status==Success`、body==`hello`。

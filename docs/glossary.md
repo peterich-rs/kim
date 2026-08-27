@@ -47,12 +47,17 @@
 | **Acceptor** | 新连接进来，业务决定「这是谁」，返回 channel_id |
 | **Agent** | 业务能对连接做的最小操作：我是谁、推一串字节。不能直接关掉连接 |
 | **服务 / 实例** | 服务是角色（聊天服务）；实例是一次具体运行（某 IP:端口）。服务发现登记的是实例 |
+| **JWT** | 登录第一帧 `LoginReq.token`。本 Demo 只允许 HS256，claims 是 `acc` / `app` / `exp`。不放 Upgrade URL |
+| **Router** | `command` → Handler。Chat 用它处理 `login.signin` / `login.signout` / `chat.demo.echo` |
+| **Session** | 一条已登录连接的完整记录（account、channel_id、gate_id…），按 channel_id 存 |
+| **Location** | 热路径：account → {channel_id, gate_id}。同一账号第二次登录先查这个再互踢 |
+| **Kickout** | 互踢通知。command 仍是 `login.signin`，`Flag=Push`，body 是 `KickoutNotify{channelId}`。网关 hook 先看 Flag 再关旧连接 |
 
-## 小册里的四层（以后才会全部出现）
+## 小册里的四层
 
 | 层 | 干什么 | 现在有没有 |
 |---|---|---|
 | 通信层 | TCP/WS 收发帧、连接生命周期 | **有**（本仓库 M1） |
-| 容器层 | 找到别的服务并连上它们 | 以后 |
-| 链路层 | 登录、指令路由、会话 | 以后 |
+| 容器层 | 找到别的服务并连上它们 | **有**（静态 Naming + Container，M2） |
+| 链路层 | 登录、指令路由、会话 | **本阶段（M3）**：JWT Accept、Router、Memory 会话、互踢 |
 | 控制层 | 单聊、群聊、离线 | 以后 |

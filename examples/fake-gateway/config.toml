@@ -3,6 +3,8 @@ service_id = "wg-1"
 service_name = "wgateway"
 listen = "127.0.0.1:8001"
 protocol = "ws"
+# empty = DEMO_DEFAULT_SECRET (demo-only)
+jwt_secret = ""
 
 [[services]]
 service_id = "chat-1"
