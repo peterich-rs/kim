@@ -5,7 +5,7 @@ mod error;
 mod selector;
 
 pub use client_map::{ADULT, YOUNG};
-pub use container::{Container, ContainerOpts};
+pub use container::{Container, ContainerOpts, DownlinkHook};
 pub use dialer::InnerTcpDialer;
 pub use error::Error;
 pub use selector::{HashSelector, Selector};

@@ -217,3 +217,78 @@ async fn send_binary(
     .await
     .map_err(|_| Error::Closed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Error, Frame};
+    use tokio::sync::mpsc;
+    use tokio::time::{timeout, Duration};
+
+    struct NullConn;
+
+    #[async_trait]
+    impl Conn for NullConn {
+        async fn read_frame(&mut self) -> Result<Frame, Error> {
+            std::future::pending().await
+        }
+        async fn write_frame(&mut self, _opcode: OpCode, _payload: Bytes) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn flush(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    struct RecConn {
+        tx: mpsc::UnboundedSender<&'static str>,
+    }
+
+    #[async_trait]
+    impl Conn for RecConn {
+        async fn read_frame(&mut self) -> Result<Frame, Error> {
+            std::future::pending().await
+        }
+        async fn write_frame(&mut self, opcode: OpCode, _payload: Bytes) -> Result<(), Error> {
+            if opcode == OpCode::Binary {
+                let _ = self.tx.send("binary");
+            }
+            Ok(())
+        }
+        async fn flush(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> Result<(), Error> {
+            let _ = self.tx.send("close");
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn push_then_close_emits_binary_then_close() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (ch, _read_loop) = Channel::pair(
+            "c1",
+            NullConn,
+            RecConn { tx },
+            ChannelOpts {
+                write_wait: Duration::from_secs(2),
+                ..ChannelOpts::default()
+            },
+        );
+        ch.push(Bytes::from_static(b"hi")).await.unwrap();
+        ch.close().await;
+        let first = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let second = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!((first, second), ("binary", "close"));
+    }
+}

@@ -15,6 +15,11 @@ pub trait Conn: Send {
     async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error>;
     async fn flush(&mut self) -> Result<(), Error>;
     async fn shutdown(&mut self) -> Result<(), Error>;
+
+    /// 对端地址。仅未 split 的连接有值；读/写半边默认 None。
+    fn peer_addr(&self) -> Option<String> {
+        None
+    }
 }
 
 /// 新连接进来后，由业务决定「这是谁」。
@@ -27,6 +32,14 @@ pub trait Conn: Send {
 #[async_trait]
 pub trait Acceptor: Send + Sync {
     async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error>;
+
+    /// ChannelMap.add 成功、且 MessageListener 已设置之后、read_loop 之前。默认 Ok。
+    async fn on_channel_ready(&self, _channel_id: &str) -> Result<(), Error> {
+        Ok(())
+    }
+
+    /// Accept 已 Ok，但这条连接不会进入 read_loop（id 重复 / 未设 MessageListener）。
+    async fn on_accept_abandoned(&self, _channel_id: &str) {}
 }
 
 /// 收到一帧业务数据（Ping/Pong/Close 已经被 Channel 吃掉）。

@@ -117,6 +117,7 @@ impl Server for WsServer {
                         login_wait: self.login_wait,
                         read_wait: self.read_wait,
                         write_wait: self.write_wait,
+                        peer,
                     };
                     tokio::spawn(async move {
                         let io = TokioIo::new(stream);
@@ -145,6 +146,14 @@ impl Server for WsServer {
         ch.push(payload).await
     }
 
+    async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id).await else {
+            return Err(Error::ChannelNotFound(channel_id.to_string()));
+        };
+        ch.close().await;
+        Ok(())
+    }
+
     async fn shutdown(&self) -> Result<(), Error> {
         self.closed.store(true, Ordering::SeqCst);
         self.shutdown.notify_waiters();
@@ -162,6 +171,7 @@ struct HttpCtx {
     login_wait: Duration,
     read_wait: Duration,
     write_wait: Duration,
+    peer: SocketAddr,
 }
 
 async fn handle_http(
@@ -197,7 +207,10 @@ async fn handle_http(
                 ws.set_auto_close(false);
                 ws.set_writev(true);
                 ws.set_max_message_size(1024 * 1024);
-                let conn = WsConn { ws };
+                let conn = WsConn {
+                    ws,
+                    peer: Some(ctx.peer.to_string()),
+                };
                 if let Err(err) = handle_ws(conn, ctx).await {
                     warn!(%err, "ws session ended");
                 }
@@ -239,6 +252,7 @@ where
             .write_frame(OpCode::Close, Bytes::from_static(b"channelId is repeated"))
             .await;
         let _ = conn.shutdown().await;
+        ctx.acceptor.on_accept_abandoned(&id).await;
         return Err(Error::ChannelExists(id));
     }
     let (reader, writer) = conn.into_split();
@@ -250,9 +264,20 @@ where
     let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, opts);
     ctx.channels.add(channel).await;
     let Some(messages) = ctx.messages else {
+        ctx.acceptor.on_accept_abandoned(&id).await;
+        if let Some(ch) = ctx.channels.get(&id).await {
+            ch.close().await;
+        }
         ctx.channels.remove(&id).await;
         return Err(Error::other("MessageListener is not set"));
     };
+    if let Err(err) = ctx.acceptor.on_channel_ready(&id).await {
+        if let Some(ch) = ctx.channels.get(&id).await {
+            ch.close().await;
+        }
+        ctx.channels.remove(&id).await;
+        return Err(err);
+    }
     let read_result = read_loop.run(messages).await;
     ctx.channels.remove(&id).await;
     if let Some(states) = ctx.states {

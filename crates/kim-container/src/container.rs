@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{OpCode, Server};
 use kim_naming::{DefaultRegistration, Naming};
@@ -15,6 +16,12 @@ use crate::client_map::{ClientMap, ClientSlot, ADULT, YOUNG};
 use crate::error::Error;
 use crate::selector::{HashSelector, Selector};
 
+/// 本进程 `Server::push` 成功之后、同一任务调用。
+#[async_trait]
+pub trait DownlinkHook: Send + Sync {
+    async fn after_push(&self, channel_id: &str, pkt: &LogicPkt);
+}
+
 pub struct ContainerOpts {
     pub naming: Arc<dyn Naming>,
     pub identity: DefaultRegistration,
@@ -22,6 +29,7 @@ pub struct ContainerOpts {
     pub deps: Vec<String>,
     pub adult_delay: Duration,
     pub selector: Arc<dyn Selector>,
+    pub after_downlink: Option<Arc<dyn DownlinkHook>>,
 }
 
 impl ContainerOpts {
@@ -38,6 +46,7 @@ impl ContainerOpts {
             deps,
             adult_delay: Duration::from_secs(10),
             selector: Arc::new(HashSelector),
+            after_downlink: None,
         }
     }
 }
@@ -51,6 +60,7 @@ pub struct Container {
     clients: Arc<RwLock<HashMap<String, ClientMap>>>,
     selector: Arc<dyn Selector>,
     adult_delay: Duration,
+    after_downlink: Option<Arc<dyn DownlinkHook>>,
     shutdown: Notify,
     closed: AtomicBool,
 }
@@ -66,6 +76,7 @@ impl Container {
             clients: Arc::new(RwLock::new(HashMap::new())),
             selector: opts.selector,
             adult_delay: opts.adult_delay,
+            after_downlink: opts.after_downlink,
             shutdown: Notify::new(),
             closed: AtomicBool::new(false),
         })
@@ -290,6 +301,10 @@ impl Container {
         let channels = pkt.get_meta(META_DEST_CHANNELS).unwrap_or("").to_string();
         pkt.del_meta(META_DEST_SERVER);
         pkt.del_meta(META_DEST_CHANNELS);
+        let hook_pkt = LogicPkt {
+            header: pkt.header.clone(),
+            body: pkt.body.clone(),
+        };
         let bytes = marshal(&Packet::Logic(pkt));
         let srv = self
             .server
@@ -297,7 +312,14 @@ impl Container {
             .ok_or_else(|| Error::other("no server"))?
             .clone();
         for id in channels.split(',').filter(|s| !s.is_empty()) {
-            let _ = srv.push(id, bytes.clone()).await;
+            match srv.push(id, bytes.clone()).await {
+                Ok(()) => {
+                    if let Some(h) = &self.after_downlink {
+                        h.after_push(id, &hook_pkt).await;
+                    }
+                }
+                Err(e) => warn!(%e, channel = %id, "push down failed"),
+            }
         }
         Ok(())
     }

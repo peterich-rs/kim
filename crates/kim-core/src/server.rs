@@ -15,6 +15,8 @@ pub trait Server: Send {
 
     async fn start(&self) -> Result<(), Error>;
     async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error>;
+    /// 关掉指定 channel：入队 Close。Agent 没有对应方法。
+    async fn close_channel(&self, channel_id: &str) -> Result<(), Error>;
     async fn shutdown(&self) -> Result<(), Error>;
 }
 

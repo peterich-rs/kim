@@ -118,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
+        after_downlink: None,
     });
     let handler = Arc::new(ChatHandler {
         container: container.clone(),
