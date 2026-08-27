@@ -103,22 +103,20 @@ impl Server for TcpServer {
                             continue;
                         }
                     };
-                    let acceptor = self.acceptor.clone();
-                    let messages = self.messages.clone();
-                    let states = self.states.clone();
-                    let channels = self.channels.clone();
-                    let login_wait = self.login_wait;
-                    let opts = ChannelOpts {
-                        read_wait: self.read_wait,
-                        write_wait: self.write_wait,
-                        write_queue: 64,
+                    let ctx = ConnCtx {
+                        acceptor: self.acceptor.clone(),
+                        messages: self.messages.clone(),
+                        states: self.states.clone(),
+                        channels: self.channels.clone(),
+                        login_wait: self.login_wait,
+                        opts: ChannelOpts {
+                            read_wait: self.read_wait,
+                            write_wait: self.write_wait,
+                            write_queue: 64,
+                        },
                     };
                     tokio::spawn(async move {
-                        if let Err(err) = handle_conn(
-                            stream, peer, acceptor, messages, states, channels, login_wait, opts,
-                        )
-                        .await
-                        {
+                        if let Err(err) = handle_conn(stream, peer, ctx).await {
                             warn!(%peer, %err, "connection ended");
                         }
                     });
@@ -143,18 +141,27 @@ impl Server for TcpServer {
     }
 }
 
-async fn handle_conn(
-    stream: tokio::net::TcpStream,
-    peer: std::net::SocketAddr,
+struct ConnCtx {
     acceptor: Arc<dyn Acceptor>,
     messages: Option<Arc<dyn MessageListener>>,
     states: Option<Arc<dyn StateListener>>,
     channels: ChannelMap,
     login_wait: Duration,
     opts: ChannelOpts,
+}
+
+async fn handle_conn(
+    stream: tokio::net::TcpStream,
+    peer: SocketAddr,
+    ctx: ConnCtx,
 ) -> Result<(), Error> {
     let mut conn = TcpConn::new(stream);
-    let id = match tokio::time::timeout(login_wait, acceptor.accept(&mut conn, login_wait)).await {
+    let id = match tokio::time::timeout(
+        ctx.login_wait,
+        ctx.acceptor.accept(&mut conn, ctx.login_wait),
+    )
+    .await
+    {
         Ok(Ok(id)) => id,
         Ok(Err(err)) => {
             let _ = conn
@@ -168,11 +175,11 @@ async fn handle_conn(
                 .write_frame(OpCode::Close, Bytes::from_static(b"handshake timeout"))
                 .await;
             let _ = conn.shutdown().await;
-            return Err(Error::HandshakeTimeout(login_wait));
+            return Err(Error::HandshakeTimeout(ctx.login_wait));
         }
     };
 
-    if channels.contains(&id).await {
+    if ctx.channels.contains(&id).await {
         let _ = conn
             .write_frame(OpCode::Close, Bytes::from_static(b"channelId is repeated"))
             .await;
@@ -181,18 +188,18 @@ async fn handle_conn(
     }
 
     let (reader, writer) = conn.into_split();
-    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, opts);
-    channels.add(channel).await;
+    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, ctx.opts);
+    ctx.channels.add(channel).await;
     info!(%peer, channel = %id, "accepted");
 
-    let Some(messages) = messages else {
-        channels.remove(&id).await;
+    let Some(messages) = ctx.messages else {
+        ctx.channels.remove(&id).await;
         return Err(Error::other("MessageListener is not set"));
     };
 
     let read_result = read_loop.run(messages).await;
-    channels.remove(&id).await;
-    if let Some(states) = states {
+    ctx.channels.remove(&id).await;
+    if let Some(states) = ctx.states {
         let _ = states.disconnect(&id).await;
     }
     info!(channel = %id, "disconnected");

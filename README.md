@@ -38,6 +38,18 @@ cargo run -p pkt-client -- alice
 cargo test --workspace
 ```
 
+## 开发
+
+工具链钉在 `rust-toolchain.toml`（当前 1.95.0）。clone 之后 rustup 会自动用这个版本。
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+push 和 pull request 会跑同一套检查（见 `.github/workflows/ci.yml`）。
+
 ## 仓库结构
 
 ```

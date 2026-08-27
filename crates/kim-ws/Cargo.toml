@@ -3,6 +3,7 @@ name = "kim-ws"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 description = "KIM 通信层的 WebSocket 实现：HTTP Upgrade 之后的 RFC6455 帧"
 
 [dependencies]
@@ -20,3 +21,6 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

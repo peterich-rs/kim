@@ -37,8 +37,10 @@ mod tests {
     #[test]
     fn stable_and_empty() {
         let s = HashSelector;
-        let mut h = Header::default();
-        h.channel_id = "alice".into();
+        let h = Header {
+            channel_id: "alice".into(),
+            ..Header::default()
+        };
         assert!(s.lookup(&h, &[]).is_none());
         let srvs = vec![r("a"), r("b")];
         let x = s.lookup(&h, &srvs).unwrap();

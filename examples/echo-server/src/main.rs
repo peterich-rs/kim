@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{
-    Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener,
-};
+use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_tcp::TcpServer;
 use tracing::info;
 
@@ -49,8 +47,7 @@ impl StateListener for EchoHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 

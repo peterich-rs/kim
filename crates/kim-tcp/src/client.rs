@@ -76,7 +76,10 @@ impl TcpClient {
         if self.connected.swap(true, Ordering::SeqCst) {
             return Err(Error::AlreadyConnected);
         }
-        let dialer = self.dialer.clone().ok_or_else(|| Error::other("dialer not set"))?;
+        let dialer = self
+            .dialer
+            .clone()
+            .ok_or_else(|| Error::other("dialer not set"))?;
         let ctx = DialerContext {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -140,7 +143,12 @@ impl TcpClient {
     }
 
     pub async fn read(&self) -> Result<Frame, Error> {
-        let mut reader = self.reader.as_ref().ok_or(Error::NotConnected)?.lock().await;
+        let mut reader = self
+            .reader
+            .as_ref()
+            .ok_or(Error::NotConnected)?
+            .lock()
+            .await;
         loop {
             let frame = reader.read_frame().await?;
             match frame.opcode {

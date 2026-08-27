@@ -82,7 +82,10 @@ where
     }
 
     async fn shutdown(&mut self) -> Result<(), Error> {
-        let _ = self.ws.write_frame(ws_frame(OpCode::Close, Bytes::new())).await;
+        let _ = self
+            .ws
+            .write_frame(ws_frame(OpCode::Close, Bytes::new()))
+            .await;
         Ok(())
     }
 }

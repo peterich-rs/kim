@@ -3,6 +3,7 @@ name = "kim-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 description = "KIM 业务包：Magic、BasicPkt、LogicPkt"
 
 [dependencies]
@@ -13,3 +14,6 @@ thiserror.workspace = true
 [build-dependencies]
 prost-build = "0.13"
 protobuf-src = "2"
+
+[lints]
+workspace = true

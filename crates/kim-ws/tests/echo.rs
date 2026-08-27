@@ -58,10 +58,7 @@ async fn ws_echo_roundtrip() {
         },
     );
     client.set_dialer(Arc::new(WsIdentityDialer));
-    client
-        .connect(&format!("ws://{addr}/"))
-        .await
-        .unwrap();
+    client.connect(&format!("ws://{addr}/")).await.unwrap();
     client.send(Bytes::from_static(b"hello")).await.unwrap();
     let frame = client.read().await.unwrap();
     assert_eq!(&frame.payload[..], b"hello from server");

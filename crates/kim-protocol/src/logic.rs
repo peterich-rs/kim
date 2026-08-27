@@ -13,11 +13,15 @@ pub struct LogicPkt {
 
 impl LogicPkt {
     pub fn new(command: impl Into<String>, sequence: u32, body: Bytes) -> Self {
-        let mut header = Header::default();
-        header.command = command.into();
-        header.sequence = sequence;
-        header.body_length = body.len() as u32;
-        Self { header, body }
+        Self {
+            header: Header {
+                command: command.into(),
+                sequence,
+                body_length: body.len() as u32,
+                ..Header::default()
+            },
+            body,
+        }
     }
 
     pub fn service_name(&self) -> &str {

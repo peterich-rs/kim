@@ -3,6 +3,7 @@ name = "kim-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 description = "KIM 通信层接口：帧、连接、连接表、Server/Client 回调"
 
 [dependencies]
@@ -11,3 +12,6 @@ bytes.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[lints]
+workspace = true
