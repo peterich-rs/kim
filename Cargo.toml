@@ -38,6 +38,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 prost = "0.13"
+jsonwebtoken = "9"
+serde = { version = "1", features = ["derive"] }
 crc32fast = "1"
 kim-core = { path = "crates/kim-core" }
 kim-tcp = { path = "crates/kim-tcp" }

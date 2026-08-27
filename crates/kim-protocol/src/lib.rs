@@ -2,6 +2,7 @@ mod basic;
 mod error;
 mod logic;
 mod magic;
+mod token;
 mod wire;
 
 pub mod pkt {
@@ -12,8 +13,10 @@ pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use error::ProtocolError;
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
+pub use token::{generate, parse, Claims, DEMO_DEFAULT_SECRET};
 pub use wire::{
-    service_name, CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER, SN_CHAT, SN_WGATEWAY,
+    service_name, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS,
+    META_DEST_SERVER, SN_CHAT, SN_LOGIN, SN_WGATEWAY,
 };
 
 use bytes::Bytes;
@@ -59,5 +62,19 @@ mod tests {
     #[test]
     fn bad_magic() {
         assert!(matches!(read(&[1, 2, 3, 4]), Err(ProtocolError::BadMagic)));
+    }
+
+    #[test]
+    fn status_numbers_stable() {
+        use pkt::Status;
+        assert_eq!(Status::Success as i32, 0);
+        assert_eq!(Status::InvalidPacket as i32, 1);
+        assert_eq!(Status::CommandNotFound as i32, 2);
+        assert_eq!(Status::ServiceUnavailable as i32, 3);
+        assert_eq!(Status::SystemException as i32, 99);
+        assert_eq!(Status::InvalidPacketBody as i32, 101);
+        assert_eq!(Status::InvalidCommand as i32, 103);
+        assert_eq!(Status::Unauthorized as i32, 105);
+        assert_eq!(Status::SessionNotFound as i32, 404);
     }
 }

@@ -6,6 +6,7 @@ use crate::magic::MAGIC_LOGIC_PKT;
 use crate::pkt::Header;
 use crate::wire::service_name;
 
+#[derive(Clone)]
 pub struct LogicPkt {
     pub header: Header,
     pub body: Bytes,
@@ -22,6 +23,26 @@ impl LogicPkt {
             },
             body,
         }
+    }
+
+    /// Copy `header` for a response or push; body is empty and `body_length` is 0.
+    pub fn new_from(header: &Header) -> Self {
+        let mut header = header.clone();
+        header.body_length = 0;
+        Self {
+            header,
+            body: Bytes::new(),
+        }
+    }
+
+    pub fn write_body(&mut self, msg: &impl Message) {
+        let buf = msg.encode_to_vec();
+        self.header.body_length = buf.len() as u32;
+        self.body = Bytes::from(buf);
+    }
+
+    pub fn read_body<T: Message + Default>(&self) -> Result<T, ProtocolError> {
+        T::decode(self.body.as_ref()).map_err(ProtocolError::from)
     }
 
     pub fn service_name(&self) -> &str {
@@ -126,5 +147,26 @@ mod tests {
         );
         pkt.del_meta("dest.server");
         assert!(pkt.get_meta("dest.server").is_none());
+    }
+
+    #[test]
+    fn new_from_and_body_roundtrip() {
+        let mut pkt = LogicPkt::new("login.signin", 9, Bytes::new());
+        pkt.header.channel_id = "wg-1_alice_1".into();
+        pkt.write_body(&crate::pkt::LoginReq {
+            token: "tok".into(),
+        });
+        let got: crate::pkt::LoginReq = pkt.read_body().unwrap();
+        assert_eq!(got.token, "tok");
+        assert_eq!(pkt.header.body_length as usize, pkt.body.len());
+
+        let resp = LogicPkt::new_from(&pkt.header);
+        assert_eq!(resp.header.command, "login.signin");
+        assert_eq!(resp.header.sequence, 9);
+        assert_eq!(resp.header.channel_id, "wg-1_alice_1");
+        assert_eq!(resp.header.body_length, 0);
+        assert!(resp.body.is_empty());
+        let cloned = pkt.clone();
+        assert_eq!(cloned.header.command, pkt.header.command);
     }
 }

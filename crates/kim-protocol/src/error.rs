@@ -12,4 +12,12 @@ pub enum ProtocolError {
     NotLogic,
     #[error("protobuf: {0}")]
     Prost(#[from] prost::DecodeError),
+    #[error("token expired")]
+    TokenExpired,
+    #[error("token signature invalid")]
+    TokenSignature,
+    #[error("invalid token")]
+    InvalidToken,
+    #[error("invalid account")]
+    InvalidAccount,
 }
