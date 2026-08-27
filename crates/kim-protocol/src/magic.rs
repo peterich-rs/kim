@@ -1,0 +1,4 @@
+pub type Magic = [u8; 4];
+
+pub const MAGIC_LOGIC_PKT: Magic = [0xc3, 0x11, 0xa3, 0x65];
+pub const MAGIC_BASIC_PKT: Magic = [0xc3, 0x15, 0xa7, 0x65];

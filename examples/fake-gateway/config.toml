@@ -1,0 +1,12 @@
+[self]
+service_id = "wg-1"
+service_name = "wgateway"
+listen = "127.0.0.1:8001"
+protocol = "ws"
+
+[[services]]
+service_id = "chat-1"
+service_name = "chat"
+protocol = "tcp"
+public_address = "127.0.0.1"
+public_port = 8002

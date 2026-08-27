@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+.idea/
+.vscode/
+.DS_Store
+
+# 付费小册原文，不进公开仓库
+/books/

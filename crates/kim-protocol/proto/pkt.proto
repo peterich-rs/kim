@@ -1,0 +1,36 @@
+syntax = "proto3";
+package kim.pkt;
+
+enum Flag {
+  Request = 0;
+  Response = 1;
+  Push = 2;
+}
+
+enum Status {
+  Success = 0;
+  InvalidPacket = 1;
+  CommandNotFound = 2;
+  ServiceUnavailable = 3;
+  SystemException = 99;
+}
+
+message Meta {
+  string key = 1;
+  string value = 2;
+}
+
+message Header {
+  string command = 1;
+  string channelId = 2;
+  uint32 sequence = 3;
+  Flag flag = 4;
+  Status status = 5;
+  string dest = 6;
+  uint32 bodyLength = 7;
+  repeated Meta meta = 8;
+}
+
+message InnerHandshakeReq {
+  string serviceId = 1;
+}

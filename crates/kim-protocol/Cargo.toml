@@ -1,0 +1,15 @@
+[package]
+name = "kim-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KIM 业务包：Magic、BasicPkt、LogicPkt"
+
+[dependencies]
+bytes.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+
+[build-dependencies]
+prost-build = "0.13"
+protobuf-src = "2"

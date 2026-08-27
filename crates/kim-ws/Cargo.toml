@@ -1,0 +1,22 @@
+[package]
+name = "kim-ws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KIM 通信层的 WebSocket 实现：HTTP Upgrade 之后的 RFC6455 帧"
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+fastwebsockets = { version = "0.10", features = ["upgrade", "unstable-split"] }
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+kim-core.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber.workspace = true

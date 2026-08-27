@@ -1,0 +1,15 @@
+[package]
+name = "echo-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+kim-core.workspace = true
+kim-tcp.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

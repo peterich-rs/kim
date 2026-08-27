@@ -1,0 +1,11 @@
+[package]
+name = "kim-naming"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KIM 服务发现：Naming trait 与静态配置实现"
+
+[dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

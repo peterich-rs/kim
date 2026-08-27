@@ -1,0 +1,23 @@
+[package]
+name = "kim-container"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "KIM 容器：拨号全部实例、Young/Adult、Forward/Push"
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+crc32fast.workspace = true
+kim-core.workspace = true
+kim-naming.workspace = true
+kim-protocol.workspace = true
+kim-tcp.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+kim-ws.workspace = true
+tracing-subscriber.workspace = true
