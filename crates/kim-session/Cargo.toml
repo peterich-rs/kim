@@ -1,0 +1,26 @@
+[package]
+name = "kim-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KIM 会话存储：Memory 默认，可选 Redis 适配器"
+
+[features]
+default = []
+redis = ["dep:redis", "dep:tokio", "dep:prost"]
+
+[dependencies]
+async-trait.workspace = true
+kim-protocol.workspace = true
+kim-router.workspace = true
+prost = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
