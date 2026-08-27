@@ -9,6 +9,7 @@ use crate::{Dispatcher, Location, RouterError, SessionError, SessionStorage};
 #[derive(Default)]
 pub struct RecordingDispatcher {
     pushes: Mutex<Vec<RecordedPush>>,
+    fail_gateways: Mutex<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -25,6 +26,13 @@ impl RecordingDispatcher {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
+
+    pub fn fail_on(&self, gateway: &str) {
+        self.fail_gateways
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(gateway.to_string());
+    }
 }
 
 #[async_trait]
@@ -37,6 +45,12 @@ impl Dispatcher for RecordingDispatcher {
     ) -> Result<(), RouterError> {
         pkt.set_meta(META_DEST_SERVER, gateway);
         pkt.set_meta(META_DEST_CHANNELS, &channels.join(","));
+        let fail = self
+            .fail_gateways
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|g| g == gateway);
         self.pushes
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -45,6 +59,9 @@ impl Dispatcher for RecordingDispatcher {
                 channels: channels.to_vec(),
                 pkt,
             });
+        if fail {
+            return Err(RouterError::Dispatcher(gateway.to_string()));
+        }
         Ok(())
     }
 }

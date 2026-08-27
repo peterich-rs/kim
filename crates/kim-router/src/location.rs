@@ -14,6 +14,17 @@ impl Location {
     pub fn encode(&self) -> Bytes {
         let ch = self.channel_id.as_bytes();
         let gate = self.gate_id.as_bytes();
+        debug_assert!(
+            ch.len() <= u16::MAX as usize && gate.len() <= u16::MAX as usize,
+            "Location channel_id/gate_id must fit in u16 LE length prefix"
+        );
+        if ch.len() > u16::MAX as usize || gate.len() > u16::MAX as usize {
+            tracing::error!(
+                channel_len = ch.len(),
+                gate_len = gate.len(),
+                "location id truncated to u16::MAX"
+            );
+        }
         let ch_len = u16::try_from(ch.len()).unwrap_or(u16::MAX);
         let gate_len = u16::try_from(gate.len()).unwrap_or(u16::MAX);
         let ch_take = usize::from(ch_len);

@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -100,13 +101,15 @@ impl Context {
             if recv.channel_id == self.session.channel_id {
                 continue;
             }
-            if !group.contains_key(&recv.gate_id) {
-                order.push(recv.gate_id.clone());
+            match group.entry(recv.gate_id.clone()) {
+                Entry::Vacant(v) => {
+                    order.push(v.key().clone());
+                    v.insert(vec![recv.channel_id.clone()]);
+                }
+                Entry::Occupied(mut o) => {
+                    o.get_mut().push(recv.channel_id.clone());
+                }
             }
-            group
-                .entry(recv.gate_id.clone())
-                .or_default()
-                .push(recv.channel_id.clone());
         }
 
         let mut first_err = None;
@@ -165,7 +168,7 @@ impl Context {
 mod tests {
     use super::*;
     use crate::support::{NoopStorage, RecordingDispatcher};
-    use crate::Router;
+    use crate::{Router, RouterError};
     use kim_protocol::pkt::KickoutNotify;
     use kim_protocol::{CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER};
 
@@ -334,5 +337,84 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].channels, vec!["ch-other".to_string()]);
         assert_eq!(got[0].pkt.get_meta(META_DEST_CHANNELS), Some("ch-other"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_two_gates_are_separate_pushes() {
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let ctx = Context::new(
+            request("login.signin", Bytes::new()),
+            session("ch-self", "gate-a"),
+            dispatcher.clone(),
+            Arc::new(NoopStorage),
+        );
+        ctx.dispatch(
+            &KickoutNotify {
+                channel_id: "ch-a".into(),
+            },
+            &[
+                Location {
+                    channel_id: "ch-a".into(),
+                    gate_id: "wg-1".into(),
+                },
+                Location {
+                    channel_id: "ch-b".into(),
+                    gate_id: "wg-2".into(),
+                },
+                Location {
+                    channel_id: "ch-c".into(),
+                    gate_id: "wg-1".into(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        let got = dispatcher.recorded();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].gateway, "wg-1");
+        assert_eq!(
+            got[0].channels,
+            vec!["ch-a".to_string(), "ch-c".to_string()]
+        );
+        assert_eq!(got[0].pkt.get_meta(META_DEST_CHANNELS), Some("ch-a,ch-c"));
+        assert_eq!(got[1].gateway, "wg-2");
+        assert_eq!(got[1].channels, vec!["ch-b".to_string()]);
+        assert_eq!(got[1].pkt.get_meta(META_DEST_CHANNELS), Some("ch-b"));
+        assert_ne!(got[0].channels, got[1].channels);
+    }
+
+    #[tokio::test]
+    async fn dispatch_continues_after_first_push_error() {
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        dispatcher.fail_on("wg-1");
+        let ctx = Context::new(
+            request("login.signin", Bytes::new()),
+            session("ch-self", "gate-a"),
+            dispatcher.clone(),
+            Arc::new(NoopStorage),
+        );
+        let err = ctx
+            .dispatch(
+                &KickoutNotify {
+                    channel_id: "ch-a".into(),
+                },
+                &[
+                    Location {
+                        channel_id: "ch-a".into(),
+                        gate_id: "wg-1".into(),
+                    },
+                    Location {
+                        channel_id: "ch-b".into(),
+                        gate_id: "wg-2".into(),
+                    },
+                ],
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RouterError::Dispatcher(ref g) if g == "wg-1"));
+        let got = dispatcher.recorded();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].gateway, "wg-1");
+        assert_eq!(got[1].gateway, "wg-2");
     }
 }
