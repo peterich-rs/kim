@@ -66,48 +66,37 @@ git filter-branch --force --index-filter \
 
 ## CRITICAL: Commit Message Format
 
-**Complements the `/git-commit` skill**: these are the structural rules.
+**Canonical rules live in `/git-commit`.** Do not invent a parallel template.
 
-### Format
+### Shape
 
 ```
 type(scope): concise subject line (imperative mood, no period)
 
-Why this change was needed:
-[1-3 sentences: business/technical motivation]
-
-What changed:
-[Bullet list of technical modifications]
-
-Problem solved:
-[What's different for the user/system after this commit]
-
-Refs: TICKET-123
+- code-level fact
+- code-level fact
 ```
+
+Subject only when the landed code is obvious from one line. Body is `-` bullets
+only: extra facts about the resulting code, never a recap of the diff or the
+implementation journey. No `Why` / `What changed` / `Problem solved` headings.
 
 ### Rules
 
 1. **Subject line**: imperative mood ("add feature" not "added feature"), max 72 chars
 2. **Type**: `feat`, `fix`, `docs`, `chore`, `refactor`, `ci`, `style`, `test`, `perf`
 3. **Scope**: module or area affected (`auth`, `editor`, `gateway`, `deps`)
-4. **Body**: wrap at 72 characters per line
+4. **Body**: `- ` lines, wrap at 72 characters
 5. **No co-authors**: Never add `Co-Authored-By` or mention AI tools
 6. **No `git add -A` or `git add .`**: Stage specific files only
 7. **Heredoc format**: Always use heredoc for multi-line messages
 
 ### Quick commits (small changes)
 
-For trivial changes, a single-line message is acceptable:
-
 ```
 fix(editor): correct off-by-one in line numbering
 chore(deps): bump rollup in the npm_and_yarn group
 docs: update API endpoint documentation
-```
-
-### Version bumps
-
-```
 chore: bump version to 0.4.0
 ```
 
