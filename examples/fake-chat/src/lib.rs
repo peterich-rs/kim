@@ -2,6 +2,7 @@
 
 pub mod directory;
 mod echo;
+mod group;
 pub mod idgen;
 mod login;
 pub mod store;
@@ -16,8 +17,8 @@ use kim_container::Container;
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT,
-    META_DEST_CHANNELS, META_DEST_SERVER,
+    read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -28,13 +29,13 @@ use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, Snowflake
 use crate::store::{MemoryMessageStore, MessageStore};
 
 pub use echo::do_echo;
+pub use group::do_group_create;
 pub use login::{do_sys_login, do_sys_logout};
-pub use talk::do_user_talk;
+pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
 pub(crate) struct ChatSvc {
     store: Arc<dyn MessageStore>,
-    #[allow(dead_code)] // PR4 group talk/create
     groups: Arc<dyn GroupDirectory>,
 }
 
@@ -111,6 +112,20 @@ impl ChatHandler {
             router.handle(CMD_CHAT_USER_TALK, move |ctx| {
                 let svc = svc.clone();
                 async move { do_user_talk(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_talk(ctx, svc.store.as_ref(), svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_CREATE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_create(ctx, svc.groups.as_ref()).await }
             });
         }
         Self {
