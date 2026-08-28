@@ -5,6 +5,7 @@ mod echo;
 pub mod idgen;
 mod login;
 pub mod store;
+mod talk;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,8 +16,8 @@ use kim_container::Container;
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS,
-    META_DEST_SERVER,
+    read_logic, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT,
+    META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -28,11 +29,12 @@ use crate::store::{MemoryMessageStore, MessageStore};
 
 pub use echo::do_echo;
 pub use login::{do_sys_login, do_sys_logout};
+pub use talk::do_user_talk;
 
 #[derive(Clone)]
-#[allow(dead_code)] // PR3/4 capture svc in talk/create handlers
 pub(crate) struct ChatSvc {
     store: Arc<dyn MessageStore>,
+    #[allow(dead_code)] // PR4 group talk/create
     groups: Arc<dyn GroupDirectory>,
 }
 
@@ -103,12 +105,20 @@ impl ChatHandler {
         router.handle(CMD_LOGIN_SIGN_IN, do_sys_login);
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
         router.handle(CMD_DEMO_ECHO, do_echo);
+        let svc = ChatSvc { store, groups };
+        {
+            let svc = svc.clone();
+            router.handle(CMD_CHAT_USER_TALK, move |ctx| {
+                let svc = svc.clone();
+                async move { do_user_talk(ctx, svc.store.as_ref()).await }
+            });
+        }
         Self {
             container,
             router,
             cache,
             dispatcher,
-            svc: ChatSvc { store, groups },
+            svc,
         }
     }
 }

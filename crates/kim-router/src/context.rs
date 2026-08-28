@@ -75,7 +75,7 @@ impl Context {
     pub async fn resp_with_error(
         &self,
         status: Status,
-        _err: &dyn std::error::Error,
+        _err: &(dyn std::error::Error + Send + Sync),
     ) -> Result<(), RouterError> {
         self.resp_bytes(status, Bytes::new()).await
     }
