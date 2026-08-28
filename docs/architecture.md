@@ -92,7 +92,7 @@ im/
 
 - **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
-- **控制层**：在线 talk、ACK、Pull 离线已在 fake-chat；Royal HTTP 仍以后
+- **控制层**：在线 talk、ACK、Pull 离线已在 fake-chat；Royal HTTP、群 join/quit/detail、Web SDK 仍以后
 - **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。
