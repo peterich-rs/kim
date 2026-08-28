@@ -9,6 +9,14 @@ pub const SN_LOGIN: &str = "chat";
 pub const CMD_LOGIN_SIGN_IN: &str = "login.signin";
 pub const CMD_LOGIN_SIGN_OUT: &str = "login.signout";
 pub const CMD_DEMO_ECHO: &str = "chat.demo.echo";
+pub const CMD_CHAT_USER_TALK: &str = "chat.user.talk";
+pub const CMD_CHAT_GROUP_TALK: &str = "chat.group.talk";
+pub const CMD_GROUP_CREATE: &str = "chat.group.create";
+
+pub const MESSAGE_TYPE_TEXT: i32 = 1;
+pub const MESSAGE_TYPE_IMAGE: i32 = 2;
+pub const MESSAGE_TYPE_VOICE: i32 = 3;
+pub const MESSAGE_TYPE_VIDEO: i32 = 4;
 
 /// First path segment of `command`.
 ///
@@ -25,6 +33,8 @@ mod tests {
     #[test]
     fn splits_on_first_dot() {
         assert_eq!(service_name("chat.user.talk"), "chat");
+        assert_eq!(service_name(CMD_CHAT_GROUP_TALK), "chat");
+        assert_eq!(service_name(CMD_GROUP_CREATE), "chat");
         // Accept must not use service_name for login: this is `"login"`, not SN_LOGIN.
         assert_eq!(service_name("login.signin"), "login");
         assert_eq!(service_name(CMD_LOGIN_SIGN_IN), "login");

@@ -1,7 +1,7 @@
 # WebSocket、业务包与容器（已落地规格）
 
 面向：刚学后台、靠复刻 KIM 入门的工程师。  
-本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 [link-layer-login.md](link-layer-login.md)。本文不含 Consul、VPS、单聊、Royal。
+本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 [link-layer-login.md](link-layer-login.md)。`MessageReq` / `MessageResp` / `MessagePush` 与 talk 指令见 [control-layer-chat.md](control-layer-chat.md)，本文不展开。本文不含 Consul、VPS、Royal。
 
 `echo-*` / `ws-echo-*` / `e2e_echo.rs` 仍是第一帧名字。`pkt-client` → `fake-gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。
 

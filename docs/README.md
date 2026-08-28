@@ -13,6 +13,7 @@
 3. [communication-layer.md](communication-layer.md) — 通信层。先看「链路图」（纯文本）
 4. [protocol-container.md](protocol-container.md) — 已落地的 WebSocket、业务包、容器规格
 5. [link-layer-login.md](link-layer-login.md) — 已落地的登录、会话、互踢
+6. [control-layer-chat.md](control-layer-chat.md) — 已落地的在线单聊 / 群聊
 
 卡住时：先看文档里的「合同」和「执行链」，再去对应源码。文档和代码打架时，以代码为准。
 

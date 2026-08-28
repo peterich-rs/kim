@@ -1,7 +1,12 @@
 //! Chat demo: session lookup, Router, login / logout / echo handlers.
 
+pub mod directory;
 mod echo;
+mod group;
+pub mod idgen;
 mod login;
+pub mod store;
+mod talk;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,15 +17,27 @@ use kim_container::Container;
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS,
-    META_DEST_SERVER,
+    read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
 use tracing::{info, warn};
 
+use crate::directory::{GroupDirectory, MemoryGroupDirectory};
+use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use crate::store::{MemoryMessageStore, MessageStore};
+
 pub use echo::do_echo;
+pub use group::do_group_create;
 pub use login::{do_sys_login, do_sys_logout};
+pub use talk::{do_group_talk, do_user_talk};
+
+#[derive(Clone)]
+pub(crate) struct ChatSvc {
+    store: Arc<dyn MessageStore>,
+    groups: Arc<dyn GroupDirectory>,
+}
 
 struct ContainerDispatcher(Arc<Container>);
 
@@ -46,20 +63,77 @@ pub struct ChatHandler {
     router: Router,
     cache: Arc<dyn SessionStorage>,
     dispatcher: Arc<dyn Dispatcher>,
+    #[allow(dead_code)]
+    svc: ChatSvc,
 }
 
 impl ChatHandler {
+    /// Two-arg signature unchanged for `e2e_login.rs`: `resolve_snowflake_node(None)`.
     pub fn new(container: Arc<Container>, cache: Arc<dyn SessionStorage>) -> Self {
+        Self::new_with_node(container, cache, None)
+    }
+
+    /// `examples/fake-chat/src/main.rs` must pass `Some(cfg.this.snowflake_node)`.
+    pub fn new_with_node(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        cfg_node: Option<u16>,
+    ) -> Self {
+        let node = resolve_snowflake_node(cfg_node);
+        let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
+            Ok(g) => Arc::new(g),
+            Err(err) => {
+                tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
+                Arc::new(SequenceIdGen::new(10_001))
+            }
+        };
+        Self::with_seams(
+            container,
+            cache,
+            Arc::new(MemoryMessageStore::new(idgen.clone())),
+            Arc::new(MemoryGroupDirectory::new(idgen)),
+        )
+    }
+
+    pub fn with_seams(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         router.handle(CMD_LOGIN_SIGN_IN, do_sys_login);
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
         router.handle(CMD_DEMO_ECHO, do_echo);
+        let svc = ChatSvc { store, groups };
+        {
+            let svc = svc.clone();
+            router.handle(CMD_CHAT_USER_TALK, move |ctx| {
+                let svc = svc.clone();
+                async move { do_user_talk(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_talk(ctx, svc.store.as_ref(), svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_CREATE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_create(ctx, svc.groups.as_ref()).await }
+            });
+        }
         Self {
             container,
             router,
             cache,
             dispatcher,
+            svc,
         }
     }
 }

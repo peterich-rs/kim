@@ -22,6 +22,8 @@ kim-session.workspace = true
 kim-tcp.workspace = true
 prost.workspace = true
 serde = { version = "1", features = ["derive"] }
+snowflake_me.workspace = true
+thiserror.workspace = true
 toml = "0.8"
 tokio.workspace = true
 tracing.workspace = true
@@ -29,6 +31,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 fake-gateway = { path = "../fake-gateway" }
+kim-router = { workspace = true, features = ["test-util"] }
 kim-ws.workspace = true
 pkt-client = { path = "../pkt-client" }
 

@@ -66,7 +66,7 @@ JWT：HS256，claims `{acc, app, exp}`，拒绝 `alg=none`。密钥：非空 `KI
 | Unauthorized | 105 | JWT 非法 |
 | SessionNotFound | 404 | 非 signin 且 cache miss；**必须带 dest.channels** |
 
-已落地 0/1/2/3/99 **不改号**。没有 `NoDestination`。
+已落地 0/1/2/3/99 **不改号**。`NoDestination=300` 见 [control-layer-chat.md](control-layer-chat.md)。
 
 Receive：Basic ping 仍在网关本地 pong，不到 Chat。Logic 的 `channel_id` 改成 `agent.id()`（已是 `wg-1_alice_N`）再 `forward(service_name())`。
 
@@ -115,7 +115,7 @@ Kickout 的 command 仍是 `login.signin`，`Flag=Push`，body `KickoutNotify{ch
 
 ## 非目标（不要写进这一层）
 
-Consul、VPS、TGateway TLS、假 TGateway、1:1 / 群聊 / 离线、Royal、Web SDK、雪花 ID、`Agent::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。
+Consul、VPS、TGateway TLS、假 TGateway、ACK / 离线、Royal、Web SDK、`Agent::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。
 
 ---
 

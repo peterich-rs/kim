@@ -1,6 +1,6 @@
 # 架构
 
-当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器、JWT 登录 / 会话 / 互踢已落地**。可选 Redis 会话、Consul、公网部署、单聊还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
+当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器、JWT 登录 / 会话 / 互踢、控制层在线 talk 已落地**。可选 Redis 会话、Consul、公网部署、离线还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)；在线单聊 / 群聊见 [control-layer-chat.md](control-layer-chat.md)。
 
 ## 一句话
 
@@ -13,7 +13,7 @@
 ```text
 ┌──────────────────────────────────────────────────────────┐
 │  业务（echo-* 身份握手；fake-gateway JWT 登录；fake-chat Router）│
-│  登录插槽已在 examples 落地；单聊以后仍经同一套 listener        │
+│  登录与在线 talk 已在 fake-chat；离线仍以后                    │
 │  插槽：Acceptor / MessageListener / StateListener          │
 ├──────────────────────────────────────────────────────────┤
 │  kim-core     通信层说明书 + 连接生命周期                     │
@@ -34,7 +34,7 @@
 业务 Handler  ──►  kim-core（表 + 信箱 + 两专员）  ──►  kim-tcp（分帧、拆插座）  ──►  内核 TCP
 ```
 
-小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。通信 / 容器 / 链路登录已在 crate + examples 落地；控制层以后仍以独立二进制出现，**不要**把登录、聊天写进 `TcpServer`。
+小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。通信 / 容器 / 链路登录已在 crate + examples 落地；控制层在线 talk 已在 fake-chat，离线仍以后。**不要**把登录、聊天写进 `TcpServer`。
 
 ## Crate 职责
 
@@ -47,7 +47,7 @@
 | `kim-protocol` | BasicPkt / LogicPkt / JWT HS256 | 再实现一遍 TCP 读写 |
 | `kim-router` | command → Handler、Context.Resp / Dispatch | Redis、TCP |
 | `kim-session` | Memory 会话；可选 Redis feature | 指令业务 |
-| `examples/fake-*` | WGateway JWT Accept、Chat 登录/echo | 把 `if login` 写进 `WsServer` |
+| `examples/fake-*` | WGateway JWT Accept、Chat 登录/echo/talk | 把 `if login` 写进 `WsServer` |
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。
 
@@ -93,7 +93,7 @@ im/
 
 - **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
-- **控制层（以后）**：单聊、群聊、离线
+- **控制层**：在线 talk 已在 fake-chat；离线、ACK、Royal 仍以后
 - **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。

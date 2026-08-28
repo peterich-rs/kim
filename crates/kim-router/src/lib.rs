@@ -12,5 +12,5 @@ pub use location::Location;
 pub use router::{HandlerFn, Router};
 pub use storage::{SessionError, SessionStorage};
 
-#[cfg(test)]
-mod support;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_support;

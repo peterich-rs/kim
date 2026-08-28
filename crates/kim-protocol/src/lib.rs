@@ -15,8 +15,10 @@ pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
 pub use token::{generate, parse, Claims, DEMO_DEFAULT_SECRET};
 pub use wire::{
-    service_name, CMD_DEMO_ECHO, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS,
-    META_DEST_SERVER, SN_CHAT, SN_LOGIN, SN_WGATEWAY,
+    service_name, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE, META_DEST_CHANNELS, META_DEST_SERVER, SN_CHAT,
+    SN_LOGIN, SN_WGATEWAY,
 };
 
 use bytes::Bytes;
@@ -75,8 +77,9 @@ mod tests {
         assert_eq!(Status::InvalidPacketBody as i32, 101);
         assert_eq!(Status::InvalidCommand as i32, 103);
         assert_eq!(Status::Unauthorized as i32, 105);
+        assert_eq!(Status::NoDestination as i32, 300);
         assert_eq!(Status::SessionNotFound as i32, 404);
         assert!(Status::try_from(100).is_err());
-        assert!(Status::try_from(300).is_err());
+        assert!(Status::try_from(300).is_ok());
     }
 }
