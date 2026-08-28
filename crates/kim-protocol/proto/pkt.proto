@@ -17,6 +17,7 @@ enum Status {
   InvalidPacketBody = 101;
   InvalidCommand = 103;
   Unauthorized = 105;
+  NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }
 
@@ -62,4 +63,36 @@ message Session {
 
 message KickoutNotify {
   string channelId = 1;
+}
+
+message MessageReq {
+  int32 type = 1;
+  string body = 2;
+  string extra = 3;
+}
+
+message MessageResp {
+  int64 messageId = 1;
+  int64 sendTime = 2;
+}
+
+message MessagePush {
+  int64 messageId = 1;
+  int32 type = 2;
+  string body = 3;
+  string extra = 4;
+  string sender = 5;
+  int64 sendTime = 6;
+}
+
+message GroupCreateReq {
+  string name = 1;
+  string avatar = 2;
+  string introduction = 3;
+  string owner = 4;
+  repeated string members = 5;
+}
+
+message GroupCreateResp {
+  string groupId = 1;
 }

@@ -69,6 +69,10 @@ impl LogicPkt {
         self.header.meta.retain(|m| m.key != key);
     }
 
+    pub fn set_dest(&mut self, dest: impl Into<String>) {
+        self.header.dest = dest.into();
+    }
+
     pub fn encode(&self) -> Bytes {
         let header = self.header.encode_to_vec();
         let mut buf = BytesMut::with_capacity(8 + header.len() + self.body.len());
@@ -168,5 +172,56 @@ mod tests {
         assert!(resp.body.is_empty());
         let cloned = pkt.clone();
         assert_eq!(cloned.header.command, pkt.header.command);
+    }
+
+    #[test]
+    fn set_dest_survives_marshal_read() {
+        let mut pkt = LogicPkt::new("chat.user.talk", 1, Bytes::new());
+        pkt.set_dest("alice");
+        assert_eq!(pkt.header.dest, "alice");
+        match read(&pkt.encode()).unwrap() {
+            Packet::Logic(got) => assert_eq!(got.header.dest, "alice"),
+            _ => panic!("expected logic"),
+        }
+    }
+
+    #[test]
+    fn message_req_resp_push_roundtrip() {
+        let mut req_pkt = LogicPkt::new("chat.user.talk", 1, Bytes::new());
+        req_pkt.write_body(&crate::pkt::MessageReq {
+            r#type: crate::MESSAGE_TYPE_TEXT,
+            body: "hello".into(),
+            extra: "x".into(),
+        });
+        let req: crate::pkt::MessageReq = req_pkt.read_body().unwrap();
+        assert_eq!(req.r#type, crate::MESSAGE_TYPE_TEXT);
+        assert_eq!(req.body, "hello");
+        assert_eq!(req.extra, "x");
+
+        let mut resp_pkt = LogicPkt::new("chat.user.talk", 1, Bytes::new());
+        resp_pkt.write_body(&crate::pkt::MessageResp {
+            message_id: 42,
+            send_time: 99,
+        });
+        let resp: crate::pkt::MessageResp = resp_pkt.read_body().unwrap();
+        assert_eq!(resp.message_id, 42);
+        assert_eq!(resp.send_time, 99);
+
+        let mut push_pkt = LogicPkt::new("chat.user.talk", 1, Bytes::new());
+        push_pkt.write_body(&crate::pkt::MessagePush {
+            message_id: 42,
+            r#type: crate::MESSAGE_TYPE_IMAGE,
+            body: "img".into(),
+            extra: "e".into(),
+            sender: "bob".into(),
+            send_time: 100,
+        });
+        let push: crate::pkt::MessagePush = push_pkt.read_body().unwrap();
+        assert_eq!(push.message_id, 42);
+        assert_eq!(push.r#type, crate::MESSAGE_TYPE_IMAGE);
+        assert_eq!(push.body, "img");
+        assert_eq!(push.extra, "e");
+        assert_eq!(push.sender, "bob");
+        assert_eq!(push.send_time, 100);
     }
 }
