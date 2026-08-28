@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+redis = ["kim-session/redis"]
+
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
@@ -13,6 +17,8 @@ kim-container.workspace = true
 kim-core.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
+kim-router.workspace = true
+kim-session.workspace = true
 kim-tcp.workspace = true
 prost.workspace = true
 serde = { version = "1", features = ["derive"] }
@@ -20,6 +26,11 @@ toml = "0.8"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+fake-gateway = { path = "../fake-gateway" }
+kim-ws.workspace = true
+pkt-client = { path = "../pkt-client" }
 
 [lints]
 workspace = true

@@ -3,17 +3,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use bytes::Bytes;
+use fake_chat::ChatHandler;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::Server;
 use kim_naming::{DefaultRegistration, StaticNaming};
-use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
-use kim_protocol::{read_logic, CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER};
+use kim_session::open_session_store;
 use kim_tcp::TcpServer;
-use prost::Message;
 use serde::Deserialize;
-use tracing::{info, warn};
 
 #[derive(Deserialize)]
 struct File {
@@ -27,59 +23,15 @@ struct SelfSection {
     service_name: String,
     listen: String,
     protocol: String,
+    #[serde(default)]
+    redis_url: String,
 }
 
-struct ChatHandler {
-    container: Arc<Container>,
-}
-
-#[async_trait]
-impl Acceptor for ChatHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
-        let frame = tokio::time::timeout(timeout, conn.read_frame())
-            .await
-            .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        let req = InnerHandshakeReq::decode(frame.payload.as_ref())
-            .map_err(|e| Error::Handshake(e.to_string()))?;
-        if req.service_id.is_empty() {
-            return Err(Error::Handshake("empty service id".into()));
-        }
-        Ok(req.service_id)
-    }
-}
-
-#[async_trait]
-impl MessageListener for ChatHandler {
-    async fn receive(&self, _agent: &dyn Agent, payload: Bytes) {
-        let mut pkt = match read_logic(&payload) {
-            Ok(p) => p,
-            Err(err) => {
-                warn!(%err, "unexpected basic pkt or bad logic");
-                return;
-            }
-        };
-        if pkt.header.command != CMD_DEMO_ECHO {
-            pkt.header.flag = Flag::Response as i32;
-            pkt.header.status = Status::CommandNotFound as i32;
-        } else {
-            pkt.header.flag = Flag::Response as i32;
-            pkt.header.status = Status::Success as i32;
-        }
-        let gw = pkt.get_meta(META_DEST_SERVER).unwrap_or("").to_string();
-        let ch = pkt.header.channel_id.clone();
-        pkt.set_meta(META_DEST_SERVER, &gw);
-        pkt.set_meta(META_DEST_CHANNELS, &ch);
-        if let Err(err) = self.container.push(&gw, pkt).await {
-            warn!(%err, "push to gateway failed");
-        }
-    }
-}
-
-#[async_trait]
-impl StateListener for ChatHandler {
-    async fn disconnect(&self, channel_id: &str) -> Result<(), Error> {
-        info!(channel = channel_id, "gateway disconnected");
-        Ok(())
+fn redis_url_from_env_or_cfg(cfg: &str) -> Option<String> {
+    match std::env::var("REDIS_URL") {
+        Ok(s) if !s.trim().is_empty() => Some(s),
+        _ if !cfg.trim().is_empty() => Some(cfg.to_string()),
+        _ => None,
     }
 }
 
@@ -108,6 +60,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta: HashMap::new(),
     };
 
+    let cache =
+        open_session_store(redis_url_from_env_or_cfg(&cfg.this.redis_url).as_deref()).await?;
+
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
     let container = Container::new(ContainerOpts {
         naming,
@@ -118,10 +73,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
+        after_downlink: None,
     });
-    let handler = Arc::new(ChatHandler {
-        container: container.clone(),
-    });
+    let handler = Arc::new(ChatHandler::new(container.clone(), cache));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

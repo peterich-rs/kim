@@ -13,6 +13,11 @@ enum Status {
   CommandNotFound = 2;
   ServiceUnavailable = 3;
   SystemException = 99;
+
+  InvalidPacketBody = 101;
+  InvalidCommand = 103;
+  Unauthorized = 105;
+  SessionNotFound = 404;
 }
 
 message Meta {
@@ -33,4 +38,28 @@ message Header {
 
 message InnerHandshakeReq {
   string serviceId = 1;
+}
+
+message LoginReq {
+  string token = 1;
+}
+
+message LoginResp {
+  string channelId = 1;
+}
+
+message Session {
+  string channelId = 1;
+  string gateId = 2;
+  string account = 3;
+  string zone = 4;
+  string isp = 5;
+  string remoteIP = 6;
+  string device = 7;
+  string app = 8;
+  repeated string tags = 9;
+}
+
+message KickoutNotify {
+  string channelId = 1;
 }

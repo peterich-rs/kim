@@ -11,6 +11,7 @@ use crate::codec::{decode_frame, encode_frame};
 pub struct TcpConn {
     stream: TcpStream,
     read_buf: BytesMut,
+    peer: Option<String>,
 }
 
 pub struct TcpReadHalf {
@@ -25,9 +26,11 @@ pub struct TcpWriteHalf {
 impl TcpConn {
     pub fn new(stream: TcpStream) -> Self {
         let _ = stream.set_nodelay(true);
+        let peer = stream.peer_addr().ok().map(|a| a.to_string());
         Self {
             stream,
             read_buf: BytesMut::with_capacity(4096),
+            peer,
         }
     }
 
@@ -86,6 +89,10 @@ impl Conn for TcpConn {
     async fn shutdown(&mut self) -> Result<(), Error> {
         self.stream.shutdown().await?;
         Ok(())
+    }
+
+    fn peer_addr(&self) -> Option<String> {
+        self.peer.clone()
     }
 }
 

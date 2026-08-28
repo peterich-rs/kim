@@ -133,6 +133,14 @@ impl Server for TcpServer {
         ch.push(payload).await
     }
 
+    async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id).await else {
+            return Err(Error::ChannelNotFound(channel_id.to_string()));
+        };
+        ch.close().await;
+        Ok(())
+    }
+
     async fn shutdown(&self) -> Result<(), Error> {
         self.closed.store(true, Ordering::SeqCst);
         self.shutdown.notify_waiters();
@@ -184,6 +192,7 @@ async fn handle_conn(
             .write_frame(OpCode::Close, Bytes::from_static(b"channelId is repeated"))
             .await;
         let _ = conn.shutdown().await;
+        ctx.acceptor.on_accept_abandoned(&id).await;
         return Err(Error::ChannelExists(id));
     }
 
@@ -193,9 +202,21 @@ async fn handle_conn(
     info!(%peer, channel = %id, "accepted");
 
     let Some(messages) = ctx.messages else {
+        ctx.acceptor.on_accept_abandoned(&id).await;
+        if let Some(ch) = ctx.channels.get(&id).await {
+            ch.close().await;
+        }
         ctx.channels.remove(&id).await;
         return Err(Error::other("MessageListener is not set"));
     };
+
+    if let Err(err) = ctx.acceptor.on_channel_ready(&id).await {
+        if let Some(ch) = ctx.channels.get(&id).await {
+            ch.close().await;
+        }
+        ctx.channels.remove(&id).await;
+        return Err(err);
+    }
 
     let read_result = read_loop.run(messages).await;
     ctx.channels.remove(&id).await;

@@ -11,6 +11,13 @@ struct EchoHandler;
 #[async_trait]
 impl Acceptor for EchoHandler {
     async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+        let peer = conn
+            .peer_addr()
+            .expect("unsplit server conn must have peer_addr");
+        assert!(
+            peer.contains("127.0.0.1"),
+            "peer_addr should include client IP, got {peer}"
+        );
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
@@ -63,5 +70,60 @@ async fn ws_echo_roundtrip() {
     let frame = client.read().await.unwrap();
     assert_eq!(&frame.payload[..], b"hello from server");
     client.close().await.unwrap();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn push_then_close_channel_emits_binary_then_close() {
+    let handler = Arc::new(EchoHandler);
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let mut client = WsClient::new(
+        "dave",
+        "test",
+        ClientOptions {
+            heartbeat: None,
+            ..ClientOptions::default()
+        },
+    );
+    client.set_dialer(Arc::new(WsIdentityDialer));
+    client.connect(&format!("ws://{addr}/")).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if server.channel_map().contains("dave").await {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("channel dave should be added after handshake");
+
+    server
+        .push("dave", Bytes::from_static(b"bye"))
+        .await
+        .unwrap();
+    server.close_channel("dave").await.unwrap();
+
+    let frame = tokio::time::timeout(Duration::from_secs(2), client.read())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&frame.payload[..], b"bye");
+    let closed = tokio::time::timeout(Duration::from_secs(2), client.read()).await;
+    match closed {
+        Ok(Err(Error::Closed)) => {}
+        other => panic!("expected Closed after Binary, got {other:?}"),
+    }
     let _ = server.shutdown().await;
 }

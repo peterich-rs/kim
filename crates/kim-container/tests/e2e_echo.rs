@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
+use kim_container::{Container, ContainerOpts, DownlinkHook, HashSelector, InnerTcpDialer};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
@@ -106,6 +106,18 @@ impl StateListener for ChatHandler {
     }
 }
 
+struct RecHook(Arc<Mutex<Vec<(String, String)>>>);
+
+#[async_trait]
+impl DownlinkHook for RecHook {
+    async fn after_push(&self, channel_id: &str, pkt: &LogicPkt) {
+        self.0
+            .lock()
+            .await
+            .push((channel_id.to_string(), pkt.header.command.clone()));
+    }
+}
+
 fn ident(id: &str, name: &str) -> DefaultRegistration {
     DefaultRegistration {
         service_id: id.into(),
@@ -132,6 +144,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
+        after_downlink: None,
     });
     let seen = Arc::new(Mutex::new(Vec::new()));
     let chat_h = Arc::new(ChatHandler {
@@ -159,6 +172,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         tags: vec![],
         meta: HashMap::new(),
     }]));
+    let pushed = Arc::new(Mutex::new(Vec::new()));
     let gw_c = Container::new(ContainerOpts {
         naming,
         identity: ident("wg-1", "wgateway"),
@@ -168,6 +182,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
+        after_downlink: Some(Arc::new(RecHook(pushed.clone()))),
     });
     let gw_h = Arc::new(GatewayHandler {
         container: gw_c.clone(),
@@ -225,6 +240,8 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     let cmds = seen.lock().await.clone();
     assert_eq!(cmds, vec![CMD_DEMO_ECHO.to_string()]);
+    let down = pushed.lock().await.clone();
+    assert_eq!(down, vec![("alice".to_string(), CMD_DEMO_ECHO.to_string())]);
 
     let _ = gw_c.shutdown().await;
     let _ = chat_c.shutdown().await;
@@ -252,6 +269,7 @@ async fn unavailable_without_chat() {
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
+        after_downlink: None,
     });
     let gw_h = Arc::new(GatewayHandler {
         container: gw_c.clone(),

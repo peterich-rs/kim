@@ -1,6 +1,6 @@
 # 架构
 
-当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器 Demo 已落地**。登录、Redis、Consul、公网部署还没有。读本文时把「以后」和「已经有」分开。详细帧与容器规格见 [protocol-container.md](protocol-container.md)。
+当前进度：**通信层 TCP + WebSocket、业务包、静态 Naming、容器、JWT 登录 / 会话 / 互踢已落地**。可选 Redis 会话、Consul、公网部署、单聊还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)。
 
 ## 一句话
 
@@ -12,8 +12,8 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│  业务（现在：examples/echo-* 里的 EchoHandler）              │
-│  以后：Login / Chat 等独立进程，经插槽接入                    │
+│  业务（echo-* 身份握手；fake-gateway JWT 登录；fake-chat Router）│
+│  登录插槽已在 examples 落地；单聊以后仍经同一套 listener        │
 │  插槽：Acceptor / MessageListener / StateListener          │
 ├──────────────────────────────────────────────────────────┤
 │  kim-core     通信层说明书 + 连接生命周期                     │
@@ -22,7 +22,8 @@
 ├──────────────────────────────────────────────────────────┤
 │  kim-tcp      说明书的 TCP 实现                              │
 │               向内核借 socket + 应用层分帧（粘包/半包）         │
-│  以后 kim-ws / 可选 kim-quic  同一套说明书的其它实现           │
+│  kim-ws       同一套说明书的 WebSocket 实现                    │
+│  以后可选 kim-quic                                           │
 ├──────────────────────────────────────────────────────────┤
 │  操作系统内核 TCP   三次握手、序号、ACK、重传、拥塞控制          │
 │  IP / 网卡                                                │
@@ -33,7 +34,7 @@
 业务 Handler  ──►  kim-core（表 + 信箱 + 两专员）  ──►  kim-tcp（分帧、拆插座）  ──►  内核 TCP
 ```
 
-小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。我们 Rust 仓库用 crate 对齐通信层；上面三层以后以独立 crate / 二进制出现，**不要**把登录、聊天写进 `TcpServer`。
+小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。通信 / 容器 / 链路登录已在 crate + examples 落地；控制层以后仍以独立二进制出现，**不要**把登录、聊天写进 `TcpServer`。
 
 ## Crate 职责
 
@@ -42,9 +43,11 @@
 | `kim-core` | trait、Frame、Channel、ChannelMap、超时默认值 | socket、具体编解码、JWT、SQL、Redis |
 | `kim-tcp` | `TcpListener`/`TcpStream`、长度前缀编解码、TcpServer/TcpClient | 「这是登录包」「这是群聊」 |
 | `examples/echo-*` | 最小业务：第一帧当名字、原文回声 | 假装自己是网关或 Chat 服务 |
-| 以后 `kim-ws` | WebSocket 的 `Conn` 实现 | 复制一套 ChannelMap |
-| 以后 `kim-protocol` | BasicPkt / LogicPkt（业务包头） | 再实现一遍 TCP 读写 |
-| 以后 `services/*` | 网关、Login、Chat、Royal | 把通信层逻辑抄一份进业务 |
+| `kim-ws` | WebSocket 的 `Conn` 实现 | 复制一套 ChannelMap；JWT |
+| `kim-protocol` | BasicPkt / LogicPkt / JWT HS256 | 再实现一遍 TCP 读写 |
+| `kim-router` | command → Handler、Context.Resp / Dispatch | Redis、TCP |
+| `kim-session` | Memory 会话；可选 Redis feature | 指令业务 |
+| `examples/fake-*` | WGateway JWT Accept、Chat 登录/echo | 把 `if login` 写进 `WsServer` |
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。
 
@@ -74,9 +77,11 @@ im/
   crates/kim-core          说明书
   crates/kim-tcp           TCP 实现（App / 内网）
   crates/kim-ws            WebSocket 实现（Web）
-  crates/kim-protocol      业务包
+  crates/kim-protocol      业务包 + JWT
   crates/kim-naming        静态服务发现
   crates/kim-container     拨号、Young/Adult、转发
+  crates/kim-router        指令 Router
+  crates/kim-session       会话（Memory / 可选 Redis）
   examples/                echo / ws-echo / fake-gateway / fake-chat / pkt-client
   docs/                    本目录
   research/                可行性调研
@@ -84,12 +89,12 @@ im/
 
 本机跑法见根目录 `README.md`。
 
-## 以后会有、现在不要提前写进通信层的
+## 不要提前写进通信层的
 
-- **容器层**：`Naming`（先静态配置，再 Consul）、网关连上所有 Chat 实例  
-- **链路层**：JWT 登录、Redis 会话、指令 `command`  
-- **控制层**：单聊、群聊、离线  
-- **部署**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存（反向代理按域名分流）。通信层在本机跑通之前不上 VPS  
+- **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
+- **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
+- **控制层（以后）**：单聊、群聊、离线
+- **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。
 

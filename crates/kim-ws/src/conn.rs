@@ -11,6 +11,7 @@ use crate::opcode::{from_ws, to_ws};
 
 pub struct WsConn<S> {
     pub ws: WebSocket<S>,
+    peer: Option<String>,
 }
 
 pub struct WsReadHalf<S>
@@ -25,6 +26,12 @@ where
     S: AsyncRead + AsyncWrite,
 {
     inner: WebSocketWrite<WriteHalf<S>>,
+}
+
+impl<S> WsConn<S> {
+    pub(crate) fn new(ws: WebSocket<S>, peer: Option<String>) -> Self {
+        Self { ws, peer }
+    }
 }
 
 impl<S> WsConn<S>
@@ -78,6 +85,7 @@ where
     }
 
     async fn flush(&mut self) -> Result<(), Error> {
+        // 写出完成以 write_frame 返回为准；今日无额外缓冲。
         Ok(())
     }
 
@@ -87,6 +95,10 @@ where
             .write_frame(ws_frame(OpCode::Close, Bytes::new()))
             .await;
         Ok(())
+    }
+
+    fn peer_addr(&self) -> Option<String> {
+        self.peer.clone()
     }
 }
 
@@ -138,6 +150,7 @@ where
     }
 
     async fn flush(&mut self) -> Result<(), Error> {
+        // 写出完成以 write_frame 返回为准；今日无额外缓冲。
         Ok(())
     }
 

@@ -7,6 +7,8 @@ members = [
     "crates/kim-protocol",
     "crates/kim-naming",
     "crates/kim-container",
+    "crates/kim-router",
+    "crates/kim-session",
     "examples/echo-server",
     "examples/echo-client",
     "examples/ws-echo-server",
@@ -38,10 +40,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 prost = "0.13"
+jsonwebtoken = "9"
+serde = { version = "1", features = ["derive"] }
 crc32fast = "1"
+redis = { version = "0.32", default-features = false, features = ["tokio-comp", "connection-manager", "script"] }
 kim-core = { path = "crates/kim-core" }
 kim-tcp = { path = "crates/kim-tcp" }
 kim-ws = { path = "crates/kim-ws" }
 kim-protocol = { path = "crates/kim-protocol" }
 kim-naming = { path = "crates/kim-naming" }
 kim-container = { path = "crates/kim-container" }
+kim-router = { path = "crates/kim-router" }
+kim-session = { path = "crates/kim-session" }

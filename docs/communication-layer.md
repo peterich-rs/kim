@@ -122,7 +122,7 @@ TcpServer::start
 
 | Trait | 谁实现 | 谁调用 | 干什么 |
 |---|---|---|---|
-| `Conn` | `kim-tcp`（以后 `kim-ws`） | 握手、Channel 读写 | 读/写一帧 |
+| `Conn` | `kim-tcp`、`kim-ws` | 握手、Channel 读写 | 读/写一帧 |
 | `Acceptor` | 业务（现在 EchoHandler） | TcpServer 接进来之后 | 这是谁 |
 | `MessageListener` | 业务 | Channel 读循环 | 收到业务字节 |
 | `StateListener` | 业务 | 连接结束时 | 清理 |
@@ -173,7 +173,7 @@ TcpServer::start
 7. 写协程出队、写帧；Client `read` 打印 `hello 0 from server`。  
 8. 断开则 `Disconnect("alice")`。
 
-业务只出现在 3、6、8。中间全是通信层。以后把 EchoHandler 换成验 JWT，`TcpServer` 不用加业务分支。
+业务只出现在 3、6、8。中间全是通信层。JWT 登录在 `examples/fake-gateway` 的 Handler，**不**进 `TcpServer` / `WsServer`。echo 例子保持第一帧名字。
 
 ## 心跳
 

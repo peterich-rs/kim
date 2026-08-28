@@ -23,6 +23,66 @@ use crate::conn::{WsConn, WsReadHalf, WsWriteHalf};
 
 type UpgradedIo = TokioIo<Upgraded>;
 
+/// HTTP Upgrade 完成后、尚未 split 的客户端连接。实现 Conn；不暴露 hyper::upgrade::Upgraded。
+pub struct WsHandshakeConn {
+    inner: WsConn<UpgradedIo>,
+}
+
+impl WsHandshakeConn {
+    pub(crate) fn into_split(self) -> (WsReadHalf<UpgradedIo>, WsWriteHalf<UpgradedIo>) {
+        self.inner.into_split()
+    }
+}
+
+#[async_trait]
+impl Conn for WsHandshakeConn {
+    async fn read_frame(&mut self) -> Result<Frame, Error> {
+        self.inner.read_frame().await
+    }
+
+    async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
+        self.inner.write_frame(opcode, payload).await
+    }
+
+    async fn flush(&mut self) -> Result<(), Error> {
+        self.inner.flush().await
+    }
+
+    async fn shutdown(&mut self) -> Result<(), Error> {
+        self.inner.shutdown().await
+    }
+
+    fn peer_addr(&self) -> Option<String> {
+        self.inner.peer_addr()
+    }
+}
+
+/// 只做 HTTP Upgrade，不发业务包、不 flush。
+pub async fn connect_ws(url: &str) -> Result<WsHandshakeConn, Error> {
+    let (hostport, path) = parse_ws_url(url)?;
+    let stream = TcpStream::connect(&hostport).await.map_err(Error::from)?;
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("http://{hostport}{path}"))
+        .header(HOST, hostport)
+        .header(UPGRADE, "websocket")
+        .header(CONNECTION, "upgrade")
+        .header("Sec-WebSocket-Key", handshake::generate_key())
+        .header("Sec-WebSocket-Version", "13")
+        .body(Empty::<Bytes>::new())
+        .map_err(|e| Error::other(e.to_string()))?;
+    let (mut ws, _) = handshake::client(&SpawnExecutor, req, stream)
+        .await
+        .map_err(|e| Error::other(e.to_string()))?;
+    ws.set_auto_pong(false);
+    ws.set_auto_close(false);
+    ws.set_writev(true);
+    ws.set_max_message_size(1024 * 1024);
+    Ok(WsHandshakeConn {
+        inner: WsConn::new(ws, None),
+    })
+}
+
 pub struct WsClient {
     id: String,
     name: String,
@@ -52,7 +112,7 @@ impl Default for ClientOptions {
 
 #[async_trait]
 pub trait WsDialer: Send + Sync {
-    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsConn<UpgradedIo>, Error>;
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsHandshakeConn, Error>;
 }
 
 impl WsClient {
@@ -202,27 +262,8 @@ fn parse_ws_url(url: &str) -> Result<(String, String), Error> {
 
 #[async_trait]
 impl WsDialer for WsIdentityDialer {
-    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsConn<UpgradedIo>, Error> {
-        let (hostport, path) = parse_ws_url(&ctx.address)?;
-        let stream = TcpStream::connect(&hostport).await.map_err(Error::from)?;
-        let req = Request::builder()
-            .method("GET")
-            .uri(format!("http://{hostport}{path}"))
-            .header(HOST, hostport)
-            .header(UPGRADE, "websocket")
-            .header(CONNECTION, "upgrade")
-            .header("Sec-WebSocket-Key", handshake::generate_key())
-            .header("Sec-WebSocket-Version", "13")
-            .body(Empty::<Bytes>::new())
-            .map_err(|e| Error::other(e.to_string()))?;
-        let (mut ws, _) = handshake::client(&SpawnExecutor, req, stream)
-            .await
-            .map_err(|e| Error::other(e.to_string()))?;
-        ws.set_auto_pong(false);
-        ws.set_auto_close(false);
-        ws.set_writev(true);
-        ws.set_max_message_size(1024 * 1024);
-        let mut conn = WsConn { ws };
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<WsHandshakeConn, Error> {
+        let mut conn = connect_ws(&ctx.address).await?;
         conn.write_frame(OpCode::Binary, Bytes::from(ctx.id.into_bytes()))
             .await?;
         Ok(conn)
