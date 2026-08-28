@@ -146,6 +146,10 @@ impl Context {
         self.storage.get_location(account, device).await
     }
 
+    pub async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+        self.storage.get_locations(accounts).await
+    }
+
     fn response_packet(&self, status: Status) -> LogicPkt {
         let mut packet = LogicPkt::new_from(&self.request.header);
         packet.header.status = status as i32;
@@ -167,7 +171,7 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::support::{NoopStorage, RecordingDispatcher};
+    use crate::test_support::{NoopStorage, RecordingDispatcher};
     use crate::{Router, RouterError};
     use kim_protocol::pkt::KickoutNotify;
     use kim_protocol::{CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER};
@@ -416,5 +420,79 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].gateway, "wg-1");
         assert_eq!(got[1].gateway, "wg-2");
+    }
+
+    struct StubLocations {
+        result: Result<Vec<Location>, SessionError>,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionStorage for StubLocations {
+        async fn add(&self, _session: &Session) -> Result<(), SessionError> {
+            Ok(())
+        }
+
+        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+            Ok(())
+        }
+
+        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+            Err(SessionError::NotFound)
+        }
+
+        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+            match &self.result {
+                Ok(locs) => Ok(locs.clone()),
+                Err(SessionError::NotFound) => Err(SessionError::NotFound),
+                Err(SessionError::Other(msg)) => Err(SessionError::Other(msg.clone())),
+            }
+        }
+
+        async fn get_location(
+            &self,
+            _account: &str,
+            _device: &str,
+        ) -> Result<Location, SessionError> {
+            Err(SessionError::NotFound)
+        }
+    }
+
+    #[tokio::test]
+    async fn get_locations_forwards_two_locs() {
+        let loc_a = Location {
+            channel_id: "ch-a".into(),
+            gate_id: "gw-1".into(),
+        };
+        let loc_b = Location {
+            channel_id: "ch-b".into(),
+            gate_id: "gw-2".into(),
+        };
+        let ctx = Context::new(
+            request("chat.group.talk", Bytes::new()),
+            session("ch-self", "gate-a"),
+            Arc::new(RecordingDispatcher::default()),
+            Arc::new(StubLocations {
+                result: Ok(vec![loc_a.clone(), loc_b.clone()]),
+            }),
+        );
+        let got = ctx
+            .get_locations(&["alice".into(), "bob".into()])
+            .await
+            .unwrap();
+        assert_eq!(got, vec![loc_a, loc_b]);
+    }
+
+    #[tokio::test]
+    async fn get_locations_forwards_not_found() {
+        let ctx = Context::new(
+            request("chat.group.talk", Bytes::new()),
+            session("ch-self", "gate-a"),
+            Arc::new(RecordingDispatcher::default()),
+            Arc::new(StubLocations {
+                result: Err(SessionError::NotFound),
+            }),
+        );
+        let err = ctx.get_locations(&["carol".into()]).await.unwrap_err();
+        assert!(matches!(err, SessionError::NotFound));
     }
 }

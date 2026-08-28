@@ -56,7 +56,7 @@ impl Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::support::{NoopStorage, RecordingDispatcher};
+    use crate::test_support::{NoopStorage, RecordingDispatcher};
     use kim_protocol::pkt::Flag;
     use kim_protocol::META_DEST_SERVER;
 

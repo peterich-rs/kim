@@ -1,7 +1,10 @@
 //! Chat demo: session lookup, Router, login / logout / echo handlers.
 
+pub mod directory;
 mod echo;
+pub mod idgen;
 mod login;
+pub mod store;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,8 +22,19 @@ use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
 use tracing::{info, warn};
 
+use crate::directory::{GroupDirectory, MemoryGroupDirectory};
+use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use crate::store::{MemoryMessageStore, MessageStore};
+
 pub use echo::do_echo;
 pub use login::{do_sys_login, do_sys_logout};
+
+#[derive(Clone)]
+#[allow(dead_code)] // PR3/4 capture svc in talk/create handlers
+pub(crate) struct ChatSvc {
+    store: Arc<dyn MessageStore>,
+    groups: Arc<dyn GroupDirectory>,
+}
 
 struct ContainerDispatcher(Arc<Container>);
 
@@ -46,10 +60,44 @@ pub struct ChatHandler {
     router: Router,
     cache: Arc<dyn SessionStorage>,
     dispatcher: Arc<dyn Dispatcher>,
+    #[allow(dead_code)]
+    svc: ChatSvc,
 }
 
 impl ChatHandler {
+    /// Two-arg signature unchanged for `e2e_login.rs`: `resolve_snowflake_node(None)`.
     pub fn new(container: Arc<Container>, cache: Arc<dyn SessionStorage>) -> Self {
+        Self::new_with_node(container, cache, None)
+    }
+
+    /// `examples/fake-chat/src/main.rs` must pass `Some(cfg.this.snowflake_node)`.
+    pub fn new_with_node(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        cfg_node: Option<u16>,
+    ) -> Self {
+        let node = resolve_snowflake_node(cfg_node);
+        let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
+            Ok(g) => Arc::new(g),
+            Err(err) => {
+                tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
+                Arc::new(SequenceIdGen::new(10_001))
+            }
+        };
+        Self::with_seams(
+            container,
+            cache,
+            Arc::new(MemoryMessageStore::new(idgen.clone())),
+            Arc::new(MemoryGroupDirectory::new(idgen)),
+        )
+    }
+
+    pub fn with_seams(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         router.handle(CMD_LOGIN_SIGN_IN, do_sys_login);
@@ -60,6 +108,7 @@ impl ChatHandler {
             router,
             cache,
             dispatcher,
+            svc: ChatSvc { store, groups },
         }
     }
 }

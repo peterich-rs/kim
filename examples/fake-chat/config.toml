@@ -5,3 +5,4 @@ listen = "127.0.0.1:8002"
 protocol = "tcp"
 # empty = Memory. REDIS_URL in main overrides when non-empty.
 redis_url = ""
+snowflake_node = 1

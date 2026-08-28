@@ -25,6 +25,12 @@ struct SelfSection {
     protocol: String,
     #[serde(default)]
     redis_url: String,
+    #[serde(default = "default_snowflake_node")]
+    snowflake_node: u16,
+}
+
+fn default_snowflake_node() -> u16 {
+    1
 }
 
 fn redis_url_from_env_or_cfg(cfg: &str) -> Option<String> {
@@ -75,7 +81,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: None,
     });
-    let handler = Arc::new(ChatHandler::new(container.clone(), cache));
+    let handler = Arc::new(ChatHandler::new_with_node(
+        container.clone(),
+        cache,
+        Some(cfg.this.snowflake_node),
+    ));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
