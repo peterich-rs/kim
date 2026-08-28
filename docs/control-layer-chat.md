@@ -31,6 +31,9 @@ pkt-client  --ws://127.0.0.1:8001-->  fake-gateway (WsServer)
 | `chat.group.talk` | Request | Chat `do_group_talk` |
 | `chat.group.talk` | Push | 同上，合包、跳过发送方 |
 | `chat.group.create` | Request | Chat `do_group_create` |
+| `chat.talk.ack` | Request | Chat `do_talk_ack`（见 [reliable-delivery.md](reliable-delivery.md)） |
+| `chat.offline.index` | Request | Chat `do_offline_index` |
+| `chat.offline.content` | Request | Chat `do_offline_content` |
 
 Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`sender` 只在 `MessagePush` body 里。本里程碑不发 `GroupCreateNotify`。
 
@@ -71,18 +74,18 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 
 ---
 
-## 在线不是确定值；at-most-once
+## 在线不是确定值
 
-`get_location` 命中只表示会话表里还有这条 loc。网关可能已死、心跳未超时、`dispatch` 到达网关后 `push` 失败。因此 Handler **先 insert 再按 loc 决定是否 Push**。
+`get_location` 命中只表示会话表里还有这条 loc。网关可能已死、心跳未超时、`dispatch` 到达网关后 `push` 失败。因此 Handler **先 insert 再按 loc 决定是否 Push**。未 ACK 的消息可在重连后 Pull，见 [reliable-delivery.md](reliable-delivery.md)。
 
 | 场景 | 本里程碑 |
 |---|---|
-| 在线且 dispatch 成功 | 对端至多一次 Push |
+| 在线且 dispatch 成功 | 对端至多一次 Push；接收方可 ACK |
 | 在线但网关 push 失败 | 发送方 `SystemException`；可能部分成员已收到 |
-| 离线 | 无 Push，无后续 sync。发送方仍 Success + messageId |
+| 离线 | 无 Push；发送方仍 Success + messageId。接收方重连后可 `chat.offline.index` |
 | 发送方未收到 Resp | 客户端可重发 → 可能重复消息 |
 
-没有 `chat.talk.ack`。Memory 进程退出即丢。未知群：`members` 返回空列表，insert 已发生，Success、无 Push。不校验发送方是否为群成员。
+ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，insert 只写 content（0 条索引），Success、无 Push。不校验发送方是否为群成员。
 
 ---
 
@@ -97,6 +100,8 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | 3 | `KIM_TALK_TO` 非空（忽略 `PING_ONLY`） | ping → pong。seq=2 `chat.user.talk` dest=`KIM_TALK_TO`，body=`KIM_TALK_BODY` 或 `hello world`。然后 HOLD 或 close |
 | 4 | `KIM_PING_ONLY=1` | ping → pong → close |
 | 5 | 默认 | ping → pong → echo seq=2 → close |
+
+登录后若 `KIM_SYNC_OFFLINE=1`，先拉离线再走上表。HOLD 收到 talk Push 默认会 ACK，见 [reliable-delivery.md](reliable-delivery.md)。
 
 ---
 
@@ -121,4 +126,4 @@ e2e：`examples/fake-chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`
 
 ## 非目标（不要写进这一层）
 
-ACK、离线队列 / 重连同步、Royal HTTP、敏感词、发送方必须是群成员、join/leave/detail、`GroupCreateNotify`、Consul、Web SDK。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。
+Royal HTTP、敏感词、发送方必须是群成员、join/leave/detail、`GroupCreateNotify`、Consul、Web SDK。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。

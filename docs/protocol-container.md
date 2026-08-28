@@ -3,7 +3,7 @@
 面向：刚学后台、靠复刻 KIM 入门的工程师。  
 本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 [link-layer-login.md](link-layer-login.md)。`MessageReq` / `MessageResp` / `MessagePush` 与 talk 指令见 [control-layer-chat.md](control-layer-chat.md)，本文不展开。本文不含 Consul、VPS、Royal。
 
-`echo-*` / `ws-echo-*` / `e2e_echo.rs` 仍是第一帧名字。`pkt-client` → `fake-gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。
+crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧名字。`pkt-client` → `fake-gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"` 或 `echo-server`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。echo 二进制已删，验收走 crate 测试。
 
 阅读前请先扫 [glossary.md](glossary.md) 和 [communication-layer.md](communication-layer.md)。本文出现的新词会在第一次使用时解释。
 
@@ -19,8 +19,7 @@
 |---|---|
 | `crates/kim-core` | 说明书：`Conn` / `Frame` / `OpCode` / `Channel::pair` / `ChannelMap` / `Acceptor` / `MessageListener` / `StateListener` / `Agent` / `Server` / `Client` |
 | `crates/kim-tcp` | TCP 履行者：`opcode 1B \| len 4B LE \| payload`，`TcpServer` / `TcpClient` / `IdentityDialer` |
-| `examples/echo-server`、`echo-client` | 同一套 `EchoHandler`：第一帧当名字，原文加 ` from server` 回声 |
-| `crates/kim-tcp/tests/echo.rs` | 进程内回声验收 |
+| `crates/kim-tcp/tests/echo.rs` | 进程内 TCP 回声验收：第一帧当名字，原文加 ` from server` |
 
 已经拍板、且代码里已经是这样的：
 
@@ -68,7 +67,7 @@ Cloudflare 橙云 **不转发任意 TCP**：这只决定公网 **怎么暴露** 
 
 - 实现 `kim-ws`，因为 **Web 需要它**，并证明第二种 `Conn`。
 - **保留** `kim-tcp`：App / TGateway，以及网关↔Chat。不要求 App 走 WS。
-- 本机 Demo 的 `pkt-client` 用 `ws://`，扮演 **Web 客户端**。App/TCP 路径继续是已有 `echo-server` / `echo-client`。
+- 本机 Demo 的 `pkt-client` 用 `ws://`，扮演 **Web 客户端**。App / TGateway 的 TCP 电线仍是 `kim-tcp`；回声验收在 crate 测试，没有独立 echo 二进制。
 - 公网 TGateway 的 TLS **后做加密外壳**，不是「用 WSS 代替 App 长连接」。
 - `kim.ainexc.com` 以后和 `minos.ainexc.com` 共存于现有反向代理。**部署发生在本机跑通之后**，本阶段不上 VPS。
 
@@ -84,7 +83,7 @@ Cloudflare 橙云 **不转发任意 TCP**：这只决定公网 **怎么暴露** 
 - **`kim-tcp` 继续承担 App / TGateway 以及网关↔Chat。** 本阶段不把 App 改成 WS，不套 TLS，不写业务 `if command`，**不**把写侧 Mutex 改成 mpsc。允许小改：`TcpClient::read(&self)`，以及 `TcpServer::shutdown` 用 closed+`notify_one`（见 §6.3、PR3.5）。
 - HTTP Upgrade 一次，之后是 RFC 6455 帧；把 WS opcode 映射到现有 `kim_core::OpCode`。
 - `WsServer` 复用 `Channel::pair` + `ChannelMap` + 两专员。禁止在 `kim-ws` 里再写一套连接表或写锁。
-- 同一份 `EchoHandler`（可从 echo-server 抽到测试公共代码，或复制 30 行）在 WS 上跑通回声。TCP echo 继续当 App 路径的回归。
+- 同一份 `EchoHandler` 在 `kim-ws/tests/echo.rs` 上跑通回声。TCP echo 在 `kim-tcp/tests/echo.rs`。
 - 本机 `ws://127.0.0.1:<port>/` 即可。库：`fastwebsockets`（帧级、`after_handshake`）；`hyper` 只做 Upgrade，不做业务。
 
 **M2 — 业务包 + 容器 + 静态 Naming**
@@ -1093,7 +1092,7 @@ server.push(gateway_id, marshal(Logic(pkt)))
 
 不要写进 `WsServer`。这是 **Web** 网关的业务插槽，不是 TGateway。
 
-**已被 M3 替换：** `fake-gateway` Accept 第一帧必须是 LogicPkt `login.signin` + JWT，生成 `wg-1_{account}_{seq}`，**不**再把 utf8 `"alice"` 当 channel_id。identity 第一帧仍用于 `echo-*` / `ws-echo-*` / `crates/kim-container/tests/e2e_echo.rs`。详见 [link-layer-login.md](link-layer-login.md) §7。
+**已被 M3 替换：** `fake-gateway` Accept 第一帧必须是 LogicPkt `login.signin` + JWT，生成 `wg-1_{account}_{seq}`，**不**再把 utf8 `"alice"` 当 channel_id。identity 第一帧仍用于 crate 测试：`kim-tcp/tests/echo.rs`、`kim-ws/tests/echo.rs`、`kim-container/tests/e2e_echo.rs`。详见 [link-layer-login.md](link-layer-login.md) §7。
 
 M2 当时的 Accept（历史，已被登录 Demo 换掉）：
 
@@ -1208,10 +1207,9 @@ HTTPS 只包住 REST。WSS 只包住 **Web 长连接**。App 长连接是 TCP，
 
 | 线 | 地址 | TLS | 扮演谁 |
 |---|---|---|---|
-| Web ↔ WGateway | `ws://127.0.0.1:8001/` | 无 | pkt-client / ws-echo |
-| App ↔ TGateway | `127.0.0.1:8000` TCP | 无 | 已有 echo-tcp（保持） |
+| Web ↔ WGateway | `ws://127.0.0.1:8001/` | 无 | pkt-client |
+| App ↔ TGateway | TCP（`kim-tcp`） | 无 | crate 测试；本机 Demo 尚未起 TGateway |
 | 网关 ↔ Chat | `127.0.0.1:8002` TCP | 无 | 内网 |
-| echo WS | `ws://127.0.0.1:8001/` | 无 | 证明第二种 Conn |
 
 `WsClient::connect` 遇到 `wss://` 返回明确错误，避免静默明文。本阶段也不给 `TcpClient` 加 TLS。
 
@@ -1245,9 +1243,7 @@ HTTPS 只包住 REST。WSS 只包住 **Web 长连接**。App 长连接是 TCP，
 ### 9.1 回归（M1a 不能坏）
 
 ```bash
-cargo test
-cargo run -p echo-server          # 终端 1，127.0.0.1:8000
-cargo run -p echo-client -- alice # 终端 2，五条 hello i from server
+cargo test -p kim-tcp --test echo
 ```
 
 ### 9.2 M1b：同一 EchoHandler，第二条电线
@@ -1256,14 +1252,8 @@ cargo run -p echo-client -- alice # 终端 2，五条 hello i from server
 
 断言：`payload == b"hello from server"`。
 
-手工：
-
 ```bash
-# 终端 1
-RUST_LOG=info cargo run -p ws-echo-server
-
-# 终端 2
-RUST_LOG=info cargo run -p ws-echo-client -- alice
+cargo test -p kim-ws --test echo
 ```
 
 额外单测（`kim-ws`）：

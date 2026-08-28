@@ -224,4 +224,50 @@ mod tests {
         assert_eq!(push.sender, "bob");
         assert_eq!(push.send_time, 100);
     }
+
+    #[test]
+    fn ack_and_offline_roundtrip() {
+        let mut ack_pkt = LogicPkt::new("chat.talk.ack", 1, Bytes::new());
+        ack_pkt.write_body(&crate::pkt::MessageAckReq { message_id: 7 });
+        let ack: crate::pkt::MessageAckReq = ack_pkt.read_body().unwrap();
+        assert_eq!(ack.message_id, 7);
+
+        let mut idx_req = LogicPkt::new("chat.offline.index", 1, Bytes::new());
+        idx_req.write_body(&crate::pkt::MessageIndexReq { message_id: 0 });
+        let got: crate::pkt::MessageIndexReq = idx_req.read_body().unwrap();
+        assert_eq!(got.message_id, 0);
+
+        let mut idx_resp = LogicPkt::new("chat.offline.index", 1, Bytes::new());
+        idx_resp.write_body(&crate::pkt::MessageIndexResp {
+            indexes: vec![crate::pkt::MessageIndex {
+                message_id: 8,
+                direction: 0,
+                send_time: 11,
+                account_b: "alice".into(),
+                group: String::new(),
+            }],
+        });
+        let idx: crate::pkt::MessageIndexResp = idx_resp.read_body().unwrap();
+        assert_eq!(idx.indexes.len(), 1);
+        assert_eq!(idx.indexes[0].message_id, 8);
+
+        let mut content_req = LogicPkt::new("chat.offline.content", 1, Bytes::new());
+        content_req.write_body(&crate::pkt::MessageContentReq {
+            message_ids: vec![8, 9],
+        });
+        let creq: crate::pkt::MessageContentReq = content_req.read_body().unwrap();
+        assert_eq!(creq.message_ids, vec![8, 9]);
+
+        let mut content_resp = LogicPkt::new("chat.offline.content", 1, Bytes::new());
+        content_resp.write_body(&crate::pkt::MessageContentResp {
+            messages: vec![crate::pkt::Message {
+                message_id: 8,
+                r#type: crate::MESSAGE_TYPE_TEXT,
+                body: "hi".into(),
+                extra: String::new(),
+            }],
+        });
+        let cresp: crate::pkt::MessageContentResp = content_resp.read_body().unwrap();
+        assert_eq!(cresp.messages[0].body, "hi");
+    }
 }

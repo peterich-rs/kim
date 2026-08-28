@@ -1,13 +1,16 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
 use kim_protocol::pkt::{
-    Flag, GroupCreateReq, GroupCreateResp, MessagePush, MessageReq, MessageResp, Status,
+    Flag, GroupCreateReq, GroupCreateResp, MessageAckReq, MessageContentReq, MessageContentResp,
+    MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp, Status,
 };
 use kim_protocol::{
-    marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK,
-    CMD_DEMO_ECHO, CMD_GROUP_CREATE, CODE_PONG, MESSAGE_TYPE_TEXT,
+    marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
+    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    CODE_PONG, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::{ClientOptions, WsClient};
 use pkt_client::{is_kickout, resolve_jwt_secret, LoginDialer};
@@ -30,9 +33,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ping_only = std::env::var("KIM_PING_ONLY").ok().as_deref() == Some("1");
     let bad_token = std::env::var("KIM_BAD_TOKEN").ok().as_deref() == Some("1");
     let hold = std::env::var("KIM_HOLD").ok().as_deref() == Some("1");
+    let skip_ack = std::env::var("KIM_SKIP_ACK").ok().as_deref() == Some("1");
+    let sync_offline = std::env::var("KIM_SYNC_OFFLINE").ok().as_deref() == Some("1");
     let talk_to = env_nonempty("KIM_TALK_TO");
     let group_members = env_nonempty("KIM_GROUP_MEMBERS");
     let talk_body = env_nonempty("KIM_TALK_BODY");
+    let ack_from = env_nonempty("KIM_ACK_FROM")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    let ack_delay = env_nonempty("KIM_ACK_DELAY_MS")
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(Duration::from_millis(200));
 
     let mut dialer = LoginDialer::new(resolve_jwt_secret());
     if bad_token {
@@ -69,8 +81,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("login succeeded without channel_id")?;
     info!(channel_id, "logined");
 
+    let mut seen = HashSet::new();
+    let mut seq = 2u32;
+    if sync_offline {
+        seq = pull_offline(&client, seq, ack_from, &mut seen).await?;
+    }
+
     if hold && talk_to.is_none() && group_members.is_none() {
-        return hold_read_loop(&mut client, &channel_id).await;
+        return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
     }
 
     if let Some(members) = group_members {
@@ -80,7 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let mut pkt = LogicPkt::new(CMD_GROUP_CREATE, 2, Bytes::new());
+        let mut pkt = LogicPkt::new(CMD_GROUP_CREATE, seq, Bytes::new());
+        seq = seq.saturating_add(1);
         pkt.write_body(&GroupCreateReq {
             name: "demo".into(),
             avatar: String::new(),
@@ -106,7 +125,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let body = talk_body.unwrap_or_else(|| "hellogroup".to_string());
-        let mut pkt = LogicPkt::new(CMD_CHAT_GROUP_TALK, 3, Bytes::new());
+        let mut pkt = LogicPkt::new(CMD_CHAT_GROUP_TALK, seq, Bytes::new());
+        seq = seq.saturating_add(1);
         pkt.set_dest(group_id);
         pkt.write_body(&MessageReq {
             r#type: MESSAGE_TYPE_TEXT,
@@ -116,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.send(marshal(&Packet::Logic(pkt))).await?;
         read_message_resp(&client).await?;
         if hold {
-            return hold_read_loop(&mut client, &channel_id).await;
+            return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
         }
         client.close().await?;
         return Ok(());
@@ -125,7 +145,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(dest) = talk_to {
         ping_pong(&client).await?;
         let body = talk_body.unwrap_or_else(|| "hello world".to_string());
-        let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 2, Bytes::new());
+        let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, seq, Bytes::new());
+        seq = seq.saturating_add(1);
         pkt.set_dest(dest);
         pkt.write_body(&MessageReq {
             r#type: MESSAGE_TYPE_TEXT,
@@ -135,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.send(marshal(&Packet::Logic(pkt))).await?;
         read_message_resp(&client).await?;
         if hold {
-            return hold_read_loop(&mut client, &channel_id).await;
+            return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
         }
         client.close().await?;
         return Ok(());
@@ -148,7 +169,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let seq = 2u32;
     let req = LogicPkt::new(CMD_DEMO_ECHO, seq, Bytes::from_static(b"hello pkt"));
     client.send(marshal(&Packet::Logic(req))).await?;
     let resp = timeout_read(&client).await?;
@@ -221,10 +241,73 @@ async fn read_message_resp(client: &WsClient) -> Result<(), Box<dyn std::error::
     }
 }
 
+async fn pull_offline(
+    client: &WsClient,
+    mut seq: u32,
+    ack_from: i64,
+    seen: &mut HashSet<i64>,
+) -> Result<u32, Box<dyn std::error::Error>> {
+    let mut pkt = LogicPkt::new(CMD_OFFLINE_INDEX, seq, Bytes::new());
+    pkt.write_body(&MessageIndexReq {
+        message_id: ack_from,
+    });
+    seq = seq.saturating_add(1);
+    client.send(marshal(&Packet::Logic(pkt))).await?;
+    let frame = timeout_read(client).await?;
+    let indexes = match read(&frame.payload)? {
+        Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+            let resp: MessageIndexResp = p.read_body()?;
+            resp.indexes
+        }
+        Packet::Logic(p) => {
+            return Err(format!("offline index status {}", p.header.status).into());
+        }
+        _ => return Err("expected offline index".into()),
+    };
+    info!(count = indexes.len(), "offline index");
+    let ids: Vec<i64> = indexes.iter().map(|i| i.message_id).collect();
+    for chunk in ids.chunks(200) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let mut pkt = LogicPkt::new(CMD_OFFLINE_CONTENT, seq, Bytes::new());
+        pkt.write_body(&MessageContentReq {
+            message_ids: chunk.to_vec(),
+        });
+        seq = seq.saturating_add(1);
+        client.send(marshal(&Packet::Logic(pkt))).await?;
+        let frame = timeout_read(client).await?;
+        match read(&frame.payload)? {
+            Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+                let resp: MessageContentResp = p.read_body()?;
+                for m in resp.messages {
+                    if seen.insert(m.message_id) {
+                        info!(
+                            message_id = m.message_id,
+                            body_len = m.body.len(),
+                            "offline content"
+                        );
+                    }
+                }
+            }
+            Packet::Logic(p) => {
+                return Err(format!("offline content status {}", p.header.status).into());
+            }
+            _ => return Err("expected offline content".into()),
+        }
+    }
+    Ok(seq)
+}
+
 async fn hold_read_loop(
     client: &mut WsClient,
     channel_id: &str,
+    skip_ack: bool,
+    ack_delay: Duration,
+    mut seen: HashSet<i64>,
+    mut seq: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut max_id: i64 = 0;
     loop {
         let frame = client.read().await?;
         if let Packet::Logic(p) = read(&frame.payload)? {
@@ -245,13 +328,25 @@ async fn hold_read_loop(
                     || p.header.command == CMD_CHAT_GROUP_TALK)
             {
                 let push: MessagePush = p.read_body()?;
-                info!(
-                    message_id = push.message_id,
-                    sender = %push.sender,
-                    msg_type = push.r#type,
-                    body_len = push.body.len(),
-                    "got talk push"
-                );
+                if seen.insert(push.message_id) {
+                    info!(
+                        message_id = push.message_id,
+                        sender = %push.sender,
+                        msg_type = push.r#type,
+                        body_len = push.body.len(),
+                        "got talk push"
+                    );
+                }
+                if push.message_id > max_id {
+                    max_id = push.message_id;
+                }
+                if !skip_ack && max_id > 0 {
+                    tokio::time::sleep(ack_delay).await;
+                    let mut ack = LogicPkt::new(CMD_CHAT_TALK_ACK, seq, Bytes::new());
+                    seq = seq.saturating_add(1);
+                    ack.write_body(&MessageAckReq { message_id: max_id });
+                    client.send(marshal(&Packet::Logic(ack))).await?;
+                }
             }
         }
     }

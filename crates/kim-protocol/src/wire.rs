@@ -12,6 +12,9 @@ pub const CMD_DEMO_ECHO: &str = "chat.demo.echo";
 pub const CMD_CHAT_USER_TALK: &str = "chat.user.talk";
 pub const CMD_CHAT_GROUP_TALK: &str = "chat.group.talk";
 pub const CMD_GROUP_CREATE: &str = "chat.group.create";
+pub const CMD_CHAT_TALK_ACK: &str = "chat.talk.ack";
+pub const CMD_OFFLINE_INDEX: &str = "chat.offline.index";
+pub const CMD_OFFLINE_CONTENT: &str = "chat.offline.content";
 
 pub const MESSAGE_TYPE_TEXT: i32 = 1;
 pub const MESSAGE_TYPE_IMAGE: i32 = 2;
@@ -35,6 +38,10 @@ mod tests {
         assert_eq!(service_name("chat.user.talk"), "chat");
         assert_eq!(service_name(CMD_CHAT_GROUP_TALK), "chat");
         assert_eq!(service_name(CMD_GROUP_CREATE), "chat");
+        assert_eq!(service_name(CMD_CHAT_TALK_ACK), "chat");
+        assert_eq!(service_name(CMD_OFFLINE_INDEX), "chat");
+        assert_eq!(service_name(CMD_OFFLINE_CONTENT), "chat");
+        assert_eq!(service_name("chat.offline.index"), "chat");
         // Accept must not use service_name for login: this is `"login"`, not SN_LOGIN.
         assert_eq!(service_name("login.signin"), "login");
         assert_eq!(service_name(CMD_LOGIN_SIGN_IN), "login");

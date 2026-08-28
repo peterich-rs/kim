@@ -8,7 +8,8 @@ publish = false
 
 [features]
 default = []
-redis = ["kim-session/redis"]
+redis = ["kim-session/redis", "dep:redis"]
+postgres = ["dep:sqlx"]
 
 [dependencies]
 async-trait.workspace = true
@@ -21,8 +22,10 @@ kim-router.workspace = true
 kim-session.workspace = true
 kim-tcp.workspace = true
 prost.workspace = true
+redis = { workspace = true, optional = true }
 serde = { version = "1", features = ["derive"] }
 snowflake_me.workspace = true
+sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
 thiserror.workspace = true
 toml = "0.8"
 tokio.workspace = true

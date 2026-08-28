@@ -9,10 +9,6 @@ members = [
     "crates/kim-container",
     "crates/kim-router",
     "crates/kim-session",
-    "examples/echo-server",
-    "examples/echo-client",
-    "examples/ws-echo-server",
-    "examples/ws-echo-client",
     "examples/fake-gateway",
     "examples/fake-chat",
     "examples/pkt-client",
@@ -53,3 +49,4 @@ kim-container = { path = "crates/kim-container" }
 kim-router = { path = "crates/kim-router" }
 kim-session = { path = "crates/kim-session" }
 snowflake_me = "2"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
