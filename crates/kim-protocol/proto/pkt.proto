@@ -131,3 +131,54 @@ message MessageContentReq {
 message MessageContentResp {
   repeated Message messages = 1;
 }
+
+message GroupJoinReq {
+  string account = 1;
+  string groupId = 2;
+}
+
+message GroupQuitReq {
+  string account = 1;
+  string groupId = 2;
+}
+
+message GroupMembersResp {
+  repeated string members = 1;
+}
+
+message GroupDetail {
+  string groupId = 1;
+  string name = 2;
+  string avatar = 3;
+  string introduction = 4;
+  string owner = 5;
+  repeated string members = 6;
+}
+
+message GroupCreateNotify {
+  string groupId = 1;
+  repeated string members = 2;
+}
+
+// Royal HTTP bodies. Long-connection dest still carries group id / account.
+message InsertMessageReq {
+  string sender = 1;
+  string dest = 2;
+  int64 sendTime = 3;
+  MessageReq message = 4;
+  repeated string members = 5;
+}
+
+message InsertMessageResp {
+  int64 messageId = 1;
+}
+
+message AckMessageReq {
+  string account = 1;
+  int64 messageId = 2;
+}
+
+message OfflineIndexReq {
+  string account = 1;
+  int64 messageId = 2;
+}

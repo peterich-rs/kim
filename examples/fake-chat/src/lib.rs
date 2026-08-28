@@ -7,6 +7,7 @@ mod group;
 pub mod idgen;
 mod login;
 mod offline;
+pub mod royal;
 pub mod store;
 mod talk;
 
@@ -20,8 +21,9 @@ use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
     read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
-    CMD_GROUP_CREATE, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, META_DEST_CHANNELS, META_DEST_SERVER,
+    CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -33,9 +35,10 @@ use crate::store::{MemoryMessageStore, MessageStore};
 
 pub use ack::do_talk_ack;
 pub use echo::do_echo;
-pub use group::do_group_create;
+pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
 pub use login::{do_sys_login, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
+pub use royal::http_backends;
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -131,6 +134,34 @@ impl ChatHandler {
             router.handle(CMD_GROUP_CREATE, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_create(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_JOIN, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_join(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_QUIT, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_quit(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_DETAIL, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_detail(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_GROUP_MEMBERS, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_members(ctx, svc.groups.as_ref()).await }
             });
         }
         {

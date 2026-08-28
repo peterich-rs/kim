@@ -21,13 +21,25 @@ pub struct CreateGroup {
     pub members: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupInfo {
+    pub id: String,
+    pub name: String,
+    pub avatar: String,
+    pub introduction: String,
+    pub owner: String,
+    pub members: Vec<String>,
+}
+
 #[async_trait]
 pub trait GroupDirectory: Send + Sync {
     async fn create(&self, app: &str, req: &CreateGroup) -> Result<String, GroupError>;
     async fn members(&self, app: &str, group_id: &str) -> Result<Vec<String>, GroupError>;
+    async fn join(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError>;
+    async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError>;
+    async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError>;
 }
 
-#[allow(dead_code)] // name/avatar/introduction/owner stored for ch22
 struct Group {
     name: String,
     avatar: String,
@@ -136,6 +148,48 @@ impl GroupDirectory for MemoryGroupDirectory {
         };
         Ok(members)
     }
+
+    async fn join(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
+        if account.is_empty() {
+            return Err(GroupError::Backend("empty account".into()));
+        }
+        let mut inner = self.write();
+        let group = inner
+            .groups
+            .get_mut(&(app.to_string(), group_id.to_string()))
+            .ok_or_else(|| GroupError::Backend("unknown group".into()))?;
+        if !group.members.iter().any(|m| m == account) {
+            group.members.push(account.to_string());
+        }
+        Ok(())
+    }
+
+    async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
+        let mut inner = self.write();
+        if let Some(group) = inner
+            .groups
+            .get_mut(&(app.to_string(), group_id.to_string()))
+        {
+            group.members.retain(|m| m != account);
+        }
+        Ok(())
+    }
+
+    async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError> {
+        let inner = self.read();
+        let group = inner
+            .groups
+            .get(&(app.to_string(), group_id.to_string()))
+            .ok_or_else(|| GroupError::Backend("unknown group".into()))?;
+        Ok(GroupInfo {
+            id: group_id.to_string(),
+            name: group.name.clone(),
+            avatar: group.avatar.clone(),
+            introduction: group.introduction.clone(),
+            owner: group.owner.clone(),
+            members: group.members.clone(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -182,5 +236,34 @@ mod tests {
         dir.seed("kim", "g1", vec!["a".into(), "b".into()]);
         let members = dir.members("kim", "g1").await.unwrap();
         assert_eq!(members, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn join_quit_detail_roundtrip() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let dir = MemoryGroupDirectory::new(idgen);
+        let id = dir
+            .create(
+                "kim",
+                &CreateGroup {
+                    name: "g".into(),
+                    avatar: "a".into(),
+                    introduction: "i".into(),
+                    owner: "alice".into(),
+                    members: vec!["bob".into()],
+                },
+            )
+            .await
+            .unwrap();
+        dir.join("kim", &id, "carol").await.unwrap();
+        let d = dir.detail("kim", &id).await.unwrap();
+        assert_eq!(d.name, "g");
+        assert!(d.members.contains(&"carol".to_string()));
+        dir.quit("kim", &id, "bob").await.unwrap();
+        let members = dir.members("kim", &id).await.unwrap();
+        assert!(!members.contains(&"bob".to_string()));
+        assert!(dir.join("kim", "nope", "x").await.is_err());
+        assert!(dir.detail("kim", "nope").await.is_err());
+        dir.quit("kim", "nope", "x").await.unwrap();
     }
 }

@@ -149,7 +149,7 @@ async fn three_person_group_one_offline() {
     timeout_no_packet(&alice, Duration::from_millis(500)).await;
 
     for (client, name) in [(&bob, "bob"), (&carol, "carol")] {
-        let push_frame = timeout_read(client).await;
+        let push_frame = timeout_read_skip_group_notify(client).await;
         match read(&push_frame.payload).expect("push decode") {
             Packet::Logic(p) => {
                 assert_eq!(p.header.flag, Flag::Push as i32, "{name}");

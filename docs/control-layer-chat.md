@@ -31,11 +31,13 @@ pkt-client  --ws://127.0.0.1:8001-->  fake-gateway (WsServer)
 | `chat.group.talk` | Request | Chat `do_group_talk` |
 | `chat.group.talk` | Push | 同上，合包、跳过发送方 |
 | `chat.group.create` | Request | Chat `do_group_create` |
+| `chat.group.create` | Push | `GroupCreateNotify` 给在线成员 |
+| `chat.group.join` / `quit` / `detail` / `members` | Request | 见 [group-royal.md](group-royal.md) |
 | `chat.talk.ack` | Request | Chat `do_talk_ack`（见 [reliable-delivery.md](reliable-delivery.md)） |
 | `chat.offline.index` | Request | Chat `do_offline_index` |
 | `chat.offline.content` | Request | Chat `do_offline_content` |
 
-Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`sender` 只在 `MessagePush` body 里。本里程碑不发 `GroupCreateNotify`。
+Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`sender` 只在 `MessagePush` body 里。建群会发 `GroupCreateNotify`。
 
 | Status | 值 | 何时 |
 |---|---|---|
@@ -59,6 +61,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | `chat.user.talk` | 对方 **账号** |
 | `chat.group.talk` | **group id**（`GroupCreateResp.groupId`） |
 | `chat.group.create` | 空（不寻址） |
+| `chat.group.join` / `quit` / `detail` / `members` | **group id** |
 
 本里程碑 group id 是雪花 i64 的 **base36** 字符串，这就是长连接 dest。第 22 章 Royal HTTP 的 Base32 是 REST 主键，**不要**把 dest 改成 Base32。
 
@@ -126,4 +129,4 @@ e2e：`examples/fake-chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`
 
 ## 非目标（不要写进这一层）
 
-Royal HTTP、敏感词、发送方必须是群成员、join/leave/detail、`GroupCreateNotify`、Consul、Web SDK。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。
+敏感词、发送方必须是群成员、Web SDK。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。群 join 与 Royal 见 [group-royal.md](group-royal.md)。

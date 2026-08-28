@@ -270,4 +270,23 @@ mod tests {
         let cresp: crate::pkt::MessageContentResp = content_resp.read_body().unwrap();
         assert_eq!(cresp.messages[0].body, "hi");
     }
+
+    #[test]
+    fn group_join_and_notify_roundtrip() {
+        let mut join = LogicPkt::new("chat.group.join", 1, Bytes::new());
+        join.write_body(&crate::pkt::GroupJoinReq {
+            account: "bob".into(),
+            group_id: "G1".into(),
+        });
+        let got: crate::pkt::GroupJoinReq = join.read_body().unwrap();
+        assert_eq!(got.account, "bob");
+
+        let mut n = LogicPkt::new("chat.group.create", 1, Bytes::new());
+        n.write_body(&crate::pkt::GroupCreateNotify {
+            group_id: "G1".into(),
+            members: vec!["alice".into(), "bob".into()],
+        });
+        let notify: crate::pkt::GroupCreateNotify = n.read_body().unwrap();
+        assert_eq!(notify.members.len(), 2);
+    }
 }

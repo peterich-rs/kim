@@ -81,7 +81,7 @@ im/
   crates/kim-container     拨号、Young/Adult、转发
   crates/kim-router        指令 Router
   crates/kim-session       会话（Memory / 可选 Redis）
-  examples/                fake-gateway / fake-chat / pkt-client
+  examples/                fake-gateway / fake-chat / fake-royal / pkt-client
   docs/                    本目录
   research/                可行性调研
 ```
@@ -90,9 +90,9 @@ im/
 
 ## 不要提前写进通信层的
 
-- **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
+- **Consul**：静态 Naming 已够本机 Demo；`ConsulNaming` 是可选 feature，不要改 `TcpServer`、不要占 53 端口
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
-- **控制层**：在线 talk、ACK、Pull 离线已在 fake-chat；Royal HTTP、群 join/quit/detail、Web SDK 仍以后
+- **控制层**：在线 talk、ACK、离线、群 join/quit/detail 已在 fake-chat；Royal HTTP 可选。Web SDK 仍以后
 - **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。

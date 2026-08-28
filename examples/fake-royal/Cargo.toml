@@ -1,0 +1,23 @@
+[package]
+name = "fake-royal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+axum.workspace = true
+bytes.workspace = true
+fake-chat = { path = "../fake-chat" }
+kim-protocol.workspace = true
+prost.workspace = true
+serde = { version = "1", features = ["derive"] }
+thiserror.workspace = true
+tokio.workspace = true
+toml = "0.8"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

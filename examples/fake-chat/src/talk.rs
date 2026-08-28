@@ -639,6 +639,32 @@ mod tests {
         async fn members(&self, _app: &str, _group_id: &str) -> Result<Vec<String>, GroupError> {
             Err(GroupError::Backend("members failed".into()))
         }
+
+        async fn join(
+            &self,
+            _app: &str,
+            _group_id: &str,
+            _account: &str,
+        ) -> Result<(), GroupError> {
+            Err(GroupError::Backend("join failed".into()))
+        }
+
+        async fn quit(
+            &self,
+            _app: &str,
+            _group_id: &str,
+            _account: &str,
+        ) -> Result<(), GroupError> {
+            Err(GroupError::Backend("quit failed".into()))
+        }
+
+        async fn detail(
+            &self,
+            _app: &str,
+            _group_id: &str,
+        ) -> Result<crate::directory::GroupInfo, GroupError> {
+            Err(GroupError::Backend("detail failed".into()))
+        }
     }
 
     struct OtherLocationsStore;

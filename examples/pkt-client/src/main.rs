@@ -4,13 +4,14 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use kim_protocol::pkt::{
-    Flag, GroupCreateReq, GroupCreateResp, MessageAckReq, MessageContentReq, MessageContentResp,
-    MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp, Status,
+    Flag, GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq,
+    GroupQuitReq, MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq,
+    MessageIndexResp, MessagePush, MessageReq, MessageResp, Status,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    CODE_PONG, MESSAGE_TYPE_TEXT,
+    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN,
+    CMD_GROUP_QUIT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CODE_PONG, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::{ClientOptions, WsClient};
 use pkt_client::{is_kickout, resolve_jwt_secret, LoginDialer};
@@ -38,6 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let talk_to = env_nonempty("KIM_TALK_TO");
     let group_members = env_nonempty("KIM_GROUP_MEMBERS");
     let talk_body = env_nonempty("KIM_TALK_BODY");
+    let group_join = env_nonempty("KIM_GROUP_JOIN");
+    let group_quit = env_nonempty("KIM_GROUP_QUIT");
+    let group_detail = env_nonempty("KIM_GROUP_DETAIL");
     let ack_from = env_nonempty("KIM_ACK_FROM")
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0);
@@ -87,8 +91,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         seq = pull_offline(&client, seq, ack_from, &mut seen).await?;
     }
 
-    if hold && talk_to.is_none() && group_members.is_none() {
+    if hold
+        && talk_to.is_none()
+        && group_members.is_none()
+        && group_join.is_none()
+        && group_quit.is_none()
+        && group_detail.is_none()
+    {
         return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
+    }
+
+    if let Some(gid) = group_join {
+        ping_pong(&client).await?;
+        let mut pkt = LogicPkt::new(CMD_GROUP_JOIN, seq, Bytes::new());
+        pkt.set_dest(&gid);
+        pkt.write_body(&GroupJoinReq {
+            account: id.clone(),
+            group_id: gid,
+        });
+        client.send(marshal(&Packet::Logic(pkt))).await?;
+        let frame = timeout_read(&client).await?;
+        match read(&frame.payload)? {
+            Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+                info!("group joined");
+            }
+            Packet::Logic(p) => return Err(format!("join status {}", p.header.status).into()),
+            _ => return Err("expected join resp".into()),
+        }
+        if hold {
+            return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
+        }
+        client.close().await?;
+        return Ok(());
+    }
+
+    if let Some(gid) = group_quit {
+        ping_pong(&client).await?;
+        let mut pkt = LogicPkt::new(CMD_GROUP_QUIT, seq, Bytes::new());
+        pkt.set_dest(&gid);
+        pkt.write_body(&GroupQuitReq {
+            account: id.clone(),
+            group_id: gid,
+        });
+        client.send(marshal(&Packet::Logic(pkt))).await?;
+        let frame = timeout_read(&client).await?;
+        match read(&frame.payload)? {
+            Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+                info!("group quit");
+            }
+            Packet::Logic(p) => return Err(format!("quit status {}", p.header.status).into()),
+            _ => return Err("expected quit resp".into()),
+        }
+        client.close().await?;
+        return Ok(());
+    }
+
+    if let Some(gid) = group_detail {
+        ping_pong(&client).await?;
+        let mut pkt = LogicPkt::new(CMD_GROUP_DETAIL, seq, Bytes::new());
+        pkt.set_dest(&gid);
+        client.send(marshal(&Packet::Logic(pkt))).await?;
+        let frame = timeout_read(&client).await?;
+        match read(&frame.payload)? {
+            Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+                let d: GroupDetail = p.read_body()?;
+                info!(group_id = %d.group_id, name = %d.name, members = d.members.len(), "group detail");
+            }
+            Packet::Logic(p) => return Err(format!("detail status {}", p.header.status).into()),
+            _ => return Err("expected detail resp".into()),
+        }
+        client.close().await?;
+        return Ok(());
     }
 
     if let Some(members) = group_members {
@@ -322,6 +395,11 @@ async fn hold_read_loop(
                 info!(channel_id = %notify.channel_id, "got kickout");
                 client.close().await?;
                 return Ok(());
+            }
+            if p.header.flag == Flag::Push as i32 && p.header.command == CMD_GROUP_CREATE {
+                let n: GroupCreateNotify = p.read_body()?;
+                info!(group_id = %n.group_id, members = n.members.len(), "got group create notify");
+                continue;
             }
             if p.header.flag == Flag::Push as i32
                 && (p.header.command == CMD_CHAT_USER_TALK
