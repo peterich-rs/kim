@@ -2,7 +2,7 @@
 
 对照小册第 17–18 章。通信层 / 容器层合同仍以 [protocol-container.md](protocol-container.md) 为准。本文只记 **现在代码里的** 握手、指令、会话和互踢。
 
-`echo-*` / `ws-echo-*` / `crates/kim-container/tests/e2e_echo.rs` **仍是第一帧名字**。`pkt-client` → `fake-gateway` 的第一帧必须是 `login.signin`。
+`crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs` **仍是第一帧名字**（crate 测试，不是 example 二进制）。`pkt-client` → `fake-gateway` 的第一帧必须是 `login.signin`。
 
 ---
 

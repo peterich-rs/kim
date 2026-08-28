@@ -1,10 +1,12 @@
 //! Chat demo: session lookup, Router, login / logout / echo handlers.
 
+mod ack;
 pub mod directory;
 mod echo;
 mod group;
 pub mod idgen;
 mod login;
+mod offline;
 pub mod store;
 mod talk;
 
@@ -17,8 +19,9 @@ use kim_container::Container;
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE,
-    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, META_DEST_CHANNELS, META_DEST_SERVER,
+    read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
+    CMD_GROUP_CREATE, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -28,9 +31,11 @@ use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use crate::store::{MemoryMessageStore, MessageStore};
 
+pub use ack::do_talk_ack;
 pub use echo::do_echo;
 pub use group::do_group_create;
 pub use login::{do_sys_login, do_sys_logout};
+pub use offline::{do_offline_content, do_offline_index};
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -126,6 +131,27 @@ impl ChatHandler {
             router.handle(CMD_GROUP_CREATE, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_create(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_CHAT_TALK_ACK, move |ctx| {
+                let svc = svc.clone();
+                async move { do_talk_ack(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_OFFLINE_INDEX, move |ctx| {
+                let svc = svc.clone();
+                async move { do_offline_index(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_OFFLINE_CONTENT, move |ctx| {
+                let svc = svc.clone();
+                async move { do_offline_content(ctx, svc.store.as_ref()).await }
             });
         }
         Self {

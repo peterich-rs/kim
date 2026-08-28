@@ -12,8 +12,8 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│  业务（echo-* 身份握手；fake-gateway JWT 登录；fake-chat Router）│
-│  登录与在线 talk 已在 fake-chat；离线仍以后                    │
+│  业务（fake-gateway JWT 登录；fake-chat Router）              │
+│  登录、在线 talk、ACK / 离线 Pull 已在 fake-chat              │
 │  插槽：Acceptor / MessageListener / StateListener          │
 ├──────────────────────────────────────────────────────────┤
 │  kim-core     通信层说明书 + 连接生命周期                     │
@@ -34,7 +34,7 @@
 业务 Handler  ──►  kim-core（表 + 信箱 + 两专员）  ──►  kim-tcp（分帧、拆插座）  ──►  内核 TCP
 ```
 
-小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。通信 / 容器 / 链路登录已在 crate + examples 落地；控制层在线 talk 已在 fake-chat，离线仍以后。**不要**把登录、聊天写进 `TcpServer`。
+小册原文的四层（通信 → 容器 → 链路 → 控制）是**整套 IM 云**的分层。通信 / 容器 / 链路登录已在 crate 落地；控制层在线 talk、ACK、离线 Pull 已在 fake-chat。**不要**把登录、聊天写进 `TcpServer`。
 
 ## Crate 职责
 
@@ -42,7 +42,6 @@
 |---|---|---|
 | `kim-core` | trait、Frame、Channel、ChannelMap、超时默认值 | socket、具体编解码、JWT、SQL、Redis |
 | `kim-tcp` | `TcpListener`/`TcpStream`、长度前缀编解码、TcpServer/TcpClient | 「这是登录包」「这是群聊」 |
-| `examples/echo-*` | 最小业务：第一帧当名字、原文回声 | 假装自己是网关或 Chat 服务 |
 | `kim-ws` | WebSocket 的 `Conn` 实现 | 复制一套 ChannelMap；JWT |
 | `kim-protocol` | BasicPkt / LogicPkt / JWT HS256 | 再实现一遍 TCP 读写 |
 | `kim-router` | command → Handler、Context.Resp / Dispatch | Redis、TCP |
@@ -82,7 +81,7 @@ im/
   crates/kim-container     拨号、Young/Adult、转发
   crates/kim-router        指令 Router
   crates/kim-session       会话（Memory / 可选 Redis）
-  examples/                echo / ws-echo / fake-gateway / fake-chat / pkt-client
+  examples/                fake-gateway / fake-chat / pkt-client
   docs/                    本目录
   research/                可行性调研
 ```
@@ -93,7 +92,7 @@ im/
 
 - **Consul**：静态 Naming 已够本机 Demo；换实现时不要改 `TcpServer`
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
-- **控制层**：在线 talk 已在 fake-chat；离线、ACK、Royal 仍以后
+- **控制层**：在线 talk、ACK、Pull 离线已在 fake-chat；Royal HTTP、群 join/quit/detail、Web SDK 仍以后
 - **部署（以后）**：`kim.ainexc.com` 与 `minos.ainexc.com` 共存。本机跑通之前不上 VPS  
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。

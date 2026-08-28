@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use fake_chat::directory::MemoryGroupDirectory;
+use fake_chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use fake_chat::store::{open_message_store, PoolConfig};
 use fake_chat::ChatHandler;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
@@ -25,6 +28,14 @@ struct SelfSection {
     protocol: String,
     #[serde(default)]
     redis_url: String,
+    #[serde(default)]
+    database_url: String,
+    #[serde(default = "default_db_max_connections")]
+    db_max_connections: u32,
+    #[serde(default = "default_db_acquire_timeout_ms")]
+    db_acquire_timeout_ms: u64,
+    #[serde(default = "default_db_idle_timeout_secs")]
+    db_idle_timeout_secs: u64,
     #[serde(default = "default_snowflake_node")]
     snowflake_node: u16,
 }
@@ -33,8 +44,28 @@ fn default_snowflake_node() -> u16 {
     1
 }
 
+fn default_db_max_connections() -> u32 {
+    5
+}
+
+fn default_db_acquire_timeout_ms() -> u64 {
+    3000
+}
+
+fn default_db_idle_timeout_secs() -> u64 {
+    60
+}
+
 fn redis_url_from_env_or_cfg(cfg: &str) -> Option<String> {
     match std::env::var("REDIS_URL") {
+        Ok(s) if !s.trim().is_empty() => Some(s),
+        _ if !cfg.trim().is_empty() => Some(cfg.to_string()),
+        _ => None,
+    }
+}
+
+fn database_url_from_env_or_cfg(cfg: &str) -> Option<String> {
+    match std::env::var("DATABASE_URL") {
         Ok(s) if !s.trim().is_empty() => Some(s),
         _ if !cfg.trim().is_empty() => Some(cfg.to_string()),
         _ => None,
@@ -66,8 +97,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta: HashMap::new(),
     };
 
-    let cache =
-        open_session_store(redis_url_from_env_or_cfg(&cfg.this.redis_url).as_deref()).await?;
+    let redis_url = redis_url_from_env_or_cfg(&cfg.this.redis_url);
+    let cache = open_session_store(redis_url.as_deref()).await?;
+
+    let node = resolve_snowflake_node(Some(cfg.this.snowflake_node));
+    let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
+        Ok(g) => Arc::new(g),
+        Err(err) => {
+            tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
+            Arc::new(SequenceIdGen::new(10_001))
+        }
+    };
+    let store = open_message_store(
+        database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
+        redis_url.as_deref(),
+        idgen.clone(),
+        PoolConfig {
+            max_connections: cfg.this.db_max_connections.max(1),
+            acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
+            idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
+        },
+    )
+    .await?;
+    let groups = Arc::new(MemoryGroupDirectory::new(idgen));
 
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
     let container = Container::new(ContainerOpts {
@@ -81,10 +133,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: None,
     });
-    let handler = Arc::new(ChatHandler::new_with_node(
+    let handler = Arc::new(ChatHandler::with_seams(
         container.clone(),
         cache,
-        Some(cfg.this.snowflake_node),
+        store,
+        groups,
     ));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());

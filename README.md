@@ -2,7 +2,7 @@
 
 Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学后台：先把长连接、分帧、连接生命周期做对，再往上长业务包、服务发现和转发。
 
-当前本机可跑：**TCP echo**、**WebSocket echo**（第一帧仍是名字），以及 **假网关 + 假 Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、登录后再 echo）。默认会话是进程内 Memory，不需要 Redis / Docker / Consul。离线队列还没有。
+当前本机可跑：**假网关 + 假 Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
 
 ## 当前进度
 
@@ -12,27 +12,13 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 容器层 | 已落地 | `kim-naming`（静态配置）+ `kim-container`（Young → Adult 后 Forward） |
 | 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
 | 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
-| 控制层 | 在线已落地 | [docs/control-layer-chat.md](docs/control-layer-chat.md)：在线单聊 / 群聊（无离线、无 ACK） |
+| 控制层 | 在线 + 离线 Pull | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)：单聊 / 群聊 / ACK / 离线索引 |
 
 进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
 ## 本机怎么跑
 
 需要 [Rust](https://rustup.rs/)。工具链钉在 `rust-toolchain.toml`（当前 1.95.0），clone 之后 rustup 会自动用这个版本。
-
-TCP 回声（App / TGateway 路径，`:8000`，第一帧仍是名字）：
-
-```bash
-cargo run -p echo-server
-cargo run -p echo-client -- alice
-```
-
-WebSocket 回声（同一套 `EchoHandler`，换电线，第一帧仍是名字）：
-
-```bash
-cargo run -p ws-echo-server
-cargo run -p ws-echo-client -- alice
-```
 
 登录 Demo（Memory 会话。必须先 Chat 再网关，再客户端）：
 
@@ -71,7 +57,7 @@ KIM_PING_ONLY=1 cargo run -p pkt-client -- alice
 KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ```
 
-通信层 echo 的第一帧是名字；连 `fake-gateway` 的第一帧必须是 JWT `login.signin`。两条握手不要混：客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。
+连 `fake-gateway` 的第一帧必须是 JWT `login.signin`。客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。通信层「第一帧当名字」的回声只存在于 `crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs`，不要和登录握手混。
 
 ```bash
 env -u REDIS_URL cargo test --workspace
@@ -90,7 +76,7 @@ crates/kim-naming       静态服务发现（不是 Consul）
 crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
-examples/               echo / ws-echo / fake-gateway / fake-chat / pkt-client
+examples/               fake-gateway / fake-chat / pkt-client
 docs/                   词表、分层合同、登录与控制层规格
 ```
 
@@ -104,6 +90,7 @@ docs/                   词表、分层合同、登录与控制层规格
 4. [docs/protocol-container.md](docs/protocol-container.md) — 已落地的业务包与容器
 5. [docs/link-layer-login.md](docs/link-layer-login.md) — 登录、会话、互踢
 6. [docs/control-layer-chat.md](docs/control-layer-chat.md) — 在线单聊 / 群聊
+7. [docs/reliable-delivery.md](docs/reliable-delivery.md) — ACK / 写扩散 / 离线 Pull
 
 ## 开发
 

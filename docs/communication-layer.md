@@ -6,7 +6,7 @@
 
 - 说明书：`crates/kim-core/src/`
 - TCP：`crates/kim-tcp/src/`
-- 验收：`examples/echo-server`、`examples/echo-client`、`crates/kim-tcp/tests/echo.rs`
+- 验收：`crates/kim-tcp/tests/echo.rs`（TCP）、`crates/kim-ws/tests/echo.rs`（WS）。没有独立 echo 二进制。
 
 ## 这一层解决什么问题
 
@@ -72,7 +72,7 @@ Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► rece
 ### 4. echo 一条消息怎么走
 
 ```text
-echo-client                服务端
+测试里的 TcpClient            服务端
     │
     │  connect + 第一帧 "alice"
     │─────────────────────────────────────────► Acceptor 读出名字
@@ -162,7 +162,7 @@ TcpServer::start
 
 ## echo 执行链（已跑通）
 
-以 `cargo run -p echo-client -- alice` 发第一条 `hello 0`：
+以 `crates/kim-tcp/tests/echo.rs` 的回声发第一条 `hello 0`：
 
 1. Server `bind` 占用端口，内核开始 listen。  
 2. Client `connect`：内核三次握手；`IdentityDialer` 发第一帧，内容是 `"alice"`。  
@@ -173,7 +173,7 @@ TcpServer::start
 7. 写协程出队、写帧；Client `read` 打印 `hello 0 from server`。  
 8. 断开则 `Disconnect("alice")`。
 
-业务只出现在 3、6、8。中间全是通信层。JWT 登录在 `examples/fake-gateway` 的 Handler，**不**进 `TcpServer` / `WsServer`。echo 例子保持第一帧名字。
+业务只出现在 3、6、8。中间全是通信层。JWT 登录在 `examples/fake-gateway` 的 Handler，**不**进 `TcpServer` / `WsServer`。crate 测试里的 EchoHandler 仍用第一帧名字。
 
 ## 心跳
 
@@ -193,7 +193,6 @@ TcpServer::start
 ## 怎么验收通信层没坏
 
 ```bash
-cargo test
-cargo run -p echo-server          # 终端 1
-cargo run -p echo-client -- alice # 终端 2，应看到五条回声
+cargo test -p kim-tcp --test echo
+cargo test -p kim-ws --test echo
 ```

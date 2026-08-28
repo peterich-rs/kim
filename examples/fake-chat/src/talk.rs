@@ -134,6 +134,15 @@ pub async fn do_group_talk(ctx: Context, store: &dyn MessageStore, groups: &dyn 
     let group = ctx.header().dest.as_str();
     let send_time = unix_nano();
 
+    let members = match groups.members(&ctx.session().app, group).await {
+        Ok(m) => m,
+        Err(err) => {
+            warn!(%err, "group members failed");
+            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            return;
+        }
+    };
+
     let inserted = match store
         .insert_group(
             &ctx.session().app,
@@ -145,21 +154,13 @@ pub async fn do_group_talk(ctx: Context, store: &dyn MessageStore, groups: &dyn 
                 body: req.body.clone(),
                 extra: req.extra.clone(),
             },
+            &members,
         )
         .await
     {
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "insert_group failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
-        }
-    };
-
-    let members = match groups.members(&ctx.session().app, group).await {
-        Ok(m) => m,
-        Err(err) => {
-            warn!(%err, "group members failed");
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
             return;
         }
@@ -312,8 +313,35 @@ mod tests {
             &self,
             _app: &str,
             _req: &InsertMessage,
+            _members: &[String],
         ) -> Result<InsertResult, StoreError> {
             Err(StoreError::Backend("insert failed".into()))
+        }
+
+        async fn ack(
+            &self,
+            _app: &str,
+            _account: &str,
+            _message_id: i64,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn offline_index(
+            &self,
+            _app: &str,
+            _account: &str,
+            _message_id: i64,
+        ) -> Result<Vec<crate::store::MessageIndexRow>, StoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn offline_content(
+            &self,
+            _app: &str,
+            _message_ids: &[i64],
+        ) -> Result<Vec<crate::store::MessageContentRow>, StoreError> {
+            Ok(Vec::new())
         }
     }
 
@@ -908,7 +936,7 @@ mod tests {
             .collect();
         assert_eq!(resps.len(), 1);
         assert_eq!(resps[0].pkt.header.status, Status::SystemException as i32);
-        assert_eq!(store.recorded().len(), 1);
+        assert!(store.recorded().is_empty());
         assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
     }
 

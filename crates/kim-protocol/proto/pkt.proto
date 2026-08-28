@@ -96,3 +96,38 @@ message GroupCreateReq {
 message GroupCreateResp {
   string groupId = 1;
 }
+
+message MessageAckReq {
+  int64 messageId = 1;
+}
+
+message MessageIndex {
+  int64 messageId = 1;
+  int32 direction = 2;
+  int64 sendTime = 3;
+  string accountB = 4;
+  string group = 5;
+}
+
+message Message {
+  int64 messageId = 1;
+  int32 type = 2;
+  string body = 3;
+  string extra = 4;
+}
+
+message MessageIndexReq {
+  int64 messageId = 1;
+}
+
+message MessageIndexResp {
+  repeated MessageIndex indexes = 1;
+}
+
+message MessageContentReq {
+  repeated int64 messageIds = 1;
+}
+
+message MessageContentResp {
+  repeated Message messages = 1;
+}
