@@ -72,17 +72,8 @@ jobs:
           fi
           echo "deploying ${IMAGE}"
           # One remote argv so the login shell keeps quotes. Do not put GHCR_TOKEN
-          # on the ssh command line (it would show up in ps).
-          "${ssh_cmd[@]}" "$HOST" "IMAGE=$(printf %q "$IMAGE") bash -s" <<'EOS'
-set -euo pipefail
-cd /opt/kim/deploy
-umask 077
-tmp="$(mktemp)"
-grep -v '^KIM_IMAGE=' kim.env >"$tmp" || true
-printf 'KIM_IMAGE=%s\n' "$IMAGE" >>"$tmp"
-mv "$tmp" kim.env
-chmod 640 kim.env
-EOS
+          # on the ssh command line (it would show up in ps). A YAML heredoc here
+          # would un-indent and break the workflow file.
           printf '%s\n' "$GHCR_TOKEN" | "${ssh_cmd[@]}" "$HOST" \
-            "GHCR_USER=$(printf %q "$GHCR_USER") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER; exec bash /opt/kim/deploy/remote-up.sh'"
+            "IMAGE=$(printf %q "$IMAGE") GHCR_USER=$(printf %q "$GHCR_USER") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER IMAGE; exec bash /opt/kim/deploy/remote-up.sh'"
           rm -f "$HOME/.ssh/kim_deploy"
