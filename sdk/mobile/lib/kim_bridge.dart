@@ -1,4 +1,5 @@
 /// Dart shell around `kim-client` via flutter_rust_bridge 2.13.
+/// Session / login / talk stay in Rust. Do not expand FFI here.
 library;
 
 import 'src/rust/api/client.dart';
@@ -10,6 +11,10 @@ class KimBridge {
 
   static bool _inited = false;
   KimApi? _api;
+
+  /// Last WGateway URL passed to [connect]. Not a second source of truth —
+  /// [SettingsStore] persists it.
+  String? lastUrl;
 
   String get ffiStatus => 'FFI: kim-client via flutter_rust_bridge 2.13';
 
@@ -29,6 +34,7 @@ class KimBridge {
       throw StateError('url must be ws:// or wss:// (WGateway only)');
     }
     await _ensure();
+    lastUrl = url;
     _api = KimApi(url: url, token: token);
     return _api!.connect();
   }

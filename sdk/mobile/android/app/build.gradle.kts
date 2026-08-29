@@ -34,6 +34,8 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Flutter 3.47 enables R8 minify for release. Extra JNI/FRB keeps
+            // live in android/app/proguard-rules.pro (auto-picked up if present).
         }
     }
 }

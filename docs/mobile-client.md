@@ -63,6 +63,17 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 
 没有 NDK / Xcode 时仍可用 CLI 验证协议。
 
+### Flutter 壳现在有什么
+
+- `path_provider` → `KimPaths`（documents / support / cache / temp）。路径留在 Dart 侧，给以后 SQLite 用；**没有**把 data-dir 传进 FFI。
+- `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 只存上次 WGateway URL 和 dest account。
+- `connectivity_plus`：离线横幅。不是 Dart socket。
+- `permission_handler`：启动时最多问一次通知；相机 / 麦克风 / 相册 **不**在启动时请求。
+- `package_info_plus` / `intl` / `animations`：版本号、日志时间、Material motion。
+- 主题是 **Material 3**（跟随系统亮暗）+ `FadeThroughPageTransitionsBuilder`。不用 Cupertino 当 app theme，不用 Riverpod / Dio / `web_socket_channel`。
+- Android **main** `AndroidManifest` 声明 `INTERNET`（release WSS 以前缺这个会挂）。`usesCleartextTraffic` 仅 debug/profile，给本地 `ws://127.0.0.1:8001`。`allowBackup="false"`。
+- iOS `NSAllowsLocalNetworking`；**不**设 `NSAllowsArbitraryLoads`。相机 / 麦 / 相册的隐私文案先不写（还没有 picker，避免未使用 key 被拒）。
+
 ## 非目标
 
-改 `sdk/web`、deploy、TGateway、把 JWT 放进 Upgrade URL、在 `kim-ws` 里写登录。
+改 `sdk/web`、deploy、TGateway、把 JWT 放进 Upgrade URL、在 `kim-ws` 里写登录、Dart 侧 WebSocket / TCP / QUIC、Firebase / FCM、完整会话 UI、启动时要相机权限。
