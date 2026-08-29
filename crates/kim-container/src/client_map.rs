@@ -36,6 +36,10 @@ impl ClientMap {
         self.inner.remove(id)
     }
 
+    pub fn ids(&self) -> Vec<String> {
+        self.inner.keys().cloned().collect()
+    }
+
     pub fn adult_services(&self) -> Vec<DefaultRegistration> {
         let mut v: Vec<_> = self
             .inner

@@ -3,8 +3,8 @@
 对照小册第 25 章。本文只记仓库里的 `examples/kimbench`。
 
 ```bash
-cargo run -p fake-chat
-cargo run -p fake-gateway
+cargo run -p chat
+cargo run -p gateway
 cargo run -p kimbench -- login -c 20 -t 4
 cargo run -p kimbench -- user  -c 20 -t 4
 cargo run -p kimbench -- group -c 10 -t 2 -m 4 -p 0.5

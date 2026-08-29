@@ -2,21 +2,21 @@
 
 Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学后台：先把长连接、分帧、连接生命周期做对，再往上长业务包、服务发现和转发。
 
-当前本机可跑：**假网关 + 假 Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。Web 客户端是 `sdk/web`（TypeScript）或 `pkt-client`（Rust CLI）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。VPS 用 `deploy/compose.yml` 跑同一套进程加 Redis / Postgres，见 [docs/deploy.md](docs/deploy.md)。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
+当前本机可跑：**网关 + Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。Web 客户端是 `sdk/web`（TypeScript）或 `pkt-client`（Rust CLI）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。VPS 用 `deploy/compose.yml` 跑 gateway / chat / chat-gray / royal / router 加 Redis / Postgres / Consul，见 [docs/deploy.md](docs/deploy.md)。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
 
 ## 当前进度
 
 | 层 | 状态 | 仓库里对应什么 |
 |---|---|---|
 | 通信层 | 已落地 | `kim-core` + `kim-tcp` + `kim-ws`。TCP / WS 都履行 `Conn` |
-| 容器层 | 已落地 | `kim-naming`（静态配置）+ `kim-container`（Young → Adult 后 Forward） |
+| 容器层 | 已落地 | `kim-naming`（本机 StaticNaming；生产 Consul blocking watch）+ `kim-container`（Young → Adult 后 Forward） |
 | 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
 | 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
-| 控制层 | 在线 + 离线 + 群管理 | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)、[docs/group-royal.md](docs/group-royal.md) |
+| 控制层 | 在线 + 离线 + 群管理 + Royal | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)、[docs/group-royal.md](docs/group-royal.md) |
 | Web SDK | 已落地 | [docs/web-sdk.md](docs/web-sdk.md)：`sdk/web`，登录 / 收发 / 离线 / ACK / 群 |
 | 进阶 25–32 | 已落地 | [docs/bench.md](docs/bench.md)、[docs/perf.md](docs/perf.md)、[docs/routing.md](docs/routing.md)、[docs/gray.md](docs/gray.md)、[docs/observability.md](docs/observability.md)、[docs/deploy.md](docs/deploy.md)（Docker / GHCR） |
 
-进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
+进程：`pkt-client` → `gateway`（`:8001`）→ `chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
 ## 本机怎么跑
 
@@ -26,10 +26,10 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 
 ```bash
 # 终端 1
-RUST_LOG=info cargo run -p fake-chat
+RUST_LOG=info cargo run -p chat
 
 # 终端 2（等 Chat listen）
-RUST_LOG=info cargo run -p fake-gateway
+RUST_LOG=info cargo run -p gateway
 
 # 终端 3
 RUST_LOG=info cargo run -p pkt-client -- alice
@@ -48,8 +48,8 @@ KIM_TALK_TO=bob RUST_LOG=info cargo run -p pkt-client -- alice
 KIM_GROUP_MEMBERS=alice,bob,carol RUST_LOG=info cargo run -p pkt-client -- alice
 
 # 可选 Royal HTTP（先 Royal 再 Chat）
-RUST_LOG=info cargo run -p fake-royal
-ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p fake-chat
+RUST_LOG=info cargo run -p royal
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p chat
 
 # 互踢：终端 A 先 HOLD，终端 B 再登录同一账号
 KIM_HOLD=1 RUST_LOG=info cargo run -p pkt-client -- alice
@@ -65,7 +65,7 @@ KIM_PING_ONLY=1 cargo run -p pkt-client -- alice
 KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ```
 
-连 `fake-gateway` 的第一帧必须是 JWT `login.signin`。客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。通信层「第一帧当名字」的回声只存在于 `crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs`，不要和登录握手混。
+连 `gateway` 的第一帧必须是 JWT `login.signin`。客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。通信层「第一帧当名字」的回声只存在于 `crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs`，不要和登录握手混。
 
 ```bash
 env -u REDIS_URL cargo test --workspace
@@ -84,7 +84,8 @@ crates/kim-naming       静态服务发现（不是 Consul）
 crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
-examples/               fake-gateway / fake-tgateway / fake-chat / fake-royal / fake-router / pkt-client / kimbench
+services/               gateway / tgateway / chat / royal / router
+examples/               pkt-client / kimbench
 deploy/                 VPS Compose（gateway / chat / Redis / Postgres）
 sdk/web                 TypeScript Web SDK（第 23–24 章）
 docs/                   词表、分层合同、登录与控制层规格、进阶篇 as-built

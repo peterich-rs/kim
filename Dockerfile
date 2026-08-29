@@ -1,4 +1,4 @@
-# linux/amd64 image with fake-chat + fake-gateway.
+# linux/amd64 image with gateway / chat / royal / router.
 # Build: docker build -t ghcr.io/<owner>/kim:local .
 FROM rust:1.95.0-bookworm AS builder
 
@@ -9,14 +9,18 @@ RUN apt-get update \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
+COPY services ./services
 COPY examples ./examples
 
 ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0
 
-RUN cargo build --release -p fake-gateway \
-    && cargo build --release -p fake-chat --features redis,postgres \
-    && strip target/release/fake-gateway target/release/fake-chat
+RUN cargo build --release -p gateway --features consul \
+    && cargo build --release -p chat --features redis,postgres,consul \
+    && cargo build --release -p royal --features postgres,redis,consul \
+    && cargo build --release -p router --features consul \
+    && strip target/release/gateway target/release/chat \
+         target/release/royal target/release/router
 
 FROM debian:bookworm-slim
 
@@ -25,10 +29,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin kim
 
-COPY --from=builder /src/target/release/fake-gateway /usr/local/bin/fake-gateway
-COPY --from=builder /src/target/release/fake-chat /usr/local/bin/fake-chat
-COPY deploy/chat.toml deploy/gateway.toml /etc/kim/
+COPY --from=builder /src/target/release/gateway /usr/local/bin/gateway
+COPY --from=builder /src/target/release/chat /usr/local/bin/chat
+COPY --from=builder /src/target/release/royal /usr/local/bin/royal
+COPY --from=builder /src/target/release/router /usr/local/bin/router
+COPY deploy/chat.toml deploy/gateway.toml deploy/royal.toml deploy/router.toml /etc/kim/
 
 USER kim
 WORKDIR /
-CMD ["fake-chat", "/etc/kim/chat.toml"]
+CMD ["chat", "/etc/kim/chat.toml"]

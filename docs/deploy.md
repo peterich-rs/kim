@@ -7,8 +7,8 @@
 进程仍听 loopback。不要把 JWT 写进仓库。
 
 ```text
-fake-gateway :8001
-fake-chat    :8002
+gateway :8001
+chat    :8002
 ```
 
 可选本机基础设施（旧习惯，不是默认 Demo）：
@@ -22,13 +22,15 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 ## Docker 栈（一台干净的 VPS）
 
-`deploy/compose.yml` 自带 chat、gateway、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口，只在 compose 网络里。网关映射 `127.0.0.1:8001`，给宿主机反代用。
+`deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul UI `127.0.0.1:8500`。
+
+已有 VPS 的 `kim.env` **不会**被 `bootstrap.sh` 改写。部署新栈前手工确认容器环境（compose 已注入 `ROYAL_URL` / `CONSUL_HTTP_ADDR`）。Chat **不再**直连 `DATABASE_URL`。
 
 | 路径 | 用途 |
 |---|---|
-| `Dockerfile` | `fake-chat` + `fake-gateway`（`--features redis,postgres`） |
+| `Dockerfile` | gateway / chat / royal / router（`consul` + chat/royal 的 redis,postgres） |
 | `deploy/compose.yml` | 生产栈 |
-| `deploy/chat.toml` / `gateway.toml` | 容器内配置（听 `0.0.0.0`） |
+| `deploy/chat.toml` / `gateway.toml` / `royal.toml` / `router.toml` | 容器内配置（听 `0.0.0.0`） |
 | `deploy/kim.env.example` | 环境变量模板；真正的 `kim.env` 只活在 VPS |
 | `deploy/Caddyfile` | `--profile edge` 时栈自己占 80/443 |
 | `deploy/bootstrap.sh` | 第一次在 VPS 上生成 `kim.env`（不打印密钥） |

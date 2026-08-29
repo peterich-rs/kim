@@ -217,7 +217,7 @@ async function connect(): Promise<void> {
     const raw = err?.message ?? "登录失败";
     const hint =
       raw.includes("timeout") || raw.includes("closed") || raw.includes("unreachable")
-        ? `${raw}。先停掉假进程，按 fake-chat → fake-gateway 顺序再起。`
+        ? `${raw}。先停掉假进程，按 chat → gateway 顺序再起。`
         : raw;
     setStatus(hint, "bad");
     return;

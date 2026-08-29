@@ -170,13 +170,19 @@ impl TcpClient {
     }
 
     pub async fn close(&mut self) -> Result<(), Error> {
+        self.shutdown().await?;
+        self.reader.take();
+        Ok(())
+    }
+
+    /// Close the write half without `&mut self` so `Arc<TcpClient>` can drop a slot.
+    pub async fn shutdown(&self) -> Result<(), Error> {
         self.connected.store(false, Ordering::SeqCst);
-        if let Some(writer) = self.writer.take() {
+        if let Some(writer) = &self.writer {
             let mut guard = writer.lock().await;
             let _ = guard.write_frame(OpCode::Close, Bytes::new()).await;
             let _ = guard.shutdown().await;
         }
-        self.reader.take();
         Ok(())
     }
 }

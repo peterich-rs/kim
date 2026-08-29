@@ -35,6 +35,8 @@ REDIS_URL=redis://redis:6379/0
 RUST_LOG=info
 KIM_DOMAIN=kim.ainexc.com
 CADDY_EMAIL=ops@example.com
+ROYAL_URL=http://royal:8080
+CONSUL_HTTP_ADDR=http://consul:8500
 EOF
 chmod 640 "$DEPLOY_DIR/kim.env"
 

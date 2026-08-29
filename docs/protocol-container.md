@@ -3,7 +3,7 @@
 面向：刚学后台、靠复刻 KIM 入门的工程师。  
 本文记录 **已经实现的** WebSocket `Conn`、Magic/BasicPkt/LogicPkt、静态 Naming 与 Container。登录 JWT、会话、互踢见 [link-layer-login.md](link-layer-login.md)。`MessageReq` / `MessageResp` / `MessagePush` 与 talk 指令见 [control-layer-chat.md](control-layer-chat.md)，本文不展开。本文不含 Consul、VPS、Royal。
 
-crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧名字。`pkt-client` → `fake-gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"` 或 `echo-server`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。echo 二进制已删，验收走 crate 测试。
+crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧名字。`pkt-client` → `gateway` 已改为 JWT `login.signin`；下文若仍写 utf8 `"alice"` 或 `echo-server`，那是 **M2 当时的 Demo 历史**，以 [link-layer-login.md](link-layer-login.md) 和根 README 为准。echo 二进制已删，验收走 crate 测试。
 
 阅读前请先扫 [glossary.md](glossary.md) 和 [communication-layer.md](communication-layer.md)。本文出现的新词会在第一次使用时解释。
 
@@ -113,8 +113,8 @@ Cloudflare 橙云 **不转发任意 TCP**：这只决定公网 **怎么暴露** 
 ### 3.1 进程与电线（本机 Demo）
 
 ```
-pkt-client（Web 客户端）        fake-gateway（WGateway）          fake-chat
-(examples/pkt-client)          (examples/fake-gateway)           (examples/fake-chat)
+pkt-client（Web 客户端）        gateway（WGateway）          chat
+(examples/pkt-client)          (services/gateway)           (services/chat)
                                WsServer :8001                    TcpServer :8002
                                ChannelMap（Web 客户端）           ChannelMap（网关连进来）
                                Container                         Container（无 deps）
@@ -136,7 +136,7 @@ App / TGateway 路径（已有，本阶段保持）：
 |---|---|---|
 | Web 客户端 → WGateway | WebSocket | HTTP Upgrade，然后第一帧 LogicPkt `login.signin` + JWT。echo 路径仍用名字字符串。 |
 | 网关 → Chat | TCP（`kim-tcp`） | TCP 连上后第一帧 Binary = protobuf `InnerHandshakeReq { service_id }`。Chat 的 `Acceptor` 读出来当 channel_id。 |
-| App 客户端 → TGateway | TCP（`kim-tcp`） | `examples/fake-tgateway` `:8003`，与 WGateway 共用 `run_gateway`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
+| App 客户端 → TGateway | TCP（`kim-tcp`） | `services/tgateway` `:8003`，与 WGateway 共用 `run_gateway`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
 
 服务之间 **只允许 TCP**。不要给 Chat 再开一个 WS 口。  
 Web 进网关走 WS；App 进网关走 TCP。Demo 的 `pkt-client` 只扮演 Web，**不要求 App 改用 WS**。
@@ -148,7 +148,7 @@ pkt-client
   │  WS Binary 帧，payload =
   │  MagicLogicPkt + header_len + Header(protobuf) + body
   ▼
-fake-gateway 读专员
+gateway 读专员
   │  Channel 已把 WS Ping/Pong/Close 吃掉
   │  MessageListener 拿到 payload
   │  kim_protocol::read() 认出 LogicPkt
@@ -160,13 +160,13 @@ container.forward("chat")
   │  只在 Adult 实例里 HashSelector(channel_id)（列表按 service_id 排序）
   │  TcpClient.send(完整 payload)
   ▼
-fake-chat 读专员
+chat 读专员
   │  MustReadLogicPkt（不是 Logic 就 warn 丢掉）
   │  command == chat.demo.echo → Flag=Response，原 sequence，原 body
   │  Meta dest.server="wg-1"  dest.channels="wg-1_alice_N"
   │  container.push("wg-1", pkt)   // 内部 server.push，Handler 不直接摸 Server
   ▼
-fake-gateway 的 Client 读循环（容器内部）
+gateway 的 Client 读循环（容器内部）
   │  校验 dest.server == 自己
   │  按 dest.channels 拆开，ChannelMap.get("wg-1_alice_N").push
   ▼
@@ -179,14 +179,14 @@ pkt-client 收到 LogicPkt，sequence 相同，Flag=Response
 pkt-client  BasicPkt ping
     │
     ▼
-fake-gateway  receive
+gateway  receive
     │  认出 MagicBasicPkt，code=1
     │  立刻 agent.push(BasicPkt pong)
     │  return          ← 不调用 Forward
     ▼
 pkt-client  收到 pong
 
-fake-chat 的日志里不允许出现这条 ping。
+chat 的日志里不允许出现这条 ping。
 ```
 
 ### 3.4 新 crate 在仓库里的位置
@@ -201,8 +201,8 @@ im/
   crates/kim-container     新增。托管 Server、拨号、Forward/Push
   examples/echo-*          已有。TCP 回声 = App/TGateway 路径，回归用
   examples/ws-echo-*       新增。同一 EchoHandler，Web/WS 传输
-  examples/fake-gateway    新增。M2 假 **WGateway**（Web）
-  examples/fake-chat       新增。M2 假 Chat
+  services/gateway    新增。M2 假 **WGateway**（Web）
+  services/chat       新增。M2 假 Chat
   examples/pkt-client      新增。Web 客户端：发 ping + LogicPkt（ws://）
   proto/pkt.proto          新增。给 kim-protocol 的 build.rs 用
                            （也可以放 crates/kim-protocol/proto/pkt.proto）
@@ -270,8 +270,8 @@ members = [
     "examples/echo-client",
     "examples/ws-echo-server",
     "examples/ws-echo-client",
-    "examples/fake-gateway",
-    "examples/fake-chat",
+    "services/gateway",
+    "services/chat",
     "examples/pkt-client",
 ]
 
@@ -783,7 +783,7 @@ pub trait Naming: Send + Sync {
 TOML **只在 examples 里解析**，不放进 `kim-naming`。示意结构（约 15 行）：
 
 ```rust
-// examples/fake-gateway/src/config.rs
+// services/gateway/src/config.rs
 #[derive(Deserialize)]
 struct File {
     #[serde(rename = "self")]
@@ -804,7 +804,7 @@ struct SelfSection {
 // identity.public_address 可空：空则 Container 跳过 naming.register
 ```
 
-`examples/fake-gateway/config.toml`：
+`services/gateway/config.toml`：
 
 ```toml
 [self]
@@ -821,7 +821,7 @@ public_address = "127.0.0.1"
 public_port = 8002
 ```
 
-`examples/fake-chat/config.toml`：
+`services/chat/config.toml`：
 
 ```toml
 [self]
@@ -894,7 +894,7 @@ impl Container {
 
 Chat 进程同样 6 步，Handler 调 `container.push("wg-1", resp)`，deps 为空。
 
-`examples/fake-*` 的 `main`：`tokio::signal::ctrl_c` 之后 `container.shutdown()`。单测断言完也调 `shutdown()`，不要发 SIGINT。允许 `spawn(start)` 后立刻 `shutdown()`，中间不必 sleep：Container 用 closed+Notify；**还要**再调一次 `server.shutdown()`（见 6.3.5），因为 `TcpServer` 自己的 accept 循环是另一把 Notify。
+`services/gateway` / `services/chat` 的 `main`：`tokio::signal::ctrl_c` 之后 `container.shutdown()`。单测断言完也调 `shutdown()`，不要发 SIGINT。允许 `spawn(start)` 后立刻 `shutdown()`，中间不必 sleep：Container 用 closed+Notify；**还要**再调一次 `server.shutdown()`（见 6.3.5），因为 `TcpServer` 自己的 accept 循环是另一把 Notify。
 
 `shutdown()`：置 `closed`、`server.shutdown()`、unsubscribe、deregister、关掉 ClientMap 里的 TcpClient、唤醒 `start`。
 
@@ -1039,7 +1039,7 @@ match connect(dial_url) {
 
 调用方：`Ok(true)` 才 `sleep` + CAS；`get(id)==None` 直接返回。禁止对空 slot `unwrap`。
 
-本阶段不做重试/backoff。Chat 后于网关启动且 StaticNaming 不再变化时，成功路径要求 **先起 fake-chat 再起 fake-gateway**（写进 §9.5）。断言 7「只起 gateway」依赖这条：dial 失败 → 空 Adult → ServiceUnavailable，进程还在听 WS。
+本阶段不做重试/backoff。Chat 后于网关启动且 StaticNaming 不再变化时，成功路径要求 **先起 chat 再起 gateway**（写进 §9.5）。断言 7「只起 gateway」依赖这条：dial 失败 → 空 Adult → ServiceUnavailable，进程还在听 WS。
 
 `InnerTcpDialer`（`dialer.rs`）：
 
@@ -1088,11 +1088,11 @@ server.push(gateway_id, marshal(Logic(pkt)))
 
 网关 Handler 只调 `container.forward`；Chat Handler 只调 `container.push`。不要让 Handler 摸 `server` 字段。
 
-### 6.4 WGateway Handler（只存在于 `examples/fake-gateway`）
+### 6.4 WGateway Handler（只存在于 `services/gateway`）
 
 不要写进 `WsServer`。这是 **Web** 网关的业务插槽，不是 TGateway。
 
-**已被 M3 替换：** `fake-gateway` Accept 第一帧必须是 LogicPkt `login.signin` + JWT，生成 `wg-1_{account}_{seq}`，**不**再把 utf8 `"alice"` 当 channel_id。identity 第一帧仍用于 crate 测试：`kim-tcp/tests/echo.rs`、`kim-ws/tests/echo.rs`、`kim-container/tests/e2e_echo.rs`。详见 [link-layer-login.md](link-layer-login.md) §7。
+**已被 M3 替换：** `gateway` Accept 第一帧必须是 LogicPkt `login.signin` + JWT，生成 `wg-1_{account}_{seq}`，**不**再把 utf8 `"alice"` 当 channel_id。identity 第一帧仍用于 crate 测试：`kim-tcp/tests/echo.rs`、`kim-ws/tests/echo.rs`、`kim-container/tests/e2e_echo.rs`。详见 [link-layer-login.md](link-layer-login.md) §7。
 
 M2 当时的 Accept（历史，已被登录 Demo 换掉）：
 
@@ -1116,7 +1116,7 @@ Disconnect:
 
 不要写「丢掉 Text 帧」：`ChannelReadLoop` 不把 opcode 传给 Handler，本阶段也不改 `kim-core`。业务包 **约定** 用 Binary；误发 Text 只要 Magic 不对就会 warn 丢弃。echo 例子不解析 Magic，Text 仍可回声。
 
-### 6.5 Chat Handler（只存在于 `examples/fake-chat`）
+### 6.5 Chat Handler（只存在于 `services/chat`）
 
 **已被登录 Demo 替换：** 现 Receive 走 Router + 会话（`login.signin` / `login.signout` / `chat.demo.echo`）。下面是 M2 当时只回 echo 的历史。当前逻辑见 [link-layer-login.md](link-layer-login.md)。
 
@@ -1291,10 +1291,10 @@ cargo test -p kim-ws --test echo
 
 ```bash
 # 终端 1
-RUST_LOG=info cargo run -p fake-chat
+RUST_LOG=info cargo run -p chat
 
 # 终端 2（等 Chat listen 之后）
-RUST_LOG=info cargo run -p fake-gateway
+RUST_LOG=info cargo run -p gateway
 
 # 终端 3
 RUST_LOG=info cargo run -p pkt-client -- alice          # URL 默认 ws://127.0.0.1:8001/
@@ -1311,9 +1311,9 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 | 1 | pkt-client 退出码 0 |
 | 2 | 客户端收到 BasicPkt pong（code=2） |
 | 3 | 客户端收到 LogicPkt，`sequence == 1`，`flag == Response`，body 为 `hello` |
-| 4 | fake-gateway 日志含 `basic ping` / `local pong` |
-| 5 | fake-chat 日志含 `chat recv logic` 且 command=`chat.demo.echo` |
-| 6 | fake-chat 日志 **不含** `ping`、`MagicBasicPkt`、`basic pkt` |
+| 4 | gateway 日志含 `basic ping` / `local pong` |
+| 5 | chat 日志含 `chat recv logic` 且 command=`chat.demo.echo` |
+| 6 | chat 日志 **不含** `ping`、`MagicBasicPkt`、`basic pkt` |
 | 7 | 只起 gateway、不起 chat：`KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice` 收到 Response `status == ServiceUnavailable`；ping 仍在网关本地回。网关进程必须还在听（dial 失败不 abort `start`） |
 
 进程内集成测试放 `crates/kim-container/tests/e2e_echo.rs`（**PR5 才加**；给 `kim-container` 增加 **dev-dependency** `kim-ws`，生产依赖始终没有 kim-ws）：
@@ -1488,7 +1488,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 
 - **标题：** `feat(demo): fake WGateway and Chat with BasicPkt local ping`
 - **文件 / 组件：**  
-  `examples/fake-gateway/**`、`fake-chat/**`、`pkt-client/**`（`publish = false`，TOML 解析在 example）  
+  `services/gateway/**`、`services/chat/**`、`examples/pkt-client/**`（`publish = false`）  
   `crates/kim-container/tests/e2e_echo.rs`  
   `kim-container` **dev-dependencies** += `kim-ws`（只在这一 PR 加）
 - **依赖：** PR1–PR4
@@ -1520,7 +1520,7 @@ Reviewer 看 PR1 只问「EchoHandler 换电线是否仍通」；看 PR5 只问�
 | 进程 | 监听 |
 |---|---|
 | echo-server（已有，App/TGateway 路径） | `127.0.0.1:8000` TCP |
-| ws-echo-server / fake-gateway（Web / WGateway） | `127.0.0.1:8001` WS |
-| fake-chat | `127.0.0.1:8002` TCP |
+| ws-echo-server / gateway（Web / WGateway） | `127.0.0.1:8001` WS |
+| chat | `127.0.0.1:8002` TCP |
 
 端口冲突时 examples 用第一个 CLI 参数覆盖，和现在 `echo-server` 一样。

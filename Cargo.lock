@@ -292,6 +292,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "gateway",
+ "kim-container",
+ "kim-core",
+ "kim-metrics",
+ "kim-naming",
+ "kim-protocol",
+ "kim-router",
+ "kim-session",
+ "kim-tcp",
+ "kim-ws",
+ "kimbench",
+ "pkt-client",
+ "prost",
+ "redis",
+ "reqwest",
+ "royal",
+ "serde",
+ "snowflake_me",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -563,107 +595,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fake-chat"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "fake-gateway",
- "fake-royal",
- "kim-container",
- "kim-core",
- "kim-metrics",
- "kim-naming",
- "kim-protocol",
- "kim-router",
- "kim-session",
- "kim-tcp",
- "kim-ws",
- "kimbench",
- "pkt-client",
- "prost",
- "redis",
- "reqwest",
- "serde",
- "snowflake_me",
- "sqlx",
- "thiserror 2.0.20",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fake-gateway"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "crc32fast",
- "kim-container",
- "kim-core",
- "kim-metrics",
- "kim-naming",
- "kim-protocol",
- "kim-ws",
- "serde",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fake-router"
-version = "0.1.0"
-dependencies = [
- "axum",
- "crc32fast",
- "kim-metrics",
- "kim-naming",
- "kim-protocol",
- "prometheus",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "toml",
- "tower",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fake-royal"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bytes",
- "fake-chat",
- "kim-protocol",
- "prost",
- "serde",
- "thiserror 2.0.20",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fake-tgateway"
-version = "0.1.0"
-dependencies = [
- "fake-gateway",
- "kim-tcp",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -808,6 +739,26 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "crc32fast",
+ "kim-container",
+ "kim-core",
+ "kim-metrics",
+ "kim-naming",
+ "kim-protocol",
+ "kim-ws",
+ "serde",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1284,11 +1235,13 @@ name = "kim-naming"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1718,6 +1671,8 @@ dependencies = [
  "kim-core",
  "kim-protocol",
  "kim-ws",
+ "reqwest",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2124,6 +2079,47 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "router"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "crc32fast",
+ "kim-metrics",
+ "kim-naming",
+ "kim-protocol",
+ "prometheus",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "toml",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "royal"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chat",
+ "kim-naming",
+ "kim-protocol",
+ "prost",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2700,6 +2696,17 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tgateway"
+version = "0.1.0"
+dependencies = [
+ "gateway",
+ "kim-tcp",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

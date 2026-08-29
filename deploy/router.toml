@@ -1,0 +1,18 @@
+[self]
+listen = "0.0.0.0:8088"
+default_location = "default"
+default_region = "local"
+consul_url = ""
+public_address = "router"
+public_port = 8088
+service_id = "router-1"
+
+[[mapping]]
+country = "default"
+region = "local"
+
+[[regions]]
+id = "local"
+[[regions.idcs]]
+id = "local"
+weight = 100

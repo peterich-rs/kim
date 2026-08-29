@@ -10,7 +10,7 @@
 
 ## 包
 
-路径：`sdk/web`。连 `fake-gateway` 的 WebSocket（本机 `ws://127.0.0.1:8001/`）。
+路径：`sdk/web`。连 `gateway` 的 WebSocket（本机 `ws://127.0.0.1:8001/`）。
 
 ```ts
 const cli = new KIMClient(gatewayURL, { token })
@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。H5 demo：Vite 本机仍用 `mint.ts` 本地密钥；公网页 `POST /api/{app}/token`（Royal）。`pkt-client` 可设 `KIM_TOKEN_URL`，失败则回退本地 `generate`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
 
@@ -102,8 +102,8 @@ SDK **不发** `login.signout`；断开由网关 Disconnect 转发。
 cd sdk/web
 npm ci
 npm test
-# 需要已编译的 fake-chat / fake-gateway：
-cargo build -p fake-chat -p fake-gateway
+# 需要已编译的 chat / gateway：
+cargo build -p chat -p gateway
 npm run test:e2e
 ```
 
@@ -115,10 +115,10 @@ e2e 自己起临时端口，不占用 `:8001`。
 
 ```bash
 # 终端 1
-RUST_LOG=info cargo run -p fake-chat
+RUST_LOG=info cargo run -p chat
 
 # 终端 2
-RUST_LOG=info cargo run -p fake-gateway
+RUST_LOG=info cargo run -p gateway
 
 # 终端 3
 cd sdk/web && npm run demo
@@ -131,7 +131,7 @@ cd sdk/web && npm run demo
 
 点「连接」后互发。同一账号两个标签会互踢。Demo 用 `DEMO_DEFAULT_SECRET` 在页面里签 JWT，只适合本机；生产必须由自家后端签 Token。
 
-网关默认绑 `127.0.0.1`，手机访问 Vite 也连不上本机网关。要对手机玩，把 `fake-gateway` 的 listen 改成 `0.0.0.0:8001`，页面网关填 `ws://电脑局域网IP:8001/`。
+网关默认绑 `127.0.0.1`，手机访问 Vite 也连不上本机网关。要对手机玩，把 `gateway` 的 listen 改成 `0.0.0.0:8001`，页面网关填 `ws://电脑局域网IP:8001/`。
 
 网关连 Chat 的内连会发心跳（30s）。如果 Chat 已经死掉，页面会停在「连接中」直到超时；这时按 **先 Chat 再网关** 重启两个进程。
 
@@ -139,4 +139,4 @@ cd sdk/web && npm run demo
 
 ## 非目标
 
-把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。TGateway 是 `examples/fake-tgateway`（TCP + 同一套 `GatewayHandler`），不是第二套 SDK。
+把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。TGateway 是 `services/tgateway`（TCP + 同一套 `GatewayHandler`），不是第二套 SDK。

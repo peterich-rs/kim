@@ -1,0 +1,12 @@
+[self]
+listen = "0.0.0.0:8080"
+snowflake_node = 10
+service_id = "royal-1"
+service_name = "royal"
+public_address = "royal"
+public_port = 8080
+consul_url = ""
+database_url = ""
+redis_url = ""
+jwt_secret = ""
+token_ttl_secs = 86400

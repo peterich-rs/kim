@@ -70,6 +70,41 @@ fn now_ts() -> i64 {
         .unwrap_or(0)
 }
 
+async fn mint_token(secret: &str, account: &str) -> Result<String, Error> {
+    if let Ok(base) = std::env::var("KIM_TOKEN_URL") {
+        let base = base.trim().trim_end_matches('/');
+        if !base.is_empty() {
+            match fetch_token(base, account).await {
+                Ok(t) => return Ok(t),
+                Err(err) => tracing::warn!(%err, "KIM_TOKEN_URL failed; local generate"),
+            }
+        }
+    }
+    generate(secret, account, "kim", now_ts() + 86400).map_err(|e| Error::Handshake(e.to_string()))
+}
+
+async fn fetch_token(base: &str, account: &str) -> Result<String, Error> {
+    let app = std::env::var("KIM_APP").unwrap_or_else(|_| "kim".into());
+    let url = format!("{base}/api/{app}/token");
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({ "account": account }))
+        .send()
+        .await
+        .map_err(|e| Error::Handshake(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(Error::Handshake(format!("token status {}", resp.status())));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| Error::Handshake(e.to_string()))?;
+    v.get("token")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| Error::Handshake("token missing".into()))
+}
+
 pub struct LoginDialer {
     secret: String,
     bad_token: bool,
@@ -109,8 +144,7 @@ impl WsDialer for LoginDialer {
         let token = if self.bad_token {
             "not-a-jwt".to_string()
         } else {
-            generate(&self.secret, &ctx.id, "kim", now_ts() + 86400)
-                .map_err(|e| Error::Handshake(e.to_string()))?
+            mint_token(&self.secret, &ctx.id).await?
         };
         let channel_id = perform_login(&mut conn, token).await?;
         self.store_channel_id(channel_id);

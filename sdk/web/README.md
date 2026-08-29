@@ -1,6 +1,6 @@
 # @kim/web-sdk
 
-TypeScript 客户端，连本仓库的 `fake-gateway`（WebSocket）。对照小册第 23–24 章；线格式以 `kim-protocol` 为准，见 [docs/web-sdk.md](../../docs/web-sdk.md)。
+TypeScript 客户端，连本仓库的 `gateway`（WebSocket）。对照小册第 23–24 章；线格式以 `kim-protocol` 为准，见 [docs/web-sdk.md](../../docs/web-sdk.md)。
 
 需要 Node 22+（自带 `WebSocket`）。浏览器同样用全局 `WebSocket`。
 
@@ -23,14 +23,14 @@ await cli.talkToUser("bob", new Content("hello"));
 await cli.logout();
 ```
 
-本机网关：先 `cargo run -p fake-chat`，再 `cargo run -p fake-gateway`。Demo 密钥与 `kim_protocol::DEMO_DEFAULT_SECRET` 相同，见 `examples/pkt-client`。
+本机网关：先 `cargo run -p chat`，再 `cargo run -p gateway`。Demo 密钥与 `kim_protocol::DEMO_DEFAULT_SECRET` 相同，见 `examples/pkt-client`。
 
 ## 浏览器里点
 
 ```bash
 # 终端 1–2：先 Chat 再网关
-cargo run -p fake-chat
-cargo run -p fake-gateway
+cargo run -p chat
+cargo run -p gateway
 
 # 终端 3
 cd sdk/web && npm run demo
@@ -43,7 +43,7 @@ cd sdk/web && npm run demo
 ```bash
 npm ci
 npm test
-cargo build -p fake-chat -p fake-gateway   # 仅 e2e
+cargo build -p chat -p gateway   # 仅 e2e
 npm run test:e2e
 npm run gen-proto   # proto 变更后重生成 src/proto/pkt.json
 ```

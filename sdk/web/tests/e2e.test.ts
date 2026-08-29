@@ -103,7 +103,7 @@ function sdk(url: string, account: string): KIMClient {
   return cli;
 }
 
-describe.skipIf(!enabled)("sdk e2e against fake-gateway", () => {
+describe.skipIf(!enabled)("sdk e2e against gateway", () => {
   let chat: ChildProcess;
   let gw: ChildProcess;
   let url = "";
@@ -142,8 +142,8 @@ public_address = "127.0.0.1"
 public_port = ${chatPort}
 `,
     );
-    const chatBin = path.join(repoRoot, "target/debug/fake-chat");
-    const gwBin = path.join(repoRoot, "target/debug/fake-gateway");
+    const chatBin = path.join(repoRoot, "target/debug/chat");
+    const gwBin = path.join(repoRoot, "target/debug/gateway");
     chat = await startBin(chatBin, [chatCfg], "tcp server listening");
     procs.push(chat);
     gw = await startBin(gwBin, [gwCfg], "ws server listening");
