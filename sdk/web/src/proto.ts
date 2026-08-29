@@ -102,6 +102,7 @@ export interface ContentBody {
   type: number;
   body: string;
   extra: string;
+  clientId?: string;
 }
 
 export function encodeMessageReq(c: ContentBody): Uint8Array {

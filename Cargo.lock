@@ -317,6 +317,7 @@ name = "chat"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "bytes",
  "gateway",
  "kim-container",
@@ -774,8 +775,11 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-session",
  "kim-ws",
+ "prost",
  "redis",
+ "reqwest",
  "serde",
  "tokio",
  "toml",
@@ -1354,6 +1358,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1710,6 +1715,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ pub const SN_LOGIN: &str = "chat";
 
 pub const CMD_LOGIN_SIGN_IN: &str = "login.signin";
 pub const CMD_LOGIN_SIGN_OUT: &str = "login.signout";
+pub const CMD_LOGIN_RENEW: &str = "login.renew";
 pub const CMD_DEMO_ECHO: &str = "chat.demo.echo";
 pub const CMD_CHAT_USER_TALK: &str = "chat.user.talk";
 pub const CMD_CHAT_GROUP_TALK: &str = "chat.group.talk";

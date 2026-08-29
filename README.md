@@ -30,17 +30,17 @@ cd sdk/web && npm run app
 
 打开 http://127.0.0.1:5173/ 。Vite 把 `/api` 代理到 `https://kim.ainexc.com`，长连接走 `wss://kim.ainexc.com/`。
 
-本机全套（Memory。先 Royal，再 Chat，再网关，再页面）：
+本机全套（先 Royal，再 Chat，再网关，再页面。Chat / 网关要能访问 Royal，否则私聊 dest 会 108、logout 踢不掉长连接）：
 
 ```bash
 # 终端 1
-RUST_LOG=info cargo run -p royal
+CHAT_URL=http://127.0.0.1:9002 RUST_LOG=info cargo run -p royal
 
 # 终端 2
-RUST_LOG=info cargo run -p chat
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p chat
 
 # 终端 3
-RUST_LOG=info cargo run -p gateway
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p gateway
 
 # 终端 4
 cd sdk/web && npm run app:local

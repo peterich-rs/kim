@@ -215,6 +215,7 @@ async fn talk_once(
         r#type: MESSAGE_TYPE_TEXT,
         body: "bench".into(),
         extra: String::new(),
+        client_id: uuid::Uuid::new_v4().to_string(),
     });
     conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
         .await?;

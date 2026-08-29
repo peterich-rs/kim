@@ -7,6 +7,7 @@ use chat::directory::MemoryGroupDirectory;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::royal::http_backends;
 use chat::store::{open_message_store, PoolConfig};
+use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
@@ -192,7 +193,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(SequenceIdGen::new(10_001))
         }
     };
-    let (store, groups) = if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
+    let (store, groups, users) = if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url)
+    {
         http_backends(&royal)?
     } else {
         let store = open_message_store(
@@ -208,7 +210,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
         let groups: Arc<dyn chat::directory::GroupDirectory> =
             Arc::new(MemoryGroupDirectory::new(idgen));
-        (store, groups)
+        let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
+        (store, groups, users)
     };
 
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
@@ -223,22 +226,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: vec![],
     });
-    let handler = Arc::new(ChatHandler::with_filter(
+    let handler = Arc::new(ChatHandler::with_users(
         container.clone(),
         cache,
         store,
         groups,
         zone,
         chat::builtin_talk_filter(cfg.this.sensitive_words, cfg.this.blocked_image),
+        users,
     ));
     if !cfg.this.metrics_listen.is_empty() {
-        if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {
-            handler.with_metrics(m.clone());
-            if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {
-                tokio::spawn(async move {
-                    let _ = kim_metrics::serve(addr, m.registry()).await;
-                });
+        if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {
+            let mut http = chat::admin_router(handler.admin());
+            if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {
+                handler.with_metrics(m.clone());
+                http = http.merge(kim_metrics::router(m.registry()));
             }
+            tokio::spawn(async move {
+                let _ = chat::serve_admin(addr, http).await;
+            });
         }
     }
     server.set_acceptor(handler.clone());

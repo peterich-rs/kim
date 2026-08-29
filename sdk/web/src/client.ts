@@ -5,6 +5,7 @@ import { Content, Message, Response, type LoginBody, type TalkResult } from "./m
 import { OfflineMessages, type ContentLoader } from "./offline";
 import { BasicPkt, LogicPkt, readPacket } from "./packet";
 import {
+  decodeAuthResp,
   decodeContentResp,
   decodeGroupCreateNotify,
   decodeGroupCreateResp,
@@ -140,6 +141,7 @@ export class KIMClient implements ContentLoader {
     /* warn once in constructor */
   };
   private groupCreateCallback: ((groupId: string, members: string[]) => void) | undefined;
+  private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private lastMessage: Message | undefined;
   private unack = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -185,6 +187,14 @@ export class KIMClient implements ContentLoader {
 
   ongroupcreate(cb: (groupId: string, members: string[]) => void): void {
     this.groupCreateCallback = cb;
+  }
+
+  ontoken(cb: (token: string, exp: number) => void): void {
+    this.tokenCallback = cb;
+  }
+
+  get token(): string {
+    return this.req.token;
   }
 
   async login(): Promise<{ success: boolean; err?: Error }> {
@@ -389,10 +399,14 @@ export class KIMClient implements ContentLoader {
     req: Content,
     retry: number,
   ): Promise<TalkResult> {
+    const clientId =
+      globalThis.crypto?.randomUUID?.() ??
+      `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
     const body = encodeMessageReq({
       type: req.type,
       body: req.body,
       extra: req.extra,
+      clientId,
     });
     for (let i = 0; i < retry + 1; i++) {
       const pkt = LogicPkt.build(command, dest, body, this.allocSeq());
@@ -540,6 +554,14 @@ export class KIMClient implements ContentLoader {
           this.kicked = true;
           this.fireEvent(KIMEvent.Kickout);
           await this.logout();
+        }
+        break;
+      }
+      case Command.Renew: {
+        const body = decodeAuthResp(pkt.payload);
+        if (body.token) {
+          this.req.token = body.token;
+          this.tokenCallback?.(body.token, body.exp);
         }
         break;
       }

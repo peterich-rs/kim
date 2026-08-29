@@ -166,9 +166,10 @@ async fn whitelist_app_hits_chat2_then_fallback() {
     let gw_h = Arc::new(GatewayHandler::new(gw.clone(), "wg-1", DEMO_DEFAULT_SECRET));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
-    gw_server.set_state_listener(gw_h);
+    gw_server.set_state_listener(gw_h.clone());
     let gw_server = Arc::new(gw_server);
     hook.attach(gw_server.clone());
+    gw_h.attach_server(gw_server.clone());
     gw.attach_server(gw_server);
     let run = gw.clone();
     tokio::spawn(async move {
@@ -189,6 +190,14 @@ async fn whitelist_app_hits_chat2_then_fallback() {
     }
 
     let url = ws_url(gw_addr);
+    let bob_token = generate(DEMO_DEFAULT_SECRET, "bob", "kim-gray", i64::MAX / 4).expect("jwt");
+    let mut bob_conn = connect_ws(&url).await.expect("bob ws");
+    let _ = perform_login(&mut bob_conn, bob_token)
+        .await
+        .expect("bob login");
+    bob_conn.shutdown().await.expect("bob close");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
     let token = generate(DEMO_DEFAULT_SECRET, "alice", "kim-gray", i64::MAX / 4).expect("jwt");
     let mut conn = connect_ws(&url).await.expect("ws");
     let ch = perform_login(&mut conn, token).await.expect("login");
@@ -203,6 +212,7 @@ async fn whitelist_app_hits_chat2_then_fallback() {
         r#type: MESSAGE_TYPE_TEXT,
         body: "hi".into(),
         extra: String::new(),
+        client_id: String::new(),
     });
     conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
         .await

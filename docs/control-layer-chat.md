@@ -49,6 +49,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | InvalidPacketBody | 101 | MessageReq / GroupCreateReq 解不开 |
 | ContentBlocked | 106 | talk `ContentFilter` 拒绝（文本词表 / 图片 URL 等）。不 insert、不 Push。不在 SDK 重试区间 |
 | NotGroupMember | 107 | 群聊发送方不在成员列表（含未知群）。不 insert、不 Push。不在 SDK 重试区间 |
+| UserNotFound | 108 | `chat.user.talk` dest 不是用户表里的账号。不 insert、不 Push。不在 SDK 重试区间 |
 | NoDestination | 300 | `Header.dest` 为空；不 decode、不 insert |
 | SessionNotFound | 404 | 非 signin 且 cache miss（到不了 Handler） |
 
@@ -60,7 +61,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 
 | 指令 | `Header.dest` |
 |---|---|
-| `chat.user.talk` | 对方 **账号** |
+| `chat.user.talk` | 对方 **账号**（必须已注册或登录过；否则 `UserNotFound`） |
 | `chat.group.talk` | **group id**（`GroupCreateResp.groupId`） |
 | `chat.group.create` | 空（不寻址） |
 | `chat.group.join` / `quit` / `detail` / `members` | **group id** |
@@ -68,6 +69,8 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 本里程碑 group id 是雪花 i64 的 **base36** 字符串，这就是长连接 dest。第 22 章 Royal HTTP 的 Base32 是 REST 主键，**不要**把 dest 改成 Base32。
 
 对自己发（dest = 本 session.account）：insert + Success，`dispatch` 跳过自身 channel，无 Push。
+
+`MessageReq.clientId` 非空时按 `(app, sender, client_id)` 去重：命中则返回第一次的 `messageId` / `sendTime`，不再 insert、不再 Push。空 clientId 不去重。SDK 一次 `talkToUser` 生成 UUID，3xx 重试复用。
 
 ---
 

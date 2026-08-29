@@ -24,12 +24,27 @@ pub fn token_revoke_key(jti: &str) -> String {
 }
 
 pub fn generate(secret: &str, account: &str, app: &str, exp: i64) -> Result<String, ProtocolError> {
+    generate_with_jti(secret, account, app, exp, &uuid::Uuid::new_v4().to_string())
+}
+
+pub fn generate_with_jti(
+    secret: &str,
+    account: &str,
+    app: &str,
+    exp: i64,
+    jti: &str,
+) -> Result<String, ProtocolError> {
     check_account(account)?;
+    let jti = jti.trim();
     let claims = Claims {
         account: account.to_string(),
         app: app.to_string(),
         exp,
-        jti: Some(uuid::Uuid::new_v4().to_string()),
+        jti: if jti.is_empty() {
+            None
+        } else {
+            Some(jti.to_string())
+        },
     };
     jsonwebtoken::encode(
         &Header::new(Algorithm::HS256),
@@ -110,6 +125,20 @@ mod tests {
         assert_eq!(claims.app, "kim");
         assert_eq!(claims.exp, exp);
         assert!(claims.jti.as_ref().is_some_and(|j| !j.is_empty()));
+    }
+
+    #[test]
+    fn renew_keeps_jti() {
+        let exp = now_ts() + 3600;
+        let token =
+            generate_with_jti(DEMO_DEFAULT_SECRET, "alice", "kim", exp, "same-jti").unwrap();
+        let claims = parse(DEMO_DEFAULT_SECRET, &token).unwrap();
+        assert_eq!(claims.jti.as_deref(), Some("same-jti"));
+        let later =
+            generate_with_jti(DEMO_DEFAULT_SECRET, "alice", "kim", exp + 60, "same-jti").unwrap();
+        let again = parse(DEMO_DEFAULT_SECRET, &later).unwrap();
+        assert_eq!(again.jti.as_deref(), Some("same-jti"));
+        assert_eq!(again.exp, exp + 60);
     }
 
     #[test]

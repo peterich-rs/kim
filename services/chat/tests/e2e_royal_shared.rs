@@ -98,9 +98,10 @@ async fn spawn_chat_gw(
     ));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
-    gw_server.set_state_listener(gw_h);
+    gw_server.set_state_listener(gw_h.clone());
     let gw_server = Arc::new(gw_server);
     hook.attach(gw_server.clone());
+    gw_h.attach_server(gw_server.clone());
     gw_c.attach_server(gw_server);
     let run_gw = gw_c.clone();
     tokio::spawn(async move {
@@ -131,8 +132,8 @@ async fn two_chats_see_the_same_group_via_royal() {
     });
     tokio::time::sleep(Duration::from_millis(30)).await;
     let base = format!("http://{addr}");
-    let (store1, groups1) = http_backends(&base).expect("b1");
-    let (store2, groups2) = http_backends(&base).expect("b2");
+    let (store1, groups1, _) = http_backends(&base).expect("b1");
+    let (store2, groups2, _) = http_backends(&base).expect("b2");
     let cache = open_session_store(None).await.expect("cache");
 
     let (c1, g1, a1) = spawn_chat_gw(cache.clone(), store1, groups1, "chat-1", "wg-1").await;

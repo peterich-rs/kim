@@ -8,6 +8,8 @@ jwt_secret = ""
 metrics_listen = "127.0.0.1:9001"
 idc = "local"
 domain = "ws://127.0.0.1:8001/"
+royal_url = "http://127.0.0.1:8080"
+token_ttl_secs = 86400
 
 [[services]]
 service_id = "chat-1"

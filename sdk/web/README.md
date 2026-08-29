@@ -38,9 +38,9 @@ cd sdk/web && npm run app
 本机全套后台：
 
 ```bash
-cargo run -p royal
-cargo run -p chat
-cargo run -p gateway
+CHAT_URL=http://127.0.0.1:9002 cargo run -p royal
+ROYAL_URL=http://127.0.0.1:8080 cargo run -p chat
+ROYAL_URL=http://127.0.0.1:8080 cargo run -p gateway
 cd sdk/web && npm run app:local
 ```
 

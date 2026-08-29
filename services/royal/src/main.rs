@@ -39,6 +39,8 @@ struct SelfSection {
     token_ttl_secs: i64,
     #[serde(default)]
     app: String,
+    #[serde(default)]
+    chat_url: String,
 }
 
 fn default_node() -> u16 {
@@ -134,7 +136,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         RoyalState::memory_with_jwt(idgen, jwt).with_revoke(revoke)
     };
     let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| "kim".into());
-    let state = state.with_app(app);
+    let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
+    let state = state.with_app(app).with_chat_url(chat_url);
 
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);

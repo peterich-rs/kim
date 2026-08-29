@@ -3,11 +3,13 @@ use kim_protocol::pkt::{KickoutNotify, LoginResp, Status};
 use kim_router::{Context, SessionError};
 use tracing::{error, info, warn};
 
-pub async fn do_sys_login(ctx: Context) {
-    do_sys_login_with_zone(ctx, "").await;
+use crate::users::UserDirectory;
+
+pub async fn do_sys_login(ctx: Context, users: &dyn UserDirectory) {
+    do_sys_login_with_zone(ctx, "", users).await;
 }
 
-pub async fn do_sys_login_with_zone(ctx: Context, zone: &str) {
+pub async fn do_sys_login_with_zone(ctx: Context, zone: &str, users: &dyn UserDirectory) {
     let body = match ctx.read_body::<kim_protocol::pkt::Session>() {
         Ok(s) if !s.account.is_empty() => s,
         Ok(_) | Err(_) => {
@@ -25,6 +27,13 @@ pub async fn do_sys_login_with_zone(ctx: Context, zone: &str) {
         body.zone = zone.to_string();
     }
     info!(account = %body.account, channel = %body.channel_id, zone = %body.zone, "do login");
+    if let Err(err) = users.upsert(&body.app, &body.account).await {
+        error!(%err, "user upsert failed");
+        if let Err(e) = ctx.resp_bytes(Status::SystemException, Bytes::new()).await {
+            warn!(%e, "resp failed");
+        }
+        return;
+    }
     match ctx.get_location(&body.account, "").await {
         Err(SessionError::NotFound) => {}
         Err(err) => {
@@ -94,6 +103,7 @@ mod tests {
     use kim_session::MemorySessionStore;
 
     use super::do_sys_login;
+    use crate::users::MemoryUserDirectory;
 
     #[derive(Default)]
     struct RecordingDispatcher {
@@ -158,8 +168,12 @@ mod tests {
     async fn second_login_dispatches_one_kickout_and_adds_body_session() {
         let cache: Arc<dyn SessionStorage> = Arc::new(MemorySessionStore::new());
         let dispatcher = Arc::new(RecordingDispatcher::default());
+        let users = Arc::new(MemoryUserDirectory::new());
         let mut router = Router::new();
-        router.handle(CMD_LOGIN_SIGN_IN, do_sys_login);
+        router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
+            let users = users.clone();
+            async move { do_sys_login(ctx, users.as_ref()).await }
+        });
 
         router
             .serve(

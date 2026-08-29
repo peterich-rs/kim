@@ -6,9 +6,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_protocol::pkt::{
-    AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp,
-    GroupQueryReq, GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq,
-    MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq,
+    AccountExists, AccountQuery, AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail,
+    GroupJoinReq, GroupMembersResp, GroupQueryReq, GroupQuitReq, InsertMessageReq,
+    InsertMessageResp, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
+    OfflineIndexReq,
 };
 use prost::Message;
 use reqwest::StatusCode;
@@ -17,6 +18,7 @@ use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
 use crate::store::{
     InsertMessage, InsertResult, MessageContentRow, MessageIndexRow, MessageStore, StoreError,
 };
+use crate::users::{UserDirectory, UserError};
 
 const RETRIES: usize = 3;
 
@@ -142,8 +144,10 @@ impl MessageStore for HttpMessageStore {
                 r#type: req.msg_type,
                 body: req.body.clone(),
                 extra: req.extra.clone(),
+                client_id: req.client_id.clone(),
             }),
             members: Vec::new(),
+            client_id: req.client_id.clone(),
         };
         let _ = app;
         let path = "/api/v1/message/user";
@@ -153,6 +157,8 @@ impl MessageStore for HttpMessageStore {
             .await?;
         Ok(InsertResult {
             message_id: resp.message_id,
+            send_time: resp.send_time,
+            duplicate: resp.duplicate,
         })
     }
 
@@ -170,8 +176,10 @@ impl MessageStore for HttpMessageStore {
                 r#type: req.msg_type,
                 body: req.body.clone(),
                 extra: req.extra.clone(),
+                client_id: req.client_id.clone(),
             }),
             members: members.to_vec(),
+            client_id: req.client_id.clone(),
         };
         let _ = app;
         let path = "/api/v1/message/group";
@@ -181,6 +189,8 @@ impl MessageStore for HttpMessageStore {
             .await?;
         Ok(InsertResult {
             message_id: resp.message_id,
+            send_time: resp.send_time,
+            duplicate: resp.duplicate,
         })
     }
 
@@ -341,7 +351,64 @@ impl GroupDirectory for HttpGroupDirectory {
     }
 }
 
-pub type HttpBackends = (Arc<dyn MessageStore>, Arc<dyn GroupDirectory>);
+pub struct HttpUserDirectory {
+    client: RoyalClient,
+}
+
+impl HttpUserDirectory {
+    pub fn new(base: &str) -> Result<Self, StoreError> {
+        Ok(Self {
+            client: RoyalClient::new(base)?,
+        })
+    }
+}
+
+fn user_err(e: StoreError) -> UserError {
+    UserError::Backend(e.to_string())
+}
+
+#[async_trait]
+impl UserDirectory for HttpUserDirectory {
+    async fn upsert(&self, _app: &str, account: &str) -> Result<(), UserError> {
+        let body = AccountQuery {
+            account: account.to_string(),
+        };
+        post_maybe_empty(&self.client, "/internal/user/upsert", &body)
+            .await
+            .map_err(user_err)
+    }
+
+    async fn create(
+        &self,
+        _app: &str,
+        _account: &str,
+        _password_hash: &str,
+    ) -> Result<(), UserError> {
+        Err(UserError::Backend("create is royal-only".into()))
+    }
+
+    async fn password_hash(&self, _app: &str, _account: &str) -> Result<Option<String>, UserError> {
+        Err(UserError::Backend("password_hash is royal-only".into()))
+    }
+
+    async fn exists(&self, _app: &str, account: &str) -> Result<bool, UserError> {
+        let body = AccountQuery {
+            account: account.to_string(),
+        };
+        let resp: AccountExists = self
+            .client
+            .send_pb(reqwest::Method::POST, "/internal/user/lookup", Some(&body))
+            .await
+            .map_err(user_err)?;
+        Ok(resp.exists)
+    }
+}
+
+pub type HttpBackends = (
+    Arc<dyn MessageStore>,
+    Arc<dyn GroupDirectory>,
+    Arc<dyn UserDirectory>,
+);
 
 pub fn http_backends(royal_url: &str) -> Result<HttpBackends, StoreError> {
     Ok((
@@ -349,5 +416,6 @@ pub fn http_backends(royal_url: &str) -> Result<HttpBackends, StoreError> {
         Arc::new(
             HttpGroupDirectory::new(royal_url).map_err(|e| StoreError::Backend(e.to_string()))?,
         ),
+        Arc::new(HttpUserDirectory::new(royal_url)?),
     ))
 }

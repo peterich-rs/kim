@@ -1,6 +1,7 @@
 //! Chat demo: session lookup, Router, login / logout / echo handlers.
 
 mod ack;
+pub mod admin;
 pub mod directory;
 mod echo;
 pub mod filter;
@@ -36,8 +37,10 @@ use tracing::{info, warn};
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use crate::store::{MemoryMessageStore, MessageStore};
+use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
+pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
 pub use echo::do_echo;
 pub use filter::{
     builtin_talk_filter, ContentFilter, FilterChain, ImageFilter, NoopFilter, TextWordFilter,
@@ -53,6 +56,7 @@ pub(crate) struct ChatSvc {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
     filter: Arc<dyn ContentFilter>,
+    users: Arc<dyn UserDirectory>,
 }
 
 struct ContainerDispatcher(Arc<Container>);
@@ -140,13 +144,35 @@ impl ChatHandler {
         zone: String,
         filter: Arc<dyn ContentFilter>,
     ) -> Self {
+        Self::with_users(
+            container,
+            cache,
+            store,
+            groups,
+            zone,
+            filter,
+            Arc::new(MemoryUserDirectory::new()),
+        )
+    }
+
+    pub fn with_users(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         {
             let zone = zone.clone();
+            let users = users.clone();
             router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
                 let zone = zone.clone();
-                async move { do_sys_login_with_zone(ctx, &zone).await }
+                let users = users.clone();
+                async move { do_sys_login_with_zone(ctx, &zone, users.as_ref()).await }
             });
         }
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
@@ -155,12 +181,21 @@ impl ChatHandler {
             store,
             groups,
             filter,
+            users,
         };
         {
             let svc = svc.clone();
             router.handle(CMD_CHAT_USER_TALK, move |ctx| {
                 let svc = svc.clone();
-                async move { do_user_talk(ctx, svc.store.as_ref(), svc.filter.as_ref()).await }
+                async move {
+                    do_user_talk(
+                        ctx,
+                        svc.store.as_ref(),
+                        svc.filter.as_ref(),
+                        svc.users.as_ref(),
+                    )
+                    .await
+                }
             });
         }
         {
@@ -246,6 +281,10 @@ impl ChatHandler {
 
     pub fn with_metrics(&self, m: Arc<KimMetrics>) {
         *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
+    }
+
+    pub fn admin(&self) -> ChatAdmin {
+        ChatAdmin::new(self.cache.clone(), self.dispatcher.clone())
     }
 
     fn metrics(&self) -> Option<Arc<KimMetrics>> {

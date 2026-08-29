@@ -45,7 +45,18 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/api/v1/group/members` | protobuf `GroupQueryReq` → `GroupMembersResp` |
 | POST | `/api/v1/group/detail` | protobuf `GroupQueryReq` → `GroupDetail` |
 
-`app` 不在 URL 里：Royal 进程用 `KIM_APP` / 配置（默认 `kim`），各部署用各自的 base URL。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。`REDIS_URL` 时 logout 把 `jti` 写入 `kim:revoke:{jti}`，网关 Upgrade 时拒绝。
+`app` 不在 URL 里：Royal 进程用 `KIM_APP` / 配置（默认 `kim`），各部署用各自的 base URL。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
+
+内部（loopback / compose 内网）：
+
+| 方法 | 路径 | 谁调用 |
+|---|---|---|
+| POST | `/internal/user/lookup` | Chat：dest 是否存在 |
+| POST | `/internal/user/upsert` | Chat：长连登录写入用户表 |
+| POST | `/internal/revoke/check` | 网关无 Redis 时查 `jti` |
+| POST | `{CHAT_URL}/internal/kick` | Royal logout：Kickout 当前长连接 |
+
+`REDIS_URL` 时 logout 把 `jti` 写入 `kim:revoke:{jti}`；网关 Accept 与心跳都查，失败则拒绝。Chat 生产路径必须 `ROYAL_URL`，否则 dest 查的是空 Memory。
 
 本机：先 `cargo run -p royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
 

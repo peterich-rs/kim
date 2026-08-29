@@ -67,6 +67,25 @@ impl PostgresMessageStore {
         req: &InsertMessage,
         members: Option<&[String]>,
     ) -> Result<InsertResult, StoreError> {
+        if !req.client_id.is_empty() {
+            let existing: Option<(i64, i64)> = sqlx::query_as(
+                "SELECT message_id, send_time FROM message_idempotency
+                 WHERE app = $1 AND sender = $2 AND client_id = $3",
+            )
+            .bind(app)
+            .bind(&req.sender)
+            .bind(&req.client_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(pg_err)?;
+            if let Some((message_id, send_time)) = existing {
+                return Ok(InsertResult {
+                    message_id,
+                    send_time,
+                    duplicate: true,
+                });
+            }
+        }
         let message_id = self.idgen.next_id()?;
         let msg_type = i16::try_from(req.msg_type)
             .map_err(|_| StoreError::Backend("msg_type does not fit smallint".into()))?;
@@ -131,8 +150,50 @@ impl PostgresMessageStore {
             .await
             .map_err(pg_err)?;
         }
+        if !req.client_id.is_empty() {
+            let claimed = sqlx::query(
+                "INSERT INTO message_idempotency (app, sender, client_id, message_id, send_time)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (app, sender, client_id) DO NOTHING",
+            )
+            .bind(app)
+            .bind(&req.sender)
+            .bind(&req.client_id)
+            .bind(message_id)
+            .bind(req.send_time)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            if claimed.rows_affected() == 0 {
+                tx.rollback().await.map_err(pg_err)?;
+                let existing: Option<(i64, i64)> = sqlx::query_as(
+                    "SELECT message_id, send_time FROM message_idempotency
+                     WHERE app = $1 AND sender = $2 AND client_id = $3",
+                )
+                .bind(app)
+                .bind(&req.sender)
+                .bind(&req.client_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+                if let Some((id, send_time)) = existing {
+                    return Ok(InsertResult {
+                        message_id: id,
+                        send_time,
+                        duplicate: true,
+                    });
+                }
+                return Err(StoreError::Backend(
+                    "idempotency conflict without row".into(),
+                ));
+            }
+        }
         tx.commit().await.map_err(pg_err)?;
-        Ok(InsertResult { message_id })
+        Ok(InsertResult {
+            message_id,
+            send_time: req.send_time,
+            duplicate: false,
+        })
     }
 
     async fn sent_time(&self, account: &str, message_id: i64) -> Result<i64, StoreError> {
@@ -275,6 +336,7 @@ mod tests {
             msg_type: 1,
             body: body.into(),
             extra: String::new(),
+            client_id: String::new(),
         }
     }
 

@@ -41,10 +41,13 @@ pub struct InsertMessage {
     pub msg_type: i32,
     pub body: String,
     pub extra: String,
+    pub client_id: String,
 }
 
 pub struct InsertResult {
     pub message_id: i64,
+    pub send_time: i64,
+    pub duplicate: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -193,6 +196,7 @@ pub struct MemoryMessageStore {
 struct Inner {
     contents: HashMap<i64, StoredMessage>,
     indexes: Vec<InboxRow>,
+    idempotency: HashMap<(String, String, String), (i64, i64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -234,6 +238,17 @@ impl MemoryMessageStore {
         req: &InsertMessage,
         members: &[String],
     ) -> Result<InsertResult, StoreError> {
+        if !req.client_id.is_empty() {
+            let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
+            let inner = self.read();
+            if let Some(&(message_id, send_time)) = inner.idempotency.get(&key) {
+                return Ok(InsertResult {
+                    message_id,
+                    send_time,
+                    duplicate: true,
+                });
+            }
+        }
         let message_id = self.idgen.next_id()?;
         let content = StoredMessage {
             message_id,
@@ -288,9 +303,24 @@ impl MemoryMessageStore {
             let _ = self.idgen.next_id()?;
         }
         let mut inner = self.write();
+        if !req.client_id.is_empty() {
+            let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
+            if let Some(&(id, send_time)) = inner.idempotency.get(&key) {
+                return Ok(InsertResult {
+                    message_id: id,
+                    send_time,
+                    duplicate: true,
+                });
+            }
+            inner.idempotency.insert(key, (message_id, req.send_time));
+        }
         inner.contents.insert(message_id, content);
         inner.indexes.extend(indexes);
-        Ok(InsertResult { message_id })
+        Ok(InsertResult {
+            message_id,
+            send_time: req.send_time,
+            duplicate: false,
+        })
     }
 
     #[cfg(test)]
@@ -566,7 +596,23 @@ mod tests {
             msg_type: 1,
             body: body.into(),
             extra: String::new(),
+            client_id: String::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn insert_user_client_id_is_idempotent() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let mut req = sample("alice", "bob", 50, "hi");
+        req.client_id = "c1".into();
+        let a = store.insert_user("kim", &req).await.unwrap();
+        let b = store.insert_user("kim", &req).await.unwrap();
+        assert_eq!(a.message_id, b.message_id);
+        assert_eq!(a.send_time, b.send_time);
+        assert!(!a.duplicate);
+        assert!(b.duplicate);
+        assert_eq!(store.recorded().len(), 1);
     }
 
     #[tokio::test]

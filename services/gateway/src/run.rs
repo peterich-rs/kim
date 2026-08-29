@@ -11,7 +11,7 @@ use kim_naming::{open_naming, DefaultRegistration};
 use serde::Deserialize;
 
 use crate::selector::{Route, RouteFile, RouteSelector};
-use crate::{resolve_jwt_secret, GatewayHandler, KickHook, MetricsHook, RevokeStore};
+use crate::{resolve_jwt_secret, GatewayHandler, HttpRevoke, KickHook, MetricsHook, RevokeStore};
 
 #[derive(Deserialize)]
 struct File {
@@ -45,6 +45,10 @@ struct SelfSection {
     consul_url: String,
     #[serde(default)]
     adult_delay_ms: u64,
+    #[serde(default)]
+    royal_url: String,
+    #[serde(default)]
+    token_ttl_secs: i64,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +77,8 @@ pub struct GatewayConfig {
     pub public_port: u16,
     pub consul_url: String,
     pub adult_delay_ms: u64,
+    pub royal_url: String,
+    pub token_ttl_secs: i64,
     pub services: Vec<DefaultRegistration>,
     pub route: Option<RouteFile>,
 }
@@ -111,6 +117,8 @@ pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Err
         public_port: cfg.this.public_port,
         consul_url: cfg.this.consul_url,
         adult_delay_ms: cfg.this.adult_delay_ms,
+        royal_url: cfg.this.royal_url,
+        token_ttl_secs: cfg.this.token_ttl_secs,
         services,
         route: cfg.route,
     })
@@ -203,10 +211,20 @@ where
         selector,
         after_downlink: hooks,
     });
-    let handler = Arc::new(GatewayHandler::new(
+    let ttl = std::env::var("KIM_TOKEN_TTL_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(if cfg.token_ttl_secs > 0 {
+            cfg.token_ttl_secs
+        } else {
+            86_400
+        });
+    let handler = Arc::new(GatewayHandler::with_ttl(
         container.clone(),
         cfg.service_id.clone(),
         cfg.jwt_secret,
+        ttl,
     ));
     if let Some(m) = &metrics {
         handler.with_metrics(m.clone());
@@ -217,15 +235,39 @@ where
         .filter(|s| !s.is_empty())
     {
         match RevokeStore::open(&url).await {
-            Ok(store) => handler.set_revoke(Arc::new(store)),
+            Ok(store) => {
+                let store = Arc::new(store);
+                handler.set_redis(store.clone());
+                handler.set_revoke(store);
+            }
             Err(err) => tracing::warn!(%err, "revoke store"),
+        }
+    } else {
+        let royal = std::env::var("ROYAL_URL")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                let t = cfg.royal_url.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t.to_string())
+                }
+            });
+        if let Some(base) = royal {
+            match HttpRevoke::new(&base) {
+                Ok(store) => handler.set_revoke(Arc::new(store)),
+                Err(err) => tracing::warn!(%err, "royal revoke"),
+            }
         }
     }
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
-    server.set_state_listener(handler);
+    server.set_state_listener(handler.clone());
     let server = Arc::new(server);
     kick.attach(server.clone());
+    handler.attach_server(server.clone());
     container.attach_server(server);
 
     if let (Some(m), Ok(addr)) = (metrics, cfg.metrics_listen.parse::<SocketAddr>()) {

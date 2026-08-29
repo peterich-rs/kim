@@ -267,6 +267,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         onKick: () => {
           void signOut(COPY.kicked);
         },
+        onToken: (token, exp) => {
+          const cur = loadSession();
+          if (!cur) {
+            return;
+          }
+          saveSession({ ...cur, token, exp });
+        },
         onGroup: (groupId) => {
           dispatch({
             type: "upsertThread",

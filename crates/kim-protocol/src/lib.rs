@@ -13,11 +13,13 @@ pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use error::ProtocolError;
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
-pub use token::{generate, parse, token_revoke_key, Claims, DEMO_DEFAULT_SECRET};
+pub use token::{
+    generate, generate_with_jti, parse, token_revoke_key, Claims, DEMO_DEFAULT_SECRET,
+};
 pub use wire::{
     service_name, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
     CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,
-    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
     MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE, META_ACCOUNT,
     META_APP, META_DEST_CHANNELS, META_DEST_SERVER, SN_CHAT, SN_LOGIN, SN_ROYAL, SN_TGATEWAY,
     SN_WGATEWAY,
@@ -81,6 +83,7 @@ mod tests {
         assert_eq!(Status::Unauthorized as i32, 105);
         assert_eq!(Status::ContentBlocked as i32, 106);
         assert_eq!(Status::NotGroupMember as i32, 107);
+        assert_eq!(Status::UserNotFound as i32, 108);
         assert_eq!(Status::NoDestination as i32, 300);
         assert_eq!(Status::SessionNotFound as i32, 404);
         assert!(Status::try_from(100).is_err());

@@ -1,6 +1,7 @@
 export const Command = {
   SignIn: "login.signin",
   SignOut: "login.signout",
+  Renew: "login.renew",
   ChatUserTalk: "chat.user.talk",
   ChatGroupTalk: "chat.group.talk",
   ChatTalkAck: "chat.talk.ack",

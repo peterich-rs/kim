@@ -18,12 +18,16 @@ use bytes::Bytes;
 use kim_container::{Container, DownlinkHook};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, OpCode, Server, StateListener};
 use kim_metrics::KimMetrics;
-use kim_protocol::pkt::{Flag, KickoutNotify, LoginReq, Session, Status};
-use kim_protocol::{
-    marshal, parse, read, read_logic, token_revoke_key, BasicPkt, LogicPkt, Packet,
-    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT,
-    META_APP, SN_LOGIN,
+use kim_protocol::pkt::{
+    AuthResp, Flag, KickoutNotify, LoginReq, RevokeQuery, RevokeStatus, Session, Status,
 };
+use kim_protocol::{
+    generate_with_jti, marshal, parse, read, read_logic, token_revoke_key, BasicPkt, LogicPkt,
+    Packet, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG,
+    DEMO_DEFAULT_SECRET, META_ACCOUNT, META_APP, SN_LOGIN,
+};
+use kim_session::{key_location, key_session, SESSION_TTL};
+use prost::Message;
 use tracing::{info, warn};
 
 pub fn resolve_jwt_secret(config_secret: &str) -> String {
@@ -76,6 +80,21 @@ async fn write_status(
 struct ChannelMeta {
     app: String,
     account: String,
+    jti: String,
+    idle_exp: i64,
+    jwt_exp: i64,
+}
+
+fn now_ts() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+#[async_trait]
+pub trait RevokeCheck: Send + Sync {
+    async fn is_revoked(&self, jti: &str) -> Result<bool, String>;
 }
 
 pub struct RevokeStore {
@@ -100,17 +119,84 @@ impl RevokeStore {
             .map_err(|e| e.to_string())?;
         Ok(found.is_some())
     }
+
+    async fn touch_session(&self, account: &str, channel_id: &str) -> Result<(), String> {
+        let mut conn = self.conn.clone();
+        let ttl = i64::try_from(SESSION_TTL.as_secs()).unwrap_or(i64::MAX);
+        redis::pipe()
+            .cmd("EXPIRE")
+            .arg(key_session(channel_id))
+            .arg(ttl)
+            .cmd("EXPIRE")
+            .arg(key_location(account, ""))
+            .arg(ttl)
+            .query_async::<()>(&mut conn)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[async_trait]
+impl RevokeCheck for RevokeStore {
+    async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
+        RevokeStore::is_revoked(self, jti).await
+    }
+}
+
+pub struct HttpRevoke {
+    base: String,
+    http: reqwest::Client,
+}
+
+impl HttpRevoke {
+    pub fn new(base: &str) -> Result<Self, String> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            base: base.trim_end_matches('/').to_string(),
+            http,
+        })
+    }
+}
+
+#[async_trait]
+impl RevokeCheck for HttpRevoke {
+    async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
+        let body = RevokeQuery {
+            jti: jti.to_string(),
+        }
+        .encode_to_vec();
+        let resp = self
+            .http
+            .post(format!("{}/internal/revoke/check", self.base))
+            .header("Content-Type", "application/x-protobuf")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("royal http {}", resp.status()));
+        }
+        let buf = resp.bytes().await.map_err(|e| e.to_string())?;
+        let status = RevokeStatus::decode(buf.as_ref()).map_err(|e| e.to_string())?;
+        Ok(status.revoked)
+    }
 }
 
 pub struct GatewayHandler {
     container: Arc<Container>,
     gateway_id: String,
     jwt_secret: String,
+    token_ttl_secs: i64,
     seq: AtomicU64,
     pending: Mutex<HashMap<String, LogicPkt>>,
     meta: Mutex<HashMap<String, ChannelMeta>>,
     metrics: Mutex<Option<Arc<KimMetrics>>>,
-    revoke: OnceLock<Arc<RevokeStore>>,
+    revoke: OnceLock<Arc<dyn RevokeCheck>>,
+    redis: OnceLock<Arc<RevokeStore>>,
+    server: OnceLock<Arc<dyn Server + Send + Sync>>,
 }
 
 impl GatewayHandler {
@@ -119,15 +205,31 @@ impl GatewayHandler {
         gateway_id: impl Into<String>,
         jwt_secret: impl Into<String>,
     ) -> Self {
+        Self::with_ttl(container, gateway_id, jwt_secret, 86_400)
+    }
+
+    pub fn with_ttl(
+        container: Arc<Container>,
+        gateway_id: impl Into<String>,
+        jwt_secret: impl Into<String>,
+        token_ttl_secs: i64,
+    ) -> Self {
         Self {
             container,
             gateway_id: gateway_id.into(),
             jwt_secret: jwt_secret.into(),
+            token_ttl_secs: if token_ttl_secs > 0 {
+                token_ttl_secs
+            } else {
+                86_400
+            },
             seq: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
             meta: Mutex::new(HashMap::new()),
             metrics: Mutex::new(None),
             revoke: OnceLock::new(),
+            redis: OnceLock::new(),
+            server: OnceLock::new(),
         }
     }
 
@@ -135,8 +237,16 @@ impl GatewayHandler {
         *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
     }
 
-    pub fn set_revoke(&self, store: Arc<RevokeStore>) {
+    pub fn set_revoke(&self, store: Arc<dyn RevokeCheck>) {
         let _ = self.revoke.set(store);
+    }
+
+    pub fn set_redis(&self, store: Arc<RevokeStore>) {
+        let _ = self.redis.set(store);
+    }
+
+    pub fn attach_server(&self, server: Arc<dyn Server + Send + Sync>) {
+        let _ = self.server.set(server);
     }
 
     fn generate_channel_id(&self, account: &str) -> String {
@@ -144,11 +254,97 @@ impl GatewayHandler {
         format!("{}_{account}_{n}", self.gateway_id)
     }
 
-    fn insert_meta(&self, channel_id: &str, app: String, account: String) {
-        self.meta
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(channel_id.to_string(), ChannelMeta { app, account });
+    fn insert_meta(&self, channel_id: &str, app: String, account: String, jti: String, exp: i64) {
+        let idle_exp = now_ts().saturating_add(self.token_ttl_secs);
+        self.meta.lock().unwrap_or_else(|e| e.into_inner()).insert(
+            channel_id.to_string(),
+            ChannelMeta {
+                app,
+                account,
+                jti,
+                idle_exp,
+                jwt_exp: exp,
+            },
+        );
+    }
+
+    async fn close_now(&self, channel_id: &str) {
+        if let Some(srv) = self.server.get() {
+            let _ = srv.close_channel(channel_id).await;
+        }
+    }
+
+    async fn heartbeat(&self, channel_id: &str) -> Result<Option<LogicPkt>, ()> {
+        let meta = {
+            let guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
+            guard.get(channel_id).map(|m| {
+                (
+                    m.app.clone(),
+                    m.account.clone(),
+                    m.jti.clone(),
+                    m.idle_exp,
+                    m.jwt_exp,
+                )
+            })
+        };
+        let Some((app, account, jti, idle_exp, jwt_exp)) = meta else {
+            return Ok(None);
+        };
+        if !jti.is_empty() {
+            if let Some(store) = self.revoke.get() {
+                match store.is_revoked(&jti).await {
+                    Ok(true) | Err(_) => {
+                        warn!(channel = channel_id, "heartbeat revoked");
+                        self.close_now(channel_id).await;
+                        return Err(());
+                    }
+                    Ok(false) => {}
+                }
+            }
+        }
+        let now = now_ts();
+        if idle_exp > 0 && now >= idle_exp {
+            warn!(channel = channel_id, "heartbeat expired");
+            self.close_now(channel_id).await;
+            return Err(());
+        }
+        let next_idle = now.saturating_add(self.token_ttl_secs);
+        let remaining = jwt_exp.saturating_sub(now);
+        let half = self.token_ttl_secs / 2;
+        let renew = remaining < half && !jti.is_empty();
+        let next_jwt = if renew { next_idle } else { jwt_exp };
+        {
+            let mut guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(m) = guard.get_mut(channel_id) {
+                m.idle_exp = next_idle;
+                m.jwt_exp = next_jwt;
+            }
+        }
+        if let Some(redis) = self.redis.get() {
+            if let Err(err) = redis.touch_session(&account, channel_id).await {
+                warn!(%err, "session expire");
+            }
+        }
+        if !renew {
+            return Ok(None);
+        }
+        match generate_with_jti(&self.jwt_secret, &account, &app, next_jwt, &jti) {
+            Ok(token) => {
+                let mut pkt = LogicPkt::new(CMD_LOGIN_RENEW, 0, Bytes::new());
+                pkt.header.flag = Flag::Push as i32;
+                pkt.header.channel_id = channel_id.to_string();
+                pkt.write_body(&AuthResp {
+                    token,
+                    exp: next_jwt,
+                    account,
+                });
+                Ok(Some(pkt))
+            }
+            Err(err) => {
+                warn!(%err, "renew token");
+                Ok(None)
+            }
+        }
     }
 
     fn remove_meta(&self, channel_id: &str) {
@@ -242,7 +438,11 @@ impl Acceptor for GatewayHandler {
                         return Err(Error::Handshake("revoked".into()));
                     }
                     Ok(false) => {}
-                    Err(err) => warn!(%err, "revoke check failed"),
+                    Err(err) => {
+                        warn!(%err, "revoke check failed");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("revoke check failed".into()));
+                    }
                 }
             }
         }
@@ -256,7 +456,13 @@ impl Acceptor for GatewayHandler {
             remote_ip: remote_ip(conn),
             ..Session::default()
         });
-        self.insert_meta(&id, claims.app, claims.account.clone());
+        self.insert_meta(
+            &id,
+            claims.app,
+            claims.account.clone(),
+            claims.jti.unwrap_or_default(),
+            claims.exp,
+        );
         {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             pending.insert(id.clone(), pkt);
@@ -310,13 +516,21 @@ impl MessageListener for GatewayHandler {
         };
         match pkt {
             Packet::Basic(p) if p.code == CODE_PING => {
-                info!(channel = agent.id(), "basic ping, local pong");
+                let id = agent.id().to_string();
+                let renew = match self.heartbeat(&id).await {
+                    Ok(v) => v,
+                    Err(()) => return,
+                };
+                info!(channel = %id, "basic ping, local pong");
                 let _ = agent
                     .push(marshal(&Packet::Basic(BasicPkt {
                         code: CODE_PONG,
                         body: Bytes::new(),
                     })))
                     .await;
+                if let Some(pkt) = renew {
+                    let _ = agent.push(marshal(&Packet::Logic(pkt))).await;
+                }
             }
             Packet::Basic(_) => {}
             Packet::Logic(mut logic) => {
