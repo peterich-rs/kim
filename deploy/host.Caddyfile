@@ -20,6 +20,8 @@ kim.ainexc.com {
 		header Connection *Upgrade*
 		header Upgrade websocket
 	}
+	# Caddy 2 already forwards Upgrade. Do not header_up Connection/Upgrade
+	# with `{>…}` placeholders — those stay literal and the gateway 400s.
 	handle @websocket {
 		reverse_proxy 127.0.0.1:8001 {
 			flush_interval -1
@@ -29,10 +31,6 @@ kim.ainexc.com {
 			}
 			header_up Host {host}
 			header_up X-Real-IP {remote_host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up Connection {>Connection}
-			header_up Upgrade {>Upgrade}
 		}
 	}
 
