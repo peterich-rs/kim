@@ -20,5 +20,8 @@
   "routes": [
     { "pattern": "kim.ainexc.com/*", "zone_name": "ainexc.com" },
   ],
-  "workers_dev": true,
+  // No workers.dev subdomain on this account. CI is non-interactive, so
+  // publishing to *.workers.dev would prompt and then fail.
+  "workers_dev": false,
+  "preview_urls": false,
 }

@@ -62,7 +62,7 @@ npm ci
 npm run deploy:app
 ```
 
-打开 https://kim.ainexc.com 。Worker 路由是 `kim.ainexc.com/*`（zone `ainexc.com`）。VPS 上 Caddy 继续反代 `/api/v1/auth/*` 和 Upgrade。
+打开 https://kim.ainexc.com 。Worker 路由是 `kim.ainexc.com/*`（zone `ainexc.com`）。`workers_dev` 关闭：账号没有 workers.dev 子域，CI 也不能交互注册。VPS 上 Caddy 继续反代 `/api/v1/auth/*` 和 Upgrade。
 
 ## CI
 
