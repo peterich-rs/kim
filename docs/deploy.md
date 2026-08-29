@@ -46,7 +46,7 @@ KIM_IMAGE=ghcr.io/peterich-rs/kim:local docker compose -f deploy/compose.yml --e
 
 TLS：
 
-- 产品页用 Worker Route 时：`kim.ainexc.com` **橙云** A/AAAA 指向 VPS，Caddy 仍是源站。浏览器 TLS 在 Cloudflare；源站用 Origin 证书（Full Strict）或 CF→源站 HTTP（Full）。灰云则 Worker 不会接到流量。
+- 产品页用 Worker Route 时：`kim.ainexc.com` **橙云** A/AAAA 指向 VPS，Caddy 仍是源站。浏览器 TLS 在 Cloudflare。zone SSL 是 **Full**（CF→源站 HTTPS，不校验源站证书）。Origin 证书 + Full Strict 更好，但 SSL 模式是整站的，不要为 kim 单独改到 Strict。灰云则 Worker 不会接到流量。橙云后 Caddy HTTP-01 续期看不到挑战；Let’s Encrypt 到期前换成 Origin 证书或 DNS-01。
 - 不用 Worker、compose 自己占 80/443：`docker compose --env-file kim.env --profile edge up -d`，DNS 可灰云做 Caddy HTTP-01。
 - 宿主机已经有反代：不要开 `edge`，把该站点指到 `127.0.0.1:8001`（WebSocket 关读超时）和 `127.0.0.1:8080`（`/api/v1/auth/*`）。
 
@@ -71,7 +71,7 @@ npm run deploy:app
 | `ci.yml` | push / PR | fmt、clippy、test |
 | `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim` |
 | `deploy.yml` | tag `v*` 或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
-| `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com` |
+| `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
 
 GitHub Secrets（只放在 GitHub，不进 git）：
 
