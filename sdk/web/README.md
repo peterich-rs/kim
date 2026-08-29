@@ -25,6 +25,19 @@ await cli.logout();
 
 本机网关：先 `cargo run -p fake-chat`，再 `cargo run -p fake-gateway`。Demo 密钥与 `kim_protocol::DEMO_DEFAULT_SECRET` 相同，见 `examples/pkt-client`。
 
+## 浏览器里点
+
+```bash
+# 终端 1–2：先 Chat 再网关
+cargo run -p fake-chat
+cargo run -p fake-gateway
+
+# 终端 3
+cd sdk/web && npm run demo
+```
+
+开两个标签：http://127.0.0.1:5173/?acc=alice&dest=bob 和 `?acc=bob&dest=alice`。页面用 demo 密钥签 JWT，不要拿到公网。
+
 ## 开发
 
 ```bash

@@ -107,8 +107,32 @@ npm run test:e2e
 
 e2e 自己起临时端口，不占用 `:8001`。
 
+## 浏览器 Demo
+
+必须先 Chat 再网关（`:8001`），再起页面：
+
+```bash
+# 终端 1
+RUST_LOG=info cargo run -p fake-chat
+
+# 终端 2
+RUST_LOG=info cargo run -p fake-gateway
+
+# 终端 3
+cd sdk/web && npm run demo
+```
+
+浏览器打开两个标签：
+
+- http://127.0.0.1:5173/?acc=alice&dest=bob
+- http://127.0.0.1:5173/?acc=bob&dest=alice
+
+点「连接」后互发。同一账号两个标签会互踢。Demo 用 `DEMO_DEFAULT_SECRET` 在页面里签 JWT，只适合本机；生产必须由自家后端签 Token。
+
+网关默认绑 `127.0.0.1`，手机访问 Vite 也连不上本机网关。要对手机玩，把 `fake-gateway` 的 listen 改成 `0.0.0.0:8001`，页面网关填 `ws://电脑局域网IP:8001/`。
+
 ---
 
 ## 非目标
 
-App / TGateway TCP SDK、把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage、浏览器演示页。
+App / TGateway TCP SDK、把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。

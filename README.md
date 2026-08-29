@@ -36,6 +36,8 @@ RUST_LOG=info cargo run -p pkt-client -- alice
 
 成功时客户端打印的 `channel_id` 形如 `wg-1_alice_1`，**不是** `"alice"`。默认随后本地 ping，再 `chat.demo.echo`。
 
+浏览器 H5（两个标签页互发）：网关起来之后 `cd sdk/web && npm run demo`，打开 http://127.0.0.1:5173/?acc=alice&dest=bob 和 `?acc=bob&dest=alice`。见 [docs/web-sdk.md](docs/web-sdk.md)。
+
 ```bash
 # 1:1：终端 A HOLD 等 Push，终端 B 发给 A
 KIM_HOLD=1 RUST_LOG=info cargo run -p pkt-client -- bob
