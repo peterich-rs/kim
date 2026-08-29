@@ -64,7 +64,7 @@ fn kim_frame(frame: Frame<'_>) -> Result<KimFrame, Error> {
 }
 
 /// `Payload::Bytes` is `BytesMut` in fastwebsockets 0.10; freeze avoids an extra copy.
-/// Borrowed payloads still copy. Write path still copies (`Payload::Owned`).
+/// Borrowed payloads still copy into `Bytes`.
 fn payload_to_bytes(payload: Payload<'_>) -> Bytes {
     match payload {
         Payload::Bytes(buf) => buf.freeze(),
@@ -72,8 +72,9 @@ fn payload_to_bytes(payload: Payload<'_>) -> Bytes {
     }
 }
 
-fn ws_frame(opcode: OpCode, payload: Bytes) -> Frame<'static> {
-    Frame::new(true, to_ws(opcode), None, Payload::Owned(payload.to_vec()))
+/// Server writev reads this slice in place. Client masking may copy via `to_mut`.
+fn ws_frame(opcode: OpCode, payload: &[u8]) -> Frame<'_> {
+    Frame::new(true, to_ws(opcode), None, Payload::Borrowed(payload))
 }
 
 #[async_trait]
@@ -88,7 +89,7 @@ where
 
     async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
         self.ws
-            .write_frame(ws_frame(opcode, payload))
+            .write_frame(ws_frame(opcode, payload.as_ref()))
             .await
             .map_err(map_ws_err)
     }
@@ -99,10 +100,7 @@ where
     }
 
     async fn shutdown(&mut self) -> Result<(), Error> {
-        let _ = self
-            .ws
-            .write_frame(ws_frame(OpCode::Close, Bytes::new()))
-            .await;
+        let _ = self.ws.write_frame(ws_frame(OpCode::Close, &[])).await;
         Ok(())
     }
 
@@ -153,7 +151,7 @@ where
 
     async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
         self.inner
-            .write_frame(ws_frame(opcode, payload))
+            .write_frame(ws_frame(opcode, payload.as_ref()))
             .await
             .map_err(map_ws_err)
     }
@@ -164,10 +162,7 @@ where
     }
 
     async fn shutdown(&mut self) -> Result<(), Error> {
-        let _ = self
-            .inner
-            .write_frame(ws_frame(OpCode::Close, Bytes::new()))
-            .await;
+        let _ = self.inner.write_frame(ws_frame(OpCode::Close, &[])).await;
         Ok(())
     }
 }
