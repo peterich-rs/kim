@@ -16,4 +16,4 @@ CPU 分析用 `samply` / `cargo flamegraph`，不要加 pprof Cargo feature。`-
 - Redis `get_locations` 仍是一次 `MGET`。
 - `CachedSessionStore` 包在 Redis 打开之后（`KIM_LOC_CACHE=0` 可关）。`Location` 没有 account，cache miss 走 N 次 `get_location`。
 - `DualWriteStore` 始终编译。`REDIS_MIRROR_URL` 只在 Redis feature 运行时使用。Memory+Memory 单测不连 Redis。
-- Postgres HASH SQL 在 `examples/chat/scripts/hash_partition.sql`，**不会**被 `sqlx::migrate!` 执行。
+- Postgres HASH SQL 在 `services/chat/scripts/hash_partition.sql`，**不会**被 `sqlx::migrate!` 执行。

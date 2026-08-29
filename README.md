@@ -84,7 +84,8 @@ crates/kim-naming       静态服务发现（不是 Consul）
 crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
-examples/               gateway / tgateway / chat / royal / router / pkt-client / kimbench
+services/               gateway / tgateway / chat / royal / router
+examples/               pkt-client / kimbench
 deploy/                 VPS Compose（gateway / chat / Redis / Postgres）
 sdk/web                 TypeScript Web SDK（第 23–24 章）
 docs/                   词表、分层合同、登录与控制层规格、进阶篇 as-built

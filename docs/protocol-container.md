@@ -114,7 +114,7 @@ Cloudflare 橙云 **不转发任意 TCP**：这只决定公网 **怎么暴露** 
 
 ```
 pkt-client（Web 客户端）        gateway（WGateway）          chat
-(examples/pkt-client)          (examples/gateway)           (examples/chat)
+(examples/pkt-client)          (services/gateway)           (services/chat)
                                WsServer :8001                    TcpServer :8002
                                ChannelMap（Web 客户端）           ChannelMap（网关连进来）
                                Container                         Container（无 deps）
@@ -136,7 +136,7 @@ App / TGateway 路径（已有，本阶段保持）：
 |---|---|---|
 | Web 客户端 → WGateway | WebSocket | HTTP Upgrade，然后第一帧 LogicPkt `login.signin` + JWT。echo 路径仍用名字字符串。 |
 | 网关 → Chat | TCP（`kim-tcp`） | TCP 连上后第一帧 Binary = protobuf `InnerHandshakeReq { service_id }`。Chat 的 `Acceptor` 读出来当 channel_id。 |
-| App 客户端 → TGateway | TCP（`kim-tcp`） | `examples/tgateway` `:8003`，与 WGateway 共用 `run_gateway`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
+| App 客户端 → TGateway | TCP（`kim-tcp`） | `services/tgateway` `:8003`，与 WGateway 共用 `run_gateway`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
 
 服务之间 **只允许 TCP**。不要给 Chat 再开一个 WS 口。  
 Web 进网关走 WS；App 进网关走 TCP。Demo 的 `pkt-client` 只扮演 Web，**不要求 App 改用 WS**。
@@ -201,8 +201,8 @@ im/
   crates/kim-container     新增。托管 Server、拨号、Forward/Push
   examples/echo-*          已有。TCP 回声 = App/TGateway 路径，回归用
   examples/ws-echo-*       新增。同一 EchoHandler，Web/WS 传输
-  examples/gateway    新增。M2 假 **WGateway**（Web）
-  examples/chat       新增。M2 假 Chat
+  services/gateway    新增。M2 假 **WGateway**（Web）
+  services/chat       新增。M2 假 Chat
   examples/pkt-client      新增。Web 客户端：发 ping + LogicPkt（ws://）
   proto/pkt.proto          新增。给 kim-protocol 的 build.rs 用
                            （也可以放 crates/kim-protocol/proto/pkt.proto）
@@ -270,8 +270,8 @@ members = [
     "examples/echo-client",
     "examples/ws-echo-server",
     "examples/ws-echo-client",
-    "examples/gateway",
-    "examples/chat",
+    "services/gateway",
+    "services/chat",
     "examples/pkt-client",
 ]
 
@@ -783,7 +783,7 @@ pub trait Naming: Send + Sync {
 TOML **只在 examples 里解析**，不放进 `kim-naming`。示意结构（约 15 行）：
 
 ```rust
-// examples/gateway/src/config.rs
+// services/gateway/src/config.rs
 #[derive(Deserialize)]
 struct File {
     #[serde(rename = "self")]
@@ -804,7 +804,7 @@ struct SelfSection {
 // identity.public_address 可空：空则 Container 跳过 naming.register
 ```
 
-`examples/gateway/config.toml`：
+`services/gateway/config.toml`：
 
 ```toml
 [self]
@@ -821,7 +821,7 @@ public_address = "127.0.0.1"
 public_port = 8002
 ```
 
-`examples/chat/config.toml`：
+`services/chat/config.toml`：
 
 ```toml
 [self]
@@ -894,7 +894,7 @@ impl Container {
 
 Chat 进程同样 6 步，Handler 调 `container.push("wg-1", resp)`，deps 为空。
 
-`examples/gateway` / `chat` 的 `main`：`tokio::signal::ctrl_c` 之后 `container.shutdown()`。单测断言完也调 `shutdown()`，不要发 SIGINT。允许 `spawn(start)` 后立刻 `shutdown()`，中间不必 sleep：Container 用 closed+Notify；**还要**再调一次 `server.shutdown()`（见 6.3.5），因为 `TcpServer` 自己的 accept 循环是另一把 Notify。
+`services/gateway` / `services/chat` 的 `main`：`tokio::signal::ctrl_c` 之后 `container.shutdown()`。单测断言完也调 `shutdown()`，不要发 SIGINT。允许 `spawn(start)` 后立刻 `shutdown()`，中间不必 sleep：Container 用 closed+Notify；**还要**再调一次 `server.shutdown()`（见 6.3.5），因为 `TcpServer` 自己的 accept 循环是另一把 Notify。
 
 `shutdown()`：置 `closed`、`server.shutdown()`、unsubscribe、deregister、关掉 ClientMap 里的 TcpClient、唤醒 `start`。
 
@@ -1088,7 +1088,7 @@ server.push(gateway_id, marshal(Logic(pkt)))
 
 网关 Handler 只调 `container.forward`；Chat Handler 只调 `container.push`。不要让 Handler 摸 `server` 字段。
 
-### 6.4 WGateway Handler（只存在于 `examples/gateway`）
+### 6.4 WGateway Handler（只存在于 `services/gateway`）
 
 不要写进 `WsServer`。这是 **Web** 网关的业务插槽，不是 TGateway。
 
@@ -1116,7 +1116,7 @@ Disconnect:
 
 不要写「丢掉 Text 帧」：`ChannelReadLoop` 不把 opcode 传给 Handler，本阶段也不改 `kim-core`。业务包 **约定** 用 Binary；误发 Text 只要 Magic 不对就会 warn 丢弃。echo 例子不解析 Magic，Text 仍可回声。
 
-### 6.5 Chat Handler（只存在于 `examples/chat`）
+### 6.5 Chat Handler（只存在于 `services/chat`）
 
 **已被登录 Demo 替换：** 现 Receive 走 Router + 会话（`login.signin` / `login.signout` / `chat.demo.echo`）。下面是 M2 当时只回 echo 的历史。当前逻辑见 [link-layer-login.md](link-layer-login.md)。
 
@@ -1488,7 +1488,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 
 - **标题：** `feat(demo): fake WGateway and Chat with BasicPkt local ping`
 - **文件 / 组件：**  
-  `examples/gateway/**`、`chat/**`、`pkt-client/**`（`publish = false`，TOML 解析在 example）  
+  `services/gateway/**`、`services/chat/**`、`examples/pkt-client/**`（`publish = false`）  
   `crates/kim-container/tests/e2e_echo.rs`  
   `kim-container` **dev-dependencies** += `kim-ws`（只在这一 PR 加）
 - **依赖：** PR1–PR4

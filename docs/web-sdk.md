@@ -139,4 +139,4 @@ cd sdk/web && npm run demo
 
 ## 非目标
 
-把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。TGateway 是 `examples/tgateway`（TCP + 同一套 `GatewayHandler`），不是第二套 SDK。
+把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。TGateway 是 `services/tgateway`（TCP + 同一套 `GatewayHandler`），不是第二套 SDK。

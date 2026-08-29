@@ -9,6 +9,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
+COPY services ./services
 COPY examples ./examples
 
 ENV CARGO_TERM_COLOR=always \

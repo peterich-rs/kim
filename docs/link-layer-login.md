@@ -109,7 +109,7 @@ Kickout 的 command 仍是 `login.signin`，`Flag=Push`，body `KickoutNotify{ch
 
 ## 本机怎么跑
 
-见根目录 [README.md](../README.md)。e2e：`examples/chat/tests/e2e_login.rs`。
+见根目录 [README.md](../README.md)。e2e：`services/chat/tests/e2e_login.rs`。
 
 ---
 

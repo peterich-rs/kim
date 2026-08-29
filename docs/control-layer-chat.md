@@ -123,7 +123,7 @@ KIM_TALK_TO=bob RUST_LOG=info cargo run -p pkt-client -- alice
 KIM_GROUP_MEMBERS=alice,bob,carol RUST_LOG=info cargo run -p pkt-client -- alice
 ```
 
-e2e：`examples/chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`）。
+e2e：`services/chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`）。
 
 ---
 

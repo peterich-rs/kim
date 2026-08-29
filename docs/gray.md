@@ -2,7 +2,7 @@
 
 对照小册第 30 章。租户 = JWT `app`。分区 = Chat 的 `[self].zone`。
 
-网关 `RouteSelector`（`examples/gateway`，不是 `kim-container::HashSelector`）读 header meta `app` / `account`。`GatewayHandler` 在 accept 写入 ChannelMeta，并在 ready / receive / disconnect 的每一次 `forward` 注入。登出 forward 之后才删 meta；abandon / ready 失败也会删。
+网关 `RouteSelector`（`services/gateway`，不是 `kim-container::HashSelector`）读 header meta `app` / `account`。`GatewayHandler` 在 accept 写入 ChannelMeta，并在 ready / receive / disconnect 的每一次 `forward` 注入。登出 forward 之后才删 meta；abandon / ready 失败也会删。
 
 配置：
 

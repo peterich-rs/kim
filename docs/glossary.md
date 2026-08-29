@@ -26,7 +26,7 @@
 | **socket / 插座** | 操作系统给你的「往网上读写字节」的把手 |
 | **TCP** | 内核里的可靠字节流协议。有握手、序号、ACK、重传、拥塞控制。应用看到的是**没有消息边界**的字节流 |
 | **UDP** | 内核里的数据报协议。有包边界，但可能丢、可能乱序。本项目通信层**不用**它 |
-| **TGateway** | App 的 TCP 网关，`examples/tgateway` `:8003` |
+| **TGateway** | App 的 TCP 网关，`services/tgateway` `:8003` |
 | **router** | HTTP 查找进程 `:8088`。不是 crate `kim-router` |
 | **QUIC** | 建立在 UDP 之上、自己做可靠流的协议。可以以后做成另一个 `Conn` 实现，业务不用改 |
 | **WebSocket** | 先用 HTTP 打个招呼再「升级」成帧，底下仍是 TCP。浏览器能用 |

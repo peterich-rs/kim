@@ -85,7 +85,7 @@ impl ChatHandler {
         Self::new_with_node(container, cache, None)
     }
 
-    /// `examples/chat/src/main.rs` must pass `Some(cfg.this.snowflake_node)`.
+    /// `services/chat/src/main.rs` must pass `Some(cfg.this.snowflake_node)`.
     pub fn new_with_node(
         container: Arc<Container>,
         cache: Arc<dyn SessionStorage>,

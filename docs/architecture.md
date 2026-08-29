@@ -47,7 +47,7 @@
 | `kim-naming` | Naming trait、StaticNaming、可选 Consul HTTP catalog | 指令业务、占 53 端口 |
 | `kim-router` | command → Handler、Context.Resp / Dispatch | Redis、TCP |
 | `kim-session` | Memory 会话；可选 Redis feature | 指令业务 |
-| `examples/gateway` / `chat` / `royal` / `router` | WGateway JWT Accept、Chat 登录/echo/talk、Royal HTTP、lookup | 把 `if login` 写进 `WsServer` |
+| `services/gateway` `chat` `royal` `router` | WGateway JWT Accept、Chat 登录/echo/talk、Royal HTTP、lookup | 把 `if login` 写进 `WsServer` |
 | `sdk/web` | 浏览器 / Node 客户端：编解码、状态机、talk / 离线 / ACK | Token 进 URL；改 `WsServer` |
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。
@@ -83,8 +83,9 @@ im/
   crates/kim-container     拨号、Young/Adult、转发
   crates/kim-router        指令 Router
   crates/kim-session       会话（Memory / 可选 Redis）
-  crates/kim-metrics       Prometheus registry（仅 examples）
-  examples/                gateway / tgateway / chat / royal / router / pkt-client / kimbench
+  crates/kim-metrics       Prometheus registry（仅进程，不进通信层）
+  services/                gateway / tgateway / chat / royal / router
+  examples/                pkt-client / kimbench
   sdk/web                  TypeScript Web SDK
   docs/                    本目录
   research/                可行性调研

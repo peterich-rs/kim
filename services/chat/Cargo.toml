@@ -40,8 +40,8 @@ gateway = { path = "../gateway" }
 royal = { path = "../royal" }
 kim-router = { workspace = true, features = ["test-util"] }
 kim-ws.workspace = true
-kimbench = { path = "../kimbench" }
-pkt-client = { path = "../pkt-client" }
+kimbench = { path = "../../examples/kimbench" }
+pkt-client = { path = "../../examples/pkt-client" }
 
 [lints]
 workspace = true
