@@ -1,0 +1,46 @@
+[self]
+listen = "127.0.0.1:8088"
+default_location = "default"
+default_region = "local"
+
+[[ip_map]]
+ip = "10.0.0.8"
+country = "hk"
+
+[[mapping]]
+country = "default"
+region = "local"
+
+[[mapping]]
+country = "hk"
+region = "hk"
+
+[[regions]]
+id = "local"
+[[regions.idcs]]
+id = "local"
+weight = 100
+
+[[regions]]
+id = "hk"
+[[regions.idcs]]
+id = "hk"
+weight = 100
+
+[[services]]
+service_id = "wg-1"
+service_name = "wgateway"
+protocol = "ws"
+public_address = "127.0.0.1"
+public_port = 8001
+tags = ["IDC:local"]
+domain = "ws://127.0.0.1:8001/"
+
+[[services]]
+service_id = "tg-1"
+service_name = "tgateway"
+protocol = "tcp"
+public_address = "127.0.0.1"
+public_port = 8003
+tags = ["IDC:local"]
+domain = "127.0.0.1:8003"

@@ -5,6 +5,9 @@ listen = "127.0.0.1:8001"
 protocol = "ws"
 # empty = DEMO_DEFAULT_SECRET (demo-only)
 jwt_secret = ""
+metrics_listen = "127.0.0.1:9001"
+idc = "local"
+domain = "ws://127.0.0.1:8001/"
 
 [[services]]
 service_id = "chat-1"
@@ -12,3 +15,13 @@ service_name = "chat"
 protocol = "tcp"
 public_address = "127.0.0.1"
 public_port = 8002
+tags = ["zone:zone_local"]
+
+[route]
+route_by = "app"
+
+[[route.zones]]
+id = "zone_local"
+weight = 100
+
+[route.whitelist]

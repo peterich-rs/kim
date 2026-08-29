@@ -43,6 +43,10 @@ impl StaticNaming {
             .collect()
     }
 
+    fn tag_match(reg: &DefaultRegistration, tags: &[&str]) -> bool {
+        tags.iter().all(|t| reg.tags.iter().any(|x| x == t))
+    }
+
     pub async fn insert(&self, reg: DefaultRegistration) {
         let mut inner = self.inner.lock().await;
         let name = reg.service_name.clone();
@@ -61,10 +65,14 @@ impl Naming for StaticNaming {
     async fn find(
         &self,
         service_name: &str,
-        _tags: &[&str],
+        tags: &[&str],
     ) -> Result<Vec<DefaultRegistration>, Error> {
         let inner = self.inner.lock().await;
-        Ok(Self::snapshot(&inner, service_name))
+        let mut list = Self::snapshot(&inner, service_name);
+        if !tags.is_empty() {
+            list.retain(|r| Self::tag_match(r, tags));
+        }
+        Ok(list)
     }
 
     async fn subscribe(
@@ -148,5 +156,21 @@ mod tests {
         assert_eq!(*seen.lock().unwrap(), 0);
         n.insert(reg("b", "chat")).await;
         assert_eq!(*seen.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn find_honors_tags_and() {
+        let mut a = reg("a", "wgateway");
+        a.tags = vec!["IDC:local".into()];
+        let mut b = reg("b", "wgateway");
+        b.tags = vec!["IDC:hk".into()];
+        let n = StaticNaming::from_slice(vec![a, b]);
+        assert_eq!(n.find("wgateway", &[]).await.unwrap().len(), 2);
+        assert_eq!(n.find("wgateway", &["IDC:local"]).await.unwrap().len(), 1);
+        assert!(n
+            .find("wgateway", &["IDC:missing"])
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

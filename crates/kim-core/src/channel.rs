@@ -63,20 +63,40 @@ impl Channel {
         let mut writer = writer;
         let writer_closed = closed.clone();
         tokio::spawn(async move {
-            while let Some(op) = rx.recv().await {
-                match op {
-                    WriteOp::Frame { opcode, payload } => {
-                        let write = writer.write_frame(opcode, payload);
-                        match tokio::time::timeout(write_wait, write).await {
-                            Ok(Ok(())) => {
-                                if writer.flush().await.is_err() {
-                                    break;
-                                }
-                            }
-                            _ => break,
+            loop {
+                let Some(first) = rx.recv().await else {
+                    let _ = writer.shutdown().await;
+                    break;
+                };
+                let mut batch = vec![first];
+                while let Ok(more) = rx.try_recv() {
+                    batch.push(more);
+                }
+                let mut saw_close = false;
+                let mut frames = Vec::new();
+                for op in batch {
+                    match op {
+                        WriteOp::Frame { opcode, payload } => frames.push((opcode, payload)),
+                        WriteOp::Close => saw_close = true,
+                    }
+                }
+                let write_batch = async {
+                    for (opcode, payload) in frames {
+                        writer.write_frame(opcode, payload).await?;
+                    }
+                    writer.flush().await?;
+                    if saw_close {
+                        writer.shutdown().await?;
+                    }
+                    Ok::<(), Error>(())
+                };
+                match tokio::time::timeout(write_wait, write_batch).await {
+                    Ok(Ok(())) => {
+                        if saw_close {
+                            break;
                         }
                     }
-                    WriteOp::Close => {
+                    _ => {
                         let _ = writer.shutdown().await;
                         break;
                     }
@@ -259,10 +279,37 @@ mod tests {
             Ok(())
         }
         async fn flush(&mut self) -> Result<(), Error> {
+            let _ = self.tx.send("flush");
             Ok(())
         }
         async fn shutdown(&mut self) -> Result<(), Error> {
             let _ = self.tx.send("close");
+            Ok(())
+        }
+    }
+
+    struct CountFlush {
+        frames: Arc<std::sync::atomic::AtomicUsize>,
+        flushes: Arc<std::sync::atomic::AtomicUsize>,
+        seen: mpsc::UnboundedSender<&'static str>,
+    }
+
+    #[async_trait]
+    impl Conn for CountFlush {
+        async fn read_frame(&mut self) -> Result<Frame, Error> {
+            std::future::pending().await
+        }
+        async fn write_frame(&mut self, _opcode: OpCode, _payload: Bytes) -> Result<(), Error> {
+            self.frames.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        async fn flush(&mut self) -> Result<(), Error> {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+            let _ = self.seen.send("flush");
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> Result<(), Error> {
+            let _ = self.seen.send("close");
             Ok(())
         }
     }
@@ -281,14 +328,56 @@ mod tests {
         );
         ch.push(Bytes::from_static(b"hi")).await.unwrap();
         ch.close().await;
-        let first = timeout(Duration::from_secs(2), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        let second = timeout(Duration::from_secs(2), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!((first, second), ("binary", "close"));
+        let mut got = Vec::new();
+        for _ in 0..3 {
+            got.push(
+                timeout(Duration::from_secs(2), rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        assert_eq!(got, ["binary", "flush", "close"]);
+    }
+
+    #[tokio::test]
+    async fn n_frames_then_close_flushes_once() {
+        let frames = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flushes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (ch, _read_loop) = Channel::pair(
+            "c1",
+            NullConn,
+            CountFlush {
+                frames: frames.clone(),
+                flushes: flushes.clone(),
+                seen: tx,
+            },
+            ChannelOpts {
+                write_wait: Duration::from_secs(2),
+                ..ChannelOpts::default()
+            },
+        );
+        for _ in 0..4 {
+            ch.push(Bytes::from_static(b"x")).await.unwrap();
+        }
+        ch.close().await;
+        let mut saw_flush = false;
+        let mut saw_close = false;
+        for _ in 0..8 {
+            match timeout(Duration::from_secs(2), rx.recv()).await {
+                Ok(Some("flush")) => saw_flush = true,
+                Ok(Some("close")) => {
+                    saw_close = true;
+                    break;
+                }
+                _ => break,
+            }
+        }
+        assert!(saw_flush);
+        assert!(saw_close);
+        assert_eq!(frames.load(Ordering::SeqCst), 4);
+        assert!(flushes.load(Ordering::SeqCst) >= 1);
+        assert_ne!(flushes.load(Ordering::SeqCst), 0);
     }
 }

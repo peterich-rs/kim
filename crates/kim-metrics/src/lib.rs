@@ -1,0 +1,237 @@
+//! Prometheus registry + text HTTP. Used by examples only.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::get;
+use axum::Router;
+use prometheus::{
+    Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
+};
+use thiserror::Error;
+
+const COMMANDS: &[&str] = &[
+    "login.signin",
+    "login.signout",
+    "chat.demo.echo",
+    "chat.user.talk",
+    "chat.group.talk",
+    "chat.group.create",
+    "chat.group.join",
+    "chat.group.quit",
+    "chat.group.detail",
+    "chat.group.members",
+    "chat.talk.ack",
+    "chat.offline.index",
+    "chat.offline.content",
+];
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("{0}")]
+    Other(String),
+}
+
+pub struct KimMetrics {
+    registry: Registry,
+    service_id: String,
+    service_name: String,
+    channel_total: GaugeVec,
+    message_in_total: IntCounterVec,
+    message_in_flow_bytes: IntCounterVec,
+    message_out_flow_bytes: IntCounterVec,
+    no_server_found: IntCounterVec,
+    login_total: IntCounterVec,
+    handler_duration: HistogramVec,
+    talk_total: IntCounterVec,
+    session_not_found: IntCounterVec,
+}
+
+impl KimMetrics {
+    pub fn new(service_id: &str, service_name: &str) -> Result<Arc<Self>, Error> {
+        let registry = Registry::new();
+        let labels = &["service_id", "service_name"];
+        let channel_total = GaugeVec::new(Opts::new("kim_channel_total", "open channels"), labels)
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let message_in_total = IntCounterVec::new(
+            Opts::new("kim_message_in_total", "inbound messages"),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let message_in_flow_bytes = IntCounterVec::new(
+            Opts::new("kim_message_in_flow_bytes", "inbound bytes"),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let message_out_flow_bytes = IntCounterVec::new(
+            Opts::new("kim_message_out_flow_bytes", "outbound bytes"),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let no_server_found = IntCounterVec::new(
+            Opts::new("kim_no_server_found_error_total", "forward with no adult"),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let login_total = IntCounterVec::new(
+            Opts::new("kim_login_total", "login attempts"),
+            &["service_id", "service_name", "status"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let handler_duration = HistogramVec::new(
+            HistogramOpts::new("kim_handler_duration_seconds", "handler RT").buckets(vec![
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+            ]),
+            &["service_id", "service_name", "command"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let talk_total = IntCounterVec::new(
+            Opts::new("kim_talk_total", "talk commands"),
+            &["service_id", "service_name", "kind"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let session_not_found = IntCounterVec::new(
+            Opts::new("kim_session_not_found_total", "missing session"),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+
+        registry
+            .register(Box::new(channel_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(message_in_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(message_in_flow_bytes.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(message_out_flow_bytes.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(no_server_found.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(login_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(handler_duration.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(talk_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(session_not_found.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        Ok(Arc::new(Self {
+            registry,
+            service_id: service_id.into(),
+            service_name: service_name.into(),
+            channel_total,
+            message_in_total,
+            message_in_flow_bytes,
+            message_out_flow_bytes,
+            no_server_found,
+            login_total,
+            handler_duration,
+            talk_total,
+            session_not_found,
+        }))
+    }
+
+    pub fn registry(&self) -> Registry {
+        self.registry.clone()
+    }
+
+    fn svc(&self) -> [&str; 2] {
+        [self.service_id.as_str(), self.service_name.as_str()]
+    }
+
+    pub fn on_channel_open(&self) {
+        self.channel_total.with_label_values(&self.svc()).inc();
+    }
+
+    pub fn on_channel_close(&self) {
+        self.channel_total.with_label_values(&self.svc()).dec();
+    }
+
+    pub fn on_message_in(&self, nbytes: u64) {
+        self.message_in_total.with_label_values(&self.svc()).inc();
+        self.message_in_flow_bytes
+            .with_label_values(&self.svc())
+            .inc_by(nbytes);
+    }
+
+    pub fn on_message_out(&self, nbytes: u64) {
+        self.message_out_flow_bytes
+            .with_label_values(&self.svc())
+            .inc_by(nbytes);
+    }
+
+    pub fn on_no_server(&self) {
+        self.no_server_found.with_label_values(&self.svc()).inc();
+    }
+
+    pub fn on_login(&self, status: i32) {
+        self.login_total
+            .with_label_values(&[
+                self.service_id.as_str(),
+                self.service_name.as_str(),
+                &status.to_string(),
+            ])
+            .inc();
+    }
+
+    pub fn observe_handler(&self, command: &str, dt: Duration) {
+        let cmd = if COMMANDS.contains(&command) {
+            command
+        } else {
+            "other"
+        };
+        self.handler_duration
+            .with_label_values(&[self.service_id.as_str(), self.service_name.as_str(), cmd])
+            .observe(dt.as_secs_f64());
+    }
+
+    pub fn on_talk(&self, kind: &str) {
+        self.talk_total
+            .with_label_values(&[self.service_id.as_str(), self.service_name.as_str(), kind])
+            .inc();
+    }
+
+    pub fn on_session_not_found(&self) {
+        self.session_not_found.with_label_values(&self.svc()).inc();
+    }
+}
+
+/// Mergeable axum router: GET /metrics, GET /health.
+pub fn router(registry: Registry) -> Router {
+    Router::new()
+        .route("/metrics", get(metrics_handler))
+        .route("/health", get(health_handler))
+        .with_state(registry)
+}
+
+async fn health_handler() -> &'static str {
+    "ok"
+}
+
+async fn metrics_handler(State(reg): State<Registry>) -> Result<String, StatusCode> {
+    let encoder = TextEncoder::new();
+    let families = reg.gather();
+    let mut buf = Vec::new();
+    encoder
+        .encode(&families, &mut buf)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    String::from_utf8(buf).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+pub async fn serve(listen: SocketAddr, registry: Registry) -> Result<(), std::io::Error> {
+    let app = router(registry);
+    let listener = tokio::net::TcpListener::bind(listen).await?;
+    axum::serve(listener, app).await
+}

@@ -24,6 +24,8 @@ await cli.logout()
 
 Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。
 
+可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
+
 `LoginReq` 没有 tags 字段，构造函数里的 `tags` 不会上线。
 
 ---
@@ -137,4 +139,4 @@ cd sdk/web && npm run demo
 
 ## 非目标
 
-App / TGateway TCP SDK、把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。
+把 Token 放进 URL、改 `kim-protocol` 的 LoginResp、localforage。TGateway 是 `examples/fake-tgateway`（TCP + 同一套 `GatewayHandler`），不是第二套 SDK。

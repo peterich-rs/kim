@@ -4,6 +4,8 @@
 //! never read `REDIS_URL`. `env -u REDIS_URL cargo test --workspace` does not need a
 //! Redis daemon.
 
+mod cache;
+mod dual;
 mod keys;
 mod memory;
 #[cfg(feature = "redis")]
@@ -14,6 +16,8 @@ use std::time::Duration;
 
 use kim_router::{SessionError, SessionStorage};
 
+pub use cache::CachedSessionStore;
+pub use dual::DualWriteStore;
 pub use keys::{key_location, key_session};
 pub use memory::MemorySessionStore;
 
@@ -35,9 +39,33 @@ pub async fn open_session_store(
 }
 
 #[cfg(feature = "redis")]
+fn loc_cache_enabled() -> bool {
+    !matches!(
+        std::env::var("KIM_LOC_CACHE"),
+        Ok(s) if s == "0" || s.eq_ignore_ascii_case("false")
+    )
+}
+
+#[cfg(feature = "redis")]
+fn wrap_cache(store: Arc<dyn SessionStorage>) -> Arc<dyn SessionStorage> {
+    if loc_cache_enabled() {
+        CachedSessionStore::wrap(store)
+    } else {
+        store
+    }
+}
+
+#[cfg(feature = "redis")]
 async fn open_redis_store(url: &str) -> Result<Arc<dyn SessionStorage>, SessionError> {
-    let store = redis::RedisSessionStore::open(url).await?;
-    Ok(Arc::new(store))
+    let primary = Arc::new(redis::RedisSessionStore::open(url).await?);
+    let store: Arc<dyn SessionStorage> = match std::env::var("REDIS_MIRROR_URL") {
+        Ok(m) if !m.trim().is_empty() => {
+            let mirror = Arc::new(redis::RedisSessionStore::open(m.trim()).await?);
+            DualWriteStore::new(primary, mirror)
+        }
+        _ => primary,
+    };
+    Ok(wrap_cache(store))
 }
 
 #[cfg(not(feature = "redis"))]

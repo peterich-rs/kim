@@ -41,6 +41,10 @@ struct SelfSection {
     db_idle_timeout_secs: u64,
     #[serde(default = "default_snowflake_node")]
     snowflake_node: u16,
+    #[serde(default)]
+    zone: String,
+    #[serde(default)]
+    metrics_listen: String,
 }
 
 fn default_snowflake_node() -> u16 {
@@ -98,9 +102,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg: File = toml::from_str(&std::fs::read_to_string(&path)?)?;
 
     let naming = Arc::new(StaticNaming::from_slice(vec![]));
+    let service_id = cfg.this.service_id.clone();
+    let service_name = cfg.this.service_name.clone();
     let identity = DefaultRegistration {
-        service_id: cfg.this.service_id.clone(),
-        service_name: cfg.this.service_name,
+        service_id: service_id.clone(),
+        service_name: service_name.clone(),
         protocol: cfg.this.protocol,
         public_address: String::new(),
         public_port: 0,
@@ -143,19 +149,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         naming,
         identity,
         dialer: Arc::new(InnerTcpDialer {
-            local_service_id: cfg.this.service_id,
+            local_service_id: service_id.clone(),
         }),
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: None,
+        after_downlink: vec![],
     });
-    let handler = Arc::new(ChatHandler::with_seams(
+    let handler = Arc::new(ChatHandler::with_seams_and_zone(
         container.clone(),
         cache,
         store,
         groups,
+        cfg.this.zone.clone(),
     ));
+    if !cfg.this.metrics_listen.is_empty() {
+        if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {
+            handler.with_metrics(m.clone());
+            if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {
+                tokio::spawn(async move {
+                    let _ = kim_metrics::serve(addr, m.registry()).await;
+                });
+            }
+        }
+    }
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

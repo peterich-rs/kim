@@ -14,6 +14,7 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
 | 控制层 | 在线 + 离线 + 群管理 | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)、[docs/group-royal.md](docs/group-royal.md) |
 | Web SDK | 已落地 | [docs/web-sdk.md](docs/web-sdk.md)：`sdk/web`，登录 / 收发 / 离线 / ACK / 群 |
+| 进阶 25–32 | 已落地 | [docs/bench.md](docs/bench.md)、[docs/perf.md](docs/perf.md)、[docs/routing.md](docs/routing.md)、[docs/gray.md](docs/gray.md)、[docs/observability.md](docs/observability.md)、[docs/deploy.md](docs/deploy.md) |
 
 进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
@@ -83,9 +84,9 @@ crates/kim-naming       静态服务发现（不是 Consul）
 crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
-examples/               fake-gateway / fake-chat / fake-royal / pkt-client
+examples/               fake-gateway / fake-tgateway / fake-chat / fake-royal / fake-router / pkt-client / kimbench
 sdk/web                 TypeScript Web SDK（第 23–24 章）
-docs/                   词表、分层合同、登录与控制层规格
+docs/                   词表、分层合同、登录与控制层规格、进阶篇 as-built
 ```
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 登录、互踢、群聊都不进 `TcpServer` / `WsServer`。
@@ -101,6 +102,12 @@ docs/                   词表、分层合同、登录与控制层规格
 7. [docs/reliable-delivery.md](docs/reliable-delivery.md) — ACK / 写扩散 / 离线 Pull
 8. [docs/group-royal.md](docs/group-royal.md) — 群 join/quit/detail、可选 Royal
 9. [docs/web-sdk.md](docs/web-sdk.md) — TypeScript Web SDK
+10. [docs/bench.md](docs/bench.md) — kimbench
+11. [docs/perf.md](docs/perf.md) — 写路径 / 缓冲 / 寻址缓存
+12. [docs/routing.md](docs/routing.md) — HTTP 智能路由
+13. [docs/gray.md](docs/gray.md) — 租户 / zone 灰度
+14. [docs/observability.md](docs/observability.md) — Prometheus `/metrics`
+15. [docs/deploy.md](docs/deploy.md) — 本机 compose 与容灾文档
 
 ## 开发
 

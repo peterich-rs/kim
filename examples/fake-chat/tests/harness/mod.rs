@@ -76,7 +76,7 @@ where
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: None,
+        after_downlink: vec![],
     });
     let chat_h = Arc::new(make_chat(chat_c.clone(), cache.clone()));
     attach_chat_handler(&mut chat_server, chat_h);
@@ -107,7 +107,7 @@ where
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: Some(hook.clone()),
+        after_downlink: vec![hook.clone()],
     });
     let gw_h = Arc::new(GatewayHandler::new(
         gw_c.clone(),
@@ -158,7 +158,7 @@ pub async fn spawn_gateway_only() -> (Arc<Container>, std::net::SocketAddr) {
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: Some(hook.clone()),
+        after_downlink: vec![hook.clone()],
     });
     let gw_h = Arc::new(GatewayHandler::new(
         gw_c.clone(),
