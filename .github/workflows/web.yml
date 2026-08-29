@@ -18,7 +18,8 @@ permissions:
 jobs:
   deploy:
     name: Build SPA and wrangler deploy
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    # Job-level `if` cannot read `secrets` (GitHub reports a workflow file
+    # issue and creates no jobs). Fail closed in the deploy step instead.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,6 +38,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set" >&2
+            exit 1
+          fi
           npm ci
           npm run build:app
           npx wrangler deploy
