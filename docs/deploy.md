@@ -1,25 +1,67 @@
 # 部署
 
-对照小册第 32 章。本机 Demo 仍是 `cargo run`。Compose 只起可选基础设施。
+对照小册第 32 章。本机开发仍是 `cargo run` + Memory，不需要 Docker。VPS 跑 `deploy/compose.yml`：gateway / chat / Redis / Postgres。镜像由 GitHub Actions 推到 GHCR，部署 job SSH 上去 `pull && up`。
 
-## 本机最小集
+## 本机开发（默认）
+
+进程仍听 loopback。不要把 JWT 写进仓库。
 
 ```text
-fake-router :8088
-fake-gateway :8001  (metrics :9001)
-fake-tgateway :8003 (metrics :9003)
-fake-chat :8002     (metrics :9002)
-fake-royal :8080    可选
+fake-gateway :8001
+fake-chat    :8002
 ```
 
-`deploy/compose.yml` profile：`metrics`（Prometheus）、`redis`、`postgres`。KIM 进程不进 compose。
+可选本机基础设施（旧习惯，不是默认 Demo）：
 
-TLS / 公网 WSS / TGateway TLS：**以后**。Compose 绑 localhost。
+```bash
+# 需要本机已装 Docker 时
+docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redis postgres
+```
 
-## 单机房（文档）
+更省事：继续 Memory，不启 Redis / Postgres。
 
-至少两个 zone 才能做灰度。Redis 哨兵、MySQL 主从是目标架构，不是本仓库默认。
+## Docker 栈（一台干净的 VPS）
 
-## 同城双活（文档）
+`deploy/compose.yml` 自带 chat、gateway、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口，只在 compose 网络里。网关映射 `127.0.0.1:8001`，给宿主机反代用。
 
-不实现。按 app 切 zone 可以让两个机房数据不相交；会话变更分区时要踢下线重登。
+| 路径 | 用途 |
+|---|---|
+| `Dockerfile` | `fake-chat` + `fake-gateway`（`--features redis,postgres`） |
+| `deploy/compose.yml` | 生产栈 |
+| `deploy/chat.toml` / `gateway.toml` | 容器内配置（听 `0.0.0.0`） |
+| `deploy/kim.env.example` | 环境变量模板；真正的 `kim.env` 只活在 VPS |
+| `deploy/Caddyfile` | `--profile edge` 时栈自己占 80/443 |
+| `deploy/bootstrap.sh` | 第一次在 VPS 上生成 `kim.env`（不打印密钥） |
+| `deploy/remote-up.sh` | CI 调用：login GHCR → pull → up |
+
+```bash
+# 有 Docker 的机器上本地试跑镜像（先 build）
+docker build -t ghcr.io/peterich-rs/kim:local .
+cp deploy/kim.env.example deploy/kim.env   # 改密钥后再 up
+# 在仓库根目录：
+KIM_IMAGE=ghcr.io/peterich-rs/kim:local docker compose -f deploy/compose.yml --env-file deploy/kim.env up -d
+```
+
+TLS：
+
+- 这套 compose 独占 80/443：`docker compose --env-file kim.env --profile edge up -d`。DNS A 记录先灰云（DNS only），方便 Caddy HTTP-01。
+- 宿主机已经有反代：不要开 `edge`，把该站点指到 `127.0.0.1:8001`（WebSocket 关读超时）。
+
+公网 TGateway（裸 TCP+TLS）和同城双活：**以后**。UFW 默认只放 22/80/443。
+
+## CI
+
+| Workflow | 何时 | 做什么 |
+|---|---|---|
+| `ci.yml` | push / PR | fmt、clippy、test |
+| `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim` |
+| `deploy.yml` | tag `v*` 或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
+
+GitHub Secrets（只放在 GitHub，不进 git）：
+
+- `KIM_VPS_HOST` — SSH 目标，例如 `root@203.0.113.10`
+- `KIM_VPS_SSH_KEY` — **专用** ed25519 私钥；公钥在 VPS `authorized_keys`
+
+VPS **不**放 GitHub 写权限 PAT。`kim.env` 只在 `/opt/kim/deploy/`，CI 不上传这份文件；没有则 `bootstrap.sh` 生成一次。
+
+部署用的 SSH 公钥与日常登录钥匙分开。

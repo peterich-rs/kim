@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (sha-…, v1.2.3, or latest)"
+        required: false
+        default: "latest"
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Pull image and compose up
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve image tag
+        id: img
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rsync openssh-client
+
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.KIM_VPS_HOST }}
+          KEY: ${{ secrets.KIM_VPS_SSH_KEY }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          IMAGE: ghcr.io/${{ github.repository }}:${{ steps.img.outputs.tag }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$KEY" > "$HOME/.ssh/kim_deploy"
+          chmod 600 "$HOME/.ssh/kim_deploy"
+          host_name="${HOST##*@}"
+          ssh-keyscan -t ed25519,ecdsa,rsa "$host_name" >> "$HOME/.ssh/known_hosts"
+          ssh_cmd=(ssh -i "$HOME/.ssh/kim_deploy" -o IdentitiesOnly=yes -o BatchMode=yes)
+          "${ssh_cmd[@]}" "$HOST" "mkdir -p /opt/kim/deploy && chmod 755 /opt/kim /opt/kim/deploy"
+          export RSYNC_RSH="${ssh_cmd[*]}"
+          rsync -avz \
+            deploy/compose.yml \
+            deploy/Caddyfile \
+            deploy/chat.toml \
+            deploy/gateway.toml \
+            deploy/prometheus.yml \
+            deploy/bootstrap.sh \
+            deploy/remote-up.sh \
+            "$HOST:/opt/kim/deploy/"
+          "${ssh_cmd[@]}" "$HOST" "chown -R root:root /opt/kim/deploy && chmod 755 /opt/kim/deploy/bootstrap.sh /opt/kim/deploy/remote-up.sh && bash /opt/kim/deploy/bootstrap.sh"
+          printf '%s\n' "$GHCR_TOKEN" | "${ssh_cmd[@]}" "$HOST" \
+            env IMAGE="$IMAGE" GHCR_USER="$GHCR_USER" \
+            bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN IMAGE GHCR_USER; bash /opt/kim/deploy/remote-up.sh'
+          rm -f "$HOME/.ssh/kim_deploy"

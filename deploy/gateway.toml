@@ -1,0 +1,27 @@
+[self]
+service_id = "wg-1"
+service_name = "wgateway"
+listen = "0.0.0.0:8001"
+protocol = "ws"
+# empty = KIM_JWT_SECRET env, else demo secret (do not use in production)
+jwt_secret = ""
+metrics_listen = "0.0.0.0:9001"
+idc = "local"
+domain = "wss://kim.ainexc.com/"
+
+[[services]]
+service_id = "chat-1"
+service_name = "chat"
+protocol = "tcp"
+public_address = "chat"
+public_port = 8002
+tags = ["zone:zone_local"]
+
+[route]
+route_by = "app"
+
+[[route.zones]]
+id = "zone_local"
+weight = 100
+
+[route.whitelist]
