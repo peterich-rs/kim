@@ -59,6 +59,7 @@ jobs:
           rsync -avz \
             deploy/compose.yml \
             deploy/Caddyfile \
+            deploy/host.Caddyfile \
             deploy/chat.toml \
             deploy/gateway.toml \
             deploy/royal.toml \
