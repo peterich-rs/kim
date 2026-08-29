@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。产品页 `sdk/web/app`：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。产品页 `sdk/web/app`（React + React Router + Tailwind）：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
 
@@ -111,16 +111,24 @@ e2e 自己起临时端口，不占用 `:8001`。
 
 ## 浏览器 Demo
 
-产品页（注册 / 登录 / 聊天）：必须先 Royal（`:8080`）再 Chat 再网关（`:8001`）：
+产品页默认连生产后台（不必起本机进程）：
+
+```bash
+cd sdk/web && npm run app
+```
+
+打开 http://127.0.0.1:5173/ 。未登录进登录/注册页；登录后进会话列表。Vite 把 `/api` 代理到 `https://kim.ainexc.com`，WebSocket 直连 `wss://kim.ainexc.com/`。同一账号两个标签会互踢。Token 只由 Royal 签发。换源站：`KIM_ORIGIN=https://example.com npm run app`。
+
+本机全套（先 Royal `:8080`，再 Chat，再网关 `:8001`）：
 
 ```bash
 RUST_LOG=info cargo run -p royal
 RUST_LOG=info cargo run -p chat
 RUST_LOG=info cargo run -p gateway
-cd sdk/web && npm run app
+cd sdk/web && npm run app:local
 ```
 
-打开 http://127.0.0.1:5173/ ，注册两个账号互发。同一账号两个标签会互踢。Token 只由 Royal 签发。生产构建（`npm run build:app`）把 WebSocket 指到当前页的 `wss://` 主机，由 Worker 回源 VPS 网关。
+生产构建（`npm run build:app`）把 WebSocket 指到当前页的 `wss://` 主机，由 Worker 回源 VPS 网关。
 
 小册 demo（本机 mint，不打 Royal）：
 

@@ -1,4 +1,4 @@
-import { decodeAuthResp, encodeAuthReq } from "../src/proto.ts";
+import { decodeAuthResp, encodeAuthReq } from "../../src/proto.ts";
 
 export interface AuthSession {
   token: string;
@@ -23,7 +23,7 @@ async function postAuth(path: string, account: string, password: string): Promis
       "Content-Type": "application/x-protobuf",
       Accept: "application/x-protobuf",
     },
-    body: encodeAuthReq(account, password),
+    body: encodeAuthReq(account, password).slice(),
   });
   if (!resp.ok) {
     throw asError(resp.status, (await resp.text()) || `http ${resp.status}`);
