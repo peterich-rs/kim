@@ -22,7 +22,15 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 
 需要 [Rust](https://rustup.rs/)。工具链钉在 `rust-toolchain.toml`（当前 1.95.0），clone 之后 rustup 会自动用这个版本。
 
-产品 Web（Memory。必须先 Royal，再 Chat，再网关，再页面）：
+产品 Web 默认同生产后台（只起页面，不必本机 Royal / Chat / 网关）：
+
+```bash
+cd sdk/web && npm run app
+```
+
+打开 http://127.0.0.1:5173/ 。Vite 把 `/api` 代理到 `https://kim.ainexc.com`，长连接走 `wss://kim.ainexc.com/`。
+
+本机全套（Memory。先 Royal，再 Chat，再网关，再页面）：
 
 ```bash
 # 终端 1
@@ -35,10 +43,10 @@ RUST_LOG=info cargo run -p chat
 RUST_LOG=info cargo run -p gateway
 
 # 终端 4
-cd sdk/web && npm run app
+cd sdk/web && npm run app:local
 ```
 
-打开 http://127.0.0.1:5173/ ，注册两个账号，两个标签页互发。Vite 把 `/api` 代理到 Royal `:8080`。
+打开 http://127.0.0.1:5173/ 。`app:local` 把 `/api` 代理到 Royal `:8080`，WebSocket 连本机网关 `:8001`。
 
 CLI（本地签 JWT，不必 Royal）：
 

@@ -2,3 +2,4 @@
 worker-configuration.d.ts
 .dev.vars
 dist-app/
+demo/dist/

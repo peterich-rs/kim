@@ -23,20 +23,26 @@ await cli.talkToUser("bob", new Content("hello"));
 await cli.logout();
 ```
 
-产品页走 Royal 注册/登录拿 JWT。小册 demo 仍用 `DEMO_DEFAULT_SECRET` 本机签发，见 `examples/pkt-client`。
+产品页（`sdk/web/app`）用 React + React Router + Tailwind 做登录 / 注册 / 聊天，走 Royal 拿 JWT。小册 demo 仍用 `DEMO_DEFAULT_SECRET` 本机签发，见 `examples/pkt-client`。
 
 ## 浏览器里点
 
-产品聊天（注册两个账号互发）：
+产品聊天默认连生产后台（不必起 Royal / Chat / 网关）：
+
+```bash
+cd sdk/web && npm run app
+```
+
+打开 http://127.0.0.1:5173/ 。Vite 把 `/api` 代理到 `https://kim.ainexc.com`，WebSocket 直连 `wss://kim.ainexc.com/`。换源站：`KIM_ORIGIN=https://example.com npm run app`。
+
+本机全套后台：
 
 ```bash
 cargo run -p royal
 cargo run -p chat
 cargo run -p gateway
-cd sdk/web && npm run app
+cd sdk/web && npm run app:local
 ```
-
-打开 http://127.0.0.1:5173/ 。
 
 公网（Cloudflare Worker + VPS 源站）：`ainexc.com` 区里 `kim.ainexc.com` 橙云指向 VPS 后：
 

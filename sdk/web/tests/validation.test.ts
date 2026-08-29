@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+
+import { COPY } from "../app/copy.ts";
+import { mapUserError } from "../app/lib/errors.ts";
+import { validateAccount, validateConfirm, validatePassword } from "../app/lib/validation.ts";
+
+describe("validation", () => {
+  it("accepts accounts that match Royal rules", () => {
+    expect(validateAccount("alice")).toBeUndefined();
+    expect(validateAccount("a_b1")).toBeUndefined();
+  });
+
+  it("rejects short or illegal accounts", () => {
+    expect(validateAccount("ab")).toBe(COPY.invalidAccount);
+    expect(validateAccount("alice-1")).toBe(COPY.invalidAccount);
+  });
+
+  it("rejects short passwords", () => {
+    expect(validatePassword("secret")).toBe(COPY.invalidPassword);
+    expect(validatePassword("secret12")).toBeUndefined();
+  });
+
+  it("requires matching confirmation", () => {
+    expect(validateConfirm("secret12", "secret12")).toBeUndefined();
+    expect(validateConfirm("secret12", "secret13")).toBe(COPY.mismatch);
+  });
+});
+
+describe("mapUserError", () => {
+  it("maps known auth failures to product copy", () => {
+    expect(mapUserError(Object.assign(new Error("账号或密码错误"), { status: 401 }))).toBe(
+      COPY.badCredentials,
+    );
+    expect(mapUserError(Object.assign(new Error("账号已存在"), { status: 409 }))).toBe(
+      COPY.accountExists,
+    );
+    expect(mapUserError(new Error("invalid account"))).toBe(COPY.invalidAccount);
+    expect(mapUserError(new Error("login timeout (chat unreachable?)"))).toBe(COPY.timeout);
+  });
+
+  it("does not leak raw technical messages", () => {
+    expect(mapUserError(new Error("http 502"))).toBe(COPY.unavailable);
+    expect(mapUserError(new Error("ECONNREFUSED"))).toBe(COPY.unavailable);
+  });
+});

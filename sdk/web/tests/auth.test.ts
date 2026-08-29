@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { login, logout, register } from "../app/auth.ts";
+import { login, logout, register } from "../app/lib/auth.ts";
 
 describe("auth http", () => {
   it("login maps 401 text", async () => {

@@ -5,19 +5,11 @@ import {
   KeyValueStore,
   Message,
   State,
-} from "../src/index.ts";
-
-export type Kind = "user" | "group";
-
-export interface Thread {
-  id: string;
-  kind: Kind;
-  title: string;
-}
+} from "../../src/index.ts";
+import type { Kind } from "./threads.ts";
 
 export interface ChatHandlers {
-  onStatus: (text: string, cls: "ok" | "bad" | "") => void;
-  onEvent: (evt: string) => void;
+  onStatus: (status: "connecting" | "online" | "reconnecting" | "offline") => void;
   onMessage: (msg: Message, dest: string) => void;
   onKick: () => void;
   onGroup: (groupId: string, members: string[]) => void;
@@ -36,6 +28,7 @@ export function threadOf(msg: Message, me: string): string {
 export class ChatSession {
   client: KIMClient | undefined;
   readonly account: string;
+  private disposed = false;
   private readonly handlers: ChatHandlers;
 
   constructor(account: string, handlers: ChatHandlers) {
@@ -43,46 +36,67 @@ export class ChatSession {
     this.handlers = handlers;
   }
 
+  get alive(): boolean {
+    return !this.disposed;
+  }
+
   async connect(ws: string, token: string): Promise<void> {
-    const next = new KIMClient(ws, { token }, {
-      store: new KeyValueStore(localStorage, `kim_${this.account}`),
-      reconnect: true,
-    });
+    this.handlers.onStatus("connecting");
+    const next = new KIMClient(
+      ws,
+      { token },
+      {
+        store: new KeyValueStore(localStorage, `kim_${this.account}`),
+        reconnect: true,
+      },
+    );
     this.bind(next);
     const { success, err } = await next.login();
+    if (this.disposed) {
+      await next.logout();
+      return;
+    }
     if (!success) {
-      throw err ?? new Error("登录网关失败");
+      throw err ?? new Error("login failed");
     }
     this.client = next;
-    this.handlers.onStatus(`在线 · ${next.channelId}`, "ok");
+    this.handlers.onStatus("online");
   }
 
   private bind(cli: KIMClient): void {
     cli.register(
       [KIMEvent.Closed, KIMEvent.Kickout, KIMEvent.Reconnecting, KIMEvent.Reconnected],
       (evt) => {
+        if (this.disposed) {
+          return;
+        }
         if (evt === KIMEvent.Kickout) {
-          this.handlers.onStatus("已在其他设备登录", "bad");
+          this.handlers.onStatus("offline");
           this.handlers.onKick();
           return;
         }
         if (evt === KIMEvent.Reconnecting) {
-          this.handlers.onStatus("重连中…", "");
+          this.handlers.onStatus("reconnecting");
         } else if (evt === KIMEvent.Reconnected) {
-          this.handlers.onStatus(`在线 · ${cli.channelId}`, "ok");
+          this.handlers.onStatus("online");
         } else {
-          this.handlers.onStatus("已断开", "bad");
+          this.handlers.onStatus("offline");
         }
-        this.handlers.onEvent(evt);
       },
     );
     cli.onmessage((m) => {
+      if (this.disposed) {
+        return;
+      }
       this.handlers.onMessage(m, threadOf(m, cli.account));
     });
     cli.onofflinemessage((om) => {
       void (async () => {
         for (const u of om.listUsers()) {
           const page = await om.loadUser(u, 1);
+          if (this.disposed) {
+            return;
+          }
           for (const m of page) {
             m.sender = m.sender || u;
             this.handlers.onMessage(m, u);
@@ -90,6 +104,9 @@ export class ChatSession {
         }
         for (const g of om.listGroups()) {
           const page = await om.loadGroup(g, 1);
+          if (this.disposed) {
+            return;
+          }
           for (const m of page) {
             m.group = g;
             this.handlers.onMessage(m, g);
@@ -98,6 +115,9 @@ export class ChatSession {
       })();
     });
     cli.ongroupcreate((groupId, members) => {
+      if (this.disposed) {
+        return;
+      }
       this.handlers.onGroup(groupId, members);
     });
   }
@@ -105,14 +125,14 @@ export class ChatSession {
   async send(dest: string, kind: Kind, text: string): Promise<Message> {
     const cli = this.client;
     if (!cli || cli.state !== State.CONNECTED) {
-      throw new Error("未连接");
+      throw new Error("not connected");
     }
     const { status, resp, err } =
       kind === "group"
         ? await cli.talkToGroup(dest, new Content(text))
         : await cli.talkToUser(dest, new Content(text));
     if (status !== 0) {
-      throw err ?? new Error(`发送失败 ${status}`);
+      throw err ?? new Error(`send ${status}`);
     }
     const msg = new Message(resp?.messageId ?? 0n, resp?.sendTime ?? 0n);
     msg.sender = cli.account;
@@ -127,12 +147,12 @@ export class ChatSession {
   async createGroup(name: string, members: string[]): Promise<string> {
     const cli = this.client;
     if (!cli) {
-      throw new Error("未连接");
+      throw new Error("not connected");
     }
     const list = members.includes(cli.account) ? members : [cli.account, ...members];
     const { status, groupId, err } = await cli.createGroup({ name, members: list });
     if (status !== 0 || !groupId) {
-      throw err ?? new Error(`建群失败 ${status}`);
+      throw err ?? new Error(`create group ${status}`);
     }
     return groupId;
   }
@@ -146,9 +166,24 @@ export class ChatSession {
     return members ?? [];
   }
 
+  async groupTitle(groupId: string): Promise<string | undefined> {
+    const cli = this.client;
+    if (!cli) {
+      return undefined;
+    }
+    const { detail } = await cli.groupDetail(groupId);
+    const name = detail?.name?.trim();
+    return name || undefined;
+  }
+
   async disconnect(): Promise<void> {
     const cur = this.client;
     this.client = undefined;
     await cur?.logout();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    void this.disconnect();
   }
 }
