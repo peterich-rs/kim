@@ -120,7 +120,7 @@ RUST_LOG=info cargo run -p gateway
 cd sdk/web && npm run app
 ```
 
-打开 http://127.0.0.1:5173/ ，注册两个账号互发。同一账号两个标签会互踢。Token 只由 Royal 签发。
+打开 http://127.0.0.1:5173/ ，注册两个账号互发。同一账号两个标签会互踢。Token 只由 Royal 签发。生产构建（`npm run build:app`）把 WebSocket 指到当前页的 `wss://` 主机，由 Worker 回源 VPS 网关。
 
 小册 demo（本机 mint，不打 Royal）：
 

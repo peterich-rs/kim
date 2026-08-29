@@ -26,7 +26,8 @@
     "test:e2e": "KIM_SDK_E2E=1 vitest run --config vitest.config.ts tests/e2e.test.ts",
     "demo": "vite --config vite.config.ts",
     "app": "vite --config vite.app.config.ts",
-    "build:app": "vite build --config vite.app.config.ts"
+    "build:app": "vite build --config vite.app.config.ts",
+    "deploy:app": "npm run build:app && wrangler deploy"
   },
   "dependencies": {
     "long": "^5.3.2",
@@ -36,6 +37,7 @@
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.127.1"
   }
 }

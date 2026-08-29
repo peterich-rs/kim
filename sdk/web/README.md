@@ -38,6 +38,14 @@ cd sdk/web && npm run app
 
 打开 http://127.0.0.1:5173/ 。
 
+公网（Cloudflare Worker + VPS 源站）：`ainexc.com` 区里 `kim.ainexc.com` 橙云指向 VPS 后：
+
+```bash
+cd sdk/web && npm run deploy:app
+```
+
+打开 https://kim.ainexc.com 。
+
 小册 demo（本机 mint）：
 
 ```bash

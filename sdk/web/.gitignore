@@ -1,5 +1,4 @@
-node_modules/
-dist/
-demo/dist/
-coverage/
-*.log
+.wrangler/
+worker-configuration.d.ts
+.dev.vars
+dist-app/

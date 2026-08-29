@@ -46,10 +46,23 @@ KIM_IMAGE=ghcr.io/peterich-rs/kim:local docker compose -f deploy/compose.yml --e
 
 TLS：
 
-- 这套 compose 独占 80/443：`docker compose --env-file kim.env --profile edge up -d`。DNS A 记录先灰云（DNS only），方便 Caddy HTTP-01。
-- 宿主机已经有反代：不要开 `edge`，把该站点指到 `127.0.0.1:8001`（WebSocket 关读超时）。
+- 产品页用 Worker Route 时：`kim.ainexc.com` **橙云** A/AAAA 指向 VPS，Caddy 仍是源站。浏览器 TLS 在 Cloudflare；源站用 Origin 证书（Full Strict）或 CF→源站 HTTP（Full）。灰云则 Worker 不会接到流量。
+- 不用 Worker、compose 自己占 80/443：`docker compose --env-file kim.env --profile edge up -d`，DNS 可灰云做 Caddy HTTP-01。
+- 宿主机已经有反代：不要开 `edge`，把该站点指到 `127.0.0.1:8001`（WebSocket 关读超时）和 `127.0.0.1:8080`（`/api/v1/auth/*`）。
 
 公网 TGateway（裸 TCP+TLS）和同城双活：**以后**。UFW 默认只放 22/80/443。
+
+## 产品 H5（Cloudflare Worker）
+
+静态页走 Workers Static Assets，登录 protobuf 和 WebSocket 仍回源 VPS。`kim.ainexc.com` 必须是 Cloudflare 橙云 DNS（A/AAAA 指向 VPS）。**不要**把该主机名做成 Worker Custom Domain，否则后台收不到请求。
+
+```bash
+cd sdk/web
+npm ci
+npm run deploy:app
+```
+
+打开 https://kim.ainexc.com 。Worker 路由是 `kim.ainexc.com/*`（zone `ainexc.com`）。VPS 上 Caddy 继续反代 `/api/v1/auth/*` 和 Upgrade。
 
 ## CI
 
@@ -58,11 +71,14 @@ TLS：
 | `ci.yml` | push / PR | fmt、clippy、test |
 | `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim` |
 | `deploy.yml` | tag `v*` 或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
+| `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com` |
 
 GitHub Secrets（只放在 GitHub，不进 git）：
 
 - `KIM_VPS_HOST` — SSH 目标，例如 `root@203.0.113.10`
 - `KIM_VPS_SSH_KEY` — **专用** ed25519 私钥；公钥在 VPS `authorized_keys`
+- `CLOUDFLARE_API_TOKEN` — Worker 发布（Zone.Workers Routes Edit + Account.Workers Scripts Edit）
+- `CLOUDFLARE_ACCOUNT_ID` — 同上账号
 
 VPS **不**放 GitHub 写权限 PAT。`kim.env` 只在 `/opt/kim/deploy/`，CI 不上传这份文件；没有则 `bootstrap.sh` 生成一次。
 
