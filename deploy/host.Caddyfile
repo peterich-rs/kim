@@ -1,0 +1,56 @@
+# Host Caddy site for kim.ainexc.com when compose does not use --profile edge.
+# Merge this block into /etc/caddy/Caddyfile (the VPS already has other sites).
+# Loopback ports match deploy/compose.yml. Docker DNS names (royal:8080) do
+# not resolve here.
+#
+# Worker Route serves the SPA. This origin only needs auth, lookup, and WS.
+
+kim.ainexc.com {
+	encode gzip zstd
+
+	handle /api/lookup* {
+		reverse_proxy 127.0.0.1:8088
+	}
+
+	handle /api/v1/auth/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @websocket {
+		reverse_proxy 127.0.0.1:8001 {
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+			}
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up Connection {>Connection}
+			header_up Upgrade {>Upgrade}
+		}
+	}
+
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/kim-access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}
