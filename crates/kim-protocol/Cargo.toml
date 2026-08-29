@@ -12,6 +12,7 @@ jsonwebtoken.workspace = true
 prost.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 
 [build-dependencies]
 prost-build = "0.13"

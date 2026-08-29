@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。H5 demo：Vite 本机仍用 `mint.ts` 本地密钥；公网页 `POST /api/{app}/token`（Royal）。`pkt-client` 可设 `KIM_TOKEN_URL`，失败则回退本地 `generate`。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。产品页 `sdk/web/app`：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
 
@@ -111,25 +111,24 @@ e2e 自己起临时端口，不占用 `:8001`。
 
 ## 浏览器 Demo
 
-必须先 Chat 再网关（`:8001`），再起页面：
+产品页（注册 / 登录 / 聊天）：必须先 Royal（`:8080`）再 Chat 再网关（`:8001`）：
 
 ```bash
-# 终端 1
+RUST_LOG=info cargo run -p royal
 RUST_LOG=info cargo run -p chat
-
-# 终端 2
 RUST_LOG=info cargo run -p gateway
+cd sdk/web && npm run app
+```
 
-# 终端 3
+打开 http://127.0.0.1:5173/ ，注册两个账号互发。同一账号两个标签会互踢。Token 只由 Royal 签发。
+
+小册 demo（本机 mint，不打 Royal）：
+
+```bash
 cd sdk/web && npm run demo
 ```
 
-浏览器打开两个标签：
-
-- http://127.0.0.1:5173/?acc=alice&dest=bob
-- http://127.0.0.1:5173/?acc=bob&dest=alice
-
-点「连接」后互发。同一账号两个标签会互踢。Demo 用 `DEMO_DEFAULT_SECRET` 在页面里签 JWT，只适合本机；生产必须由自家后端签 Token。
+然后 `?acc=alice&dest=bob`。Demo 用 `DEMO_DEFAULT_SECRET` 在页面里签 JWT，只适合本机。
 
 网关默认绑 `127.0.0.1`，手机访问 Vite 也连不上本机网关。要对手机玩，把 `gateway` 的 listen 改成 `0.0.0.0:8001`，页面网关填 `ws://电脑局域网IP:8001/`。
 

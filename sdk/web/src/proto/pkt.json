@@ -349,6 +349,14 @@
                 }
               }
             },
+            "GroupQueryReq": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
             "GroupMembersResp": {
               "fields": {
                 "members": {
@@ -454,6 +462,34 @@
                 "messageId": {
                   "type": "int64",
                   "id": 2
+                }
+              }
+            },
+            "AuthReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "password": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "AuthResp": {
+              "fields": {
+                "token": {
+                  "type": "string",
+                  "id": 1
+                },
+                "exp": {
+                  "type": "int64",
+                  "id": 2
+                },
+                "account": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             }

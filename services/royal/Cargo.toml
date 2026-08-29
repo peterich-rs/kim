@@ -9,19 +9,22 @@ publish = false
 [features]
 default = []
 postgres = ["chat/postgres"]
-redis = ["chat/redis"]
+redis = ["chat/redis", "dep:redis"]
 consul = ["kim-naming/consul"]
 
 [dependencies]
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["getrandom"] }
+async-trait.workspace = true
 axum = { workspace = true, features = ["json"] }
 bytes.workspace = true
 chat = { path = "../chat" }
 kim-naming.workspace = true
 kim-protocol.workspace = true
 prost.workspace = true
+redis = { workspace = true, optional = true }
 reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
-serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml = "0.8"

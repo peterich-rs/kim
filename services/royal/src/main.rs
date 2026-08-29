@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::store::{open_pg_backends, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
-use royal::{serve, JwtConfig, RoyalState};
+use royal::{serve, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -37,6 +37,8 @@ struct SelfSection {
     jwt_secret: String,
     #[serde(default)]
     token_ttl_secs: i64,
+    #[serde(default)]
+    app: String,
 }
 
 fn default_node() -> u16 {
@@ -72,6 +74,18 @@ fn jwt_secret(cfg: &str) -> String {
     })
 }
 
+async fn open_revoke(url: &str) -> Result<Arc<dyn TokenRevocation>, Box<dyn std::error::Error>> {
+    #[cfg(feature = "redis")]
+    {
+        Ok(Arc::new(royal::RedisRevocation::open(url).await?))
+    }
+    #[cfg(not(feature = "redis"))]
+    {
+        let _ = url;
+        Err("rebuild royal with --features redis".into())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -104,17 +118,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 86_400
             }),
-        issue_key: env_nonempty("KIM_TOKEN_ISSUE_KEY").unwrap_or_default(),
+    };
+
+    let redis = env_or_cfg("REDIS_URL", &cfg.this.redis_url);
+    let revoke: Arc<dyn TokenRevocation> = match redis.as_deref() {
+        Some(url) => open_revoke(url).await?,
+        None => Arc::new(MemoryRevocation::new()),
     };
 
     let state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
-        let redis = env_or_cfg("REDIS_URL", &cfg.this.redis_url);
         let backends =
             open_pg_backends(&db, redis.as_deref(), idgen, PoolConfig::default()).await?;
-        RoyalState::with_backends(backends.store, backends.groups, backends.users, jwt)
+        RoyalState::with_backends(backends.store, backends.groups, backends.users, jwt, revoke)
     } else {
-        RoyalState::memory_with_jwt(idgen, jwt)
+        RoyalState::memory_with_jwt(idgen, jwt).with_revoke(revoke)
     };
+    let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| "kim".into());
+    let state = state.with_app(app);
 
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);

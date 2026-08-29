@@ -1,31 +1,35 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
+mod auth;
+mod revoke;
+
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
 use chat::users::{MemoryUserDirectory, UserDirectory};
 use kim_protocol::pkt::{
     AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp,
-    GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq, MessageContentResp,
-    MessageIndex, MessageIndexResp, OfflineIndexReq,
+    GroupQueryReq, GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq,
+    MessageContentResp, MessageIndex, MessageIndexResp, OfflineIndexReq,
 };
-use kim_protocol::{generate, ProtocolError};
 use prost::Message;
-use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "redis")]
+pub use revoke::RedisRevocation;
+pub use revoke::{MemoryRevocation, TokenRevocation};
 
 #[derive(Clone)]
 pub struct JwtConfig {
     pub secret: String,
     pub ttl_secs: i64,
-    pub issue_key: String,
 }
 
 impl Default for JwtConfig {
@@ -33,7 +37,6 @@ impl Default for JwtConfig {
         Self {
             secret: kim_protocol::DEMO_DEFAULT_SECRET.to_string(),
             ttl_secs: 86_400,
-            issue_key: String::new(),
         }
     }
 }
@@ -42,8 +45,10 @@ impl Default for JwtConfig {
 pub struct RoyalState {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
-    users: Arc<dyn UserDirectory>,
-    jwt: JwtConfig,
+    pub(crate) users: Arc<dyn UserDirectory>,
+    pub(crate) jwt: JwtConfig,
+    pub(crate) revoke: Arc<dyn TokenRevocation>,
+    pub(crate) app: String,
 }
 
 impl RoyalState {
@@ -57,7 +62,22 @@ impl RoyalState {
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
             users: Arc::new(MemoryUserDirectory::new()),
             jwt,
+            revoke: Arc::new(MemoryRevocation::new()),
+            app: "kim".into(),
         }
+    }
+
+    #[must_use]
+    pub fn with_revoke(mut self, revoke: Arc<dyn TokenRevocation>) -> Self {
+        self.revoke = revoke;
+        self
+    }
+
+    #[must_use]
+    pub fn with_app(mut self, app: impl Into<String>) -> Self {
+        let app = app.into();
+        self.app = if app.is_empty() { "kim".into() } else { app };
+        self
     }
 
     pub fn with_snowflake(node: u16) -> Self {
@@ -76,55 +96,47 @@ impl RoyalState {
         groups: Arc<dyn GroupDirectory>,
         users: Arc<dyn UserDirectory>,
         jwt: JwtConfig,
+        revoke: Arc<dyn TokenRevocation>,
     ) -> Self {
         Self {
             store,
             groups,
             users,
             jwt,
+            revoke,
+            app: "kim".into(),
         }
     }
-}
-
-#[derive(Deserialize)]
-struct TokenReq {
-    account: String,
-}
-
-#[derive(Serialize)]
-struct TokenResp {
-    token: String,
-    exp: i64,
 }
 
 pub fn router(state: RoyalState) -> Router {
     Router::new()
         .route("/health", get(health))
-        .route("/api/{app}/token", post(issue_token))
-        .route("/api/{app}/message/user", post(insert_user))
-        .route("/api/{app}/message/group", post(insert_group))
-        .route("/api/{app}/message/ack", post(ack))
-        .route("/api/{app}/offline/index", post(offline_index))
-        .route("/api/{app}/offline/content", post(offline_content))
-        .route("/api/{app}/group", post(group_create))
-        .route(
-            "/api/{app}/group/member",
-            post(group_join).delete(group_quit),
-        )
-        .route("/api/{app}/group/members/{group}", get(group_members))
-        .route("/api/{app}/group/{group}", get(group_detail))
+        .route("/api/v1/auth/register", post(auth::register))
+        .route("/api/v1/auth/login", post(auth::login))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/message/user", post(insert_user))
+        .route("/api/v1/message/group", post(insert_group))
+        .route("/api/v1/message/ack", post(ack))
+        .route("/api/v1/offline/index", post(offline_index))
+        .route("/api/v1/offline/content", post(offline_content))
+        .route("/api/v1/group", post(group_create))
+        .route("/api/v1/group/member", post(group_join))
+        .route("/api/v1/group/quit", post(group_quit))
+        .route("/api/v1/group/members", post(group_members))
+        .route("/api/v1/group/detail", post(group_detail))
         .with_state(state)
 }
 
-fn decode<T: Message + Default>(body: &Bytes) -> Result<T, (StatusCode, String)> {
+pub(crate) fn decode<T: Message + Default>(body: &Bytes) -> Result<T, (StatusCode, String)> {
     T::decode(body.as_ref()).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-fn encode(msg: &impl Message) -> Bytes {
+pub(crate) fn encode(msg: &impl Message) -> Bytes {
     Bytes::from(msg.encode_to_vec())
 }
 
-fn backend(err: impl std::fmt::Display) -> (StatusCode, String) {
+pub(crate) fn backend(err: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
@@ -132,45 +144,16 @@ async fn health() -> &'static str {
     "ok"
 }
 
-fn now_ts() -> i64 {
+pub(crate) fn now_ts() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
 
-async fn issue_token(
-    State(st): State<RoyalState>,
-    Path(app): Path<String>,
-    headers: HeaderMap,
-    Json(req): Json<TokenReq>,
-) -> Result<Json<TokenResp>, (StatusCode, String)> {
-    if !st.jwt.issue_key.is_empty() {
-        let got = headers
-            .get("x-kim-issue-key")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if got != st.jwt.issue_key {
-            return Err((StatusCode::UNAUTHORIZED, "issue key".into()));
-        }
-    }
-    let ttl = if st.jwt.ttl_secs > 0 {
-        st.jwt.ttl_secs
-    } else {
-        86_400
-    };
-    let exp = now_ts().saturating_add(ttl);
-    st.users.upsert(&app, &req.account).await.map_err(backend)?;
-    let token = generate(&st.jwt.secret, &req.account, &app, exp).map_err(|e| match e {
-        ProtocolError::InvalidAccount => (StatusCode::BAD_REQUEST, "invalid account".into()),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, "token".into()),
-    })?;
-    Ok(Json(TokenResp { token, exp }))
-}
-
 async fn insert_user(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InsertMessageReq>(&body)?;
@@ -178,7 +161,7 @@ async fn insert_user(
     let inserted = st
         .store
         .insert_user(
-            &app,
+            &st.app,
             &InsertMessage {
                 sender: req.sender,
                 dest: req.dest,
@@ -197,20 +180,23 @@ async fn insert_user(
 
 async fn insert_group(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InsertMessageReq>(&body)?;
     let msg = req.message.unwrap_or_default();
     let members = if req.members.is_empty() {
-        st.groups.members(&app, &req.dest).await.map_err(backend)?
+        st.groups
+            .members(&st.app, &req.dest)
+            .await
+            .map_err(backend)?
     } else {
         req.members
     };
     let inserted = st
         .store
         .insert_group(
-            &app,
+            &st.app,
             &InsertMessage {
                 sender: req.sender,
                 dest: req.dest,
@@ -228,14 +214,10 @@ async fn insert_group(
     }))
 }
 
-async fn ack(
-    State(st): State<RoyalState>,
-    Path(app): Path<String>,
-    body: Bytes,
-) -> Result<Bytes, (StatusCode, String)> {
+async fn ack(State(st): State<RoyalState>, body: Bytes) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AckMessageReq>(&body)?;
     st.store
-        .ack(&app, &req.account, req.message_id)
+        .ack(&st.app, &req.account, req.message_id)
         .await
         .map_err(backend)?;
     Ok(Bytes::new())
@@ -243,13 +225,13 @@ async fn ack(
 
 async fn offline_index(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<OfflineIndexReq>(&body)?;
     let rows = st
         .store
-        .offline_index(&app, &req.account, req.message_id)
+        .offline_index(&st.app, &req.account, req.message_id)
         .await
         .map_err(backend)?;
     let resp = MessageIndexResp {
@@ -269,13 +251,13 @@ async fn offline_index(
 
 async fn offline_content(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<MessageContentReq>(&body)?;
     let rows = st
         .store
-        .offline_content(&app, &req.message_ids)
+        .offline_content(&st.app, &req.message_ids)
         .await
         .map_err(backend)?;
     let resp = MessageContentResp {
@@ -294,14 +276,14 @@ async fn offline_content(
 
 async fn group_create(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<GroupCreateReq>(&body)?;
     let group_id = st
         .groups
         .create(
-            &app,
+            &st.app,
             &CreateGroup {
                 name: req.name,
                 avatar: req.avatar,
@@ -317,12 +299,12 @@ async fn group_create(
 
 async fn group_join(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<GroupJoinReq>(&body)?;
     st.groups
-        .join(&app, &req.group_id, &req.account)
+        .join(&st.app, &req.group_id, &req.account)
         .await
         .map_err(backend)?;
     Ok(Bytes::new())
@@ -330,12 +312,12 @@ async fn group_join(
 
 async fn group_quit(
     State(st): State<RoyalState>,
-    Path(app): Path<String>,
+
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<GroupQuitReq>(&body)?;
     st.groups
-        .quit(&app, &req.group_id, &req.account)
+        .quit(&st.app, &req.group_id, &req.account)
         .await
         .map_err(backend)?;
     Ok(Bytes::new())
@@ -343,17 +325,27 @@ async fn group_quit(
 
 async fn group_members(
     State(st): State<RoyalState>,
-    Path((app, group)): Path<(String, String)>,
+    body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let members = st.groups.members(&app, &group).await.map_err(backend)?;
+    let req = decode::<GroupQueryReq>(&body)?;
+    let members = st
+        .groups
+        .members(&st.app, &req.group_id)
+        .await
+        .map_err(backend)?;
     Ok(encode(&GroupMembersResp { members }))
 }
 
 async fn group_detail(
     State(st): State<RoyalState>,
-    Path((app, group)): Path<(String, String)>,
+    body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let info = st.groups.detail(&app, &group).await.map_err(backend)?;
+    let req = decode::<GroupQueryReq>(&body)?;
+    let info = st
+        .groups
+        .detail(&st.app, &req.group_id)
+        .await
+        .map_err(backend)?;
     Ok(encode(&GroupDetail {
         group_id: info.id,
         name: info.name,
@@ -379,6 +371,7 @@ pub async fn serve(listener: tokio::net::TcpListener, state: RoyalState) -> std:
 mod tests {
     use super::*;
     use kim_protocol::MESSAGE_TYPE_TEXT;
+    use prost::Message;
 
     #[tokio::test]
     async fn http_create_join_detail() {
@@ -426,13 +419,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn token_roundtrip_and_rejects() {
+    async fn register_login_logout_and_rejects() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let jwt = JwtConfig {
             secret: "test-secret".into(),
             ttl_secs: 60,
-            issue_key: "ik".into(),
         };
         let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt);
         tokio::spawn(async move {
@@ -440,42 +432,85 @@ mod tests {
         });
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         let http = reqwest::Client::new();
-        let url = format!("http://{addr}/api/kim/token");
-        let denied = http
-            .post(&url)
-            .json(&serde_json::json!({"account":"alice"}))
+        let gone = http
+            .post(format!("http://{addr}/api/kim/token"))
             .send()
             .await
             .unwrap();
-        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
-        let ok = http
-            .post(&url)
-            .header("X-KIM-Issue-Key", "ik")
-            .json(&serde_json::json!({"account":"alice"}))
+        assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+
+        let register = format!("http://{addr}/api/v1/auth/register");
+        let login = format!("http://{addr}/api/v1/auth/login");
+        let logout = format!("http://{addr}/api/v1/auth/logout");
+        let pb = |account: &str, password: &str| {
+            kim_protocol::pkt::AuthReq {
+                account: account.into(),
+                password: password.into(),
+            }
+            .encode_to_vec()
+        };
+        let post_pb = |url: &str, body: Vec<u8>| {
+            http.post(url)
+                .header("Content-Type", "application/x-protobuf")
+                .header("Accept", "application/x-protobuf")
+                .body(body)
+        };
+
+        let short = post_pb(&register, pb("ab", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(short.status(), StatusCode::BAD_REQUEST);
+
+        let weak = post_pb(&register, pb("alice", "short"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(weak.status(), StatusCode::BAD_REQUEST);
+
+        let created = post_pb(&register, pb("alice", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert!(created.status().is_success());
+        let buf = created.bytes().await.unwrap();
+        let resp = kim_protocol::pkt::AuthResp::decode(buf.as_ref()).unwrap();
+        let claims = kim_protocol::parse("test-secret", &resp.token).unwrap();
+        assert_eq!(claims.account, "alice");
+        assert_eq!(claims.app, "kim");
+        assert!(claims.jti.is_some());
+
+        let dup = post_pb(&register, pb("alice", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(dup.status(), StatusCode::CONFLICT);
+
+        let bad_pw = post_pb(&login, pb("alice", "wrongpass"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad_pw.status(), StatusCode::UNAUTHORIZED);
+        let unknown = post_pb(&login, pb("bob", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unknown.status(), StatusCode::UNAUTHORIZED);
+
+        let ok = post_pb(&login, pb("alice", "secret123"))
             .send()
             .await
             .unwrap();
         assert!(ok.status().is_success());
-        let body: serde_json::Value = ok.json().await.unwrap();
-        let token = body["token"].as_str().unwrap();
-        let claims = kim_protocol::parse("test-secret", token).unwrap();
-        assert_eq!(claims.account, "alice");
-        assert_eq!(claims.app, "kim");
-        let bad = http
-            .post(&url)
-            .header("X-KIM-Issue-Key", "ik")
-            .json(&serde_json::json!({"account":""}))
+        let login_buf = ok.bytes().await.unwrap();
+        let login_resp = kim_protocol::pkt::AuthResp::decode(login_buf.as_ref()).unwrap();
+
+        let out = http
+            .post(&logout)
+            .header("Authorization", format!("Bearer {}", login_resp.token))
             .send()
             .await
             .unwrap();
-        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
-        let ctrl = http
-            .post(&url)
-            .header("X-KIM-Issue-Key", "ik")
-            .json(&serde_json::json!({"account":"a\nb"}))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(ctrl.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(out.status(), StatusCode::NO_CONTENT);
     }
 }

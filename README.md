@@ -2,7 +2,7 @@
 
 Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学后台：先把长连接、分帧、连接生命周期做对，再往上长业务包、服务发现和转发。
 
-当前本机可跑：**网关 + Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。Web 客户端是 `sdk/web`（TypeScript）或 `pkt-client`（Rust CLI）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。VPS 用 `deploy/compose.yml` 跑 gateway / chat / chat-gray / royal / router 加 Redis / Postgres / Consul，见 [docs/deploy.md](docs/deploy.md)。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
+当前本机可跑：**Royal + 网关 + Chat**（注册/登录 JWT、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线）。产品 Web 是 `sdk/web/app`；小册 H5 仍是 `sdk/web/demo`。CLI 是 `pkt-client`。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。VPS 用 `deploy/compose.yml` 跑 gateway / chat / chat-gray / royal / router 加 Redis / Postgres / Consul，见 [docs/deploy.md](docs/deploy.md)。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
 
 ## 当前进度
 
@@ -22,22 +22,33 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 
 需要 [Rust](https://rustup.rs/)。工具链钉在 `rust-toolchain.toml`（当前 1.95.0），clone 之后 rustup 会自动用这个版本。
 
-登录 Demo（Memory 会话。必须先 Chat 再网关，再客户端）：
+产品 Web（Memory。必须先 Royal，再 Chat，再网关，再页面）：
 
 ```bash
 # 终端 1
+RUST_LOG=info cargo run -p royal
+
+# 终端 2
 RUST_LOG=info cargo run -p chat
 
-# 终端 2（等 Chat listen）
+# 终端 3
 RUST_LOG=info cargo run -p gateway
 
-# 终端 3
+# 终端 4
+cd sdk/web && npm run app
+```
+
+打开 http://127.0.0.1:5173/ ，注册两个账号，两个标签页互发。Vite 把 `/api` 代理到 Royal `:8080`。
+
+CLI（本地签 JWT，不必 Royal）：
+
+```bash
 RUST_LOG=info cargo run -p pkt-client -- alice
 ```
 
-成功时客户端打印的 `channel_id` 形如 `wg-1_alice_1`，**不是** `"alice"`。默认随后本地 ping，再 `chat.demo.echo`。
+成功时客户端打印的 `channel_id` 形如 `wg-1_alice_1`，**不是** `"alice"`。默认随后本地 ping，再 `chat.demo.echo`。连生产 Royal 用 `KIM_AUTH_URL` + `KIM_PASSWORD` 走 `/login`。
 
-浏览器 H5（两个标签页互发）：网关起来之后 `cd sdk/web && npm run demo`，打开 http://127.0.0.1:5173/?acc=alice&dest=bob 和 `?acc=bob&dest=alice`。见 [docs/web-sdk.md](docs/web-sdk.md)。
+小册 H5（本机 mint，不打 Royal）：`cd sdk/web && npm run demo`，见 [docs/web-sdk.md](docs/web-sdk.md)。
 
 ```bash
 # 1:1：终端 A HOLD 等 Push，终端 B 发给 A

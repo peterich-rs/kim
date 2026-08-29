@@ -31,19 +31,21 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | 方法 | 路径 | 格式 |
 |---|---|---|
 | GET | `/health` | text |
-| POST | `/api/:app/token` | JSON `{account}` → `{token, exp}` |
-| POST | `/api/:app/message/user` | protobuf |
-| POST | `/api/:app/message/group` | protobuf |
-| POST | `/api/:app/message/ack` | protobuf |
-| POST | `/api/:app/offline/index` | protobuf |
-| POST | `/api/:app/offline/content` | protobuf |
-| POST | `/api/:app/group` | protobuf |
-| POST | `/api/:app/group/member` | protobuf |
-| DELETE | `/api/:app/group/member` | protobuf |
-| GET | `/api/:app/group/members/:group` | protobuf |
-| GET | `/api/:app/group/:group` | protobuf |
+| POST | `/api/v1/auth/register` | protobuf `AuthReq` → `AuthResp` |
+| POST | `/api/v1/auth/login` | protobuf `AuthReq` → `AuthResp` |
+| POST | `/api/v1/auth/logout` | `Authorization: Bearer` → 204；吊销 `jti` |
+| POST | `/api/v1/message/user` | protobuf |
+| POST | `/api/v1/message/group` | protobuf |
+| POST | `/api/v1/message/ack` | protobuf |
+| POST | `/api/v1/offline/index` | protobuf |
+| POST | `/api/v1/offline/content` | protobuf |
+| POST | `/api/v1/group` | protobuf |
+| POST | `/api/v1/group/member` | protobuf |
+| POST | `/api/v1/group/quit` | protobuf `GroupQuitReq` |
+| POST | `/api/v1/group/members` | protobuf `GroupQueryReq` → `GroupMembersResp` |
+| POST | `/api/v1/group/detail` | protobuf `GroupQueryReq` → `GroupDetail` |
 
-Token：HS256，claims `acc` / `app` / `exp`，密钥与网关相同（`KIM_JWT_SECRET`）。可选 `KIM_TOKEN_ISSUE_KEY` + 头 `X-KIM-Issue-Key`；空则开放签发（demo）。公网 Caddy 只反代 `/api/lookup*` 与 `/api/*/token`。
+`app` 不在 URL 里：Royal 进程用 `KIM_APP` / 配置（默认 `kim`），各部署用各自的 base URL。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。`REDIS_URL` 时 logout 把 `jti` 写入 `kim:revoke:{jti}`，网关 Upgrade 时拒绝。
 
 本机：先 `cargo run -p royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
 

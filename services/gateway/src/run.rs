@@ -11,7 +11,7 @@ use kim_naming::{open_naming, DefaultRegistration};
 use serde::Deserialize;
 
 use crate::selector::{Route, RouteFile, RouteSelector};
-use crate::{resolve_jwt_secret, GatewayHandler, KickHook, MetricsHook};
+use crate::{resolve_jwt_secret, GatewayHandler, KickHook, MetricsHook, RevokeStore};
 
 #[derive(Deserialize)]
 struct File {
@@ -210,6 +210,16 @@ where
     ));
     if let Some(m) = &metrics {
         handler.with_metrics(m.clone());
+    }
+    if let Some(url) = std::env::var("REDIS_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        match RevokeStore::open(&url).await {
+            Ok(store) => handler.set_revoke(Arc::new(store)),
+            Err(err) => tracing::warn!(%err, "revoke store"),
+        }
     }
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());

@@ -23,20 +23,28 @@ await cli.talkToUser("bob", new Content("hello"));
 await cli.logout();
 ```
 
-本机网关：先 `cargo run -p chat`，再 `cargo run -p gateway`。Demo 密钥与 `kim_protocol::DEMO_DEFAULT_SECRET` 相同，见 `examples/pkt-client`。
+产品页走 Royal 注册/登录拿 JWT。小册 demo 仍用 `DEMO_DEFAULT_SECRET` 本机签发，见 `examples/pkt-client`。
 
 ## 浏览器里点
 
+产品聊天（注册两个账号互发）：
+
 ```bash
-# 终端 1–2：先 Chat 再网关
+cargo run -p royal
 cargo run -p chat
 cargo run -p gateway
-
-# 终端 3
-cd sdk/web && npm run demo
+cd sdk/web && npm run app
 ```
 
-开两个标签：http://127.0.0.1:5173/?acc=alice&dest=bob 和 `?acc=bob&dest=alice`。页面用 demo 密钥签 JWT，不要拿到公网。
+打开 http://127.0.0.1:5173/ 。
+
+小册 demo（本机 mint）：
+
+```bash
+cargo run -p chat
+cargo run -p gateway
+cd sdk/web && npm run demo
+```
 
 ## 开发
 

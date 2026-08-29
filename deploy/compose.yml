@@ -6,7 +6,7 @@
 #   docker compose --env-file kim.env --profile edge up -d
 #
 # Redis, Postgres, and Consul stay on the compose network (Consul UI is
-# loopback-only). Only the Web gateway (and lookup/token) are on loopback
+# loopback-only). Only the Web gateway (and lookup/login) are on loopback
 # for a host reverse proxy.
 
 name: kim
@@ -188,10 +188,13 @@ services:
     depends_on:
       consul:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: gateway
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       RUST_LOG: ${RUST_LOG:-info}
     ports:
       - "127.0.0.1:8001:8001"
@@ -253,6 +256,7 @@ services:
       CADDY_EMAIL: ${CADDY_EMAIL:-ops@example.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../sdk/web/dist-app:/srv/web:ro
       - caddy_data:/data
       - caddy_config:/config
     mem_limit: 128m

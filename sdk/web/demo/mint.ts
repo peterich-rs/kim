@@ -13,7 +13,7 @@ function encodePart(obj: object): string {
   return b64url(new TextEncoder().encode(JSON.stringify(obj)));
 }
 
-/** HS256 JWT. Prefers Royal `POST /api/{app}/token` when not on the Vite demo port. */
+/** Demo-only HS256 JWT. Product app uses Royal `/api/v1/auth/login`. */
 export async function mintToken(account: string, secret = DEMO_SECRET): Promise<string> {
   const params = new URLSearchParams(location.search);
   const app = params.get("app")?.trim() || "kim";

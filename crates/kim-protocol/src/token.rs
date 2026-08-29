@@ -7,7 +7,7 @@ use crate::error::ProtocolError;
 /// override via env / config; never use this as a live key.
 pub const DEMO_DEFAULT_SECRET: &str = "jwt-1sNzdiSgnNuxyq2g7xml2JvLArU";
 
-/// Booklet JWT payload: `acc` / `app` / `exp`.
+/// JWT payload: `acc` / `app` / `exp` / optional `jti` (login/register).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Claims {
     #[serde(rename = "acc")]
@@ -15,6 +15,12 @@ pub struct Claims {
     #[serde(rename = "app")]
     pub app: String,
     pub exp: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
+}
+
+pub fn token_revoke_key(jti: &str) -> String {
+    format!("kim:revoke:{jti}")
 }
 
 pub fn generate(secret: &str, account: &str, app: &str, exp: i64) -> Result<String, ProtocolError> {
@@ -23,6 +29,7 @@ pub fn generate(secret: &str, account: &str, app: &str, exp: i64) -> Result<Stri
         account: account.to_string(),
         app: app.to_string(),
         exp,
+        jti: Some(uuid::Uuid::new_v4().to_string()),
     };
     jsonwebtoken::encode(
         &Header::new(Algorithm::HS256),
@@ -102,6 +109,15 @@ mod tests {
         assert_eq!(claims.account, "alice");
         assert_eq!(claims.app, "kim");
         assert_eq!(claims.exp, exp);
+        assert!(claims.jti.as_ref().is_some_and(|j| !j.is_empty()));
+    }
+
+    #[test]
+    fn parse_legacy_without_jti() {
+        let exp = now_ts() + 3600;
+        let claims = parse(DEMO_DEFAULT_SECRET, &mint_hs256("alice", exp)).unwrap();
+        assert_eq!(claims.account, "alice");
+        assert_eq!(claims.jti, None);
     }
 
     #[test]

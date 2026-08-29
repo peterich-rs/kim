@@ -20,9 +20,9 @@ use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, OpCode, Server, St
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, KickoutNotify, LoginReq, Session, Status};
 use kim_protocol::{
-    marshal, parse, read, read_logic, BasicPkt, LogicPkt, Packet, CMD_LOGIN_SIGN_IN,
-    CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT, META_APP,
-    SN_LOGIN,
+    marshal, parse, read, read_logic, token_revoke_key, BasicPkt, LogicPkt, Packet,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT,
+    META_APP, SN_LOGIN,
 };
 use tracing::{info, warn};
 
@@ -78,6 +78,30 @@ struct ChannelMeta {
     account: String,
 }
 
+pub struct RevokeStore {
+    conn: redis::aio::ConnectionManager,
+}
+
+impl RevokeStore {
+    pub async fn open(url: &str) -> Result<Self, String> {
+        let client = redis::Client::open(url).map_err(|e| e.to_string())?;
+        let conn = redis::aio::ConnectionManager::new(client)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(Self { conn })
+    }
+
+    async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
+        let mut conn = self.conn.clone();
+        let found: Option<String> = redis::cmd("GET")
+            .arg(token_revoke_key(jti))
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(found.is_some())
+    }
+}
+
 pub struct GatewayHandler {
     container: Arc<Container>,
     gateway_id: String,
@@ -86,6 +110,7 @@ pub struct GatewayHandler {
     pending: Mutex<HashMap<String, LogicPkt>>,
     meta: Mutex<HashMap<String, ChannelMeta>>,
     metrics: Mutex<Option<Arc<KimMetrics>>>,
+    revoke: OnceLock<Arc<RevokeStore>>,
 }
 
 impl GatewayHandler {
@@ -102,11 +127,16 @@ impl GatewayHandler {
             pending: Mutex::new(HashMap::new()),
             meta: Mutex::new(HashMap::new()),
             metrics: Mutex::new(None),
+            revoke: OnceLock::new(),
         }
     }
 
     pub fn with_metrics(&self, m: Arc<KimMetrics>) {
         *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
+    }
+
+    pub fn set_revoke(&self, store: Arc<RevokeStore>) {
+        let _ = self.revoke.set(store);
     }
 
     fn generate_channel_id(&self, account: &str) -> String {
@@ -203,6 +233,19 @@ impl Acceptor for GatewayHandler {
                 return Err(Error::Handshake("unauthorized".into()));
             }
         };
+        if let Some(jti) = claims.jti.as_deref() {
+            if let Some(store) = self.revoke.get() {
+                match store.is_revoked(jti).await {
+                    Ok(true) => {
+                        warn!(account = %claims.account, "revoked token");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("revoked".into()));
+                    }
+                    Ok(false) => {}
+                    Err(err) => warn!(%err, "revoke check failed"),
+                }
+            }
+        }
         let id = self.generate_channel_id(&claims.account);
         pkt.header.channel_id = id.clone();
         pkt.write_body(&Session {

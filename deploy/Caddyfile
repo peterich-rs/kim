@@ -18,22 +18,34 @@
 		reverse_proxy router:8088
 	}
 
-	handle /api/*/token {
+	handle /api/v1/auth/* {
 		reverse_proxy royal:8080
 	}
 
-	reverse_proxy gateway:8001 {
-		flush_interval -1
-		transport http {
-			read_timeout 0
-			write_timeout 0
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @websocket {
+		reverse_proxy gateway:8001 {
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+			}
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up Connection {>Connection}
+			header_up Upgrade {>Upgrade}
 		}
-		header_up Host {host}
-		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {remote_host}
-		header_up X-Forwarded-Proto {scheme}
-		header_up Connection {>Connection}
-		header_up Upgrade {>Upgrade}
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
 	}
 
 	header {

@@ -71,38 +71,53 @@ fn now_ts() -> i64 {
 }
 
 async fn mint_token(secret: &str, account: &str) -> Result<String, Error> {
-    if let Ok(base) = std::env::var("KIM_TOKEN_URL") {
-        let base = base.trim().trim_end_matches('/');
-        if !base.is_empty() {
-            match fetch_token(base, account).await {
-                Ok(t) => return Ok(t),
-                Err(err) => tracing::warn!(%err, "KIM_TOKEN_URL failed; local generate"),
-            }
+    let base = std::env::var("KIM_AUTH_URL")
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty());
+    let password = std::env::var("KIM_PASSWORD")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let (Some(base), Some(password)) = (base, password) {
+        match fetch_login(&base, account, &password).await {
+            Ok(t) => return Ok(t),
+            Err(err) => tracing::warn!(%err, "KIM_AUTH_URL failed; local generate"),
         }
     }
     generate(secret, account, "kim", now_ts() + 86400).map_err(|e| Error::Handshake(e.to_string()))
 }
 
-async fn fetch_token(base: &str, account: &str) -> Result<String, Error> {
-    let app = std::env::var("KIM_APP").unwrap_or_else(|_| "kim".into());
-    let url = format!("{base}/api/{app}/token");
+async fn fetch_login(base: &str, account: &str, password: &str) -> Result<String, Error> {
+    use kim_protocol::pkt::{AuthReq, AuthResp};
+    use prost::Message;
+
+    let url = format!("{base}/api/v1/auth/login");
+    let body = AuthReq {
+        account: account.to_string(),
+        password: password.to_string(),
+    }
+    .encode_to_vec();
     let resp = reqwest::Client::new()
         .post(&url)
-        .json(&serde_json::json!({ "account": account }))
+        .header("Content-Type", "application/x-protobuf")
+        .header("Accept", "application/x-protobuf")
+        .body(body)
         .send()
         .await
         .map_err(|e| Error::Handshake(e.to_string()))?;
     if !resp.status().is_success() {
-        return Err(Error::Handshake(format!("token status {}", resp.status())));
+        return Err(Error::Handshake(format!("login status {}", resp.status())));
     }
-    let v: serde_json::Value = resp
-        .json()
+    let buf = resp
+        .bytes()
         .await
         .map_err(|e| Error::Handshake(e.to_string()))?;
-    v.get("token")
-        .and_then(|t| t.as_str())
-        .map(str::to_string)
-        .ok_or_else(|| Error::Handshake("token missing".into()))
+    let decoded = AuthResp::decode(buf.as_ref()).map_err(|e| Error::Handshake(e.to_string()))?;
+    if decoded.token.is_empty() {
+        return Err(Error::Handshake("token missing".into()));
+    }
+    Ok(decoded.token)
 }
 
 pub struct LoginDialer {
