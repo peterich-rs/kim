@@ -1,0 +1,463 @@
+{
+  "nested": {
+    "kim": {
+      "nested": {
+        "pkt": {
+          "nested": {
+            "Flag": {
+              "values": {
+                "Request": 0,
+                "Response": 1,
+                "Push": 2
+              }
+            },
+            "Status": {
+              "values": {
+                "Success": 0,
+                "InvalidPacket": 1,
+                "CommandNotFound": 2,
+                "ServiceUnavailable": 3,
+                "SystemException": 99,
+                "InvalidPacketBody": 101,
+                "InvalidCommand": 103,
+                "Unauthorized": 105,
+                "NoDestination": 300,
+                "SessionNotFound": 404
+              }
+            },
+            "Meta": {
+              "fields": {
+                "key": {
+                  "type": "string",
+                  "id": 1
+                },
+                "value": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "Header": {
+              "fields": {
+                "command": {
+                  "type": "string",
+                  "id": 1
+                },
+                "channelId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "sequence": {
+                  "type": "uint32",
+                  "id": 3
+                },
+                "flag": {
+                  "type": "Flag",
+                  "id": 4
+                },
+                "status": {
+                  "type": "Status",
+                  "id": 5
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 6
+                },
+                "bodyLength": {
+                  "type": "uint32",
+                  "id": 7
+                },
+                "meta": {
+                  "rule": "repeated",
+                  "type": "Meta",
+                  "id": 8
+                }
+              }
+            },
+            "InnerHandshakeReq": {
+              "fields": {
+                "serviceId": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "LoginReq": {
+              "fields": {
+                "token": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "LoginResp": {
+              "fields": {
+                "channelId": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "Session": {
+              "fields": {
+                "channelId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "gateId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "account": {
+                  "type": "string",
+                  "id": 3
+                },
+                "zone": {
+                  "type": "string",
+                  "id": 4
+                },
+                "isp": {
+                  "type": "string",
+                  "id": 5
+                },
+                "remoteIP": {
+                  "type": "string",
+                  "id": 6
+                },
+                "device": {
+                  "type": "string",
+                  "id": 7
+                },
+                "app": {
+                  "type": "string",
+                  "id": 8
+                },
+                "tags": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 9
+                }
+              }
+            },
+            "KickoutNotify": {
+              "fields": {
+                "channelId": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "MessageReq": {
+              "fields": {
+                "type": {
+                  "type": "int32",
+                  "id": 1
+                },
+                "body": {
+                  "type": "string",
+                  "id": 2
+                },
+                "extra": {
+                  "type": "string",
+                  "id": 3
+                }
+              }
+            },
+            "MessageResp": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 2
+                }
+              }
+            },
+            "MessagePush": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "type": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "body": {
+                  "type": "string",
+                  "id": 3
+                },
+                "extra": {
+                  "type": "string",
+                  "id": 4
+                },
+                "sender": {
+                  "type": "string",
+                  "id": 5
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 6
+                }
+              }
+            },
+            "GroupCreateReq": {
+              "fields": {
+                "name": {
+                  "type": "string",
+                  "id": 1
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 2
+                },
+                "introduction": {
+                  "type": "string",
+                  "id": 3
+                },
+                "owner": {
+                  "type": "string",
+                  "id": 4
+                },
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 5
+                }
+              }
+            },
+            "GroupCreateResp": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "MessageAckReq": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                }
+              }
+            },
+            "MessageIndex": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "direction": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 3
+                },
+                "accountB": {
+                  "type": "string",
+                  "id": 4
+                },
+                "group": {
+                  "type": "string",
+                  "id": 5
+                }
+              }
+            },
+            "Message": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "type": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "body": {
+                  "type": "string",
+                  "id": 3
+                },
+                "extra": {
+                  "type": "string",
+                  "id": 4
+                }
+              }
+            },
+            "MessageIndexReq": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                }
+              }
+            },
+            "MessageIndexResp": {
+              "fields": {
+                "indexes": {
+                  "rule": "repeated",
+                  "type": "MessageIndex",
+                  "id": 1
+                }
+              }
+            },
+            "MessageContentReq": {
+              "fields": {
+                "messageIds": {
+                  "rule": "repeated",
+                  "type": "int64",
+                  "id": 1
+                }
+              }
+            },
+            "MessageContentResp": {
+              "fields": {
+                "messages": {
+                  "rule": "repeated",
+                  "type": "Message",
+                  "id": 1
+                }
+              }
+            },
+            "GroupJoinReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "groupId": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "GroupQuitReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "groupId": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "GroupMembersResp": {
+              "fields": {
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "GroupDetail": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "name": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                },
+                "introduction": {
+                  "type": "string",
+                  "id": 4
+                },
+                "owner": {
+                  "type": "string",
+                  "id": 5
+                },
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 6
+                }
+              }
+            },
+            "GroupCreateNotify": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "InsertMessageReq": {
+              "fields": {
+                "sender": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 3
+                },
+                "message": {
+                  "type": "MessageReq",
+                  "id": 4
+                },
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 5
+                }
+              }
+            },
+            "InsertMessageResp": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                }
+              }
+            },
+            "AckMessageReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "messageId": {
+                  "type": "int64",
+                  "id": 2
+                }
+              }
+            },
+            "OfflineIndexReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "messageId": {
+                  "type": "int64",
+                  "id": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

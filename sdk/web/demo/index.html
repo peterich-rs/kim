@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>KIM 本机体验</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div class="brand">
+          <span class="mark">KIM</span>
+          <span class="sub">本机 H5 · 两个标签页互发</span>
+        </div>
+        <p class="hint" id="hint">
+          先起 fake-chat / fake-gateway。这边填 alice，另开一页填 bob。
+        </p>
+      </header>
+
+      <section class="login">
+        <label>
+          账号
+          <input id="account" autocomplete="username" spellcheck="false" />
+        </label>
+        <label class="grow">
+          网关
+          <input id="wsurl" spellcheck="false" />
+        </label>
+        <button id="connect" type="button">连接</button>
+      </section>
+
+      <p class="status" id="status">未连接</p>
+
+      <section class="chat">
+        <aside class="side">
+          <label>
+            发给
+            <select id="kind">
+              <option value="user">用户</option>
+              <option value="group">群</option>
+            </select>
+          </label>
+          <label>
+            对方 / 群 id
+            <input id="dest" placeholder="bob" spellcheck="false" />
+          </label>
+          <ul class="threads" id="threads"></ul>
+          <label>
+            建群成员
+            <input id="members" placeholder="alice,bob" spellcheck="false" />
+          </label>
+          <button id="mkgroup" type="button" class="ghost" disabled>建群</button>
+        </aside>
+
+        <main class="main">
+          <ol class="log" id="log"></ol>
+          <form class="composer" id="composer">
+            <input id="body" placeholder="发一条消息" autocomplete="off" />
+            <button type="submit" id="send" disabled>发送</button>
+          </form>
+        </main>
+      </section>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

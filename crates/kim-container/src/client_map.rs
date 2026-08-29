@@ -32,6 +32,10 @@ impl ClientMap {
         self.inner.contains_key(id)
     }
 
+    pub fn remove(&mut self, id: &str) -> Option<ClientSlot> {
+        self.inner.remove(id)
+    }
+
     pub fn adult_services(&self) -> Vec<DefaultRegistration> {
         let mut v: Vec<_> = self
             .inner

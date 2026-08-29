@@ -2,7 +2,7 @@
 
 Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学后台：先把长连接、分帧、连接生命周期做对，再往上长业务包、服务发现和转发。
 
-当前本机可跑：**假网关 + 假 Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
+当前本机可跑：**假网关 + 假 Chat Demo**（JWT 登录、会话、互踢、在线单聊 / 群聊、ACK、Pull 离线、登录后再 echo）。Web 客户端是 `sdk/web`（TypeScript）或 `pkt-client`（Rust CLI）。默认会话和消息都是进程内 Memory，不需要 Redis / Docker / Postgres / Consul。通信层 TCP / WS 回声由 crate 测试覆盖，不再另起 echo 二进制。
 
 ## 当前进度
 
@@ -13,6 +13,7 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
 | 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
 | 控制层 | 在线 + 离线 + 群管理 | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)、[docs/group-royal.md](docs/group-royal.md) |
+| Web SDK | 已落地 | [docs/web-sdk.md](docs/web-sdk.md)：`sdk/web`，登录 / 收发 / 离线 / ACK / 群 |
 
 进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
@@ -34,6 +35,8 @@ RUST_LOG=info cargo run -p pkt-client -- alice
 ```
 
 成功时客户端打印的 `channel_id` 形如 `wg-1_alice_1`，**不是** `"alice"`。默认随后本地 ping，再 `chat.demo.echo`。
+
+浏览器 H5（两个标签页互发）：网关起来之后 `cd sdk/web && npm run demo`，打开 http://127.0.0.1:5173/?acc=alice&dest=bob 和 `?acc=bob&dest=alice`。见 [docs/web-sdk.md](docs/web-sdk.md)。
 
 ```bash
 # 1:1：终端 A HOLD 等 Push，终端 B 发给 A
@@ -81,6 +84,7 @@ crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
 examples/               fake-gateway / fake-chat / fake-royal / pkt-client
+sdk/web                 TypeScript Web SDK（第 23–24 章）
 docs/                   词表、分层合同、登录与控制层规格
 ```
 
@@ -96,6 +100,7 @@ docs/                   词表、分层合同、登录与控制层规格
 6. [docs/control-layer-chat.md](docs/control-layer-chat.md) — 在线单聊 / 群聊
 7. [docs/reliable-delivery.md](docs/reliable-delivery.md) — ACK / 写扩散 / 离线 Pull
 8. [docs/group-royal.md](docs/group-royal.md) — 群 join/quit/detail、可选 Royal
+9. [docs/web-sdk.md](docs/web-sdk.md) — TypeScript Web SDK
 
 ## 开发
 
@@ -103,6 +108,7 @@ docs/                   词表、分层合同、登录与控制层规格
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 env -u REDIS_URL cargo test --workspace
+cd sdk/web && npm ci && npm test
 ```
 
 push 和 pull request 会跑同一套检查（见 `.github/workflows/ci.yml`）。

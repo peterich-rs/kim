@@ -129,4 +129,4 @@ e2e：`examples/fake-chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`
 
 ## 非目标（不要写进这一层）
 
-敏感词、发送方必须是群成员、Web SDK。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。群 join 与 Royal 见 [group-royal.md](group-royal.md)。
+敏感词、发送方必须是群成员。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。群 join 与 Royal 见 [group-royal.md](group-royal.md)。Web SDK 见 [web-sdk.md](web-sdk.md)。
