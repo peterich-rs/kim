@@ -10,4 +10,6 @@ database_url = ""
 db_max_connections = 5
 db_acquire_timeout_ms = 3000
 db_idle_timeout_secs = 60
+# empty = in-process Memory directory + store. ROYAL_URL overrides.
+royal_url = ""
 snowflake_node = 1

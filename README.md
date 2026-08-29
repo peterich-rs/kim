@@ -12,7 +12,7 @@ Rust 实现的分布式即时通讯骨架。对照 King IM Cloud 的分层来学
 | 容器层 | 已落地 | `kim-naming`（静态配置）+ `kim-container`（Young → Adult 后 Forward） |
 | 业务包 | 已落地 | `kim-protocol`：Magic + BasicPkt / LogicPkt + JWT HS256 |
 | 链路层 | 已落地 | [docs/link-layer-login.md](docs/link-layer-login.md)：Router + JWT 登录 + 会话 + 互踢 |
-| 控制层 | 在线 + 离线 Pull | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)：单聊 / 群聊 / ACK / 离线索引 |
+| 控制层 | 在线 + 离线 + 群管理 | [docs/control-layer-chat.md](docs/control-layer-chat.md)、[docs/reliable-delivery.md](docs/reliable-delivery.md)、[docs/group-royal.md](docs/group-royal.md) |
 
 进程：`pkt-client` → `fake-gateway`（`:8001`）→ `fake-chat`（`:8002`）。Upgrade 后第一帧是 `login.signin`（JWT），网关生成 `wg-1_alice_N`（不再是 `"alice"`）。`BasicPkt` ping 在网关本地回 pong；`chat.demo.echo` 登录之后才 Forward 到 Chat。规格与词表在 [docs/](docs/README.md)。
 
@@ -42,6 +42,10 @@ KIM_TALK_TO=bob RUST_LOG=info cargo run -p pkt-client -- alice
 
 # 建群并群聊
 KIM_GROUP_MEMBERS=alice,bob,carol RUST_LOG=info cargo run -p pkt-client -- alice
+
+# 可选 Royal HTTP（先 Royal 再 Chat）
+RUST_LOG=info cargo run -p fake-royal
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p fake-chat
 
 # 互踢：终端 A 先 HOLD，终端 B 再登录同一账号
 KIM_HOLD=1 RUST_LOG=info cargo run -p pkt-client -- alice
@@ -76,7 +80,7 @@ crates/kim-naming       静态服务发现（不是 Consul）
 crates/kim-container    全连接拨号、Young/Adult、Forward / Push
 crates/kim-router       指令 Router / Context / Dispatch
 crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
-examples/               fake-gateway / fake-chat / pkt-client
+examples/               fake-gateway / fake-chat / fake-royal / pkt-client
 docs/                   词表、分层合同、登录与控制层规格
 ```
 
@@ -91,6 +95,7 @@ docs/                   词表、分层合同、登录与控制层规格
 5. [docs/link-layer-login.md](docs/link-layer-login.md) — 登录、会话、互踢
 6. [docs/control-layer-chat.md](docs/control-layer-chat.md) — 在线单聊 / 群聊
 7. [docs/reliable-delivery.md](docs/reliable-delivery.md) — ACK / 写扩散 / 离线 Pull
+8. [docs/group-royal.md](docs/group-royal.md) — 群 join/quit/detail、可选 Royal
 
 ## 开发
 

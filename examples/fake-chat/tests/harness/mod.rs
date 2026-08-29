@@ -7,12 +7,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
+use fake_chat::directory::GroupDirectory;
+use fake_chat::store::MessageStore;
 use fake_chat::ChatHandler;
 use fake_gateway::{GatewayHandler, KickHook};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, OpCode, Server};
 use kim_naming::{DefaultRegistration, StaticNaming};
-use kim_protocol::DEMO_DEFAULT_SECRET;
+use kim_protocol::pkt::Flag;
+use kim_protocol::{read, Packet, CMD_GROUP_CREATE, DEMO_DEFAULT_SECRET};
 use kim_router::SessionStorage;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
@@ -39,7 +42,27 @@ pub struct Stack {
     pub gw_server: Arc<WsServer>,
 }
 
+fn attach_chat_handler(server: &mut TcpServer, handler: Arc<ChatHandler>) {
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+}
+
 pub async fn spawn_stack() -> Stack {
+    spawn_stack_with_chat(ChatHandler::new).await
+}
+
+pub async fn spawn_stack_seams(
+    store: Arc<dyn MessageStore>,
+    groups: Arc<dyn GroupDirectory>,
+) -> Stack {
+    spawn_stack_with_chat(move |c, cache| ChatHandler::with_seams(c, cache, store, groups)).await
+}
+
+async fn spawn_stack_with_chat<F>(make_chat: F) -> Stack
+where
+    F: FnOnce(Arc<Container>, Arc<dyn SessionStorage>) -> ChatHandler,
+{
     let cache = open_session_store(None).await.expect("memory store");
 
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.expect("chat bind");
@@ -55,10 +78,8 @@ pub async fn spawn_stack() -> Stack {
         selector: Arc::new(HashSelector),
         after_downlink: None,
     });
-    let chat_h = Arc::new(ChatHandler::new(chat_c.clone(), cache.clone()));
-    chat_server.set_acceptor(chat_h.clone());
-    chat_server.set_message_listener(chat_h.clone());
-    chat_server.set_state_listener(chat_h);
+    let chat_h = Arc::new(make_chat(chat_c.clone(), cache.clone()));
+    attach_chat_handler(&mut chat_server, chat_h);
     chat_c.attach_server(Arc::new(chat_server));
     let chat_run = chat_c.clone();
     tokio::spawn(async move {
@@ -205,6 +226,20 @@ pub async fn login(account: &str, url: &str) -> (WsClient, Arc<LoginDialer>) {
     client.set_dialer(dialer.clone());
     client.connect(url).await.expect("login connect");
     (client, dialer)
+}
+
+pub async fn timeout_read_skip_group_notify(client: &WsClient) -> kim_core::Frame {
+    loop {
+        let frame = timeout_read(client).await;
+        match read(&frame.payload) {
+            Ok(Packet::Logic(p))
+                if p.header.flag == Flag::Push as i32 && p.header.command == CMD_GROUP_CREATE =>
+            {
+                continue;
+            }
+            _ => return frame,
+        }
+    }
 }
 
 pub async fn timeout_read(client: &WsClient) -> kim_core::Frame {

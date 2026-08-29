@@ -11,6 +11,7 @@ members = [
     "crates/kim-session",
     "examples/fake-gateway",
     "examples/fake-chat",
+    "examples/fake-royal",
     "examples/pkt-client",
 ]
 
@@ -50,3 +51,6 @@ kim-router = { path = "crates/kim-router" }
 kim-session = { path = "crates/kim-session" }
 snowflake_me = "2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde_json = "1"

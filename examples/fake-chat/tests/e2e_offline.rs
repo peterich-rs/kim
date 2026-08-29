@@ -213,7 +213,7 @@ async fn group_offline_member_pulls_on_login() {
         }
         _ => panic!("expected MessageResp"),
     };
-    let push_frame = timeout_read(&bob).await;
+    let push_frame = timeout_read_skip_group_notify(&bob).await;
     match read(&push_frame.payload).expect("bob push") {
         Packet::Logic(p) => {
             assert_eq!(p.header.flag, Flag::Push as i32);

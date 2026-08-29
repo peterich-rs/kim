@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use fake_chat::directory::MemoryGroupDirectory;
 use fake_chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use fake_chat::royal::http_backends;
 use fake_chat::store::{open_message_store, PoolConfig};
 use fake_chat::ChatHandler;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
@@ -30,6 +31,8 @@ struct SelfSection {
     redis_url: String,
     #[serde(default)]
     database_url: String,
+    #[serde(default)]
+    royal_url: String,
     #[serde(default = "default_db_max_connections")]
     db_max_connections: u32,
     #[serde(default = "default_db_acquire_timeout_ms")]
@@ -72,6 +75,14 @@ fn database_url_from_env_or_cfg(cfg: &str) -> Option<String> {
     }
 }
 
+fn royal_url_from_env_or_cfg(cfg: &str) -> Option<String> {
+    match std::env::var("ROYAL_URL") {
+        Ok(s) if !s.trim().is_empty() => Some(s),
+        _ if !cfg.trim().is_empty() => Some(cfg.to_string()),
+        _ => None,
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -108,18 +119,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(SequenceIdGen::new(10_001))
         }
     };
-    let store = open_message_store(
-        database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
-        redis_url.as_deref(),
-        idgen.clone(),
-        PoolConfig {
-            max_connections: cfg.this.db_max_connections.max(1),
-            acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
-            idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
-        },
-    )
-    .await?;
-    let groups = Arc::new(MemoryGroupDirectory::new(idgen));
+    let (store, groups) = if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
+        http_backends(&royal)?
+    } else {
+        let store = open_message_store(
+            database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
+            redis_url.as_deref(),
+            idgen.clone(),
+            PoolConfig {
+                max_connections: cfg.this.db_max_connections.max(1),
+                acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
+                idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
+            },
+        )
+        .await?;
+        let groups: Arc<dyn fake_chat::directory::GroupDirectory> =
+            Arc::new(MemoryGroupDirectory::new(idgen));
+        (store, groups)
+    };
 
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
     let container = Container::new(ContainerOpts {

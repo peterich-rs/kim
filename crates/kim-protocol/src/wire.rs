@@ -3,6 +3,7 @@ pub const META_DEST_CHANNELS: &str = "dest.channels";
 
 pub const SN_WGATEWAY: &str = "wgateway";
 pub const SN_CHAT: &str = "chat";
+pub const SN_ROYAL: &str = "royal";
 /// Login service name. Equal to [`SN_CHAT`]: login and chat share a process.
 pub const SN_LOGIN: &str = "chat";
 
@@ -12,6 +13,10 @@ pub const CMD_DEMO_ECHO: &str = "chat.demo.echo";
 pub const CMD_CHAT_USER_TALK: &str = "chat.user.talk";
 pub const CMD_CHAT_GROUP_TALK: &str = "chat.group.talk";
 pub const CMD_GROUP_CREATE: &str = "chat.group.create";
+pub const CMD_GROUP_JOIN: &str = "chat.group.join";
+pub const CMD_GROUP_QUIT: &str = "chat.group.quit";
+pub const CMD_GROUP_DETAIL: &str = "chat.group.detail";
+pub const CMD_GROUP_MEMBERS: &str = "chat.group.members";
 pub const CMD_CHAT_TALK_ACK: &str = "chat.talk.ack";
 pub const CMD_OFFLINE_INDEX: &str = "chat.offline.index";
 pub const CMD_OFFLINE_CONTENT: &str = "chat.offline.content";
@@ -38,6 +43,10 @@ mod tests {
         assert_eq!(service_name("chat.user.talk"), "chat");
         assert_eq!(service_name(CMD_CHAT_GROUP_TALK), "chat");
         assert_eq!(service_name(CMD_GROUP_CREATE), "chat");
+        assert_eq!(service_name(CMD_GROUP_JOIN), "chat");
+        assert_eq!(service_name(CMD_GROUP_QUIT), "chat");
+        assert_eq!(service_name(CMD_GROUP_DETAIL), "chat");
+        assert_eq!(service_name(CMD_GROUP_MEMBERS), "chat");
         assert_eq!(service_name(CMD_CHAT_TALK_ACK), "chat");
         assert_eq!(service_name(CMD_OFFLINE_INDEX), "chat");
         assert_eq!(service_name(CMD_OFFLINE_CONTENT), "chat");
