@@ -1325,7 +1325,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 
 ### 9.6 明确不验收（本文 / 容器层）
 
-- 浏览器页、公网 WSS、公网 TGateway TLS、多设备、断线重连 SDK、压测。
+- 浏览器演示页、公网 WSS、公网 TGateway TLS、压测。Web SDK 见 [web-sdk.md](web-sdk.md)。
 - JWT / 互踢：见 [link-layer-login.md](link-layer-login.md)，不在 `e2e_echo.rs`。
 - 把 App 客户端改成走 WebSocket。
 - 把 `TcpClient` 写侧 Mutex 改成 mpsc（读改成 `&self` 除外）。

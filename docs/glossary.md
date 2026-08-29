@@ -51,7 +51,7 @@
 | **Router** | `command` → Handler。Chat 用它处理 `login.signin` / `login.signout` / `chat.demo.echo` / `chat.user.talk` / `chat.group.talk` / `chat.group.create` |
 | **dest** | Header 字段。单聊是对方账号，群聊是 group id（本里程碑 base36 字符串，不是 ch22 HTTP Base32） |
 | **MessagePush** | 服务端主动推的消息体。command 仍是 talk，`Flag=Push`。`sender` 只在 body 里 |
-| **写扩散** | 以后：消息写入每个收件人收件箱。本里程碑 Memory 只记一条，不落盘 |
+| **写扩散** | 一条消息写入每个收件人的收件箱索引。见 [reliable-delivery.md](reliable-delivery.md) |
 | **Session** | 一条已登录连接的完整记录（account、channel_id、gate_id…），按 channel_id 存 |
 | **Location** | 热路径：account → {channel_id, gate_id}。同一账号第二次登录先查这个再互踢 |
 | **Kickout** | 互踢通知。command 仍是 `login.signin`，`Flag=Push`，body 是 `KickoutNotify{channelId}`。网关 hook 先看 Flag 再关旧连接 |
@@ -64,3 +64,4 @@
 | 容器层 | 找到别的服务并连上它们 | **有**（静态 Naming + Container，M2） |
 | 链路层 | 登录、指令路由、会话 | **有**（JWT Accept、Router、Memory 会话、互踢） |
 | 控制层 | 单聊、群聊、离线 | **有**在线 talk、ACK、离线、群 join/quit/detail；Royal HTTP 可选 |
+| Web SDK | 浏览器客户端：编解码、登录、收发、离线、ACK | **有**（`sdk/web`） |

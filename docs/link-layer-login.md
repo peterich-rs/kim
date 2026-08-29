@@ -115,7 +115,7 @@ Kickout 的 command 仍是 `login.signin`，`Flag=Push`，body `KickoutNotify{ch
 
 ## 非目标（不要写进这一层）
 
-Consul、VPS、TGateway TLS、假 TGateway、ACK / 离线、Royal、Web SDK、`Agent::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。
+Consul、VPS、TGateway TLS、假 TGateway、`Agent::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。Web SDK 见 [web-sdk.md](web-sdk.md)。
 
 ---
 

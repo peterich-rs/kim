@@ -11,5 +11,6 @@
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] `cargo test --workspace`
+- [ ] `cd sdk/web && npm test` (if SDK / proto changed)
 - [ ] New functionality manually tested
 - [ ] Edge cases considered
