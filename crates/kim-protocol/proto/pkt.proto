@@ -17,6 +17,8 @@ enum Status {
   InvalidPacketBody = 101;
   InvalidCommand = 103;
   Unauthorized = 105;
+  ContentBlocked = 106;  // talk filter rejected the payload
+  NotGroupMember = 107;  // group talk sender is not a member
   NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }

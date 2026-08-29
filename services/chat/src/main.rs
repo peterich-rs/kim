@@ -55,6 +55,10 @@ struct SelfSection {
     consul_url: String,
     #[serde(default)]
     adult_delay_ms: u64,
+    #[serde(default)]
+    sensitive_words: Vec<String>,
+    #[serde(default)]
+    blocked_image: Vec<String>,
 }
 
 fn default_snowflake_node() -> u16 {
@@ -219,12 +223,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: vec![],
     });
-    let handler = Arc::new(ChatHandler::with_seams_and_zone(
+    let handler = Arc::new(ChatHandler::with_filter(
         container.clone(),
         cache,
         store,
         groups,
         zone,
+        chat::builtin_talk_filter(cfg.this.sensitive_words, cfg.this.blocked_image),
     ));
     if !cfg.this.metrics_listen.is_empty() {
         if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {

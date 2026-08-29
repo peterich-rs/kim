@@ -15,3 +15,6 @@ royal_url = ""
 snowflake_node = 1
 zone = "zone_local"
 metrics_listen = "127.0.0.1:9002"
+# empty = filters still run but pass every payload
+sensitive_words = []
+blocked_image = []

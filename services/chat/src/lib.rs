@@ -3,6 +3,7 @@
 mod ack;
 pub mod directory;
 mod echo;
+pub mod filter;
 mod group;
 pub mod idgen;
 mod login;
@@ -38,6 +39,9 @@ use crate::store::{MemoryMessageStore, MessageStore};
 
 pub use ack::do_talk_ack;
 pub use echo::do_echo;
+pub use filter::{
+    builtin_talk_filter, ContentFilter, FilterChain, ImageFilter, NoopFilter, TextWordFilter,
+};
 pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
@@ -48,6 +52,7 @@ pub use talk::{do_group_talk, do_user_talk};
 pub(crate) struct ChatSvc {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
+    filter: Arc<dyn ContentFilter>,
 }
 
 struct ContainerDispatcher(Arc<Container>);
@@ -124,6 +129,17 @@ impl ChatHandler {
         groups: Arc<dyn GroupDirectory>,
         zone: String,
     ) -> Self {
+        Self::with_filter(container, cache, store, groups, zone, Arc::new(NoopFilter))
+    }
+
+    pub fn with_filter(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         {
@@ -135,19 +151,31 @@ impl ChatHandler {
         }
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
         router.handle(CMD_DEMO_ECHO, do_echo);
-        let svc = ChatSvc { store, groups };
+        let svc = ChatSvc {
+            store,
+            groups,
+            filter,
+        };
         {
             let svc = svc.clone();
             router.handle(CMD_CHAT_USER_TALK, move |ctx| {
                 let svc = svc.clone();
-                async move { do_user_talk(ctx, svc.store.as_ref()).await }
+                async move { do_user_talk(ctx, svc.store.as_ref(), svc.filter.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
                 let svc = svc.clone();
-                async move { do_group_talk(ctx, svc.store.as_ref(), svc.groups.as_ref()).await }
+                async move {
+                    do_group_talk(
+                        ctx,
+                        svc.store.as_ref(),
+                        svc.groups.as_ref(),
+                        svc.filter.as_ref(),
+                    )
+                    .await
+                }
             });
         }
         {

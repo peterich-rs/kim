@@ -18,3 +18,5 @@ public_port = 8002
 idc = "local"
 consul_url = ""
 adult_delay_ms = 0
+sensitive_words = []
+blocked_image = []

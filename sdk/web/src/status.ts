@@ -8,6 +8,8 @@ export const Status = {
   InvalidPacketBody: 101,
   InvalidCommand: 103,
   Unauthorized: 105,
+  ContentBlocked: 106,
+  NotGroupMember: 107,
   NoDestination: 300,
   SessionNotFound: 404,
 } as const;
