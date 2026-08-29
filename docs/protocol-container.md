@@ -468,7 +468,7 @@ read_loop.run(messages)
 
 `WsClient` 镜像 `TcpClient` 的 inherent 方法（`TcpClient` 目前也没有 `impl Client for TcpClient`，不要突然改合同）：
 
-- `connect(url)`：`url` 形如 `ws://127.0.0.1:8001/`。本阶段 **拒绝** `wss://`（返回明确错误「本阶段无 TLS」）。
+- `connect(url)`：`ws://` 明文 TCP 再 Upgrade；`wss://` 先 TLS 再同一套 Upgrade。`WsServer` 仍只听明文，公网 WSS 由反代终止。
 - 用 hyper 客户端发 Upgrade，`fastwebsockets` handshake 之后 `Role::Client`。
 - 拆读写半边；心跳任务发 `OpCode::Ping`（和 TcpClient 一样）。写侧本阶段可以用 `Mutex<WsWriteHalf>`，与 TcpClient 对齐，不强制 mpsc。
 - `send(payload)`：写 Binary 帧。
@@ -1211,7 +1211,7 @@ HTTPS 只包住 REST。WSS 只包住 **Web 长连接**。App 长连接是 TCP，
 | App ↔ TGateway | TCP（`kim-tcp`） | 无 | crate 测试；本机 Demo 尚未起 TGateway |
 | 网关 ↔ Chat | `127.0.0.1:8002` TCP | 无 | 内网 |
 
-`WsClient::connect` 遇到 `wss://` 返回明确错误，避免静默明文。本阶段也不给 `TcpClient` 加 TLS。
+`WsClient::connect` 接受 `wss://`（rustls + webpki-roots）。`WsServer` 仍明文。`TcpClient` TLS 是后做的 TGateway 外壳。
 
 绑定地址默认 `127.0.0.1`，不要 `0.0.0.0`（examples 如此；库的 `bind` 尊重调用方）。
 
@@ -1230,7 +1230,7 @@ HTTPS 只包住 REST。WSS 只包住 **Web 长连接**。App 长连接是 TCP，
                  无 HTTP 升级。本阶段不做这层加密外壳。
 ```
 
-证书：REST 和 WSS 走 Cloudflare 边缘证书；源站用 CF 源证书或反代已有证书。`kim-ws` 本阶段不内嵌 rustls。TGateway 的 TLS 以后再说。
+证书：REST 和 WSS 走边缘或源站证书；`WsServer` 不内嵌 rustls（反代终止）。Rust 客户端 `wss://` 用 rustls。TGateway 的 TCP+TLS 以后再说。
 
 鉴权：小册把登录放在 Upgrade **之后** 的业务包。本阶段连登录都没有。禁止提前把 token 塞进 `ws://host/?token=`——Upgrade 只发生一次，token 会出现在反代日志和 Referer 里。App 的 token 走 HTTPS REST，再在 TCP 长连上带业务包（以后的课）。
 
