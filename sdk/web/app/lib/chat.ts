@@ -13,6 +13,7 @@ export interface ChatHandlers {
   onMessage: (msg: Message, dest: string) => void;
   onKick: () => void;
   onGroup: (groupId: string, members: string[]) => void;
+  onToken?: (token: string, exp: number) => void;
 }
 
 export function threadOf(msg: Message, me: string): string {
@@ -51,6 +52,9 @@ export class ChatSession {
       },
     );
     this.bind(next);
+    if (this.handlers.onToken) {
+      next.ontoken(this.handlers.onToken);
+    }
     const { success, err } = await next.login();
     if (this.disposed) {
       await next.logout();

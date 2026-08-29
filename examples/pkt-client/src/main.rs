@@ -205,6 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             r#type: MESSAGE_TYPE_TEXT,
             body,
             extra: String::new(),
+            client_id: uuid::Uuid::new_v4().to_string(),
         });
         client.send(marshal(&Packet::Logic(pkt))).await?;
         read_message_resp(&client).await?;
@@ -225,6 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             r#type: MESSAGE_TYPE_TEXT,
             body,
             extra: String::new(),
+            client_id: uuid::Uuid::new_v4().to_string(),
         });
         client.send(marshal(&Packet::Logic(pkt))).await?;
         read_message_resp(&client).await?;

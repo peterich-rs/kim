@@ -83,9 +83,10 @@ async fn tcp_gateway_login() {
     ));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
-    gw_server.set_state_listener(gw_h);
+    gw_server.set_state_listener(gw_h.clone());
     let gw_server = Arc::new(gw_server);
     hook.attach(gw_server.clone());
+    gw_h.attach_server(gw_server.clone());
     gw_c.attach_server(gw_server);
     let gw_run = gw_c.clone();
     tokio::spawn(async move {

@@ -192,6 +192,7 @@ mod tests {
             r#type: crate::MESSAGE_TYPE_TEXT,
             body: "hello".into(),
             extra: "x".into(),
+            client_id: String::new(),
         });
         let req: crate::pkt::MessageReq = req_pkt.read_body().unwrap();
         assert_eq!(req.r#type, crate::MESSAGE_TYPE_TEXT);

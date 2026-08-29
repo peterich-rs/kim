@@ -72,7 +72,9 @@ INIT → CONNECTING → CONNECTED → CLOSING → CLOSED
 
 `Map<sequence, Pending>`。客户端自增 sequence（登录固定 1，之后从 2）。`Flag=Response` 用同一 sequence 解开 Promise。超时 `KIMStatus.RequestTimeout=1001`；未连接 `SendFailed=1002`。这两个数不上线。
 
-`talkToUser` / `talkToGroup`：状态码 `[300, 400)` 重试（默认 3 次）。`>= 400` 关连接（可重连）。
+`talkToUser` / `talkToGroup`：状态码 `[300, 400)` 重试（默认 3 次），**同一次发送复用 `MessageReq.clientId`**。`UserNotFound=108` 与 `ContentBlocked` / `NotGroupMember` 一样不重试。`>= 400` 关连接（可重连）。
+
+心跳若收到 `login.renew` Push（`AuthResp`），SDK 更新内存 token；产品页 `ontoken` 写回 `localStorage`。
 
 ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。循环大约每 `ackForceAfterMs`（默认 3s）对 `lastMessage` 发一次；到达不足 `ackDelayMs`（默认 500ms）则再等。未 ACK 超过 10 条不等待。
 
@@ -122,9 +124,9 @@ cd sdk/web && npm run app
 本机全套（先 Royal `:8080`，再 Chat，再网关 `:8001`）：
 
 ```bash
-RUST_LOG=info cargo run -p royal
-RUST_LOG=info cargo run -p chat
-RUST_LOG=info cargo run -p gateway
+CHAT_URL=http://127.0.0.1:9002 RUST_LOG=info cargo run -p royal
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p chat
+ROYAL_URL=http://127.0.0.1:8080 RUST_LOG=info cargo run -p gateway
 cd sdk/web && npm run app:local
 ```
 

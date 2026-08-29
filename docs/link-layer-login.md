@@ -42,7 +42,9 @@ read_loop
 
 客户端 `LoginDialer` 等 LoginResp。服务端 **不等** Chat 处理完。`Agent` 没有 Close。
 
-JWT：HS256，claims `{acc, app, exp}`，拒绝 `alg=none`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。
+JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。
+
+握手后网关把 `jti` / 空闲窗口绑在 channel 上。Basic ping：先查吊销（失败则关连接），再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`，走现成 Kickout。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`；查询失败 **fail-closed**（拒绝登录 / 心跳关连接）。
 
 ---
 
@@ -50,9 +52,10 @@ JWT：HS256，claims `{acc, app, exp}`，拒绝 `alg=none`。密钥：非空 `KI
 
 | command | 谁处理 |
 |---|---|
-| `login.signin` Request | Chat `DoSysLogin` |
+| `login.signin` Request | Chat `DoSysLogin`（先 `upsert` 用户表） |
 | `login.signin` Push + `KickoutNotify` | 网关 `after_downlink`（先看 Flag） |
 | `login.signout` | 网关 Disconnect 转发；Chat `DoSysLogout` |
+| `login.renew` Push + `AuthResp` | 网关心跳：JWT 剩余寿命 < ttl/2 时同一 `jti` 续签 |
 | `chat.demo.echo` | Chat `DoEcho`（必须已有会话） |
 
 | Status | 值 | 何时 |

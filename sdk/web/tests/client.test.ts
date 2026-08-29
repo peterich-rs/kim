@@ -99,8 +99,8 @@ describe("KIMClient", () => {
     expect(gw.lastTalkDest).toBe("bob");
   });
 
-  it("does not retry talk on content blocked or not group member", async () => {
-    for (const blocked of [Status.ContentBlocked, Status.NotGroupMember]) {
+  it("does not retry talk on content blocked, not group member, or user not found", async () => {
+    for (const blocked of [Status.ContentBlocked, Status.NotGroupMember, Status.UserNotFound]) {
       const gw = new LoopbackGw();
       let talks = 0;
       const orig = gw.reply.bind(gw);
@@ -124,10 +124,12 @@ describe("KIMClient", () => {
     const gw = new LoopbackGw();
     const orig = gw.reply.bind(gw);
     let talks = 0;
+    const bodies: string[] = [];
     gw.reply = (sock, data) => {
       const wire = readPacket(data);
       if (wire.kind === "logic" && wire.pkt.command === Command.ChatUserTalk) {
         talks += 1;
+        bodies.push(Buffer.from(wire.pkt.payload).toString("hex"));
         gw.talkStatus = talks === 1 ? Status.NoDestination : Status.Success;
       }
       orig(sock, data);
@@ -138,6 +140,7 @@ describe("KIMClient", () => {
     expect(status).toBe(Status.Success);
     expect(resp?.messageId).toBe(20001n);
     expect(talks).toBe(2);
+    expect(bodies[0]).toBe(bodies[1]);
   });
 
   it("request times out when no response", async () => {

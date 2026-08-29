@@ -5,6 +5,7 @@ use tracing::{info, warn};
 use crate::directory::GroupDirectory;
 use crate::filter::ContentFilter;
 use crate::store::{InsertMessage, MessageStore};
+use crate::users::UserDirectory;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TalkError {
@@ -14,6 +15,8 @@ pub enum TalkError {
     ContentBlocked,
     #[error("not a group member")]
     NotGroupMember,
+    #[error("user not found")]
+    UserNotFound,
 }
 
 fn unix_nano() -> i64 {
@@ -26,7 +29,12 @@ fn unix_nano() -> i64 {
     .unwrap_or(i64::MAX)
 }
 
-pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn ContentFilter) {
+pub async fn do_user_talk(
+    ctx: Context,
+    store: &dyn MessageStore,
+    filter: &dyn ContentFilter,
+    users: &dyn UserDirectory,
+) {
     if ctx.header().dest.is_empty() {
         warn!(
             command = %ctx.header().command,
@@ -56,6 +64,20 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn C
         return;
     }
     let receiver = ctx.header().dest.as_str();
+    match users.exists(&ctx.session().app, receiver).await {
+        Ok(true) => {}
+        Ok(false) => {
+            let _ = ctx
+                .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
+                .await;
+            return;
+        }
+        Err(err) => {
+            warn!(%err, account = %receiver, "user exists failed");
+            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            return;
+        }
+    }
     let loc = match ctx.get_location(receiver, "").await {
         Ok(loc) => Some(loc),
         Err(SessionError::NotFound) => None,
@@ -77,6 +99,7 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn C
                 msg_type: req.r#type,
                 body: req.body.clone(),
                 extra: req.extra.clone(),
+                client_id: req.client_id.clone(),
             },
         )
         .await
@@ -88,6 +111,7 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn C
             return;
         }
     };
+    let send_time = inserted.send_time;
 
     let push = MessagePush {
         message_id: inserted.message_id,
@@ -97,11 +121,13 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn C
         sender: ctx.session().account.clone(),
         send_time,
     };
-    if let Some(loc) = loc.as_ref() {
-        if let Err(err) = ctx.dispatch(&push, std::slice::from_ref(loc)).await {
-            warn!(%err, "dispatch user talk failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+    if !inserted.duplicate {
+        if let Some(loc) = loc.as_ref() {
+            if let Err(err) = ctx.dispatch(&push, std::slice::from_ref(loc)).await {
+                warn!(%err, "dispatch user talk failed");
+                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                return;
+            }
         }
     }
 
@@ -113,6 +139,7 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn C
         dest = %receiver,
         message_id = inserted.message_id,
         send_time,
+        duplicate = inserted.duplicate,
         online = loc.is_some(),
         msg_type = push.r#type,
         body_len = push.body.len(),
@@ -181,6 +208,7 @@ pub async fn do_group_talk(
                 msg_type: req.r#type,
                 body: req.body.clone(),
                 extra: req.extra.clone(),
+                client_id: req.client_id.clone(),
             },
             &members,
         )
@@ -193,6 +221,7 @@ pub async fn do_group_talk(
             return;
         }
     };
+    let send_time = inserted.send_time;
 
     let locs = match ctx.get_locations(&members).await {
         Ok(v) => v,
@@ -212,7 +241,7 @@ pub async fn do_group_talk(
         sender: ctx.session().account.clone(),
         send_time,
     };
-    if !locs.is_empty() {
+    if !inserted.duplicate && !locs.is_empty() {
         if let Err(err) = ctx.dispatch(&push, &locs).await {
             warn!(%err, "dispatch group talk failed");
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
@@ -226,6 +255,7 @@ pub async fn do_group_talk(
         send_time,
         member_count = members.len(),
         loc_count = locs.len(),
+        duplicate = inserted.duplicate,
         msg_type = push.r#type,
         body_len = push.body.len(),
         "group talk"
@@ -263,6 +293,7 @@ mod tests {
     use crate::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
     };
+    use crate::users::{MemoryUserDirectory, UserDirectory};
 
     fn sender_session() -> Session {
         Session {
@@ -289,7 +320,16 @@ mod tests {
             r#type: MESSAGE_TYPE_TEXT,
             body: "hello world".into(),
             extra: "e1".into(),
+            client_id: String::new(),
         }
+    }
+
+    async fn seed_users(accounts: &[&str]) -> Arc<MemoryUserDirectory> {
+        let dir = Arc::new(MemoryUserDirectory::new());
+        for account in accounts {
+            dir.upsert("kim", account).await.unwrap();
+        }
+        dir
     }
 
     fn talk_pkt(dest: &str, body: Bytes) -> LogicPkt {
@@ -318,8 +358,16 @@ mod tests {
         pkt: LogicPkt,
         session: Session,
     ) {
-        serve_user_talk_filtered(store, cache, dispatcher, pkt, session, Arc::new(NoopFilter))
-            .await;
+        serve_user_talk_users(
+            store,
+            cache,
+            dispatcher,
+            pkt,
+            session,
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+        )
+        .await;
     }
 
     async fn serve_user_talk_filtered(
@@ -330,11 +378,33 @@ mod tests {
         session: Session,
         filter: Arc<dyn ContentFilter>,
     ) {
+        serve_user_talk_users(
+            store,
+            cache,
+            dispatcher,
+            pkt,
+            session,
+            filter,
+            seed_users(&["alice", "bob"]).await,
+        )
+        .await;
+    }
+
+    async fn serve_user_talk_users(
+        store: Arc<dyn MessageStore>,
+        cache: Arc<dyn SessionStorage>,
+        dispatcher: Arc<RecordingDispatcher>,
+        pkt: LogicPkt,
+        session: Session,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+    ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_USER_TALK, move |ctx| {
             let store = store.clone();
             let filter = filter.clone();
-            async move { do_user_talk(ctx, store.as_ref(), filter.as_ref()).await }
+            let users = users.clone();
+            async move { do_user_talk(ctx, store.as_ref(), filter.as_ref(), users.as_ref()).await }
         });
         router.serve(pkt, dispatcher, cache, session).await.unwrap();
     }
@@ -438,6 +508,78 @@ mod tests {
         assert_eq!(resps[0].pkt.header.status, Status::NoDestination as i32);
         assert!(store.recorded().is_empty());
         assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+    }
+
+    #[tokio::test]
+    async fn unknown_dest_is_user_not_found_without_insert_or_push() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_user_talk_users(
+            store.clone(),
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            talk_req_pkt("carol", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice"]).await,
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
+        assert_eq!(resps.len(), 1);
+        assert_eq!(resps[0].pkt.header.status, Status::UserNotFound as i32);
+        assert!(store.recorded().is_empty());
+        assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+    }
+
+    #[tokio::test]
+    async fn same_client_id_does_not_insert_or_push_twice() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_user_talk(
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+        )
+        .await;
+        serve_user_talk(
+            store.clone(),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let pushes: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(store.recorded().len(), 1);
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| {
+                p.pkt.header.flag == Flag::Response as i32
+                    && p.pkt.header.status == Status::Success as i32
+            })
+            .collect();
+        assert_eq!(resps.len(), 2);
+        let a: MessageResp = resps[0].pkt.read_body().unwrap();
+        let b: MessageResp = resps[1].pkt.read_body().unwrap();
+        assert_eq!(a.message_id, b.message_id);
+        assert_eq!(a.send_time, b.send_time);
     }
 
     #[tokio::test]
@@ -1102,6 +1244,7 @@ mod tests {
             r#type: MESSAGE_TYPE_IMAGE,
             body: "http://cdn/badword.png".into(),
             extra: String::new(),
+            client_id: String::new(),
         };
         serve_user_talk_filtered(
             store.clone(),
@@ -1126,6 +1269,7 @@ mod tests {
             r#type: MESSAGE_TYPE_IMAGE,
             body: "http://evil.example/a.png".into(),
             extra: String::new(),
+            client_id: String::new(),
         };
         serve_user_talk_filtered(
             store.clone(),

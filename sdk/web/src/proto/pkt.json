@@ -23,6 +23,7 @@
                 "Unauthorized": 105,
                 "ContentBlocked": 106,
                 "NotGroupMember": 107,
+                "UserNotFound": 108,
                 "NoDestination": 300,
                 "SessionNotFound": 404
               }
@@ -162,6 +163,10 @@
                 "extra": {
                   "type": "string",
                   "id": 3
+                },
+                "clientId": {
+                  "type": "string",
+                  "id": 4
                 }
               }
             },
@@ -430,6 +435,10 @@
                   "rule": "repeated",
                   "type": "string",
                   "id": 5
+                },
+                "clientId": {
+                  "type": "string",
+                  "id": 6
                 }
               }
             },
@@ -438,6 +447,14 @@
                 "messageId": {
                   "type": "int64",
                   "id": 1
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 2
+                },
+                "duplicate": {
+                  "type": "bool",
+                  "id": 3
                 }
               }
             },
@@ -490,6 +507,50 @@
                 "account": {
                   "type": "string",
                   "id": 3
+                }
+              }
+            },
+            "AccountQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "AccountExists": {
+              "fields": {
+                "exists": {
+                  "type": "bool",
+                  "id": 1
+                }
+              }
+            },
+            "KickAccount": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "app": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "RevokeQuery": {
+              "fields": {
+                "jti": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "RevokeStatus": {
+              "fields": {
+                "revoked": {
+                  "type": "bool",
+                  "id": 1
                 }
               }
             }

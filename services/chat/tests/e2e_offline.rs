@@ -21,6 +21,7 @@ fn talk_pkt(command: &str, seq: u32, dest: &str, body: &str) -> LogicPkt {
         r#type: MESSAGE_TYPE_TEXT,
         body: body.to_string(),
         extra: String::new(),
+        client_id: String::new(),
     });
     pkt
 }

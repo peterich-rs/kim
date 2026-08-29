@@ -25,7 +25,7 @@ async fn create_and_detail_via_royal_http() {
     });
     tokio::time::sleep(Duration::from_millis(30)).await;
 
-    let (store, groups) = http_backends(&format!("http://{addr}")).expect("http backends");
+    let (store, groups, _) = http_backends(&format!("http://{addr}")).expect("http backends");
     let stack = spawn_stack_seams(store, groups).await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;

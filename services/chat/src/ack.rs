@@ -70,6 +70,7 @@ mod tests {
                     msg_type: 1,
                     body: "hi".into(),
                     extra: String::new(),
+                    client_id: String::new(),
                 },
             )
             .await

@@ -188,6 +188,10 @@ public_port = ${chatPort}
   });
 
   it("syncs offline index after the receiver logs in", async () => {
+    const daveOnline = sdk(url, "dave");
+    expect((await daveOnline.login()).success).toBe(true);
+    await daveOnline.logout();
+
     const alice = sdk(url, "alice");
     expect((await alice.login()).success).toBe(true);
     const { status } = await alice.talkToUser("dave", new Content("offline-hi"));

@@ -14,11 +14,12 @@ use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
-use chat::users::{MemoryUserDirectory, UserDirectory};
+use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
 use kim_protocol::pkt::{
-    AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp,
-    GroupQueryReq, GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq,
-    MessageContentResp, MessageIndex, MessageIndexResp, OfflineIndexReq,
+    AccountExists, AccountQuery, AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail,
+    GroupJoinReq, GroupMembersResp, GroupQueryReq, GroupQuitReq, InsertMessageReq,
+    InsertMessageResp, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
+    MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
 };
 use prost::Message;
 
@@ -49,6 +50,7 @@ pub struct RoyalState {
     pub(crate) jwt: JwtConfig,
     pub(crate) revoke: Arc<dyn TokenRevocation>,
     pub(crate) app: String,
+    pub(crate) chat_url: String,
 }
 
 impl RoyalState {
@@ -64,6 +66,7 @@ impl RoyalState {
             jwt,
             revoke: Arc::new(MemoryRevocation::new()),
             app: "kim".into(),
+            chat_url: String::new(),
         }
     }
 
@@ -77,6 +80,12 @@ impl RoyalState {
     pub fn with_app(mut self, app: impl Into<String>) -> Self {
         let app = app.into();
         self.app = if app.is_empty() { "kim".into() } else { app };
+        self
+    }
+
+    #[must_use]
+    pub fn with_chat_url(mut self, url: impl Into<String>) -> Self {
+        self.chat_url = url.into().trim_end_matches('/').to_string();
         self
     }
 
@@ -105,6 +114,7 @@ impl RoyalState {
             jwt,
             revoke,
             app: "kim".into(),
+            chat_url: String::new(),
         }
     }
 }
@@ -115,6 +125,9 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/auth/register", post(auth::register))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/internal/user/lookup", post(user_lookup))
+        .route("/internal/user/upsert", post(user_upsert))
+        .route("/internal/revoke/check", post(revoke_check))
         .route("/api/v1/message/user", post(insert_user))
         .route("/api/v1/message/group", post(insert_group))
         .route("/api/v1/message/ack", post(ack))
@@ -169,12 +182,19 @@ async fn insert_user(
                 msg_type: msg.r#type,
                 body: msg.body,
                 extra: msg.extra,
+                client_id: if req.client_id.is_empty() {
+                    msg.client_id
+                } else {
+                    req.client_id
+                },
             },
         )
         .await
         .map_err(backend)?;
     Ok(encode(&InsertMessageResp {
         message_id: inserted.message_id,
+        send_time: inserted.send_time,
+        duplicate: inserted.duplicate,
     }))
 }
 
@@ -204,6 +224,11 @@ async fn insert_group(
                 msg_type: msg.r#type,
                 body: msg.body,
                 extra: msg.extra,
+                client_id: if req.client_id.is_empty() {
+                    msg.client_id
+                } else {
+                    req.client_id
+                },
             },
             &members,
         )
@@ -211,6 +236,8 @@ async fn insert_group(
         .map_err(backend)?;
     Ok(encode(&InsertMessageResp {
         message_id: inserted.message_id,
+        send_time: inserted.send_time,
+        duplicate: inserted.duplicate,
     }))
 }
 
@@ -356,6 +383,82 @@ async fn group_detail(
     }))
 }
 
+async fn user_lookup(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<AccountQuery>(&body)?;
+    if req.account.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty account".into()));
+    }
+    let exists = st
+        .users
+        .exists(&st.app, &req.account)
+        .await
+        .map_err(|e| match e {
+            UserError::Backend(s) => backend(s),
+            UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
+        })?;
+    Ok(encode(&AccountExists { exists }))
+}
+
+async fn user_upsert(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let req = decode::<AccountQuery>(&body)?;
+    if req.account.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty account".into()));
+    }
+    st.users
+        .upsert(&st.app, &req.account)
+        .await
+        .map_err(|e| match e {
+            UserError::Backend(s) => backend(s),
+            UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn revoke_check(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<RevokeQuery>(&body)?;
+    if req.jti.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty jti".into()));
+    }
+    let revoked = st
+        .revoke
+        .is_revoked(&req.jti)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(encode(&RevokeStatus { revoked }))
+}
+
+pub(crate) async fn kick_account(st: &RoyalState, account: &str) {
+    if st.chat_url.is_empty() || account.is_empty() {
+        return;
+    }
+    let url = format!("{}/internal/kick", st.chat_url);
+    let body = KickAccount {
+        account: account.to_string(),
+        app: st.app.clone(),
+    }
+    .encode_to_vec();
+    match reqwest::Client::new()
+        .post(&url)
+        .header("Content-Type", "application/x-protobuf")
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => tracing::error!(status = %resp.status(), account, "kick http"),
+        Err(err) => tracing::error!(%err, account, "kick http"),
+    }
+}
+
 pub async fn serve(listener: tokio::net::TcpListener, state: RoyalState) -> std::io::Result<()> {
     let addr = listener
         .local_addr()
@@ -384,7 +487,7 @@ mod tests {
         let base = format!("http://{addr}");
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
 
-        let (store, groups) = chat::http_backends(&base).unwrap();
+        let (store, groups, _users) = chat::http_backends(&base).unwrap();
         let gid = groups
             .create(
                 "kim",
@@ -411,6 +514,7 @@ mod tests {
                     msg_type: MESSAGE_TYPE_TEXT,
                     body: "hi".into(),
                     extra: String::new(),
+                    client_id: String::new(),
                 },
             )
             .await
@@ -475,6 +579,19 @@ mod tests {
         assert!(created.status().is_success());
         let buf = created.bytes().await.unwrap();
         let resp = kim_protocol::pkt::AuthResp::decode(buf.as_ref()).unwrap();
+        let looked = post_pb(
+            &format!("http://{addr}/internal/user/lookup"),
+            AccountQuery {
+                account: "alice".into(),
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert!(looked.status().is_success());
+        let exists = AccountExists::decode(looked.bytes().await.unwrap().as_ref()).unwrap();
+        assert!(exists.exists);
         let claims = kim_protocol::parse("test-secret", &resp.token).unwrap();
         assert_eq!(claims.account, "alice");
         assert_eq!(claims.app, "kim");

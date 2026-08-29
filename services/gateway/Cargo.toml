@@ -19,8 +19,11 @@ kim-core.workspace = true
 kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
+kim-session.workspace = true
+prost.workspace = true
 kim-ws.workspace = true
 redis.workspace = true
+reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 tokio.workspace = true

@@ -19,6 +19,7 @@ enum Status {
   Unauthorized = 105;
   ContentBlocked = 106;  // talk filter rejected the payload
   NotGroupMember = 107;  // group talk sender is not a member
+  UserNotFound = 108;    // talk dest is not a registered account
   NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }
@@ -71,6 +72,7 @@ message MessageReq {
   int32 type = 1;
   string body = 2;
   string extra = 3;
+  string clientId = 4; // empty = no idempotency
 }
 
 message MessageResp {
@@ -173,10 +175,13 @@ message InsertMessageReq {
   int64 sendTime = 3;
   MessageReq message = 4;
   repeated string members = 5;
+  string clientId = 6;
 }
 
 message InsertMessageResp {
   int64 messageId = 1;
+  int64 sendTime = 2;
+  bool duplicate = 3;
 }
 
 message AckMessageReq {
@@ -198,4 +203,26 @@ message AuthResp {
   string token = 1;
   int64 exp = 2;
   string account = 3;
+}
+
+// Chat ↔ Royal / Royal ↔ Chat. Not on the public Caddy /api/v1/auth surface.
+message AccountQuery {
+  string account = 1;
+}
+
+message AccountExists {
+  bool exists = 1;
+}
+
+message KickAccount {
+  string account = 1;
+  string app = 2;
+}
+
+message RevokeQuery {
+  string jti = 1;
+}
+
+message RevokeStatus {
+  bool revoked = 1;
 }

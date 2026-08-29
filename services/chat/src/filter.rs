@@ -136,6 +136,7 @@ mod tests {
             r#type: MESSAGE_TYPE_TEXT,
             body: body.into(),
             extra: String::new(),
+            client_id: String::new(),
         }
     }
 
@@ -144,6 +145,7 @@ mod tests {
             r#type: MESSAGE_TYPE_IMAGE,
             body: body.into(),
             extra: extra.into(),
+            client_id: String::new(),
         }
     }
 
@@ -171,6 +173,7 @@ mod tests {
                 r#type: MESSAGE_TYPE_VOICE,
                 body: "badword".into(),
                 extra: String::new(),
+                client_id: String::new(),
             })
             .await
             .is_ok());
@@ -200,6 +203,7 @@ mod tests {
                 r#type: MESSAGE_TYPE_VIDEO,
                 body: "http://evil.example/a.mp4".into(),
                 extra: String::new(),
+                client_id: String::new(),
             })
             .await
             .is_ok());

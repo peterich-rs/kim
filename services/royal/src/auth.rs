@@ -140,5 +140,6 @@ pub async fn logout(State(st): State<RoyalState>, headers: HeaderMap) -> AuthRes
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
+    crate::kick_account(&st, &claims.account).await;
     Ok(StatusCode::NO_CONTENT)
 }

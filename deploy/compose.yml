@@ -99,6 +99,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      CHAT_URL: http://chat:9002
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: royal
       RUST_LOG: ${RUST_LOG:-info}
