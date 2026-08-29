@@ -10,12 +10,14 @@ members = [
     "crates/kim-router",
     "crates/kim-session",
     "crates/kim-metrics",
+    "crates/kim-client",
     "services/gateway",
     "services/chat",
     "services/royal",
     "services/tgateway",
     "services/router",
     "examples/pkt-client",
+    "examples/kim-client-demo",
     "examples/kimbench",
 ]
 
@@ -62,4 +64,5 @@ clap = { version = "4", features = ["derive"] }
 humantime = "2"
 prometheus = { version = "0.14", default-features = false }
 kim-metrics = { path = "crates/kim-metrics" }
+kim-client = { path = "crates/kim-client" }
 uuid = { version = "1", features = ["v4"] }

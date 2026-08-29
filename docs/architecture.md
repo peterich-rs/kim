@@ -49,6 +49,7 @@
 | `kim-session` | Memory 会话；可选 Redis feature | 指令业务 |
 | `services/gateway` `chat` `royal` `router` | WGateway JWT Accept、Chat 登录/echo/talk、Royal HTTP、lookup | 把 `if login` 写进 `WsServer` |
 | `sdk/web` | 浏览器 / Node 客户端：编解码、状态机、talk / 离线 / ACK | Token 进 URL；改 `WsServer` |
+| `kim-client` / `sdk/mobile` | App：WSS Conn 上 login/talk/ack；Flutter 壳 | TGateway；改 `WsServer` |
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。
 
@@ -85,8 +86,10 @@ im/
   crates/kim-session       会话（Memory / 可选 Redis）
   crates/kim-metrics       Prometheus registry（仅进程，不进通信层）
   services/                gateway / tgateway / chat / royal / router
-  examples/                pkt-client / kimbench
+  examples/                pkt-client / kim-client-demo / kimbench
   sdk/web                  TypeScript Web SDK
+  sdk/mobile               Flutter 壳；kim-client 经 FRB
+  crates/kim-client        客户端（Conn = kim-ws）
   docs/                    本目录
   research/                可行性调研
 ```
