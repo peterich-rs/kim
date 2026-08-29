@@ -29,7 +29,7 @@
 
 `insert_user`：1 条 content + 2 条 index（发送方 `direction=1`，接收方 `direction=0`）。
 
-`insert_group`：1 条 content + 每个成员 1 条 index。发送方 `direction=1`，其余 `0`。成员列表由 Handler 在 insert **之前** 从 `GroupDirectory` 取出。未知群：空成员，只写 content。
+`insert_group`：1 条 content + 每个成员 1 条 index。发送方 `direction=1`，其余 `0`。成员列表由 Handler 在 insert **之前** 从 `GroupDirectory` 取出。未知群或发送方不在成员中：`NotGroupMember`，不 insert。
 
 离线拉取只读 `direction=0`。
 

@@ -99,6 +99,27 @@ describe("KIMClient", () => {
     expect(gw.lastTalkDest).toBe("bob");
   });
 
+  it("does not retry talk on content blocked or not group member", async () => {
+    for (const blocked of [Status.ContentBlocked, Status.NotGroupMember]) {
+      const gw = new LoopbackGw();
+      let talks = 0;
+      const orig = gw.reply.bind(gw);
+      gw.reply = (sock, data) => {
+        const wire = readPacket(data);
+        if (wire.kind === "logic" && wire.pkt.command === Command.ChatUserTalk) {
+          talks += 1;
+          gw.talkStatus = blocked;
+        }
+        orig(sock, data);
+      };
+      const cli = client(gw);
+      await cli.login();
+      const { status } = await cli.talkToUser("bob", new Content("hello"), 3);
+      expect(status).toBe(blocked);
+      expect(talks).toBe(1);
+    }
+  });
+
   it("retries talk on status 300", async () => {
     const gw = new LoopbackGw();
     const orig = gw.reply.bind(gw);

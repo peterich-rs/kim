@@ -79,6 +79,8 @@ mod tests {
         assert_eq!(Status::InvalidPacketBody as i32, 101);
         assert_eq!(Status::InvalidCommand as i32, 103);
         assert_eq!(Status::Unauthorized as i32, 105);
+        assert_eq!(Status::ContentBlocked as i32, 106);
+        assert_eq!(Status::NotGroupMember as i32, 107);
         assert_eq!(Status::NoDestination as i32, 300);
         assert_eq!(Status::SessionNotFound as i32, 404);
         assert!(Status::try_from(100).is_err());

@@ -3,12 +3,17 @@ use kim_router::{Context, SessionError};
 use tracing::{info, warn};
 
 use crate::directory::GroupDirectory;
+use crate::filter::ContentFilter;
 use crate::store::{InsertMessage, MessageStore};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TalkError {
     #[error("no destination")]
     NoDestination,
+    #[error("content blocked")]
+    ContentBlocked,
+    #[error("not a group member")]
+    NotGroupMember,
 }
 
 fn unix_nano() -> i64 {
@@ -21,7 +26,7 @@ fn unix_nano() -> i64 {
     .unwrap_or(i64::MAX)
 }
 
-pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore) {
+pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore, filter: &dyn ContentFilter) {
     if ctx.header().dest.is_empty() {
         warn!(
             command = %ctx.header().command,
@@ -44,6 +49,12 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore) {
             return;
         }
     };
+    if let Err(status) = filter.check(&req).await {
+        let _ = ctx
+            .resp_with_error(status, &TalkError::ContentBlocked)
+            .await;
+        return;
+    }
     let receiver = ctx.header().dest.as_str();
     let loc = match ctx.get_location(receiver, "").await {
         Ok(loc) => Some(loc),
@@ -112,7 +123,12 @@ pub async fn do_user_talk(ctx: Context, store: &dyn MessageStore) {
     }
 }
 
-pub async fn do_group_talk(ctx: Context, store: &dyn MessageStore, groups: &dyn GroupDirectory) {
+pub async fn do_group_talk(
+    ctx: Context,
+    store: &dyn MessageStore,
+    groups: &dyn GroupDirectory,
+    filter: &dyn ContentFilter,
+) {
     if ctx.header().dest.is_empty() {
         warn!(
             command = %ctx.header().command,
@@ -131,6 +147,12 @@ pub async fn do_group_talk(ctx: Context, store: &dyn MessageStore, groups: &dyn 
             return;
         }
     };
+    if let Err(status) = filter.check(&req).await {
+        let _ = ctx
+            .resp_with_error(status, &TalkError::ContentBlocked)
+            .await;
+        return;
+    }
     let group = ctx.header().dest.as_str();
     let send_time = unix_nano();
 
@@ -142,6 +164,12 @@ pub async fn do_group_talk(ctx: Context, store: &dyn MessageStore, groups: &dyn 
             return;
         }
     };
+    if !members.iter().any(|m| m == &ctx.session().account) {
+        let _ = ctx
+            .resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
+            .await;
+        return;
+    }
 
     let inserted = match store
         .insert_group(
@@ -221,8 +249,8 @@ mod tests {
     use bytes::Bytes;
     use kim_protocol::pkt::{Flag, MessagePush, MessageReq, MessageResp, Session, Status};
     use kim_protocol::{
-        LogicPkt, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, MESSAGE_TYPE_TEXT, META_DEST_CHANNELS,
-        META_DEST_SERVER,
+        LogicPkt, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+        META_DEST_CHANNELS, META_DEST_SERVER,
     };
     use kim_router::test_support::{RecordedPush, RecordingDispatcher};
     use kim_router::{Location, Router, SessionError, SessionStorage};
@@ -230,6 +258,7 @@ mod tests {
 
     use super::{do_group_talk, do_user_talk};
     use crate::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
+    use crate::filter::{ContentFilter, ImageFilter, NoopFilter, TextWordFilter};
     use crate::idgen::{IdGenerator, SequenceIdGen};
     use crate::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
@@ -289,10 +318,23 @@ mod tests {
         pkt: LogicPkt,
         session: Session,
     ) {
+        serve_user_talk_filtered(store, cache, dispatcher, pkt, session, Arc::new(NoopFilter))
+            .await;
+    }
+
+    async fn serve_user_talk_filtered(
+        store: Arc<dyn MessageStore>,
+        cache: Arc<dyn SessionStorage>,
+        dispatcher: Arc<RecordingDispatcher>,
+        pkt: LogicPkt,
+        session: Session,
+        filter: Arc<dyn ContentFilter>,
+    ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_USER_TALK, move |ctx| {
             let store = store.clone();
-            async move { do_user_talk(ctx, store.as_ref()).await }
+            let filter = filter.clone();
+            async move { do_user_talk(ctx, store.as_ref(), filter.as_ref()).await }
         });
         router.serve(pkt, dispatcher, cache, session).await.unwrap();
     }
@@ -619,11 +661,35 @@ mod tests {
         pkt: LogicPkt,
         session: Session,
     ) {
+        serve_group_talk_filtered(
+            store,
+            groups,
+            cache,
+            dispatcher,
+            pkt,
+            session,
+            Arc::new(NoopFilter),
+        )
+        .await;
+    }
+
+    async fn serve_group_talk_filtered(
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        cache: Arc<dyn SessionStorage>,
+        dispatcher: Arc<RecordingDispatcher>,
+        pkt: LogicPkt,
+        session: Session,
+        filter: Arc<dyn ContentFilter>,
+    ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
             let store = store.clone();
             let groups = groups.clone();
-            async move { do_group_talk(ctx, store.as_ref(), groups.as_ref()).await }
+            let filter = filter.clone();
+            async move {
+                do_group_talk(ctx, store.as_ref(), groups.as_ref(), filter.as_ref()).await
+            }
         });
         router.serve(pkt, dispatcher, cache, session).await.unwrap();
     }
@@ -868,7 +934,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn group_unknown_is_success_with_insert_without_push() {
+    async fn group_unknown_is_not_group_member_without_insert() {
         let store = memory_store();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve_group_talk(
@@ -882,21 +948,24 @@ mod tests {
         .await;
 
         let got = dispatcher.recorded();
-        let resps = success_resps(&got);
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
         assert_eq!(resps.len(), 1);
-        let resp: MessageResp = resps[0].pkt.read_body().unwrap();
-        assert!(resp.message_id > 10_000);
-        assert_eq!(store.recorded().len(), 1);
-        assert_eq!(store.recorded()[0].kind, MessageKind::Group);
+        assert_eq!(resps[0].pkt.header.status, Status::NotGroupMember as i32);
+        assert!(store.recorded().is_empty());
         assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
     }
 
     #[tokio::test]
     async fn group_insert_fail_is_system_exception_without_dispatch() {
+        let groups = memory_groups();
+        groups.seed("kim", "g1", vec!["alice".into()]);
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve_group_talk(
             Arc::new(FailStore),
-            memory_groups(),
+            groups,
             Arc::new(MemorySessionStore::new()),
             dispatcher.clone(),
             group_talk_req_pkt("g1", &sample_req()),
@@ -918,7 +987,7 @@ mod tests {
     async fn group_get_locations_other_is_system_exception_after_insert() {
         let store = memory_store();
         let groups = memory_groups();
-        groups.seed("kim", "g1", vec!["bob".into()]);
+        groups.seed("kim", "g1", vec!["alice".into(), "bob".into()]);
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve_group_talk(
             store.clone(),
@@ -967,7 +1036,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn group_sender_not_in_members_still_pushes_online() {
+    async fn group_sender_not_in_members_is_rejected_without_insert() {
         let store = memory_store();
         let groups = memory_groups();
         groups.seed("kim", "g1", vec!["bob".into()]);
@@ -988,11 +1057,122 @@ mod tests {
         .await;
 
         let got = dispatcher.recorded();
-        let resps = success_resps(&got);
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
         assert_eq!(resps.len(), 1);
-        let pushes = push_pkts(&got);
-        assert_eq!(pushes.len(), 1);
-        assert_eq!(pushes[0].channels, vec!["ch-a".to_string()]);
+        assert_eq!(resps[0].pkt.header.status, Status::NotGroupMember as i32);
+        assert!(store.recorded().is_empty());
+        assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+    }
+
+    #[tokio::test]
+    async fn user_text_filter_blocks_without_insert() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let mut req = sample_req();
+        req.body = "say badword now".into();
+        serve_user_talk_filtered(
+            store.clone(),
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+            Arc::new(TextWordFilter::new(["badword"])),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
+        assert_eq!(resps.len(), 1);
+        assert_eq!(resps[0].pkt.header.status, Status::ContentBlocked as i32);
+        assert!(store.recorded().is_empty());
+        assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+    }
+
+    #[tokio::test]
+    async fn user_image_with_text_word_still_inserts() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let req = MessageReq {
+            r#type: MESSAGE_TYPE_IMAGE,
+            body: "http://cdn/badword.png".into(),
+            extra: String::new(),
+        };
+        serve_user_talk_filtered(
+            store.clone(),
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+            Arc::new(TextWordFilter::new(["badword"])),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        assert_eq!(success_resps(&got).len(), 1);
         assert_eq!(store.recorded().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn user_image_filter_blocks_url() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let req = MessageReq {
+            r#type: MESSAGE_TYPE_IMAGE,
+            body: "http://evil.example/a.png".into(),
+            extra: String::new(),
+        };
+        serve_user_talk_filtered(
+            store.clone(),
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+            Arc::new(ImageFilter::new(["evil.example"])),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
+        assert_eq!(resps.len(), 1);
+        assert_eq!(resps[0].pkt.header.status, Status::ContentBlocked as i32);
+        assert!(store.recorded().is_empty());
+    }
+
+    #[tokio::test]
+    async fn group_text_filter_runs_before_member_check() {
+        let store = memory_store();
+        let groups = memory_groups();
+        groups.seed("kim", "g1", vec!["alice".into()]);
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let mut req = sample_req();
+        req.body = "badword".into();
+        serve_group_talk_filtered(
+            store.clone(),
+            groups,
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+            Arc::new(TextWordFilter::new(["badword"])),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
+        assert_eq!(resps.len(), 1);
+        assert_eq!(resps[0].pkt.header.status, Status::ContentBlocked as i32);
+        assert!(store.recorded().is_empty());
     }
 }

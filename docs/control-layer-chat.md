@@ -47,10 +47,12 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | ServiceUnavailable | 3 | 不变 |
 | SystemException | 99 | insert / members / 非 NotFound 的寻址 / dispatch 失败 |
 | InvalidPacketBody | 101 | MessageReq / GroupCreateReq 解不开 |
+| ContentBlocked | 106 | talk `ContentFilter` 拒绝（文本词表 / 图片 URL 等）。不 insert、不 Push。不在 SDK 重试区间 |
+| NotGroupMember | 107 | 群聊发送方不在成员列表（含未知群）。不 insert、不 Push。不在 SDK 重试区间 |
 | NoDestination | 300 | `Header.dest` 为空；不 decode、不 insert |
 | SessionNotFound | 404 | 非 signin 且 cache miss（到不了 Handler） |
 
-已落地 **0/1/2/3/99 不改号**。`NoDestination=300` 是新增。
+已落地 **0/1/2/3/99 不改号**。`NoDestination=300` 是新增。`106` / `107` 在 1xx，SDK 不会重试、也不会当 4xx 关连接。
 
 ---
 
@@ -88,7 +90,9 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | 离线 | 无 Push；发送方仍 Success + messageId。接收方重连后可 `chat.offline.index` |
 | 发送方未收到 Resp | 客户端可重发 → 可能重复消息 |
 
-ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，insert 只写 content（0 条索引），Success、无 Push。不校验发送方是否为群成员。
+ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
+
+Talk 在 insert 之前跑 `ContentFilter` 链（默认 ChatHandler 是 `NoopFilter`；进程用 `builtin_talk_filter`：文本拦截 + 图片拦截，词表来自 `config.toml` 的 `sensitive_words` / `blocked_image`）。只拦对应 `MessageReq.type`；语音 / 视频以后加新 impl。命中 → `ContentBlocked`。
 
 ---
 
@@ -129,4 +133,4 @@ e2e：`services/chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`）�
 
 ## 非目标（不要写进这一层）
 
-敏感词、发送方必须是群成员。聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。群 join 与 Royal 见 [group-royal.md](group-royal.md)。Web SDK 见 [web-sdk.md](web-sdk.md)。
+聊天逻辑禁止进入 `kim-tcp` / `kim-ws` / `kim-core`。词表 / 图片 URL 拦截只通过 `ContentFilter` impl，不要写进 `WsServer`。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。群 join 与 Royal 见 [group-royal.md](group-royal.md)。Web SDK 见 [web-sdk.md](web-sdk.md)。
