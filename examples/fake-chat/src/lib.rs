@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::Container;
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
+use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
     read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
@@ -27,6 +28,7 @@ use kim_protocol::{
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
+use std::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
@@ -36,7 +38,7 @@ use crate::store::{MemoryMessageStore, MessageStore};
 pub use ack::do_talk_ack;
 pub use echo::do_echo;
 pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
-pub use login::{do_sys_login, do_sys_logout};
+pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
 pub use royal::http_backends;
 pub use talk::{do_group_talk, do_user_talk};
@@ -73,6 +75,7 @@ pub struct ChatHandler {
     dispatcher: Arc<dyn Dispatcher>,
     #[allow(dead_code)]
     svc: ChatSvc,
+    metrics: Mutex<Option<Arc<KimMetrics>>>,
 }
 
 impl ChatHandler {
@@ -95,11 +98,12 @@ impl ChatHandler {
                 Arc::new(SequenceIdGen::new(10_001))
             }
         };
-        Self::with_seams(
+        Self::with_seams_and_zone(
             container,
             cache,
             Arc::new(MemoryMessageStore::new(idgen.clone())),
             Arc::new(MemoryGroupDirectory::new(idgen)),
+            String::new(),
         )
     }
 
@@ -109,9 +113,25 @@ impl ChatHandler {
         store: Arc<dyn MessageStore>,
         groups: Arc<dyn GroupDirectory>,
     ) -> Self {
+        Self::with_seams_and_zone(container, cache, store, groups, String::new())
+    }
+
+    pub fn with_seams_and_zone(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
-        router.handle(CMD_LOGIN_SIGN_IN, do_sys_login);
+        {
+            let zone = zone.clone();
+            router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
+                let zone = zone.clone();
+                async move { do_sys_login_with_zone(ctx, &zone).await }
+            });
+        }
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
         router.handle(CMD_DEMO_ECHO, do_echo);
         let svc = ChatSvc { store, groups };
@@ -191,7 +211,19 @@ impl ChatHandler {
             cache,
             dispatcher,
             svc,
+            metrics: Mutex::new(None),
         }
+    }
+
+    pub fn with_metrics(&self, m: Arc<KimMetrics>) {
+        *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
+    }
+
+    fn metrics(&self) -> Option<Arc<KimMetrics>> {
+        self.metrics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -250,6 +282,9 @@ impl MessageListener for ChatHandler {
             match self.cache.get(&pkt.header.channel_id).await {
                 Ok(s) => s,
                 Err(SessionError::NotFound) => {
+                    if let Some(m) = self.metrics() {
+                        m.on_session_not_found();
+                    }
                     resp_err(&self.container, pkt, Status::SessionNotFound).await;
                     return;
                 }
@@ -259,12 +294,25 @@ impl MessageListener for ChatHandler {
                 }
             }
         };
+        if let Some(m) = self.metrics() {
+            m.on_message_in(payload.len() as u64);
+            if pkt.header.command == CMD_CHAT_USER_TALK {
+                m.on_talk("user");
+            } else if pkt.header.command == CMD_CHAT_GROUP_TALK {
+                m.on_talk("group");
+            }
+        }
+        let started = std::time::Instant::now();
+        let cmd = pkt.header.command.clone();
         if let Err(err) = self
             .router
             .serve(pkt, self.dispatcher.clone(), self.cache.clone(), session)
             .await
         {
             warn!(%err, "router serve failed");
+        }
+        if let Some(m) = self.metrics() {
+            m.observe_handler(&cmd, started.elapsed());
         }
     }
 }

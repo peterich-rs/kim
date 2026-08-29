@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 
 use kim_core::{Conn, Error, Frame, OpCode};
 
-use crate::codec::{decode_frame, encode_frame};
+use crate::codec::{decode_frame, header_bytes};
 
 /// 一条 TCP 连接。握手阶段读写都走它；握手后拆成读半边 / 写半边。
 pub struct TcpConn {
@@ -20,7 +20,7 @@ pub struct TcpReadHalf {
 }
 
 pub struct TcpWriteHalf {
-    stream: WriteHalf<TcpStream>,
+    stream: BufWriter<WriteHalf<TcpStream>>,
 }
 
 impl TcpConn {
@@ -41,7 +41,9 @@ impl TcpConn {
                 stream: read,
                 read_buf: self.read_buf,
             },
-            TcpWriteHalf { stream: write },
+            TcpWriteHalf {
+                stream: BufWriter::with_capacity(1024, write),
+            },
         )
     }
 }
@@ -61,13 +63,14 @@ async fn fill_and_decode<R: AsyncReadExt + Unpin>(
     }
 }
 
-async fn write_all<W: AsyncWriteExt + Unpin>(
+async fn write_frame_parts<W: AsyncWriteExt + Unpin>(
     stream: &mut W,
     opcode: OpCode,
     payload: &[u8],
 ) -> Result<(), Error> {
-    let buf = encode_frame(opcode, payload);
-    stream.write_all(&buf).await?;
+    let header = header_bytes(opcode, payload.len());
+    stream.write_all(&header).await?;
+    stream.write_all(payload).await?;
     Ok(())
 }
 
@@ -78,7 +81,7 @@ impl Conn for TcpConn {
     }
 
     async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
-        write_all(&mut self.stream, opcode, &payload).await
+        write_frame_parts(&mut self.stream, opcode, &payload).await
     }
 
     async fn flush(&mut self) -> Result<(), Error> {
@@ -122,7 +125,7 @@ impl Conn for TcpWriteHalf {
     }
 
     async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
-        write_all(&mut self.stream, opcode, &payload).await
+        write_frame_parts(&mut self.stream, opcode, &payload).await
     }
 
     async fn flush(&mut self) -> Result<(), Error> {

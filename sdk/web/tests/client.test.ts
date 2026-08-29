@@ -41,6 +41,43 @@ describe("accountFromToken", () => {
 });
 
 describe("KIMClient", () => {
+  it("lookup uses routerUrl and never puts token on the WS URL", async () => {
+    const gw = new LoopbackGw();
+    let seenFetch = "";
+    let seenWs = "";
+    const cli = new KIMClient(
+      "ws://fallback/",
+      { token: mintToken("alice") },
+      {
+        websocket: (url) => {
+          seenWs = url;
+          return gw.factory(url);
+        },
+        fetch: (async (input: RequestInfo | URL) => {
+          seenFetch = String(input);
+          return new Response(JSON.stringify({ ws: "ws://127.0.0.1:8001/", tcp: "127.0.0.1:8003" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }) as typeof fetch,
+        routerUrl: "http://127.0.0.1:8088",
+        reconnect: false,
+        heartbeatMs: 0,
+        loginTimeoutMs: 500,
+        store: new MemoryStore(),
+      },
+    );
+    cli.onofflinemessage(() => {
+      /* ignore */
+    });
+    const { success } = await cli.login();
+    expect(success).toBe(true);
+    expect(seenFetch).toBe("http://127.0.0.1:8088/api/lookup");
+    expect(seenWs).toBe("ws://127.0.0.1:8001/");
+    expect(seenWs).not.toContain("token");
+    expect(cli.wsurl).toBe("ws://fallback/");
+  });
+
   it("logs in and exposes channelId from LoginResp", async () => {
     const gw = new LoopbackGw();
     const cli = client(gw);

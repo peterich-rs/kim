@@ -1,7 +1,10 @@
 pub const META_DEST_SERVER: &str = "dest.server";
 pub const META_DEST_CHANNELS: &str = "dest.channels";
+pub const META_APP: &str = "app";
+pub const META_ACCOUNT: &str = "account";
 
 pub const SN_WGATEWAY: &str = "wgateway";
+pub const SN_TGATEWAY: &str = "tgateway";
 pub const SN_CHAT: &str = "chat";
 pub const SN_ROYAL: &str = "royal";
 /// Login service name. Equal to [`SN_CHAT`]: login and chat share a process.
@@ -57,5 +60,8 @@ mod tests {
         assert_eq!(service_name("nopath"), "default");
         assert_eq!(SN_LOGIN, SN_CHAT);
         assert_eq!(SN_LOGIN, "chat");
+        assert_eq!(SN_TGATEWAY, "tgateway");
+        assert_eq!(META_APP, "app");
+        assert_eq!(META_ACCOUNT, "account");
     }
 }

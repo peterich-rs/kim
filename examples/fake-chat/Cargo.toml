@@ -16,6 +16,7 @@ async-trait.workspace = true
 bytes.workspace = true
 kim-container.workspace = true
 kim-core.workspace = true
+kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
 kim-router.workspace = true
@@ -38,6 +39,7 @@ fake-gateway = { path = "../fake-gateway" }
 fake-royal = { path = "../fake-royal" }
 kim-router = { workspace = true, features = ["test-util"] }
 kim-ws.workspace = true
+kimbench = { path = "../kimbench" }
 pkt-client = { path = "../pkt-client" }
 
 [lints]

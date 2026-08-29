@@ -4,6 +4,10 @@ use kim_router::{Context, SessionError};
 use tracing::{error, info, warn};
 
 pub async fn do_sys_login(ctx: Context) {
+    do_sys_login_with_zone(ctx, "").await;
+}
+
+pub async fn do_sys_login_with_zone(ctx: Context, zone: &str) {
     let body = match ctx.read_body::<kim_protocol::pkt::Session>() {
         Ok(s) if !s.account.is_empty() => s,
         Ok(_) | Err(_) => {
@@ -16,7 +20,11 @@ pub async fn do_sys_login(ctx: Context) {
             return;
         }
     };
-    info!(account = %body.account, channel = %body.channel_id, "do login");
+    let mut body = body;
+    if !zone.is_empty() {
+        body.zone = zone.to_string();
+    }
+    info!(account = %body.account, channel = %body.channel_id, zone = %body.zone, "do login");
     match ctx.get_location(&body.account, "").await {
         Err(SessionError::NotFound) => {}
         Err(err) => {

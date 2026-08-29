@@ -136,7 +136,7 @@ App / TGateway 路径（已有，本阶段保持）：
 |---|---|---|
 | Web 客户端 → WGateway | WebSocket | HTTP Upgrade，然后第一帧 LogicPkt `login.signin` + JWT。echo 路径仍用名字字符串。 |
 | 网关 → Chat | TCP（`kim-tcp`） | TCP 连上后第一帧 Binary = protobuf `InnerHandshakeReq { service_id }`。Chat 的 `Acceptor` 读出来当 channel_id。 |
-| App 客户端 → TGateway | TCP（`kim-tcp`） | 本阶段不新做假 TGateway；继续用已有 TCP echo 证明这条 `Conn`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
+| App 客户端 → TGateway | TCP（`kim-tcp`） | `examples/fake-tgateway` `:8003`，与 WGateway 共用 `run_gateway`。公网以后在这条线上套 TLS，无 HTTP 升级。 |
 
 服务之间 **只允许 TCP**。不要给 Chat 再开一个 WS 口。  
 Web 进网关走 WS；App 进网关走 TCP。Demo 的 `pkt-client` 只扮演 Web，**不要求 App 改用 WS**。

@@ -19,6 +19,50 @@ pub fn resolve_jwt_secret() -> String {
     }
 }
 
+/// Send `login.signin` on an already-connected socket and wait for `LoginResp`.
+pub async fn perform_login(conn: &mut dyn Conn, token: String) -> Result<String, Error> {
+    let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
+    pkt.write_body(&LoginReq { token });
+    conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
+        .await?;
+    loop {
+        let frame = match conn.read_frame().await {
+            Ok(f) => f,
+            Err(Error::Closed) => return Err(Error::Handshake("closed".into())),
+            Err(e) => return Err(e),
+        };
+        match frame.opcode {
+            OpCode::Close => return Err(Error::Handshake("closed".into())),
+            OpCode::Ping => {
+                let _ = conn.write_frame(OpCode::Pong, Bytes::new()).await;
+            }
+            OpCode::Pong | OpCode::Continuation => {}
+            OpCode::Binary | OpCode::Text => match read(&frame.payload) {
+                Ok(Packet::Logic(p)) => {
+                    let st = p.header.status;
+                    if st == Status::Unauthorized as i32
+                        || st == Status::InvalidCommand as i32
+                        || st == Status::ServiceUnavailable as i32
+                    {
+                        return Err(Error::Handshake(format!("status={st}")));
+                    }
+                    if st != Status::Success as i32 {
+                        return Err(Error::Handshake(format!("unexpected status={st}")));
+                    }
+                    let resp: LoginResp =
+                        p.read_body().map_err(|e| Error::Handshake(e.to_string()))?;
+                    if resp.channel_id.is_empty() || resp.channel_id == "alice" {
+                        return Err(Error::Handshake("bad channel_id".into()));
+                    }
+                    return Ok(resp.channel_id);
+                }
+                Ok(_) => return Err(Error::Handshake("expected logic".into())),
+                Err(e) => return Err(Error::Handshake(e.to_string())),
+            },
+        }
+    }
+}
+
 fn now_ts() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -68,47 +112,9 @@ impl WsDialer for LoginDialer {
             generate(&self.secret, &ctx.id, "kim", now_ts() + 86400)
                 .map_err(|e| Error::Handshake(e.to_string()))?
         };
-        let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
-        pkt.write_body(&LoginReq { token });
-        conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
-            .await?;
-        loop {
-            let frame = match conn.read_frame().await {
-                Ok(f) => f,
-                Err(Error::Closed) => return Err(Error::Handshake("closed".into())),
-                Err(e) => return Err(e),
-            };
-            match frame.opcode {
-                OpCode::Close => return Err(Error::Handshake("closed".into())),
-                OpCode::Ping => {
-                    let _ = conn.write_frame(OpCode::Pong, Bytes::new()).await;
-                }
-                OpCode::Pong | OpCode::Continuation => {}
-                OpCode::Binary | OpCode::Text => match read(&frame.payload) {
-                    Ok(Packet::Logic(p)) => {
-                        let st = p.header.status;
-                        if st == Status::Unauthorized as i32
-                            || st == Status::InvalidCommand as i32
-                            || st == Status::ServiceUnavailable as i32
-                        {
-                            return Err(Error::Handshake(format!("status={st}")));
-                        }
-                        if st != Status::Success as i32 {
-                            return Err(Error::Handshake(format!("unexpected status={st}")));
-                        }
-                        let resp: LoginResp =
-                            p.read_body().map_err(|e| Error::Handshake(e.to_string()))?;
-                        if resp.channel_id.is_empty() || resp.channel_id == "alice" {
-                            return Err(Error::Handshake("bad channel_id".into()));
-                        }
-                        self.store_channel_id(resp.channel_id);
-                        return Ok(conn);
-                    }
-                    Ok(_) => return Err(Error::Handshake("expected logic".into())),
-                    Err(e) => return Err(Error::Handshake(e.to_string())),
-                },
-            }
-        }
+        let channel_id = perform_login(&mut conn, token).await?;
+        self.store_channel_id(channel_id);
+        Ok(conn)
     }
 }
 

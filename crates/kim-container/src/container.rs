@@ -29,7 +29,7 @@ pub struct ContainerOpts {
     pub deps: Vec<String>,
     pub adult_delay: Duration,
     pub selector: Arc<dyn Selector>,
-    pub after_downlink: Option<Arc<dyn DownlinkHook>>,
+    pub after_downlink: Vec<Arc<dyn DownlinkHook>>,
 }
 
 impl ContainerOpts {
@@ -46,7 +46,7 @@ impl ContainerOpts {
             deps,
             adult_delay: Duration::from_secs(10),
             selector: Arc::new(HashSelector),
-            after_downlink: None,
+            after_downlink: Vec::new(),
         }
     }
 }
@@ -60,7 +60,7 @@ pub struct Container {
     clients: Arc<RwLock<HashMap<String, ClientMap>>>,
     selector: Arc<dyn Selector>,
     adult_delay: Duration,
-    after_downlink: Option<Arc<dyn DownlinkHook>>,
+    after_downlink: Vec<Arc<dyn DownlinkHook>>,
     shutdown: Notify,
     closed: AtomicBool,
 }
@@ -307,10 +307,14 @@ impl Container {
         let channels = pkt.get_meta(META_DEST_CHANNELS).unwrap_or("").to_string();
         pkt.del_meta(META_DEST_SERVER);
         pkt.del_meta(META_DEST_CHANNELS);
-        let hook_pkt = self.after_downlink.as_ref().map(|_| LogicPkt {
-            header: pkt.header.clone(),
-            body: pkt.body.clone(),
-        });
+        let hook_pkt = if self.after_downlink.is_empty() {
+            None
+        } else {
+            Some(LogicPkt {
+                header: pkt.header.clone(),
+                body: pkt.body.clone(),
+            })
+        };
         let bytes = marshal(&Packet::Logic(pkt));
         let srv = self
             .server
@@ -320,8 +324,10 @@ impl Container {
         for id in channels.split(',').filter(|s| !s.is_empty()) {
             match srv.push(id, bytes.clone()).await {
                 Ok(()) => {
-                    if let (Some(h), Some(p)) = (&self.after_downlink, &hook_pkt) {
-                        h.after_push(id, p).await;
+                    if let Some(p) = &hook_pkt {
+                        for h in &self.after_downlink {
+                            h.after_push(id, p).await;
+                        }
                     }
                 }
                 Err(e) => warn!(%e, channel = %id, "push down failed"),

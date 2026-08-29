@@ -59,8 +59,17 @@ fn map_ws_err(e: fastwebsockets::WebSocketError) -> Error {
 fn kim_frame(frame: Frame<'_>) -> Result<KimFrame, Error> {
     Ok(KimFrame {
         opcode: from_ws(frame.opcode)?,
-        payload: Bytes::copy_from_slice(&frame.payload),
+        payload: payload_to_bytes(frame.payload),
     })
+}
+
+/// `Payload::Bytes` is `BytesMut` in fastwebsockets 0.10; freeze avoids an extra copy.
+/// Borrowed payloads still copy. Write path still copies (`Payload::Owned`).
+fn payload_to_bytes(payload: Payload<'_>) -> Bytes {
+    match payload {
+        Payload::Bytes(buf) => buf.freeze(),
+        other => Bytes::copy_from_slice(other.as_ref()),
+    }
 }
 
 fn ws_frame(opcode: OpCode, payload: Bytes) -> Frame<'static> {

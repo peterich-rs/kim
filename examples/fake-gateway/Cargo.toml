@@ -9,8 +9,10 @@ publish = false
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
+crc32fast.workspace = true
 kim-container.workspace = true
 kim-core.workspace = true
+kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
 kim-ws.workspace = true

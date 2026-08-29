@@ -1,18 +1,28 @@
 //! WGateway demo handler: JWT login Accept, local ping, SN_LOGIN forward.
 
+mod run;
+mod selector;
+mod slots;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+pub use run::{load_config, run_gateway, GatewayConfig};
+pub use selector::{Route, RouteFile, RouteSelector, ZoneFile};
+pub use slots::build_slots;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::{Container, DownlinkHook};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, OpCode, Server, StateListener};
+use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, KickoutNotify, LoginReq, Session, Status};
 use kim_protocol::{
     marshal, parse, read, read_logic, BasicPkt, LogicPkt, Packet, CMD_LOGIN_SIGN_IN,
-    CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, SN_LOGIN,
+    CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT, META_APP,
+    SN_LOGIN,
 };
 use tracing::{info, warn};
 
@@ -63,12 +73,19 @@ async fn write_status(
         .await
 }
 
+struct ChannelMeta {
+    app: String,
+    account: String,
+}
+
 pub struct GatewayHandler {
     container: Arc<Container>,
     gateway_id: String,
     jwt_secret: String,
     seq: AtomicU64,
     pending: Mutex<HashMap<String, LogicPkt>>,
+    meta: Mutex<HashMap<String, ChannelMeta>>,
+    metrics: Mutex<Option<Arc<KimMetrics>>>,
 }
 
 impl GatewayHandler {
@@ -83,12 +100,77 @@ impl GatewayHandler {
             jwt_secret: jwt_secret.into(),
             seq: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
+            meta: Mutex::new(HashMap::new()),
+            metrics: Mutex::new(None),
         }
+    }
+
+    pub fn with_metrics(&self, m: Arc<KimMetrics>) {
+        *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
     }
 
     fn generate_channel_id(&self, account: &str) -> String {
         let n = self.seq.fetch_add(1, Ordering::Relaxed);
         format!("{}_{account}_{n}", self.gateway_id)
+    }
+
+    fn insert_meta(&self, channel_id: &str, app: String, account: String) {
+        self.meta
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(channel_id.to_string(), ChannelMeta { app, account });
+    }
+
+    fn remove_meta(&self, channel_id: &str) {
+        self.meta
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(channel_id);
+    }
+
+    fn inject_meta(&self, pkt: &mut LogicPkt) {
+        let guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(m) = guard.get(&pkt.header.channel_id) {
+            pkt.set_meta(META_APP, &m.app);
+            pkt.set_meta(META_ACCOUNT, &m.account);
+        }
+    }
+
+    async fn forward_logic(&self, service: &str, mut pkt: LogicPkt) -> Result<(), Error> {
+        self.inject_meta(&mut pkt);
+        match self.container.forward(service, pkt).await {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                if err.to_string() == "no adult instances" {
+                    if let Some(m) = self
+                        .metrics
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .as_ref()
+                    {
+                        m.on_no_server();
+                    }
+                }
+                Err(Error::other(err.to_string()))
+            }
+        }
+    }
+
+    fn metrics(&self) -> Option<Arc<KimMetrics>> {
+        self.metrics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+}
+
+pub struct MetricsHook(pub Arc<KimMetrics>);
+
+#[async_trait]
+impl DownlinkHook for MetricsHook {
+    async fn after_push(&self, _channel_id: &str, pkt: &LogicPkt) {
+        let n = marshal(&Packet::Logic(pkt.clone())).len() as u64;
+        self.0.on_message_out(n);
     }
 }
 
@@ -127,10 +209,11 @@ impl Acceptor for GatewayHandler {
             channel_id: id.clone(),
             gate_id: self.gateway_id.clone(),
             account: claims.account.clone(),
-            app: claims.app,
+            app: claims.app.clone(),
             remote_ip: remote_ip(conn),
             ..Session::default()
         });
+        self.insert_meta(&id, claims.app, claims.account.clone());
         {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             pending.insert(id.clone(), pkt);
@@ -142,6 +225,7 @@ impl Acceptor for GatewayHandler {
     async fn on_accept_abandoned(&self, channel_id: &str) {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.remove(channel_id);
+        self.remove_meta(channel_id);
     }
 
     async fn on_channel_ready(&self, channel_id: &str) -> Result<(), Error> {
@@ -155,12 +239,17 @@ impl Acceptor for GatewayHandler {
         let mut resp = LogicPkt::new_from(&pkt.header);
         resp.header.flag = Flag::Response as i32;
         resp.header.status = Status::ServiceUnavailable as i32;
-        if let Err(err) = self.container.forward(SN_LOGIN, pkt).await {
+        if let Err(err) = self.forward_logic(SN_LOGIN, pkt).await {
             warn!(%err, "forward login failed");
+            self.remove_meta(channel_id);
             if let Err(e) = self.container.push(channel_id, resp).await {
                 warn!(%e, "push ServiceUnavailable failed");
             }
-            return Err(Error::other(err.to_string()));
+            return Err(err);
+        }
+        if let Some(m) = self.metrics() {
+            m.on_channel_open();
+            m.on_login(Status::Success as i32);
         }
         Ok(())
     }
@@ -188,15 +277,15 @@ impl MessageListener for GatewayHandler {
             }
             Packet::Basic(_) => {}
             Packet::Logic(mut logic) => {
+                if let Some(m) = self.metrics() {
+                    m.on_message_in(payload.len() as u64);
+                }
                 logic.header.channel_id = agent.id().to_string();
                 let svc = logic.service_name().to_string();
-                if let Err(err) = self.container.forward(&svc, logic).await {
+                let header = logic.header.clone();
+                if let Err(err) = self.forward_logic(&svc, logic).await {
                     warn!(%err, "forward failed");
-                    let mut resp = match read(&payload) {
-                        Ok(Packet::Logic(p)) => p,
-                        _ => return,
-                    };
-                    resp.header.channel_id = agent.id().to_string();
+                    let mut resp = LogicPkt::new_from(&header);
                     resp.header.flag = Flag::Response as i32;
                     resp.header.status = Status::ServiceUnavailable as i32;
                     let _ = agent.push(marshal(&Packet::Logic(resp))).await;
@@ -212,8 +301,12 @@ impl StateListener for GatewayHandler {
         info!(channel = channel_id, "disconnect");
         let mut logout = LogicPkt::new(CMD_LOGIN_SIGN_OUT, 0, Bytes::new());
         logout.header.channel_id = channel_id.to_string();
-        if let Err(err) = self.container.forward(SN_LOGIN, logout).await {
+        if let Err(err) = self.forward_logic(SN_LOGIN, logout).await {
             warn!(%err, "signout forward failed");
+        }
+        self.remove_meta(channel_id);
+        if let Some(m) = self.metrics() {
+            m.on_channel_close();
         }
         Ok(())
     }

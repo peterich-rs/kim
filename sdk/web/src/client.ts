@@ -56,6 +56,9 @@ export interface ClientOptions {
   reconnect?: boolean;
   store?: MsgStore;
   websocket?: WebSocketFactory;
+  /** Optional HTTP lookup. Token stays on Authorization, never on the WS URL. */
+  routerUrl?: string;
+  fetch?: typeof fetch;
 }
 
 interface ResolvedOptions {
@@ -70,6 +73,8 @@ interface ResolvedOptions {
   reconnect: boolean;
   store: MsgStore;
   websocket: WebSocketFactory;
+  routerUrl?: string;
+  fetch: typeof fetch;
 }
 
 function resolveOptions(opts: ClientOptions | undefined): ResolvedOptions {
@@ -85,7 +90,28 @@ function resolveOptions(opts: ClientOptions | undefined): ResolvedOptions {
     reconnect: opts?.reconnect ?? true,
     store: opts?.store ?? new MemoryStore(),
     websocket: opts?.websocket ?? defaultWebSocket,
+    routerUrl: opts?.routerUrl,
+    fetch: opts?.fetch ?? fetch,
   };
+}
+
+async function lookupWs(
+  routerUrl: string,
+  token: string,
+  fetchFn: typeof fetch,
+): Promise<string> {
+  const url = `${routerUrl.replace(/\/$/, "")}/api/lookup`;
+  const resp = await fetchFn(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    throw new Error(`lookup ${resp.status}`);
+  }
+  const body = (await resp.json()) as { ws?: string };
+  if (!body.ws) {
+    throw new Error("lookup missing ws");
+  }
+  return body.ws;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -167,7 +193,16 @@ export class KIMClient implements ContentLoader {
     }
     this.state = State.CONNECTING;
     this.kicked = false;
-    const result = await doLogin(this.wsurl, this.req, {
+    let url = this.wsurl;
+    if (this.opts.routerUrl) {
+      try {
+        url = await lookupWs(this.opts.routerUrl, this.req.token, this.opts.fetch);
+      } catch (err) {
+        this.state = State.INIT;
+        return { success: false, err: err as Error };
+      }
+    }
+    const result = await doLogin(url, this.req, {
       timeoutMs: this.opts.loginTimeoutMs,
       websocket: this.opts.websocket,
     });

@@ -144,7 +144,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         deps: vec![],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: None,
+        after_downlink: vec![],
     });
     let seen = Arc::new(Mutex::new(Vec::new()));
     let chat_h = Arc::new(ChatHandler {
@@ -182,7 +182,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: Some(Arc::new(RecHook(pushed.clone()))),
+        after_downlink: vec![Arc::new(RecHook(pushed.clone()))],
     });
     let gw_h = Arc::new(GatewayHandler {
         container: gw_c.clone(),
@@ -269,7 +269,7 @@ async fn unavailable_without_chat() {
         deps: vec!["chat".into()],
         adult_delay: Duration::from_millis(0),
         selector: Arc::new(HashSelector),
-        after_downlink: None,
+        after_downlink: vec![],
     });
     let gw_h = Arc::new(GatewayHandler {
         container: gw_c.clone(),

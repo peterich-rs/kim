@@ -21,6 +21,14 @@ pub fn encode_frame(opcode: OpCode, payload: &[u8]) -> BytesMut {
     buf
 }
 
+/// 5-byte TCP header on the stack. Production writes this then the payload.
+pub fn header_bytes(opcode: OpCode, payload_len: usize) -> [u8; HEADER_LEN] {
+    let mut header = [0u8; HEADER_LEN];
+    header[0] = u8::from(opcode);
+    header[1..5].copy_from_slice(&(payload_len as u32).to_le_bytes());
+    header
+}
+
 /// 从缓冲里尽量切出一帧。
 ///
 /// - `Ok(None)`：字节还不够，继续读。

@@ -9,10 +9,14 @@ members = [
     "crates/kim-container",
     "crates/kim-router",
     "crates/kim-session",
+    "crates/kim-metrics",
     "examples/fake-gateway",
     "examples/fake-chat",
     "examples/fake-royal",
+    "examples/fake-tgateway",
+    "examples/fake-router",
     "examples/pkt-client",
+    "examples/kimbench",
 ]
 
 [workspace.package]
@@ -54,3 +58,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+humantime = "2"
+prometheus = { version = "0.14", default-features = false }
+kim-metrics = { path = "crates/kim-metrics" }
