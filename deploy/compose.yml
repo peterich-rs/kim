@@ -1,15 +1,13 @@
-# KIM production stack. App containers + Redis + Postgres.
+# KIM production stack. App containers + Redis + Postgres + Consul.
 # Host Caddy (or --profile edge) terminates TLS; this file does not bind :443
 # unless the edge profile is on.
 #
-#   # VPS (images already pulled):
 #   docker compose --env-file kim.env up -d
-#
-#   # This compose owning 80/443:
 #   docker compose --env-file kim.env --profile edge up -d
 #
-# Redis and Postgres stay on the compose network (not published).
-# Only the Web gateway is on loopback for a host reverse proxy.
+# Redis, Postgres, and Consul stay on the compose network (Consul UI is
+# loopback-only). Only the Web gateway (and lookup/token) are on loopback
+# for a host reverse proxy.
 
 name: kim
 
@@ -60,18 +58,82 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  chat:
+  consul:
+    image: hashicorp/consul:1.20
+    restart: unless-stopped
+    command:
+      - agent
+      - -server
+      - -bootstrap-expect=1
+      - -ui
+      - -client=0.0.0.0
+      - -dns-port=8600
+    ports:
+      - "127.0.0.1:8500:8500"
+    volumes:
+      - consul_data:/consul/data
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  royal:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-chat", "/etc/kim/chat.toml"]
+    command: ["fake-royal", "/etc/kim/royal.toml"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      consul:
+        condition: service_healthy
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_PUBLIC_ADDRESS: royal
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  chat:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["fake-chat", "/etc/kim/chat.toml"]
+    depends_on:
+      royal:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ROYAL_URL: http://royal:8080
+      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_PUBLIC_ADDRESS: chat
+      KIM_SNOWFLAKE_NODE: "1"
       RUST_LOG: ${RUST_LOG:-info}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
@@ -86,15 +148,50 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  chat-gray:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["fake-chat", "/etc/kim/chat.toml"]
+    depends_on:
+      royal:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ROYAL_URL: http://royal:8080
+      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_PUBLIC_ADDRESS: chat-gray
+      KIM_SERVICE_ID: chat-2
+      KIM_ZONE: zone_gray
+      KIM_SNOWFLAKE_NODE: "2"
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   gateway:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
     command: ["fake-gateway", "/etc/kim/gateway.toml"]
     depends_on:
-      chat:
+      consul:
         condition: service_healthy
     environment:
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_PUBLIC_ADDRESS: gateway
       RUST_LOG: ${RUST_LOG:-info}
     ports:
       - "127.0.0.1:8001:8001"
@@ -103,7 +200,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 40s
     mem_limit: 256m
     logging:
       driver: json-file
@@ -111,12 +208,42 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  router:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["fake-router", "/etc/kim/router.toml"]
+    depends_on:
+      consul:
+        condition: service_healthy
+    environment:
+      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_PUBLIC_ADDRESS: router
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "127.0.0.1:8088:8088"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2.8-alpine
     profiles: ["edge"]
     restart: unless-stopped
     depends_on:
       gateway:
+        condition: service_healthy
+      router:
+        condition: service_healthy
+      royal:
         condition: service_healthy
     ports:
       - "80:80"
@@ -141,5 +268,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  consul_data:
   caddy_data:
   caddy_config:

@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+consul = ["kim-naming/consul"]
+
 [dependencies]
 axum = { workspace = true, features = ["json", "query"] }
 crc32fast.workspace = true

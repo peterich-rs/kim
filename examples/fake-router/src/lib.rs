@@ -12,7 +12,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
-use kim_naming::{DefaultRegistration, StaticNaming};
+use kim_naming::{open_naming, DefaultRegistration};
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -98,6 +98,8 @@ struct SelfSection {
     listen: String,
     default_location: String,
     default_region: String,
+    #[serde(default)]
+    consul_url: String,
 }
 
 #[derive(Deserialize)]
@@ -174,7 +176,23 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
             }
         })
         .collect();
-    let naming = Arc::new(StaticNaming::from_slice(regs));
+    let consul = std::env::var("CONSUL_HTTP_ADDR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let t = cfg.this.consul_url.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
+        });
+    let naming = if consul.is_some() {
+        open_naming(consul.as_deref(), vec![])?
+    } else {
+        open_naming(None, regs)?
+    };
     let lookup = Lookup {
         naming,
         geo,

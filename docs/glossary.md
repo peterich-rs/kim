@@ -65,5 +65,5 @@
 | 通信层 | TCP/WS 收发帧、连接生命周期 | **有**（本仓库 M1） |
 | 容器层 | 找到别的服务并连上它们 | **有**（静态 Naming + Container，M2） |
 | 链路层 | 登录、指令路由、会话 | **有**（JWT Accept、Router、Memory 会话、互踢） |
-| 控制层 | 单聊、群聊、离线 | **有**在线 talk、ACK、离线、群 join/quit/detail；Royal HTTP 可选 |
+| 控制层 | 单聊、群聊、离线 | **有**在线 talk、ACK、离线、群 join/quit/detail；生产走 Royal HTTP |
 | Web SDK | 浏览器客户端：编解码、登录、收发、离线、ACK | **有**（`sdk/web`） |

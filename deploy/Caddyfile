@@ -14,6 +14,14 @@
 {$KIM_DOMAIN:kim.ainexc.com} {
 	encode gzip zstd
 
+	handle /api/lookup* {
+		reverse_proxy router:8088
+	}
+
+	handle /api/*/token {
+		reverse_proxy royal:8080
+	}
+
 	reverse_proxy gateway:8001 {
 		flush_interval -1
 		transport http {

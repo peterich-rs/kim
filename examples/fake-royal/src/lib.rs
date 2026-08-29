@@ -1,33 +1,62 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
-use axum::Router;
+use axum::{Json, Router};
 use fake_chat::directory::{CreateGroup, GroupDirectory, MemoryGroupDirectory};
 use fake_chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use fake_chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
+use fake_chat::users::{MemoryUserDirectory, UserDirectory};
 use kim_protocol::pkt::{
     AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp,
     GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq, MessageContentResp,
     MessageIndex, MessageIndexResp, OfflineIndexReq,
 };
+use kim_protocol::{generate, ProtocolError};
 use prost::Message;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone)]
+pub struct JwtConfig {
+    pub secret: String,
+    pub ttl_secs: i64,
+    pub issue_key: String,
+}
+
+impl Default for JwtConfig {
+    fn default() -> Self {
+        Self {
+            secret: kim_protocol::DEMO_DEFAULT_SECRET.to_string(),
+            ttl_secs: 86_400,
+            issue_key: String::new(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct RoyalState {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
+    users: Arc<dyn UserDirectory>,
+    jwt: JwtConfig,
 }
 
 impl RoyalState {
     pub fn memory(idgen: Arc<dyn IdGenerator>) -> Self {
+        Self::memory_with_jwt(idgen, JwtConfig::default())
+    }
+
+    pub fn memory_with_jwt(idgen: Arc<dyn IdGenerator>, jwt: JwtConfig) -> Self {
         Self {
             store: Arc::new(MemoryMessageStore::new(idgen.clone())),
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
+            users: Arc::new(MemoryUserDirectory::new()),
+            jwt,
         }
     }
 
@@ -41,10 +70,37 @@ impl RoyalState {
         };
         Self::memory(idgen)
     }
+
+    pub fn with_backends(
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        users: Arc<dyn UserDirectory>,
+        jwt: JwtConfig,
+    ) -> Self {
+        Self {
+            store,
+            groups,
+            users,
+            jwt,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct TokenReq {
+    account: String,
+}
+
+#[derive(Serialize)]
+struct TokenResp {
+    token: String,
+    exp: i64,
 }
 
 pub fn router(state: RoyalState) -> Router {
     Router::new()
+        .route("/health", get(health))
+        .route("/api/{app}/token", post(issue_token))
         .route("/api/{app}/message/user", post(insert_user))
         .route("/api/{app}/message/group", post(insert_group))
         .route("/api/{app}/message/ack", post(ack))
@@ -70,6 +126,46 @@ fn encode(msg: &impl Message) -> Bytes {
 
 fn backend(err: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
+
+fn now_ts() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+async fn issue_token(
+    State(st): State<RoyalState>,
+    Path(app): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<TokenReq>,
+) -> Result<Json<TokenResp>, (StatusCode, String)> {
+    if !st.jwt.issue_key.is_empty() {
+        let got = headers
+            .get("x-kim-issue-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if got != st.jwt.issue_key {
+            return Err((StatusCode::UNAUTHORIZED, "issue key".into()));
+        }
+    }
+    let ttl = if st.jwt.ttl_secs > 0 {
+        st.jwt.ttl_secs
+    } else {
+        86_400
+    };
+    let exp = now_ts().saturating_add(ttl);
+    st.users.upsert(&app, &req.account).await.map_err(backend)?;
+    let token = generate(&st.jwt.secret, &req.account, &app, exp).map_err(|e| match e {
+        ProtocolError::InvalidAccount => (StatusCode::BAD_REQUEST, "invalid account".into()),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "token".into()),
+    })?;
+    Ok(Json(TokenResp { token, exp }))
 }
 
 async fn insert_user(
@@ -327,5 +423,59 @@ mod tests {
             .await
             .unwrap();
         assert!(inserted.message_id > 10_000);
+    }
+
+    #[tokio::test]
+    async fn token_roundtrip_and_rejects() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+            issue_key: "ik".into(),
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt);
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let url = format!("http://{addr}/api/kim/token");
+        let denied = http
+            .post(&url)
+            .json(&serde_json::json!({"account":"alice"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        let ok = http
+            .post(&url)
+            .header("X-KIM-Issue-Key", "ik")
+            .json(&serde_json::json!({"account":"alice"}))
+            .send()
+            .await
+            .unwrap();
+        assert!(ok.status().is_success());
+        let body: serde_json::Value = ok.json().await.unwrap();
+        let token = body["token"].as_str().unwrap();
+        let claims = kim_protocol::parse("test-secret", token).unwrap();
+        assert_eq!(claims.account, "alice");
+        assert_eq!(claims.app, "kim");
+        let bad = http
+            .post(&url)
+            .header("X-KIM-Issue-Key", "ik")
+            .json(&serde_json::json!({"account":""}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        let ctrl = http
+            .post(&url)
+            .header("X-KIM-Issue-Key", "ik")
+            .json(&serde_json::json!({"account":"a\nb"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ctrl.status(), StatusCode::BAD_REQUEST);
     }
 }

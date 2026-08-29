@@ -61,6 +61,8 @@ jobs:
             deploy/Caddyfile \
             deploy/chat.toml \
             deploy/gateway.toml \
+            deploy/royal.toml \
+            deploy/router.toml \
             deploy/prometheus.yml \
             deploy/bootstrap.sh \
             deploy/remote-up.sh \

@@ -22,28 +22,32 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 
 ---
 
-## Royal HTTP（可选）
+## Royal HTTP
 
-进程：`examples/fake-royal`，默认 `127.0.0.1:8080`。`Content-Type` / `Accept`：`application/x-protobuf`。
+进程：`examples/fake-royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
 
-Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试）。
+Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`；Postgres 只由 Royal 写。
 
-| 方法 | 路径 |
-|---|---|
-| POST | `/api/:app/message/user` |
-| POST | `/api/:app/message/group` |
-| POST | `/api/:app/message/ack` |
-| POST | `/api/:app/offline/index` |
-| POST | `/api/:app/offline/content` |
-| POST | `/api/:app/group` |
-| POST | `/api/:app/group/member` |
-| DELETE | `/api/:app/group/member` |
-| GET | `/api/:app/group/members/:group` |
-| GET | `/api/:app/group/:group` |
+| 方法 | 路径 | 格式 |
+|---|---|---|
+| GET | `/health` | text |
+| POST | `/api/:app/token` | JSON `{account}` → `{token, exp}` |
+| POST | `/api/:app/message/user` | protobuf |
+| POST | `/api/:app/message/group` | protobuf |
+| POST | `/api/:app/message/ack` | protobuf |
+| POST | `/api/:app/offline/index` | protobuf |
+| POST | `/api/:app/offline/content` | protobuf |
+| POST | `/api/:app/group` | protobuf |
+| POST | `/api/:app/group/member` | protobuf |
+| DELETE | `/api/:app/group/member` | protobuf |
+| GET | `/api/:app/group/members/:group` | protobuf |
+| GET | `/api/:app/group/:group` | protobuf |
+
+Token：HS256，claims `acc` / `app` / `exp`，密钥与网关相同（`KIM_JWT_SECRET`）。可选 `KIM_TOKEN_ISSUE_KEY` + 头 `X-KIM-Issue-Key`；空则开放签发（demo）。公网 Caddy 只反代 `/api/lookup*` 与 `/api/*/token`。
 
 本机：先 `cargo run -p fake-royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
 
-Consul HTTP catalog 是 `kim-naming` feature `consul`（`ConsulNaming`）。默认测试不连 Consul，也不占用 53 端口。
+Consul HTTP catalog 是 `kim-naming` feature `consul`。`subscribe` 用 blocking query；DNS 不占宿主机 53。默认测试不连 Consul。
 
 ---
 

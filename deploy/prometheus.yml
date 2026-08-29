@@ -6,4 +6,8 @@ scrape_configs:
   - job_name: chat
     scrape_interval: 5s
     static_configs:
-      - targets: ["chat:9002"]
+      - targets: ["chat:9002", "chat-gray:9002"]
+  - job_name: router
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["router:8088"]

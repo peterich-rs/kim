@@ -6,7 +6,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use async_trait::async_trait;
 
+use crate::directory::GroupDirectory;
 use crate::idgen::{IdError, IdGenerator};
+use crate::users::UserDirectory;
 
 #[cfg(feature = "postgres")]
 mod postgres;
@@ -14,9 +16,7 @@ mod postgres;
 mod redis_ack;
 
 #[cfg(feature = "postgres")]
-use postgres::PoolOpts;
-#[cfg(feature = "postgres")]
-pub use postgres::PostgresMessageStore;
+pub use postgres::{connect_pool, PoolOpts, PostgresMessageStore};
 
 pub const DIRECTION_RECV: i32 = 0;
 pub const DIRECTION_SEND: i32 = 1;
@@ -407,6 +407,14 @@ impl MessageStore for MemoryMessageStore {
     }
 }
 
+/// Postgres backends for Royal. Migrates once via `connect_pool`.
+/// ACK stays crate-private; Redis/Memory is chosen here.
+pub struct PgBackends {
+    pub store: Arc<dyn MessageStore>,
+    pub groups: Arc<dyn GroupDirectory>,
+    pub users: Arc<dyn UserDirectory>,
+}
+
 /// Open the message store. Empty URLs use Memory. Non-empty `database_url`
 /// without `--features postgres` is an error (same contract as session Redis).
 pub async fn open_message_store(
@@ -420,6 +428,15 @@ pub async fn open_message_store(
         None | Some("") => Ok(Arc::new(MemoryMessageStore::with_ack(idgen, ack))),
         Some(url) => open_postgres_store(url, idgen, ack, pool).await,
     }
+}
+
+pub async fn open_pg_backends(
+    database_url: &str,
+    redis_url: Option<&str>,
+    idgen: Arc<dyn IdGenerator>,
+    pool: PoolConfig,
+) -> Result<PgBackends, StoreError> {
+    open_pg_backends_inner(database_url, redis_url, idgen, pool).await
 }
 
 #[derive(Clone, Copy)]
@@ -476,6 +493,52 @@ async fn open_postgres_store(
     )
     .await?;
     Ok(Arc::new(store))
+}
+
+#[cfg(feature = "postgres")]
+async fn open_pg_backends_inner(
+    database_url: &str,
+    redis_url: Option<&str>,
+    idgen: Arc<dyn IdGenerator>,
+    pool: PoolConfig,
+) -> Result<PgBackends, StoreError> {
+    let pg = connect_pool(
+        database_url,
+        PoolOpts {
+            max_connections: pool.max_connections,
+            acquire_timeout: pool.acquire_timeout,
+            idle_timeout: pool.idle_timeout,
+        },
+    )
+    .await?;
+    let ack = open_ack_index(redis_url).await?;
+    let store: Arc<dyn MessageStore> = Arc::new(PostgresMessageStore::from_pool(
+        pg.clone(),
+        idgen.clone(),
+        ack,
+    ));
+    let groups: Arc<dyn GroupDirectory> = Arc::new(
+        crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen),
+    );
+    let users: Arc<dyn UserDirectory> =
+        Arc::new(crate::users::PostgresUserDirectory::from_pool(pg));
+    Ok(PgBackends {
+        store,
+        groups,
+        users,
+    })
+}
+
+#[cfg(not(feature = "postgres"))]
+async fn open_pg_backends_inner(
+    _database_url: &str,
+    _redis_url: Option<&str>,
+    _idgen: Arc<dyn IdGenerator>,
+    _pool: PoolConfig,
+) -> Result<PgBackends, StoreError> {
+    Err(StoreError::Backend(
+        "rebuild with --features postgres".into(),
+    ))
 }
 
 #[cfg(not(feature = "postgres"))]

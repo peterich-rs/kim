@@ -18,7 +18,7 @@ pkt-client  --ws://127.0.0.1:8001-->  fake-gateway (WsServer)
 
 `SN_LOGIN = "chat"`。`service_name("login.signin")` 是 `"login"`，**登录上行禁止用它做 Forward 目标**，必须 `forward(SN_LOGIN)`。
 
-必须先起 Chat，再起网关（StaticNaming 失败不重拨）。
+本机 StaticNaming：必须先起 Chat，再起网关（失败不重拨）。生产 Consul：网关 watch Chat，Young 窗口后 Adult，不必人肉保序。
 
 ---
 

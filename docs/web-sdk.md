@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。H5 demo：Vite 本机仍用 `mint.ts` 本地密钥；公网页 `POST /api/{app}/token`（Royal）。`pkt-client` 可设 `KIM_TOKEN_URL`，失败则回退本地 `generate`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
 

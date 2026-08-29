@@ -10,6 +10,7 @@ mod offline;
 pub mod royal;
 pub mod store;
 mod talk;
+pub mod users;
 
 use std::sync::Arc;
 use std::time::Duration;

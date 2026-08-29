@@ -5,6 +5,11 @@ use async_trait::async_trait;
 
 use crate::idgen::{IdError, IdGenerator};
 
+#[cfg(feature = "postgres")]
+mod postgres;
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresGroupDirectory;
+
 #[derive(Debug, thiserror::Error)]
 pub enum GroupError {
     #[error("idgen: {0}")]
@@ -90,7 +95,7 @@ impl MemoryGroupDirectory {
     }
 }
 
-fn normalize_members(owner: &str, members: &[String]) -> Vec<String> {
+pub(crate) fn normalize_members(owner: &str, members: &[String]) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for m in members {
@@ -104,7 +109,7 @@ fn normalize_members(owner: &str, members: &[String]) -> Vec<String> {
     out
 }
 
-fn base36_upper(n: i64) -> String {
+pub(crate) fn base36_upper(n: i64) -> String {
     const ALPH: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     if n == 0 {
         return "0".to_string();

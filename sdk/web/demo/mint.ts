@@ -13,8 +13,28 @@ function encodePart(obj: object): string {
   return b64url(new TextEncoder().encode(JSON.stringify(obj)));
 }
 
-/** HS256 JWT for local fake-gateway. Production must mint this on a backend. */
+/** HS256 JWT. Prefers Royal `POST /api/{app}/token` when not on the Vite demo port. */
 export async function mintToken(account: string, secret = DEMO_SECRET): Promise<string> {
+  const params = new URLSearchParams(location.search);
+  const app = params.get("app")?.trim() || "kim";
+  const remote =
+    params.get("tokenUrl")?.trim() ||
+    (location.port === "5173" || location.port === "5174" ? "" : location.origin);
+  if (remote) {
+    const r = await fetch(`${remote.replace(/\/$/u, "")}/api/${encodeURIComponent(app)}/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account }),
+    });
+    if (!r.ok) {
+      throw new Error(`token ${r.status}`);
+    }
+    const body = (await r.json()) as { token?: string };
+    if (!body.token) {
+      throw new Error("token missing");
+    }
+    return body.token;
+  }
   const header = encodePart({ alg: "HS256", typ: "JWT" });
   const payload = encodePart({
     acc: account,

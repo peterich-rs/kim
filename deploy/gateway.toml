@@ -8,7 +8,12 @@ jwt_secret = ""
 metrics_listen = "0.0.0.0:9001"
 idc = "local"
 domain = "wss://kim.ainexc.com/"
+public_address = "gateway"
+public_port = 8001
+consul_url = ""
+adult_delay_ms = 2000
 
+# Used only when CONSUL_HTTP_ADDR is empty (local docker without Consul).
 [[services]]
 service_id = "chat-1"
 service_name = "chat"
@@ -24,4 +29,9 @@ route_by = "app"
 id = "zone_local"
 weight = 100
 
+[[route.zones]]
+id = "zone_gray"
+weight = 0
+
 [route.whitelist]
+"kim-gray" = "zone_gray"

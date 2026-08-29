@@ -17,6 +17,10 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+axum = { workspace = true, features = ["json", "query"] }
 
 [lints]
 workspace = true

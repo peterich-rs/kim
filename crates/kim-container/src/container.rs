@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -96,7 +96,7 @@ impl Container {
             self.connect_to_service(name).await?;
         }
         if !self.identity.public_address.is_empty() {
-            let _ = self.naming.register(self.identity.clone()).await;
+            self.naming.register(self.identity.clone()).await?;
         }
         if self.closed.load(Ordering::SeqCst) {
             let _ = srv.shutdown().await;
@@ -187,13 +187,7 @@ impl Container {
                     let this = this.clone();
                     let svc = svc.clone();
                     tokio::spawn(async move {
-                        for reg in list {
-                            let id = reg.service_id.clone();
-                            if let Ok(true) = this.build_client(&svc, reg).await {
-                                tokio::time::sleep(this.adult_delay).await;
-                                this.try_promote(&svc, &id).await;
-                            }
-                        }
+                        this.apply_snapshot(&svc, list).await;
                     });
                 }),
             )
@@ -206,6 +200,49 @@ impl Container {
             self.force_adult(name, &id).await;
         }
         Ok(())
+    }
+
+    async fn apply_snapshot(self: &Arc<Self>, service_name: &str, list: Vec<DefaultRegistration>) {
+        let wanted: HashSet<String> = list
+            .iter()
+            .filter(|r| r.protocol == "tcp")
+            .map(|r| r.service_id.clone())
+            .collect();
+        for reg in list {
+            let id = reg.service_id.clone();
+            if let Ok(true) = self.build_client(service_name, reg).await {
+                let this = self.clone();
+                let svc = service_name.to_string();
+                tokio::spawn(async move {
+                    tokio::time::sleep(this.adult_delay).await;
+                    this.try_promote(&svc, &id).await;
+                });
+            }
+        }
+        let stale: Vec<(String, Arc<TcpClient>)> = {
+            let map = self.clients.read().await;
+            match map.get(service_name) {
+                Some(cmap) => cmap
+                    .ids()
+                    .into_iter()
+                    .filter(|id| !wanted.contains(id))
+                    .filter_map(|id| cmap.get(&id).map(|s| (id, s.client.clone())))
+                    .collect(),
+                None => Vec::new(),
+            }
+        };
+        if wanted.is_empty() {
+            // Empty catalog is the first watch vs Find race; TCP close still
+            // drops a dead instance via read_loop.
+            return;
+        }
+        for (id, client) in stale {
+            let _ = client.shutdown().await;
+            let mut w = self.clients.write().await;
+            if let Some(cmap) = w.get_mut(service_name) {
+                cmap.remove(&id);
+            }
+        }
     }
 
     async fn try_promote(&self, service_name: &str, id: &str) {

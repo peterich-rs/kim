@@ -21,6 +21,21 @@ pub struct PoolOpts {
     pub idle_timeout: Duration,
 }
 
+pub async fn connect_pool(url: &str, opts: PoolOpts) -> Result<PgPool, StoreError> {
+    let pool = PgPoolOptions::new()
+        .max_connections(opts.max_connections)
+        .acquire_timeout(opts.acquire_timeout)
+        .idle_timeout(opts.idle_timeout)
+        .connect(url)
+        .await
+        .map_err(pg_err)?;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .map_err(|e| StoreError::Backend(e.to_string()))?;
+    Ok(pool)
+}
+
 pub struct PostgresMessageStore {
     pool: PgPool,
     idgen: Arc<dyn IdGenerator>,
@@ -28,24 +43,22 @@ pub struct PostgresMessageStore {
 }
 
 impl PostgresMessageStore {
+    pub(crate) fn from_pool(
+        pool: PgPool,
+        idgen: Arc<dyn IdGenerator>,
+        ack: Arc<dyn AckIndex>,
+    ) -> Self {
+        Self { pool, idgen, ack }
+    }
+
     pub(crate) async fn connect(
         url: &str,
         idgen: Arc<dyn IdGenerator>,
         ack: Arc<dyn AckIndex>,
         opts: PoolOpts,
     ) -> Result<Self, StoreError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(opts.max_connections)
-            .acquire_timeout(opts.acquire_timeout)
-            .idle_timeout(opts.idle_timeout)
-            .connect(url)
-            .await
-            .map_err(pg_err)?;
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .map_err(|e| StoreError::Backend(e.to_string()))?;
-        Ok(Self { pool, idgen, ack })
+        let pool = connect_pool(url, opts).await?;
+        Ok(Self::from_pool(pool, idgen, ack))
     }
 
     async fn insert_fanout(

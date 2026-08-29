@@ -1,6 +1,6 @@
 # 智能路由（已落地）
 
-对照小册第 29 章。crate `kim-router` 仍是指令分发。HTTP 查找是 `examples/fake-router`，监听 `127.0.0.1:8088`。
+对照小册第 29 章。crate `kim-router` 仍是指令分发。HTTP 查找是 `examples/fake-router`，本机 `127.0.0.1:8088`，VPS 经 Caddy `GET /api/lookup*`。生产 `CONSUL_HTTP_ADDR` 非空时从 Consul 找 `wgateway` / `tgateway`；没有 TGateway 时 `tcp=""`。
 
 ```bash
 GET /api/lookup
