@@ -88,8 +88,8 @@ export function decodeHeader(buf: Uint8Array): Required<HeaderFields> {
   };
 }
 
-export function encodeLoginReq(token: string): Uint8Array {
-  return encode(LoginReqType, { token });
+export function encodeLoginReq(token: string, device = "web"): Uint8Array {
+  return encode(LoginReqType, { token, device });
 }
 
 export function decodeLoginResp(buf: Uint8Array): { channelId: string } {

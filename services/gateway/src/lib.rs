@@ -454,6 +454,7 @@ impl Acceptor for GatewayHandler {
             account: claims.account.clone(),
             app: claims.app.clone(),
             remote_ip: remote_ip(conn),
+            device: req.device,
             ..Session::default()
         });
         self.insert_meta(

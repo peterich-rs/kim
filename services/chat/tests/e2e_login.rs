@@ -67,11 +67,11 @@ async fn second_login_kickout_then_logout_keeps_new_location() {
     let stack = spawn_stack().await;
     let url = ws_url(stack.gw_addr);
 
-    let (mut first, d1) = login("alice", &url).await;
+    let (mut first, d1) = login_with_device("alice", &url, "mobile").await;
     let id1 = d1.channel_id().expect("id1");
     assert_channel_id(&id1, "alice");
 
-    let (second, d2) = login("alice", &url).await;
+    let (second, d2) = login_with_device("alice", &url, "android").await;
     let id2 = d2.channel_id().expect("id2");
     assert_channel_id(&id2, "alice");
     assert_ne!(id1, id2);
@@ -121,6 +121,26 @@ async fn second_login_kickout_then_logout_keeps_new_location() {
         }
         _ => panic!("expected echo"),
     }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn two_web_logins_stay_online() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (first, d1) = login_with_device("alice", &url, "web").await;
+    let id1 = d1.channel_id().expect("id1");
+    let (_second, d2) = login_with_device("alice", &url, "web").await;
+    let id2 = d2.channel_id().expect("id2");
+    assert_ne!(id1, id2);
+
+    timeout_no_packet(&first, Duration::from_millis(400)).await;
+    assert!(stack.gw_server.channel_map().contains(&id1).await);
+    assert!(stack.gw_server.channel_map().contains(&id2).await);
+    let locs = stack.cache.list_locations("alice").await.expect("locs");
+    assert_eq!(locs.len(), 2);
 
     let _ = stack.gw.shutdown().await;
     let _ = stack.chat.shutdown().await;

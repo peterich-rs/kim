@@ -26,26 +26,31 @@ impl ChatAdmin {
     }
 
     pub async fn kick(&self, account: &str) -> Result<bool, SessionError> {
-        let loc = match self.cache.get_location(account, "").await {
-            Ok(loc) => loc,
+        let locs = match self.cache.list_locations(account).await {
+            Ok(v) => v,
             Err(SessionError::NotFound) => return Ok(false),
             Err(err) => return Err(err),
         };
-        let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 0, Bytes::new());
-        pkt.header.flag = Flag::Push as i32;
-        pkt.write_body(&KickoutNotify {
-            channel_id: loc.channel_id.clone(),
-        });
-        if let Err(err) = self
-            .dispatcher
-            .push(&loc.gate_id, std::slice::from_ref(&loc.channel_id), pkt)
-            .await
-        {
-            warn!(%err, account, "kick dispatch failed");
-            return Err(SessionError::Other(err.to_string()));
+        if locs.is_empty() {
+            return Ok(false);
         }
-        self.cache.delete(account, &loc.channel_id).await?;
-        info!(account, channel = %loc.channel_id, "kicked");
+        for loc in &locs {
+            let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 0, Bytes::new());
+            pkt.header.flag = Flag::Push as i32;
+            pkt.write_body(&KickoutNotify {
+                channel_id: loc.channel_id.clone(),
+            });
+            if let Err(err) = self
+                .dispatcher
+                .push(&loc.gate_id, std::slice::from_ref(&loc.channel_id), pkt)
+                .await
+            {
+                warn!(%err, account, "kick dispatch failed");
+                return Err(SessionError::Other(err.to_string()));
+            }
+            self.cache.delete(account, &loc.channel_id).await?;
+            info!(account, channel = %loc.channel_id, "kicked");
+        }
         Ok(true)
     }
 }

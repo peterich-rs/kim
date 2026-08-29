@@ -39,4 +39,5 @@ export interface TalkResult {
 export interface LoginBody {
   token: string;
   tags?: string[];
+  device?: string;
 }

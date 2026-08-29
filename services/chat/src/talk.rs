@@ -120,11 +120,15 @@ pub async fn do_user_talk(
             }
         }
     }
-    let loc = match ctx.get_location(receiver, "").await {
-        Ok(loc) => Some(loc),
-        Err(SessionError::NotFound) => None,
+    let mut accounts = vec![receiver.to_string()];
+    if receiver != ctx.session().account {
+        accounts.push(ctx.session().account.clone());
+    }
+    let locs = match ctx.get_locations(&accounts).await {
+        Ok(v) => v,
+        Err(SessionError::NotFound) => Vec::new(),
         Err(err) => {
-            warn!(%err, account = %receiver, "get_location failed");
+            warn!(%err, account = %receiver, "get_locations failed");
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
             return;
         }
@@ -163,13 +167,11 @@ pub async fn do_user_talk(
         sender: ctx.session().account.clone(),
         send_time,
     };
-    if !inserted.duplicate {
-        if let Some(loc) = loc.as_ref() {
-            if let Err(err) = ctx.dispatch(&push, std::slice::from_ref(loc)).await {
-                warn!(%err, "dispatch user talk failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return;
-            }
+    if !inserted.duplicate && !locs.is_empty() {
+        if let Err(err) = ctx.dispatch(&push, &locs).await {
+            warn!(%err, "dispatch user talk failed");
+            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            return;
         }
     }
 
@@ -182,7 +184,7 @@ pub async fn do_user_talk(
         message_id = inserted.message_id,
         send_time,
         duplicate = inserted.duplicate,
-        online = loc.is_some(),
+        online = !locs.is_empty(),
         msg_type = push.r#type,
         body_len = push.body.len(),
         "user talk"
@@ -572,7 +574,7 @@ mod tests {
         }
 
         async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
-            Err(SessionError::NotFound)
+            Err(SessionError::Other("unavailable".into()))
         }
 
         async fn get_location(

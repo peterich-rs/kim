@@ -10,33 +10,18 @@ use prost::Message;
 use crate::keys::{key_location, key_session};
 use crate::SESSION_TTL;
 
-/// Delete: always DEL sn; DEL loc only if it still names this channel_id.
-/// KEYS/ARGV and layout match docs/link-layer-login.md §5.2.
-/// Return 2 (vs spec `0`) when loc exists but names a newer channel, for logging.
+/// HASH login:loc:{account} field=channel_id value=Location blob; always DEL sn.
 const DELETE_LUA: &str = r#"
--- KEYS[1] = login:loc:{account}     （Location::encode 的 blob）
+-- KEYS[1] = login:loc:{account}
 -- KEYS[2] = login:sn:{channel_id}
--- ARGV[1] = 正在 Delete 的 channel_id
--- 布局：u16le n | channel[n] | u16le m | gate[m]
-local loc = redis.call('GET', KEYS[1])
-redis.call('DEL', KEYS[2])          -- sn 总是删
-if type(loc) ~= 'string' or #loc < 2 then
-  return 0
-end
-local n = loc:byte(1) + loc:byte(2) * 256
-if n < 0 or #loc < 2 + n then
-  return 0
-end
-local ch = loc:sub(3, 2 + n)
-if ch == ARGV[1] then
+-- ARGV[1] = channel_id
+redis.call('DEL', KEYS[2])
+redis.call('HDEL', KEYS[1], ARGV[1])
+if redis.call('HLEN', KEYS[1]) == 0 then
   redis.call('DEL', KEYS[1])
-  return 1
 end
-return 2
+return 1
 "#;
-
-/// 0 = loc missing/truncated, 1 = loc deleted, 2 = loc kept (newer channel).
-const DELETE_KEEP: i32 = 2;
 
 static DELETE_SCRIPT: LazyLock<::redis::Script> =
     LazyLock::new(|| ::redis::Script::new(DELETE_LUA));
@@ -60,6 +45,20 @@ impl RedisSessionStore {
             .await
             .map_err(redis_err)
     }
+
+    async fn hash_locs(&self, account: &str) -> Result<Vec<Location>, SessionError> {
+        let mut conn = self.conn.clone();
+        let values: Vec<Vec<u8>> = ::redis::cmd("HVALS")
+            .arg(key_location(account, ""))
+            .query_async(&mut conn)
+            .await
+            .map_err(redis_err)?;
+        let mut out = Vec::with_capacity(values.len());
+        for bytes in values {
+            out.push(Location::decode(&bytes)?);
+        }
+        Ok(out)
+    }
 }
 
 fn redis_err(e: ::redis::RedisError) -> SessionError {
@@ -72,8 +71,8 @@ impl SessionStorage for RedisSessionStore {
         let loc = Location {
             channel_id: session.channel_id.clone(),
             gate_id: session.gate_id.clone(),
+            device: session.device.clone(),
         };
-        // Loc index is account-only this milestone; Session.device is payload only.
         let loc_key = key_location(&session.account, "");
         let sn_key = key_session(&session.channel_id);
         let loc_bytes = loc.encode();
@@ -82,10 +81,13 @@ impl SessionStorage for RedisSessionStore {
         let mut conn = self.conn.clone();
         ::redis::pipe()
             .atomic()
-            .cmd("SET")
+            .cmd("HSET")
             .arg(&loc_key)
+            .arg(&session.channel_id)
             .arg(loc_bytes.as_ref())
-            .arg("EX")
+            .ignore()
+            .cmd("EXPIRE")
+            .arg(&loc_key)
             .arg(ttl)
             .ignore()
             .cmd("SET")
@@ -104,16 +106,13 @@ impl SessionStorage for RedisSessionStore {
         let loc_key = key_location(account, "");
         let sn_key = key_session(channel_id);
         let mut conn = self.conn.clone();
-        let result: i32 = DELETE_SCRIPT
+        let _: i32 = DELETE_SCRIPT
             .key(loc_key)
             .key(sn_key)
             .arg(channel_id)
             .invoke_async(&mut conn)
             .await
             .map_err(redis_err)?;
-        if result == DELETE_KEEP {
-            tracing::debug!("keep location, newer channel");
-        }
         Ok(())
     }
 
@@ -130,19 +129,9 @@ impl SessionStorage for RedisSessionStore {
         if accounts.is_empty() {
             return Err(SessionError::NotFound);
         }
-        let keys: Vec<String> = accounts
-            .iter()
-            .map(|account| key_location(account, ""))
-            .collect();
-        let mut conn = self.conn.clone();
-        let values: Vec<Option<Vec<u8>>> = ::redis::cmd("MGET")
-            .arg(&keys)
-            .query_async(&mut conn)
-            .await
-            .map_err(redis_err)?;
         let mut out = Vec::new();
-        for bytes in values.into_iter().flatten() {
-            out.push(Location::decode(&bytes)?);
+        for account in accounts {
+            out.extend(self.hash_locs(account).await?);
         }
         if out.is_empty() {
             Err(SessionError::NotFound)
@@ -152,10 +141,13 @@ impl SessionStorage for RedisSessionStore {
     }
 
     async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError> {
-        match self.get_bytes(&key_location(account, device)).await? {
-            Some(bytes) => Location::decode(&bytes),
-            None => Err(SessionError::NotFound),
-        }
+        let slots = self.hash_locs(account).await?;
+        let loc = if device.is_empty() {
+            slots.into_iter().next()
+        } else {
+            slots.into_iter().find(|l| l.device == device)
+        };
+        loc.ok_or(SessionError::NotFound)
     }
 }
 
@@ -197,13 +189,15 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn live_delete_old_channel_keeps_newer_location() {
+    async fn live_two_sessions_then_delete_one() {
         let store = open_session_store(Some(LIVE_URL)).await.unwrap();
         let account = unique("alice");
         let id1 = unique("id1");
         let id2 = unique("id2");
         store.add(&session(&id1, &account, "wg-1")).await.unwrap();
         store.add(&session(&id2, &account, "wg-1")).await.unwrap();
+        let locs = store.list_locations(&account).await.unwrap();
+        assert_eq!(locs.len(), 2);
         store.delete(&account, &id1).await.unwrap();
 
         let loc = store.get_location(&account, "").await.unwrap();

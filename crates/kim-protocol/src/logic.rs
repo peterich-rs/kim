@@ -159,6 +159,7 @@ mod tests {
         pkt.header.channel_id = "wg-1_alice_1".into();
         pkt.write_body(&crate::pkt::LoginReq {
             token: "tok".into(),
+            device: String::new(),
         });
         let got: crate::pkt::LoginReq = pkt.read_body().unwrap();
         assert_eq!(got.token, "tok");
