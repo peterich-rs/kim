@@ -246,10 +246,7 @@ impl Container {
         let mut client = TcpClient::new(
             reg.service_id.clone(),
             service_name.to_string(),
-            ClientOptions {
-                heartbeat: None,
-                ..ClientOptions::default()
-            },
+            ClientOptions::default(),
         );
         client.set_dialer(self.dialer.clone());
         if let Err(e) = client.connect(&reg.dial_url()).await {
@@ -278,6 +275,8 @@ impl Container {
     }
 
     async fn read_loop(self: Arc<Self>, client: Arc<TcpClient>) {
+        let id = client.id().to_string();
+        let service = client.name().to_string();
         loop {
             match client.read().await {
                 Ok(frame) if matches!(frame.opcode, OpCode::Binary | OpCode::Text) => {
@@ -286,8 +285,15 @@ impl Container {
                     }
                 }
                 Ok(_) => {}
-                Err(_) => break,
+                Err(err) => {
+                    warn!(id = %id, service = %service, %err, "upstream closed");
+                    break;
+                }
             }
+        }
+        let mut w = self.clients.write().await;
+        if let Some(cmap) = w.get_mut(&service) {
+            cmap.remove(&id);
         }
     }
 

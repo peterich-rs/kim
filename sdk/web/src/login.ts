@@ -46,7 +46,11 @@ export function doLogin(
       } catch {
         /* ignore */
       }
-      finish({ success: false, err: new Error("timeout"), conn });
+      finish({
+        success: false,
+        err: new Error("login timeout (chat unreachable?)"),
+        conn,
+      });
     }, opts.timeoutMs);
 
     conn.onerror = () => {
@@ -54,7 +58,11 @@ export function doLogin(
     };
 
     conn.onclose = () => {
-      finish({ success: false, err: new Error("closed"), conn });
+      finish({
+        success: false,
+        err: new Error("connection closed before login"),
+        conn,
+      });
     };
 
     conn.onopen = () => {
