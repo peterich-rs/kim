@@ -79,6 +79,29 @@ export const COPY = {
   kicked: "账号已在其他设备登录",
   logout: "退出登录",
   yesterday: "昨天",
+
+  profile: "个人资料",
+  nickname: "昵称",
+  bio: "简介",
+  saveProfile: "保存",
+  saved: "已保存",
+  changePassword: "修改密码",
+  oldPassword: "当前密码",
+  newPassword: "新密码",
+  passwordChanged: "密码已更新",
+
+  contacts: "通讯录",
+  addFriend: "添加好友",
+  searchPeople: "搜索账号或昵称",
+  requestSent: "已发送好友申请",
+  incoming: "好友申请",
+  accept: "同意",
+  reject: "拒绝",
+  noFriends: "还没有好友",
+  noFriendsHint: "搜索账号，发送好友申请",
+  notFriends: "对方还不是你好友",
+  blocked: "无法与该用户互动",
+  friendAccepted: "已成为好友",
 };
 
 export function memberCount(n: number): string {

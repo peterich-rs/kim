@@ -178,6 +178,8 @@ public_port = ${chatPort}
     });
     expect((await bob.login()).success).toBe(true);
     expect((await alice.login()).success).toBe(true);
+    expect((await alice.friendRequest("bob")).status).toBe(0);
+    expect((await bob.friendAccept("alice")).status).toBe(0);
     const { status, resp } = await alice.talkToUser("bob", new Content("hello sdk"));
     expect(status).toBe(0);
     expect(resp).toBeDefined();
@@ -190,10 +192,12 @@ public_port = ${chatPort}
   it("syncs offline index after the receiver logs in", async () => {
     const daveOnline = sdk(url, "dave");
     expect((await daveOnline.login()).success).toBe(true);
-    await daveOnline.logout();
-
     const alice = sdk(url, "alice");
     expect((await alice.login()).success).toBe(true);
+    expect((await alice.friendRequest("dave")).status).toBe(0);
+    expect((await daveOnline.friendAccept("alice")).status).toBe(0);
+    await daveOnline.logout();
+
     const { status } = await alice.talkToUser("dave", new Content("offline-hi"));
     expect(status).toBe(0);
     await alice.logout();

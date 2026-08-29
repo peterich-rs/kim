@@ -193,26 +193,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(SequenceIdGen::new(10_001))
         }
     };
-    let (store, groups, users) = if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url)
-    {
-        http_backends(&royal)?
-    } else {
-        let store = open_message_store(
-            database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
-            redis_url.as_deref(),
-            idgen.clone(),
-            PoolConfig {
-                max_connections: cfg.this.db_max_connections.max(1),
-                acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
-                idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
-            },
-        )
-        .await?;
-        let groups: Arc<dyn chat::directory::GroupDirectory> =
-            Arc::new(MemoryGroupDirectory::new(idgen));
-        let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
-        (store, groups, users)
-    };
+    let (store, groups, users, social) =
+        if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
+            http_backends(&royal)?
+        } else {
+            let store = open_message_store(
+                database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
+                redis_url.as_deref(),
+                idgen.clone(),
+                PoolConfig {
+                    max_connections: cfg.this.db_max_connections.max(1),
+                    acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
+                    idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
+                },
+            )
+            .await?;
+            let groups: Arc<dyn chat::directory::GroupDirectory> =
+                Arc::new(MemoryGroupDirectory::new(idgen));
+            let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
+            let social: Arc<dyn chat::social::SocialDirectory> =
+                Arc::new(chat::social::MemorySocialDirectory::new());
+            (store, groups, users, social)
+        };
 
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
     let container = Container::new(ContainerOpts {
@@ -226,7 +228,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: vec![],
     });
-    let handler = Arc::new(ChatHandler::with_users(
+    let handler = Arc::new(ChatHandler::with_social(
         container.clone(),
         cache,
         store,
@@ -234,6 +236,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         zone,
         chat::builtin_talk_filter(cfg.this.sensitive_words, cfg.this.blocked_image),
         users,
+        social,
     ));
     if !cfg.this.metrics_listen.is_empty() {
         if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {

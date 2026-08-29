@@ -22,6 +22,10 @@ pub const DIRECTION_RECV: i32 = 0;
 pub const DIRECTION_SEND: i32 = 1;
 pub const OFFLINE_SYNC_INDEX_COUNT: usize = 2000;
 pub const MESSAGE_MAX_COUNT_PER_PAGE: usize = 200;
+pub const INBOX_PAGE: usize = 50;
+pub const INBOX_MAX: usize = 100;
+pub const HISTORY_PAGE: usize = 50;
+pub const HISTORY_MAX: usize = 100;
 pub const ACK_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
 pub(crate) const DAY_NANOS: i64 = 24 * 60 * 60 * 1_000_000_000;
 const EXPIRES_NANOS: i64 = 15 * DAY_NANOS;
@@ -50,7 +54,7 @@ pub struct InsertResult {
     pub duplicate: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MessageKind {
     User,
     Group,
@@ -86,6 +90,37 @@ pub struct MessageContentRow {
     pub extra: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InboxEntry {
+    pub dest: String,
+    pub kind: MessageKind,
+    pub last_message_id: i64,
+    pub last_send_time: i64,
+    pub last_body: String,
+    pub last_sender: String,
+    pub last_msg_type: i32,
+    pub unread: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HistoryEntry {
+    pub message_id: i64,
+    pub msg_type: i32,
+    pub body: String,
+    pub extra: String,
+    pub sender: String,
+    pub send_time: i64,
+    pub direction: i32,
+}
+
+pub fn clamp_page(requested: i32, default: usize, max: usize) -> usize {
+    if requested <= 0 {
+        default
+    } else {
+        (requested as usize).min(max)
+    }
+}
+
 #[async_trait]
 pub trait MessageStore: Send + Sync {
     async fn insert_user(&self, app: &str, req: &InsertMessage)
@@ -108,6 +143,29 @@ pub trait MessageStore: Send + Sync {
         app: &str,
         message_ids: &[i64],
     ) -> Result<Vec<MessageContentRow>, StoreError>;
+    async fn inbox(
+        &self,
+        app: &str,
+        account: &str,
+        limit: i32,
+    ) -> Result<Vec<InboxEntry>, StoreError>;
+    async fn history(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<HistoryEntry>, StoreError>;
+    async fn mark_read(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        message_id: i64,
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]
@@ -197,6 +255,8 @@ struct Inner {
     contents: HashMap<i64, StoredMessage>,
     indexes: Vec<InboxRow>,
     idempotency: HashMap<(String, String, String), (i64, i64)>,
+    /// (app, account, peer, group_id) -> last_read_id
+    reads: HashMap<(String, String, String, String), i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -435,6 +495,156 @@ impl MessageStore for MemoryMessageStore {
             })
             .collect())
     }
+
+    async fn inbox(
+        &self,
+        app: &str,
+        account: &str,
+        limit: i32,
+    ) -> Result<Vec<InboxEntry>, StoreError> {
+        let cap = clamp_page(limit, INBOX_PAGE, INBOX_MAX);
+        let inner = self.read();
+        let mut latest: HashMap<(MessageKind, String), InboxEntry> = HashMap::new();
+        for row in inner
+            .indexes
+            .iter()
+            .filter(|r| r.app == app && r.account_a == account)
+        {
+            let (kind, dest) = if row.group_id.is_empty() {
+                (MessageKind::User, row.account_b.clone())
+            } else {
+                (MessageKind::Group, row.group_id.clone())
+            };
+            let sender = if row.direction == DIRECTION_SEND {
+                account.to_string()
+            } else {
+                row.account_b.clone()
+            };
+            let (peer, group_id) = match kind {
+                MessageKind::User => (dest.as_str(), ""),
+                MessageKind::Group => ("", dest.as_str()),
+            };
+            let last_read = inner
+                .reads
+                .get(&(
+                    app.to_string(),
+                    account.to_string(),
+                    peer.to_string(),
+                    group_id.to_string(),
+                ))
+                .copied()
+                .unwrap_or(0);
+            let unread_inc =
+                i32::from(row.direction == DIRECTION_RECV && row.message_id > last_read);
+            let content = inner.contents.get(&row.message_id);
+            let entry = latest
+                .entry((kind, dest.clone()))
+                .or_insert_with(|| InboxEntry {
+                    dest: dest.clone(),
+                    kind,
+                    last_message_id: 0,
+                    last_send_time: 0,
+                    last_body: String::new(),
+                    last_sender: String::new(),
+                    last_msg_type: 0,
+                    unread: 0,
+                });
+            entry.unread = entry.unread.saturating_add(unread_inc);
+            let newer = row.send_time > entry.last_send_time
+                || (row.send_time == entry.last_send_time
+                    && row.message_id > entry.last_message_id);
+            if newer {
+                entry.last_message_id = row.message_id;
+                entry.last_send_time = row.send_time;
+                entry.last_sender = sender;
+                if let Some(c) = content {
+                    entry.last_body = c.body.clone();
+                    entry.last_msg_type = c.msg_type;
+                }
+            }
+        }
+        let mut items: Vec<InboxEntry> = latest.into_values().collect();
+        items.sort_by(|a, b| {
+            b.last_send_time
+                .cmp(&a.last_send_time)
+                .then(b.last_message_id.cmp(&a.last_message_id))
+        });
+        items.truncate(cap);
+        Ok(items)
+    }
+
+    async fn history(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<HistoryEntry>, StoreError> {
+        let cap = clamp_page(limit, HISTORY_PAGE, HISTORY_MAX);
+        let inner = self.read();
+        let mut rows: Vec<HistoryEntry> = inner
+            .indexes
+            .iter()
+            .filter(|r| {
+                r.app == app
+                    && r.account_a == account
+                    && match kind {
+                        MessageKind::User => r.group_id.is_empty() && r.account_b == dest,
+                        MessageKind::Group => r.group_id == dest,
+                    }
+                    && (before_id <= 0 || r.message_id < before_id)
+            })
+            .filter_map(|r| {
+                inner.contents.get(&r.message_id).map(|c| HistoryEntry {
+                    message_id: r.message_id,
+                    msg_type: c.msg_type,
+                    body: c.body.clone(),
+                    extra: c.extra.clone(),
+                    sender: if r.direction == DIRECTION_SEND {
+                        account.to_string()
+                    } else {
+                        r.account_b.clone()
+                    },
+                    send_time: r.send_time,
+                    direction: r.direction,
+                })
+            })
+            .collect();
+        rows.sort_by_key(|b| std::cmp::Reverse(b.message_id));
+        rows.truncate(cap);
+        Ok(rows)
+    }
+
+    async fn mark_read(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        message_id: i64,
+    ) -> Result<(), StoreError> {
+        if dest.is_empty() || message_id <= 0 {
+            return Ok(());
+        }
+        let (peer, group_id) = match kind {
+            MessageKind::User => (dest, ""),
+            MessageKind::Group => ("", dest),
+        };
+        let key = (
+            app.to_string(),
+            account.to_string(),
+            peer.to_string(),
+            group_id.to_string(),
+        );
+        let mut inner = self.write();
+        let slot = inner.reads.entry(key).or_insert(0);
+        if message_id > *slot {
+            *slot = message_id;
+        }
+        Ok(())
+    }
 }
 
 /// Postgres backends for Royal. Migrates once via `connect_pool`.
@@ -443,6 +653,7 @@ pub struct PgBackends {
     pub store: Arc<dyn MessageStore>,
     pub groups: Arc<dyn GroupDirectory>,
     pub users: Arc<dyn UserDirectory>,
+    pub social: Arc<dyn crate::social::SocialDirectory>,
 }
 
 /// Open the message store. Empty URLs use Memory. Non-empty `database_url`
@@ -551,11 +762,14 @@ async fn open_pg_backends_inner(
         crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen),
     );
     let users: Arc<dyn UserDirectory> =
-        Arc::new(crate::users::PostgresUserDirectory::from_pool(pg));
+        Arc::new(crate::users::PostgresUserDirectory::from_pool(pg.clone()));
+    let social: Arc<dyn crate::social::SocialDirectory> =
+        Arc::new(crate::social::PostgresSocialDirectory::from_pool(pg));
     Ok(PgBackends {
         store,
         groups,
         users,
+        social,
     })
 }
 
@@ -735,6 +949,64 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].body, "b");
         assert_eq!(rows[1].body, "a");
+    }
+
+    #[tokio::test]
+    async fn inbox_history_and_read_cursor() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        store
+            .insert_user("kim", &sample("alice", "bob", 10, "hi"))
+            .await
+            .unwrap();
+        let second = store
+            .insert_user("kim", &sample("bob", "alice", 20, "yo"))
+            .await
+            .unwrap();
+        store
+            .insert_group(
+                "kim",
+                &sample("alice", "g1", 30, "hey"),
+                &["alice".into(), "bob".into()],
+            )
+            .await
+            .unwrap();
+
+        let inbox = store.inbox("kim", "alice", 10).await.unwrap();
+        assert_eq!(inbox.len(), 2);
+        assert_eq!(inbox[0].dest, "g1");
+        assert_eq!(inbox[0].kind, MessageKind::Group);
+        assert_eq!(inbox[1].dest, "bob");
+        assert_eq!(inbox[1].unread, 1);
+
+        store
+            .mark_read("kim", "alice", "bob", MessageKind::User, second.message_id)
+            .await
+            .unwrap();
+        let inbox = store.inbox("kim", "alice", 10).await.unwrap();
+        let dm = inbox.iter().find(|e| e.dest == "bob").unwrap();
+        assert_eq!(dm.unread, 0);
+
+        let hist = store
+            .history("kim", "alice", "bob", MessageKind::User, 0, 10)
+            .await
+            .unwrap();
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist[0].body, "yo");
+        assert_eq!(hist[0].sender, "bob");
+        let page = store
+            .history(
+                "kim",
+                "alice",
+                "bob",
+                MessageKind::User,
+                hist[0].message_id,
+                10,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].body, "hi");
     }
 
     #[tokio::test]

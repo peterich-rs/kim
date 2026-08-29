@@ -7,22 +7,36 @@ import { BasicPkt, LogicPkt, readPacket } from "./packet";
 import {
   decodeAuthResp,
   decodeContentResp,
+  decodeFriendRequestNotify,
   decodeGroupCreateNotify,
   decodeGroupCreateResp,
   decodeGroupDetail,
   decodeGroupMembers,
+  decodeHistoryResp,
+  decodeInboxResp,
   decodeIndexResp,
   decodeKickout,
   decodeMessagePush,
   decodeMessageResp,
+  decodeUserListResp,
+  decodeUserProfile,
+  decodeUserSearchResp,
   encodeAckReq,
   encodeContentReq,
+  encodeConversationReadReq,
   encodeGroupCreateReq,
   encodeGroupJoinReq,
   encodeGroupQuitReq,
+  encodeHistoryReq,
+  encodeInboxReq,
   encodeIndexReq,
   encodeMessageReq,
+  encodeUserProfileUpdate,
+  encodeUserSearchReq,
+  type WireHistoryItem,
+  type WireInboxItem,
   type WireIndex,
+  type WireProfile,
 } from "./proto";
 import { Flag, isRetryable, KIMStatus, needsRelogin, Status } from "./status";
 import { MemoryStore, type MsgStore } from "./store";
@@ -141,6 +155,7 @@ export class KIMClient implements ContentLoader {
     /* warn once in constructor */
   };
   private groupCreateCallback: ((groupId: string, members: string[]) => void) | undefined;
+  private friendRequestCallback: ((from: string, nickname: string) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private lastMessage: Message | undefined;
   private unack = 0;
@@ -187,6 +202,10 @@ export class KIMClient implements ContentLoader {
 
   ongroupcreate(cb: (groupId: string, members: string[]) => void): void {
     this.groupCreateCallback = cb;
+  }
+
+  onfriendrequest(cb: (from: string, nickname: string) => void): void {
+    this.friendRequestCallback = cb;
   }
 
   ontoken(cb: (token: string, exp: number) => void): void {
@@ -349,6 +368,158 @@ export class KIMClient implements ContentLoader {
       return { status: resp.status, err: new Error(`status ${resp.status}`) };
     }
     return { status: resp.status, members: decodeGroupMembers(resp.payload) };
+  }
+
+  async profile(account?: string): Promise<{ status: number; profile?: WireProfile; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.UserProfile,
+      account ?? "",
+      new Uint8Array(),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, profile: decodeUserProfile(resp.payload) };
+  }
+
+  async updateProfile(patch: {
+    nickname: string;
+    avatar?: string;
+    bio?: string;
+  }): Promise<{ status: number; profile?: WireProfile; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.UserUpdate,
+      "",
+      encodeUserProfileUpdate({
+        nickname: patch.nickname,
+        avatar: patch.avatar ?? "",
+        bio: patch.bio ?? "",
+      }),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, profile: decodeUserProfile(resp.payload) };
+  }
+
+  async searchUsers(query: string): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.UserSearch,
+      "",
+      encodeUserSearchReq(query),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, users: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, users: decodeUserSearchResp(resp.payload) };
+  }
+
+  async friendRequest(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.FriendRequest, account);
+  }
+
+  async friendAccept(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.FriendAccept, account);
+  }
+
+  async friendReject(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.FriendReject, account);
+  }
+
+  async friendRemove(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.FriendRemove, account);
+  }
+
+  async friendList(): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
+    return this.listCmd(Command.FriendList);
+  }
+
+  async friendIncoming(): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
+    return this.listCmd(Command.FriendIncoming);
+  }
+
+  async blockAdd(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.BlockAdd, account);
+  }
+
+  async blockRemove(account: string): Promise<{ status: number; err?: Error }> {
+    return this.destCmd(Command.BlockRemove, account);
+  }
+
+  async blockList(): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
+    return this.listCmd(Command.BlockList);
+  }
+
+  async inbox(limit = 50): Promise<{ status: number; items: WireInboxItem[]; err?: Error }> {
+    const pkt = LogicPkt.build(Command.InboxList, "", encodeInboxReq(limit), this.allocSeq());
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, items: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, items: decodeInboxResp(resp.payload) };
+  }
+
+  async history(
+    dest: string,
+    kind: number,
+    beforeId = 0n,
+    limit = 50,
+  ): Promise<{ status: number; messages: WireHistoryItem[]; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.History,
+      dest,
+      encodeHistoryReq(beforeId, limit, kind),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, messages: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, messages: decodeHistoryResp(resp.payload) };
+  }
+
+  async markRead(
+    dest: string,
+    kind: number,
+    messageId: bigint,
+  ): Promise<{ status: number; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.InboxRead,
+      dest,
+      encodeConversationReadReq(messageId, kind),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status };
+  }
+
+  private async destCmd(command: string, dest: string): Promise<{ status: number; err?: Error }> {
+    const pkt = LogicPkt.build(command, dest, new Uint8Array(), this.allocSeq());
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status };
+  }
+
+  private async listCmd(
+    command: string,
+  ): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
+    const pkt = LogicPkt.build(command, "", new Uint8Array(), this.allocSeq());
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, users: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, users: decodeUserListResp(resp.payload) };
   }
 
   async loadContent(ids: bigint[]): Promise<{ status: number; contents: Message[] }> {
@@ -568,6 +739,11 @@ export class KIMClient implements ContentLoader {
       case Command.GroupCreate: {
         const n = decodeGroupCreateNotify(pkt.payload);
         this.groupCreateCallback?.(n.groupId, n.members);
+        break;
+      }
+      case Command.FriendRequest: {
+        const n = decodeFriendRequestNotify(pkt.payload);
+        this.friendRequestCallback?.(n.fromAccount, n.fromNickname);
         break;
       }
       default:

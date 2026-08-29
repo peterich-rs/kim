@@ -132,8 +132,8 @@ async fn two_chats_see_the_same_group_via_royal() {
     });
     tokio::time::sleep(Duration::from_millis(30)).await;
     let base = format!("http://{addr}");
-    let (store1, groups1, _) = http_backends(&base).expect("b1");
-    let (store2, groups2, _) = http_backends(&base).expect("b2");
+    let (store1, groups1, _, _) = http_backends(&base).expect("b1");
+    let (store2, groups2, _, _) = http_backends(&base).expect("b2");
     let cache = open_session_store(None).await.expect("cache");
 
     let (c1, g1, a1) = spawn_chat_gw(cache.clone(), store1, groups1, "chat-1", "wg-1").await;

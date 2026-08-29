@@ -13,8 +13,8 @@ use kim_core::{Conn, OpCode, Server};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, MessageReq, Status};
 use kim_protocol::{
-    generate, marshal, read, LogicPkt, Packet, CMD_CHAT_USER_TALK, DEMO_DEFAULT_SECRET,
-    MESSAGE_TYPE_TEXT,
+    generate, marshal, read, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
+    CMD_FRIEND_REQUEST, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
 };
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
@@ -195,8 +195,6 @@ async fn whitelist_app_hits_chat2_then_fallback() {
     let _ = perform_login(&mut bob_conn, bob_token)
         .await
         .expect("bob login");
-    bob_conn.shutdown().await.expect("bob close");
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     let token = generate(DEMO_DEFAULT_SECRET, "alice", "kim-gray", i64::MAX / 4).expect("jwt");
     let mut conn = connect_ws(&url).await.expect("ws");
@@ -206,7 +204,25 @@ async fn whitelist_app_hits_chat2_then_fallback() {
     assert_eq!(sess.zone, "zone_gray");
     assert_eq!(sess.app, "kim-gray");
 
-    let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 2, Bytes::new());
+    let mut freq = LogicPkt::new(CMD_FRIEND_REQUEST, 2, Bytes::new());
+    freq.set_dest("bob");
+    conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(freq)))
+        .await
+        .expect("friend req");
+    let req_resp = timeout_read_response(&mut conn).await;
+    assert_eq!(req_resp.header.status, Status::Success as i32);
+    let mut facc = LogicPkt::new(CMD_FRIEND_ACCEPT, 2, Bytes::new());
+    facc.set_dest("alice");
+    bob_conn
+        .write_frame(OpCode::Binary, marshal(&Packet::Logic(facc)))
+        .await
+        .expect("friend accept");
+    let acc_resp = timeout_read_response(&mut bob_conn).await;
+    assert_eq!(acc_resp.header.status, Status::Success as i32);
+    bob_conn.shutdown().await.expect("bob close");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 3, Bytes::new());
     pkt.set_dest("bob");
     pkt.write_body(&MessageReq {
         r#type: MESSAGE_TYPE_TEXT,
@@ -217,14 +233,9 @@ async fn whitelist_app_hits_chat2_then_fallback() {
     conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
         .await
         .expect("talk");
-    let frame = timeout_read_conn(&mut conn).await;
-    match read(&frame.payload).expect("decode") {
-        Packet::Logic(p) => {
-            assert_eq!(p.header.status, Status::Success as i32);
-            assert_eq!(p.header.flag, Flag::Response as i32);
-        }
-        _ => panic!("expected logic"),
-    }
+    let p = timeout_read_response(&mut conn).await;
+    assert_eq!(p.header.status, Status::Success as i32);
+    assert_eq!(p.header.flag, Flag::Response as i32);
 
     let _ = gw.shutdown().await;
     let _ = c1.shutdown().await;
@@ -236,4 +247,15 @@ async fn timeout_read_conn<C: Conn>(conn: &mut C) -> kim_core::Frame {
         .await
         .expect("timeout")
         .expect("read")
+}
+
+async fn timeout_read_response<C: Conn>(conn: &mut C) -> LogicPkt {
+    loop {
+        let frame = timeout_read_conn(conn).await;
+        match read(&frame.payload).expect("decode") {
+            Packet::Logic(p) if p.header.flag == Flag::Response as i32 => return p,
+            Packet::Logic(_) => continue,
+            _ => panic!("expected logic"),
+        }
+    }
 }

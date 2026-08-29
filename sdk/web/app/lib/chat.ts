@@ -1,11 +1,14 @@
 import {
   Content,
+  InboxKind,
   KIMClient,
   KIMEvent,
   KeyValueStore,
   Message,
   State,
 } from "../../src/index.ts";
+import type { WireInboxItem, WireProfile } from "../../src/proto.ts";
+import { COPY } from "../copy.ts";
 import type { Kind } from "./threads.ts";
 
 export interface ChatHandlers {
@@ -13,6 +16,7 @@ export interface ChatHandlers {
   onMessage: (msg: Message, dest: string) => void;
   onKick: () => void;
   onGroup: (groupId: string, members: string[]) => void;
+  onFriend?: (from: string, nickname: string) => void;
   onToken?: (token: string, exp: number) => void;
 }
 
@@ -124,6 +128,12 @@ export class ChatSession {
       }
       this.handlers.onGroup(groupId, members);
     });
+    cli.onfriendrequest((from, nickname) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onFriend?.(from, nickname);
+    });
   }
 
   async send(dest: string, kind: Kind, text: string): Promise<Message> {
@@ -136,6 +146,12 @@ export class ChatSession {
         ? await cli.talkToGroup(dest, new Content(text))
         : await cli.talkToUser(dest, new Content(text));
     if (status !== 0) {
+      if (status === 109) {
+        throw new Error(COPY.notFriends);
+      }
+      if (status === 110) {
+        throw new Error(COPY.blocked);
+      }
       throw err ?? new Error(`send ${status}`);
     }
     const msg = new Message(resp?.messageId ?? 0n, resp?.sendTime ?? 0n);
@@ -178,6 +194,116 @@ export class ChatSession {
     const { detail } = await cli.groupDetail(groupId);
     const name = detail?.name?.trim();
     return name || undefined;
+  }
+
+  async inbox(): Promise<WireInboxItem[]> {
+    const cli = this.client;
+    if (!cli) {
+      return [];
+    }
+    const { items } = await cli.inbox();
+    return items;
+  }
+
+  async history(dest: string, kind: Kind, beforeId = 0n): Promise<Message[]> {
+    const cli = this.client;
+    if (!cli) {
+      return [];
+    }
+    const { messages } = await cli.history(
+      dest,
+      kind === "group" ? InboxKind.Group : InboxKind.User,
+      beforeId,
+    );
+    return messages.map((row) => {
+      const m = new Message(row.messageId, row.sendTime);
+      m.sender = row.sender;
+      m.receiver = kind === "group" ? dest : row.sender === cli.account ? dest : cli.account;
+      m.group = kind === "group" ? dest : "";
+      m.type = row.type;
+      m.body = row.body;
+      m.extra = row.extra;
+      m.contentLoaded = true;
+      return m;
+    });
+  }
+
+  async markRead(dest: string, kind: Kind, messageId: bigint): Promise<void> {
+    const cli = this.client;
+    if (!cli || messageId <= 0n) {
+      return;
+    }
+    await cli.markRead(dest, kind === "group" ? InboxKind.Group : InboxKind.User, messageId);
+  }
+
+  async searchUsers(query: string): Promise<WireProfile[]> {
+    const cli = this.client;
+    if (!cli) {
+      return [];
+    }
+    const { users } = await cli.searchUsers(query);
+    return users;
+  }
+
+  async friends(): Promise<WireProfile[]> {
+    const cli = this.client;
+    if (!cli) {
+      return [];
+    }
+    const { users } = await cli.friendList();
+    return users;
+  }
+
+  async incoming(): Promise<WireProfile[]> {
+    const cli = this.client;
+    if (!cli) {
+      return [];
+    }
+    const { users } = await cli.friendIncoming();
+    return users;
+  }
+
+  async requestFriend(account: string): Promise<void> {
+    const cli = this.client;
+    if (!cli) {
+      throw new Error("not connected");
+    }
+    const { status, err } = await cli.friendRequest(account);
+    if (status !== 0) {
+      throw err ?? new Error(`request ${status}`);
+    }
+  }
+
+  async acceptFriend(account: string): Promise<void> {
+    const cli = this.client;
+    if (!cli) {
+      throw new Error("not connected");
+    }
+    const { status, err } = await cli.friendAccept(account);
+    if (status !== 0) {
+      throw err ?? new Error(`accept ${status}`);
+    }
+  }
+
+  async updateProfile(nickname: string, bio: string): Promise<WireProfile | undefined> {
+    const cli = this.client;
+    if (!cli) {
+      throw new Error("not connected");
+    }
+    const { status, profile, err } = await cli.updateProfile({ nickname, bio });
+    if (status !== 0) {
+      throw err ?? new Error(`profile ${status}`);
+    }
+    return profile;
+  }
+
+  async me(): Promise<WireProfile | undefined> {
+    const cli = this.client;
+    if (!cli) {
+      return undefined;
+    }
+    const { profile } = await cli.profile();
+    return profile;
   }
 
   async disconnect(): Promise<void> {

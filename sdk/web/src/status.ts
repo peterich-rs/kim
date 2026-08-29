@@ -11,6 +11,8 @@ export const Status = {
   ContentBlocked: 106,
   NotGroupMember: 107,
   UserNotFound: 108,
+  NotFriends: 109,
+  Blocked: 110,
   NoDestination: 300,
   SessionNotFound: 404,
 } as const;

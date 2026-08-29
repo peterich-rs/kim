@@ -87,6 +87,7 @@ async fn ack_then_reconnect_has_empty_index() {
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
     let (mut bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
 
     alice
         .send(marshal(&Packet::Logic(talk_pkt(
@@ -134,6 +135,7 @@ async fn no_ack_then_reconnect_pulls_content() {
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
     let (mut bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
 
     alice
         .send(marshal(&Packet::Logic(talk_pkt(

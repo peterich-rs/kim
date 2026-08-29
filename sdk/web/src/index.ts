@@ -1,4 +1,4 @@
-export { Command, MessageType } from "./command";
+export { Command, InboxKind, MessageType } from "./command";
 export { Flag, KIMStatus, Status, isRetryable, needsRelogin } from "./status";
 export { BasicPkt, LogicPkt, MAGIC_BASIC, MAGIC_LOGIC, readPacket } from "./packet";
 export { Content, Message, Response, type LoginBody, type TalkResult } from "./message";

@@ -3,16 +3,18 @@ import { useState } from "react";
 import { COPY } from "../copy.ts";
 import { cn } from "../lib/cn.ts";
 import { useChat } from "../state/ChatProvider.tsx";
+import { ContactsDialog } from "./ContactsDialog.tsx";
 import { ConversationList } from "./ConversationList.tsx";
 import { MessagePane } from "./MessagePane.tsx";
-import { NewChatDialog } from "./NewChatDialog.tsx";
 import { NewGroupDialog } from "./NewGroupDialog.tsx";
+import { ProfileDialog } from "./ProfileDialog.tsx";
 import { Button } from "./ui.tsx";
 
 export function ChatScreen() {
   const { activeId, status, connectError, connect } = useChat();
-  const [newChat, setNewChat] = useState(false);
+  const [contacts, setContacts] = useState(false);
   const [newGroup, setNewGroup] = useState(false);
+  const [profile, setProfile] = useState(false);
 
   const banner =
     connectError ??
@@ -27,7 +29,11 @@ export function ChatScreen() {
   return (
     <div className="relative flex h-dvh min-h-0 bg-stage">
       <div className={cn("flex h-full min-h-0 w-full md:w-auto", activeId && "hidden md:flex")}>
-        <ConversationList onNewChat={() => setNewChat(true)} onNewGroup={() => setNewGroup(true)} />
+        <ConversationList
+          onNewChat={() => setContacts(true)}
+          onNewGroup={() => setNewGroup(true)}
+          onProfile={() => setProfile(true)}
+        />
       </div>
       <div className={cn("relative min-h-0 min-w-0 flex-1", !activeId && "hidden md:flex")}>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -44,8 +50,9 @@ export function ChatScreen() {
           <MessagePane />
         </div>
       </div>
-      <NewChatDialog open={newChat} onOpenChange={setNewChat} />
+      <ContactsDialog open={contacts} onOpenChange={setContacts} />
       <NewGroupDialog open={newGroup} onOpenChange={setNewGroup} />
+      <ProfileDialog open={profile} onOpenChange={setProfile} />
     </div>
   );
 }

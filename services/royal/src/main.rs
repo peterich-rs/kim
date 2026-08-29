@@ -131,7 +131,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
         let backends =
             open_pg_backends(&db, redis.as_deref(), idgen, PoolConfig::default()).await?;
-        RoyalState::with_backends(backends.store, backends.groups, backends.users, jwt, revoke)
+        RoyalState::with_backends(
+            backends.store,
+            backends.groups,
+            backends.users,
+            backends.social,
+            jwt,
+            revoke,
+        )
     } else {
         RoyalState::memory_with_jwt(idgen, jwt).with_revoke(revoke)
     };

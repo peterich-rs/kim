@@ -5,11 +5,15 @@ pub mod admin;
 pub mod directory;
 mod echo;
 pub mod filter;
+mod friends;
 mod group;
 pub mod idgen;
+mod inbox;
 mod login;
 mod offline;
+mod profile;
 pub mod royal;
+pub mod social;
 pub mod store;
 mod talk;
 pub mod users;
@@ -24,10 +28,13 @@ use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
-    CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,
-    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    META_DEST_CHANNELS, META_DEST_SERVER,
+    read_logic, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,
+    CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING,
+    CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
+    CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, META_DEST_CHANNELS,
+    META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -36,6 +43,7 @@ use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use crate::social::{MemorySocialDirectory, SocialDirectory};
 use crate::store::{MemoryMessageStore, MessageStore};
 use crate::users::{MemoryUserDirectory, UserDirectory};
 
@@ -45,9 +53,15 @@ pub use echo::do_echo;
 pub use filter::{
     builtin_talk_filter, ContentFilter, FilterChain, ImageFilter, NoopFilter, TextWordFilter,
 };
+pub use friends::{
+    do_block_add, do_block_list, do_block_remove, do_friend_accept, do_friend_incoming,
+    do_friend_list, do_friend_reject, do_friend_remove, do_friend_request,
+};
 pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
+pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
+pub use profile::{do_user_profile, do_user_search, do_user_update};
 pub use royal::http_backends;
 pub use talk::{do_group_talk, do_user_talk};
 
@@ -57,6 +71,7 @@ pub(crate) struct ChatSvc {
     groups: Arc<dyn GroupDirectory>,
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
+    social: Arc<dyn SocialDirectory>,
 }
 
 struct ContainerDispatcher(Arc<Container>);
@@ -164,6 +179,29 @@ impl ChatHandler {
         filter: Arc<dyn ContentFilter>,
         users: Arc<dyn UserDirectory>,
     ) -> Self {
+        Self::with_social(
+            container,
+            cache,
+            store,
+            groups,
+            zone,
+            filter,
+            users,
+            Arc::new(MemorySocialDirectory::new()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_social(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         {
@@ -182,6 +220,7 @@ impl ChatHandler {
             groups,
             filter,
             users,
+            social,
         };
         {
             let svc = svc.clone();
@@ -193,6 +232,7 @@ impl ChatHandler {
                         svc.store.as_ref(),
                         svc.filter.as_ref(),
                         svc.users.as_ref(),
+                        svc.social.as_ref(),
                     )
                     .await
                 }
@@ -267,6 +307,119 @@ impl ChatHandler {
             router.handle(CMD_OFFLINE_CONTENT, move |ctx| {
                 let svc = svc.clone();
                 async move { do_offline_content(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_USER_PROFILE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_user_profile(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_USER_UPDATE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_user_update(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_USER_SEARCH, move |ctx| {
+                let svc = svc.clone();
+                async move { do_user_search(ctx, svc.users.as_ref(), svc.social.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_REQUEST, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_request(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_ACCEPT, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_accept(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_REJECT, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_reject(ctx, svc.social.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_REMOVE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_remove(ctx, svc.social.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_LIST, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_list(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_FRIEND_INCOMING, move |ctx| {
+                let svc = svc.clone();
+                async move { do_friend_incoming(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BLOCK_ADD, move |ctx| {
+                let svc = svc.clone();
+                async move { do_block_add(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BLOCK_REMOVE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_block_remove(ctx, svc.social.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BLOCK_LIST, move |ctx| {
+                let svc = svc.clone();
+                async move { do_block_list(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_INBOX_LIST, move |ctx| {
+                let svc = svc.clone();
+                async move {
+                    do_inbox_list(
+                        ctx,
+                        svc.store.as_ref(),
+                        svc.users.as_ref(),
+                        svc.groups.as_ref(),
+                    )
+                    .await
+                }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_INBOX_READ, move |ctx| {
+                let svc = svc.clone();
+                async move { do_inbox_read(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_HISTORY, move |ctx| {
+                let svc = svc.clone();
+                async move { do_history(ctx, svc.store.as_ref()).await }
             });
         }
         Self {

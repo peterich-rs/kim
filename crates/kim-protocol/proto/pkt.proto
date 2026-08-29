@@ -20,6 +20,8 @@ enum Status {
   ContentBlocked = 106;  // talk filter rejected the payload
   NotGroupMember = 107;  // group talk sender is not a member
   UserNotFound = 108;    // talk dest is not a registered account
+  NotFriends = 109;      // 1:1 talk without an accepted friendship
+  Blocked = 110;         // blocked either direction
   NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }
@@ -225,4 +227,127 @@ message RevokeQuery {
 
 message RevokeStatus {
   bool revoked = 1;
+}
+
+message UserProfile {
+  string account = 1;
+  string nickname = 2;
+  string avatar = 3;
+  string bio = 4;
+}
+
+message UserProfileUpdate {
+  string nickname = 1;
+  string avatar = 2;
+  string bio = 3;
+}
+
+message UserSearchReq {
+  string query = 1;
+}
+
+message UserSearchResp {
+  repeated UserProfile users = 1;
+}
+
+message UserListResp {
+  repeated UserProfile users = 1;
+}
+
+message PasswordChangeReq {
+  string oldPassword = 1;
+  string newPassword = 2;
+}
+
+message AccountPair {
+  string account = 1;
+  string peer = 2;
+}
+
+message FriendRequestNotify {
+  string fromAccount = 1;
+  string fromNickname = 2;
+}
+
+message InboxReq {
+  int32 limit = 1;
+}
+
+message InboxItem {
+  string dest = 1;
+  int32 kind = 2; // 0 user, 1 group
+  string title = 3;
+  string avatar = 4;
+  string lastBody = 5;
+  string lastSender = 6;
+  int64 lastMessageId = 7;
+  int64 lastSendTime = 8;
+  int32 unread = 9;
+}
+
+message InboxResp {
+  repeated InboxItem items = 1;
+}
+
+message HistoryReq {
+  int64 beforeId = 1; // 0 = latest page
+  int32 limit = 2;
+  int32 kind = 3; // 0 user, 1 group
+}
+
+message HistoryItem {
+  int64 messageId = 1;
+  int32 type = 2;
+  string body = 3;
+  string extra = 4;
+  string sender = 5;
+  int64 sendTime = 6;
+  int32 direction = 7;
+}
+
+message HistoryResp {
+  repeated HistoryItem messages = 1;
+}
+
+message ConversationReadReq {
+  int64 messageId = 1;
+  int32 kind = 2; // 0 user, 1 group
+}
+
+// Royal HTTP bodies. Long-connection dest still carries account / group id.
+message InboxQuery {
+  string account = 1;
+  int32 limit = 2;
+}
+
+message HistoryQuery {
+  string account = 1;
+  string dest = 2;
+  int32 kind = 3;
+  int64 beforeId = 4;
+  int32 limit = 5;
+}
+
+message ConversationRead {
+  string account = 1;
+  string dest = 2;
+  int32 kind = 3;
+  int64 messageId = 4;
+}
+
+message AccountList {
+  repeated string accounts = 1;
+}
+
+message ProfileUpdateReq {
+  string account = 1;
+  string nickname = 2;
+  string avatar = 3;
+  string bio = 4;
+}
+
+message UserSearchQuery {
+  string query = 1;
+  repeated string exclude = 2;
+  int32 limit = 3;
 }

@@ -1,4 +1,4 @@
-import { decodeAuthResp, encodeAuthReq } from "../../src/proto.ts";
+import { decodeAuthResp, encodeAuthReq, encodePasswordChangeReq } from "../../src/proto.ts";
 
 export interface AuthSession {
   token: string;
@@ -54,6 +54,24 @@ export async function logout(token: string): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok && resp.status !== 401) {
+    throw asError(resp.status, (await resp.text()) || `http ${resp.status}`);
+  }
+}
+
+export async function changePassword(
+  token: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const resp = await fetch("/api/v1/auth/password", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/x-protobuf",
+    },
+    body: encodePasswordChangeReq(oldPassword, newPassword).slice(),
+  });
+  if (!resp.ok) {
     throw asError(resp.status, (await resp.text()) || `http ${resp.status}`);
   }
 }

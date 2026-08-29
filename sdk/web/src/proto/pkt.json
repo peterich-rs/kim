@@ -24,6 +24,8 @@
                 "ContentBlocked": 106,
                 "NotGroupMember": 107,
                 "UserNotFound": 108,
+                "NotFriends": 109,
+                "Blocked": 110,
                 "NoDestination": 300,
                 "SessionNotFound": 404
               }
@@ -551,6 +553,332 @@
                 "revoked": {
                   "type": "bool",
                   "id": 1
+                }
+              }
+            },
+            "UserProfile": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 4
+                }
+              }
+            },
+            "UserProfileUpdate": {
+              "fields": {
+                "nickname": {
+                  "type": "string",
+                  "id": 1
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 2
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 3
+                }
+              }
+            },
+            "UserSearchReq": {
+              "fields": {
+                "query": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "UserSearchResp": {
+              "fields": {
+                "users": {
+                  "rule": "repeated",
+                  "type": "UserProfile",
+                  "id": 1
+                }
+              }
+            },
+            "UserListResp": {
+              "fields": {
+                "users": {
+                  "rule": "repeated",
+                  "type": "UserProfile",
+                  "id": 1
+                }
+              }
+            },
+            "PasswordChangeReq": {
+              "fields": {
+                "oldPassword": {
+                  "type": "string",
+                  "id": 1
+                },
+                "newPassword": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "AccountPair": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "peer": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "FriendRequestNotify": {
+              "fields": {
+                "fromAccount": {
+                  "type": "string",
+                  "id": 1
+                },
+                "fromNickname": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "InboxReq": {
+              "fields": {
+                "limit": {
+                  "type": "int32",
+                  "id": 1
+                }
+              }
+            },
+            "InboxItem": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "title": {
+                  "type": "string",
+                  "id": 3
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 4
+                },
+                "lastBody": {
+                  "type": "string",
+                  "id": 5
+                },
+                "lastSender": {
+                  "type": "string",
+                  "id": 6
+                },
+                "lastMessageId": {
+                  "type": "int64",
+                  "id": 7
+                },
+                "lastSendTime": {
+                  "type": "int64",
+                  "id": 8
+                },
+                "unread": {
+                  "type": "int32",
+                  "id": 9
+                }
+              }
+            },
+            "InboxResp": {
+              "fields": {
+                "items": {
+                  "rule": "repeated",
+                  "type": "InboxItem",
+                  "id": 1
+                }
+              }
+            },
+            "HistoryReq": {
+              "fields": {
+                "beforeId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "limit": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                }
+              }
+            },
+            "HistoryItem": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "type": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "body": {
+                  "type": "string",
+                  "id": 3
+                },
+                "extra": {
+                  "type": "string",
+                  "id": 4
+                },
+                "sender": {
+                  "type": "string",
+                  "id": 5
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 6
+                },
+                "direction": {
+                  "type": "int32",
+                  "id": 7
+                }
+              }
+            },
+            "HistoryResp": {
+              "fields": {
+                "messages": {
+                  "rule": "repeated",
+                  "type": "HistoryItem",
+                  "id": 1
+                }
+              }
+            },
+            "ConversationReadReq": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "InboxQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "limit": {
+                  "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "HistoryQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "beforeId": {
+                  "type": "int64",
+                  "id": 4
+                },
+                "limit": {
+                  "type": "int32",
+                  "id": 5
+                }
+              }
+            },
+            "ConversationRead": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "messageId": {
+                  "type": "int64",
+                  "id": 4
+                }
+              }
+            },
+            "AccountList": {
+              "fields": {
+                "accounts": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "ProfileUpdateReq": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 4
+                }
+              }
+            },
+            "UserSearchQuery": {
+              "fields": {
+                "query": {
+                  "type": "string",
+                  "id": 1
+                },
+                "exclude": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 2
+                },
+                "limit": {
+                  "type": "int32",
+                  "id": 3
                 }
               }
             }

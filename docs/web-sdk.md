@@ -92,6 +92,8 @@ ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。循环大约每 `ac
 
 `createGroup` / `joinGroup` / `quitGroup` / `groupDetail` / `groupMembers`。dest 规则与 [group-royal.md](group-royal.md) 相同。`GroupCreateNotify` 走 `ongroupcreate`，不是 `onmessage`。
 
+资料 / 好友 / 会话：`profile` / `updateProfile` / `searchUsers` / `friendRequest` / `friendAccept` / `friendList` / `friendIncoming` / `blockAdd` / `inbox` / `history` / `markRead`。私聊非好友返回 `NotFriends=109`。好友申请 Push 走 `onfriendrequest`。产品页登录后拉 inbox，点开会话再拉 history。改密走 `POST /api/v1/auth/password`。
+
 SDK **不发** `login.signout`；断开由网关 Disconnect 转发。
 
 ---

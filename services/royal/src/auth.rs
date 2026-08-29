@@ -6,7 +6,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use chat::users::UserError;
-use kim_protocol::pkt::{AuthReq, AuthResp};
+use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq};
 use kim_protocol::{generate, parse, ProtocolError};
 
 use crate::{decode, encode, now_ts, RoyalState};
@@ -90,6 +90,9 @@ pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<B
         Ok(()) => issue(&st, &account),
         Err(UserError::Conflict) => Err((StatusCode::CONFLICT, "账号已存在".into())),
         Err(UserError::Backend(e)) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+        Err(UserError::NotFound | UserError::InvalidProfile) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, "create".into()))
+        }
     }
 }
 
@@ -141,5 +144,62 @@ pub async fn logout(State(st): State<RoyalState>, headers: HeaderMap) -> AuthRes
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
     crate::kick_account(&st, &claims.account).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn bearer_account(st: &RoyalState, headers: &HeaderMap) -> AuthResult<String> {
+    let raw = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let token = raw
+        .strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))
+        .unwrap_or("")
+        .trim();
+    if token.is_empty() {
+        return Err((StatusCode::UNAUTHORIZED, "unauthorized".into()));
+    }
+    let claims = parse(&st.jwt.secret, token)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "unauthorized".into()))?;
+    if claims.app != st.app || claims.account.is_empty() {
+        return Err((StatusCode::UNAUTHORIZED, "unauthorized".into()));
+    }
+    Ok(claims.account)
+}
+
+pub async fn change_password(
+    State(st): State<RoyalState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> AuthResult<StatusCode> {
+    let account = bearer_account(&st, &headers)?;
+    let req = decode::<PasswordChangeReq>(&body)?;
+    let old = valid_password(&req.old_password)?.to_string();
+    let new = valid_password(&req.new_password)?.to_string();
+    let stored = st
+        .users
+        .password_hash(&st.app, &account)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let Some(hash) = stored else {
+        return Err(unauthorized());
+    };
+    let old_ok = tokio::task::spawn_blocking({
+        let hash = hash.clone();
+        move || verify_password(&old, &hash)
+    })
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "verify".into()))?;
+    if !old_ok {
+        return Err(unauthorized());
+    }
+    let hashed = tokio::task::spawn_blocking(move || hash_password(new))
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "hash".into()))??;
+    st.users
+        .set_password(&st.app, &account, &hashed)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -17,6 +17,7 @@
 7. [reliable-delivery.md](reliable-delivery.md) — 已落地的 ACK / 写扩散 / 离线 Pull
 8. [group-royal.md](group-royal.md) — 已落地的群 join/quit/detail 与可选 Royal HTTP
 9. [web-sdk.md](web-sdk.md) — 已落地的 TypeScript Web SDK
+9b. [user-social-inbox.md](user-social-inbox.md) — 资料 / 好友 / 服务端会话
 10. [bench.md](bench.md) — kimbench
 11. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
 12. [routing.md](routing.md) — router HTTP lookup
