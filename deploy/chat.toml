@@ -1,0 +1,15 @@
+[self]
+service_id = "chat-1"
+service_name = "chat"
+listen = "0.0.0.0:8002"
+protocol = "tcp"
+# empty = Memory. REDIS_URL / DATABASE_URL env override when non-empty.
+redis_url = ""
+database_url = ""
+db_max_connections = 5
+db_acquire_timeout_ms = 3000
+db_idle_timeout_secs = 60
+royal_url = ""
+snowflake_node = 1
+zone = "zone_local"
+metrics_listen = "0.0.0.0:9002"

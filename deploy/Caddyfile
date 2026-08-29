@@ -1,0 +1,40 @@
+# Optional TLS terminator when this stack owns :80/:443
+# (docker compose --profile edge).
+#
+# DNS: A record for {$KIM_DOMAIN} → this machine (grey-cloud / DNS-only
+# while Caddy issues Let's Encrypt via HTTP-01).
+#
+# If a reverse proxy already listens on 443, do not enable the edge
+# profile; point that proxy at 127.0.0.1:8001 instead.
+
+{
+	email {$CADDY_EMAIL:ops@example.com}
+}
+
+{$KIM_DOMAIN:kim.ainexc.com} {
+	encode gzip zstd
+
+	reverse_proxy gateway:8001 {
+		flush_interval -1
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up Connection {>Connection}
+		header_up Upgrade {>Upgrade}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	log {
+		output stdout
+	}
+}

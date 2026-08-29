@@ -1,11 +1,135 @@
-# Local infra only. KIM processes stay `cargo run` on localhost.
-# CI ignores this file.
+# KIM production stack. App containers + Redis + Postgres.
+# Host Caddy (or --profile edge) terminates TLS; this file does not bind :443
+# unless the edge profile is on.
 #
-#   docker compose -f deploy/compose.yml --profile metrics up
-#   docker compose -f deploy/compose.yml --profile redis up
-#   docker compose -f deploy/compose.yml --profile postgres up
+#   # VPS (images already pulled):
+#   docker compose --env-file kim.env up -d
+#
+#   # This compose owning 80/443:
+#   docker compose --env-file kim.env --profile edge up -d
+#
+# Redis and Postgres stay on the compose network (not published).
+# Only the Web gateway is on loopback for a host reverse proxy.
+
+name: kim
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-kim}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - volatile-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  chat:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["fake-chat", "/etc/kim/chat.toml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  gateway:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["fake-gateway", "/etc/kim/gateway.toml"]
+    depends_on:
+      chat:
+        condition: service_healthy
+    environment:
+      KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      KIM_DOMAIN: ${KIM_DOMAIN:-kim.ainexc.com}
+      CADDY_EMAIL: ${CADDY_EMAIL:-ops@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+
   prometheus:
     image: prom/prometheus:v2.55.1
     profiles: ["metrics"]
@@ -14,17 +138,8 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
-  redis:
-    image: redis:7-alpine
-    profiles: ["redis"]
-    ports:
-      - "127.0.0.1:6379:6379"
-
-  postgres:
-    image: postgres:16-alpine
-    profiles: ["postgres"]
-    environment:
-      POSTGRES_PASSWORD: kim
-      POSTGRES_DB: kim
-    ports:
-      - "127.0.0.1:5432:5432"
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

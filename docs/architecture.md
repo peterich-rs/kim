@@ -96,7 +96,7 @@ im/
 - **Consul**：静态 Naming 已够本机 Demo；`ConsulNaming` 是可选 feature，不要改 `TcpServer`、不要占 53 端口
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`
 - **控制层**：在线 talk、ACK、离线、群 join/quit/detail 已在 fake-chat；Royal HTTP 可选。Web SDK 见 [web-sdk.md](web-sdk.md)
-- **部署**：本机 compose 见 [deploy.md](deploy.md)。公网 TLS / 双活仍是文档，不上 VPS  
+- **部署**：VPS 用 `deploy/compose.yml`（自带 Redis / Postgres）。本机 Demo 仍是 Memory。见 [deploy.md](deploy.md)。公网 TGateway TLS / 双活仍是文档
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。
 

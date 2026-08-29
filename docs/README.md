@@ -22,7 +22,7 @@
 12. [routing.md](routing.md) — fake-router HTTP lookup
 13. [gray.md](gray.md) — zone 灰度
 14. [observability.md](observability.md) — kim-metrics
-15. [deploy.md](deploy.md) — compose 与容灾文档
+15. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS
 
 卡住时：先看文档里的「合同」和「执行链」，再去对应源码。文档和代码打架时，以代码为准。
 

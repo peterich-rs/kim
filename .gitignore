@@ -4,6 +4,7 @@
 .vscode/
 .DS_Store
 node_modules/
+/deploy/kim.env
 
 # 付费小册原文，不进公开仓库
 /books/
