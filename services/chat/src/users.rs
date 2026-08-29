@@ -1,29 +1,41 @@
-//! Demo-grade user upsert for Royal token issuance.
+//! Account directory for Royal register / login.
 
-use std::collections::HashSet;
-use std::sync::{RwLock, RwLockWriteGuard};
+use std::collections::HashMap;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 
-use crate::store::StoreError;
+#[derive(Debug, thiserror::Error)]
+pub enum UserError {
+    #[error("conflict")]
+    Conflict,
+    #[error("{0}")]
+    Backend(String),
+}
 
 #[async_trait]
 pub trait UserDirectory: Send + Sync {
-    async fn upsert(&self, app: &str, account: &str) -> Result<(), StoreError>;
+    async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError>;
+    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError>;
+    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError>;
 }
 
 pub struct MemoryUserDirectory {
-    inner: RwLock<HashSet<(String, String)>>,
+    inner: RwLock<HashMap<(String, String), Option<String>>>,
 }
 
 impl MemoryUserDirectory {
     pub fn new() -> Self {
         Self {
-            inner: RwLock::new(HashSet::new()),
+            inner: RwLock::new(HashMap::new()),
         }
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashSet<(String, String)>> {
+    fn read(&self) -> RwLockReadGuard<'_, HashMap<(String, String), Option<String>>> {
+        self.inner.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, HashMap<(String, String), Option<String>>> {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -36,9 +48,29 @@ impl Default for MemoryUserDirectory {
 
 #[async_trait]
 impl UserDirectory for MemoryUserDirectory {
-    async fn upsert(&self, app: &str, account: &str) -> Result<(), StoreError> {
-        self.write().insert((app.to_string(), account.to_string()));
+    async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
+        self.write()
+            .entry((app.to_string(), account.to_string()))
+            .or_insert(None);
         Ok(())
+    }
+
+    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
+        let mut inner = self.write();
+        let key = (app.to_string(), account.to_string());
+        if inner.contains_key(&key) {
+            return Err(UserError::Conflict);
+        }
+        inner.insert(key, Some(password_hash.to_string()));
+        Ok(())
+    }
+
+    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        Ok(self
+            .read()
+            .get(&(app.to_string(), account.to_string()))
+            .cloned()
+            .flatten())
     }
 }
 
@@ -55,9 +87,14 @@ impl PostgresUserDirectory {
 }
 
 #[cfg(feature = "postgres")]
+fn pg_err(e: sqlx::Error) -> UserError {
+    UserError::Backend(e.to_string())
+}
+
+#[cfg(feature = "postgres")]
 #[async_trait]
 impl UserDirectory for PostgresUserDirectory {
-    async fn upsert(&self, app: &str, account: &str) -> Result<(), StoreError> {
+    async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
         sqlx::query(
             "INSERT INTO users (app, account) VALUES ($1, $2)
              ON CONFLICT (app, account) DO NOTHING",
@@ -66,8 +103,36 @@ impl UserDirectory for PostgresUserDirectory {
         .bind(account)
         .execute(&self.pool)
         .await
-        .map_err(|e| StoreError::Backend(e.to_string()))?;
+        .map_err(pg_err)?;
         Ok(())
+    }
+
+    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
+        let res = sqlx::query(
+            "INSERT INTO users (app, account, password_hash) VALUES ($1, $2, $3)
+             ON CONFLICT (app, account) DO NOTHING",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        if res.rows_affected() == 0 {
+            return Err(UserError::Conflict);
+        }
+        Ok(())
+    }
+
+    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        let row: Option<Option<String>> =
+            sqlx::query_scalar("SELECT password_hash FROM users WHERE app = $1 AND account = $2")
+                .bind(app)
+                .bind(account)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        Ok(row.flatten())
     }
 }
 
@@ -81,5 +146,31 @@ mod tests {
         dir.upsert("kim", "alice").await.unwrap();
         dir.upsert("kim", "alice").await.unwrap();
         assert_eq!(dir.write().len(), 1);
+        assert_eq!(dir.password_hash("kim", "alice").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn memory_create_conflict_and_hash() {
+        let dir = MemoryUserDirectory::new();
+        dir.create("kim", "alice", "hash-1").await.unwrap();
+        assert!(matches!(
+            dir.create("kim", "alice", "hash-2").await,
+            Err(UserError::Conflict)
+        ));
+        assert_eq!(
+            dir.password_hash("kim", "alice").await.unwrap().as_deref(),
+            Some("hash-1")
+        );
+        assert_eq!(dir.password_hash("kim", "bob").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn memory_upsert_then_create_conflicts() {
+        let dir = MemoryUserDirectory::new();
+        dir.upsert("kim", "alice").await.unwrap();
+        assert!(matches!(
+            dir.create("kim", "alice", "hash").await,
+            Err(UserError::Conflict)
+        ));
     }
 }

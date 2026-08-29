@@ -96,7 +96,7 @@ im/
 ## 不要提前写进通信层的
 
 - **Consul**：本机 Demo 仍 StaticNaming；VPS 用 HTTP catalog（`CONSUL_HTTP_ADDR`）。不要改 `TcpServer`、不要占 53 端口
-- **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`。签发在 Royal `POST /api/{app}/token`
+- **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`。签发在 Royal `POST /api/v1/auth/login` 与 `/api/v1/auth/register`
 - **控制层**：在线 talk、ACK、离线、群 join/quit/detail 已在 chat；生产群/消息经 Royal。Web SDK 见 [web-sdk.md](web-sdk.md)
 - **部署**：VPS 用 `deploy/compose.yml`（gateway / chat / chat-gray / royal / router / Consul / Redis / Postgres）。本机 Demo 仍是 Memory。见 [deploy.md](deploy.md)。公网 TGateway TLS / 双活仍是文档
 

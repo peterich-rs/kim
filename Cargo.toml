@@ -62,3 +62,4 @@ clap = { version = "4", features = ["derive"] }
 humantime = "2"
 prometheus = { version = "0.14", default-features = false }
 kim-metrics = { path = "crates/kim-metrics" }
+uuid = { version = "1", features = ["v4"] }

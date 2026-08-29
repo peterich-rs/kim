@@ -144,6 +144,10 @@ message GroupQuitReq {
   string groupId = 2;
 }
 
+message GroupQueryReq {
+  string groupId = 1;
+}
+
 message GroupMembersResp {
   repeated string members = 1;
 }
@@ -183,4 +187,15 @@ message AckMessageReq {
 message OfflineIndexReq {
   string account = 1;
   int64 messageId = 2;
+}
+
+message AuthReq {
+  string account = 1;
+  string password = 2;
+}
+
+message AuthResp {
+  string token = 1;
+  int64 exp = 2;
+  string account = 3;
 }

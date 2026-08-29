@@ -13,7 +13,7 @@ pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use error::ProtocolError;
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
-pub use token::{generate, parse, Claims, DEMO_DEFAULT_SECRET};
+pub use token::{generate, parse, token_revoke_key, Claims, DEMO_DEFAULT_SECRET};
 pub use wire::{
     service_name, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO,
     CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,

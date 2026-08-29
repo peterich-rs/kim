@@ -38,6 +38,8 @@ const GroupJoinReqType = lookup("GroupJoinReq");
 const GroupQuitReqType = lookup("GroupQuitReq");
 const GroupDetailType = lookup("GroupDetail");
 const GroupMembersRespType = lookup("GroupMembersResp");
+const AuthReqType = lookup("AuthReq");
+const AuthRespType = lookup("AuthResp");
 
 function encode(type: protobuf.Type, obj: object): Uint8Array {
   return type.encode(type.create(obj)).finish();
@@ -323,4 +325,31 @@ export function decodeGroupDetail(buf: Uint8Array): {
 export function decodeGroupMembers(buf: Uint8Array): string[] {
   const o = decode<{ members?: string[] }>(GroupMembersRespType, buf);
   return o.members ?? [];
+}
+
+export function encodeAuthReq(account: string, password: string): Uint8Array {
+  return encode(AuthReqType, { account, password });
+}
+
+export function decodeAuthResp(buf: Uint8Array): {
+  token: string;
+  exp: number;
+  account: string;
+} {
+  const o = decode<{ token?: string; exp?: unknown; account?: string }>(
+    AuthRespType,
+    buf,
+  );
+  const expRaw = o.exp;
+  const exp =
+    typeof expRaw === "number"
+      ? expRaw
+      : typeof expRaw === "string"
+        ? Number(expRaw)
+        : 0;
+  return {
+    token: o.token ?? "",
+    exp: Number.isFinite(exp) ? exp : 0,
+    account: o.account ?? "",
+  };
 }

@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use kim_protocol::pkt::{
     AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp,
-    GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq, MessageContentResp,
-    MessageIndexResp, MessageReq, OfflineIndexReq,
+    GroupQueryReq, GroupQuitReq, InsertMessageReq, InsertMessageResp, MessageContentReq,
+    MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq,
 };
 use prost::Message;
 use reqwest::StatusCode;
@@ -115,41 +115,6 @@ async fn post_maybe_empty(
     Err(last)
 }
 
-async fn delete_maybe_empty(
-    client: &RoyalClient,
-    path: &str,
-    body: &impl Message,
-) -> Result<(), StoreError> {
-    let url = format!("{}{path}", client.base);
-    let bytes = Bytes::from(body.encode_to_vec());
-    let mut last = StoreError::Backend("royal request failed".into());
-    for _ in 0..RETRIES {
-        match client
-            .http
-            .request(reqwest::Method::DELETE, &url)
-            .header("Content-Type", "application/x-protobuf")
-            .header("Accept", "application/x-protobuf")
-            .body(bytes.clone())
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                let _ = resp.bytes().await;
-                if status.is_success() {
-                    return Ok(());
-                }
-                last = StoreError::Backend(format!("royal http {status}"));
-                if status == StatusCode::BAD_REQUEST {
-                    return Err(last);
-                }
-            }
-            Err(err) => last = StoreError::Backend(err.to_string()),
-        }
-    }
-    Err(last)
-}
-
 pub struct HttpMessageStore {
     client: RoyalClient,
 }
@@ -180,10 +145,11 @@ impl MessageStore for HttpMessageStore {
             }),
             members: Vec::new(),
         };
-        let path = format!("/api/{app}/message/user");
+        let _ = app;
+        let path = "/api/v1/message/user";
         let resp: InsertMessageResp = self
             .client
-            .send_pb(reqwest::Method::POST, &path, Some(&body))
+            .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(InsertResult {
             message_id: resp.message_id,
@@ -207,10 +173,11 @@ impl MessageStore for HttpMessageStore {
             }),
             members: members.to_vec(),
         };
-        let path = format!("/api/{app}/message/group");
+        let _ = app;
+        let path = "/api/v1/message/group";
         let resp: InsertMessageResp = self
             .client
-            .send_pb(reqwest::Method::POST, &path, Some(&body))
+            .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(InsertResult {
             message_id: resp.message_id,
@@ -222,7 +189,8 @@ impl MessageStore for HttpMessageStore {
             account: account.to_string(),
             message_id,
         };
-        post_maybe_empty(&self.client, &format!("/api/{app}/message/ack"), &body).await
+        let _ = app;
+        post_maybe_empty(&self.client, "/api/v1/message/ack", &body).await
     }
 
     async fn offline_index(
@@ -235,10 +203,11 @@ impl MessageStore for HttpMessageStore {
             account: account.to_string(),
             message_id,
         };
-        let path = format!("/api/{app}/offline/index");
+        let _ = app;
+        let path = "/api/v1/offline/index";
         let resp: MessageIndexResp = self
             .client
-            .send_pb(reqwest::Method::POST, &path, Some(&body))
+            .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(resp
             .indexes
@@ -261,10 +230,11 @@ impl MessageStore for HttpMessageStore {
         let body = MessageContentReq {
             message_ids: message_ids.to_vec(),
         };
-        let path = format!("/api/{app}/offline/content");
+        let _ = app;
+        let path = "/api/v1/offline/content";
         let resp: MessageContentResp = self
             .client
-            .send_pb(reqwest::Method::POST, &path, Some(&body))
+            .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(resp
             .messages
@@ -305,20 +275,24 @@ impl GroupDirectory for HttpGroupDirectory {
             owner: req.owner.clone(),
             members: req.members.clone(),
         };
-        let path = format!("/api/{app}/group");
+        let _ = app;
+        let path = "/api/v1/group";
         let resp: GroupCreateResp = self
             .client
-            .send_pb(reqwest::Method::POST, &path, Some(&body))
+            .send_pb(reqwest::Method::POST, path, Some(&body))
             .await
             .map_err(group_err)?;
         Ok(resp.group_id)
     }
 
     async fn members(&self, app: &str, group_id: &str) -> Result<Vec<String>, GroupError> {
-        let path = format!("/api/{app}/group/members/{group_id}");
+        let _ = app;
+        let body = GroupQueryReq {
+            group_id: group_id.to_string(),
+        };
         let resp: GroupMembersResp = self
             .client
-            .send_pb::<GroupMembersResp, GroupCreateReq>(reqwest::Method::GET, &path, None)
+            .send_pb(reqwest::Method::POST, "/api/v1/group/members", Some(&body))
             .await
             .map_err(group_err)?;
         Ok(resp.members)
@@ -329,7 +303,8 @@ impl GroupDirectory for HttpGroupDirectory {
             account: account.to_string(),
             group_id: group_id.to_string(),
         };
-        post_maybe_empty(&self.client, &format!("/api/{app}/group/member"), &body)
+        let _ = app;
+        post_maybe_empty(&self.client, "/api/v1/group/member", &body)
             .await
             .map_err(group_err)
     }
@@ -339,16 +314,20 @@ impl GroupDirectory for HttpGroupDirectory {
             account: account.to_string(),
             group_id: group_id.to_string(),
         };
-        delete_maybe_empty(&self.client, &format!("/api/{app}/group/member"), &body)
+        let _ = app;
+        post_maybe_empty(&self.client, "/api/v1/group/quit", &body)
             .await
             .map_err(group_err)
     }
 
     async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError> {
-        let path = format!("/api/{app}/group/{group_id}");
+        let _ = app;
+        let body = GroupQueryReq {
+            group_id: group_id.to_string(),
+        };
         let resp: GroupDetail = self
             .client
-            .send_pb::<GroupDetail, GroupCreateReq>(reqwest::Method::GET, &path, None)
+            .send_pb(reqwest::Method::POST, "/api/v1/group/detail", Some(&body))
             .await
             .map_err(group_err)?;
         Ok(GroupInfo {
