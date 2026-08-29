@@ -66,7 +66,23 @@ jobs:
             deploy/remote-up.sh \
             "$HOST:/opt/kim/deploy/"
           "${ssh_cmd[@]}" "$HOST" "chown -R root:root /opt/kim/deploy && chmod 755 /opt/kim/deploy/bootstrap.sh /opt/kim/deploy/remote-up.sh && bash /opt/kim/deploy/bootstrap.sh"
+          if [[ -z "$IMAGE" || "$IMAGE" == *: ]]; then
+            echo "error: IMAGE is empty on the runner" >&2
+            exit 1
+          fi
+          echo "deploying ${IMAGE}"
+          # One remote argv so the login shell keeps quotes. Do not put GHCR_TOKEN
+          # on the ssh command line (it would show up in ps).
+          "${ssh_cmd[@]}" "$HOST" "IMAGE=$(printf %q "$IMAGE") bash -s" <<'EOS'
+set -euo pipefail
+cd /opt/kim/deploy
+umask 077
+tmp="$(mktemp)"
+grep -v '^KIM_IMAGE=' kim.env >"$tmp" || true
+printf 'KIM_IMAGE=%s\n' "$IMAGE" >>"$tmp"
+mv "$tmp" kim.env
+chmod 640 kim.env
+EOS
           printf '%s\n' "$GHCR_TOKEN" | "${ssh_cmd[@]}" "$HOST" \
-            env IMAGE="$IMAGE" GHCR_USER="$GHCR_USER" \
-            bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN IMAGE GHCR_USER; bash /opt/kim/deploy/remote-up.sh'
+            "GHCR_USER=$(printf %q "$GHCR_USER") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER; exec bash /opt/kim/deploy/remote-up.sh'"
           rm -f "$HOME/.ssh/kim_deploy"

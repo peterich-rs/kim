@@ -17,7 +17,10 @@ if [[ ! -f kim.env ]]; then
 fi
 
 if [[ -z "${IMAGE:-}" ]]; then
-  echo "error: IMAGE is empty" >&2
+  IMAGE="$(sed -n 's/^KIM_IMAGE=//p' kim.env | tail -n1)"
+fi
+if [[ -z "${IMAGE:-}" ]]; then
+  echo "error: IMAGE is empty (set IMAGE or KIM_IMAGE in kim.env)" >&2
   exit 1
 fi
 
