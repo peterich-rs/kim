@@ -59,7 +59,7 @@ flutter pub get
 flutter run
 ```
 
-FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.12** 调 `kim-client`。`KimBridge.ffiReady == true`。UI 按钮走 `KimApi.connect/login/ping/talkToUser/disconnect`。cargokit 在 `sdk/mobile/rust_builder`；真机/模拟器编译会链上 cdylib。本仓库 workspace **不**收这个 crate（`unsafe` 生成代码），避免 `unsafe_code = deny`。
+FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-client`。`KimBridge.ffiReady == true`。UI 按钮走 `KimApi.connect/login/ping/talkToUser/disconnect`。编译走 `sdk/mobile/hook/build.dart`（`flutter_rust_bridge_hooks` / native_toolchain_rust），不是 `rust_builder` + cargokit / ffiPlugin。`rust/rust-toolchain.toml` 钉具体 toolchain。本仓库 workspace **不**收这个 crate（`unsafe` 生成代码），避免 `unsafe_code = deny`。
 
 没有 NDK / Xcode 时仍可用 CLI 验证协议。
 

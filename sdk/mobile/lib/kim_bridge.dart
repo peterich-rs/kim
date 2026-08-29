@@ -1,4 +1,4 @@
-/// Dart shell around `kim-client` via flutter_rust_bridge 2.12.
+/// Dart shell around `kim-client` via flutter_rust_bridge 2.13.
 library;
 
 import 'src/rust/api/client.dart';
@@ -11,7 +11,7 @@ class KimBridge {
   static bool _inited = false;
   KimApi? _api;
 
-  String get ffiStatus => 'FFI: kim-client via flutter_rust_bridge 2.12';
+  String get ffiStatus => 'FFI: kim-client via flutter_rust_bridge 2.13';
 
   Future<void> _ensure() async {
     if (_inited) {

@@ -11,10 +11,7 @@ class KimApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: 'KIM mobile',
-      home: ShellPage(),
-    );
+    return const MaterialApp(title: 'KIM mobile', home: ShellPage());
   }
 }
 
@@ -103,9 +100,9 @@ class _ShellPageState extends State<ShellPage> {
                 onPressed: _busy
                     ? null
                     : () => _run(
-                          'connect',
-                          () => _bridge.connect(_url.text, _token.text),
-                        ),
+                        'connect',
+                        () => _bridge.connect(_url.text, _token.text),
+                      ),
                 child: const Text('connect'),
               ),
               const SizedBox(width: 8),
@@ -131,7 +128,8 @@ class _ShellPageState extends State<ShellPage> {
           ElevatedButton(
             onPressed: _busy
                 ? null
-                : () => _run('talk', () => _bridge.talk(_dest.text, _body.text)),
+                : () =>
+                      _run('talk', () => _bridge.talk(_dest.text, _body.text)),
             child: const Text('talk_to_user'),
           ),
           ElevatedButton(
