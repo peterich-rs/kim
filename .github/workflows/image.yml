@@ -58,3 +58,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy tag to VPS
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      image_tag: ${{ github.ref_name }}
+    secrets: inherit

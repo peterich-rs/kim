@@ -70,8 +70,8 @@ npm run deploy:app
 | Workflow | 何时 | 做什么 |
 |---|---|---|
 | `ci.yml` | push / PR | fmt、clippy、test |
-| `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim` |
-| `deploy.yml` | tag `v*` 或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
+| `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim`。`v*` 成功后再部署 |
+| `deploy.yml` | Image 在 `v*` 成功后，或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
 | `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
 
 GitHub Secrets（只放在 GitHub，不进 git）：
