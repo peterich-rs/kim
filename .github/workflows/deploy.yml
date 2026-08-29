@@ -1,12 +1,18 @@
 name: Deploy
 
 on:
-  push:
-    tags: ["v*"]
+  # Tag pushes run Image first; Image calls this workflow after the
+  # GHCR tag exists. Do not also trigger here on tags — that races Image.
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (sha-…, v1.2.3, or latest)"
+        description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
         required: false
         default: "latest"
 
@@ -28,12 +34,22 @@ jobs:
 
       - name: Resolve image tag
         id: img
+        env:
+          RAW: ${{ inputs.image_tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          tag="${RAW}"
+          if [[ -z "${tag}" ]]; then
+            echo "error: image tag is empty" >&2
+            exit 1
           fi
+          # docker/metadata-action type=semver,pattern={{version}} stores
+          # v0.1.0 as ghcr.io/<repo>:0.1.0. Strip one leading v from semver.
+          if [[ "${tag}" =~ ^v[0-9] ]]; then
+            tag="${tag#v}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "docker tag ${tag}"
 
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rsync openssh-client
