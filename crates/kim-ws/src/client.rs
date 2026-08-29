@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -10,8 +10,12 @@ use hyper::header::{CONNECTION, HOST, UPGRADE};
 use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
+use rustls::pki_types::ServerName;
+use rustls::ClientConfig;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio_rustls::TlsConnector;
 use tracing::debug;
 
 use kim_core::{
@@ -58,9 +62,68 @@ impl Conn for WsHandshakeConn {
 }
 
 /// 只做 HTTP Upgrade，不发业务包、不 flush。
+///
+/// `ws://` is plaintext TCP then Upgrade. `wss://` is TLS then the same Upgrade
+/// (TLS below HTTP; [`WsServer`] stays plaintext and expects a terminator).
 pub async fn connect_ws(url: &str) -> Result<WsHandshakeConn, Error> {
-    let (hostport, path) = parse_ws_url(url)?;
-    let stream = TcpStream::connect(&hostport).await.map_err(Error::from)?;
+    connect_ws_with_tls(url, None).await
+}
+
+/// Like [`connect_ws`], with an optional rustls client config (tests / extra CAs).
+/// `None` on `wss://` uses Mozilla roots via `webpki-roots`.
+pub async fn connect_ws_with_tls(
+    url: &str,
+    tls: Option<Arc<ClientConfig>>,
+) -> Result<WsHandshakeConn, Error> {
+    let parsed = parse_ws_url(url)?;
+    let stream = TcpStream::connect(&parsed.connect)
+        .await
+        .map_err(Error::from)?;
+    if parsed.tls {
+        let cfg = match tls {
+            Some(c) => c,
+            None => default_client_tls()?,
+        };
+        install_ring_provider();
+        let name = ServerName::try_from(parsed.sni.clone())
+            .map_err(|_| Error::other(format!("invalid tls name {}", parsed.sni)))?;
+        let tls_stream = TlsConnector::from(cfg)
+            .connect(name, stream)
+            .await
+            .map_err(|e| Error::other(e.to_string()))?;
+        upgrade_http(&parsed.hostport, &parsed.path, tls_stream).await
+    } else {
+        upgrade_http(&parsed.hostport, &parsed.path, stream).await
+    }
+}
+
+fn install_ring_provider() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
+fn default_client_tls() -> Result<Arc<ClientConfig>, Error> {
+    install_ring_provider();
+    static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    Ok(CFG
+        .get_or_init(|| {
+            let mut roots = rustls::RootCertStore::empty();
+            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+            Arc::new(
+                ClientConfig::builder()
+                    .with_root_certificates(roots)
+                    .with_no_client_auth(),
+            )
+        })
+        .clone())
+}
+
+async fn upgrade_http<S>(hostport: &str, path: &str, stream: S) -> Result<WsHandshakeConn, Error>
+where
+    S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
     let req = Request::builder()
         .method("GET")
         .uri(format!("http://{hostport}{path}"))
@@ -137,9 +200,6 @@ impl WsClient {
     }
 
     pub async fn connect(&mut self, addr: &str) -> Result<(), Error> {
-        if addr.starts_with("wss://") {
-            return Err(Error::other("本阶段无 TLS，请用 ws://"));
-        }
         if self.connected.swap(true, Ordering::SeqCst) {
             return Err(Error::AlreadyConnected);
         }
@@ -247,17 +307,70 @@ where
     }
 }
 
-fn parse_ws_url(url: &str) -> Result<(String, String), Error> {
-    let rest = url
-        .strip_prefix("ws://")
-        .ok_or_else(|| Error::other("url must start with ws://"))?;
+struct ParsedWsUrl {
+    tls: bool,
+    /// Host header / request authority (may omit default port).
+    hostport: String,
+    /// `host:port` for `TcpStream::connect`.
+    connect: String,
+    /// rustls SNI (no port).
+    sni: String,
+    path: String,
+}
+
+fn parse_ws_url(url: &str) -> Result<ParsedWsUrl, Error> {
+    let (tls, rest) = if let Some(r) = url.strip_prefix("wss://") {
+        (true, r)
+    } else if let Some(r) = url.strip_prefix("ws://") {
+        (false, r)
+    } else {
+        return Err(Error::other("url must start with ws:// or wss://"));
+    };
     let (hostport, path) = rest.split_once('/').unwrap_or((rest, ""));
+    if hostport.is_empty() {
+        return Err(Error::other("url missing host"));
+    }
     let path = if path.is_empty() {
         "/".to_string()
     } else {
         format!("/{path}")
     };
-    Ok((hostport.to_string(), path))
+    let default_port = if tls { 443 } else { 80 };
+    let connect = with_default_port(hostport, default_port);
+    let sni = sni_host(hostport)?;
+    Ok(ParsedWsUrl {
+        tls,
+        hostport: hostport.to_string(),
+        connect,
+        sni,
+        path,
+    })
+}
+
+fn with_default_port(hostport: &str, default: u16) -> String {
+    if let Some(rest) = hostport.strip_prefix('[') {
+        if rest.contains("]:") {
+            return hostport.to_string();
+        }
+        return format!("{hostport}:{default}");
+    }
+    if hostport.rsplit_once(':').is_some() {
+        return hostport.to_string();
+    }
+    format!("{hostport}:{default}")
+}
+
+fn sni_host(hostport: &str) -> Result<String, Error> {
+    if let Some(rest) = hostport.strip_prefix('[') {
+        let end = rest
+            .find(']')
+            .ok_or_else(|| Error::other("invalid ipv6 host"))?;
+        return Ok(rest[..end].to_string());
+    }
+    Ok(match hostport.rsplit_once(':') {
+        Some((h, _)) => h.to_string(),
+        None => hostport.to_string(),
+    })
 }
 
 #[async_trait]
@@ -267,5 +380,34 @@ impl WsDialer for WsIdentityDialer {
         conn.write_frame(OpCode::Binary, Bytes::from(ctx.id.into_bytes()))
             .await?;
         Ok(conn)
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::parse_ws_url;
+
+    #[test]
+    fn ws_keeps_explicit_port() {
+        let p = parse_ws_url("ws://127.0.0.1:8001/").unwrap();
+        assert!(!p.tls);
+        assert_eq!(p.connect, "127.0.0.1:8001");
+        assert_eq!(p.path, "/");
+        assert_eq!(p.sni, "127.0.0.1");
+    }
+
+    #[test]
+    fn wss_defaults_to_443() {
+        let p = parse_ws_url("wss://kim.example/chat").unwrap();
+        assert!(p.tls);
+        assert_eq!(p.connect, "kim.example:443");
+        assert_eq!(p.hostport, "kim.example");
+        assert_eq!(p.sni, "kim.example");
+        assert_eq!(p.path, "/chat");
+    }
+
+    #[test]
+    fn rejects_http() {
+        assert!(parse_ws_url("http://127.0.0.1:8001/").is_err());
     }
 }
