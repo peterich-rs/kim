@@ -19,7 +19,7 @@
 9. [web-sdk.md](web-sdk.md) — 已落地的 TypeScript Web SDK
 10. [bench.md](bench.md) — kimbench
 11. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
-12. [routing.md](routing.md) — fake-router HTTP lookup
+12. [routing.md](routing.md) — router HTTP lookup
 13. [gray.md](gray.md) — zone 灰度
 14. [observability.md](observability.md) — kim-metrics
 15. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS

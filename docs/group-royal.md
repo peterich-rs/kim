@@ -24,7 +24,7 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 
 ## Royal HTTP
 
-进程：`examples/fake-royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
+进程：`examples/royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
 
 Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`；Postgres 只由 Royal 写。
 
@@ -45,7 +45,7 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 
 Token：HS256，claims `acc` / `app` / `exp`，密钥与网关相同（`KIM_JWT_SECRET`）。可选 `KIM_TOKEN_ISSUE_KEY` + 头 `X-KIM-Issue-Key`；空则开放签发（demo）。公网 Caddy 只反代 `/api/lookup*` 与 `/api/*/token`。
 
-本机：先 `cargo run -p fake-royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
+本机：先 `cargo run -p royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
 
 Consul HTTP catalog 是 `kim-naming` feature `consul`。`subscribe` 用 blocking query；DNS 不占宿主机 53。默认测试不连 Consul。
 
@@ -60,4 +60,4 @@ Consul HTTP catalog 是 `kim-naming` feature `consul`。`subscribe` 用 blocking
 | `KIM_GROUP_DETAIL` | detail |
 | HOLD 收到 create Push | 打 `GroupCreateNotify` |
 
-e2e：`examples/fake-chat/tests/e2e_group.rs`（Memory）、`e2e_royal.rs`（HTTP）。
+e2e：`examples/chat/tests/e2e_group.rs`（Memory）、`e2e_royal.rs`（HTTP）。

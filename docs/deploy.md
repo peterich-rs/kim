@@ -7,8 +7,8 @@
 进程仍听 loopback。不要把 JWT 写进仓库。
 
 ```text
-fake-gateway :8001
-fake-chat    :8002
+gateway :8001
+chat    :8002
 ```
 
 可选本机基础设施（旧习惯，不是默认 Demo）：

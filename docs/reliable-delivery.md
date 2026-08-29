@@ -64,4 +64,4 @@ key：`chat:ack:{account}`（Redis）或进程内 map。TTL 30 天。`messageId=
 
 同一 `messageId` 的 Push 与离线 content 只打一次日志。
 
-e2e：`examples/fake-chat/tests/e2e_offline.rs`。
+e2e：`examples/chat/tests/e2e_offline.rs`。

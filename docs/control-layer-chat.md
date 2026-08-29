@@ -9,10 +9,10 @@
 ## 进程
 
 ```text
-pkt-client  --ws://127.0.0.1:8001-->  fake-gateway (WsServer)
+pkt-client  --ws://127.0.0.1:8001-->  gateway (WsServer)
                                          │  TCP InnerHandshakeReq
                                          ▼
-                                   fake-chat (TcpServer :8002)
+                                   chat (TcpServer :8002)
                                    login.* / chat.demo.echo / chat.user.talk
                                    / chat.group.talk / chat.group.create
                                    同一进程、同一 Router
@@ -123,7 +123,7 @@ KIM_TALK_TO=bob RUST_LOG=info cargo run -p pkt-client -- alice
 KIM_GROUP_MEMBERS=alice,bob,carol RUST_LOG=info cargo run -p pkt-client -- alice
 ```
 
-e2e：`examples/fake-chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`）。
+e2e：`examples/chat/tests/e2e_talk.rs`（登录回归仍是 `e2e_login.rs`）。
 
 ---
 

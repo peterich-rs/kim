@@ -2,17 +2,17 @@
 
 对照小册第 17–18 章。通信层 / 容器层合同仍以 [protocol-container.md](protocol-container.md) 为准。本文只记 **现在代码里的** 握手、指令、会话和互踢。
 
-`crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs` **仍是第一帧名字**（crate 测试，不是 example 二进制）。`pkt-client` → `fake-gateway` 的第一帧必须是 `login.signin`。
+`crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs` **仍是第一帧名字**（crate 测试，不是 example 二进制）。`pkt-client` → `gateway` 的第一帧必须是 `login.signin`。
 
 ---
 
 ## 进程
 
 ```text
-pkt-client  --ws://127.0.0.1:8001-->  fake-gateway (WsServer)
+pkt-client  --ws://127.0.0.1:8001-->  gateway (WsServer)
                                          │  TCP InnerHandshakeReq
                                          ▼
-                                   fake-chat (TcpServer :8002)
+                                   chat (TcpServer :8002)
                                    login.* 与 chat.* 同一进程
 ```
 
@@ -109,7 +109,7 @@ Kickout 的 command 仍是 `login.signin`，`Flag=Push`，body `KickoutNotify{ch
 
 ## 本机怎么跑
 
-见根目录 [README.md](../README.md)。e2e：`examples/fake-chat/tests/e2e_login.rs`。
+见根目录 [README.md](../README.md)。e2e：`examples/chat/tests/e2e_login.rs`。
 
 ---
 
@@ -123,7 +123,7 @@ Consul、VPS、TGateway TLS、假 TGateway、`Agent::close`、`if login` 进 `Tc
 
 ```bash
 docker run --rm -p 6379:6379 redis:7
-REDIS_URL=redis://127.0.0.1:6379 cargo run -p fake-chat --features redis
+REDIS_URL=redis://127.0.0.1:6379 cargo run -p chat --features redis
 ```
 
 根 README 主路径是 Memory。`cargo test --workspace` 不需要 Redis。

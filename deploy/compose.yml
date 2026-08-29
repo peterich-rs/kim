@@ -87,7 +87,7 @@ services:
   royal:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-royal", "/etc/kim/royal.toml"]
+    command: ["royal", "/etc/kim/royal.toml"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,7 +120,7 @@ services:
   chat:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-chat", "/etc/kim/chat.toml"]
+    command: ["chat", "/etc/kim/chat.toml"]
     depends_on:
       royal:
         condition: service_healthy
@@ -151,7 +151,7 @@ services:
   chat-gray:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-chat", "/etc/kim/chat.toml"]
+    command: ["chat", "/etc/kim/chat.toml"]
     depends_on:
       royal:
         condition: service_healthy
@@ -184,7 +184,7 @@ services:
   gateway:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-gateway", "/etc/kim/gateway.toml"]
+    command: ["gateway", "/etc/kim/gateway.toml"]
     depends_on:
       consul:
         condition: service_healthy
@@ -211,7 +211,7 @@ services:
   router:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
-    command: ["fake-router", "/etc/kim/router.toml"]
+    command: ["router", "/etc/kim/router.toml"]
     depends_on:
       consul:
         condition: service_healthy

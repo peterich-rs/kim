@@ -173,7 +173,7 @@ TcpServer::start
 7. 写协程出队、写帧；Client `read` 打印 `hello 0 from server`。  
 8. 断开则 `Disconnect("alice")`。
 
-业务只出现在 3、6、8。中间全是通信层。JWT 登录在 `examples/fake-gateway` 的 Handler，**不**进 `TcpServer` / `WsServer`。crate 测试里的 EchoHandler 仍用第一帧名字。
+业务只出现在 3、6、8。中间全是通信层。JWT 登录在 `examples/gateway` 的 Handler，**不**进 `TcpServer` / `WsServer`。crate 测试里的 EchoHandler 仍用第一帧名字。
 
 ## 心跳
 
