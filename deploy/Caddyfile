@@ -1,11 +1,19 @@
-# Optional TLS terminator when this stack owns :80/:443
-# (docker compose --profile edge).
+# Origin for {$KIM_DOMAIN} (default kim.ainexc.com).
 #
-# DNS: A record for {$KIM_DOMAIN} → this machine (grey-cloud / DNS-only
-# while Caddy issues Let's Encrypt via HTTP-01).
+# Product H5 is a Cloudflare Worker Route in front of this origin
+# (orange-cloud A/AAAA still points here). Worker serves the SPA;
+# /api/v1/auth/* and WebSocket Upgrade still land on this Caddy.
+# Do NOT attach a Worker Custom Domain to this hostname — that
+# replaces the origin and the VPS stops seeing API/WS.
+#
+# Orange-cloud: Cloudflare terminates browser TLS. Caddy HTTP-01
+# will not see the challenge; use a Cloudflare Origin Certificate
+# (Full Strict) or keep :80 for CF-to-origin HTTP (Full).
+# Grey-cloud + this file owning :80/:443: Caddy can still HTTP-01,
+# but the Worker Route never runs.
 #
 # If a reverse proxy already listens on 443, do not enable the edge
-# profile; point that proxy at 127.0.0.1:8001 instead.
+# profile; point that proxy at 127.0.0.1:8001 (WS) and :8080 (auth).
 
 {
 	email {$CADDY_EMAIL:ops@example.com}

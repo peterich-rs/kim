@@ -3,7 +3,9 @@ import { login, logout, register } from "./auth.ts";
 import { ChatSession, type Kind } from "./chat.ts";
 import { clearSession, loadSession, saveSession } from "./session.ts";
 
-const DEFAULT_WS = "ws://127.0.0.1:8001/";
+const DEFAULT_WS = import.meta.env.PROD
+  ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/`
+  : "ws://127.0.0.1:8001/";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);

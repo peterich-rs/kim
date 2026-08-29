@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kim-web",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-08-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "assets": {
+    "directory": "./dist-app",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+  // Route (not Custom Domain): Worker sits in front of the VPS origin.
+  // kim.ainexc.com must already be an orange-clouded DNS record pointing at the VPS.
+  // /api/* and WebSocket Upgrade are fetch()'d to origin; everything else is the SPA.
+  "routes": [
+    { "pattern": "kim.ainexc.com/*", "zone_name": "ainexc.com" },
+  ],
+  "workers_dev": true,
+}
