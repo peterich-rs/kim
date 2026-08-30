@@ -133,7 +133,7 @@ async fn talk_and_ping_over_conn() {
     let session = login_on_conn(&mut login_conn, &token, Duration::from_secs(1))
         .await
         .unwrap();
-    let mut client = KimClient::with_conn(ClientConfig::local(token.clone()), Box::new(conn));
+    let client = KimClient::with_conn(ClientConfig::local(token.clone()), Box::new(conn));
     client.force_session(session);
     client.ping().await.unwrap();
     let result = client.talk_to_user("bob", "hello").await.unwrap();
@@ -173,7 +173,7 @@ fn dest_cmd_sets_header_dest() {
 }
 
 fn logged_in(token: String, incoming: Vec<Frame>) -> KimClient {
-    let mut client = KimClient::with_conn(
+    let client = KimClient::with_conn(
         ClientConfig::local(token.clone()),
         Box::new(MockConn::with_incoming(incoming)),
     );
@@ -257,8 +257,33 @@ fn decode_talk_push() {
     match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap() {
         Event::Talk(t) => {
             assert_eq!(t.sender, "bob");
+            assert_eq!(t.dest, "bob");
             assert_eq!(t.body, "hi");
             assert_eq!(t.message_id, 42);
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn decode_group_talk_push_uses_header_dest() {
+    use kim_protocol::CMD_CHAT_GROUP_TALK;
+    let mut pkt = LogicPkt::new(CMD_CHAT_GROUP_TALK, 0, Bytes::new());
+    pkt.header.flag = Flag::Push as i32;
+    pkt.header.dest = "g1".into();
+    pkt.write_body(&MessagePush {
+        message_id: 7,
+        r#type: MESSAGE_TYPE_TEXT,
+        body: "hi all".into(),
+        extra: String::new(),
+        sender: "bob".into(),
+        send_time: 1,
+    });
+    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap() {
+        Event::Talk(t) => {
+            assert_eq!(t.dest, "g1");
+            assert_eq!(t.sender, "bob");
+            assert_eq!(t.body, "hi all");
         }
         other => panic!("{other:?}"),
     }
@@ -328,6 +353,17 @@ impl MessageListener for FakeGw {
                     send_time: 2_000,
                 });
                 let _ = agent.push(marshal(&Packet::Logic(resp))).await;
+                let mut push = LogicPkt::new(CMD_CHAT_USER_TALK, 0, Bytes::new());
+                push.header.flag = Flag::Push as i32;
+                push.write_body(&MessagePush {
+                    message_id: 20001,
+                    r#type: MESSAGE_TYPE_TEXT,
+                    body: "from-bob".into(),
+                    extra: String::new(),
+                    sender: "bob".into(),
+                    send_time: 3_000,
+                });
+                let _ = agent.push(marshal(&Packet::Logic(push))).await;
             }
             _ => {}
         }
@@ -360,14 +396,35 @@ async fn loopback_ws_login_ping_talk() {
 
     let token = mint("alice");
     let url = format!("ws://{addr}/");
-    let mut client = KimClient::new(ClientConfig::new(url, token));
+    let client = Arc::new(KimClient::new(ClientConfig::new(url, token)));
     client.connect().await.unwrap();
     let session = client.login().await.unwrap();
     assert!(session.channel_id.starts_with("wg-test_alice_"));
     assert_eq!(session.account, "alice");
     client.ping().await.unwrap();
+
+    let waiting = client.clone();
+    let recv_task = tokio::spawn(async move { waiting.recv().await });
+    tokio::task::yield_now().await;
+
     let talk = client.talk_to_user("bob", "hello").await.unwrap();
     assert_eq!(talk.message_id, 10001);
+
+    let event = tokio::time::timeout(Duration::from_secs(2), recv_task)
+        .await
+        .expect("recv timed out")
+        .expect("recv task")
+        .expect("recv event");
+    match event {
+        Event::Talk(t) => {
+            assert_eq!(t.sender, "bob");
+            assert_eq!(t.dest, "bob");
+            assert_eq!(t.body, "from-bob");
+            assert_eq!(t.message_id, 20001);
+        }
+        other => panic!("{other:?}"),
+    }
+
     client.disconnect().await.unwrap();
     let _ = server.shutdown().await;
 }

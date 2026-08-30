@@ -32,11 +32,45 @@ int avatarColor(String name) {
   return _avatarColors[hash % _avatarColors.length];
 }
 
+/// Inclusive `DateTime.fromMillisecondsSinceEpoch` range.
+const int kDateTimeMsMin = -8640000000000000;
+const int kDateTimeMsMax = 8640000000000000;
+
+/// Wire `sendTime` may be seconds, ms, µs, or ns. Same cutoffs as the web SDK.
+int sendTimeMs(int sendTime, {int? now}) {
+  final fallback = now ?? DateTime.now().millisecondsSinceEpoch;
+  if (sendTime <= 0) {
+    return fallback;
+  }
+  final int ms;
+  if (sendTime > 10000000000000000) {
+    ms = sendTime ~/ 1000000;
+  } else if (sendTime > 100000000000000) {
+    ms = sendTime ~/ 1000;
+  } else if (sendTime > 100000000000) {
+    ms = sendTime;
+  } else {
+    ms = sendTime * 1000;
+  }
+  if (ms < kDateTimeMsMin || ms > kDateTimeMsMax) {
+    return fallback;
+  }
+  return ms;
+}
+
+DateTime? dateTimeFromEpoch(int ts) {
+  final ms = sendTimeMs(ts);
+  if (ms < kDateTimeMsMin || ms > kDateTimeMsMax) {
+    return null;
+  }
+  return DateTime.fromMillisecondsSinceEpoch(ms);
+}
+
 String formatListTime(int ts) {
-  if (ts <= 0) {
+  final d = dateTimeFromEpoch(ts);
+  if (d == null) {
     return '';
   }
-  final d = DateTime.fromMillisecondsSinceEpoch(ts);
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final point = DateTime(d.year, d.month, d.day);
@@ -54,10 +88,11 @@ String formatListTime(int ts) {
 }
 
 String formatClock(int ts) {
-  if (ts <= 0) {
+  final d = dateTimeFromEpoch(ts);
+  if (d == null) {
     return '';
   }
-  return _hm(DateTime.fromMillisecondsSinceEpoch(ts));
+  return _hm(d);
 }
 
 String truncate(String text, {int max = 36}) {

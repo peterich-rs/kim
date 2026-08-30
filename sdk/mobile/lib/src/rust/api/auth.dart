@@ -14,15 +14,18 @@ String httpOriginFromWs({required String wsUrl}) =>
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimAuth>>
 abstract class KimAuth implements RustOpaqueInterface {
-  void changePassword({
+  Future<void> changePassword({
     required String token,
     required String oldPassword,
     required String newPassword,
   });
 
-  AuthSession login({required String account, required String password});
+  Future<AuthSession> login({
+    required String account,
+    required String password,
+  });
 
-  void logout({required String token});
+  Future<void> logout({required String token});
 
   factory KimAuth({required String baseUrl, required String userAgent}) =>
       RustLib.instance.api.crateApiAuthKimAuthNew(
@@ -30,7 +33,10 @@ abstract class KimAuth implements RustOpaqueInterface {
         userAgent: userAgent,
       );
 
-  AuthSession register({required String account, required String password});
+  Future<AuthSession> register({
+    required String account,
+    required String password,
+  });
 }
 
 /// JWT issued by Royal. UI stores it in Keychain / Keystore.

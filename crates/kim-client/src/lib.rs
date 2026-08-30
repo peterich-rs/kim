@@ -10,6 +10,7 @@ mod config;
 mod error;
 mod events;
 mod login;
+mod pump;
 mod session;
 mod token;
 mod wire;

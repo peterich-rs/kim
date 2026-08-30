@@ -111,9 +111,17 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
     if p.header.flag == Flag::Push as i32
         && (p.header.command == CMD_CHAT_USER_TALK || p.header.command == CMD_CHAT_GROUP_TALK)
     {
+        let command = p.header.command.clone();
+        let header_dest = p.header.dest.clone();
         let push: MessagePush = p.read_body()?;
+        let dest = if command == CMD_CHAT_GROUP_TALK {
+            header_dest
+        } else {
+            push.sender.clone()
+        };
         return Ok(Event::Talk(IncomingTalk {
-            command: p.header.command,
+            command,
+            dest,
             message_id: push.message_id,
             sender: push.sender,
             msg_type: push.r#type,

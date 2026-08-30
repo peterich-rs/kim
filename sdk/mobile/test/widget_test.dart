@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/connectivity.dart';
@@ -23,7 +25,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int logouts = 0;
   int connects = 0;
   int talks = 0;
+  int acks = 0;
   int friendRequests = 0;
+  final eventsController = StreamController<KimEvent>.broadcast();
   List<KimPerson> friends = const [];
   List<KimPerson> incoming = const [];
   String lastUserAgent = '';
@@ -113,6 +117,34 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastTalkDest = dest;
     lastTalkBody = body;
     return 'message_id=1 send_time=1';
+  }
+
+  @override
+  Future<void> ack(int messageId) async {
+    acks += 1;
+  }
+
+  @override
+  Stream<KimEvent> events() => eventsController.stream;
+
+  void emitTalk({
+    required String dest,
+    required String sender,
+    required String body,
+    int sendTime = 0,
+  }) {
+    eventsController.add(
+      KimEvent(
+        kind: KimEventKind.talk,
+        dest: dest,
+        sender: sender,
+        body: body,
+        messageId: DateTime.now().microsecondsSinceEpoch,
+        sendTime: sendTime == 0
+            ? DateTime.now().millisecondsSinceEpoch
+            : sendTime,
+      ),
+    );
   }
 
   @override
@@ -273,9 +305,12 @@ void main() {
     await pumpUi(tester);
     expect(find.text(Copy.conversations), findsWidgets);
 
-    await tester.tap(find.text(Copy.me));
+    await tester.tap(find.byIcon(LucideIcons.user));
     await pumpUi(tester);
-    await tapKey(tester, const Key('logout'));
+    expect(find.byKey(const Key('logout')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logout')));
+    await tester.tap(find.text(Copy.logout));
+    await pumpUi(tester);
     expect(fake.logouts, 1);
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(env.runtime.settings.token, isEmpty);
@@ -288,6 +323,20 @@ void main() {
     env.runtime.connectivity.online.value = false;
     await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
     await pumpUi(tester);
+    expect(find.textContaining(Copy.offlineBanner), findsOneWidget);
+  });
+
+  testWidgets('radio drop after login shows the offline banner', (
+    tester,
+  ) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
+    await pumpUi(tester);
+    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.textContaining(Copy.offlineBanner), findsNothing);
+
+    env.runtime.connectivity.online.value = false;
+    await tester.pump();
     expect(find.textContaining(Copy.offlineBanner), findsOneWidget);
   });
 
@@ -313,5 +362,42 @@ void main() {
     await pumpUi(tester);
     expect(find.text('Bobby'), findsOneWidget);
     expect(find.text('@bob'), findsOneWidget);
+  });
+
+  testWidgets('incoming talk appears on the conversation list', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(
+      dest: 'bob',
+      sender: 'bob',
+      body: 'hello from bob',
+      sendTime: 1788077118498491646,
+    );
+    await pumpUi(tester);
+
+    expect(find.text('hello from bob'), findsOneWidget);
+    expect(fake.acks, greaterThan(0));
+  });
+
+  testWidgets('leaving a chat does not use ref after dispose', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+    expect(find.byType(BackButton), findsOneWidget);
+
+    await tester.tap(find.byType(BackButton));
+    await pumpUi(tester);
+    expect(find.text(Copy.conversations), findsWidgets);
   });
 }

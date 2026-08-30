@@ -65,6 +65,8 @@ pub enum Event {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IncomingTalk {
     pub command: String,
+    /// Thread id: peer account for 1:1, group id for `chat.group.talk`.
+    pub dest: String,
     pub message_id: i64,
     pub sender: String,
     pub msg_type: i32,

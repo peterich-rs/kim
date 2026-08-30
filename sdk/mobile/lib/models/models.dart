@@ -13,6 +13,32 @@ class KimPerson {
 
 enum ConnStatus { connecting, online, reconnecting, offline }
 
+enum KimEventKind { talk, kick, friend, group, token, closed }
+
+class KimEvent {
+  const KimEvent({
+    required this.kind,
+    this.dest = '',
+    this.sender = '',
+    this.body = '',
+    this.extra = '',
+    this.messageId = 0,
+    this.sendTime = 0,
+    this.token = '',
+    this.exp = 0,
+  });
+
+  final KimEventKind kind;
+  final String dest;
+  final String sender;
+  final String body;
+  final String extra;
+  final int messageId;
+  final int sendTime;
+  final String token;
+  final int exp;
+}
+
 class KimThread {
   const KimThread({
     required this.id,

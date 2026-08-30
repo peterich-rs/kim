@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let talk_to = nonempty("KIM_TALK_TO");
     let body = nonempty("KIM_TALK_BODY").unwrap_or_else(|| "hello from kim-client".to_string());
 
-    let mut client = KimClient::new(ClientConfig::new(url.clone(), token).with_env_url());
+    let client = KimClient::new(ClientConfig::new(url.clone(), token).with_env_url());
     info!(url = client.url(), "connecting");
     client.connect().await?;
     let session = client.login().await?;
