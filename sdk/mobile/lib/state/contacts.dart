@@ -78,20 +78,20 @@ class ContactsState {
 class ContactsNotifier extends Notifier<ContactsState> {
   @override
   ContactsState build() {
-    ref.listen<bool>(sessionProvider.select((s) => s.signedIn), (prev, next) {
+    ref.listen(sessionProvider.select((s) => s.signedIn), (prev, next) {
       if (next == false) {
         state = ContactsState.empty();
       }
     });
-    ref.listen<ConnStatus>(sessionProvider.select((s) => s.status), (
-      prev,
-      next,
-    ) {
+    ref.listen(sessionProvider.select((s) => s.status), (prev, next) {
       if (next == ConnStatus.online) {
         unawaited(refresh());
       }
     });
     Future.microtask(() {
+      if (!ref.mounted) {
+        return;
+      }
       if (ref.read(sessionProvider).status == ConnStatus.online) {
         unawaited(refresh());
       }
@@ -108,7 +108,13 @@ class ContactsNotifier extends Notifier<ContactsState> {
     state = state.copyWith(loading: true);
     try {
       final friends = await client.friendList();
+      if (!ref.mounted) {
+        return;
+      }
       final incoming = await client.friendIncoming();
+      if (!ref.mounted) {
+        return;
+      }
       final friendIds = {for (final p in friends) p.account};
       state = state.copyWith(
         friends: friends,
@@ -118,7 +124,9 @@ class ContactsNotifier extends Notifier<ContactsState> {
         loading: false,
       );
     } catch (_) {
-      state = state.copyWith(ready: true, loading: false);
+      if (ref.mounted) {
+        state = state.copyWith(ready: true, loading: false);
+      }
     }
   }
 
@@ -130,12 +138,21 @@ class ContactsNotifier extends Notifier<ContactsState> {
       return;
     }
     final rows = await ref.read(clientPortProvider).searchUsers(q);
+    if (!ref.mounted) {
+      return;
+    }
     state = state.copyWith(hits: rows, query: q);
   }
 
   Future<void> request(String dest) async {
     await ref.read(clientPortProvider).friendRequest(dest);
+    if (!ref.mounted) {
+      return;
+    }
     await refresh();
+    if (!ref.mounted) {
+      return;
+    }
     if (state.isFriend(dest)) {
       await KimHaptics.success();
       return;
@@ -146,13 +163,20 @@ class ContactsNotifier extends Notifier<ContactsState> {
 
   Future<void> accept(String dest) async {
     await ref.read(clientPortProvider).friendAccept(dest);
+    if (!ref.mounted) {
+      return;
+    }
     await refresh();
-    await KimHaptics.success();
+    if (ref.mounted) {
+      await KimHaptics.success();
+    }
   }
 
   Future<void> reject(String dest) async {
     await ref.read(clientPortProvider).friendReject(dest);
-    await refresh();
+    if (ref.mounted) {
+      await refresh();
+    }
   }
 
   void onRequest(String from, String nickname) {

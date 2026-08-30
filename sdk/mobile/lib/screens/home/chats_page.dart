@@ -9,6 +9,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
+import '../../state/gateway.dart';
 import '../../state/inbox.dart';
 import '../../state/session.dart';
 import '../../widgets/conversation_tile.dart';
@@ -62,7 +63,7 @@ class ChatsPage extends ConsumerWidget {
             child: ConnectionBanner(
               status: session.status,
               error: session.connectError,
-              onRetry: () => ref.read(sessionProvider.notifier).connect(),
+              onRetry: () => ref.invalidate(gatewayProvider),
             ),
           ),
           if (connecting)

@@ -46,7 +46,8 @@ class ConnectionBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
-    final label = error ??
+    final label =
+        error ??
         switch (status) {
           ConnStatus.connecting => Copy.connecting,
           ConnStatus.reconnecting => Copy.reconnecting,
@@ -70,10 +71,7 @@ class ConnectionBanner extends StatelessWidget {
               ),
             ),
             if (status == ConnStatus.offline && onRetry != null)
-              TextButton(
-                onPressed: onRetry,
-                child: const Text(Copy.retry),
-              ),
+              TextButton(onPressed: onRetry, child: const Text(Copy.retry)),
           ],
         ),
       ),

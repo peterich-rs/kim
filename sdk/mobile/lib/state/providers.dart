@@ -1,6 +1,7 @@
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 
 import '../core/runtime.dart';
 import '../data/conversation_store.dart';
@@ -23,3 +24,36 @@ final conversationStoreProvider = Provider<ConversationStore>((ref) {
     'conversationStoreProvider must be overridden in main / tests',
   );
 });
+
+List<Override> kimProviderOverrides({
+  required KimRuntime runtime,
+  required KimAuthPort auth,
+  required KimClientPort client,
+  required ConversationStore store,
+}) {
+  return [
+    runtimeProvider.overrideWithValue(runtime),
+    authPortProvider.overrideWithValue(auth),
+    clientPortProvider.overrideWithValue(client),
+    conversationStoreProvider.overrideWithValue(store),
+  ];
+}
+
+/// Radio from [KimConnectivity]. Independent of the WGateway socket.
+final radioOnlineProvider = NotifierProvider<RadioOnlineNotifier, bool>(
+  RadioOnlineNotifier.new,
+);
+
+class RadioOnlineNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final listenable = ref.watch(runtimeProvider).connectivity.online;
+    void tick() {
+      state = listenable.value;
+    }
+
+    listenable.addListener(tick);
+    ref.onDispose(() => listenable.removeListener(tick));
+    return listenable.value;
+  }
+}

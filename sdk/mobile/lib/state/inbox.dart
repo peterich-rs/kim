@@ -181,13 +181,21 @@ class InboxNotifier extends Notifier<InboxState> {
     );
     _append(msg, fromSelf: true);
     await _persistMessages(dest);
+    if (!ref.mounted) {
+      return msg;
+    }
     _persistThreads();
     try {
       await ref.read(clientPortProvider).talk(dest, body);
+      if (!ref.mounted) {
+        return msg;
+      }
       await KimHaptics.light();
       return msg;
     } catch (_) {
-      _markFailed(dest, msg.key);
+      if (ref.mounted) {
+        _markFailed(dest, msg.key);
+      }
       await _persistMessages(dest);
       await KimHaptics.error();
       rethrow;

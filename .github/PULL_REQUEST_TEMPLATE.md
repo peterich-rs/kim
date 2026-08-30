@@ -12,5 +12,6 @@
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] `cargo test --workspace`
 - [ ] `cd sdk/web && npm test` (if SDK / proto changed)
+- [ ] `cd sdk/mobile && dart format --output=none --set-exit-if-changed lib test hook && flutter analyze --fatal-infos --fatal-warnings && flutter test` (if mobile changed)
 - [ ] New functionality manually tested
 - [ ] Edge cases considered

@@ -13,7 +13,9 @@ import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
+import '../../state/gateway.dart';
 import '../../state/inbox.dart';
+import '../../state/mutations.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
 import '../../widgets/empty_state.dart';
@@ -75,9 +77,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _send(String text) async {
-    final inbox = ref.read(inboxProvider.notifier);
+    final send = sendMessageMutation(widget.id);
     try {
-      final msg = await inbox.send(widget.id, text);
+      final msg = await send.run(ref, (tsx) {
+        return tsx.get(inboxProvider.notifier).send(widget.id, text);
+      });
       if (!mounted) {
         return;
       }
@@ -109,10 +113,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         social.ready &&
         !social.isFriend(widget.id);
 
-    ref.listen<List<KimChatMsg>>(
-      inboxProvider.select((s) => s.messages[widget.id] ?? const []),
-      (prev, next) => _sync(next),
-    );
+    ref.listen(inboxProvider.select((s) => s.messages[widget.id] ?? const []), (
+      prev,
+      next,
+    ) {
+      _sync(next);
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -143,7 +149,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ConnectionBanner(
             status: session.status,
             error: session.connectError,
-            onRetry: () => ref.read(sessionProvider.notifier).connect(),
+            onRetry: () => ref.invalidate(gatewayProvider),
           ),
           Expanded(
             child: Chat(
@@ -257,7 +263,9 @@ class _FriendGate extends ConsumerWidget {
                 else if (incoming)
                   FilledButton(
                     onPressed: () => run(
-                      () => ref.read(contactsProvider.notifier).accept(dest),
+                      () => friendAcceptMutation.run(ref, (tsx) {
+                        return tsx.get(contactsProvider.notifier).accept(dest);
+                      }),
                       Copy.friendAccepted,
                     ),
                     child: const Text(Copy.accept),
@@ -265,7 +273,9 @@ class _FriendGate extends ConsumerWidget {
                 else
                   FilledButton.tonal(
                     onPressed: () => run(
-                      () => ref.read(contactsProvider.notifier).request(dest),
+                      () => friendRequestMutation.run(ref, (tsx) {
+                        return tsx.get(contactsProvider.notifier).request(dest);
+                      }),
                       Copy.requestSent,
                     ),
                     child: const Text(Copy.addFriend),

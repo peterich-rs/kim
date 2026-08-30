@@ -84,3 +84,53 @@ jobs:
       - name: E2E
         working-directory: sdk/web
         run: npm run test:e2e
+
+  sdk-mobile:
+    name: mobile sdk
+    runs-on: ubuntu-latest
+    env:
+      # rust-toolchain.toml lists every app target; CI only needs the host.
+      RUSTUP_TOOLCHAIN: "1.95.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install protobuf-src build deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: sdk/mobile/rust -> sdk/mobile/rust/target
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version-file: sdk/mobile/.fvmrc
+          cache: true
+
+      - name: Pub get
+        working-directory: sdk/mobile
+        run: flutter pub get --enforce-lockfile
+
+      - name: dart format
+        working-directory: sdk/mobile
+        run: dart format --output=none --set-exit-if-changed lib test hook
+
+      - name: flutter analyze
+        working-directory: sdk/mobile
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: cargo fmt
+        run: cargo fmt --manifest-path sdk/mobile/rust/Cargo.toml -- --check
+
+      - name: flutter test
+        working-directory: sdk/mobile
+        run: flutter test

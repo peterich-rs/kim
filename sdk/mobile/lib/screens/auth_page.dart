@@ -2,6 +2,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -10,8 +11,9 @@ import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
 import '../core/validation.dart';
+import '../state/auth.dart';
+import '../state/mutations.dart';
 import '../state/providers.dart';
-import '../state/session.dart';
 import '../widgets/kim_mark.dart';
 import '../widgets/kim_text_field.dart';
 
@@ -28,8 +30,6 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   late final TextEditingController _account;
   late final TextEditingController _password;
   late final TextEditingController _confirm;
-  bool _busy = false;
-  String _error = '';
   String? _accountErr;
   String? _passwordErr;
   String? _confirmErr;
@@ -50,10 +50,10 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     super.dispose();
   }
 
+  Mutation<void> get _mutation =>
+      widget.register ? registerMutation : signInMutation;
+
   Future<void> _submit() async {
-    if (_busy) {
-      return;
-    }
     final account = _account.text.trim();
     final password = _password.text;
     final accountErr = validateAccount(account);
@@ -65,27 +65,23 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       _accountErr = accountErr;
       _passwordErr = passwordErr;
       _confirmErr = confirmErr;
-      _error = '';
     });
     if (accountErr != null || passwordErr != null || confirmErr != null) {
       return;
     }
-    setState(() => _busy = true);
+    _mutation.reset(ref);
     try {
-      await ref.read(sessionProvider.notifier).signIn(
-        register: widget.register,
-        account: account,
-        password: password,
-      );
+      await _mutation.run(ref, (tsx) async {
+        await tsx
+            .get(authProvider.notifier)
+            .signIn(
+              register: widget.register,
+              account: account,
+              password: password,
+            );
+      });
     } catch (err) {
       await KimHaptics.error();
-      if (mounted) {
-        setState(() => _error = mapUserError(err));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
     }
   }
 
@@ -95,6 +91,12 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final scheme = theme.colorScheme;
     final settings = ref.watch(runtimeProvider).settings;
     final isRegister = widget.register;
+    final mut = ref.watch(_mutation);
+    final busy = mut is MutationPending;
+    final error = switch (mut) {
+      MutationError(:final error) => mapUserError(error),
+      _ => '',
+    };
 
     return Scaffold(
       body: DecoratedBox(
@@ -116,7 +118,10 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               const KimMark()
                   .animate()
                   .fadeIn(duration: 400.ms)
-                  .scale(begin: const Offset(0.92, 0.92), curve: Curves.easeOut),
+                  .scale(
+                    begin: const Offset(0.92, 0.92),
+                    curve: Curves.easeOut,
+                  ),
               const Gap(18),
               Text(
                 Copy.brand,
@@ -134,128 +139,128 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               ),
               const Gap(28),
               DecoratedBox(
-                decoration: BoxDecoration(
-                  color: scheme.surface.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: scheme.outlineVariant.withValues(alpha: 0.5),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: scheme.shadow.withValues(alpha: 0.06),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        isRegister ? Copy.registerTitle : Copy.loginTitle,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                    decoration: BoxDecoration(
+                      color: scheme.surface.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.5),
                       ),
-                      KimTextField(
-                        controller: _account,
-                        label: Copy.account,
-                        hintText: Copy.accountPlaceholder,
-                        helperText: Copy.accountHint,
-                        errorText: _accountErr,
-                        maxLength: 32,
-                        autofocus: true,
-                        keyboardType: TextInputType.visiblePassword,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        autofillHints: const [AutofillHints.username],
-                      ),
-                      KimTextField(
-                        controller: _password,
-                        label: Copy.password,
-                        hintText: Copy.passwordPlaceholder,
-                        helperText: isRegister ? Copy.passwordHint : null,
-                        errorText: _passwordErr,
-                        obscureable: true,
-                        maxLength: 128,
-                        autofillHints: [
-                          isRegister
-                              ? AutofillHints.newPassword
-                              : AutofillHints.password,
-                        ],
-                      ),
-                      if (isRegister)
-                        KimTextField(
-                          controller: _confirm,
-                          label: Copy.confirmPassword,
-                          hintText: Copy.confirmPlaceholder,
-                          errorText: _confirmErr,
-                          obscureable: true,
-                          maxLength: 128,
-                          textInputAction: TextInputAction.done,
-                          onEditingComplete: _submit,
-                          autofillHints: const [AutofillHints.newPassword],
-                        ),
-                      if (_error.isNotEmpty) ...[
-                        const Gap(12),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: scheme.error.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            child: Text(
-                              _error,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.error,
-                              ),
-                            ),
-                          ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.shadow.withValues(alpha: 0.06),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
                         ),
                       ],
-                      const Gap(20),
-                      FilledButton(
-                        key: const Key('auth-submit'),
-                        onPressed: _busy ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(52),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            isRegister ? Copy.registerTitle : Copy.loginTitle,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        child: _busy
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: scheme.onPrimary,
-                                ),
-                              )
-                            : Text(
-                                isRegister
-                                    ? Copy.registerAction
-                                    : Copy.loginAction,
+                          KimTextField(
+                            controller: _account,
+                            label: Copy.account,
+                            hintText: Copy.accountPlaceholder,
+                            helperText: Copy.accountHint,
+                            errorText: _accountErr,
+                            maxLength: 32,
+                            autofocus: true,
+                            keyboardType: TextInputType.visiblePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            autofillHints: const [AutofillHints.username],
+                          ),
+                          KimTextField(
+                            controller: _password,
+                            label: Copy.password,
+                            hintText: Copy.passwordPlaceholder,
+                            helperText: isRegister ? Copy.passwordHint : null,
+                            errorText: _passwordErr,
+                            obscureable: true,
+                            maxLength: 128,
+                            autofillHints: [
+                              isRegister
+                                  ? AutofillHints.newPassword
+                                  : AutofillHints.password,
+                            ],
+                          ),
+                          if (isRegister)
+                            KimTextField(
+                              controller: _confirm,
+                              label: Copy.confirmPassword,
+                              hintText: Copy.confirmPlaceholder,
+                              errorText: _confirmErr,
+                              obscureable: true,
+                              maxLength: 128,
+                              textInputAction: TextInputAction.done,
+                              onEditingComplete: _submit,
+                              autofillHints: const [AutofillHints.newPassword],
+                            ),
+                          if (error.isNotEmpty) ...[
+                            const Gap(12),
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: scheme.error.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
                               ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                child: Text(
+                                  error,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.error,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          const Gap(20),
+                          FilledButton(
+                            key: const Key('auth-submit'),
+                            onPressed: busy ? null : _submit,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            child: busy
+                                ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: scheme.onPrimary,
+                                    ),
+                                  )
+                                : Text(
+                                    isRegister
+                                        ? Copy.registerAction
+                                        : Copy.loginAction,
+                                  ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ).animate().fadeIn(duration: 420.ms, delay: 80.ms).slideY(
-                begin: 0.05,
-                curve: Curves.easeOutCubic,
-              ),
+                    ),
+                  )
+                  .animate()
+                  .fadeIn(duration: 420.ms, delay: 80.ms)
+                  .slideY(begin: 0.05, curve: Curves.easeOutCubic),
               const Gap(16),
               TextButton(
                 key: const Key('auth-toggle'),
-                onPressed: _busy
+                onPressed: busy
                     ? null
                     : () => context.go(isRegister ? '/login' : '/register'),
                 child: Text(
@@ -269,7 +274,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   TextButton(
-                    onPressed: _busy
+                    onPressed: busy
                         ? null
                         : () async {
                             await settings.useLocal();
@@ -285,7 +290,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     ),
                   ),
                   TextButton(
-                    onPressed: _busy
+                    onPressed: busy
                         ? null
                         : () async {
                             await settings.useProd();
