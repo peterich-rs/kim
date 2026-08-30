@@ -6,18 +6,26 @@ use async_trait::async_trait;
 use kim_protocol::pkt::Session;
 use kim_router::{Location, SessionError, SessionStorage};
 use prost::Message;
+use tracing::warn;
 
 use crate::keys::{key_location, key_session};
 use crate::SESSION_TTL;
 
 /// HASH login:loc:{account} field=channel_id value=Location blob; always DEL sn.
+/// Pre-hash leftovers were a STRING Location blob; drop them instead of WRONGTYPE.
 const DELETE_LUA: &str = r#"
 -- KEYS[1] = login:loc:{account}
 -- KEYS[2] = login:sn:{channel_id}
 -- ARGV[1] = channel_id
 redis.call('DEL', KEYS[2])
-redis.call('HDEL', KEYS[1], ARGV[1])
-if redis.call('HLEN', KEYS[1]) == 0 then
+local t = redis.call('TYPE', KEYS[1])
+if type(t) == 'table' then t = t['ok'] end
+if t == 'hash' then
+  redis.call('HDEL', KEYS[1], ARGV[1])
+  if redis.call('HLEN', KEYS[1]) == 0 then
+    redis.call('DEL', KEYS[1])
+  end
+elseif t ~= 'none' then
   redis.call('DEL', KEYS[1])
 end
 return 1
@@ -47,18 +55,64 @@ impl RedisSessionStore {
     }
 
     async fn hash_locs(&self, account: &str) -> Result<Vec<Location>, SessionError> {
+        let key = key_location(account, "");
         let mut conn = self.conn.clone();
-        let values: Vec<Vec<u8>> = ::redis::cmd("HVALS")
-            .arg(key_location(account, ""))
-            .query_async(&mut conn)
-            .await
-            .map_err(redis_err)?;
+        let values: Result<Vec<Vec<u8>>, ::redis::RedisError> =
+            ::redis::cmd("HVALS").arg(&key).query_async(&mut conn).await;
+        let values = match values {
+            Ok(v) => v,
+            Err(err) if is_wrong_type(&err) => {
+                warn!(%key, "dropping incompatible location key");
+                let _: () = ::redis::cmd("DEL")
+                    .arg(&key)
+                    .query_async(&mut conn)
+                    .await
+                    .map_err(redis_err)?;
+                return Ok(Vec::new());
+            }
+            Err(err) => return Err(redis_err(err)),
+        };
         let mut out = Vec::with_capacity(values.len());
         for bytes in values {
             out.push(Location::decode(&bytes)?);
         }
         Ok(out)
     }
+
+    async fn write_session(
+        &self,
+        loc_key: &str,
+        sn_key: &str,
+        channel_id: &str,
+        loc_bytes: &[u8],
+        sn_bytes: &[u8],
+        ttl: u64,
+    ) -> Result<(), ::redis::RedisError> {
+        let mut conn = self.conn.clone();
+        ::redis::pipe()
+            .atomic()
+            .cmd("HSET")
+            .arg(loc_key)
+            .arg(channel_id)
+            .arg(loc_bytes)
+            .ignore()
+            .cmd("EXPIRE")
+            .arg(loc_key)
+            .arg(ttl)
+            .ignore()
+            .cmd("SET")
+            .arg(sn_key)
+            .arg(sn_bytes)
+            .arg("EX")
+            .arg(ttl)
+            .ignore()
+            .query_async::<()>(&mut conn)
+            .await
+    }
+}
+
+fn is_wrong_type(err: &::redis::RedisError) -> bool {
+    err.kind() == ::redis::ErrorKind::TypeError || err.code() == Some("WRONGTYPE")
 }
 
 fn redis_err(e: ::redis::RedisError) -> SessionError {
@@ -78,28 +132,39 @@ impl SessionStorage for RedisSessionStore {
         let loc_bytes = loc.encode();
         let sn_bytes = session.encode_to_vec();
         let ttl = SESSION_TTL.as_secs();
-        let mut conn = self.conn.clone();
-        ::redis::pipe()
-            .atomic()
-            .cmd("HSET")
-            .arg(&loc_key)
-            .arg(&session.channel_id)
-            .arg(loc_bytes.as_ref())
-            .ignore()
-            .cmd("EXPIRE")
-            .arg(&loc_key)
-            .arg(ttl)
-            .ignore()
-            .cmd("SET")
-            .arg(&sn_key)
-            .arg(&sn_bytes)
-            .arg("EX")
-            .arg(ttl)
-            .ignore()
-            .query_async::<()>(&mut conn)
+        match self
+            .write_session(
+                &loc_key,
+                &sn_key,
+                &session.channel_id,
+                loc_bytes.as_ref(),
+                &sn_bytes,
+                ttl,
+            )
             .await
-            .map_err(redis_err)?;
-        Ok(())
+        {
+            Ok(()) => Ok(()),
+            Err(err) if is_wrong_type(&err) => {
+                warn!(key = %loc_key, "replacing incompatible location key");
+                let mut conn = self.conn.clone();
+                let _: () = ::redis::cmd("DEL")
+                    .arg(&loc_key)
+                    .query_async(&mut conn)
+                    .await
+                    .map_err(redis_err)?;
+                self.write_session(
+                    &loc_key,
+                    &sn_key,
+                    &session.channel_id,
+                    loc_bytes.as_ref(),
+                    &sn_bytes,
+                    ttl,
+                )
+                .await
+                .map_err(redis_err)
+            }
+            Err(err) => Err(redis_err(err)),
+        }
     }
 
     async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
@@ -176,6 +241,12 @@ mod tests {
                 .map(|d| d.as_nanos())
                 .unwrap_or(0)
         )
+    }
+
+    #[test]
+    fn type_error_counts_as_wrong_type() {
+        let err = ::redis::RedisError::from((::redis::ErrorKind::TypeError, "WRONGTYPE"));
+        assert!(is_wrong_type(&err));
     }
 
     #[tokio::test]
