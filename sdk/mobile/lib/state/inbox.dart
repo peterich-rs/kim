@@ -1,6 +1,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
@@ -9,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import '../copy.dart';
 import '../core/format.dart';
 import '../core/haptics.dart';
+import '../core/image_extra.dart';
+import '../core/media.dart';
 import '../core/validation.dart';
 import '../models/models.dart';
 import 'contacts.dart';
@@ -89,12 +92,16 @@ class InboxNotifier extends Notifier<InboxState> {
         ),
       );
     }
+    final extra = parseImageExtra(event.extra);
     final msg = KimChatMsg(
       key: event.messageId == 0 ? _uuid.v4() : '${event.messageId}',
       dest: dest,
       sender: event.sender.isEmpty ? dest : event.sender,
       body: event.body,
       at: sendTimeMs(event.sendTime),
+      kind: kindFromWire(body: event.body, extra: event.extra),
+      width: extra?.width ?? 0,
+      height: extra?.height ?? 0,
     );
     _append(msg, fromSelf: event.sender == account);
     unawaited(_persistMessages(dest));
@@ -221,7 +228,28 @@ class InboxNotifier extends Notifier<InboxState> {
     await _persistMessages(dest);
     if (ref.mounted) {
       _persistThreads();
-      await KimHaptics.light();
+    }
+    Object? firstError;
+    for (final msg in out) {
+      if (msg.isVideo) {
+        continue;
+      }
+      try {
+        await _uploadAndTalkImage(dest, msg);
+        if (ref.mounted) {
+          await KimHaptics.light();
+        }
+      } catch (err) {
+        firstError ??= err;
+        if (ref.mounted) {
+          _markFailed(dest, msg.key);
+        }
+        await _persistMessages(dest);
+        await KimHaptics.error();
+      }
+    }
+    if (firstError != null) {
+      throw firstError;
     }
     return out;
   }
@@ -290,13 +318,7 @@ class InboxNotifier extends Notifier<InboxState> {
         id: msg.dest,
         kind: existing?.kind ?? ThreadKind.user,
         title: existing?.title ?? msg.dest,
-        lastBody: msg.sys
-            ? (existing?.lastBody ?? '')
-            : msg.isVideo
-            ? Copy.videoMessage
-            : msg.isImage
-            ? Copy.imageMessage
-            : truncate(msg.body),
+        lastBody: msg.sys ? (existing?.lastBody ?? '') : previewBody(msg),
         lastAt: msg.at,
         unread: unread,
       ),
@@ -324,11 +346,15 @@ class InboxNotifier extends Notifier<InboxState> {
       return;
     }
     try {
-      if (target.isImage || target.isVideo) {
+      if (target.isVideo) {
         await KimHaptics.light();
         return;
       }
-      await ref.read(clientPortProvider).talk(dest, target.body);
+      if (target.isImage) {
+        await _uploadAndTalkImage(dest, target);
+      } else {
+        await ref.read(clientPortProvider).talk(dest, target.body);
+      }
       if (!ref.mounted) {
         return;
       }
@@ -341,6 +367,54 @@ class InboxNotifier extends Notifier<InboxState> {
       await KimHaptics.error();
       rethrow;
     }
+  }
+
+  Future<void> _uploadAndTalkImage(String dest, KimChatMsg msg) async {
+    var url = msg.body;
+    if (!isRemoteUrl(url)) {
+      final file = File(url);
+      if (!file.existsSync()) {
+        throw StateError(Copy.imageFailed);
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > KimMediaClient.maxBytes) {
+        throw StateError(Copy.imageTooLarge);
+      }
+      final token = ref.read(runtimeProvider).settings.token;
+      final uploaded = await ref
+          .read(mediaPortProvider)
+          .uploadImage(
+            token: token,
+            bytes: bytes,
+            contentType: KimImageTypes.sniff(bytes) ?? KimImageTypes.jpeg,
+          );
+      url = uploaded.url;
+      if (ref.mounted) {
+        _patch(dest, msg.key, body: url, failed: false);
+      }
+      await _persistMessages(dest);
+    }
+    if (!ref.mounted) {
+      return;
+    }
+    final extra = encodeImageExtra(width: msg.width, height: msg.height);
+    await ref.read(clientPortProvider).talkImage(dest, url, extra: extra);
+  }
+
+  void _patch(String dest, String key, {String? body, bool? failed}) {
+    final prev = state.messages[dest];
+    if (prev == null) {
+      return;
+    }
+    state = state.copyWith(
+      messages: {
+        ...state.messages,
+        dest: [
+          for (final m in prev)
+            if (m.key == key) m.copyWith(body: body, failed: failed) else m,
+        ],
+      },
+    );
   }
 
   void _markFailed(String dest, String key) {

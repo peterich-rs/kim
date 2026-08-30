@@ -5,6 +5,7 @@ import {
   KIMEvent,
   KeyValueStore,
   Message,
+  MessageType,
   State,
 } from "../../src/index.ts";
 import type { WireInboxItem, WireProfile } from "../../src/proto.ts";
@@ -138,14 +139,18 @@ export class ChatSession {
   }
 
   async send(dest: string, kind: Kind, text: string): Promise<Message> {
+    return this.sendContent(dest, kind, new Content(text));
+  }
+
+  async sendContent(dest: string, kind: Kind, content: Content): Promise<Message> {
     const cli = this.client;
     if (!cli || cli.state !== State.CONNECTED) {
       throw new Error("not connected");
     }
     const { status, resp, err } =
       kind === "group"
-        ? await cli.talkToGroup(dest, new Content(text))
-        : await cli.talkToUser(dest, new Content(text));
+        ? await cli.talkToGroup(dest, content)
+        : await cli.talkToUser(dest, content);
     if (status !== 0) {
       throw new Error(mapWireStatus(status) ?? err?.message ?? `send ${status}`);
     }
@@ -153,8 +158,9 @@ export class ChatSession {
     msg.sender = cli.account;
     msg.receiver = dest;
     msg.group = kind === "group" ? dest : "";
-    msg.type = 1;
-    msg.body = text;
+    msg.type = content.type || MessageType.Text;
+    msg.body = content.body;
+    msg.extra = content.extra;
     msg.contentLoaded = true;
     return msg;
   }

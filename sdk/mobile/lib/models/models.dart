@@ -142,18 +142,24 @@ class KimChatMsg {
 
   bool get isVideo => kind == KimMsgKind.video;
 
-  KimChatMsg copyWith({bool? failed}) {
+  KimChatMsg copyWith({
+    String? body,
+    bool? failed,
+    KimMsgKind? kind,
+    int? width,
+    int? height,
+  }) {
     return KimChatMsg(
       key: key,
       dest: dest,
       sender: sender,
-      body: body,
+      body: body ?? this.body,
       at: at,
       sys: sys,
       failed: failed ?? this.failed,
-      kind: kind,
-      width: width,
-      height: height,
+      kind: kind ?? this.kind,
+      width: width ?? this.width,
+      height: height ?? this.height,
     );
   }
 

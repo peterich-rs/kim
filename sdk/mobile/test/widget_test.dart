@@ -41,7 +41,8 @@ Future<({KimRuntime runtime, ConversationStore store})> testRuntime({
     version: '1.0.0',
     buildNumber: '1',
   );
-  final store = ConversationStore(await SharedPreferences.getInstance());
+  final store = ConversationStore.memory();
+  addTearDown(store.close);
   return (runtime: runtime, store: store);
 }
 

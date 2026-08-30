@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/image_extra.dart';
 import 'package:kim_mobile/core/media.dart';
+import 'package:kim_mobile/models/models.dart';
 
 void main() {
   test('sniffs png jpeg gif webp magic bytes', () {
@@ -47,6 +50,32 @@ void main() {
       'image/png',
     );
     expect(KimImageTypes.normalize('image/png', const [1, 2, 3]), 'image/png');
+  });
+
+  test('image extra round-trips and classifies media URLs', () {
+    expect(
+      parseImageExtra(encodeImageExtra(width: 1200, height: 800)),
+      isA<ImageSize>().having((s) => s.width, 'w', 1200),
+    );
+    expect(isMediaUrl('https://media.kim.ainexc.com/alice/a.png'), isTrue);
+    expect(isMediaUrl('https://example.com/readme'), isFalse);
+    expect(
+      kindFromWire(body: 'https://media.kim.ainexc.com/a.png', extra: ''),
+      KimMsgKind.image,
+    );
+    expect(
+      previewBody(
+        const KimChatMsg(
+          key: '1',
+          dest: 'bob',
+          sender: 'alice',
+          body: 'https://media.kim.ainexc.com/a.png',
+          at: 1,
+          kind: KimMsgKind.image,
+        ),
+      ),
+      Copy.imageMessage,
+    );
   });
 
   test('normalize rejects unknown types', () {

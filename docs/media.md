@@ -19,7 +19,9 @@ Talk 帧已经有 `MessageReq.type = 2`。文件不进 WGateway / Chat / VPS。
 | 上限 | 5 MiB；`image/jpeg` `png` `webp` `gif` |
 | 鉴权 | `Authorization: Bearer` → Royal `GET /api/v1/auth/me` |
 
-`type=2` 的 `body` 是上面的 `url`，`extra` 可放宽高。`KimClient::talk_image` / `uploadImage` + `talkToUser(new Content(url, MessageType.Image))`。
+`type=2` 的 `body` 是上面的 `url`。`extra` 是紧凑 JSON `{"w":1200,"h":800}`（缺省可空）。Web 产品页渲染缩略图，点击全屏查看；Flutter 缩略图走 `cached_network_image`，预览走 `photo_view` + `dismissible_page`（pinch / 双击缩放、纵向滑关、Hero）。
+
+`KimClient::talk_image` / `uploadImage` + `talkToUser(new Content(url, MessageType.Image, extra))`。
 
 对象 key 不可猜。自定义域公开读：知道 URL 就能看（免费档没有 WAF HMAC）。不要开 `r2.dev`。
 

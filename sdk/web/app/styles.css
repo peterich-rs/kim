@@ -43,6 +43,18 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .auth-bg {
   background:
     radial-gradient(920px 520px at 8% -10%, rgb(62 224 197 / 18%), transparent 58%),

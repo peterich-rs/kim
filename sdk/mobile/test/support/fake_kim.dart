@@ -16,6 +16,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int logouts = 0;
   int connects = 0;
   int talks = 0;
+  int imageTalks = 0;
   int acks = 0;
   int friendRequests = 0;
   final eventsController = StreamController<KimEvent>.broadcast();
@@ -25,6 +26,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastOrigin = '';
   String lastTalkDest = '';
   String lastTalkBody = '';
+  String lastImageUrl = '';
+  String lastImageExtra = '';
 
   KimAuthSession _ok() {
     return session ??
@@ -117,6 +120,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
+  Future<String> talkImage(String dest, String url, {String extra = ''}) async {
+    imageTalks += 1;
+    lastTalkDest = dest;
+    lastImageUrl = url;
+    lastImageExtra = extra;
+    if (talkError != null) {
+      throw talkError!;
+    }
+    return 'message_id=1 send_time=1';
+  }
+
+  @override
   Future<void> ack(int messageId) async {
     acks += 1;
   }
@@ -128,6 +143,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     required String dest,
     required String sender,
     required String body,
+    String extra = '',
     int sendTime = 0,
   }) {
     eventsController.add(
@@ -136,6 +152,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
         dest: dest,
         sender: sender,
         body: body,
+        extra: extra,
         messageId: DateTime.now().microsecondsSinceEpoch,
         sendTime: sendTime == 0
             ? DateTime.now().millisecondsSinceEpoch

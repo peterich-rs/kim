@@ -53,7 +53,8 @@ Future<KimHarness> kimHarness({
     buildNumber: '1',
   );
   final fake = FakeKim();
-  final store = ConversationStore(await SharedPreferences.getInstance());
+  final store = ConversationStore.memory();
+  addTearDown(store.close);
   final container = ProviderContainer.test(
     retry: kimRetry,
     overrides: kimProviderOverrides(

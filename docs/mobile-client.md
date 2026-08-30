@@ -69,7 +69,7 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 
 ### Flutter 壳现在有什么
 
-- `path_provider` → `KimPaths`（documents / support / cache / temp）。路径留在 Dart 侧，给以后 SQLite 用；**没有**把 data-dir 传进 FFI。
+- `path_provider` → `KimPaths`（documents / support / cache / temp）。`support/kim-cache.db` 是会话 + 消息 SQLite（`package:sqlite3` 3.x 自带 native lib）。第一次打开会把旧的 `shared_preferences` JSON 导进去。**没有**把 data-dir 传进 FFI。
 - 登录后 `KimApi.listen` 在 Rust 里 `recv` 推送（talk / kick / friend / token）。WGateway 连接在 `login.signin` 后拆成读写半边，所以收消息不会卡住 `talk`。Flutter 只订阅这条流，不自己开 WebSocket。
 - 登录 / 注册 / 退出 / 改密：Rust `kim_client::AuthClient` 发 uncompressed protobuf，`User-Agent` / `Accept` / `Content-Type` / `Accept-Language` 由客户端设置。reqwest `gzip` 只解压响应（`Accept-Encoding: gzip`）；**不**给请求体加 `Content-Encoding`。Caddy `encode gzip zstd` 压的是响应；Royal/axum 没有 `CompressionLayer`，也不解压请求 gzip。
 - `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 存 WGateway URL、Royal HTTP origin、account、dest；token 不进 prefs。
@@ -77,7 +77,7 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 - `permission_handler`：启动时最多问一次通知；相机 / 麦克风 / 相册 **不**在启动时请求。拍照 / 选相册走自研插件 `sdk/mobile/plugins/kim_media_picker`（Android CameraX + MediaStore，iOS AVFoundation + PhotoKit）。相册 API：`pickSingle` / `pickMultiple`。拍摄 API：`takePhoto` / `takeVideo` / `capture`（默认 mixed：点按拍照、长按录像，录像模式点击开停）。权限在打开拍摄 / 相册时由原生页申请。头像：点「我」页头像 → 拍照或相册 → `POST upload.kim.ainexc.com/v1/objects` → `chat.user.update` 写 avatar URL，会话 / 通讯录 / 聊天都读这个 URL。
 - `package_info_plus` / `intl`：版本号、时间格式。
 - 产品 UI：`go_router` 底部三栏（消息 / 通讯录 / 我）+ 会话页；`flutter_riverpod` **3.4**（`AuthNotifier` + `AsyncNotifier` gateway、`Mutation` 管登录/发消息/好友副作用、`kimRetry` 只重试瞬时网络错误、`ref.mounted` 挡住作废的 async）。`liveEventsProvider` 必须在 `KimApp` 根上 watch，不能放进 IndexedStack tab（3.0 会 pause 离屏 listener）。`flutter_chat_ui` 消息列表和输入栏（消息行是 Discord 式左对齐，不是 iMessage 气泡）；`flex_color_scheme`、`flutter_animate`、`wolt_modal_sheet`、`flutter_slidable`、`toastification`、`skeletonizer`、`lucide_icons_flutter` 负责主题、动效和常见交互。主题是 **Material 3**（跟随系统亮暗）。聊天 / 改密走宽左缘跟手返回（约 80px，不靠 iOS 20px / Android 系统预测性返回）。不用 Cupertino 当 app theme，不用 Dart `web_socket_channel`。登录后自动 `connect` + `login.signin`，不再露出 ping / talk 调试按钮。
-- 会话列表和消息缓存在 `shared_preferences`（按账号）。通讯录 / 好友申请 / 搜索走 `kim-client` 的 `chat.friend.*` 与 `chat.user.search`。私聊发送前要求已是好友（`NotFriends=109` 时输入栏换成加好友）。
+- 会话列表和消息缓存在 SQLite（按账号，每会话最多 400 条）。图片：`uploadImage` → `KimApi.talkImage`（`type=2`，`extra={"w","h"}`）。列表缩略图走 `cached_network_image`（内存按显示宽解码 + 磁盘缓存，与预览共用 `CachedNetworkImageProvider`）。点击全屏：`photo_view`（pinch / 双击缩放、拖动）+ `dismissible_page`（纵向滑关闭、透明路由 Hero）。通讯录 / 好友申请 / 搜索走 `kim-client` 的 `chat.friend.*` 与 `chat.user.search`。私聊发送前要求已是好友（`NotFriends=109` 时输入栏换成加好友）。
 - Android **main** `AndroidManifest` 声明 `INTERNET`（release WSS 以前缺这个会挂）。`usesCleartextTraffic` 仅 debug/profile，给本地 `ws://127.0.0.1:8001`。`allowBackup="false"`。
 - iOS `NSAllowsLocalNetworking`；**不**设 `NSAllowsArbitraryLoads`。`NSCameraUsageDescription` / `NSPhotoLibraryUsageDescription` 给拍摄和相册。
 - Xcode 编 iOS 时 Run Script 走 `ios/Scripts/run_xcode_backend.sh`，把 `~/.cargo/bin` 加进 PATH。否则 GUI 里找不到 `rustup`，`PhaseScriptExecution` 会以 native assets 失败退出。打开 `ios/Runner.xcworkspace`（不要开 `Runner.xcodeproj`）。`Pods/` 不进 git，Xcode 编译前要 `cd ios && pod install`，否则 `[CP] Check Pods Manifest.lock` 会报 sandbox 不同步。插件走 SPM。Podfile **不要** `use_frameworks!`，链的是 `libPods-Runner.a`；链 `Pods_Runner.framework` 会 `ld: framework 'Pods_Runner' not found`。

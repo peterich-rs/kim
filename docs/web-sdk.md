@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。`LoginReq.device` 默认 `"web"`（多端可同时在线）；移动端应传 `"mobile"` / `"ios"` / `"android"`，同一账号只保留一个移动会话。产品页 `sdk/web/app`（React + React Router + Tailwind）：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。图片：`uploadImage(token, blob)` → `talkToUser(dest, new Content(url, MessageType.Image))`，见 [media.md](media.md)。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。`LoginReq.device` 默认 `"web"`（多端可同时在线）；移动端应传 `"mobile"` / `"ios"` / `"android"`，同一账号只保留一个移动会话。产品页 `sdk/web/app`（React + React Router + Tailwind）：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。图片：`uploadImage(token, blob)` → `talkToUser(dest, new Content(url, MessageType.Image, extra))`，`extra` 为 `{"w","h"}`。产品页会话里渲染缩略图，点击全屏查看，见 [media.md](media.md)。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL。
 
