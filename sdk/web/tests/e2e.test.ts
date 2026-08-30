@@ -82,10 +82,10 @@ function stop(proc: ChildProcess | undefined): void {
   proc.kill("SIGTERM");
 }
 
-function sdk(url: string, account: string): KIMClient {
+function sdk(url: string, account: string, device?: string): KIMClient {
   const cli = new KIMClient(
     url,
-    { token: mintToken(account) },
+    { token: mintToken(account), device },
     {
       reconnect: false,
       heartbeatMs: 0,
@@ -212,12 +212,25 @@ public_port = ${chatPort}
     await dave.logout();
   });
 
-  it("kicks the previous connection of the same account", async () => {
-    const first = sdk(url, "erin");
+  it("keeps two web sessions of the same account", async () => {
+    const first = sdk(url, "erin", "web");
     const events: string[] = [];
     first.register([KIMEvent.Kickout], (e) => events.push(e));
     expect((await first.login()).success).toBe(true);
-    const second = sdk(url, "erin");
+    const second = sdk(url, "erin", "web");
+    expect((await second.login()).success).toBe(true);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(events).not.toContain(KIMEvent.Kickout);
+    await first.logout();
+    await second.logout();
+  });
+
+  it("kicks the previous mobile session of the same account", async () => {
+    const first = sdk(url, "erin", "mobile");
+    const events: string[] = [];
+    first.register([KIMEvent.Kickout], (e) => events.push(e));
+    expect((await first.login()).success).toBe(true);
+    const second = sdk(url, "erin", "ios");
     expect((await second.login()).success).toBe(true);
     await expect.poll(() => events, { timeout: 3_000 }).toContain(KIMEvent.Kickout);
     await second.logout();
