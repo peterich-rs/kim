@@ -22,10 +22,12 @@
       "bucket_name": "kim-media",
     },
   ],
+  // DNS is a proxied CNAME (created in dashboard/API). Custom Domain cannot
+  // be attached on top of an existing CNAME; this matches kim-web.
   "routes": [
     {
-      "pattern": "upload.kim.ainexc.com",
-      "custom_domain": true,
+      "pattern": "upload.kim.ainexc.com/*",
+      "zone_name": "ainexc.com",
     },
   ],
 }

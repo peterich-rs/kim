@@ -15,7 +15,7 @@ Talk 帧已经有 `MessageReq.type = 2`。文件不进 WGateway / Chat / VPS。
 |--|--|
 | 桶 | `kim-media`（WNAM, Standard）。`r2.dev` **关** |
 | 读 | R2 自定义域 `https://media.kim.ainexc.com`（不占 Workers 10 万/天） |
-| 写 | Worker `kim-media`，主机名 `upload.kim.ainexc.com` |
+| 写 | Worker `kim-media`，Route `upload.kim.ainexc.com/*`（橙云 CNAME → `kim.ainexc.com`） |
 | 上限 | 5 MiB；`image/jpeg` `png` `webp` `gif` |
 | 鉴权 | `Authorization: Bearer` → Royal `GET /api/v1/auth/me` |
 
