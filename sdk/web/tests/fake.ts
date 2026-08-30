@@ -57,6 +57,7 @@ export class LoopbackGw {
   sockets: FakeSocket[] = [];
   lastTalkDest = "";
   lastTalkBody = "";
+  dropOn = "";
 
   factory = (_url: string): FakeSocket => {
     const s = new FakeSocket(this);
@@ -79,6 +80,10 @@ export class LoopbackGw {
       return;
     }
     const pkt = wire.pkt;
+    if (this.dropOn && pkt.command === this.dropOn) {
+      sock.close();
+      return;
+    }
     if (pkt.command === Command.ChatUserTalk || pkt.command === Command.ChatGroupTalk) {
       this.lastTalkDest = pkt.dest;
       this.lastTalkBody = new TextDecoder().decode(pkt.payload);

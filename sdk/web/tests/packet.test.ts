@@ -10,7 +10,14 @@ import {
   readPacket,
   resetSequence,
 } from "../src/packet.ts";
-import { encodeLoginReq, decodeLoginResp, encodeLoginResp } from "../src/proto.ts";
+import {
+  encodeLoginReq,
+  decodeLoginResp,
+  encodeLoginResp,
+  decodeUserListResp,
+  decodeInboxResp,
+  decodeIndexResp,
+} from "../src/proto.ts";
 import { Flag, Status } from "../src/status.ts";
 import { readU32BE } from "../src/bytes.ts";
 
@@ -54,5 +61,13 @@ describe("LogicPkt", () => {
     pkt.status = Status.Success;
     const got = LogicPkt.from(pkt.bytes());
     expect(decodeLoginResp(got.payload).channelId).toBe("wg-1_alice_1");
+  });
+});
+
+describe("empty protobuf bodies", () => {
+  it("decodes 0-byte list/inbox/index as empty", () => {
+    expect(decodeUserListResp(new Uint8Array())).toEqual([]);
+    expect(decodeInboxResp(new Uint8Array())).toEqual([]);
+    expect(decodeIndexResp(new Uint8Array())).toEqual([]);
   });
 });

@@ -37,6 +37,9 @@ export function mapUserError(err: unknown): string {
   if (
     msg.includes("Failed to fetch") ||
     msg.includes("NetworkError") ||
+    msg.includes("websocket error") ||
+    msg.includes("connection closed before login") ||
+    msg.includes("closed during sync") ||
     msg === "offline" ||
     msg.includes("network")
   ) {
@@ -45,7 +48,7 @@ export function mapUserError(err: unknown): string {
   if (status !== undefined && status >= 500) {
     return COPY.unavailable;
   }
-  if (msg.includes("登录网关") || msg.includes("login")) {
+  if (msg.includes("登录网关") || msg.includes("login status 105")) {
     return COPY.authFailed;
   }
   return COPY.unavailable;

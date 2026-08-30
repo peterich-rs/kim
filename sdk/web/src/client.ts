@@ -868,6 +868,12 @@ export class KIMClient implements ContentLoader {
     if (this.state === State.CLOSING || this.state === State.CLOSED) {
       return;
     }
+    if (this.state === State.CONNECTING) {
+      this.stopLoops();
+      this.flushSendq(KIMStatus.SendFailed);
+      this.state = State.INIT;
+      return;
+    }
     if (this.kicked || !this.opts.reconnect) {
       this.finishClose(err.message);
       return;

@@ -36,6 +36,9 @@ describe("mapUserError", () => {
     );
     expect(mapUserError(new Error("invalid account"))).toBe(COPY.invalidAccount);
     expect(mapUserError(new Error("login timeout (chat unreachable?)"))).toBe(COPY.timeout);
+    expect(mapUserError(new Error("login status 105"))).toBe(COPY.authFailed);
+    expect(mapUserError(new Error("connection closed before login"))).toBe(COPY.network);
+    expect(mapUserError(new Error("websocket error"))).toBe(COPY.network);
   });
 
   it("does not leak raw technical messages", () => {
