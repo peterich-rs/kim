@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Flutter tooling + local ws://127.0.0.1:8001. Not merged into release. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic"
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:targetApi="28" />
+</manifest>

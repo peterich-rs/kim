@@ -9,3 +9,8 @@ node_modules/
 
 # 付费小册原文，不进公开仓库
 /books/
+
+# Flutter
+/sdk/mobile/build/
+/sdk/mobile/.dart_tool/
+/sdk/mobile/rust/target/

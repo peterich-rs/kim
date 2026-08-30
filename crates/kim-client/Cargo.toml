@@ -1,0 +1,28 @@
+[package]
+name = "kim-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KIM client: session/login/talk/ack over kim-core Conn (kim-ws today)"
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+base64 = "0.22"
+bytes.workspace = true
+kim-core.workspace = true
+kim-protocol.workspace = true
+kim-ws.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
