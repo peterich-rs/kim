@@ -125,7 +125,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }) async {
     await _ensure();
     return _session(
-      await _auth(origin, userAgent).login(account: account, password: password),
+      await _auth(
+        origin,
+        userAgent,
+      ).login(account: account, password: password),
     );
   }
 

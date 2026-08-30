@@ -1,6 +1,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +11,8 @@ import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
 import '../core/validation.dart';
-import '../state/session.dart';
+import '../state/auth.dart';
+import '../state/mutations.dart';
 import '../widgets/kim_text_field.dart';
 
 class PasswordPage extends ConsumerStatefulWidget {
@@ -24,8 +26,6 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   late final TextEditingController _old;
   late final TextEditingController _next;
   late final TextEditingController _confirm;
-  bool _busy = false;
-  String _error = '';
   String? _oldErr;
   String? _nextErr;
   String? _confirmErr;
@@ -47,9 +47,6 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   }
 
   Future<void> _save() async {
-    if (_busy) {
-      return;
-    }
     final oldErr = validatePassword(_old.text);
     final nextErr = validatePassword(_next.text);
     final confirmErr = validateConfirm(_next.text, _confirm.text);
@@ -57,17 +54,17 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       _oldErr = oldErr;
       _nextErr = nextErr;
       _confirmErr = confirmErr;
-      _error = '';
     });
     if (oldErr != null || nextErr != null || confirmErr != null) {
       return;
     }
-    setState(() => _busy = true);
+    changePasswordMutation.reset(ref);
     try {
-      await ref.read(sessionProvider.notifier).changePassword(
-        oldPassword: _old.text,
-        newPassword: _next.text,
-      );
+      await changePasswordMutation.run(ref, (tsx) async {
+        await tsx
+            .get(authProvider.notifier)
+            .changePassword(oldPassword: _old.text, newPassword: _next.text);
+      });
       if (!mounted) {
         return;
       }
@@ -82,19 +79,18 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       context.pop();
     } catch (err) {
       await KimHaptics.error();
-      if (mounted) {
-        setState(() => _error = mapUserError(err));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final mut = ref.watch(changePasswordMutation);
+    final busy = mut is MutationPending;
+    final error = switch (mut) {
+      MutationError(:final error) => mapUserError(error),
+      _ => '',
+    };
     return Scaffold(
       appBar: AppBar(title: const Text(Copy.changePassword)),
       body: ListView(
@@ -128,16 +124,18 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
             onEditingComplete: _save,
             autofillHints: const [AutofillHints.newPassword],
           ),
-          if (_error.isNotEmpty)
+          if (error.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(_error, style: TextStyle(color: scheme.error)),
+              child: Text(error, style: TextStyle(color: scheme.error)),
             ),
           const Gap(24),
           FilledButton(
-            onPressed: _busy ? null : _save,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-            child: _busy
+            onPressed: busy ? null : _save,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            child: busy
                 ? SizedBox(
                     width: 20,
                     height: 20,

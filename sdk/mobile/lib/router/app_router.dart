@@ -12,13 +12,14 @@ import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
+import '../state/auth.dart';
 import '../state/location.dart';
 import '../state/session.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref.onDispose(refresh.dispose);
-  ref.listen<bool>(sessionProvider.select((s) => s.signedIn), (prev, next) {
+  ref.listen(authProvider.select((s) => s.signedIn), (prev, next) {
     refresh.value++;
   });
 

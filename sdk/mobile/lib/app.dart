@@ -13,6 +13,7 @@ import 'kim_bridge.dart';
 import 'router/app_router.dart';
 import 'state/live.dart';
 import 'state/providers.dart';
+import 'state/retry.dart';
 import 'theme/kim_theme.dart';
 import 'widgets/kim_offline_banner.dart';
 
@@ -21,6 +22,7 @@ class KimApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Keep these on the root. IndexedStack tabs pause Riverpod 3 listeners.
     ref.watch(liveEventsProvider);
     ref.watch(sessionLinkProvider);
     final router = ref.watch(routerProvider);
@@ -43,9 +45,7 @@ class KimApp extends ConsumerWidget {
           return GestureDetector(
             onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
             behavior: HitTestBehavior.translucent,
-            child: KimOfflineBanner(
-              child: child ?? const SizedBox.shrink(),
-            ),
+            child: KimOfflineBanner(child: child ?? const SizedBox.shrink()),
           );
         },
       ),
@@ -71,12 +71,13 @@ class KimAppHost extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ProviderScope(
-      overrides: [
-        runtimeProvider.overrideWithValue(runtime),
-        authPortProvider.overrideWithValue(auth),
-        clientPortProvider.overrideWithValue(client),
-        conversationStoreProvider.overrideWithValue(store),
-      ],
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: runtime,
+        auth: auth,
+        client: client,
+        store: store,
+      ),
       child: const KimApp(),
     );
   }

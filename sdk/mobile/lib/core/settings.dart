@@ -83,7 +83,9 @@ class SettingsStore {
   }
 
   Future<void> saveHttpOrigin(String value) async {
-    httpOrigin = value.trim().isEmpty ? defaultHttp : value.trim().replaceAll(RegExp(r'/$'), '');
+    httpOrigin = value.trim().isEmpty
+        ? defaultHttp
+        : value.trim().replaceAll(RegExp(r'/$'), '');
     await _prefs.setString(_kHttp, httpOrigin);
   }
 
@@ -96,7 +98,10 @@ class SettingsStore {
     }
   }
 
-  Future<void> saveSession({required String token, required String account}) async {
+  Future<void> saveSession({
+    required String token,
+    required String account,
+  }) async {
     await saveToken(token);
     await saveAccount(account);
   }

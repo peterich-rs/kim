@@ -12,6 +12,7 @@ import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
 import '../../state/inbox.dart';
+import '../../state/mutations.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_header.dart';
@@ -57,7 +58,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   Future<void> _search() async {
     setState(() => _searching = true);
     try {
-      await ref.read(contactsProvider.notifier).search(_query.text);
+      await searchPeopleMutation.run(ref, (tsx) {
+        return tsx.get(contactsProvider.notifier).search(_query.text);
+      });
     } catch (err) {
       _toast(socialError(err));
     } finally {
@@ -69,7 +72,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
   Future<void> _request(String dest) async {
     try {
-      await ref.read(contactsProvider.notifier).request(dest);
+      await friendRequestMutation(dest).run(ref, (tsx) {
+        return tsx.get(contactsProvider.notifier).request(dest);
+      });
       final social = ref.read(contactsProvider);
       _toast(
         social.isFriend(dest) ? Copy.friendAccepted : Copy.requestSent,
@@ -85,7 +90,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
   Future<void> _accept(KimPerson person) async {
     try {
-      await ref.read(contactsProvider.notifier).accept(person.account);
+      await friendAcceptMutation(person.account).run(ref, (tsx) {
+        return tsx.get(contactsProvider.notifier).accept(person.account);
+      });
       _toast(Copy.friendAccepted, success: true);
       if (mounted) {
         _open(person.account, person.title);

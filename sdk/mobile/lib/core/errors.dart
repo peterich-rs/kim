@@ -2,6 +2,21 @@ library;
 
 import '../copy.dart';
 
+/// Errors that must not trip Riverpod 3 automatic retry (auth, validation).
+bool isPermanentClientError(Object err) {
+  final msg = err.toString();
+  return msg.contains('401') ||
+      msg.contains('409') ||
+      msg.contains('账号或密码错误') ||
+      msg.contains('账号已存在') ||
+      msg.contains('invalid account') ||
+      msg.contains('invalid password') ||
+      msg.contains('status 101') ||
+      msg.contains('status 108') ||
+      msg.contains('status 109') ||
+      msg.contains('status 110');
+}
+
 String mapUserError(Object err) {
   final msg = err.toString();
   if (msg.contains('401') || msg.contains('账号或密码错误')) {

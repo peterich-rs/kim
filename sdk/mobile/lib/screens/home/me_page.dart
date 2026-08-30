@@ -1,6 +1,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
+import '../../state/auth.dart';
+import '../../state/gateway.dart';
+import '../../state/mutations.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../widgets/kim_avatar.dart';
@@ -22,10 +26,12 @@ class MePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     final runtime = ref.watch(runtimeProvider);
+    final logout = ref.watch(signOutMutation);
     final settings = runtime.settings;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final local = settings.httpOrigin.contains('127.0.0.1');
+    final loggingOut = logout is MutationPending;
 
     return Scaffold(
       body: CustomScrollView(
@@ -101,9 +107,13 @@ class MePage extends ConsumerWidget {
                         Copy.logout,
                         style: TextStyle(color: scheme.error),
                       ),
-                      onTap: session.busy
+                      onTap: loggingOut
                           ? null
-                          : () => ref.read(sessionProvider.notifier).signOut(),
+                          : () {
+                              signOutMutation.run(ref, (tsx) async {
+                                await tsx.get(authProvider.notifier).signOut();
+                              });
+                            },
                     ),
                   ],
                 ),
@@ -139,7 +149,7 @@ class MePage extends ConsumerWidget {
                           } else {
                             await settings.useProd();
                           }
-                          await ref.read(sessionProvider.notifier).connect();
+                          ref.invalidate(gatewayProvider);
                         },
                       ),
                     ),
@@ -154,8 +164,7 @@ class MePage extends ConsumerWidget {
                         leading: const Icon(LucideIcons.refreshCw),
                         title: const Text(Copy.retry),
                         subtitle: Text(session.connectError ?? Copy.offline),
-                        onTap: () =>
-                            ref.read(sessionProvider.notifier).connect(),
+                        onTap: () => ref.invalidate(gatewayProvider),
                       ),
                   ],
                 ),

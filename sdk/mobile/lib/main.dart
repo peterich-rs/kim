@@ -6,6 +6,7 @@ import 'core/runtime.dart';
 import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'state/providers.dart';
+import 'state/retry.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,12 +15,13 @@ Future<void> main() async {
   final store = await ConversationStore.load();
   runApp(
     ProviderScope(
-      overrides: [
-        runtimeProvider.overrideWithValue(runtime),
-        authPortProvider.overrideWithValue(bridge),
-        clientPortProvider.overrideWithValue(bridge),
-        conversationStoreProvider.overrideWithValue(store),
-      ],
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: runtime,
+        auth: bridge,
+        client: bridge,
+        store: store,
+      ),
       child: const KimApp(),
     ),
   );
