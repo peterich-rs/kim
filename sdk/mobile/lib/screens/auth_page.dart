@@ -5,7 +5,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 
 import '../copy.dart';
 import '../core/errors.dart';
@@ -14,6 +13,7 @@ import '../core/validation.dart';
 import '../state/auth.dart';
 import '../state/mutations.dart';
 import '../state/providers.dart';
+import '../theme/motion.dart';
 import '../widgets/kim_mark.dart';
 import '../widgets/kim_text_field.dart';
 
@@ -30,6 +30,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   late final TextEditingController _account;
   late final TextEditingController _password;
   late final TextEditingController _confirm;
+  late bool _register;
   String? _accountErr;
   String? _passwordErr;
   String? _confirmErr;
@@ -37,9 +38,18 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   @override
   void initState() {
     super.initState();
+    _register = widget.register;
     _account = TextEditingController();
     _password = TextEditingController();
     _confirm = TextEditingController();
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.register != widget.register) {
+      _register = widget.register;
+    }
   }
 
   @override
@@ -50,15 +60,14 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     super.dispose();
   }
 
-  Mutation<void> get _mutation =>
-      widget.register ? registerMutation : signInMutation;
+  Mutation<void> get _mutation => _register ? registerMutation : signInMutation;
 
   Future<void> _submit() async {
     final account = _account.text.trim();
     final password = _password.text;
     final accountErr = validateAccount(account);
     final passwordErr = validatePassword(password);
-    final confirmErr = widget.register
+    final confirmErr = _register
         ? validateConfirm(password, _confirm.text)
         : null;
     setState(() {
@@ -74,11 +83,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       await _mutation.run(ref, (tsx) async {
         await tsx
             .get(authProvider.notifier)
-            .signIn(
-              register: widget.register,
-              account: account,
-              password: password,
-            );
+            .signIn(register: _register, account: account, password: password);
       });
     } catch (err) {
       await KimHaptics.error();
@@ -90,7 +95,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final settings = ref.watch(runtimeProvider).settings;
-    final isRegister = widget.register;
+    final isRegister = _register;
     final mut = ref.watch(_mutation);
     final busy = mut is MutationPending;
     final error = switch (mut) {
@@ -191,18 +196,26 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                                   : AutofillHints.password,
                             ],
                           ),
-                          if (isRegister)
-                            KimTextField(
-                              controller: _confirm,
-                              label: Copy.confirmPassword,
-                              hintText: Copy.confirmPlaceholder,
-                              errorText: _confirmErr,
-                              obscureable: true,
-                              maxLength: 128,
-                              textInputAction: TextInputAction.done,
-                              onEditingComplete: _submit,
-                              autofillHints: const [AutofillHints.newPassword],
-                            ),
+                          AnimatedSize(
+                            duration: KimMotion.medium,
+                            curve: KimMotion.standard,
+                            alignment: Alignment.topCenter,
+                            child: isRegister
+                                ? KimTextField(
+                                    controller: _confirm,
+                                    label: Copy.confirmPassword,
+                                    hintText: Copy.confirmPlaceholder,
+                                    errorText: _confirmErr,
+                                    obscureable: true,
+                                    maxLength: 128,
+                                    textInputAction: TextInputAction.done,
+                                    onEditingComplete: _submit,
+                                    autofillHints: const [
+                                      AutofillHints.newPassword,
+                                    ],
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
                           if (error.isNotEmpty) ...[
                             const Gap(12),
                             DecoratedBox(
@@ -262,7 +275,13 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                 key: const Key('auth-toggle'),
                 onPressed: busy
                     ? null
-                    : () => context.go(isRegister ? '/login' : '/register'),
+                    : () {
+                        _mutation.reset(ref);
+                        setState(() {
+                          _register = !_register;
+                          _confirmErr = null;
+                        });
+                      },
                 child: Text(
                   isRegister
                       ? '${Copy.hasAccount} ${Copy.goLogin}'

@@ -67,8 +67,11 @@ class ConversationTile extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: thread.unread > 0
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
                                   fontSize: 17,
+                                  color: scheme.onSurface,
                                 ),
                               ),
                             ),
@@ -92,8 +95,13 @@ class ConversationTile extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: scheme.onSurfaceVariant,
+                                  color: thread.unread > 0
+                                      ? scheme.onSurface.withValues(alpha: 0.82)
+                                      : scheme.onSurfaceVariant,
                                   fontSize: 15,
+                                  fontWeight: thread.unread > 0
+                                      ? FontWeight.w500
+                                      : FontWeight.w400,
                                 ),
                               ),
                             ),

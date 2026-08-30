@@ -241,4 +241,77 @@ void main() {
     await pumpUi(tester);
     expect(find.text(Copy.conversations), findsWidgets);
   });
+
+  testWidgets('chat thread uses Discord rows, not colored bubbles', (
+    tester,
+  ) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+
+    expect(find.text(Copy.privateChat), findsOneWidget);
+    expect(find.text('hello from bob'), findsOneWidget);
+    expect(find.text(Copy.you), findsNothing);
+    expect(find.text('Bobby'), findsWidgets);
+  });
+
+  testWidgets('long-pressing a message offers copy', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+
+    await tester.longPress(find.text('hello from bob'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text(Copy.copy), findsOneWidget);
+  });
+
+  testWidgets('auth toggle keeps typed account without swapping routes', (
+    tester,
+  ) async {
+    final env = await testRuntime();
+    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'alice');
+    await tapKey(tester, const Key('auth-toggle'));
+    expect(find.text(Copy.registerTitle), findsOneWidget);
+    expect(find.text('alice'), findsOneWidget);
+    expect(find.text(Copy.confirmPassword), findsOneWidget);
+  });
+
+  testWidgets('failed send shows retry on the message row', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    fake.talkError = Exception('offline');
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).last, 'ping');
+    await tester.pump();
+    await tester.tap(find.byIcon(LucideIcons.send));
+    await pumpUi(tester);
+
+    expect(find.text('ping'), findsOneWidget);
+    expect(find.text(Copy.retry), findsWidgets);
+  });
 }

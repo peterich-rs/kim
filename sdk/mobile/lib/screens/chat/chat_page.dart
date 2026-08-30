@@ -1,16 +1,20 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
+import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 
 import '../../copy.dart';
-import '../../core/errors.dart';
 import '../../core/format.dart';
+import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
 import '../../state/gateway.dart';
@@ -21,6 +25,7 @@ import '../../theme/kim_theme.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
+import '../../widgets/kim_hairline.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -57,20 +62,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.dispose();
   }
 
-  void _sync(List<KimChatMsg> rows) {
-    final have = {for (final m in _controller.messages) m.id};
+  Future<void> _sync(List<KimChatMsg> rows) async {
+    final have = {for (final m in _controller.messages) m.id: m};
     for (final m in rows) {
-      if (!have.contains(m.key)) {
-        _controller.insertMessage(_toFlyer(m));
+      final next = _toFlyer(m);
+      final old = have[m.key];
+      if (old == null) {
+        await _controller.insertMessage(next);
+      } else if (old.status != next.status) {
+        await _controller.updateMessage(old, next);
       }
     }
   }
 
   Message _toFlyer(KimChatMsg m) {
+    final at = (dateTimeFromEpoch(m.at) ?? DateTime.now()).toUtc();
+    if (m.sys) {
+      return Message.system(
+        id: m.key,
+        authorId: m.sender,
+        createdAt: at,
+        text: m.body,
+      );
+    }
     return Message.text(
       id: m.key,
       authorId: m.sender,
-      createdAt: (dateTimeFromEpoch(m.at) ?? DateTime.now()).toUtc(),
+      createdAt: at,
       text: m.body,
       status: m.failed ? MessageStatus.error : MessageStatus.sent,
     );
@@ -79,15 +97,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _send(String text) async {
     final send = sendMessageMutation(widget.id);
     try {
-      final msg = await send.run(ref, (tsx) {
+      await send.run(ref, (tsx) {
         return tsx.get(inboxProvider.notifier).send(widget.id, text);
       });
-      if (!mounted) {
-        return;
+    } on StateError catch (err) {
+      if (mounted) {
+        toastification.show(
+          context: context,
+          type: ToastificationType.error,
+          style: ToastificationStyle.flatColored,
+          title: Text(err.message),
+          autoCloseDuration: const Duration(seconds: 3),
+          alignment: Alignment.topCenter,
+        );
       }
-      await _controller.insertMessage(_toFlyer(msg));
-    } catch (err) {
-      final message = mapTalkError(err);
+    } catch (_) {
+      // Talk failures stay on the row with a retry control.
+    }
+    if (!mounted) {
+      return;
+    }
+    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+  }
+
+  Future<void> _retry(String key) async {
+    try {
+      await ref.read(inboxProvider.notifier).retry(widget.id, key);
+    } on StateError catch (err) {
       if (!mounted) {
         return;
       }
@@ -95,11 +131,85 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         context: context,
         type: ToastificationType.error,
         style: ToastificationStyle.flatColored,
-        title: Text(message),
+        title: Text(err.message),
         autoCloseDuration: const Duration(seconds: 3),
         alignment: Alignment.topCenter,
       );
+    } catch (_) {
+      // Stay failed; the retry control remains on the row.
     }
+    if (!mounted) {
+      return;
+    }
+    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+  }
+
+  Future<void> _onLongPress(
+    BuildContext context,
+    Message message, {
+    required int index,
+    required LongPressStartDetails details,
+  }) async {
+    final text = switch (message) {
+      TextMessage(:final text) => text,
+      SystemMessage(:final text) => text,
+      _ => '',
+    };
+    if (text.isEmpty) {
+      return;
+    }
+    await KimHaptics.light();
+    if (!context.mounted) {
+      return;
+    }
+    final stamp = formatMessageStampAt(message.createdAt);
+    await WoltModalSheet.show<void>(
+      context: context,
+      showDragHandle: true,
+      pageListBuilder: (sheetContext) => [
+        WoltModalSheetPage(
+          hasSabGradient: false,
+          navBarHeight: 28,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (stamp.isNotEmpty) ListTile(dense: true, title: Text(stamp)),
+                ListTile(
+                  leading: const Icon(LucideIcons.copy, size: 18),
+                  title: const Text(Copy.copy),
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: text));
+                    if (sheetContext.mounted) {
+                      Navigator.of(sheetContext).pop();
+                    }
+                    if (!context.mounted) {
+                      return;
+                    }
+                    toastification.show(
+                      context: context,
+                      type: ToastificationType.success,
+                      style: ToastificationStyle.flatColored,
+                      title: const Text(Copy.copied),
+                      autoCloseDuration: const Duration(seconds: 2),
+                      alignment: Alignment.topCenter,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _nameOf(String authorId, String me, ContactsState social) {
+    if (authorId == me) {
+      return Copy.you;
+    }
+    return social.person(authorId)?.title ?? authorId;
   }
 
   @override
@@ -113,15 +223,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         social.ready &&
         !social.isFriend(widget.id);
 
-    ref.listen(inboxProvider.select((s) => s.messages[widget.id] ?? const []), (
-      prev,
-      next,
-    ) {
-      _sync(next);
-    });
+    ref.listen<List<KimChatMsg>>(
+      inboxProvider.select((s) => s.messages[widget.id] ?? const []),
+      (prev, next) => unawaited(_sync(next)),
+    );
+
+    final subtitle = widget.kind == ThreadKind.group
+        ? Copy.groupChat
+        : Copy.privateChat;
 
     return Scaffold(
+      backgroundColor: KimTheme.chatCanvasOf(context),
       appBar: AppBar(
+        toolbarHeight: 64,
         titleSpacing: 0,
         title: Row(
           children: [
@@ -132,13 +246,25 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -156,10 +282,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               chatController: _controller,
               currentUserId: account,
               resolveUser: (id) async =>
-                  User(id: id, name: id == account ? Copy.you : id),
+                  User(id: id, name: _nameOf(id, account, social)),
               onMessageSend: _send,
+              onMessageLongPress: _onLongPress,
               theme: KimTheme.chat(theme),
-              backgroundColor: theme.colorScheme.surfaceContainerLowest,
+              backgroundColor: KimTheme.chatCanvasOf(context),
               builders: Builders(
                 emptyChatListBuilder: (_) => const EmptyState(
                   icon: LucideIcons.messageCircle,
@@ -167,7 +294,49 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   subtitle: Copy.noMessagesHint,
                 ),
                 textMessageBuilder: kimTextMessage,
-                chatMessageBuilder: kimChatMessage,
+                systemMessageBuilder: kimSystemMessage,
+                chatMessageBuilder:
+                    (
+                      context,
+                      message,
+                      index,
+                      animation,
+                      child, {
+                      isRemoved,
+                      required isSentByMe,
+                      groupStatus,
+                    }) {
+                      DateTime? previousCreatedAt;
+                      final rows = _controller.messages;
+                      if (index > 0 && index < rows.length) {
+                        previousCreatedAt = rows[index - 1].createdAt;
+                      }
+                      return kimChatMessage(
+                        context,
+                        message,
+                        index,
+                        animation,
+                        child,
+                        isRemoved: isRemoved,
+                        isSentByMe: isSentByMe,
+                        groupStatus: groupStatus,
+                        displayName: _nameOf(message.authorId, account, social),
+                        onRetry: message.status == MessageStatus.error
+                            ? () => unawaited(_retry(message.id))
+                            : null,
+                        previousCreatedAt: previousCreatedAt,
+                        onLongPress: (details) {
+                          unawaited(
+                            _onLongPress(
+                              context,
+                              message,
+                              index: index,
+                              details: details,
+                            ),
+                          );
+                        },
+                      );
+                    },
                 composerBuilder: (_) {
                   if (gated) {
                     return _FriendGate(
@@ -231,59 +400,73 @@ class _FriendGate extends ConsumerWidget {
       }
     }
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                KimAvatar(name: title),
-                const Gap(10),
-                Text(Copy.notFriends, style: theme.textTheme.titleSmall),
-                const Gap(4),
-                Text(
-                  outgoing
-                      ? Copy.waitingAccept
-                      : incoming
-                      ? Copy.friendRequestToast
-                      : Copy.addFriendToChat,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
+    return Material(
+      color: KimTheme.raisedOf(context),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const KimHairline(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(KimTheme.radiusCard),
+                  border: Border.all(color: KimTheme.hairlineOf(context)),
                 ),
-                const Gap(12),
-                if (outgoing)
-                  Text(Copy.requested, style: theme.textTheme.labelMedium)
-                else if (incoming)
-                  FilledButton(
-                    onPressed: () => run(
-                      () => friendAcceptMutation.run(ref, (tsx) {
-                        return tsx.get(contactsProvider.notifier).accept(dest);
-                      }),
-                      Copy.friendAccepted,
-                    ),
-                    child: const Text(Copy.accept),
-                  )
-                else
-                  FilledButton.tonal(
-                    onPressed: () => run(
-                      () => friendRequestMutation.run(ref, (tsx) {
-                        return tsx.get(contactsProvider.notifier).request(dest);
-                      }),
-                      Copy.requestSent,
-                    ),
-                    child: const Text(Copy.addFriend),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      KimAvatar(name: title),
+                      const Gap(10),
+                      Text(Copy.notFriends, style: theme.textTheme.titleSmall),
+                      const Gap(4),
+                      Text(
+                        outgoing
+                            ? Copy.waitingAccept
+                            : incoming
+                            ? Copy.friendRequestToast
+                            : Copy.addFriendToChat,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const Gap(12),
+                      if (outgoing)
+                        Text(Copy.requested, style: theme.textTheme.labelMedium)
+                      else if (incoming)
+                        FilledButton(
+                          onPressed: () => run(
+                            () => friendAcceptMutation.run(ref, (tsx) {
+                              return tsx
+                                  .get(contactsProvider.notifier)
+                                  .accept(dest);
+                            }),
+                            Copy.friendAccepted,
+                          ),
+                          child: const Text(Copy.accept),
+                        )
+                      else
+                        FilledButton.tonal(
+                          onPressed: () => run(
+                            () => friendRequestMutation.run(ref, (tsx) {
+                              return tsx
+                                  .get(contactsProvider.notifier)
+                                  .request(dest);
+                            }),
+                            Copy.requestSent,
+                          ),
+                          child: const Text(Copy.addFriend),
+                        ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

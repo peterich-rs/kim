@@ -9,6 +9,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   KimAuthSession? session;
   Object? error;
   Object? connectError;
+  Object? talkError;
   int logins = 0;
   int registers = 0;
   int logouts = 0;
@@ -108,6 +109,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
     talks += 1;
     lastTalkDest = dest;
     lastTalkBody = body;
+    if (talkError != null) {
+      throw talkError!;
+    }
     return 'message_id=1 send_time=1';
   }
 
