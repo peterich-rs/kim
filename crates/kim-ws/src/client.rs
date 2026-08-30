@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use fastwebsockets::handshake;
 use http_body_util::Empty;
-use hyper::header::{CONNECTION, HOST, UPGRADE};
+use hyper::header::{CONNECTION, HOST, UPGRADE, USER_AGENT};
 use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
@@ -26,6 +26,9 @@ use kim_core::{
 use crate::conn::{WsConn, WsReadHalf, WsWriteHalf};
 
 type UpgradedIo = TokioIo<Upgraded>;
+
+/// Default `User-Agent` on the HTTP Upgrade request when the caller does not set one.
+pub const DEFAULT_USER_AGENT: &str = "kim-ws";
 
 /// HTTP Upgrade 完成后、尚未 split 的客户端连接。实现 Conn；不暴露 hyper::upgrade::Upgraded。
 pub struct WsHandshakeConn {
@@ -69,13 +72,34 @@ pub async fn connect_ws(url: &str) -> Result<WsHandshakeConn, Error> {
     connect_ws_with_tls(url, None).await
 }
 
+/// Like [`connect_ws`], with an explicit `User-Agent` on the Upgrade request.
+pub async fn connect_ws_with_user_agent(
+    url: &str,
+    user_agent: &str,
+) -> Result<WsHandshakeConn, Error> {
+    connect_ws_inner(url, None, user_agent).await
+}
+
 /// Like [`connect_ws`], with an optional rustls client config (tests / extra CAs).
 /// `None` on `wss://` uses Mozilla roots via `webpki-roots`.
 pub async fn connect_ws_with_tls(
     url: &str,
     tls: Option<Arc<ClientConfig>>,
 ) -> Result<WsHandshakeConn, Error> {
+    connect_ws_inner(url, tls, DEFAULT_USER_AGENT).await
+}
+
+async fn connect_ws_inner(
+    url: &str,
+    tls: Option<Arc<ClientConfig>>,
+    user_agent: &str,
+) -> Result<WsHandshakeConn, Error> {
     let parsed = parse_ws_url(url)?;
+    let ua = if user_agent.trim().is_empty() {
+        DEFAULT_USER_AGENT
+    } else {
+        user_agent
+    };
     let stream = TcpStream::connect(&parsed.connect)
         .await
         .map_err(Error::from)?;
@@ -91,9 +115,9 @@ pub async fn connect_ws_with_tls(
             .connect(name, stream)
             .await
             .map_err(|e| Error::other(e.to_string()))?;
-        upgrade_http(&parsed.hostport, &parsed.path, tls_stream).await
+        upgrade_http(&parsed.hostport, &parsed.path, tls_stream, ua).await
     } else {
-        upgrade_http(&parsed.hostport, &parsed.path, stream).await
+        upgrade_http(&parsed.hostport, &parsed.path, stream, ua).await
     }
 }
 
@@ -120,7 +144,12 @@ fn default_client_tls() -> Result<Arc<ClientConfig>, Error> {
         .clone())
 }
 
-async fn upgrade_http<S>(hostport: &str, path: &str, stream: S) -> Result<WsHandshakeConn, Error>
+async fn upgrade_http<S>(
+    hostport: &str,
+    path: &str,
+    stream: S,
+    user_agent: &str,
+) -> Result<WsHandshakeConn, Error>
 where
     S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
@@ -130,6 +159,7 @@ where
         .header(HOST, hostport)
         .header(UPGRADE, "websocket")
         .header(CONNECTION, "upgrade")
+        .header(USER_AGENT, user_agent)
         .header("Sec-WebSocket-Key", handshake::generate_key())
         .header("Sec-WebSocket-Version", "13")
         .body(Empty::<Bytes>::new())

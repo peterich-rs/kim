@@ -22,6 +22,12 @@ pub enum ClientError {
     Protocol(#[from] ProtocolError),
     #[error("invalid token")]
     InvalidToken,
+    #[error("invalid account")]
+    InvalidAccount,
+    #[error("invalid password")]
+    InvalidPassword,
+    #[error("http {status}: {body}")]
+    Http { status: u16, body: String },
     #[error("{0}")]
     Core(#[from] CoreError),
     #[error("{0}")]

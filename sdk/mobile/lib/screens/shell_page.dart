@@ -3,20 +3,32 @@ library;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../copy.dart';
+import '../core/errors.dart';
 import '../core/haptics.dart';
 import '../core/runtime.dart';
 import '../core/settings.dart';
+import '../core/user_agent.dart';
 import '../kim_bridge.dart';
 import '../theme/motion.dart';
 import '../widgets/kim_busy_barrier.dart';
 import '../widgets/kim_log_view.dart';
 import '../widgets/kim_text_field.dart';
+import 'password_page.dart';
 
 class ShellPage extends StatefulWidget {
-  const ShellPage({super.key, required this.runtime, this.bridge});
+  const ShellPage({
+    super.key,
+    required this.runtime,
+    this.bridge,
+    this.auth,
+    this.onSignedOut,
+  });
 
   final KimRuntime runtime;
   final KimBridge? bridge;
+  final KimAuthPort? auth;
+  final VoidCallback? onSignedOut;
 
   @override
   State<ShellPage> createState() => _ShellPageState();
@@ -24,7 +36,6 @@ class ShellPage extends StatefulWidget {
 
 class _ShellPageState extends State<ShellPage> {
   late final TextEditingController _url;
-  late final TextEditingController _token;
   late final TextEditingController _dest;
   late final TextEditingController _body;
   late final KimBridge _bridge;
@@ -39,15 +50,17 @@ class _ShellPageState extends State<ShellPage> {
     super.initState();
     _bridge = widget.bridge ?? KimBridge();
     _url = TextEditingController(text: _settings.url);
-    _token = TextEditingController(text: _settings.token);
     _dest = TextEditingController(text: _settings.dest);
     _body = TextEditingController(text: 'hello');
   }
 
+  KimAuthPort get _auth => widget.auth ?? _bridge;
+
+  String get _userAgent => kimUserAgent(widget.runtime);
+
   @override
   void dispose() {
     _url.dispose();
-    _token.dispose();
     _dest.dispose();
     _body.dispose();
     super.dispose();
@@ -62,7 +75,37 @@ class _ShellPageState extends State<ShellPage> {
   Future<void> _persistFields() async {
     await _settings.saveUrl(_url.text);
     await _settings.saveDest(_dest.text);
-    await _settings.saveToken(_token.text);
+  }
+
+  Future<void> _logout() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    _append('${Copy.loggingOut}…');
+    try {
+      try {
+        await _bridge.disconnect();
+      } catch (_) {
+        // Already down.
+      }
+      try {
+        await _auth.logout(
+          origin: _settings.httpOrigin,
+          userAgent: _userAgent,
+          token: _settings.token,
+        );
+      } catch (err) {
+        _append(mapUserError(err));
+      }
+      await _settings.clearSession();
+      await KimHaptics.success();
+      widget.onSignedOut?.call();
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _run(String label, Future<String> Function() fn) async {
@@ -96,6 +139,33 @@ class _ShellPageState extends State<ShellPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('KIM (shell)'),
+        actions: [
+          IconButton(
+            tooltip: Copy.changePassword,
+            onPressed: _busy
+                ? null
+                : () async {
+                    final ok = await Navigator.of(context).push<bool>(
+                      MaterialPageRoute(
+                        builder: (_) => PasswordPage(
+                          runtime: widget.runtime,
+                          auth: _auth,
+                        ),
+                      ),
+                    );
+                    if (ok == true && mounted) {
+                      _append(Copy.passwordChanged);
+                    }
+                  },
+            icon: const Icon(Icons.lock_reset_outlined),
+          ),
+          IconButton(
+            key: const Key('logout'),
+            tooltip: Copy.logout,
+            onPressed: _busy ? null : _logout,
+            icon: const Icon(Icons.logout),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(_busy ? 4 : 0),
           child: AnimatedOpacity(
@@ -136,28 +206,31 @@ class _ShellPageState extends State<ShellPage> {
                       keyboardType: TextInputType.url,
                       onEditingComplete: () => _settings.saveUrl(_url.text),
                     ),
-                    KimTextField(
-                      controller: _token,
-                      label: 'JWT (from Royal /login — not stored in repo)',
-                      obscureable: true,
-                      onEditingComplete: () => _settings.saveToken(_token.text),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        '${Copy.signedInAs} ${_settings.account.isEmpty ? '—' : _settings.account}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
                     Wrap(
                       spacing: 8,
                       children: [
                         TextButton(
-                          onPressed: () {
+                          onPressed: () async {
                             KimHaptics.selection();
-                            _url.text = SettingsStore.localUrl;
-                            _settings.saveUrl(_url.text);
+                            await _settings.useLocal();
+                            _url.text = _settings.url;
+                            setState(() {});
                           },
                           child: const Text('local :8001'),
                         ),
                         TextButton(
-                          onPressed: () {
+                          onPressed: () async {
                             KimHaptics.selection();
-                            _url.text = SettingsStore.defaultUrl;
-                            _settings.saveUrl(_url.text);
+                            await _settings.useProd();
+                            _url.text = _settings.url;
+                            setState(() {});
                           },
                           child: const Text('prod wss'),
                         ),
@@ -175,7 +248,8 @@ class _ShellPageState extends State<ShellPage> {
                                   await _persistFields();
                                   return _bridge.connect(
                                     _url.text,
-                                    _token.text,
+                                    _settings.token,
+                                    userAgent: _userAgent,
                                   );
                                 }),
                           child: const Text('connect'),
@@ -183,8 +257,8 @@ class _ShellPageState extends State<ShellPage> {
                         FilledButton(
                           onPressed: _busy
                               ? null
-                              : () => _run('login', _bridge.login),
-                          child: const Text('login'),
+                              : () => _run('signin', _bridge.loginWs),
+                          child: const Text('signin'),
                         ),
                         OutlinedButton(
                           onPressed: _busy

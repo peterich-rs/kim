@@ -4,6 +4,7 @@
 //! as the Conn impl (WGateway `ws://` / `wss://`). TCP / QUIC later is a new
 //! Conn impl — login/talk/ack stay the same.
 
+mod auth;
 mod client;
 mod config;
 mod error;
@@ -13,8 +14,12 @@ mod session;
 mod token;
 mod wire;
 
+pub use auth::{AuthClient, AuthSession};
 pub use client::KimClient;
-pub use config::{ClientConfig, DEFAULT_DEVICE, DEFAULT_LOCAL_URL, DEFAULT_PROD_URL};
+pub use config::{
+    http_origin_from_ws, ClientConfig, DEFAULT_CLIENT_USER_AGENT, DEFAULT_DEVICE,
+    DEFAULT_LOCAL_HTTP_ORIGIN, DEFAULT_LOCAL_URL, DEFAULT_PROD_HTTP_ORIGIN, DEFAULT_PROD_URL,
+};
 pub use error::ClientError;
 pub use events::{Event, IncomingTalk, TalkResult};
 pub use login::{login_on_conn, send_ping, wait_pong};

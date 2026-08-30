@@ -1,12 +1,8 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use kim_client::{ClientConfig, KimClient};
-use tokio::runtime::Runtime;
 
-fn rt() -> &'static Runtime {
-    static RT: OnceLock<Runtime> = OnceLock::new();
-    RT.get_or_init(|| Runtime::new().expect("tokio runtime"))
-}
+use super::rt;
 
 /// Opaque handle. UI is a shell; session/login/talk live here.
 pub struct KimApi {
@@ -15,9 +11,11 @@ pub struct KimApi {
 
 impl KimApi {
     #[flutter_rust_bridge::frb(sync)]
-    pub fn new(url: String, token: String) -> Self {
+    pub fn new(url: String, token: String, user_agent: String) -> Self {
         Self {
-            inner: Mutex::new(KimClient::new(ClientConfig::new(url, token))),
+            inner: Mutex::new(KimClient::new(
+                ClientConfig::new(url, token).with_user_agent(user_agent),
+            )),
         }
     }
 
@@ -48,7 +46,10 @@ impl KimApi {
         let r = rt()
             .block_on(c.talk_to_user(&dest, &body))
             .map_err(|e| e.to_string())?;
-        Ok(format!("message_id={} send_time={}", r.message_id, r.send_time))
+        Ok(format!(
+            "message_id={} send_time={}",
+            r.message_id, r.send_time
+        ))
     }
 
     #[flutter_rust_bridge::frb(sync)]

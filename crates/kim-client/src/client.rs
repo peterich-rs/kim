@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use kim_core::{Conn, Error as CoreError, Frame, OpCode};
-use kim_ws::connect_ws;
+use kim_ws::connect_ws_with_user_agent;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -51,9 +51,13 @@ impl KimClient {
             return Err(ClientError::AlreadyConnected);
         }
         let url = self.config.url.clone();
-        let conn = tokio::time::timeout(self.config.handshake_timeout, connect_ws(&url))
-            .await
-            .map_err(|_| ClientError::HandshakeTimeout(self.config.handshake_timeout))??;
+        let user_agent = self.config.user_agent.clone();
+        let conn = tokio::time::timeout(
+            self.config.handshake_timeout,
+            connect_ws_with_user_agent(&url, &user_agent),
+        )
+        .await
+        .map_err(|_| ClientError::HandshakeTimeout(self.config.handshake_timeout))??;
         self.conn = Some(Mutex::new(Box::new(conn)));
         Ok(())
     }
