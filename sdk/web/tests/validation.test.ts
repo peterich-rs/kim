@@ -39,6 +39,9 @@ describe("mapUserError", () => {
     expect(mapUserError(new Error("login status 105"))).toBe(COPY.authFailed);
     expect(mapUserError(new Error("connection closed before login"))).toBe(COPY.network);
     expect(mapUserError(new Error("websocket error"))).toBe(COPY.network);
+    expect(mapUserError(new Error("login failed"))).toBe(COPY.wsFailed);
+    expect(mapUserError(new Error("login status 3"))).toBe(COPY.wsFailed);
+    expect(mapUserError(new Error("login status 99"))).toBe(COPY.wsFailed);
   });
 
   it("does not leak raw technical messages", () => {

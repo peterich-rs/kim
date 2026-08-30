@@ -58,6 +58,7 @@ export class LoopbackGw {
   lastTalkDest = "";
   lastTalkBody = "";
   dropOn = "";
+  statusFor: Record<string, number> = {};
 
   factory = (_url: string): FakeSocket => {
     const s = new FakeSocket(this);
@@ -92,7 +93,7 @@ export class LoopbackGw {
     resp.command = pkt.command;
     resp.sequence = pkt.sequence;
     resp.flag = Flag.Response;
-    resp.status = Status.Success;
+    resp.status = this.statusFor[pkt.command] ?? Status.Success;
     if (pkt.command === Command.SignIn) {
       resp.payload = encodeLoginResp(this.channelId);
     } else if (pkt.command === Command.OfflineIndex) {

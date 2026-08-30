@@ -31,6 +31,7 @@ export const COPY = {
   network: "网络异常，请稍后重试",
   unavailable: "服务暂时不可用，请稍后重试",
   authFailed: "登录失败，请稍后重试",
+  wsFailed: "连接未建立，请重试",
   timeout: "连接超时，请稍后重试",
   required: "请填写完整信息",
 

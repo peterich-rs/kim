@@ -640,17 +640,23 @@ export class KIMClient implements ContentLoader {
 
   private bindConn(conn: WebSocketLike): void {
     conn.onmessage = (evt) => {
-      try {
-        this.lastRead = Date.now();
-        const buf = toUint8(evt.data);
-        const wire = readPacket(buf);
-        if (wire.kind === "basic") {
-          return;
+      void (async () => {
+        try {
+          this.lastRead = Date.now();
+          const raw = evt.data;
+          const buf =
+            typeof Blob !== "undefined" && raw instanceof Blob
+              ? new Uint8Array(await raw.arrayBuffer())
+              : toUint8(raw);
+          const wire = readPacket(buf);
+          if (wire.kind === "basic") {
+            return;
+          }
+          await this.packetHandler(wire.pkt);
+        } catch (err) {
+          console.error(err);
         }
-        void this.packetHandler(wire.pkt);
-      } catch (err) {
-        console.error(err);
-      }
+      })();
     };
     conn.onerror = () => {
       void this.errorHandler(new Error("websocket error"));
@@ -668,20 +674,19 @@ export class KIMClient implements ContentLoader {
   }
 
   private async packetHandler(pkt: LogicPkt): Promise<void> {
-    if (needsRelogin(pkt.status)) {
-      try {
-        this.conn?.close();
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
     if (pkt.flag === Flag.Response) {
       const req = this.sendq.get(pkt.sequence);
       if (req) {
         clearTimeout(req.timer);
         this.sendq.delete(pkt.sequence);
         req.callback(new Response(pkt.status, pkt.dest, pkt.payload));
+      }
+      if (pkt.command === Command.SignIn && needsRelogin(pkt.status)) {
+        try {
+          this.conn?.close();
+        } catch {
+          /* ignore */
+        }
       }
       return;
     }
