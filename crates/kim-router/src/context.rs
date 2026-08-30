@@ -150,6 +150,10 @@ impl Context {
         self.storage.get_locations(accounts).await
     }
 
+    pub async fn list_locations(&self, account: &str) -> Result<Vec<Location>, SessionError> {
+        self.storage.list_locations(account).await
+    }
+
     fn response_packet(&self, status: Status) -> LogicPkt {
         let mut packet = LogicPkt::new_from(&self.request.header);
         packet.header.status = status as i32;
@@ -234,10 +238,12 @@ mod tests {
                 Location {
                     channel_id: "ch-a".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
                 Location {
                     channel_id: "ch-b".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
             ];
             let _ = ctx
@@ -278,6 +284,7 @@ mod tests {
             let recvs = [Location {
                 channel_id: "ch-x".into(),
                 gate_id: "gate-b".into(),
+                device: String::new(),
             }];
             let _ = ctx
                 .dispatch(
@@ -313,10 +320,12 @@ mod tests {
                 Location {
                     channel_id: "ch-self".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
                 Location {
                     channel_id: "ch-other".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
             ];
             let _ = ctx
@@ -360,14 +369,17 @@ mod tests {
                 Location {
                     channel_id: "ch-a".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
                 Location {
                     channel_id: "ch-b".into(),
                     gate_id: "wg-2".into(),
+                    device: String::new(),
                 },
                 Location {
                     channel_id: "ch-c".into(),
                     gate_id: "wg-1".into(),
+                    device: String::new(),
                 },
             ],
         )
@@ -406,10 +418,12 @@ mod tests {
                     Location {
                         channel_id: "ch-a".into(),
                         gate_id: "wg-1".into(),
+                        device: String::new(),
                     },
                     Location {
                         channel_id: "ch-b".into(),
                         gate_id: "wg-2".into(),
+                        device: String::new(),
                     },
                 ],
             )
@@ -462,10 +476,12 @@ mod tests {
         let loc_a = Location {
             channel_id: "ch-a".into(),
             gate_id: "gw-1".into(),
+            device: String::new(),
         };
         let loc_b = Location {
             channel_id: "ch-b".into(),
             gate_id: "gw-2".into(),
+            device: String::new(),
         };
         let ctx = Context::new(
             request("chat.group.talk", Bytes::new()),

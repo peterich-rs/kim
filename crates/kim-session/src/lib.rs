@@ -21,6 +21,14 @@ pub use dual::DualWriteStore;
 pub use keys::{key_location, key_session};
 pub use memory::MemorySessionStore;
 
+/// Mobile-class devices keep a single live session. Web/desktop/cli may overlap.
+pub fn exclusive_device(device: &str) -> bool {
+    matches!(
+        device.trim().to_ascii_lowercase().as_str(),
+        "mobile" | "android" | "ios" | "iphone" | "ipad" | "phone"
+    )
+}
+
 /// Session and location key TTL used on the Redis path (`SET EX`).
 pub const SESSION_TTL: Duration = Duration::from_secs(48 * 3600);
 
@@ -91,6 +99,16 @@ mod tests {
     #[test]
     fn session_ttl_is_48h() {
         assert_eq!(SESSION_TTL, Duration::from_secs(48 * 3600));
+    }
+
+    #[test]
+    fn exclusive_device_classifies_mobile() {
+        assert!(exclusive_device("mobile"));
+        assert!(exclusive_device("iOS"));
+        assert!(exclusive_device("Android"));
+        assert!(!exclusive_device("web"));
+        assert!(!exclusive_device(""));
+        assert!(!exclusive_device("cli"));
     }
 
     #[tokio::test]

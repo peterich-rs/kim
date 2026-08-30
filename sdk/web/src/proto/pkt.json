@@ -92,6 +92,10 @@
                 "token": {
                   "type": "string",
                   "id": 1
+                },
+                "device": {
+                  "type": "string",
+                  "id": 2
                 }
               }
             },

@@ -254,7 +254,15 @@ async fn drain_friend_packets(client: &WsClient) {
 }
 
 pub async fn login(account: &str, url: &str) -> (WsClient, Arc<LoginDialer>) {
-    let dialer = Arc::new(LoginDialer::new(DEMO_DEFAULT_SECRET));
+    login_with_device(account, url, "").await
+}
+
+pub async fn login_with_device(
+    account: &str,
+    url: &str,
+    device: &str,
+) -> (WsClient, Arc<LoginDialer>) {
+    let dialer = Arc::new(LoginDialer::new(DEMO_DEFAULT_SECRET).with_device(device));
     let mut client = WsClient::new(
         account,
         "test",

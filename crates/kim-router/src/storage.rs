@@ -25,4 +25,8 @@ pub trait SessionStorage: Send + Sync {
     async fn get(&self, channel_id: &str) -> Result<Session, SessionError>;
     async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError>;
     async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError>;
+    /// Every live location for `account`. Default forwards to [`get_locations`].
+    async fn list_locations(&self, account: &str) -> Result<Vec<Location>, SessionError> {
+        self.get_locations(&[account.to_string()]).await
+    }
 }

@@ -69,7 +69,12 @@ export function doLogin(
       if (conn.readyState !== WS_OPEN) {
         return;
       }
-      const pkt = LogicPkt.build(Command.SignIn, "", encodeLoginReq(req.token), 1);
+      const pkt = LogicPkt.build(
+        Command.SignIn,
+        "",
+        encodeLoginReq(req.token, req.device ?? "web"),
+        1,
+      );
       conn.send(pkt.bytes());
     };
 

@@ -21,8 +21,19 @@ pub fn resolve_jwt_secret() -> String {
 
 /// Send `login.signin` on an already-connected socket and wait for `LoginResp`.
 pub async fn perform_login(conn: &mut dyn Conn, token: String) -> Result<String, Error> {
+    perform_login_with_device(conn, token, String::new()).await
+}
+
+pub async fn perform_login_with_device(
+    conn: &mut dyn Conn,
+    token: String,
+    device: impl Into<String>,
+) -> Result<String, Error> {
     let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
-    pkt.write_body(&LoginReq { token });
+    pkt.write_body(&LoginReq {
+        token,
+        device: device.into(),
+    });
     conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
         .await?;
     loop {
@@ -123,6 +134,7 @@ async fn fetch_login(base: &str, account: &str, password: &str) -> Result<String
 pub struct LoginDialer {
     secret: String,
     bad_token: bool,
+    device: String,
     channel_id: Mutex<Option<String>>,
 }
 
@@ -131,12 +143,18 @@ impl LoginDialer {
         Self {
             secret: secret.into(),
             bad_token: false,
+            device: String::new(),
             channel_id: Mutex::new(None),
         }
     }
 
     pub fn with_bad_token(mut self) -> Self {
         self.bad_token = true;
+        self
+    }
+
+    pub fn with_device(mut self, device: impl Into<String>) -> Self {
+        self.device = device.into();
         self
     }
 
@@ -161,7 +179,7 @@ impl WsDialer for LoginDialer {
         } else {
             mint_token(&self.secret, &ctx.id).await?
         };
-        let channel_id = perform_login(&mut conn, token).await?;
+        let channel_id = perform_login_with_device(&mut conn, token, self.device.clone()).await?;
         self.store_channel_id(channel_id);
         Ok(conn)
     }

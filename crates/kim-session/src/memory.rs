@@ -11,6 +11,7 @@ use crate::keys::key_location;
 ///
 /// `add` / `delete` hold the write lock for the whole function (no `.await`
 /// under the lock). Reads clone and drop the guard before returning.
+/// Location index is a vec per account so web/desktop can overlap.
 #[derive(Default)]
 pub struct MemorySessionStore {
     inner: RwLock<Inner>,
@@ -19,7 +20,7 @@ pub struct MemorySessionStore {
 #[derive(Default)]
 struct Inner {
     sessions: HashMap<String, Session>,
-    locations: HashMap<String, Location>,
+    locations: HashMap<String, Vec<Location>>,
 }
 
 impl MemorySessionStore {
@@ -36,20 +37,25 @@ impl MemorySessionStore {
     }
 }
 
+fn loc_of(session: &Session) -> Location {
+    Location {
+        channel_id: session.channel_id.clone(),
+        gate_id: session.gate_id.clone(),
+        device: session.device.clone(),
+    }
+}
+
 #[async_trait]
 impl SessionStorage for MemorySessionStore {
     async fn add(&self, session: &Session) -> Result<(), SessionError> {
-        let loc = Location {
-            channel_id: session.channel_id.clone(),
-            gate_id: session.gate_id.clone(),
-        };
-        // This milestone indexes loc at login:loc:{account} only (callers pass
-        // device=""). Session.device is stored on the session record.
+        let loc = loc_of(session);
         let loc_key = key_location(&session.account, "");
         let channel_id = session.channel_id.clone();
         let stored = session.clone();
         let mut inner = self.write();
-        inner.locations.insert(loc_key, loc);
+        let slots = inner.locations.entry(loc_key).or_default();
+        slots.retain(|l| l.channel_id != loc.channel_id);
+        slots.push(loc);
         inner.sessions.insert(channel_id, stored);
         Ok(())
     }
@@ -58,14 +64,11 @@ impl SessionStorage for MemorySessionStore {
         let loc_key = key_location(account, "");
         let mut inner = self.write();
         inner.sessions.remove(channel_id);
-        match inner.locations.get(&loc_key) {
-            Some(loc) if loc.channel_id == channel_id => {
+        if let Some(slots) = inner.locations.get_mut(&loc_key) {
+            slots.retain(|l| l.channel_id != channel_id);
+            if slots.is_empty() {
                 inner.locations.remove(&loc_key);
             }
-            Some(_) => {
-                tracing::debug!("keep location, newer channel");
-            }
-            None => {}
         }
         Ok(())
     }
@@ -83,7 +86,13 @@ impl SessionStorage for MemorySessionStore {
             let inner = self.read();
             accounts
                 .iter()
-                .filter_map(|account| inner.locations.get(&key_location(account, "")).cloned())
+                .flat_map(|account| {
+                    inner
+                        .locations
+                        .get(&key_location(account, ""))
+                        .cloned()
+                        .unwrap_or_default()
+                })
                 .collect::<Vec<_>>()
         };
         if out.is_empty() {
@@ -96,7 +105,16 @@ impl SessionStorage for MemorySessionStore {
     async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError> {
         let loc = {
             let inner = self.read();
-            inner.locations.get(&key_location(account, device)).cloned()
+            inner
+                .locations
+                .get(&key_location(account, ""))
+                .and_then(|slots| {
+                    if device.is_empty() {
+                        slots.first().cloned()
+                    } else {
+                        slots.iter().find(|l| l.device == device).cloned()
+                    }
+                })
         };
         loc.ok_or(SessionError::NotFound)
     }
@@ -116,7 +134,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_old_channel_keeps_newer_location() {
+    async fn delete_old_channel_keeps_other_location() {
         let store = MemorySessionStore::new();
         store.add(&session("id1", "alice", "wg-1")).await.unwrap();
         store.add(&session("id2", "alice", "wg-1")).await.unwrap();
@@ -132,6 +150,25 @@ mod tests {
         let s2 = store.get("id2").await.unwrap();
         assert_eq!(s2.channel_id, "id2");
         assert_eq!(s2.account, "alice");
+    }
+
+    #[tokio::test]
+    async fn two_web_sessions_are_both_listed() {
+        let store = MemorySessionStore::new();
+        let mut web = session("c1", "alice", "g");
+        web.device = "web".into();
+        let mut cli = session("c2", "alice", "g");
+        cli.device = "cli".into();
+        store.add(&web).await.unwrap();
+        store.add(&cli).await.unwrap();
+        let locs = store.list_locations("alice").await.unwrap();
+        assert_eq!(locs.len(), 2);
+        assert!(locs
+            .iter()
+            .any(|l| l.channel_id == "c1" && l.device == "web"));
+        assert!(locs
+            .iter()
+            .any(|l| l.channel_id == "c2" && l.device == "cli"));
     }
 
     #[tokio::test]
@@ -171,7 +208,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_keeps_device_on_session_loc_key_is_account_only() {
+    async fn get_location_filters_by_device() {
         let store = MemorySessionStore::new();
         let mut s = session("c1", "alice", "g");
         s.device = "phone".into();
@@ -179,17 +216,18 @@ mod tests {
 
         let loc = store.get_location("alice", "").await.unwrap();
         assert_eq!(loc.channel_id, "c1");
+        assert_eq!(
+            store
+                .get_location("alice", "phone")
+                .await
+                .unwrap()
+                .channel_id,
+            "c1"
+        );
         assert!(matches!(
-            store.get_location("alice", "phone").await,
+            store.get_location("alice", "web").await,
             Err(SessionError::NotFound)
         ));
         assert_eq!(store.get("c1").await.unwrap().device, "phone");
-
-        store.delete("alice", "c1").await.unwrap();
-        assert!(matches!(
-            store.get_location("alice", "").await,
-            Err(SessionError::NotFound)
-        ));
-        assert!(matches!(store.get("c1").await, Err(SessionError::NotFound)));
     }
 }

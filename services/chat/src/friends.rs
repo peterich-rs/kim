@@ -43,13 +43,13 @@ async fn require_user(
 }
 
 async fn notify_peer(ctx: &Context, account: &str, body: &FriendRequestNotify) {
-    match ctx.get_location(account, "").await {
-        Ok(loc) => {
-            if let Err(err) = ctx.dispatch(body, std::slice::from_ref(&loc)).await {
+    match ctx.list_locations(account).await {
+        Ok(locs) if !locs.is_empty() => {
+            if let Err(err) = ctx.dispatch(body, &locs).await {
                 warn!(%err, account, "friend notify failed");
             }
         }
-        Err(SessionError::NotFound) => {}
+        Ok(_) | Err(SessionError::NotFound) => {}
         Err(err) => warn!(%err, account, "friend notify loc failed"),
     }
 }

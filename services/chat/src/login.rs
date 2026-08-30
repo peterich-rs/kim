@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use kim_protocol::pkt::{KickoutNotify, LoginResp, Status};
 use kim_router::{Context, SessionError};
+use kim_session::exclusive_device;
 use tracing::{error, info, warn};
 
 use crate::users::UserDirectory;
@@ -34,25 +35,33 @@ pub async fn do_sys_login_with_zone(ctx: Context, zone: &str, users: &dyn UserDi
         }
         return;
     }
-    match ctx.get_location(&body.account, "").await {
-        Err(SessionError::NotFound) => {}
+    let existing = match ctx.list_locations(&body.account).await {
+        Ok(v) => v,
+        Err(SessionError::NotFound) => Vec::new(),
         Err(err) => {
-            warn!(%err, "get_location failed");
+            warn!(%err, "list_locations failed");
             if let Err(e) = ctx.resp_bytes(Status::SystemException, Bytes::new()).await {
                 warn!(%e, "resp failed");
             }
             return;
         }
-        Ok(old) => {
+    };
+    if exclusive_device(&body.device) {
+        let victims: Vec<_> = existing
+            .into_iter()
+            .filter(|loc| loc.channel_id != body.channel_id && exclusive_device(&loc.device))
+            .collect();
+        for old in &victims {
             info!(
                 old_channel = %old.channel_id,
                 new_channel = %body.channel_id,
-                "kickout"
+                device = %body.device,
+                "kickout mobile"
             );
             let notify = KickoutNotify {
                 channel_id: old.channel_id.clone(),
             };
-            if let Err(err) = ctx.dispatch(&notify, std::slice::from_ref(&old)).await {
+            if let Err(err) = ctx.dispatch(&notify, std::slice::from_ref(old)).await {
                 warn!(%err, "dispatch kickout failed");
             }
         }
@@ -97,7 +106,7 @@ mod tests {
 
     use async_trait::async_trait;
     use bytes::Bytes;
-    use kim_protocol::pkt::{Flag, KickoutNotify, Session, Status};
+    use kim_protocol::pkt::{Flag, KickoutNotify, Session};
     use kim_protocol::{LogicPkt, CMD_LOGIN_SIGN_IN, META_DEST_CHANNELS, META_DEST_SERVER};
     use kim_router::{Dispatcher, Router, RouterError, SessionStorage};
     use kim_session::MemorySessionStore;
@@ -146,12 +155,13 @@ mod tests {
         }
     }
 
-    fn body_session(channel: &str) -> Session {
+    fn body_session_device(channel: &str, device: &str) -> Session {
         Session {
             channel_id: channel.into(),
             gate_id: "wg-1".into(),
             account: "alice".into(),
             app: "kim".into(),
+            device: device.into(),
             ..Session::default()
         }
     }
@@ -165,7 +175,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn second_login_dispatches_one_kickout_and_adds_body_session() {
+    async fn second_web_login_keeps_both_sessions() {
         let cache: Arc<dyn SessionStorage> = Arc::new(MemorySessionStore::new());
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let users = Arc::new(MemoryUserDirectory::new());
@@ -177,7 +187,7 @@ mod tests {
 
         router
             .serve(
-                signin_pkt("wg-1_alice_1", &body_session("wg-1_alice_1")),
+                signin_pkt("wg-1_alice_1", &body_session_device("wg-1_alice_1", "web")),
                 dispatcher.clone(),
                 cache.clone(),
                 wrapper("wg-1_alice_1"),
@@ -186,7 +196,52 @@ mod tests {
             .unwrap();
         router
             .serve(
-                signin_pkt("wg-1_alice_2", &body_session("wg-1_alice_2")),
+                signin_pkt("wg-1_alice_2", &body_session_device("wg-1_alice_2", "web")),
+                dispatcher.clone(),
+                cache.clone(),
+                wrapper("wg-1_alice_2"),
+            )
+            .await
+            .unwrap();
+
+        let kicks: Vec<_> = dispatcher
+            .recorded()
+            .into_iter()
+            .filter(|p| p.header.flag == Flag::Push as i32)
+            .collect();
+        assert!(kicks.is_empty());
+        assert!(cache.get("wg-1_alice_1").await.is_ok());
+        assert!(cache.get("wg-1_alice_2").await.is_ok());
+        let locs = cache.list_locations("alice").await.unwrap();
+        assert_eq!(locs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn second_mobile_login_kicks_the_other_mobile() {
+        let cache: Arc<dyn SessionStorage> = Arc::new(MemorySessionStore::new());
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let users = Arc::new(MemoryUserDirectory::new());
+        let mut router = Router::new();
+        router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
+            let users = users.clone();
+            async move { do_sys_login(ctx, users.as_ref()).await }
+        });
+
+        router
+            .serve(
+                signin_pkt(
+                    "wg-1_alice_1",
+                    &body_session_device("wg-1_alice_1", "mobile"),
+                ),
+                dispatcher.clone(),
+                cache.clone(),
+                wrapper("wg-1_alice_1"),
+            )
+            .await
+            .unwrap();
+        router
+            .serve(
+                signin_pkt("wg-1_alice_2", &body_session_device("wg-1_alice_2", "ios")),
                 dispatcher.clone(),
                 cache.clone(),
                 wrapper("wg-1_alice_2"),
@@ -206,20 +261,7 @@ mod tests {
 
         let stored = cache.get("wg-1_alice_2").await.unwrap();
         assert_eq!(stored.account, "alice");
-        assert_eq!(stored.channel_id, "wg-1_alice_2");
+        assert_eq!(stored.device, "ios");
         assert!(!stored.tags.iter().any(|t| t == "AutoGenerated"));
-        assert_eq!(stored.app, "kim");
-
-        let loc = cache.get_location("alice", "").await.unwrap();
-        assert_eq!(loc.channel_id, "wg-1_alice_2");
-
-        let resps: Vec<_> = dispatcher
-            .recorded()
-            .into_iter()
-            .filter(|p| {
-                p.header.flag == Flag::Response as i32 && p.header.status == Status::Success as i32
-            })
-            .collect();
-        assert_eq!(resps.len(), 2);
     }
 }

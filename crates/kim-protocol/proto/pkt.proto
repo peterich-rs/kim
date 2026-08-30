@@ -48,6 +48,7 @@ message InnerHandshakeReq {
 
 message LoginReq {
   string token = 1;
+  string device = 2; // "web"/"desktop"/"cli" = multi; "mobile"/"ios"/"android" = one
 }
 
 message LoginResp {
