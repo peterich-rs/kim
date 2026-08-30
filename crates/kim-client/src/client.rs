@@ -13,8 +13,8 @@ use crate::login::{login_on_conn, send_ping};
 use crate::pump::{start_split_pump, Live};
 use crate::session::MemorySession;
 use crate::wire::{
-    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_ping, encode_user_search,
-    encode_user_talk,
+    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_ping, encode_user_image,
+    encode_user_search, encode_user_talk,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -160,6 +160,29 @@ impl KimClient {
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
         let client_id = Uuid::new_v4().to_string();
         let payload = encode_user_talk(seq, dest, body, &client_id);
+        self.write_wait(payload, seq, |ev| match ev {
+            Event::TalkResp(r) if r.sequence == seq => Some(Ok(r.clone())),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    /// `MessageReq.type = 2`. `url` is the R2 public object URL, not file bytes.
+    pub async fn talk_image(
+        &self,
+        dest: &str,
+        url: &str,
+        extra: &str,
+    ) -> Result<TalkResult, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        let client_id = Uuid::new_v4().to_string();
+        let payload = encode_user_image(seq, dest, url, extra, &client_id);
         self.write_wait(payload, seq, |ev| match ev {
             Event::TalkResp(r) if r.sequence == seq => Some(Ok(r.clone())),
             Event::Status {

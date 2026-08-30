@@ -7,7 +7,8 @@ use kim_protocol::pkt::{
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
-    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_USER_SEARCH, CODE_PONG, MESSAGE_TYPE_TEXT,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_USER_SEARCH, CODE_PONG, MESSAGE_TYPE_IMAGE,
+    MESSAGE_TYPE_TEXT,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -28,15 +29,30 @@ pub fn encode_ping() -> Bytes {
 }
 
 pub fn encode_user_talk(seq: u32, dest: &str, body: &str, client_id: &str) -> Bytes {
+    encode_user_talk_typed(seq, dest, MESSAGE_TYPE_TEXT, body, "", client_id)
+}
+
+pub fn encode_user_talk_typed(
+    seq: u32,
+    dest: &str,
+    msg_type: i32,
+    body: &str,
+    extra: &str,
+    client_id: &str,
+) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, seq, Bytes::new());
     pkt.set_dest(dest);
     pkt.write_body(&MessageReq {
-        r#type: MESSAGE_TYPE_TEXT,
+        r#type: msg_type,
         body: body.to_string(),
-        extra: String::new(),
+        extra: extra.to_string(),
         client_id: client_id.to_string(),
     });
     marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_user_image(seq: u32, dest: &str, url: &str, extra: &str, client_id: &str) -> Bytes {
+    encode_user_talk_typed(seq, dest, MESSAGE_TYPE_IMAGE, url, extra, client_id)
 }
 
 pub fn encode_ack(seq: u32, message_id: i64) -> Bytes {

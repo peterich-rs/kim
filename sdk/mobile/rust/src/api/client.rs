@@ -136,6 +136,16 @@ impl KimApi {
         ))
     }
 
+    pub fn talk_image(&self, dest: String, url: String, extra: String) -> Result<String, String> {
+        let r = rt()
+            .block_on(self.inner.talk_image(&dest, &url, &extra))
+            .map_err(|e| e.to_string())?;
+        Ok(format!(
+            "message_id={} send_time={}",
+            r.message_id, r.send_time
+        ))
+    }
+
     pub fn ack(&self, message_id: i64) -> Result<String, String> {
         rt().block_on(self.inner.ack(message_id))
             .map_err(|e| e.to_string())?;

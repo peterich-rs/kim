@@ -5,9 +5,11 @@ use argon2::Argon2;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
+use axum::Json;
 use chat::users::UserError;
 use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq};
 use kim_protocol::{generate, parse, ProtocolError};
+use serde::Serialize;
 
 use crate::{decode, encode, now_ts, RoyalState};
 
@@ -148,6 +150,10 @@ pub async fn logout(State(st): State<RoyalState>, headers: HeaderMap) -> AuthRes
 }
 
 fn bearer_account(st: &RoyalState, headers: &HeaderMap) -> AuthResult<String> {
+    Ok(bearer_claims(st, headers)?.account)
+}
+
+fn bearer_claims(st: &RoyalState, headers: &HeaderMap) -> AuthResult<kim_protocol::Claims> {
     let raw = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -165,7 +171,31 @@ fn bearer_account(st: &RoyalState, headers: &HeaderMap) -> AuthResult<String> {
     if claims.app != st.app || claims.account.is_empty() {
         return Err((StatusCode::UNAUTHORIZED, "unauthorized".into()));
     }
-    Ok(claims.account)
+    Ok(claims)
+}
+
+#[derive(Serialize)]
+pub struct MeBody {
+    pub account: String,
+    pub app: String,
+}
+
+pub async fn me(State(st): State<RoyalState>, headers: HeaderMap) -> AuthResult<Json<MeBody>> {
+    let claims = bearer_claims(&st, &headers)?;
+    if let Some(jti) = claims.jti.as_deref() {
+        if st
+            .revoke
+            .is_revoked(jti)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        {
+            return Err((StatusCode::UNAUTHORIZED, "unauthorized".into()));
+        }
+    }
+    Ok(Json(MeBody {
+        account: claims.account,
+        app: st.app.clone(),
+    }))
 }
 
 pub async fn change_password(

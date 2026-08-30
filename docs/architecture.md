@@ -49,6 +49,7 @@
 | `kim-session` | Memory 会话；可选 Redis feature | 指令业务 |
 | `services/gateway` `chat` `royal` `router` | WGateway JWT Accept、Chat 登录/echo/talk、Royal HTTP、lookup | 把 `if login` 写进 `WsServer` |
 | `sdk/web` | 浏览器 / Node 客户端：编解码、状态机、talk / 离线 / ACK | Token 进 URL；改 `WsServer` |
+| `sdk/media` | 图片上传 Worker → R2 `kim-media` | 把文件字节塞进 talk / VPS |
 | `kim-client` / `sdk/mobile` | App：WSS Conn 上 login/talk/ack；Flutter 壳 | TGateway；改 `WsServer` |
 
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。

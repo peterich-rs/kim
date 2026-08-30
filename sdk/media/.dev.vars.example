@@ -1,0 +1,4 @@
+# Local only. Production uses wrangler vars.ROYAL_ORIGIN.
+# JWT_SECRET=  # same as Royal KIM_JWT_SECRET if ROYAL_ORIGIN is empty
+# ROYAL_ORIGIN=http://127.0.0.1:8080
+

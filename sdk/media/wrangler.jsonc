@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kim-media",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "APP": "kim",
+    "PUBLIC_BASE": "https://media.kim.ainexc.com",
+    "ROYAL_ORIGIN": "https://kim.ainexc.com",
+    "MAX_BYTES": "5242880",
+  },
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "kim-media",
+    },
+  ],
+  "routes": [
+    {
+      "pattern": "upload.kim.ainexc.com",
+      "custom_domain": true,
+    },
+  ],
+}
