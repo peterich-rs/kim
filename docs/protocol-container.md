@@ -996,24 +996,19 @@ spawn { srv.start().await }
 shutdown.notified().await
 ```
 
-`TcpServer` / `WsServer` 的 `shutdown` 必须和 Container 一样 **不丢唤醒**：`closed` AtomicBool + `notify_waiters()` + `notify_one()`。`start` 进 accept 循环前若 `closed` 则立刻返回。这是现有 `TcpServer` 的几行加固（PR3.5 顺手做；`WsServer` 一开始就这样写），不是写侧 mpsc，也不是 TLS。
+`TcpServer` / `WsServer` 的 `shutdown` 必须和 Container 一样 **不丢唤醒**：`closed` AtomicBool + `notify_waiters()` + `notify_one()`，并且 **close 掉 ChannelMap 里所有活连接**，否则对端 read_loop 看不到断开、不会重拨。`start` 进 accept 循环前若 `closed` 则立刻返回。Container shutdown 同样关掉 outbound `TcpClient`。
 
-`connect_to_service`（**先 Subscribe，再 Find**，和小册一致）：
+`connect_to_service`（**先 Subscribe，再 Find**，和小册一致；然后后台 **reconnect loop**）：
+
+非空 TCP 快照写入 `wanted`。空快照不覆盖 wanted（第一帧 watch vs Find 竞态，或 Consul passing 短暂空窗）。`build_client` 用 `claim_dial(service/id)` 串行化，避免 Find 与 Subscribe 同时拨同一 `wg-1` 内连；对端 `channelId is repeated` 关掉的那条 read_loop **只按 Arc::ptr_eq 删 slot**，不能误删活连接。
+
+拨号失败或 `upstream closed` 不要求 Consul index 变化：reconnect loop 每 500ms（或 close 时 `wake`）对 wanted 里缺 slot 的实例再 `build_client`。这是生产里「Chat 其实在听、网关永远 no adult」的根因修复。
 
 ```
 Subscribe 的 callback 是 **sync Fn**，里面不能 .await。
-回调里：对 ClientMap 没有的 id → tokio::spawn(async {
-    match build_client(...).await {          // 见返回值
-        Ok(true) => {                        // 刚插入 Young slot
-            sleep(adult_delay);
-            CAS Young→Adult                  // 仍是 Young 才升；Find 可能已经升过
-        }
-        _ => {}                              // 没插入：不要 sleep，更不要 unwrap CAS
-    }
-});
-Find：对快照里每一条 **await** build_client，状态 **直接 Adult**
-      若 Subscribe 抢先插入了同一 id 且仍是 Young → 这里升级成 Adult
-      已有 id：Find 负责 Adult，Subscribe 侧禁止 CAS
+回调里 spawn apply_snapshot：更新 wanted，build_client，schedule_promote。
+Find：await apply_snapshot（同一套路径）。
+adult_delay == 0 → 插入后立刻 Adult；否则 sleep 再 CAS Young→Adult。
 ```
 
 `#[cfg(test)]` 暴露 `slot_state(service_name, id) -> Option<u8>`（0=Young，1=Adult，None=还没插入）。Young 单测必须先等到 `Some(0)`，不能在 `insert()` 后立刻 Forward（那时 spawn 的 dial 可能还没插入，失败原因是「没有实例」而不是 Young）。

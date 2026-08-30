@@ -191,6 +191,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Chat registers as `chat:8002`. Starting the gateway before that
+      # hostname exists makes the first dial fail; Consul can stay
+      # passing across a short recreate and never push a new snapshot.
+      chat:
+        condition: service_healthy
     environment:
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       CONSUL_HTTP_ADDR: http://consul:8500
