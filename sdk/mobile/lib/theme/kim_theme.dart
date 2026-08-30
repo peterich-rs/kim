@@ -11,7 +11,9 @@ abstract final class KimTheme {
   static const Color incomingLight = Color(0xFFE9E9EB);
   static const Color incomingDark = Color(0xFF2C2C2E);
 
-  static const BorderRadius bubbleRadius = BorderRadius.all(Radius.circular(19));
+  static const BorderRadius bubbleRadius = BorderRadius.all(
+    Radius.circular(16),
+  );
 
   static ThemeData light() => _from(Brightness.light);
 
@@ -53,7 +55,7 @@ abstract final class KimTheme {
       navigationBarTheme: base.navigationBarTheme.copyWith(
         backgroundColor: scheme.surface,
         elevation: 0,
-        height: 68,
+        height: 56,
         indicatorColor: scheme.primary.withValues(alpha: 0.14),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -88,7 +90,7 @@ abstract final class KimTheme {
     elevatedButtonRadius: 16,
     outlinedButtonRadius: 16,
     filledButtonSchemeColor: SchemeColor.primary,
-    navigationBarHeight: 68,
+    navigationBarHeight: 56,
     navigationBarIndicatorRadius: 18,
     navigationBarLabelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
     cardRadius: 20,
@@ -111,9 +113,13 @@ abstract final class KimTheme {
         surfaceContainerHigh: scheme.surfaceContainerHigh,
       ),
       typography: ChatTypography.fromThemeData(theme).copyWith(
-        bodyMedium: (theme.textTheme.bodyLarge ?? const TextStyle()).copyWith(
-          fontSize: 17,
-          height: 1.3,
+        bodyMedium: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+          fontSize: 15,
+          height: 1.35,
+        ),
+        labelSmall: (theme.textTheme.labelSmall ?? const TextStyle()).copyWith(
+          fontSize: 11,
+          height: 1.2,
         ),
       ),
     );

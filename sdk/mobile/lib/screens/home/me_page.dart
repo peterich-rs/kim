@@ -12,6 +12,7 @@ import '../../models/models.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_header.dart';
 import '../../widgets/status_chip.dart';
 
 class MePage extends ConsumerWidget {
@@ -29,7 +30,7 @@ class MePage extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          const SliverAppBar.large(title: Text(Copy.me)),
+          const KimSliverHeader(title: Copy.me),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -146,9 +147,7 @@ class MePage extends ConsumerWidget {
                     ListTile(
                       leading: const Icon(LucideIcons.info),
                       title: const Text(Copy.about),
-                      subtitle: Text(
-                        '${Copy.brand} ${runtime.versionLabel}',
-                      ),
+                      subtitle: Text('${Copy.brand} ${runtime.versionLabel}'),
                     ),
                     if (session.status != ConnStatus.online)
                       ListTile(
@@ -160,7 +159,7 @@ class MePage extends ConsumerWidget {
                       ),
                   ],
                 ),
-                const Gap(32),
+                const Gap(48),
               ],
             ),
           ),
@@ -181,9 +180,8 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
       child: Text(
         text,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        style: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -197,9 +195,8 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
-        alpha: 0.45,
-      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest
+          .withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: Column(children: children),

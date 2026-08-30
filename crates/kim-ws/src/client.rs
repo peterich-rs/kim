@@ -39,6 +39,13 @@ impl WsHandshakeConn {
     pub(crate) fn into_split(self) -> (WsReadHalf<UpgradedIo>, WsWriteHalf<UpgradedIo>) {
         self.inner.into_split()
     }
+
+    /// Read and write halves as [`Conn`] trait objects. `kim-client` pumps them
+    /// on separate tasks so `recv` does not stall `talk`.
+    pub fn split_conn(self) -> (Box<dyn Conn + Send>, Box<dyn Conn + Send>) {
+        let (read, write) = self.into_split();
+        (Box::new(read), Box::new(write))
+    }
 }
 
 #[async_trait]

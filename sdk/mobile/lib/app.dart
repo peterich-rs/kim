@@ -11,6 +11,7 @@ import 'core/runtime.dart';
 import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'router/app_router.dart';
+import 'state/live.dart';
 import 'state/providers.dart';
 import 'theme/kim_theme.dart';
 import 'widgets/kim_offline_banner.dart';
@@ -20,8 +21,9 @@ class KimApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(liveEventsProvider);
+    ref.watch(sessionLinkProvider);
     final router = ref.watch(routerProvider);
-    final runtime = ref.watch(runtimeProvider);
     return ToastificationWrapper(
       child: MaterialApp.router(
         title: Copy.brand,
@@ -42,7 +44,6 @@ class KimApp extends ConsumerWidget {
             onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
             behavior: HitTestBehavior.translucent,
             child: KimOfflineBanner(
-              connectivity: runtime.connectivity,
               child: child ?? const SizedBox.shrink(),
             ),
           );

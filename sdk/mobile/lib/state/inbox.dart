@@ -11,6 +11,7 @@ import '../core/haptics.dart';
 import '../core/validation.dart';
 import '../models/models.dart';
 import 'contacts.dart';
+import 'location.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -69,6 +70,34 @@ class InboxNotifier extends Notifier<InboxState> {
 
   void setQuery(String value) {
     state = state.copyWith(query: value);
+  }
+
+  void receive(KimEvent event) {
+    final dest = event.dest.isNotEmpty ? event.dest : event.sender;
+    if (dest.isEmpty || event.body.isEmpty) {
+      return;
+    }
+    final account = ref.read(sessionProvider).account;
+    final existing = _thread(dest);
+    if (existing == null) {
+      _upsert(
+        KimThread(
+          id: dest,
+          kind: ThreadKind.user,
+          title: ref.read(contactsProvider).person(dest)?.title ?? dest,
+        ),
+      );
+    }
+    final msg = KimChatMsg(
+      key: event.messageId == 0 ? _uuid.v4() : '${event.messageId}',
+      dest: dest,
+      sender: event.sender.isEmpty ? dest : event.sender,
+      body: event.body,
+      at: sendTimeMs(event.sendTime),
+    );
+    _append(msg, fromSelf: event.sender == account);
+    unawaited(_persistMessages(dest));
+    _persistThreads();
   }
 
   List<KimChatMsg> messagesFor(String dest) {
@@ -199,7 +228,8 @@ class InboxNotifier extends Notifier<InboxState> {
     prev.add(msg);
     final clipped = prev.length > 400 ? prev.sublist(prev.length - 400) : prev;
     final existing = _thread(msg.dest);
-    final unread = fromSelf || msg.sys
+    final viewing = chatIdFromPath(ref.read(locationProvider));
+    final unread = fromSelf || msg.sys || viewing == msg.dest
         ? (existing?.unread ?? 0)
         : (existing?.unread ?? 0) + 1;
     _upsert(

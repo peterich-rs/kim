@@ -14,6 +14,7 @@ import '../../state/contacts.dart';
 import '../../state/inbox.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_header.dart';
 import '../../widgets/kim_text_field.dart';
 
 class ContactsPage extends ConsumerStatefulWidget {
@@ -114,7 +115,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
         onRefresh: () => ref.read(contactsProvider.notifier).refresh(),
         child: CustomScrollView(
           slivers: [
-            const SliverAppBar.large(title: Text(Copy.contacts)),
+            const KimSliverHeader(title: Copy.contacts),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

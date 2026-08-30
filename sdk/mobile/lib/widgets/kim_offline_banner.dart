@@ -1,39 +1,43 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
-import '../core/connectivity.dart';
+import '../models/models.dart';
+import '../state/providers.dart';
+import '../state/session.dart';
 import '../theme/motion.dart';
 
-/// Slim offline strip. Driven by connectivity_plus, not a Dart socket.
-class KimOfflineBanner extends StatelessWidget {
-  const KimOfflineBanner({
-    super.key,
-    required this.connectivity,
-    required this.child,
-  });
+/// App-wide offline strip. Radio from connectivity_plus; socket from session.
+class KimOfflineBanner extends ConsumerWidget {
+  const KimOfflineBanner({super.key, required this.child});
 
-  final KimConnectivity connectivity;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final radio = ref.watch(runtimeProvider).connectivity;
+    final session = ref.watch(sessionProvider);
     return ValueListenableBuilder<bool>(
-      valueListenable: connectivity.online,
-      builder: (context, online, _) {
+      valueListenable: radio.online,
+      builder: (context, linkUp, _) {
+        final noRadio = !linkUp;
+        final noSocket =
+            session.signedIn && session.status == ConnStatus.offline;
+        final show = noRadio || noSocket;
         final scheme = Theme.of(context).colorScheme;
+        final label = noRadio ? Copy.offlineBanner : Copy.offline;
         return Column(
           children: [
             AnimatedSize(
               duration: KimMotion.short,
               curve: KimMotion.standard,
               alignment: Alignment.topCenter,
-              child: online
-                  ? const SizedBox(width: double.infinity, height: 0)
-                  : Material(
+              child: show
+                  ? Material(
                       color: scheme.errorContainer,
                       child: SafeArea(
                         bottom: false,
@@ -49,16 +53,29 @@ class KimOfflineBanner extends StatelessWidget {
                               const Gap(8),
                               Expanded(
                                 child: Text(
-                                  Copy.offlineBanner,
+                                  label,
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: scheme.onErrorContainer),
                                 ),
                               ),
+                              if (noSocket && !noRadio)
+                                TextButton(
+                                  onPressed: () => ref
+                                      .read(sessionProvider.notifier)
+                                      .connect(),
+                                  child: Text(
+                                    Copy.retry,
+                                    style: TextStyle(
+                                      color: scheme.onErrorContainer,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
                       ),
-                    ),
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
             Expanded(child: child),
           ],

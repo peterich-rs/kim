@@ -116,10 +116,7 @@ class SessionNotifier extends Notifier<SessionState> {
       return;
     }
     final gen = ++_connectGen;
-    state = state.copyWith(
-      status: ConnStatus.connecting,
-      clearError: true,
-    );
+    state = state.copyWith(status: ConnStatus.connecting, clearError: true);
     try {
       final client = ref.read(clientPortProvider);
       await client.connect(
@@ -141,6 +138,30 @@ class SessionNotifier extends Notifier<SessionState> {
         connectError: mapUserError(err),
       );
     }
+  }
+
+  /// Radio or socket dropped. Keep the JWT; tear down the WS off the UI path.
+  void dropLink({String? error}) {
+    if (!state.signedIn) {
+      return;
+    }
+    _connectGen++;
+    if (state.status == ConnStatus.offline &&
+        (error == null || error == state.connectError)) {
+      unawaited(_dropSocket());
+      return;
+    }
+    state = state.copyWith(
+      status: ConnStatus.offline,
+      connectError: error ?? Copy.offline,
+    );
+    unawaited(_dropSocket());
+  }
+
+  Future<void> _dropSocket() async {
+    try {
+      await ref.read(clientPortProvider).disconnect();
+    } catch (_) {}
   }
 
   Future<void> signOut() async {
@@ -178,15 +199,19 @@ class SessionNotifier extends Notifier<SessionState> {
     required String newPassword,
   }) async {
     final runtime = ref.read(runtimeProvider);
-    await ref.read(authPortProvider).changePassword(
-      origin: runtime.settings.httpOrigin,
-      userAgent: kimUserAgent(runtime),
-      token: runtime.settings.token,
-      oldPassword: oldPassword,
-      newPassword: newPassword,
-    );
+    await ref
+        .read(authPortProvider)
+        .changePassword(
+          origin: runtime.settings.httpOrigin,
+          userAgent: kimUserAgent(runtime),
+          token: runtime.settings.token,
+          oldPassword: oldPassword,
+          newPassword: newPassword,
+        );
     await KimHaptics.success();
   }
+
+  void markOffline({String? error}) => dropLink(error: error);
 }
 
 final sessionProvider = NotifierProvider<SessionNotifier, SessionState>(

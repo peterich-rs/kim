@@ -13,6 +13,7 @@ import '../../state/inbox.dart';
 import '../../state/session.dart';
 import '../../widgets/conversation_tile.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/kim_header.dart';
 import '../../widgets/new_chat_sheet.dart';
 import '../../widgets/status_chip.dart';
 
@@ -24,15 +25,15 @@ class ChatsPage extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final inbox = ref.watch(inboxProvider);
     final visible = inbox.visible;
-    final connecting = session.status == ConnStatus.connecting &&
-        inbox.threads.isEmpty;
+    final connecting =
+        session.status == ConnStatus.connecting && inbox.threads.isEmpty;
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: NestedScrollView(
-        headerSliverBuilder: (context, inner) => [
-          SliverAppBar.large(
-            title: const Text(Copy.conversations),
+      body: CustomScrollView(
+        slivers: [
+          KimSliverHeader(
+            title: Copy.conversations,
             actions: [
               IconButton(
                 key: const Key('compose-chat'),
@@ -44,7 +45,7 @@ class ChatsPage extends ConsumerWidget {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: SearchBar(
                 hintText: Copy.searchChats,
                 leading: Icon(
@@ -64,10 +65,11 @@ class ChatsPage extends ConsumerWidget {
               onRetry: () => ref.read(sessionProvider.notifier).connect(),
             ),
           ),
-        ],
-        body: connecting
-            ? Skeletonizer(
+          if (connecting)
+            SliverFillRemaining(
+              child: Skeletonizer(
                 child: ListView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: 7,
                   itemBuilder: (context, i) => ConversationTile(
                     thread: KimThread(
@@ -81,9 +83,11 @@ class ChatsPage extends ConsumerWidget {
                     onDelete: () {},
                   ),
                 ),
-              )
-            : visible.isEmpty
-            ? EmptyState(
+              ),
+            )
+          else if (visible.isEmpty)
+            SliverFillRemaining(
+              child: EmptyState(
                 icon: LucideIcons.messageCircle,
                 title: inbox.threads.isEmpty
                     ? Copy.noConversations
@@ -97,14 +101,15 @@ class ChatsPage extends ConsumerWidget {
                         child: const Text(Copy.newChat),
                       )
                     : null,
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.only(bottom: 24),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 24),
+              sliver: SliverList.separated(
                 itemCount: visible.length,
-                separatorBuilder: (context, _) => Divider(
-                  indent: 80,
-                  color: theme.dividerColor,
-                ),
+                separatorBuilder: (context, _) =>
+                    Divider(indent: 80, color: theme.dividerColor),
                 itemBuilder: (context, i) {
                   final thread = visible[i];
                   return ConversationTile(
@@ -112,18 +117,23 @@ class ChatsPage extends ConsumerWidget {
                     thread: thread,
                     onOpen: () {
                       KimHaptics.selection();
-                      ref.read(inboxProvider.notifier).ensureThread(
-                        id: thread.id,
-                        kind: thread.kind,
-                        title: thread.title,
-                      );
+                      ref
+                          .read(inboxProvider.notifier)
+                          .ensureThread(
+                            id: thread.id,
+                            kind: thread.kind,
+                            title: thread.title,
+                          );
                       context.push('/chat/${thread.id}', extra: thread);
                     },
-                    onDelete: () =>
-                        ref.read(inboxProvider.notifier).deleteThread(thread.id),
+                    onDelete: () => ref
+                        .read(inboxProvider.notifier)
+                        .deleteThread(thread.id),
                   );
                 },
               ),
+            ),
+        ],
       ),
     );
   }

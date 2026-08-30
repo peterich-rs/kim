@@ -31,6 +31,10 @@ abstract class KimClientPort {
 
   Future<String> talk(String dest, String body);
 
+  Future<void> ack(int messageId);
+
+  Stream<KimEvent> events();
+
   Future<List<KimPerson>> friendList();
 
   Future<List<KimPerson>> friendIncoming();
@@ -121,7 +125,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }) async {
     await _ensure();
     return _session(
-      _auth(origin, userAgent).login(account: account, password: password),
+      await _auth(origin, userAgent).login(account: account, password: password),
     );
   }
 
@@ -134,7 +138,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }) async {
     await _ensure();
     return _session(
-      _auth(origin, userAgent).register(account: account, password: password),
+      await _auth(
+        origin,
+        userAgent,
+      ).register(account: account, password: password),
     );
   }
 
@@ -145,7 +152,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String token,
   }) async {
     await _ensure();
-    _auth(origin, userAgent).logout(token: token);
+    await _auth(origin, userAgent).logout(token: token);
   }
 
   @override
@@ -157,7 +164,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String newPassword,
   }) async {
     await _ensure();
-    _auth(origin, userAgent).changePassword(
+    await _auth(origin, userAgent).changePassword(
       token: token,
       oldPassword: oldPassword,
       newPassword: newPassword,
@@ -183,6 +190,12 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     await _ensure();
     lastUrl = url;
+    final prev = _api;
+    if (prev != null) {
+      try {
+        await prev.disconnect();
+      } catch (_) {}
+    }
     _api = KimApi(url: url, token: token, userAgent: userAgent);
     return _api!.connect();
   }
@@ -214,6 +227,46 @@ class KimBridge implements KimAuthPort, KimClientPort {
     return api.talkToUser(dest: dest, body: body);
   }
 
+  @override
+  Future<void> ack(int messageId) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    await api.ack(messageId: messageId);
+  }
+
+  @override
+  Stream<KimEvent> events() {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return api.listen().map(_event);
+  }
+
+  KimEvent _event(KimPush push) {
+    final kind = switch (push.kind) {
+      'talk' => KimEventKind.talk,
+      'kick' => KimEventKind.kick,
+      'friend' => KimEventKind.friend,
+      'group' => KimEventKind.group,
+      'token' => KimEventKind.token,
+      _ => KimEventKind.closed,
+    };
+    return KimEvent(
+      kind: kind,
+      dest: push.dest,
+      sender: push.sender,
+      body: push.body,
+      extra: push.extra,
+      messageId: push.messageId.toInt(),
+      sendTime: push.sendTime.toInt(),
+      token: push.token,
+      exp: push.exp.toInt(),
+    );
+  }
+
   List<KimPerson> _people(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! List) {
@@ -235,7 +288,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    return _people(api.friendList());
+    return _people(await api.friendList());
   }
 
   @override
@@ -244,7 +297,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    return _people(api.friendIncoming());
+    return _people(await api.friendIncoming());
   }
 
   @override
@@ -253,7 +306,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    return _people(api.searchUsers(query: query));
+    return _people(await api.searchUsers(query: query));
   }
 
   @override
@@ -262,7 +315,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    api.friendRequest(dest: dest);
+    await api.friendRequest(dest: dest);
   }
 
   @override
@@ -271,7 +324,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    api.friendAccept(dest: dest);
+    await api.friendAccept(dest: dest);
   }
 
   @override
@@ -280,7 +333,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       throw StateError('connect first');
     }
-    api.friendReject(dest: dest);
+    await api.friendReject(dest: dest);
   }
 
   @override
@@ -289,7 +342,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (api == null) {
       return 'not connected';
     }
-    final out = api.disconnect();
+    final out = await api.disconnect();
     _api = null;
     return out;
   }

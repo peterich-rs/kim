@@ -22,27 +22,23 @@ impl KimAuth {
         })
     }
 
-    #[flutter_rust_bridge::frb(sync)]
     pub fn register(&self, account: String, password: String) -> Result<AuthSession, String> {
         rt().block_on(self.inner.register(&account, &password))
             .map(Into::into)
             .map_err(|e| e.to_string())
     }
 
-    #[flutter_rust_bridge::frb(sync)]
     pub fn login(&self, account: String, password: String) -> Result<AuthSession, String> {
         rt().block_on(self.inner.login(&account, &password))
             .map(Into::into)
             .map_err(|e| e.to_string())
     }
 
-    #[flutter_rust_bridge::frb(sync)]
     pub fn logout(&self, token: String) -> Result<(), String> {
         rt().block_on(self.inner.logout(&token))
             .map_err(|e| e.to_string())
     }
 
-    #[flutter_rust_bridge::frb(sync)]
     pub fn change_password(
         &self,
         token: String,

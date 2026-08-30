@@ -154,6 +154,17 @@ class ContactsNotifier extends Notifier<ContactsState> {
     await ref.read(clientPortProvider).friendReject(dest);
     await refresh();
   }
+
+  void onRequest(String from, String nickname) {
+    if (from.isEmpty || state.isIncoming(from) || state.isFriend(from)) {
+      return;
+    }
+    final person = KimPerson(
+      account: from,
+      nickname: nickname.isEmpty ? from : nickname,
+    );
+    state = state.copyWith(incoming: [person, ...state.incoming]);
+  }
 }
 
 final contactsProvider = NotifierProvider<ContactsNotifier, ContactsState>(

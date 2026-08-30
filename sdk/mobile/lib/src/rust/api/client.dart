@@ -7,23 +7,30 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `from_event`
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimApi>>
 abstract class KimApi implements RustOpaqueInterface {
-  String connect();
+  Future<String> ack({required PlatformInt64 messageId});
 
-  String disconnect();
+  Future<String> connect();
 
-  String friendAccept({required String dest});
+  Future<String> disconnect();
 
-  String friendIncoming();
+  Future<String> friendAccept({required String dest});
 
-  String friendList();
+  Future<String> friendIncoming();
 
-  String friendReject({required String dest});
+  Future<String> friendList();
 
-  String friendRequest({required String dest});
+  Future<String> friendReject({required String dest});
 
-  String login();
+  Future<String> friendRequest({required String dest});
+
+  /// Unsolicited events after login. Does not hold the talk path.
+  Stream<KimPush> listen();
+
+  Future<String> login();
 
   factory KimApi({
     required String url,
@@ -35,9 +42,61 @@ abstract class KimApi implements RustOpaqueInterface {
     userAgent: userAgent,
   );
 
-  String ping();
+  Future<String> ping();
 
-  String searchUsers({required String query});
+  Future<String> searchUsers({required String query});
 
-  String talkToUser({required String dest, required String body});
+  Future<String> talkToUser({required String dest, required String body});
+}
+
+/// Push / kick / token / friend events after login.
+class KimPush {
+  final String kind;
+  final String dest;
+  final String sender;
+  final String body;
+  final String extra;
+  final PlatformInt64 messageId;
+  final PlatformInt64 sendTime;
+  final String token;
+  final PlatformInt64 exp;
+
+  const KimPush({
+    required this.kind,
+    required this.dest,
+    required this.sender,
+    required this.body,
+    required this.extra,
+    required this.messageId,
+    required this.sendTime,
+    required this.token,
+    required this.exp,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      dest.hashCode ^
+      sender.hashCode ^
+      body.hashCode ^
+      extra.hashCode ^
+      messageId.hashCode ^
+      sendTime.hashCode ^
+      token.hashCode ^
+      exp.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KimPush &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          dest == other.dest &&
+          sender == other.sender &&
+          body == other.body &&
+          extra == other.extra &&
+          messageId == other.messageId &&
+          sendTime == other.sendTime &&
+          token == other.token &&
+          exp == other.exp;
 }

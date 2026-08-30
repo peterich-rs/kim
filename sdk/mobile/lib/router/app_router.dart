@@ -12,6 +12,7 @@ import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
+import '../state/location.dart';
 import '../state/session.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -25,6 +26,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     refreshListenable: refresh,
     redirect: (context, state) {
+      final path = state.uri.path;
+      Future<void>.microtask(() {
+        ref.read(locationProvider.notifier).setPath(path);
+      });
       final signedIn = ref.read(sessionProvider).signedIn;
       final loc = state.matchedLocation;
       final onAuth = loc == '/login' || loc == '/register';
@@ -68,10 +73,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(
-                path: '/me',
-                builder: (context, state) => const MePage(),
-              ),
+              GoRoute(path: '/me', builder: (context, state) => const MePage()),
             ],
           ),
         ],

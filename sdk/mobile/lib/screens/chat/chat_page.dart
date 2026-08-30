@@ -10,6 +10,7 @@ import 'package:toastification/toastification.dart';
 
 import '../../copy.dart';
 import '../../core/errors.dart';
+import '../../core/format.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
 import '../../state/inbox.dart';
@@ -17,6 +18,7 @@ import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_bubble.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -53,19 +55,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.dispose();
   }
 
+  void _sync(List<KimChatMsg> rows) {
+    final have = {for (final m in _controller.messages) m.id};
+    for (final m in rows) {
+      if (!have.contains(m.key)) {
+        _controller.insertMessage(_toFlyer(m));
+      }
+    }
+  }
+
   Message _toFlyer(KimChatMsg m) {
     return Message.text(
       id: m.key,
       authorId: m.sender,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(m.at).toUtc(),
+      createdAt: (dateTimeFromEpoch(m.at) ?? DateTime.now()).toUtc(),
       text: m.body,
       status: m.failed ? MessageStatus.error : MessageStatus.sent,
     );
   }
 
   Future<void> _send(String text) async {
+    final inbox = ref.read(inboxProvider.notifier);
     try {
-      final msg = await ref.read(inboxProvider.notifier).send(widget.id, text);
+      final msg = await inbox.send(widget.id, text);
+      if (!mounted) {
+        return;
+      }
       await _controller.insertMessage(_toFlyer(msg));
     } catch (err) {
       final message = mapTalkError(err);
@@ -94,26 +109,34 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         social.ready &&
         !social.isFriend(widget.id);
 
+    ref.listen<List<KimChatMsg>>(
+      inboxProvider.select((s) => s.messages[widget.id] ?? const []),
+      (prev, next) => _sync(next),
+    );
+
     return Scaffold(
       appBar: AppBar(
-        centerTitle: true,
-        title: Column(
+        titleSpacing: 0,
+        title: Row(
           children: [
             KimAvatar(
               name: widget.title,
               size: KimAvatarSize.sm,
               heroTag: 'avatar-${widget.id}',
             ),
-            const SizedBox(height: 2),
-            Text(
-              widget.title,
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w600,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
-        toolbarHeight: 72,
       ),
       body: Column(
         children: [
@@ -130,13 +153,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   User(id: id, name: id == account ? Copy.you : id),
               onMessageSend: _send,
               theme: KimTheme.chat(theme),
-              backgroundColor: theme.colorScheme.surface,
+              backgroundColor: theme.colorScheme.surfaceContainerLowest,
               builders: Builders(
                 emptyChatListBuilder: (_) => const EmptyState(
                   icon: LucideIcons.messageCircle,
                   title: Copy.noMessages,
                   subtitle: Copy.noMessagesHint,
                 ),
+                textMessageBuilder: kimTextMessage,
+                chatMessageBuilder: kimChatMessage,
                 composerBuilder: (_) {
                   if (gated) {
                     return _FriendGate(
@@ -146,15 +171,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       outgoing: social.isOutgoing(widget.id),
                     );
                   }
-                  return Composer(
-                    hintText: Copy.messagePlaceholder,
-                    filled: true,
-                    handleSafeArea: true,
-                    sendIcon: const Icon(LucideIcons.send, size: 18),
-                    sendButtonVisibilityMode: SendButtonVisibilityMode.hidden,
-                    sendOnEnter: true,
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                  );
+                  return const KimComposer(hintText: Copy.messagePlaceholder);
                 },
               ),
             ),
