@@ -12,13 +12,11 @@ class KimAvatar extends StatelessWidget {
     required this.name,
     this.url = '',
     this.size = KimAvatarSize.md,
-    this.heroTag,
   });
 
   final String name;
   final String url;
   final KimAvatarSize size;
-  final String? heroTag;
 
   double get _px => switch (size) {
     KimAvatarSize.sm => 36,
@@ -78,10 +76,6 @@ class KimAvatar extends StatelessWidget {
         ),
       );
     }
-    final tag = heroTag;
-    if (tag == null) {
-      return avatar;
-    }
-    return Hero(tag: tag, child: avatar);
+    return avatar;
   }
 }

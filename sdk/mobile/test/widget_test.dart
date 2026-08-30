@@ -11,6 +11,7 @@ import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/widgets/kim_avatar.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -256,10 +257,93 @@ void main() {
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
 
-    expect(find.text(Copy.privateChat), findsOneWidget);
     expect(find.text('hello from bob'), findsOneWidget);
     expect(find.text(Copy.you), findsNothing);
     expect(find.text('Bobby'), findsWidgets);
+  });
+
+  testWidgets('chat app bar centers the title and has no avatar', (
+    tester,
+  ) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+
+    final appBar = find.byType(AppBar);
+    expect(appBar, findsOneWidget);
+    expect(
+      find.descendant(of: appBar, matching: find.byType(KimAvatar)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byType(Hero)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.text('Bobby')),
+      findsOneWidget,
+    );
+    final bar = tester.getRect(appBar);
+    final title = tester.getRect(
+      find.descendant(of: appBar, matching: find.text('Bobby')),
+    );
+    expect(title.center.dx, closeTo(bar.center.dx, 1));
+  });
+
+  testWidgets('chat composer sits below the message list', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+
+    final composer = tester.getRect(find.byKey(const Key('chat-composer')));
+    final message = tester.getRect(find.text('hello from bob'));
+    expect(composer.top, greaterThan(message.bottom));
+    expect(
+      composer.bottom,
+      closeTo(
+        tester.view.physicalSize.height / tester.view.devicePixelRatio,
+        8,
+      ),
+    );
+  });
+
+  testWidgets('swiping from the left of a chat returns to the list', (
+    tester,
+  ) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+    expect(find.byKey(const Key('chat-composer')), findsOneWidget);
+
+    final gesture = await tester.startGesture(const Offset(40, 400));
+    await gesture.moveBy(const Offset(500, 0));
+    await tester.pump();
+    await gesture.up();
+    await pumpUi(tester);
+
+    expect(find.byKey(const Key('chat-composer')), findsNothing);
+    expect(find.text(Copy.conversations), findsWidgets);
   });
 
   testWidgets('long-pressing a message offers copy', (tester) async {

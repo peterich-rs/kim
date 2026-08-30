@@ -1,38 +1,48 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/router/kim_page.dart';
 
 void main() {
-  tearDown(() {
-    debugDefaultTargetPlatformOverride = null;
-  });
-
-  test('kimPushPage is CupertinoPage on iOS', () {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  test('kimPushPage is a swipe-back page', () {
     final page = kimPushPage(
       key: const ValueKey('chat'),
       child: const SizedBox(),
     );
-    expect(page, isA<CupertinoPage<void>>());
+    expect(page, isA<KimSwipePage>());
   });
 
-  test('kimPushPage is CupertinoPage on macOS', () {
-    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-    final page = kimPushPage(
-      key: const ValueKey('chat'),
-      child: const SizedBox(),
+  testWidgets('left-edge swipe pops the page', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                Navigator.of(context).push<void>(
+                  kimPushPage(
+                    key: const ValueKey('chat'),
+                    child: const Scaffold(body: SizedBox.expand()),
+                  ).createRoute(context),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
     );
-    expect(page, isA<CupertinoPage<void>>());
-  });
 
-  test('kimPushPage is MaterialPage on Android', () {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    final page = kimPushPage(
-      key: const ValueKey('chat'),
-      child: const SizedBox(),
-    );
-    expect(page, isA<MaterialPage<void>>());
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Scaffold), findsOneWidget);
+
+    // 40px is past Cupertino's 20px edge and inside kKimBackGestureWidth.
+    final gesture = await tester.startGesture(const Offset(40, 300));
+    await gesture.moveBy(const Offset(500, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Scaffold), findsNothing);
   });
 }
