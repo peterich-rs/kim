@@ -357,9 +357,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       void (async () => {
         try {
           await session.connect(ws, token);
+        } catch (err) {
           if (!session.alive) {
             return;
           }
+          dispatch({ type: "status", status: "offline" });
+          dispatch({ type: "connectError", error: mapUserError(err) });
+          return;
+        }
+        if (!session.alive) {
+          return;
+        }
+        try {
           const me = await session.me();
           if (me?.nickname) {
             setNickname(me.nickname);
@@ -374,7 +383,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             setPeople(
               friendRows.map((p) => ({ account: p.account, nickname: p.nickname || p.account })),
             );
-            setSocialReady(true);
           }
           const items = await session.inbox();
           if (!session.alive) {
@@ -393,12 +401,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               },
             });
           }
-        } catch (err) {
-          if (!session.alive) {
-            return;
+        } catch {
+          /* WS is already up; social/inbox must not fail the handshake */
+        } finally {
+          if (session.alive) {
+            setSocialReady(true);
           }
-          dispatch({ type: "status", status: "offline" });
-          dispatch({ type: "connectError", error: mapUserError(err) });
         }
       })();
       return session;

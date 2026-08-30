@@ -246,7 +246,7 @@ export class ChatSession {
       return [];
     }
     const { users } = await cli.friendList();
-    return users;
+    return users ?? [];
   }
 
   async incoming(): Promise<WireProfile[]> {
@@ -255,7 +255,7 @@ export class ChatSession {
       return [];
     }
     const { users } = await cli.friendIncoming();
-    return users;
+    return users ?? [];
   }
 
   async requestFriend(account: string): Promise<void> {

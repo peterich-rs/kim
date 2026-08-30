@@ -78,6 +78,39 @@ describe("KIMClient", () => {
     expect(cli.wsurl).toBe("ws://fallback/");
   });
 
+  it("does not start a second handshake if the socket drops during offline sync", async () => {
+    const gw = new LoopbackGw();
+    gw.dropOn = Command.OfflineIndex;
+    let opens = 0;
+    const inner = gw.factory;
+    gw.factory = (url) => {
+      opens += 1;
+      return inner(url);
+    };
+    const cli = new KIMClient(
+      "ws://127.0.0.1:1/",
+      { token: mintToken("alice") },
+      {
+        websocket: gw.factory,
+        reconnect: true,
+        heartbeatMs: 0,
+        sendTimeoutMs: 200,
+        loginTimeoutMs: 500,
+        retrySleepMs: 1,
+        store: new MemoryStore(),
+      },
+    );
+    cli.onofflinemessage(() => {
+      /* ignore */
+    });
+    const { success, err } = await cli.login();
+    expect(success).toBe(false);
+    expect(err?.message).toMatch(/closed during sync|closed before login/);
+    expect(cli.state).not.toBe(State.CONNECTED);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(opens).toBe(1);
+  });
+
   it("logs in and exposes channelId from LoginResp", async () => {
     const gw = new LoopbackGw();
     const cli = client(gw);
