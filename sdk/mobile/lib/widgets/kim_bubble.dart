@@ -1,14 +1,14 @@
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
-import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
 import '../core/format.dart';
-import '../theme/kim_theme.dart';
 import '../theme/motion.dart';
 import 'kim_avatar.dart';
 import 'kim_hairline.dart';
@@ -27,6 +27,82 @@ Widget kimTextMessage(
       height: 1.375,
       color: Theme.of(context).colorScheme.onSurface,
     ),
+  );
+}
+
+Widget kimImageMessage(
+  BuildContext context,
+  ImageMessage message,
+  int index, {
+  required bool isSentByMe,
+  MessageGroupStatus? groupStatus,
+}) {
+  final w = (message.width ?? 160).toDouble().clamp(48, 240);
+  final h = (message.height ?? 160).toDouble().clamp(48, 320);
+  const maxW = 220.0;
+  final scale = maxW / w;
+  final width = maxW;
+  final height = (h * scale).clamp(72, 280).toDouble();
+  final src = message.source;
+  final file = src.startsWith('http') ? null : File(src);
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(6),
+    child: SizedBox(
+      width: width,
+      height: height,
+      child: file != null
+          ? Image.file(
+              file,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _imageFallback(context),
+            )
+          : Image.network(
+              src,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _imageFallback(context),
+            ),
+    ),
+  );
+}
+
+Widget kimVideoMessage(
+  BuildContext context,
+  VideoMessage message,
+  int index, {
+  required bool isSentByMe,
+  MessageGroupStatus? groupStatus,
+}) {
+  final w = (message.width ?? 160).toDouble().clamp(48, 240);
+  final h = (message.height ?? 160).toDouble().clamp(48, 320);
+  const maxW = 220.0;
+  final height = (h * (maxW / w)).clamp(72, 280).toDouble();
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(6),
+    child: SizedBox(
+      width: maxW,
+      height: height,
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(LucideIcons.play, color: Colors.white, size: 22),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _imageFallback(BuildContext context) {
+  return ColoredBox(
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
+    child: const Center(child: Icon(LucideIcons.image, size: 28)),
   );
 }
 
@@ -57,6 +133,7 @@ Widget kimChatMessage(
   required bool isSentByMe,
   MessageGroupStatus? groupStatus,
   String? displayName,
+  String avatarUrl = '',
   VoidCallback? onRetry,
   DateTime? previousCreatedAt,
   void Function(LongPressStartDetails details)? onLongPress,
@@ -68,6 +145,7 @@ Widget kimChatMessage(
     isSentByMe: isSentByMe,
     groupStatus: groupStatus,
     displayName: displayName,
+    avatarUrl: avatarUrl,
     onRetry: onRetry,
     previousCreatedAt: previousCreatedAt,
     onLongPress: onLongPress,
@@ -85,6 +163,7 @@ class KimMessageRow extends StatelessWidget {
     required this.child,
     this.groupStatus,
     this.displayName,
+    this.avatarUrl = '',
     this.onRetry,
     this.previousCreatedAt,
     this.onLongPress,
@@ -96,6 +175,7 @@ class KimMessageRow extends StatelessWidget {
   final bool isSentByMe;
   final MessageGroupStatus? groupStatus;
   final String? displayName;
+  final String avatarUrl;
   final VoidCallback? onRetry;
   final DateTime? previousCreatedAt;
   final void Function(LongPressStartDetails details)? onLongPress;
@@ -139,7 +219,11 @@ class KimMessageRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     first
-                        ? KimAvatar(name: name, size: KimAvatarSize.sm)
+                        ? KimAvatar(
+                            name: name,
+                            url: avatarUrl,
+                            size: KimAvatarSize.sm,
+                          )
                         : const SizedBox(width: 36),
                     const Gap(10),
                     Expanded(
@@ -239,40 +323,6 @@ class _DateRule extends StatelessWidget {
           const Expanded(child: KimHairline()),
         ],
       ),
-    );
-  }
-}
-
-class KimComposer extends StatelessWidget {
-  const KimComposer({super.key, this.hintText});
-
-  final String? hintText;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final raised = KimTheme.raisedOf(context);
-    return Composer(
-      hintText: hintText,
-      filled: true,
-      handleSafeArea: true,
-      sigmaX: 0,
-      sigmaY: 0,
-      sendIcon: Icon(LucideIcons.send, size: 18),
-      sendButtonVisibilityMode: SendButtonVisibilityMode.hidden,
-      sendOnEnter: true,
-      gap: 8,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      backgroundColor: raised,
-      inputFillColor: scheme.surface,
-      topWidget: const KimHairline(),
-      inputBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(KimTheme.radiusField),
-        borderSide: BorderSide(color: KimTheme.hairlineOf(context)),
-      ),
-      sendIconColor: scheme.primary,
-      emptyFieldSendIconColor: scheme.onSurfaceVariant,
     );
   }
 }

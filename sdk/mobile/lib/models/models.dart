@@ -3,10 +3,15 @@ library;
 enum ThreadKind { user, group }
 
 class KimPerson {
-  const KimPerson({required this.account, required this.nickname});
+  const KimPerson({
+    required this.account,
+    required this.nickname,
+    this.avatar = '',
+  });
 
   final String account;
   final String nickname;
+  final String avatar;
 
   String get title => nickname.isEmpty ? account : nickname;
 }
@@ -106,6 +111,8 @@ class KimThread {
   }
 }
 
+enum KimMsgKind { text, image, video }
+
 class KimChatMsg {
   const KimChatMsg({
     required this.key,
@@ -115,6 +122,9 @@ class KimChatMsg {
     required this.at,
     this.sys = false,
     this.failed = false,
+    this.kind = KimMsgKind.text,
+    this.width = 0,
+    this.height = 0,
   });
 
   final String key;
@@ -124,6 +134,13 @@ class KimChatMsg {
   final int at;
   final bool sys;
   final bool failed;
+  final KimMsgKind kind;
+  final int width;
+  final int height;
+
+  bool get isImage => kind == KimMsgKind.image;
+
+  bool get isVideo => kind == KimMsgKind.video;
 
   KimChatMsg copyWith({bool? failed}) {
     return KimChatMsg(
@@ -134,6 +151,9 @@ class KimChatMsg {
       at: at,
       sys: sys,
       failed: failed ?? this.failed,
+      kind: kind,
+      width: width,
+      height: height,
     );
   }
 
@@ -145,6 +165,9 @@ class KimChatMsg {
     'at': at,
     'sys': sys,
     'failed': failed,
+    'kind': kind.name,
+    'width': width,
+    'height': height,
   };
 
   static KimChatMsg? fromJson(Object? raw) {
@@ -169,6 +192,13 @@ class KimChatMsg {
       at: raw['at'] is int ? raw['at'] as int : 0,
       sys: raw['sys'] == true,
       failed: raw['failed'] == true,
+      kind: raw['kind'] == 'video'
+          ? KimMsgKind.video
+          : raw['kind'] == 'image'
+          ? KimMsgKind.image
+          : KimMsgKind.text,
+      width: raw['width'] is int ? raw['width'] as int : 0,
+      height: raw['height'] is int ? raw['height'] as int : 0,
     );
   }
 }

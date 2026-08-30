@@ -14,11 +14,12 @@ use crate::pump::{start_split_pump, Live};
 use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_ping, encode_user_image,
-    encode_user_search, encode_user_talk,
+    encode_user_search, encode_user_talk, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
     CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST,
+    CMD_USER_PROFILE,
 };
 
 enum Io {
@@ -211,6 +212,53 @@ impl KimClient {
 
     pub async fn friend_incoming(&self) -> Result<Vec<Profile>, ClientError> {
         self.user_list(CMD_FRIEND_INCOMING).await
+    }
+
+    pub async fn profile(&self, dest: &str) -> Result<Profile, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_dest_cmd(CMD_USER_PROFILE, seq, dest),
+            seq,
+            |ev| match ev {
+                Event::Profile { sequence, profile } if *sequence == seq => {
+                    Some(Ok(profile.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn update_profile(
+        &self,
+        nickname: &str,
+        avatar: &str,
+        bio: &str,
+    ) -> Result<Profile, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_user_update(seq, nickname, avatar, bio),
+            seq,
+            |ev| match ev {
+                Event::Profile { sequence, profile } if *sequence == seq => {
+                    Some(Ok(profile.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
     }
 
     pub async fn search_users(&self, query: &str) -> Result<Vec<Profile>, ClientError> {

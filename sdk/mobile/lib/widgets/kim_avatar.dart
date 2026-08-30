@@ -10,11 +10,13 @@ class KimAvatar extends StatelessWidget {
   const KimAvatar({
     super.key,
     required this.name,
+    this.url = '',
     this.size = KimAvatarSize.md,
     this.heroTag,
   });
 
   final String name;
+  final String url;
   final KimAvatarSize size;
   final String? heroTag;
 
@@ -33,7 +35,16 @@ class KimAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = Color(avatarColor(name));
-    final avatar = Container(
+    final initials = Text(
+      initialOf(name),
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: _font,
+        fontWeight: FontWeight.w600,
+        height: 1,
+      ),
+    );
+    final fallback = Container(
       width: _px,
       height: _px,
       alignment: Alignment.center,
@@ -45,16 +56,28 @@ class KimAvatar extends StatelessWidget {
           colors: [Color.lerp(base, Colors.white, 0.16) ?? base, base],
         ),
       ),
-      child: Text(
-        initialOf(name),
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: _font,
-          fontWeight: FontWeight.w600,
-          height: 1,
-        ),
-      ),
+      child: initials,
     );
+    final Widget avatar;
+    if (url.isEmpty) {
+      avatar = fallback;
+    } else {
+      avatar = ClipOval(
+        child: Image.network(
+          url,
+          width: _px,
+          height: _px,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallback,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded || frame != null) {
+              return child;
+            }
+            return fallback;
+          },
+        ),
+      );
+    }
     final tag = heroTag;
     if (tag == null) {
       return avatar;

@@ -213,7 +213,9 @@ async fn dispatch(
                 return;
             }
         }
-        Event::Status { sequence, .. } | Event::UserList { sequence, .. } => {
+        Event::Status { sequence, .. }
+        | Event::UserList { sequence, .. }
+        | Event::Profile { sequence, .. } => {
             if let Some(tx) = pending.lock().await.remove(sequence) {
                 let _ = tx.send(event);
                 return;

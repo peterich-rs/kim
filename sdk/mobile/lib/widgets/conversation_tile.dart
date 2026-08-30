@@ -17,12 +17,14 @@ class ConversationTile extends StatelessWidget {
     required this.thread,
     required this.onOpen,
     required this.onDelete,
+    this.avatarUrl = '',
     this.index = 0,
   });
 
   final KimThread thread;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
+  final String avatarUrl;
   final int index;
 
   @override
@@ -53,7 +55,11 @@ class ConversationTile extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: Row(
                 children: [
-                  KimAvatar(name: thread.title, heroTag: 'avatar-${thread.id}'),
+                  KimAvatar(
+                    name: thread.title,
+                    url: avatarUrl,
+                    heroTag: 'avatar-${thread.id}',
+                  ),
                   const Gap(12),
                   Expanded(
                     child: Column(

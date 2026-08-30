@@ -9,7 +9,11 @@ final registerMutation = Mutation<void>(label: 'auth.register');
 final signOutMutation = Mutation<void>(label: 'auth.signOut');
 final changePasswordMutation = Mutation<void>(label: 'auth.changePassword');
 final sendMessageMutation = Mutation<KimChatMsg>(label: 'inbox.send');
+final sendImagesMutation = Mutation<List<KimChatMsg>>(
+  label: 'inbox.sendImages',
+);
 final friendRequestMutation = Mutation<void>(label: 'contacts.request');
 final friendAcceptMutation = Mutation<void>(label: 'contacts.accept');
 final friendRejectMutation = Mutation<void>(label: 'contacts.reject');
 final searchPeopleMutation = Mutation<void>(label: 'contacts.search');
+final avatarMutation = Mutation<void>(label: 'profile.avatar');

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 
@@ -167,6 +168,51 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> friendReject(String dest) async {}
 
+  KimPerson me = const KimPerson(account: 'alice', nickname: 'alice');
+  String lastAvatar = '';
+
+  @override
+  Future<KimPerson> profile({String dest = ''}) async {
+    return me;
+  }
+
+  @override
+  Future<KimPerson> updateProfile({
+    required String nickname,
+    required String avatar,
+    String bio = '',
+  }) async {
+    lastAvatar = avatar;
+    me = KimPerson(account: me.account, nickname: nickname, avatar: avatar);
+    return me;
+  }
+
   @override
   Future<String> disconnect() async => 'disconnected';
+}
+
+class FakeKimMedia implements KimMediaPort {
+  FakeKimMedia({this.url = 'https://media.kim.ainexc.com/alice/a.jpg'});
+
+  final String url;
+  int uploads = 0;
+  List<int> lastBytes = const [];
+  String lastType = '';
+
+  @override
+  Future<UploadedObject> uploadImage({
+    required String token,
+    required List<int> bytes,
+    required String contentType,
+  }) async {
+    uploads += 1;
+    lastBytes = bytes;
+    lastType = contentType;
+    return UploadedObject(
+      key: 'alice/a.jpg',
+      url: url,
+      contentType: contentType,
+      bytes: bytes.length,
+    );
+  }
 }

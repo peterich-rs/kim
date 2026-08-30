@@ -71,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1563396908;
+  int get rustContentHash => -2135990893;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -123,15 +123,34 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiClientKimApiPing({required KimApi that});
 
+  Future<String> crateApiClientKimApiProfile({
+    required KimApi that,
+    required String dest,
+  });
+
   Future<String> crateApiClientKimApiSearchUsers({
     required KimApi that,
     required String query,
+  });
+
+  Future<String> crateApiClientKimApiTalkImage({
+    required KimApi that,
+    required String dest,
+    required String url,
+    required String extra,
   });
 
   Future<String> crateApiClientKimApiTalkToUser({
     required KimApi that,
     required String dest,
     required String body,
+  });
+
+  Future<String> crateApiClientKimApiUpdateProfile({
+    required KimApi that,
+    required String nickname,
+    required String avatar,
+    required String bio,
   });
 
   Future<void> crateApiAuthKimAuthChangePassword({
@@ -594,6 +613,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "KimApi_ping", argNames: ["that"]);
 
   @override
+  Future<String> crateApiClientKimApiProfile({
+    required KimApi that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimApiProfileConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimApiProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimApi_profile",
+        argNames: ["that", "dest"],
+      );
+
+  @override
   Future<String> crateApiClientKimApiSearchUsers({
     required KimApi that,
     required String query,
@@ -610,7 +667,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -632,6 +689,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiClientKimApiTalkImage({
+    required KimApi that,
+    required String dest,
+    required String url,
+    required String extra,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_String(url, serializer);
+          sse_encode_String(extra, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimApiTalkImageConstMeta,
+        argValues: [that, dest, url, extra],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimApiTalkImageConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimApi_talk_image",
+        argNames: ["that", "dest", "url", "extra"],
+      );
+
+  @override
   Future<String> crateApiClientKimApiTalkToUser({
     required KimApi that,
     required String dest,
@@ -650,7 +749,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 16,
             port: port_,
           );
         },
@@ -669,6 +768,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "KimApi_talk_to_user",
         argNames: ["that", "dest", "body"],
+      );
+
+  @override
+  Future<String> crateApiClientKimApiUpdateProfile({
+    required KimApi that,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+            that,
+            serializer,
+          );
+          sse_encode_String(nickname, serializer);
+          sse_encode_String(avatar, serializer);
+          sse_encode_String(bio, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimApiUpdateProfileConstMeta,
+        argValues: [that, nickname, avatar, bio],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimApiUpdateProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimApi_update_profile",
+        argNames: ["that", "nickname", "avatar", "bio"],
       );
 
   @override
@@ -692,7 +833,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -732,7 +873,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -769,7 +910,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -800,7 +941,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(baseUrl, serializer);
           sse_encode_String(userAgent, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -838,7 +979,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -866,7 +1007,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -889,7 +1030,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -917,7 +1058,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1486,8 +1627,22 @@ class KimApiImpl extends RustOpaque implements KimApi {
   Future<String> ping() =>
       RustLib.instance.api.crateApiClientKimApiPing(that: this);
 
+  Future<String> profile({required String dest}) =>
+      RustLib.instance.api.crateApiClientKimApiProfile(that: this, dest: dest);
+
   Future<String> searchUsers({required String query}) => RustLib.instance.api
       .crateApiClientKimApiSearchUsers(that: this, query: query);
+
+  Future<String> talkImage({
+    required String dest,
+    required String url,
+    required String extra,
+  }) => RustLib.instance.api.crateApiClientKimApiTalkImage(
+    that: this,
+    dest: dest,
+    url: url,
+    extra: extra,
+  );
 
   Future<String> talkToUser({required String dest, required String body}) =>
       RustLib.instance.api.crateApiClientKimApiTalkToUser(
@@ -1495,6 +1650,17 @@ class KimApiImpl extends RustOpaque implements KimApi {
         dest: dest,
         body: body,
       );
+
+  Future<String> updateProfile({
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) => RustLib.instance.api.crateApiClientKimApiUpdateProfile(
+    that: this,
+    nickname: nickname,
+    avatar: avatar,
+    bio: bio,
+  );
 }
 
 @sealed

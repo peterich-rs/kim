@@ -12,6 +12,7 @@ import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'router/app_router.dart';
 import 'state/live.dart';
+import 'state/profile.dart';
 import 'state/providers.dart';
 import 'state/retry.dart';
 import 'theme/kim_theme.dart';
@@ -25,6 +26,7 @@ class KimApp extends ConsumerWidget {
     // Keep these on the root. IndexedStack tabs pause Riverpod 3 listeners.
     ref.watch(liveEventsProvider);
     ref.watch(sessionLinkProvider);
+    ref.watch(profileProvider);
     final router = ref.watch(routerProvider);
     return ToastificationWrapper(
       child: MaterialApp.router(

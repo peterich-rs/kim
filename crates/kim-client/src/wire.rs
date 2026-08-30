@@ -2,13 +2,14 @@ use bytes::Bytes;
 use kim_core::Frame;
 use kim_protocol::pkt::{
     AuthResp, Flag, FriendRequestNotify, GroupCreateNotify, KickoutNotify, LoginReq, MessageAckReq,
-    MessagePush, MessageReq, MessageResp, Status, UserListResp, UserSearchReq, UserSearchResp,
+    MessagePush, MessageReq, MessageResp, Status, UserListResp, UserProfile, UserProfileUpdate,
+    UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
-    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_USER_SEARCH, CODE_PONG, MESSAGE_TYPE_IMAGE,
-    MESSAGE_TYPE_TEXT,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
+    CODE_PONG, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -69,6 +70,16 @@ pub fn encode_dest_cmd(command: &str, seq: u32, dest: &str) -> Bytes {
 
 pub fn encode_empty_cmd(command: &str, seq: u32) -> Bytes {
     marshal(&Packet::Logic(LogicPkt::new(command, seq, Bytes::new())))
+}
+
+pub fn encode_user_update(seq: u32, nickname: &str, avatar: &str, bio: &str) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_USER_UPDATE, seq, Bytes::new());
+    pkt.write_body(&UserProfileUpdate {
+        nickname: nickname.to_string(),
+        avatar: avatar.to_string(),
+        bio: bio.to_string(),
+    });
+    marshal(&Packet::Logic(pkt))
 }
 
 pub fn encode_user_search(seq: u32, query: &str) -> Bytes {
@@ -187,8 +198,24 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
             sequence: p.header.sequence,
             users: users
                 .into_iter()
-                .map(|u| Profile::from_wire(u.account, u.nickname))
+                .map(|u| Profile::from_wire(u.account, u.nickname, u.avatar))
                 .collect(),
+        });
+    }
+    if p.header.flag == Flag::Response as i32
+        && (p.header.command == CMD_USER_PROFILE || p.header.command == CMD_USER_UPDATE)
+    {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let u: UserProfile = p.read_body()?;
+        return Ok(Event::Profile {
+            sequence: p.header.sequence,
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar),
         });
     }
     Ok(Event::Status {

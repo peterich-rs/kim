@@ -1,6 +1,6 @@
 /// Runtime permission helpers.
-/// Notifications may be requested once at launch. Camera / mic / photos are
-/// declared on Android but not requested until a picker exists.
+/// Notifications may be requested once at launch. Camera / photos are
+/// requested by `kim_media_picker` when 拍摄 / 相册 opens.
 library;
 
 import 'package:flutter/services.dart';

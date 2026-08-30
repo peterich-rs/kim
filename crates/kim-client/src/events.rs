@@ -11,20 +11,30 @@ pub struct TalkResult {
 pub struct Profile {
     pub account: String,
     pub nickname: String,
+    #[serde(default)]
+    pub avatar: String,
 }
 
 impl Profile {
-    pub fn from_wire(account: String, nickname: String) -> Self {
+    pub fn from_wire(account: String, nickname: String, avatar: String) -> Self {
         let nickname = if nickname.is_empty() {
             account.clone()
         } else {
             nickname
         };
-        Self { account, nickname }
+        Self {
+            account,
+            nickname,
+            avatar,
+        }
     }
 
     pub fn encode_list(users: &[Self]) -> Result<String, String> {
         serde_json::to_string(users).map_err(|e| e.to_string())
+    }
+
+    pub fn encode_one(user: &Self) -> Result<String, String> {
+        serde_json::to_string(user).map_err(|e| e.to_string())
     }
 }
 
@@ -53,6 +63,10 @@ pub enum Event {
         command: String,
         sequence: u32,
         users: Vec<Profile>,
+    },
+    Profile {
+        sequence: u32,
+        profile: Profile,
     },
     Status {
         command: String,

@@ -47,6 +47,14 @@ abstract class KimClientPort {
 
   Future<void> friendReject(String dest);
 
+  Future<KimPerson> profile({String dest = ''});
+
+  Future<KimPerson> updateProfile({
+    required String nickname,
+    required String avatar,
+    String bio = '',
+  });
+
   Future<String> disconnect();
 }
 
@@ -281,6 +289,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
           KimPerson(
             account: '${item['account'] ?? ''}',
             nickname: '${item['nickname'] ?? ''}',
+            avatar: '${item['avatar'] ?? ''}',
           ),
     ].where((p) => p.account.isNotEmpty).toList();
   }
@@ -337,6 +346,46 @@ class KimBridge implements KimAuthPort, KimClientPort {
       throw StateError('connect first');
     }
     await api.friendReject(dest: dest);
+  }
+
+  KimPerson _person(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      throw StateError('bad profile');
+    }
+    final account = '${decoded['account'] ?? ''}';
+    if (account.isEmpty) {
+      throw StateError('bad profile');
+    }
+    return KimPerson(
+      account: account,
+      nickname: '${decoded['nickname'] ?? ''}',
+      avatar: '${decoded['avatar'] ?? ''}',
+    );
+  }
+
+  @override
+  Future<KimPerson> profile({String dest = ''}) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return _person(await api.profile(dest: dest));
+  }
+
+  @override
+  Future<KimPerson> updateProfile({
+    required String nickname,
+    required String avatar,
+    String bio = '',
+  }) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return _person(
+      await api.updateProfile(nickname: nickname, avatar: avatar, bio: bio),
+    );
   }
 
   @override

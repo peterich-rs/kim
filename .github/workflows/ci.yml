@@ -122,11 +122,18 @@ jobs:
 
       - name: dart format
         working-directory: sdk/mobile
-        run: dart format --output=none --set-exit-if-changed lib test hook
+        run: dart format --output=none --set-exit-if-changed lib test hook plugins/kim_media_picker/lib plugins/kim_media_picker/test
 
       - name: flutter analyze
         working-directory: sdk/mobile
         run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: plugin test
+        working-directory: sdk/mobile/plugins/kim_media_picker
+        run: |
+          flutter pub get
+          flutter analyze --fatal-infos --fatal-warnings
+          flutter test
 
       - name: cargo fmt
         run: cargo fmt --manifest-path sdk/mobile/rust/Cargo.toml -- --check

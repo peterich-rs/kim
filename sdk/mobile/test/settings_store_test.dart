@@ -49,6 +49,17 @@ void main() {
     expect(store.httpOrigin, SettingsStore.defaultHttp);
   });
 
+  test('avatar is stored per account and reloaded', () async {
+    final first = await SettingsStore.load(useSecureStorage: false);
+    await first.saveSession(token: 'tok', account: 'alice');
+    await first.saveAvatar('https://media.kim.ainexc.com/alice/a.jpg');
+    expect(first.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
+
+    final second = await SettingsStore.load(useSecureStorage: false);
+    expect(second.account, 'alice');
+    expect(second.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
+  });
+
   test('clearSession drops token and account', () async {
     final store = await SettingsStore.load(useSecureStorage: false);
     await store.saveSession(token: 'tok', account: 'alice');

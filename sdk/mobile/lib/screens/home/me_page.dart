@@ -1,11 +1,16 @@
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:toastification/toastification.dart';
 
 import '../../copy.dart';
 import '../../core/haptics.dart';
@@ -13,6 +18,7 @@ import '../../models/models.dart';
 import '../../state/auth.dart';
 import '../../state/gateway.dart';
 import '../../state/mutations.dart';
+import '../../state/profile.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
@@ -27,6 +33,7 @@ class MePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
+    final me = ref.watch(profileProvider);
     final runtime = ref.watch(runtimeProvider);
     final logout = ref.watch(signOutMutation);
     final settings = runtime.settings;
@@ -52,9 +59,9 @@ class MePage extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
                   child: Row(
                     children: [
-                      KimAvatar(
+                      _AvatarButton(
                         name: session.account.isEmpty ? '?' : session.account,
-                        size: KimAvatarSize.lg,
+                        url: me.avatar,
                       ),
                       const Gap(16),
                       Expanded(
@@ -178,6 +185,153 @@ class MePage extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _AvatarButton extends ConsumerWidget {
+  const _AvatarButton({required this.name, required this.url});
+
+  final String name;
+  final String url;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final busy = ref.watch(avatarMutation) is MutationPending;
+    return GestureDetector(
+      onTap: busy ? null : () => _pick(context, ref),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          KimAvatar(name: name, url: url, size: KimAvatarSize.lg),
+          if (busy)
+            const SizedBox(
+              width: 72,
+              height: 72,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pick(BuildContext context, WidgetRef ref) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(LucideIcons.camera),
+                title: const Text(Copy.takePhoto),
+                onTap: () => Navigator.pop(ctx, 'camera'),
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.image),
+                title: const Text(Copy.pickFromAlbum),
+                onTap: () => Navigator.pop(ctx, 'album'),
+              ),
+              ListTile(
+                title: const Text(Copy.cancel),
+                onTap: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (choice == null || !context.mounted) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (!context.mounted) {
+      return;
+    }
+    try {
+      final asset = choice == 'camera'
+          ? await KimMediaPicker.instance.takePhoto()
+          : await KimMediaPicker.instance.pickSingle();
+      if (asset == null) {
+        return;
+      }
+      final file = File(asset.path);
+      if (!file.existsSync()) {
+        throw StateError(Copy.avatarExportFailed);
+      }
+      await avatarMutation.run(ref, (tsx) async {
+        final bytes = await file.readAsBytes();
+        final uploaded = await tsx
+            .get(mediaPortProvider)
+            .uploadImage(
+              token: tsx.get(runtimeProvider).settings.token,
+              bytes: bytes,
+              contentType: asset.mimeType.isEmpty
+                  ? 'image/jpeg'
+                  : asset.mimeType,
+            );
+        await tsx.get(profileProvider.notifier).applyAvatar(uploaded.url);
+      });
+      if (context.mounted) {
+        toastification.show(
+          context: context,
+          type: ToastificationType.success,
+          style: ToastificationStyle.flatColored,
+          title: const Text(Copy.avatarUpdated),
+          autoCloseDuration: const Duration(seconds: 2),
+          alignment: Alignment.topCenter,
+        );
+      }
+    } on MissingPluginException {
+      return;
+    } on KimMediaPickerException catch (err) {
+      if (context.mounted) {
+        _toastFail(context, err.message);
+      }
+    } catch (err) {
+      if (context.mounted) {
+        _toastFail(context, _avatarError(err));
+      }
+    }
+  }
+
+  void _toastFail(BuildContext context, String message) {
+    if (!context.mounted) {
+      return;
+    }
+    toastification.show(
+      context: context,
+      type: ToastificationType.error,
+      style: ToastificationStyle.flatColored,
+      title: Text(message.isEmpty ? Copy.avatarFailed : message),
+      autoCloseDuration: const Duration(seconds: 3),
+      alignment: Alignment.topCenter,
+    );
+  }
+
+  String _avatarError(Object err) {
+    final msg = err.toString();
+    if (msg.contains(Copy.avatarExportFailed)) {
+      return Copy.avatarExportFailed;
+    }
+    if (msg.contains('unsupported media type') || msg.contains('415')) {
+      return Copy.avatarUnsupportedType;
+    }
+    if (msg.contains('401') || msg.contains('unauthorized')) {
+      return Copy.avatarRelogin;
+    }
+    if (msg.contains('too large') || msg.contains('413')) {
+      return Copy.avatarFailed;
+    }
+    if (msg.contains('connect first') || msg.contains(Copy.notConnected)) {
+      return Copy.notConnected;
+    }
+    if (msg.contains('upload') ||
+        msg.contains('Socket') ||
+        msg.contains('network')) {
+      return Copy.network;
+    }
+    return Copy.avatarFailed;
   }
 }
 
