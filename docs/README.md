@@ -19,12 +19,13 @@
 9. [web-sdk.md](web-sdk.md) — 已落地的 TypeScript Web SDK
 10. [user-social-inbox.md](user-social-inbox.md) — 资料 / 好友 / 服务端会话
 11. [mobile-client.md](mobile-client.md) — kim-client + Flutter 壳（WSS / WGateway）
-12. [bench.md](bench.md) — kimbench
-13. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
-14. [routing.md](routing.md) — router HTTP lookup
-15. [gray.md](gray.md) — zone 灰度
-16. [observability.md](observability.md) — kim-metrics
-17. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS
+12. [media.md](media.md) — R2 图床（upload Worker + 自定义域读）
+13. [bench.md](bench.md) — kimbench
+14. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
+15. [routing.md](routing.md) — router HTTP lookup
+16. [gray.md](gray.md) — zone 灰度
+17. [observability.md](observability.md) — kim-metrics
+18. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS
 
 卡住时：先看文档里的「合同」和「执行链」，再去对应源码。文档和代码打架时，以代码为准。
 

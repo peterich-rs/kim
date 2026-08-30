@@ -35,6 +35,7 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/api/v1/auth/login` | protobuf `AuthReq` → `AuthResp` |
 | POST | `/api/v1/auth/logout` | `Authorization: Bearer` → 204；吊销 `jti` |
 | POST | `/api/v1/auth/password` | `Authorization: Bearer` + protobuf `PasswordChangeReq` → 204 |
+| GET | `/api/v1/auth/me` | `Authorization: Bearer` → JSON `{account,app}`；吊销后 401 |
 | POST | `/api/v1/message/user` | protobuf |
 | POST | `/api/v1/message/group` | protobuf |
 | POST | `/api/v1/message/ack` | protobuf |

@@ -132,6 +132,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/auth/password", post(auth::change_password))
+        .route("/api/v1/auth/me", get(auth::me))
         .route("/internal/user/lookup", post(user_lookup))
         .route("/internal/user/upsert", post(user_upsert))
         .route("/internal/revoke/check", post(revoke_check))
@@ -651,6 +652,17 @@ mod tests {
         let login_buf = ok.bytes().await.unwrap();
         let login_resp = kim_protocol::pkt::AuthResp::decode(login_buf.as_ref()).unwrap();
 
+        let me = http
+            .get(format!("http://{addr}/api/v1/auth/me"))
+            .header("Authorization", format!("Bearer {}", login_resp.token))
+            .send()
+            .await
+            .unwrap();
+        assert!(me.status().is_success());
+        let me_body: serde_json::Value = me.json().await.unwrap();
+        assert_eq!(me_body["account"], "alice");
+        assert_eq!(me_body["app"], "kim");
+
         let out = http
             .post(&logout)
             .header("Authorization", format!("Bearer {}", login_resp.token))
@@ -658,5 +670,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.status(), StatusCode::NO_CONTENT);
+
+        let me_after = http
+            .get(format!("http://{addr}/api/v1/auth/me"))
+            .header("Authorization", format!("Bearer {}", login_resp.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -28,7 +28,7 @@ pub use session::MemorySession;
 pub use token::account_from_token;
 pub use wire::{
     decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_login, encode_ping,
-    encode_user_search, encode_user_talk, is_kickout,
+    encode_user_image, encode_user_search, encode_user_talk, encode_user_talk_typed, is_kickout,
 };
 
 #[cfg(test)]

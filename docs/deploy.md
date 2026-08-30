@@ -73,6 +73,7 @@ npm run deploy:app
 | `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim`。`v*` 成功后再部署 |
 | `deploy.yml` | Image 在 `v*` 成功后，或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
 | `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
+| `media.yml` | `main` 上 `sdk/media/**` 或手动 | `npm test` 后 `wrangler deploy` 到 `upload.kim.ainexc.com` |
 
 GitHub Secrets（只放在 GitHub，不进 git）：
 

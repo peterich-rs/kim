@@ -1,0 +1,21 @@
+{
+  "name": "@kim/media",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KIM image upload Worker. Writes kim-media (R2); public reads are media.kim.ainexc.com.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260828.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.127.1"
+  }
+}

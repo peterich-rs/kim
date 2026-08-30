@@ -14,7 +14,8 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::{
     generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST,
-    CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
+    CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_IMAGE,
+    MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -24,7 +25,9 @@ use crate::events::Event;
 use crate::login::login_on_conn;
 use crate::session::MemorySession;
 use crate::token::account_from_token;
-use crate::wire::{decode_event, encode_dest_cmd, encode_ping, encode_user_talk, is_kickout};
+use crate::wire::{
+    decode_event, encode_dest_cmd, encode_ping, encode_user_image, encode_user_talk, is_kickout,
+};
 
 struct MockConn {
     incoming: VecDeque<Frame>,
@@ -154,6 +157,27 @@ fn talk_packet_sets_dest_and_client_id() {
             assert_eq!(req.body, "hello world");
             assert_eq!(req.r#type, MESSAGE_TYPE_TEXT);
             assert_eq!(req.client_id, "cid-1");
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn image_packet_uses_type_2_and_url_body() {
+    let bytes = encode_user_image(
+        2,
+        "bob",
+        "https://media.kim.ainexc.com/a.jpg",
+        "w=1",
+        "cid-2",
+    );
+    match read(&bytes).unwrap() {
+        Packet::Logic(p) => {
+            let req: MessageReq = p.read_body().unwrap();
+            assert_eq!(req.r#type, MESSAGE_TYPE_IMAGE);
+            assert_eq!(req.body, "https://media.kim.ainexc.com/a.jpg");
+            assert_eq!(req.extra, "w=1");
+            assert_eq!(req.client_id, "cid-2");
         }
         _ => panic!("expected logic"),
     }

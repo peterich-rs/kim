@@ -25,6 +25,7 @@ prost.workspace = true
 redis = { workspace = true, optional = true }
 reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml = "0.8"

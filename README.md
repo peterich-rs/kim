@@ -108,6 +108,7 @@ services/               gateway / tgateway / chat / royal / router
 examples/               pkt-client / kim-client-demo / kimbench
 deploy/                 VPS Compose（gateway / chat / Redis / Postgres）
 sdk/web                 TypeScript Web SDK（第 23–24 章）
+sdk/media               图片上传 Worker（R2 kim-media）
 sdk/mobile              Flutter 壳 + FRB → kim-client（3.47.2）
 crates/kim-client       客户端 session/login/talk（Conn = kim-ws）
 docs/                   词表、分层合同、登录与控制层规格、进阶篇 as-built
@@ -127,12 +128,13 @@ docs/                   词表、分层合同、登录与控制层规格、进�
 8. [docs/group-royal.md](docs/group-royal.md) — 群 join/quit/detail、可选 Royal
 9. [docs/web-sdk.md](docs/web-sdk.md) — TypeScript Web SDK
 10. [docs/mobile-client.md](docs/mobile-client.md) — kim-client + Flutter
-11. [docs/bench.md](docs/bench.md) — kimbench
-12. [docs/perf.md](docs/perf.md) — 写路径 / 缓冲 / 寻址缓存
-13. [docs/routing.md](docs/routing.md) — HTTP 智能路由
-14. [docs/gray.md](docs/gray.md) — 租户 / zone 灰度
-15. [docs/observability.md](docs/observability.md) — Prometheus `/metrics`
-16. [docs/deploy.md](docs/deploy.md) — Docker Compose / GHCR / VPS
+11. [docs/media.md](docs/media.md) — R2 图床
+12. [docs/bench.md](docs/bench.md) — kimbench
+13. [docs/perf.md](docs/perf.md) — 写路径 / 缓冲 / 寻址缓存
+14. [docs/routing.md](docs/routing.md) — HTTP 智能路由
+15. [docs/gray.md](docs/gray.md) — 租户 / zone 灰度
+16. [docs/observability.md](docs/observability.md) — Prometheus `/metrics`
+17. [docs/deploy.md](docs/deploy.md) — Docker Compose / GHCR / VPS
 
 ## 开发
 

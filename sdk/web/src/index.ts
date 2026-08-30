@@ -6,4 +6,5 @@ export { MemoryStore, KeyValueStore, browserStore, type MsgStore } from "./store
 export { OfflineMessages } from "./offline";
 export { KIMClient, KIMEvent, State, type ClientOptions } from "./client";
 export { accountFromToken } from "./token";
+export { uploadImage, type UploadedObject } from "./media";
 export { defaultWebSocket, type WebSocketFactory, type WebSocketLike } from "./ws";
