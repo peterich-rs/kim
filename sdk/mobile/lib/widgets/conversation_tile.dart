@@ -55,11 +55,7 @@ class ConversationTile extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: Row(
                 children: [
-                  KimAvatar(
-                    name: thread.title,
-                    url: avatarUrl,
-                    heroTag: 'avatar-${thread.id}',
-                  ),
+                  KimAvatar(name: thread.title, url: avatarUrl),
                   const Gap(12),
                   Expanded(
                     child: Column(

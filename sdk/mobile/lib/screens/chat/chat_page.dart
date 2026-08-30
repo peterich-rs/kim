@@ -334,48 +334,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       (prev, next) => unawaited(_sync(next)),
     );
 
-    final subtitle = widget.kind == ThreadKind.group
-        ? Copy.groupChat
-        : Copy.privateChat;
-
     return Scaffold(
       backgroundColor: KimTheme.chatCanvasOf(context),
       appBar: AppBar(
-        toolbarHeight: 64,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            KimAvatar(
-              name: widget.title,
-              url: avatarFor(me, social, widget.id),
-              size: KimAvatarSize.sm,
-              heroTag: 'avatar-${widget.id}',
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        centerTitle: true,
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: Column(
         children: [
@@ -404,6 +367,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 imageMessageBuilder: kimImageMessage,
                 videoMessageBuilder: kimVideoMessage,
                 systemMessageBuilder: kimSystemMessage,
+                chatAnimatedListBuilder: (context, itemBuilder) {
+                  return ChatAnimatedList(
+                    itemBuilder: itemBuilder,
+                    handleSafeArea: false,
+                    bottomPadding: 8,
+                  );
+                },
+                composerBuilder: (_) => const SizedBox.shrink(),
                 chatMessageBuilder:
                     (
                       context,
@@ -447,25 +418,24 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         },
                       );
                     },
-                composerBuilder: (_) {
-                  if (gated) {
-                    return _FriendGate(
-                      dest: widget.id,
-                      title: widget.title,
-                      incoming: social.isIncoming(widget.id),
-                      outgoing: social.isOutgoing(widget.id),
-                    );
-                  }
-                  return KimComposer(
-                    hintText: Copy.messagePlaceholder,
-                    onSend: (text) => unawaited(_send(text)),
-                    onPickAlbum: () => unawaited(_pickAlbum()),
-                    onTakePhoto: () => unawaited(_takePhoto()),
-                  );
-                },
               ),
             ),
           ),
+          if (gated)
+            _FriendGate(
+              dest: widget.id,
+              title: widget.title,
+              incoming: social.isIncoming(widget.id),
+              outgoing: social.isOutgoing(widget.id),
+            )
+          else
+            KimComposer(
+              key: const Key('chat-composer'),
+              hintText: Copy.messagePlaceholder,
+              onSend: (text) => unawaited(_send(text)),
+              onPickAlbum: () => unawaited(_pickAlbum()),
+              onTakePhoto: () => unawaited(_takePhoto()),
+            ),
         ],
       ),
     );

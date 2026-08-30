@@ -11,6 +11,7 @@ import 'core/runtime.dart';
 import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'router/app_router.dart';
+import 'router/kim_page.dart';
 import 'state/live.dart';
 import 'state/profile.dart';
 import 'state/providers.dart';
@@ -46,7 +47,7 @@ class KimApp extends ConsumerWidget {
         builder: (context, child) {
           return Listener(
             onPointerDown: (event) {
-              if (event.position.dx < 24) {
+              if (event.position.dx < kKimBackGestureWidth) {
                 return;
               }
               FocusManager.instance.primaryFocus?.unfocus();
