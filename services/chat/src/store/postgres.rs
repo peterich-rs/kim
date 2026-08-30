@@ -9,8 +9,9 @@ use sqlx::{PgPool, Postgres, Transaction};
 use crate::idgen::IdGenerator;
 
 use super::{
-    clamp_start, now_unix_nano, AckIndex, InsertMessage, InsertResult, MessageContentRow,
-    MessageIndexRow, MessageStore, StoreError, DAY_NANOS, DIRECTION_RECV, DIRECTION_SEND,
+    clamp_page, clamp_start, now_unix_nano, AckIndex, HistoryEntry, InboxEntry, InsertMessage,
+    InsertResult, MessageContentRow, MessageIndexRow, MessageKind, MessageStore, StoreError,
+    DAY_NANOS, DIRECTION_RECV, DIRECTION_SEND, HISTORY_MAX, HISTORY_PAGE, INBOX_MAX, INBOX_PAGE,
     OFFLINE_SYNC_INDEX_COUNT,
 };
 
@@ -319,6 +320,191 @@ impl MessageStore for PostgresMessageStore {
             .iter()
             .filter_map(|id| by_id.remove(id))
             .collect())
+    }
+
+    async fn inbox(
+        &self,
+        app: &str,
+        account: &str,
+        limit: i32,
+    ) -> Result<Vec<InboxEntry>, StoreError> {
+        let cap = i64::try_from(clamp_page(limit, INBOX_PAGE, INBOX_MAX)).unwrap_or(50);
+        let rows: Vec<(String, i32, i64, i64, i32)> = sqlx::query_as(
+            "SELECT
+                CASE WHEN i.group_id = '' THEN i.account_b ELSE i.group_id END AS dest,
+                CASE WHEN i.group_id = '' THEN 0 ELSE 1 END AS kind,
+                MAX(i.message_id) AS last_id,
+                MAX(i.send_time) AS last_at,
+                COUNT(*) FILTER (
+                    WHERE i.direction = $3 AND i.message_id > COALESCE(r.last_read_id, 0)
+                )::int AS unread
+             FROM message_index i
+             LEFT JOIN conversation_reads r
+               ON r.app = i.app AND r.account = i.account_a
+              AND (
+                    (i.group_id = '' AND r.peer = i.account_b AND r.group_id = '')
+                    OR (i.group_id <> '' AND r.peer = '' AND r.group_id = i.group_id)
+                  )
+             WHERE i.app = $1 AND i.account_a = $2
+             GROUP BY 1, 2, r.last_read_id
+             ORDER BY last_at DESC, last_id DESC
+             LIMIT $4",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(DIRECTION_RECV as i16)
+        .bind(cap)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<i64> = rows.iter().map(|r| r.2).collect();
+        let contents: Vec<(i64, i16, String, String)> = sqlx::query_as(
+            "SELECT id, msg_type, body, extra FROM message_content WHERE id = ANY($1)",
+        )
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        let mut by_id = HashMap::with_capacity(contents.len());
+        for (id, msg_type, body, extra) in contents {
+            by_id.insert(id, (i32::from(msg_type), body, extra));
+        }
+        let senders: Vec<(i64, i16, String)> = sqlx::query_as(
+            "SELECT message_id, direction, account_b FROM message_index
+             WHERE app = $1 AND account_a = $2 AND message_id = ANY($3)",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        let mut sender_by_id = HashMap::new();
+        for (id, direction, account_b) in senders {
+            let sender = if i32::from(direction) == DIRECTION_SEND {
+                account.to_string()
+            } else {
+                account_b
+            };
+            sender_by_id.entry(id).or_insert(sender);
+        }
+        Ok(rows
+            .into_iter()
+            .map(|(dest, kind, last_id, last_at, unread)| {
+                let (msg_type, body) = by_id
+                    .get(&last_id)
+                    .map(|(t, b, _)| (*t, b.clone()))
+                    .unwrap_or((0, String::new()));
+                InboxEntry {
+                    dest,
+                    kind: if kind == 1 {
+                        MessageKind::Group
+                    } else {
+                        MessageKind::User
+                    },
+                    last_message_id: last_id,
+                    last_send_time: last_at,
+                    last_body: body,
+                    last_sender: sender_by_id.remove(&last_id).unwrap_or_default(),
+                    last_msg_type: msg_type,
+                    unread,
+                }
+            })
+            .collect())
+    }
+
+    async fn history(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<HistoryEntry>, StoreError> {
+        let cap = i64::try_from(clamp_page(limit, HISTORY_PAGE, HISTORY_MAX)).unwrap_or(50);
+        let is_group = kind == MessageKind::Group;
+        let rows: Vec<(i64, i16, i64, String, i16, String, String)> = sqlx::query_as(
+            "SELECT i.message_id, i.direction, i.send_time, i.account_b,
+                    c.msg_type, c.body, c.extra
+             FROM message_index i
+             JOIN message_content c ON c.id = i.message_id
+             WHERE i.app = $1 AND i.account_a = $2
+               AND (
+                    ($3 AND i.group_id = $4)
+                    OR (NOT $3 AND i.group_id = '' AND i.account_b = $4)
+               )
+               AND ($5 <= 0 OR i.message_id < $5)
+             ORDER BY i.message_id DESC
+             LIMIT $6",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(is_group)
+        .bind(dest)
+        .bind(before_id)
+        .bind(cap)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(message_id, direction, send_time, account_b, msg_type, body, extra)| {
+                    let direction = i32::from(direction);
+                    HistoryEntry {
+                        message_id,
+                        msg_type: i32::from(msg_type),
+                        body,
+                        extra,
+                        sender: if direction == DIRECTION_SEND {
+                            account.to_string()
+                        } else {
+                            account_b
+                        },
+                        send_time,
+                        direction,
+                    }
+                },
+            )
+            .collect())
+    }
+
+    async fn mark_read(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+        message_id: i64,
+    ) -> Result<(), StoreError> {
+        if dest.is_empty() || message_id <= 0 {
+            return Ok(());
+        }
+        let (peer, group_id) = match kind {
+            MessageKind::User => (dest, ""),
+            MessageKind::Group => ("", dest),
+        };
+        sqlx::query(
+            "INSERT INTO conversation_reads (app, account, peer, group_id, last_read_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, now())
+             ON CONFLICT (app, account, peer, group_id)
+             DO UPDATE SET
+                last_read_id = GREATEST(conversation_reads.last_read_id, EXCLUDED.last_read_id),
+                updated_at = now()",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .bind(group_id)
+        .bind(message_id)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        Ok(())
     }
 }
 

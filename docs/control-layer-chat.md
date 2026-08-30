@@ -50,6 +50,8 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | ContentBlocked | 106 | talk `ContentFilter` 拒绝（文本词表 / 图片 URL 等）。不 insert、不 Push。不在 SDK 重试区间 |
 | NotGroupMember | 107 | 群聊发送方不在成员列表（含未知群）。不 insert、不 Push。不在 SDK 重试区间 |
 | UserNotFound | 108 | `chat.user.talk` dest 不是用户表里的账号。不 insert、不 Push。不在 SDK 重试区间 |
+| NotFriends | 109 | 私聊双方还不是好友。不 insert、不 Push |
+| Blocked | 110 | 任一方拉黑。不 insert、不 Push |
 | NoDestination | 300 | `Header.dest` 为空；不 decode、不 insert |
 | SessionNotFound | 404 | 非 signin 且 cache miss（到不了 Handler） |
 

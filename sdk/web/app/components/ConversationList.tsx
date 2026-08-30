@@ -11,11 +11,14 @@ import { Avatar, Button, StatusDot } from "./ui.tsx";
 export function ConversationList({
   onNewChat,
   onNewGroup,
+  onProfile,
 }: {
   onNewChat: () => void;
   onNewGroup: () => void;
+  onProfile: () => void;
 }) {
-  const { account, status, threads, activeId, openThread, signOut } = useChat();
+  const { account, nickname, status, threads, activeId, openThread, signOut, incomingCount } =
+    useChat();
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -43,8 +46,11 @@ export function ConversationList({
         <h1 className="text-lg font-semibold">{COPY.conversations}</h1>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <Button variant="icon" aria-label={COPY.startChat}>
+            <Button variant="icon" aria-label={COPY.startChat} className="relative">
               <Plus className="size-4" />
+              {incomingCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-brand" />
+              ) : null}
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
@@ -58,7 +64,7 @@ export function ConversationList({
                 onSelect={onNewChat}
               >
                 <User className="size-4 text-muted" />
-                {COPY.newChat}
+                {COPY.contacts}
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-[highlighted]:bg-panel"
@@ -138,9 +144,11 @@ export function ConversationList({
       </ul>
 
       <footer className="mt-auto flex items-center gap-3 border-t border-line px-3 py-3">
-        <Avatar name={account ?? "?"} size="sm" />
+        <button type="button" onClick={onProfile} className="rounded-xl" aria-label={COPY.profile}>
+          <Avatar name={nickname || account || "?"} size="sm" />
+        </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{account}</p>
+          <p className="truncate text-sm font-medium">{nickname || account}</p>
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <StatusDot status={status} />
             {statusLabel}

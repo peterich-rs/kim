@@ -24,6 +24,24 @@ pub const CMD_GROUP_MEMBERS: &str = "chat.group.members";
 pub const CMD_CHAT_TALK_ACK: &str = "chat.talk.ack";
 pub const CMD_OFFLINE_INDEX: &str = "chat.offline.index";
 pub const CMD_OFFLINE_CONTENT: &str = "chat.offline.content";
+pub const CMD_USER_PROFILE: &str = "chat.user.profile";
+pub const CMD_USER_UPDATE: &str = "chat.user.update";
+pub const CMD_USER_SEARCH: &str = "chat.user.search";
+pub const CMD_FRIEND_REQUEST: &str = "chat.friend.request";
+pub const CMD_FRIEND_ACCEPT: &str = "chat.friend.accept";
+pub const CMD_FRIEND_REJECT: &str = "chat.friend.reject";
+pub const CMD_FRIEND_REMOVE: &str = "chat.friend.remove";
+pub const CMD_FRIEND_LIST: &str = "chat.friend.list";
+pub const CMD_FRIEND_INCOMING: &str = "chat.friend.incoming";
+pub const CMD_BLOCK_ADD: &str = "chat.block.add";
+pub const CMD_BLOCK_REMOVE: &str = "chat.block.remove";
+pub const CMD_BLOCK_LIST: &str = "chat.block.list";
+pub const CMD_INBOX_LIST: &str = "chat.inbox.list";
+pub const CMD_INBOX_READ: &str = "chat.inbox.read";
+pub const CMD_HISTORY: &str = "chat.history";
+
+pub const INBOX_KIND_USER: i32 = 0;
+pub const INBOX_KIND_GROUP: i32 = 1;
 
 pub const MESSAGE_TYPE_TEXT: i32 = 1;
 pub const MESSAGE_TYPE_IMAGE: i32 = 2;
@@ -54,6 +72,10 @@ mod tests {
         assert_eq!(service_name(CMD_CHAT_TALK_ACK), "chat");
         assert_eq!(service_name(CMD_OFFLINE_INDEX), "chat");
         assert_eq!(service_name(CMD_OFFLINE_CONTENT), "chat");
+        assert_eq!(service_name(CMD_USER_PROFILE), "chat");
+        assert_eq!(service_name(CMD_FRIEND_REQUEST), "chat");
+        assert_eq!(service_name(CMD_INBOX_LIST), "chat");
+        assert_eq!(service_name(CMD_HISTORY), "chat");
         assert_eq!(service_name("chat.offline.index"), "chat");
         // Accept must not use service_name for login: this is `"login"`, not SN_LOGIN.
         assert_eq!(service_name("login.signin"), "login");

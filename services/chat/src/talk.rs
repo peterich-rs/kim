@@ -4,6 +4,7 @@ use tracing::{info, warn};
 
 use crate::directory::GroupDirectory;
 use crate::filter::ContentFilter;
+use crate::social::SocialDirectory;
 use crate::store::{InsertMessage, MessageStore};
 use crate::users::UserDirectory;
 
@@ -17,6 +18,10 @@ pub enum TalkError {
     NotGroupMember,
     #[error("user not found")]
     UserNotFound,
+    #[error("not friends")]
+    NotFriends,
+    #[error("blocked")]
+    Blocked,
 }
 
 fn unix_nano() -> i64 {
@@ -34,6 +39,7 @@ pub async fn do_user_talk(
     store: &dyn MessageStore,
     filter: &dyn ContentFilter,
     users: &dyn UserDirectory,
+    social: &dyn SocialDirectory,
 ) {
     if ctx.header().dest.is_empty() {
         warn!(
@@ -76,6 +82,42 @@ pub async fn do_user_talk(
             warn!(%err, account = %receiver, "user exists failed");
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
             return;
+        }
+    }
+    if receiver != ctx.session().account {
+        match social
+            .is_blocked_either(&ctx.session().app, &ctx.session().account, receiver)
+            .await
+        {
+            Ok(true) => {
+                let _ = ctx
+                    .resp_with_error(Status::Blocked, &TalkError::Blocked)
+                    .await;
+                return;
+            }
+            Ok(false) => {}
+            Err(err) => {
+                warn!(%err, "block check failed");
+                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                return;
+            }
+        }
+        match social
+            .is_friend(&ctx.session().app, &ctx.session().account, receiver)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = ctx
+                    .resp_with_error(Status::NotFriends, &TalkError::NotFriends)
+                    .await;
+                return;
+            }
+            Err(err) => {
+                warn!(%err, "friend check failed");
+                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                return;
+            }
         }
     }
     let loc = match ctx.get_location(receiver, "").await {
@@ -290,6 +332,7 @@ mod tests {
     use crate::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
     use crate::filter::{ContentFilter, ImageFilter, NoopFilter, TextWordFilter};
     use crate::idgen::{IdGenerator, SequenceIdGen};
+    use crate::social::{MemorySocialDirectory, SocialDirectory};
     use crate::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
     };
@@ -332,6 +375,15 @@ mod tests {
         dir
     }
 
+    async fn seed_friends(pairs: &[(&str, &str)]) -> Arc<MemorySocialDirectory> {
+        let dir = Arc::new(MemorySocialDirectory::new());
+        for (a, b) in pairs {
+            dir.request("kim", a, b).await.unwrap();
+            dir.accept("kim", b, a).await.unwrap();
+        }
+        dir
+    }
+
     fn talk_pkt(dest: &str, body: Bytes) -> LogicPkt {
         let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 1, body);
         pkt.header.channel_id = "ch-alice".into();
@@ -366,6 +418,7 @@ mod tests {
             session,
             Arc::new(NoopFilter),
             seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
         )
         .await;
     }
@@ -386,10 +439,12 @@ mod tests {
             session,
             filter,
             seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
         )
         .await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn serve_user_talk_users(
         store: Arc<dyn MessageStore>,
         cache: Arc<dyn SessionStorage>,
@@ -398,13 +453,24 @@ mod tests {
         session: Session,
         filter: Arc<dyn ContentFilter>,
         users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
     ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_USER_TALK, move |ctx| {
             let store = store.clone();
             let filter = filter.clone();
             let users = users.clone();
-            async move { do_user_talk(ctx, store.as_ref(), filter.as_ref(), users.as_ref()).await }
+            let social = social.clone();
+            async move {
+                do_user_talk(
+                    ctx,
+                    store.as_ref(),
+                    filter.as_ref(),
+                    users.as_ref(),
+                    social.as_ref(),
+                )
+                .await
+            }
         });
         router.serve(pkt, dispatcher, cache, session).await.unwrap();
     }
@@ -454,6 +520,38 @@ mod tests {
             _message_ids: &[i64],
         ) -> Result<Vec<crate::store::MessageContentRow>, StoreError> {
             Ok(Vec::new())
+        }
+
+        async fn inbox(
+            &self,
+            _app: &str,
+            _account: &str,
+            _limit: i32,
+        ) -> Result<Vec<crate::store::InboxEntry>, StoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn history(
+            &self,
+            _app: &str,
+            _account: &str,
+            _dest: &str,
+            _kind: MessageKind,
+            _before_id: i64,
+            _limit: i32,
+        ) -> Result<Vec<crate::store::HistoryEntry>, StoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn mark_read(
+            &self,
+            _app: &str,
+            _account: &str,
+            _dest: &str,
+            _kind: MessageKind,
+            _message_id: i64,
+        ) -> Result<(), StoreError> {
+            Ok(())
         }
     }
 
@@ -522,6 +620,7 @@ mod tests {
             sender_session(),
             Arc::new(NoopFilter),
             seed_users(&["alice"]).await,
+            seed_friends(&[]).await,
         )
         .await;
 

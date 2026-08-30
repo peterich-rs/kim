@@ -1,6 +1,7 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
 mod auth;
+mod product;
 mod revoke;
 
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
+use chat::social::{MemorySocialDirectory, SocialDirectory};
 use chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
 use kim_protocol::pkt::{
@@ -47,6 +49,7 @@ pub struct RoyalState {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
     pub(crate) users: Arc<dyn UserDirectory>,
+    pub(crate) social: Arc<dyn SocialDirectory>,
     pub(crate) jwt: JwtConfig,
     pub(crate) revoke: Arc<dyn TokenRevocation>,
     pub(crate) app: String,
@@ -63,6 +66,7 @@ impl RoyalState {
             store: Arc::new(MemoryMessageStore::new(idgen.clone())),
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
             users: Arc::new(MemoryUserDirectory::new()),
+            social: Arc::new(MemorySocialDirectory::new()),
             jwt,
             revoke: Arc::new(MemoryRevocation::new()),
             app: "kim".into(),
@@ -104,6 +108,7 @@ impl RoyalState {
         store: Arc<dyn MessageStore>,
         groups: Arc<dyn GroupDirectory>,
         users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
         jwt: JwtConfig,
         revoke: Arc<dyn TokenRevocation>,
     ) -> Self {
@@ -111,6 +116,7 @@ impl RoyalState {
             store,
             groups,
             users,
+            social,
             jwt,
             revoke,
             app: "kim".into(),
@@ -125,6 +131,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/auth/register", post(auth::register))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/auth/password", post(auth::change_password))
         .route("/internal/user/lookup", post(user_lookup))
         .route("/internal/user/upsert", post(user_upsert))
         .route("/internal/revoke/check", post(revoke_check))
@@ -138,6 +145,24 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/group/quit", post(group_quit))
         .route("/api/v1/group/members", post(group_members))
         .route("/api/v1/group/detail", post(group_detail))
+        .route("/api/v1/user/profile", post(product::user_profile))
+        .route("/api/v1/user/update", post(product::user_update))
+        .route("/api/v1/user/profiles", post(product::user_profiles))
+        .route("/api/v1/user/search", post(product::user_search))
+        .route("/api/v1/friend/request", post(product::friend_request))
+        .route("/api/v1/friend/accept", post(product::friend_accept))
+        .route("/api/v1/friend/reject", post(product::friend_reject))
+        .route("/api/v1/friend/remove", post(product::friend_remove))
+        .route("/api/v1/friend/list", post(product::friend_list))
+        .route("/api/v1/friend/incoming", post(product::friend_incoming))
+        .route("/api/v1/friend/check", post(product::friend_check))
+        .route("/api/v1/block/add", post(product::block_add))
+        .route("/api/v1/block/remove", post(product::block_remove))
+        .route("/api/v1/block/list", post(product::block_list))
+        .route("/api/v1/block/check", post(product::block_check))
+        .route("/api/v1/inbox", post(product::inbox_list))
+        .route("/api/v1/history", post(product::history))
+        .route("/api/v1/inbox/read", post(product::inbox_read))
         .with_state(state)
 }
 
@@ -398,6 +423,8 @@ async fn user_lookup(
         .map_err(|e| match e {
             UserError::Backend(s) => backend(s),
             UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
+            UserError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
+            UserError::InvalidProfile => (StatusCode::BAD_REQUEST, "invalid profile".into()),
         })?;
     Ok(encode(&AccountExists { exists }))
 }
@@ -416,6 +443,8 @@ async fn user_upsert(
         .map_err(|e| match e {
             UserError::Backend(s) => backend(s),
             UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
+            UserError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
+            UserError::InvalidProfile => (StatusCode::BAD_REQUEST, "invalid profile".into()),
         })?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -487,7 +516,7 @@ mod tests {
         let base = format!("http://{addr}");
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
 
-        let (store, groups, _users) = chat::http_backends(&base).unwrap();
+        let (store, groups, _users, _social) = chat::http_backends(&base).unwrap();
         let gid = groups
             .create(
                 "kim",

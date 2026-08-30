@@ -32,6 +32,7 @@ async fn alice_to_bob_one_to_one() {
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
     let (bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
 
     let req = talk_pkt(CMD_CHAT_USER_TALK, 2, "bob", "hello world");
     alice
@@ -79,6 +80,7 @@ async fn offline_one_to_one_success_without_push() {
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
     let (mut carol, _) = login("carol", &url).await;
+    become_friends(&alice, &carol, "carol", "alice").await;
     carol.close().await.expect("carol close");
     tokio::time::sleep(Duration::from_millis(50)).await;
 

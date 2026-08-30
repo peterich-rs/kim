@@ -15,7 +15,10 @@ use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADUL
 use kim_core::{Conn, OpCode, Server};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::Flag;
-use kim_protocol::{read, Packet, CMD_GROUP_CREATE, DEMO_DEFAULT_SECRET};
+use kim_protocol::{
+    marshal, read, LogicPkt, Packet, CMD_FRIEND_ACCEPT, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
+    DEMO_DEFAULT_SECRET,
+};
 use kim_router::SessionStorage;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
@@ -213,6 +216,41 @@ async fn wait_ws(url: &str) {
 
 pub fn ws_url(addr: std::net::SocketAddr) -> String {
     format!("ws://{addr}/")
+}
+
+pub async fn become_friends(from: &WsClient, to: &WsClient, to_acc: &str, from_acc: &str) {
+    let mut req = LogicPkt::new(CMD_FRIEND_REQUEST, 90, Bytes::new());
+    req.set_dest(to_acc);
+    from.send(marshal(&Packet::Logic(req)))
+        .await
+        .expect("friend request");
+    let frame = timeout_read(from).await;
+    match read(&frame.payload).expect("req decode") {
+        Packet::Logic(p) => assert_eq!(p.header.status, kim_protocol::pkt::Status::Success as i32),
+        _ => panic!("expected friend request resp"),
+    }
+    let mut acc = LogicPkt::new(CMD_FRIEND_ACCEPT, 91, Bytes::new());
+    acc.set_dest(from_acc);
+    to.send(marshal(&Packet::Logic(acc)))
+        .await
+        .expect("friend accept");
+    drain_friend_packets(from).await;
+    drain_friend_packets(to).await;
+}
+
+async fn drain_friend_packets(client: &WsClient) {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(200);
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_millis(50), client.read()).await {
+            Ok(Ok(frame)) => match read(&frame.payload) {
+                Ok(Packet::Logic(p))
+                    if p.header.command.starts_with("chat.friend")
+                        || p.header.command.starts_with("chat.block") => {}
+                _ => return,
+            },
+            _ => return,
+        }
+    }
 }
 
 pub async fn login(account: &str, url: &str) -> (WsClient, Arc<LoginDialer>) {

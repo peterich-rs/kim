@@ -6,15 +6,17 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
 
 import { COPY } from "../copy.ts";
-import { login, logout, register } from "../lib/auth.ts";
+import { changePassword as postPassword, login, logout, register } from "../lib/auth.ts";
 import { ChatSession } from "../lib/chat.ts";
 import { mapUserError } from "../lib/errors.ts";
 import { sendTimeMs, truncate } from "../lib/format.ts";
+import { InboxKind } from "../../src/command.ts";
 import { gatewayUrl } from "../lib/gateway.ts";
 import { clearSession, loadSession, saveSession, type StoredSession } from "../lib/session.ts";
 import {
@@ -60,7 +62,16 @@ type Action =
   | { type: "message"; dest: string; msg: ChatMsg; kind: Kind; title?: string; fromSelf: boolean }
   | { type: "active"; id: string | null }
   | { type: "members"; members: string[] }
-  | { type: "membersOpen"; open: boolean };
+  | { type: "membersOpen"; open: boolean }
+  | {
+      type: "hydrateThread";
+      dest: string;
+      kind: Kind;
+      title?: string;
+      msgs: ChatMsg[];
+      lastBody: string;
+      lastAt: number;
+    };
 
 const empty: ChatState = {
   status: "offline",
@@ -145,6 +156,21 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, members: action.members };
     case "membersOpen":
       return { ...state, membersOpen: action.open };
+    case "hydrateThread": {
+      const existing = state.threads.find((t) => t.id === action.dest);
+      return {
+        ...state,
+        messages: { ...state.messages, [action.dest]: action.msgs.slice(-MAX_MESSAGES) },
+        threads: upsertThread(state.threads, {
+          id: action.dest,
+          kind: action.kind,
+          title: action.title ?? existing?.title,
+          lastBody: action.lastBody,
+          lastAt: action.lastAt,
+          unread: 0,
+        }),
+      };
+    }
     default:
       return state;
   }
@@ -179,6 +205,15 @@ interface ChatContextValue {
   send: (text: string) => Promise<void>;
   createGroup: (name: string, members: string[]) => Promise<void>;
   toggleMembers: () => void;
+  nickname: string;
+  incomingCount: number;
+  searchUsers: (query: string) => Promise<{ account: string; nickname: string }[]>;
+  friends: () => Promise<{ account: string; nickname: string }[]>;
+  incoming: () => Promise<{ account: string; nickname: string }[]>;
+  requestFriend: (account: string) => Promise<void>;
+  acceptFriend: (account: string) => Promise<void>;
+  updateProfile: (nickname: string, bio: string) => Promise<void>;
+  changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -193,6 +228,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const sessionRef = useRef<ChatSession | undefined>(undefined);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const [nickname, setNickname] = useState(initial?.account ?? "");
+  const [incomingCount, setIncomingCount] = useState(0);
 
   const persistAccount = auth?.account;
 
@@ -247,6 +284,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     clearSession();
     setAuth(undefined);
+    setNickname("");
+    setIncomingCount(0);
     dispatch({ type: "reset" });
     if (notice) {
       toast.error(notice);
@@ -281,11 +320,43 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           });
           void refreshGroup(groupId, session);
         },
+        onFriend: (from, nick) => {
+          setIncomingCount((n) => n + 1);
+          toast.message(`${nick || from} ${COPY.incoming}`);
+        },
       });
       sessionRef.current = session;
       void (async () => {
         try {
           await session.connect(ws, token);
+          if (!session.alive) {
+            return;
+          }
+          const me = await session.me();
+          if (me?.nickname) {
+            setNickname(me.nickname);
+          }
+          const pending = await session.incoming();
+          if (session.alive) {
+            setIncomingCount(pending.length);
+          }
+          const items = await session.inbox();
+          if (!session.alive) {
+            return;
+          }
+          for (const item of items) {
+            dispatch({
+              type: "upsertThread",
+              thread: {
+                id: item.dest,
+                kind: item.kind === InboxKind.Group ? "group" : "user",
+                title: item.title || item.dest,
+                lastBody: item.lastBody,
+                lastAt: sendTimeMs(item.lastSendTime),
+                unread: item.unread,
+              },
+            });
+          }
         } catch (err) {
           if (!session.alive) {
             return;
@@ -352,6 +423,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "members", members: [] });
       dispatch({ type: "membersOpen", open: false });
     }
+    if (session) {
+      void (async () => {
+        const rows = await session.history(id, kind);
+        if (!session.alive) {
+          return;
+        }
+        const msgs = rows
+          .slice()
+          .reverse()
+          .map((msg) => toChatMsg(msg, id, session.account));
+        const last = msgs[msgs.length - 1];
+        dispatch({
+          type: "hydrateThread",
+          dest: id,
+          kind,
+          title,
+          msgs,
+          lastBody: last && !last.sys ? truncate(last.body) : "",
+          lastAt: last?.at ?? 0,
+        });
+        const newest = rows[0];
+        if (newest) {
+          await session.markRead(id, kind, newest.messageId);
+        }
+      })();
+    }
   }, [refreshGroup]);
 
   const closeThread = useCallback(() => {
@@ -382,6 +479,75 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "membersOpen", open: !stateRef.current.membersOpen });
   }, []);
 
+  const searchUsers = useCallback(async (query: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      return [];
+    }
+    const rows = await session.searchUsers(query);
+    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+  }, []);
+
+  const friends = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) {
+      return [];
+    }
+    const rows = await session.friends();
+    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+  }, []);
+
+  const incoming = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) {
+      return [];
+    }
+    const rows = await session.incoming();
+    setIncomingCount(rows.length);
+    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+  }, []);
+
+  const requestFriend = useCallback(async (account: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      throw new Error(COPY.notConnected);
+    }
+    await session.requestFriend(account);
+    toast.success(COPY.requestSent);
+  }, []);
+
+  const acceptFriend = useCallback(async (account: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      throw new Error(COPY.notConnected);
+    }
+    await session.acceptFriend(account);
+    setIncomingCount((n) => Math.max(0, n - 1));
+    toast.success(COPY.friendAccepted);
+    openThread(account, "user", account);
+  }, [openThread]);
+
+  const updateProfile = useCallback(async (name: string, bio: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      throw new Error(COPY.notConnected);
+    }
+    const profile = await session.updateProfile(name, bio);
+    if (profile?.nickname) {
+      setNickname(profile.nickname);
+    }
+    toast.success(COPY.saved);
+  }, []);
+
+  const changePasswordFn = useCallback(async (oldPassword: string, newPassword: string) => {
+    const token = loadSession()?.token;
+    if (!token) {
+      throw new Error(COPY.notConnected);
+    }
+    await postPassword(token, oldPassword, newPassword);
+    toast.success(COPY.passwordChanged);
+  }, []);
+
   const active = state.threads.find((t) => t.id === state.activeId);
 
   const value = useMemo<ChatContextValue>(
@@ -403,6 +569,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       createGroup,
       toggleMembers,
+      nickname: nickname || auth?.account || "",
+      incomingCount,
+      searchUsers,
+      friends,
+      incoming,
+      requestFriend,
+      acceptFriend,
+      updateProfile,
+      changePassword: changePasswordFn,
     }),
     [
       auth?.account,
@@ -422,6 +597,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       createGroup,
       toggleMembers,
+      nickname,
+      incomingCount,
+      searchUsers,
+      friends,
+      incoming,
+      requestFriend,
+      acceptFriend,
+      updateProfile,
+      changePasswordFn,
     ],
   );
 

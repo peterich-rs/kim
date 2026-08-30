@@ -40,6 +40,18 @@ const GroupDetailType = lookup("GroupDetail");
 const GroupMembersRespType = lookup("GroupMembersResp");
 const AuthReqType = lookup("AuthReq");
 const AuthRespType = lookup("AuthResp");
+const UserProfileType = lookup("UserProfile");
+const UserProfileUpdateType = lookup("UserProfileUpdate");
+const UserSearchReqType = lookup("UserSearchReq");
+const UserSearchRespType = lookup("UserSearchResp");
+const UserListRespType = lookup("UserListResp");
+const FriendRequestNotifyType = lookup("FriendRequestNotify");
+const InboxReqType = lookup("InboxReq");
+const InboxRespType = lookup("InboxResp");
+const HistoryReqType = lookup("HistoryReq");
+const HistoryRespType = lookup("HistoryResp");
+const ConversationReadReqType = lookup("ConversationReadReq");
+const PasswordChangeReqType = lookup("PasswordChangeReq");
 
 function encode(type: protobuf.Type, obj: object): Uint8Array {
   return type.encode(type.create(obj)).finish();
@@ -353,4 +365,160 @@ export function decodeAuthResp(buf: Uint8Array): {
     exp: Number.isFinite(exp) ? exp : 0,
     account: o.account ?? "",
   };
+}
+
+export interface WireProfile {
+  account: string;
+  nickname: string;
+  avatar: string;
+  bio: string;
+}
+
+function toProfile(o: {
+  account?: string;
+  nickname?: string;
+  avatar?: string;
+  bio?: string;
+}): WireProfile {
+  return {
+    account: o.account ?? "",
+    nickname: o.nickname ?? "",
+    avatar: o.avatar ?? "",
+    bio: o.bio ?? "",
+  };
+}
+
+export function encodeUserProfileUpdate(p: {
+  nickname: string;
+  avatar: string;
+  bio: string;
+}): Uint8Array {
+  return encode(UserProfileUpdateType, p);
+}
+
+export function decodeUserProfile(buf: Uint8Array): WireProfile {
+  return toProfile(decode(UserProfileType, buf));
+}
+
+export function encodeUserSearchReq(query: string): Uint8Array {
+  return encode(UserSearchReqType, { query });
+}
+
+export function decodeUserSearchResp(buf: Uint8Array): WireProfile[] {
+  const o = decode<{ users?: WireProfile[] }>(UserSearchRespType, buf);
+  return (o.users ?? []).map(toProfile);
+}
+
+export function decodeUserListResp(buf: Uint8Array): WireProfile[] {
+  const o = decode<{ users?: WireProfile[] }>(UserListRespType, buf);
+  return (o.users ?? []).map(toProfile);
+}
+
+export function decodeFriendRequestNotify(buf: Uint8Array): {
+  fromAccount: string;
+  fromNickname: string;
+} {
+  const o = decode<{ fromAccount?: string; fromNickname?: string }>(
+    FriendRequestNotifyType,
+    buf,
+  );
+  return {
+    fromAccount: o.fromAccount ?? "",
+    fromNickname: o.fromNickname ?? "",
+  };
+}
+
+export function encodeInboxReq(limit: number): Uint8Array {
+  return encode(InboxReqType, { limit });
+}
+
+export interface WireInboxItem {
+  dest: string;
+  kind: number;
+  title: string;
+  avatar: string;
+  lastBody: string;
+  lastSender: string;
+  lastMessageId: bigint;
+  lastSendTime: bigint;
+  unread: number;
+}
+
+export function decodeInboxResp(buf: Uint8Array): WireInboxItem[] {
+  const o = decode<{
+    items?: Array<{
+      dest?: string;
+      kind?: number;
+      title?: string;
+      avatar?: string;
+      lastBody?: string;
+      lastSender?: string;
+      lastMessageId?: unknown;
+      lastSendTime?: unknown;
+      unread?: number;
+    }>;
+  }>(InboxRespType, buf);
+  return (o.items ?? []).map((i) => ({
+    dest: i.dest ?? "",
+    kind: i.kind ?? 0,
+    title: i.title ?? "",
+    avatar: i.avatar ?? "",
+    lastBody: i.lastBody ?? "",
+    lastSender: i.lastSender ?? "",
+    lastMessageId: asBigInt(i.lastMessageId),
+    lastSendTime: asBigInt(i.lastSendTime),
+    unread: i.unread ?? 0,
+  }));
+}
+
+export function encodeHistoryReq(beforeId: bigint, limit: number, kind: number): Uint8Array {
+  return encode(HistoryReqType, {
+    beforeId: beforeId.toString(),
+    limit,
+    kind,
+  });
+}
+
+export interface WireHistoryItem {
+  messageId: bigint;
+  type: number;
+  body: string;
+  extra: string;
+  sender: string;
+  sendTime: bigint;
+  direction: number;
+}
+
+export function decodeHistoryResp(buf: Uint8Array): WireHistoryItem[] {
+  const o = decode<{
+    messages?: Array<{
+      messageId?: unknown;
+      type?: number;
+      body?: string;
+      extra?: string;
+      sender?: string;
+      sendTime?: unknown;
+      direction?: number;
+    }>;
+  }>(HistoryRespType, buf);
+  return (o.messages ?? []).map((m) => ({
+    messageId: asBigInt(m.messageId),
+    type: m.type ?? 0,
+    body: m.body ?? "",
+    extra: m.extra ?? "",
+    sender: m.sender ?? "",
+    sendTime: asBigInt(m.sendTime),
+    direction: m.direction ?? 0,
+  }));
+}
+
+export function encodeConversationReadReq(messageId: bigint, kind: number): Uint8Array {
+  return encode(ConversationReadReqType, {
+    messageId: messageId.toString(),
+    kind,
+  });
+}
+
+export function encodePasswordChangeReq(oldPassword: string, newPassword: string): Uint8Array {
+  return encode(PasswordChangeReqType, { oldPassword, newPassword });
 }

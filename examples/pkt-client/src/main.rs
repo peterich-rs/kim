@@ -10,8 +10,9 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN,
-    CMD_GROUP_QUIT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CODE_PONG, MESSAGE_TYPE_TEXT,
+    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
+    CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_QUIT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    CODE_PONG, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::{ClientOptions, WsClient};
 use pkt_client::{is_kickout, resolve_jwt_secret, LoginDialer};
@@ -218,6 +219,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(dest) = talk_to {
         ping_pong(&client).await?;
+        let mut req = LogicPkt::new(CMD_FRIEND_REQUEST, seq, Bytes::new());
+        seq = seq.saturating_add(1);
+        req.set_dest(dest.clone());
+        client.send(marshal(&Packet::Logic(req))).await?;
+        let _ = timeout_read(&client).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let body = talk_body.unwrap_or_else(|| "hello world".to_string());
         let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, seq, Bytes::new());
         seq = seq.saturating_add(1);
@@ -397,6 +404,15 @@ async fn hold_read_loop(
                 info!(channel_id = %notify.channel_id, "got kickout");
                 client.close().await?;
                 return Ok(());
+            }
+            if p.header.flag == Flag::Push as i32 && p.header.command == CMD_FRIEND_REQUEST {
+                if let Ok(n) = p.read_body::<kim_protocol::pkt::FriendRequestNotify>() {
+                    let mut acc = LogicPkt::new(CMD_FRIEND_ACCEPT, seq, Bytes::new());
+                    seq = seq.saturating_add(1);
+                    acc.set_dest(n.from_account);
+                    client.send(marshal(&Packet::Logic(acc))).await?;
+                }
+                continue;
             }
             if p.header.flag == Flag::Push as i32 && p.header.command == CMD_GROUP_CREATE {
                 let n: GroupCreateNotify = p.read_body()?;

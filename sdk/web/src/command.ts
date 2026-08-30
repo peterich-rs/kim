@@ -12,6 +12,26 @@ export const Command = {
   GroupQuit: "chat.group.quit",
   GroupDetail: "chat.group.detail",
   GroupMembers: "chat.group.members",
+  UserProfile: "chat.user.profile",
+  UserUpdate: "chat.user.update",
+  UserSearch: "chat.user.search",
+  FriendRequest: "chat.friend.request",
+  FriendAccept: "chat.friend.accept",
+  FriendReject: "chat.friend.reject",
+  FriendRemove: "chat.friend.remove",
+  FriendList: "chat.friend.list",
+  FriendIncoming: "chat.friend.incoming",
+  BlockAdd: "chat.block.add",
+  BlockRemove: "chat.block.remove",
+  BlockList: "chat.block.list",
+  InboxList: "chat.inbox.list",
+  InboxRead: "chat.inbox.read",
+  History: "chat.history",
+} as const;
+
+export const InboxKind = {
+  User: 0,
+  Group: 1,
 } as const;
 
 export type CommandName = (typeof Command)[keyof typeof Command];
