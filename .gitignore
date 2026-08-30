@@ -14,3 +14,5 @@ node_modules/
 /sdk/mobile/build/
 /sdk/mobile/.dart_tool/
 /sdk/mobile/rust/target/
+/sdk/mobile/plugins/**/.dart_tool/
+/sdk/mobile/plugins/**/build/

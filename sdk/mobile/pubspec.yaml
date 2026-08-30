@@ -60,6 +60,8 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   lucide_icons_flutter: ^3.1.17
+  kim_media_picker:
+    path: plugins/kim_media_picker
 
 dev_dependencies:
   flutter_test:

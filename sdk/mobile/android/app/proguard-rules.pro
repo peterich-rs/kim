@@ -11,3 +11,4 @@
 
 # flutter_rust_bridge generated Dart talks to the native asset via JNI/FFI.
 -keep class com.kim.kim_mobile.** { *; }
+-keep class com.kim.kim_media_picker.** { *; }

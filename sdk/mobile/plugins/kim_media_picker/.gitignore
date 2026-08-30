@@ -1,0 +1,13 @@
+.dart_tool/
+.packages
+build/
+*.iml
+local.properties
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+.flutter-plugins
+.flutter-plugins-dependencies
+**/.swiftpm/
+**/xcuserdata/

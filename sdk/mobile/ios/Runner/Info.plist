@@ -33,6 +33,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>KIM 需要使用相机，以便拍照或录像发给好友。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>KIM 需要使用麦克风，以便拍摄视频时收录声音。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>KIM 需要访问相册，以便选择照片发给好友。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>KIM uses the local network to reach a WGateway on this LAN or the iOS simulator (ws://).</string>
 	<key>UIApplicationSceneManifest</key>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kim_picker_bg">#FF111111</color>
+    <color name="kim_picker_bar">#FF191919</color>
+    <color name="kim_picker_text">#FFF2F2F2</color>
+    <color name="kim_picker_muted">#FF8A8A8A</color>
+    <color name="kim_picker_line">#22FFFFFF</color>
+    <color name="kim_picker_thumb">#FF2A2A2A</color>
+</resources>
