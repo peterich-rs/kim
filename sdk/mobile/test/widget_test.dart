@@ -10,6 +10,7 @@ import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
+import 'package:kim_mobile/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeKim implements KimAuthPort, KimClientPort {
@@ -22,6 +23,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int logouts = 0;
   int connects = 0;
   int talks = 0;
+  int friendRequests = 0;
+  List<KimPerson> friends = const [];
+  List<KimPerson> incoming = const [];
   String lastUserAgent = '';
   String lastOrigin = '';
   String lastTalkDest = '';
@@ -88,7 +92,11 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String httpOriginFromWs(String wsUrl) => 'http://127.0.0.1:8080';
 
   @override
-  Future<String> connect(String url, String token, {required String userAgent}) async {
+  Future<String> connect(
+    String url,
+    String token, {
+    required String userAgent,
+  }) async {
     connects += 1;
     return 'connected $url';
   }
@@ -106,6 +114,30 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastTalkBody = body;
     return 'message_id=1 send_time=1';
   }
+
+  @override
+  Future<List<KimPerson>> friendList() async => friends;
+
+  @override
+  Future<List<KimPerson>> friendIncoming() async => incoming;
+
+  @override
+  Future<List<KimPerson>> searchUsers(String query) async {
+    return friends
+        .where((p) => p.account.contains(query) || p.nickname.contains(query))
+        .toList();
+  }
+
+  @override
+  Future<void> friendRequest(String dest) async {
+    friendRequests += 1;
+  }
+
+  @override
+  Future<void> friendAccept(String dest) async {}
+
+  @override
+  Future<void> friendReject(String dest) async {}
 
   @override
   Future<String> disconnect() async => 'disconnected';
@@ -140,12 +172,7 @@ Future<({KimRuntime runtime, ConversationStore store})> testRuntime({
 }
 
 Widget host(KimRuntime runtime, FakeKim fake, ConversationStore store) {
-  return KimAppHost(
-    runtime: runtime,
-    auth: fake,
-    client: fake,
-    store: store,
-  );
+  return KimAppHost(runtime: runtime, auth: fake, client: fake, store: store);
 }
 
 Future<void> pumpUi(WidgetTester tester) async {
@@ -262,5 +289,29 @@ void main() {
     await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
     await pumpUi(tester);
     expect(find.textContaining(Copy.offlineBanner), findsOneWidget);
+  });
+
+  testWidgets('contacts tab requires adding friends', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+    await tester.tap(find.text(Copy.contacts).last);
+    await pumpUi(tester);
+    expect(find.text(Copy.noFriends), findsOneWidget);
+    expect(find.text(Copy.noFriendsHint), findsOneWidget);
+    expect(find.text(Copy.addFriend), findsWidgets);
+  });
+
+  testWidgets('new chat lists friends from the server graph', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+    await tester.tap(find.byKey(const Key('compose-chat')));
+    await pumpUi(tester);
+    expect(find.text('Bobby'), findsOneWidget);
+    expect(find.text('@bob'), findsOneWidget);
   });
 }

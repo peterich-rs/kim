@@ -13,6 +13,16 @@ abstract class KimApi implements RustOpaqueInterface {
 
   String disconnect();
 
+  String friendAccept({required String dest});
+
+  String friendIncoming();
+
+  String friendList();
+
+  String friendReject({required String dest});
+
+  String friendRequest({required String dest});
+
   String login();
 
   factory KimApi({
@@ -26,6 +36,8 @@ abstract class KimApi implements RustOpaqueInterface {
   );
 
   String ping();
+
+  String searchUsers({required String query});
 
   String talkToUser({required String dest, required String body});
 }

@@ -45,7 +45,7 @@ abstract final class Copy {
   static const newChat = '发起聊天';
   static const startChat = '开始聊天';
   static const noConversations = '还没有会话';
-  static const noConversationsHint = '点右上角，向一个账号发起第一条消息';
+  static const noConversationsHint = '添加好友后，从通讯录开始聊天';
   static const noMatch = '没有匹配的会话';
   static const noMessages = '暂无消息';
   static const noMessagesHint = '发一条消息，开始对话';
@@ -53,6 +53,24 @@ abstract final class Copy {
   static const send = '发送';
   static const sendFailed = '发送失败';
   static const notConnected = '尚未连接，请稍后重试';
+  static const notFriends = '对方还不是你好友';
+  static const blocked = '无法与该用户互动';
+  static const userNotFound = '找不到该用户';
+  static const cannotAddSelf = '不能添加自己';
+  static const waitingAccept = '已发送申请，通过后即可聊天';
+  static const addFriendToChat = '加为好友后即可发送消息';
+  static const requestSent = '已发送好友申请';
+  static const friendAccepted = '已成为好友';
+  static const addFriend = '添加好友';
+  static const incoming = '新的朋友';
+  static const accept = '同意';
+  static const reject = '拒绝';
+  static const requested = '已申请';
+  static const chatAction = '发消息';
+  static const searchPeople = '搜索账号或昵称';
+  static const searchEmpty = '没有找到相关用户';
+  static const noIncoming = '暂无好友申请';
+  static const friendRequestToast = '发来好友申请';
   static const retry = '重试';
   static const delete = '删除';
   static const cancel = '取消';
@@ -92,8 +110,8 @@ abstract final class Copy {
   static const accountSection = '账号';
   static const generalSection = '通用';
 
-  static const noFriends = '还没有联系人';
-  static const noFriendsHint = '输入账号，直接开始聊天';
-  static const addByAccount = '按账号查找';
-  static const recentContacts = '最近会话';
+  static const noFriends = '还没有好友';
+  static const noFriendsHint = '搜索账号，发送好友申请';
+  static const addByAccount = '添加好友';
+  static const recentContacts = '好友';
 }

@@ -13,8 +13,14 @@ import { Button } from "./ui.tsx";
 export function ChatScreen() {
   const { activeId, status, connectError, connect } = useChat();
   const [contacts, setContacts] = useState(false);
+  const [contactsTab, setContactsTab] = useState<"friends" | "add" | "incoming">("friends");
   const [newGroup, setNewGroup] = useState(false);
   const [profile, setProfile] = useState(false);
+
+  function openContacts(tab: "friends" | "add" | "incoming") {
+    setContactsTab(tab);
+    setContacts(true);
+  }
 
   const banner =
     connectError ??
@@ -30,7 +36,8 @@ export function ChatScreen() {
     <div className="relative flex h-dvh min-h-0 bg-stage">
       <div className={cn("flex h-full min-h-0 w-full md:w-auto", activeId && "hidden md:flex")}>
         <ConversationList
-          onNewChat={() => setContacts(true)}
+          onNewChat={() => openContacts("friends")}
+          onAddFriend={() => openContacts("add")}
           onNewGroup={() => setNewGroup(true)}
           onProfile={() => setProfile(true)}
         />
@@ -50,7 +57,11 @@ export function ChatScreen() {
           <MessagePane />
         </div>
       </div>
-      <ContactsDialog open={contacts} onOpenChange={setContacts} />
+      <ContactsDialog
+        open={contacts}
+        onOpenChange={setContacts}
+        initialTab={contactsTab}
+      />
       <NewGroupDialog open={newGroup} onOpenChange={setNewGroup} />
       <ProfileDialog open={profile} onOpenChange={setProfile} />
     </div>

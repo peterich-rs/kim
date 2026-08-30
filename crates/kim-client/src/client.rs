@@ -7,11 +7,17 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::config::ClientConfig;
-use crate::events::{Event, TalkResult};
+use crate::events::{Event, Profile, TalkResult};
 use crate::login::{login_on_conn, send_ping};
 use crate::session::MemorySession;
-use crate::wire::{decode_event, encode_ack, encode_user_talk};
+use crate::wire::{
+    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_user_search,
+    encode_user_talk,
+};
 use crate::ClientError;
+use kim_protocol::{
+    CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST,
+};
 
 /// Session/login/talk/ack. UI (Flutter / CLI) is a shell around this.
 ///
@@ -111,6 +117,104 @@ impl KimClient {
                     drop(other);
                     self.buffered.lock().await.push_back(frame);
                 }
+            }
+        }
+    }
+
+    pub async fn friend_request(&self, dest: &str) -> Result<(), ClientError> {
+        self.dest_status(CMD_FRIEND_REQUEST, dest).await
+    }
+
+    pub async fn friend_accept(&self, dest: &str) -> Result<(), ClientError> {
+        self.dest_status(CMD_FRIEND_ACCEPT, dest).await
+    }
+
+    pub async fn friend_reject(&self, dest: &str) -> Result<(), ClientError> {
+        self.dest_status(CMD_FRIEND_REJECT, dest).await
+    }
+
+    pub async fn friend_list(&self) -> Result<Vec<Profile>, ClientError> {
+        self.user_list(CMD_FRIEND_LIST).await
+    }
+
+    pub async fn friend_incoming(&self) -> Result<Vec<Profile>, ClientError> {
+        self.user_list(CMD_FRIEND_INCOMING).await
+    }
+
+    pub async fn search_users(&self, query: &str) -> Result<Vec<Profile>, ClientError> {
+        if !self.session.is_logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_user_search(seq, query), seq, |ev| match ev {
+            Event::UserList {
+                sequence, users, ..
+            } if *sequence == seq => Some(Ok(users.clone())),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    async fn dest_status(&self, command: &str, dest: &str) -> Result<(), ClientError> {
+        if !self.session.is_logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_dest_cmd(command, seq, dest), seq, |ev| match ev {
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => {
+                if *status == 0 {
+                    Some(Ok(()))
+                } else {
+                    Some(Err(ClientError::Status(*status)))
+                }
+            }
+            _ => None,
+        })
+        .await
+    }
+
+    async fn user_list(&self, command: &str) -> Result<Vec<Profile>, ClientError> {
+        if !self.session.is_logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_empty_cmd(command, seq), seq, |ev| match ev {
+            Event::UserList {
+                sequence, users, ..
+            } if *sequence == seq => Some(Ok(users.clone())),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    async fn write_wait<T>(
+        &self,
+        payload: bytes::Bytes,
+        seq: u32,
+        mut take: impl FnMut(&Event) -> Option<Result<T, ClientError>>,
+    ) -> Result<T, ClientError> {
+        let conn = self.conn.as_ref().ok_or(ClientError::NotConnected)?;
+        let mut guard = conn.lock().await;
+        guard.write_frame(OpCode::Binary, payload).await?;
+        guard.flush().await?;
+        loop {
+            let frame = read_data(&mut **guard).await?;
+            let event = decode_event(&frame)?;
+            if let Some(done) = take(&event) {
+                let _ = seq;
+                return done;
+            }
+            match event {
+                Event::Closed => return Err(ClientError::from(CoreError::Closed)),
+                _ => self.buffered.lock().await.push_back(frame),
             }
         }
     }

@@ -9,11 +9,11 @@ import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 
 import '../copy.dart';
 import '../core/haptics.dart';
-import '../core/validation.dart';
 import '../models/models.dart';
+import '../state/contacts.dart';
 import '../state/inbox.dart';
-import '../state/session.dart';
-import 'kim_text_field.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/kim_avatar.dart';
 
 Future<void> openNewChatSheet(BuildContext context) {
   return WoltModalSheet.show<void>(
@@ -36,79 +36,48 @@ Future<void> openNewChatSheet(BuildContext context) {
   );
 }
 
-class _NewChatBody extends ConsumerStatefulWidget {
+class _NewChatBody extends ConsumerWidget {
   const _NewChatBody();
 
   @override
-  ConsumerState<_NewChatBody> createState() => _NewChatBodyState();
-}
-
-class _NewChatBodyState extends ConsumerState<_NewChatBody> {
-  late final TextEditingController _peer;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _peer = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _peer.dispose();
-    super.dispose();
-  }
-
-  void _open() {
-    final dest = _peer.text.trim();
-    final accountErr = validateAccount(dest);
-    final me = ref.read(sessionProvider).account;
-    setState(() {
-      if (accountErr != null) {
-        _error = accountErr;
-      } else if (dest == me) {
-        _error = Copy.cannotChatSelf;
-      } else {
-        _error = null;
-      }
-    });
-    if (_error != null) {
-      return;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final friends = ref.watch(contactsProvider).friends;
+    if (friends.isEmpty) {
+      return EmptyState(
+        icon: LucideIcons.users,
+        title: Copy.noFriends,
+        subtitle: Copy.noFriendsHint,
+        action: FilledButton.tonal(
+          onPressed: () {
+            Navigator.of(context).pop();
+            context.go('/contacts');
+          },
+          child: const Text(Copy.addFriend),
+        ),
+      );
     }
-    final thread = ref.read(inboxProvider.notifier).ensureThread(
-      id: dest,
-      kind: ThreadKind.user,
-      title: dest,
-    );
-    KimHaptics.selection();
-    Navigator.of(context).pop();
-    context.push('/chat/${thread.id}', extra: thread);
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        KimTextField(
-          controller: _peer,
-          label: Copy.peerAccount,
-          hintText: Copy.peerPlaceholder,
-          helperText: Copy.accountHint,
-          errorText: _error,
-          maxLength: 32,
-          autofocus: true,
-          prefixIcon: LucideIcons.user,
-          autocorrect: false,
-          enableSuggestions: false,
-          textInputAction: TextInputAction.done,
-          onEditingComplete: _open,
-        ),
-        const Gap(16),
-        FilledButton(
-          onPressed: _open,
-          child: const Text(Copy.openChat),
-        ),
+        for (final p in friends)
+          ListTile(
+            leading: KimAvatar(name: p.title, size: KimAvatarSize.sm),
+            title: Text(p.title),
+            subtitle: Text('@${p.account}'),
+            onTap: () {
+              final thread = ref
+                  .read(inboxProvider.notifier)
+                  .ensureThread(
+                    id: p.account,
+                    kind: ThreadKind.user,
+                    title: p.title,
+                  );
+              KimHaptics.selection();
+              Navigator.of(context).pop();
+              context.push('/chat/${thread.id}', extra: thread);
+            },
+          ),
+        const Gap(8),
       ],
     );
   }

@@ -50,3 +50,19 @@ export function mapUserError(err: unknown): string {
   }
   return COPY.unavailable;
 }
+
+/** Long-connection Status. Undefined = caller keeps a generic message. */
+export function mapWireStatus(status: number): string | undefined {
+  switch (status) {
+    case 101:
+      return COPY.cannotAddSelf;
+    case 108:
+      return COPY.userNotFound;
+    case 109:
+      return COPY.notFriends;
+    case 110:
+      return COPY.blocked;
+    default:
+      return undefined;
+  }
+}

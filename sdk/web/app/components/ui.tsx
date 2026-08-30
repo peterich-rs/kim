@@ -110,11 +110,13 @@ export function Modal({
   open,
   onOpenChange,
   title,
+  wide,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -123,7 +125,10 @@ export function Modal({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px]" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-5 shadow-2xl focus:outline-none"
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-5 shadow-2xl focus:outline-none",
+            wide ? "w-[min(480px,calc(100vw-24px))]" : "w-[min(420px,calc(100vw-32px))]",
+          )}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>

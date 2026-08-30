@@ -10,10 +10,11 @@ use kim_core::{
 };
 use kim_protocol::pkt::{
     Flag, KickoutNotify, LoginReq, LoginResp, MessagePush, MessageReq, MessageResp, Status,
+    UserListResp, UserProfile,
 };
 use kim_protocol::{
-    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_LOGIN_SIGN_IN,
-    CODE_PING, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
+    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST,
+    CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -23,7 +24,7 @@ use crate::events::Event;
 use crate::login::login_on_conn;
 use crate::session::MemorySession;
 use crate::token::account_from_token;
-use crate::wire::{decode_event, encode_ping, encode_user_talk, is_kickout};
+use crate::wire::{decode_event, encode_dest_cmd, encode_ping, encode_user_talk, is_kickout};
 
 struct MockConn {
     incoming: VecDeque<Frame>,
@@ -156,6 +157,67 @@ fn talk_packet_sets_dest_and_client_id() {
         }
         _ => panic!("expected logic"),
     }
+}
+
+#[test]
+fn dest_cmd_sets_header_dest() {
+    let bytes = encode_dest_cmd(CMD_FRIEND_REQUEST, 3, "bob");
+    match read(&bytes).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_FRIEND_REQUEST);
+            assert_eq!(p.header.dest, "bob");
+            assert_eq!(p.header.sequence, 3);
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+fn logged_in(token: String, incoming: Vec<Frame>) -> KimClient {
+    let mut client = KimClient::with_conn(
+        ClientConfig::local(token.clone()),
+        Box::new(MockConn::with_incoming(incoming)),
+    );
+    client.force_session(MemorySession {
+        channel_id: "wg-1_alice_1".into(),
+        account: "alice".into(),
+        token,
+    });
+    client
+}
+
+#[tokio::test]
+async fn friend_list_returns_profiles() {
+    let mut pkt = LogicPkt::new(CMD_FRIEND_LIST, 2, Bytes::new());
+    pkt.header.flag = Flag::Response as i32;
+    pkt.write_body(&UserListResp {
+        users: vec![UserProfile {
+            account: "bob".into(),
+            nickname: "Bobby".into(),
+            avatar: String::new(),
+            bio: String::new(),
+        }],
+    });
+    let client = logged_in(
+        mint("alice"),
+        vec![Frame::binary(marshal(&Packet::Logic(pkt)))],
+    );
+    let users = client.friend_list().await.unwrap();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].account, "bob");
+    assert_eq!(users[0].nickname, "Bobby");
+}
+
+#[tokio::test]
+async fn talk_not_friends_is_status_109() {
+    let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 2, Bytes::new());
+    pkt.header.flag = Flag::Response as i32;
+    pkt.header.status = Status::NotFriends as i32;
+    let client = logged_in(
+        mint("alice"),
+        vec![Frame::binary(marshal(&Packet::Logic(pkt)))],
+    );
+    let err = client.talk_to_user("bob", "hello").await.unwrap_err();
+    assert!(matches!(err, crate::ClientError::Status(109)));
 }
 
 #[test]

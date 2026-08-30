@@ -1,4 +1,4 @@
-import { ArrowLeft, Loader2, MessageSquare, Send, Users } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Send, UserPlus, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +29,12 @@ export function MessagePane() {
     send,
     closeThread,
     toggleMembers,
+    socialReady,
+    isFriend,
+    isOutgoing,
+    isIncoming,
+    requestFriend,
+    acceptFriend,
   } = useChat();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -75,7 +81,8 @@ export function MessagePane() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      toast.error(msg === COPY.notConnected ? COPY.notConnected : COPY.sendFailed);
+      const known = [COPY.notConnected, COPY.notFriends, COPY.blocked, COPY.userNotFound];
+      toast.error(known.includes(msg) ? msg : COPY.sendFailed);
     } finally {
       setSending(false);
     }
@@ -111,6 +118,8 @@ export function MessagePane() {
   }
 
   const subtitle = active.kind === "group" ? COPY.groupChat : COPY.privateChat;
+  const gated =
+    active.kind === "user" && socialReady && !isFriend(active.id);
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -182,33 +191,75 @@ export function MessagePane() {
           )}
         </ol>
 
-        <form
-          className="flex items-end gap-2 border-t border-line bg-panel px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-          onSubmit={onSubmit}
-        >
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            maxLength={4000}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              resize(e.target);
-            }}
-            onKeyDown={onKey}
-            placeholder={COPY.messagePlaceholder}
-            className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-line bg-elev px-3 py-2.5 text-sm placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-          />
-          <Button
-            type="submit"
-            className="h-11 px-4"
-            disabled={!draft.trim() || sending || status !== "online"}
-            aria-label={COPY.send}
+        {gated ? (
+          <div className="border-t border-line bg-panel px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto flex max-w-md flex-col items-center rounded-2xl border border-line bg-stage px-5 py-5 text-center">
+              <Avatar name={active.title} />
+              <p className="mt-3 text-sm font-medium">{COPY.notFriends}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                {isOutgoing(active.id)
+                  ? COPY.waitingAccept
+                  : isIncoming(active.id)
+                    ? COPY.friendRequestToast
+                    : COPY.addFriendToChat}
+              </p>
+              {isOutgoing(active.id) ? (
+                <span className="mt-4 text-xs text-muted">{COPY.requested}</span>
+              ) : isIncoming(active.id) ? (
+                <Button
+                  className="mt-4 h-9 px-4 text-xs"
+                  onClick={() => {
+                    void acceptFriend(active.id).catch((err) =>
+                      toast.error(err instanceof Error ? err.message : COPY.sendFailed),
+                    );
+                  }}
+                >
+                  {COPY.accept}
+                </Button>
+              ) : (
+                <Button
+                  className="mt-4 h-9 px-4 text-xs"
+                  onClick={() => {
+                    void requestFriend(active.id).catch((err) =>
+                      toast.error(err instanceof Error ? err.message : COPY.sendFailed),
+                    );
+                  }}
+                >
+                  <UserPlus className="size-3.5" />
+                  {COPY.addFriend}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <form
+            className="flex items-end gap-2 border-t border-line bg-panel px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            onSubmit={onSubmit}
           >
-            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-            <span className="hidden sm:inline">{COPY.send}</span>
-          </Button>
-        </form>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={draft}
+              maxLength={4000}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                resize(e.target);
+              }}
+              onKeyDown={onKey}
+              placeholder={COPY.messagePlaceholder}
+              className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-line bg-elev px-3 py-2.5 text-sm placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <Button
+              type="submit"
+              className="h-11 px-4"
+              disabled={!draft.trim() || sending || status !== "online"}
+              aria-label={COPY.send}
+            >
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              <span className="hidden sm:inline">{COPY.send}</span>
+            </Button>
+          </form>
+        )}
       </section>
 
       {active.kind === "group" && membersOpen ? (

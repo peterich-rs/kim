@@ -1,17 +1,17 @@
 use bytes::Bytes;
 use kim_core::Frame;
 use kim_protocol::pkt::{
-    AuthResp, Flag, GroupCreateNotify, KickoutNotify, LoginReq, MessageAckReq, MessagePush,
-    MessageReq, MessageResp, Status,
+    AuthResp, Flag, FriendRequestNotify, GroupCreateNotify, KickoutNotify, LoginReq, MessageAckReq,
+    MessagePush, MessageReq, MessageResp, Status, UserListResp, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_GROUP_CREATE, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CODE_PONG,
-    MESSAGE_TYPE_TEXT,
+    CMD_CHAT_USER_TALK, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_USER_SEARCH, CODE_PONG, MESSAGE_TYPE_TEXT,
 };
 
 use crate::config::DEFAULT_DEVICE;
-use crate::events::{Event, IncomingTalk, TalkResult};
+use crate::events::{Event, IncomingTalk, Profile, TalkResult};
 use crate::ClientError;
 
 pub fn encode_login(token: &str) -> Bytes {
@@ -42,6 +42,24 @@ pub fn encode_user_talk(seq: u32, dest: &str, body: &str, client_id: &str) -> By
 pub fn encode_ack(seq: u32, message_id: i64) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_CHAT_TALK_ACK, seq, Bytes::new());
     pkt.write_body(&MessageAckReq { message_id });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_dest_cmd(command: &str, seq: u32, dest: &str) -> Bytes {
+    let mut pkt = LogicPkt::new(command, seq, Bytes::new());
+    pkt.set_dest(dest);
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_empty_cmd(command: &str, seq: u32) -> Bytes {
+    marshal(&Packet::Logic(LogicPkt::new(command, seq, Bytes::new())))
+}
+
+pub fn encode_user_search(seq: u32, query: &str) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_USER_SEARCH, seq, Bytes::new());
+    pkt.write_body(&UserSearchReq {
+        query: query.to_string(),
+    });
     marshal(&Packet::Logic(pkt))
 }
 
@@ -83,6 +101,13 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
             members: n.members,
         });
     }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_FRIEND_REQUEST {
+        let n: FriendRequestNotify = p.read_body()?;
+        return Ok(Event::FriendRequest {
+            from: n.from_account,
+            nickname: n.from_nickname,
+        });
+    }
     if p.header.flag == Flag::Push as i32
         && (p.header.command == CMD_CHAT_USER_TALK || p.header.command == CMD_CHAT_GROUP_TALK)
     {
@@ -113,6 +138,34 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
             send_time: resp.send_time,
             sequence: p.header.sequence,
         }));
+    }
+    if p.header.flag == Flag::Response as i32
+        && (p.header.command == CMD_FRIEND_LIST
+            || p.header.command == CMD_FRIEND_INCOMING
+            || p.header.command == CMD_USER_SEARCH)
+    {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let users = if p.header.command == CMD_USER_SEARCH {
+            let resp: UserSearchResp = p.read_body()?;
+            resp.users
+        } else {
+            let resp: UserListResp = p.read_body()?;
+            resp.users
+        };
+        return Ok(Event::UserList {
+            command: p.header.command,
+            sequence: p.header.sequence,
+            users: users
+                .into_iter()
+                .map(|u| Profile::from_wire(u.account, u.nickname))
+                .collect(),
+        });
     }
     Ok(Event::Status {
         command: p.header.command,

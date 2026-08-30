@@ -2,6 +2,9 @@
 /// Session / login / talk / Royal HTTP stay in Rust. Do not expand FFI here.
 library;
 
+import 'dart:convert';
+
+import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
 import 'src/rust/api/client.dart';
 import 'src/rust/frb_generated.dart';
@@ -27,6 +30,18 @@ abstract class KimClientPort {
   Future<String> ping();
 
   Future<String> talk(String dest, String body);
+
+  Future<List<KimPerson>> friendList();
+
+  Future<List<KimPerson>> friendIncoming();
+
+  Future<List<KimPerson>> searchUsers(String query);
+
+  Future<void> friendRequest(String dest);
+
+  Future<void> friendAccept(String dest);
+
+  Future<void> friendReject(String dest);
 
   Future<String> disconnect();
 }
@@ -155,7 +170,11 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<String> connect(String url, String token, {required String userAgent}) async {
+  Future<String> connect(
+    String url,
+    String token, {
+    required String userAgent,
+  }) async {
     if (token.trim().isEmpty) {
       throw StateError('JWT required (Royal /login). Do not mint in the app.');
     }
@@ -195,6 +214,75 @@ class KimBridge implements KimAuthPort, KimClientPort {
     return api.talkToUser(dest: dest, body: body);
   }
 
+  List<KimPerson> _people(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      return const [];
+    }
+    return [
+      for (final item in decoded)
+        if (item is Map)
+          KimPerson(
+            account: '${item['account'] ?? ''}',
+            nickname: '${item['nickname'] ?? ''}',
+          ),
+    ].where((p) => p.account.isNotEmpty).toList();
+  }
+
+  @override
+  Future<List<KimPerson>> friendList() async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return _people(api.friendList());
+  }
+
+  @override
+  Future<List<KimPerson>> friendIncoming() async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return _people(api.friendIncoming());
+  }
+
+  @override
+  Future<List<KimPerson>> searchUsers(String query) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return _people(api.searchUsers(query: query));
+  }
+
+  @override
+  Future<void> friendRequest(String dest) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    api.friendRequest(dest: dest);
+  }
+
+  @override
+  Future<void> friendAccept(String dest) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    api.friendAccept(dest: dest);
+  }
+
+  @override
+  Future<void> friendReject(String dest) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    api.friendReject(dest: dest);
+  }
+
   @override
   Future<String> disconnect() async {
     final api = _api;
@@ -206,4 +294,3 @@ class KimBridge implements KimAuthPort, KimClientPort {
     return out;
   }
 }
-
