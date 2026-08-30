@@ -9,8 +9,10 @@ use kim_core::{OpCode, Server};
 use kim_naming::{DefaultRegistration, Naming};
 use kim_protocol::{marshal, read_logic, LogicPkt, Packet, META_DEST_CHANNELS, META_DEST_SERVER};
 use kim_tcp::{ClientOptions, TcpClient, TcpDialer};
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 use tracing::{info, warn};
+
+const RECONNECT_INTERVAL: Duration = Duration::from_millis(500);
 
 use crate::client_map::{ClientMap, ClientSlot, ADULT, YOUNG};
 use crate::error::Error;
@@ -61,6 +63,11 @@ pub struct Container {
     selector: Arc<dyn Selector>,
     adult_delay: Duration,
     after_downlink: Vec<Arc<dyn DownlinkHook>>,
+    /// Last non-empty TCP catalog per dep. Dial failure / peer restart
+    /// must not require Consul's passing set to change.
+    wanted: RwLock<HashMap<String, HashMap<String, DefaultRegistration>>>,
+    dialing: Mutex<HashSet<String>>,
+    wake: Notify,
     shutdown: Notify,
     closed: AtomicBool,
 }
@@ -77,6 +84,9 @@ impl Container {
             selector: opts.selector,
             adult_delay: opts.adult_delay,
             after_downlink: opts.after_downlink,
+            wanted: RwLock::new(HashMap::new()),
+            dialing: Mutex::new(HashSet::new()),
+            wake: Notify::new(),
             shutdown: Notify::new(),
             closed: AtomicBool::new(false),
         })
@@ -116,10 +126,24 @@ impl Container {
 
     pub async fn shutdown(&self) -> Result<(), Error> {
         self.closed.store(true, Ordering::SeqCst);
+        self.wake.notify_waiters();
         self.shutdown.notify_waiters();
         self.shutdown.notify_one();
         if let Some(srv) = self.server.get() {
             let _ = srv.shutdown().await;
+        }
+        let outbound: Vec<Arc<TcpClient>> = {
+            let mut map = self.clients.write().await;
+            map.values_mut()
+                .flat_map(|cmap| {
+                    cmap.ids()
+                        .into_iter()
+                        .filter_map(|id| cmap.remove(&id).map(|s| s.client))
+                })
+                .collect()
+        };
+        for client in outbound {
+            let _ = client.shutdown().await;
         }
         for name in &self.deps {
             let _ = self.naming.unsubscribe(name).await;
@@ -194,30 +218,91 @@ impl Container {
             .await?;
 
         let found = self.naming.find(name, &[]).await?;
-        for reg in found {
-            let id = reg.service_id.clone();
-            let _ = self.build_client(name, reg).await;
-            self.force_adult(name, &id).await;
-        }
+        self.apply_snapshot(name, found).await;
+
+        let this = self.clone();
+        let svc = name.to_string();
+        tokio::spawn(async move {
+            this.reconnect_loop(svc).await;
+        });
         Ok(())
     }
 
+    async fn reconnect_loop(self: Arc<Self>, service: String) {
+        loop {
+            tokio::select! {
+                _ = self.shutdown.notified() => return,
+                _ = self.wake.notified() => {}
+                _ = tokio::time::sleep(RECONNECT_INTERVAL) => {}
+            }
+            if self.closed.load(Ordering::SeqCst) {
+                return;
+            }
+            self.reconnect_missing(&service).await;
+        }
+    }
+
+    async fn reconnect_missing(self: &Arc<Self>, service: &str) {
+        let regs: Vec<DefaultRegistration> = {
+            let wanted = self.wanted.read().await;
+            wanted
+                .get(service)
+                .map(|m| m.values().cloned().collect())
+                .unwrap_or_default()
+        };
+        for reg in regs {
+            let id = reg.service_id.clone();
+            if let Ok(true) = self.build_client(service, reg).await {
+                self.schedule_promote(service, &id);
+            }
+        }
+    }
+
+    fn schedule_promote(self: &Arc<Self>, service: &str, id: &str) {
+        let this = self.clone();
+        let svc = service.to_string();
+        let id = id.to_string();
+        if this.adult_delay.is_zero() {
+            tokio::spawn(async move {
+                this.force_adult(&svc, &id).await;
+            });
+            return;
+        }
+        tokio::spawn(async move {
+            tokio::time::sleep(this.adult_delay).await;
+            this.try_promote(&svc, &id).await;
+        });
+    }
+
     async fn apply_snapshot(self: &Arc<Self>, service_name: &str, list: Vec<DefaultRegistration>) {
-        let wanted: HashSet<String> = list
-            .iter()
-            .filter(|r| r.protocol == "tcp")
-            .map(|r| r.service_id.clone())
-            .collect();
-        for reg in list {
+        let tcp: Vec<DefaultRegistration> =
+            list.into_iter().filter(|r| r.protocol == "tcp").collect();
+        // Empty passing set is the first watch vs Find race, or a brief
+        // Consul blip. Keep the last non-empty wanted set so a restart
+        // that does not change catalog still redials.
+        if !tcp.is_empty() {
+            let mut wanted = self.wanted.write().await;
+            let map = wanted.entry(service_name.to_string()).or_default();
+            map.clear();
+            for reg in &tcp {
+                map.insert(reg.service_id.clone(), reg.clone());
+            }
+        }
+        for reg in tcp {
             let id = reg.service_id.clone();
             if let Ok(true) = self.build_client(service_name, reg).await {
-                let this = self.clone();
-                let svc = service_name.to_string();
-                tokio::spawn(async move {
-                    tokio::time::sleep(this.adult_delay).await;
-                    this.try_promote(&svc, &id).await;
-                });
+                self.schedule_promote(service_name, &id);
             }
+        }
+        let wanted_ids: HashSet<String> = {
+            let wanted = self.wanted.read().await;
+            wanted
+                .get(service_name)
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default()
+        };
+        if wanted_ids.is_empty() {
+            return;
         }
         let stale: Vec<(String, Arc<TcpClient>)> = {
             let map = self.clients.read().await;
@@ -225,22 +310,22 @@ impl Container {
                 Some(cmap) => cmap
                     .ids()
                     .into_iter()
-                    .filter(|id| !wanted.contains(id))
+                    .filter(|id| !wanted_ids.contains(id))
                     .filter_map(|id| cmap.get(&id).map(|s| (id, s.client.clone())))
                     .collect(),
                 None => Vec::new(),
             }
         };
-        if wanted.is_empty() {
-            // Empty catalog is the first watch vs Find race; TCP close still
-            // drops a dead instance via read_loop.
-            return;
-        }
         for (id, client) in stale {
             let _ = client.shutdown().await;
             let mut w = self.clients.write().await;
             if let Some(cmap) = w.get_mut(service_name) {
-                cmap.remove(&id);
+                if cmap
+                    .get(&id)
+                    .is_some_and(|s| Arc::ptr_eq(&s.client, &client))
+                {
+                    cmap.remove(&id);
+                }
             }
         }
     }
@@ -261,6 +346,28 @@ impl Container {
         }
     }
 
+    fn dial_key(service: &str, id: &str) -> String {
+        format!("{service}/{id}")
+    }
+
+    async fn claim_dial(&self, service: &str, id: &str) -> bool {
+        {
+            let map = self.clients.read().await;
+            if map.get(service).is_some_and(|m| m.contains(id)) {
+                return false;
+            }
+        }
+        let mut dialing = self.dialing.lock().await;
+        dialing.insert(Self::dial_key(service, id))
+    }
+
+    async fn release_dial(&self, service: &str, id: &str) {
+        self.dialing
+            .lock()
+            .await
+            .remove(&Self::dial_key(service, id));
+    }
+
     async fn build_client(
         self: &Arc<Self>,
         service_name: &str,
@@ -270,24 +377,35 @@ impl Container {
             warn!(id = %reg.service_id, "skip non-tcp");
             return Ok(false);
         }
+        let id = reg.service_id.clone();
+        if !self.claim_dial(service_name, &id).await {
+            return Ok(false);
+        }
+        let result = self.dial_and_insert(service_name, reg).await;
+        self.release_dial(service_name, &id).await;
+        result
+    }
+
+    async fn dial_and_insert(
+        self: &Arc<Self>,
+        service_name: &str,
+        reg: DefaultRegistration,
+    ) -> Result<bool, Error> {
+        let id = reg.service_id.clone();
         {
             let map = self.clients.read().await;
-            if map
-                .get(service_name)
-                .map(|m| m.contains(&reg.service_id))
-                .unwrap_or(false)
-            {
+            if map.get(service_name).is_some_and(|m| m.contains(&id)) {
                 return Ok(false);
             }
         }
         let mut client = TcpClient::new(
-            reg.service_id.clone(),
+            id.clone(),
             service_name.to_string(),
             ClientOptions::default(),
         );
         client.set_dialer(self.dialer.clone());
         if let Err(e) = client.connect(&reg.dial_url()).await {
-            warn!(id = %reg.service_id, %e, "dial failed");
+            warn!(id = %id, %e, "dial failed");
             return Ok(false);
         }
         let client = Arc::new(client);
@@ -296,10 +414,11 @@ impl Container {
         tokio::spawn(async move {
             this.read_loop(c2).await;
         });
-        let id = reg.service_id.clone();
         let mut w = self.clients.write().await;
         let cmap = w.entry(service_name.to_string()).or_default();
         if cmap.contains(&id) {
+            drop(w);
+            let _ = client.shutdown().await;
             return Ok(false);
         }
         cmap.insert(ClientSlot {
@@ -328,10 +447,18 @@ impl Container {
                 }
             }
         }
-        let mut w = self.clients.write().await;
-        if let Some(cmap) = w.get_mut(&service) {
-            cmap.remove(&id);
+        {
+            let mut w = self.clients.write().await;
+            if let Some(cmap) = w.get_mut(&service) {
+                if cmap
+                    .get(&id)
+                    .is_some_and(|s| Arc::ptr_eq(&s.client, &client))
+                {
+                    cmap.remove(&id);
+                }
+            }
         }
+        self.wake.notify_waiters();
     }
 
     async fn deliver_down(&self, payload: Bytes) -> Result<(), Error> {

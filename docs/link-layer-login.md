@@ -18,7 +18,7 @@ pkt-client  --ws://127.0.0.1:8001-->  gateway (WsServer)
 
 `SN_LOGIN = "chat"`。`service_name("login.signin")` 是 `"login"`，**登录上行禁止用它做 Forward 目标**，必须 `forward(SN_LOGIN)`。
 
-本机 StaticNaming：必须先起 Chat，再起网关（失败不重拨）。生产 Consul：网关 watch Chat，Young 窗口后 Adult，不必人肉保序。
+本机 StaticNaming 和生产 Consul 都是：Catalog 里有 Chat 地址就记进 wanted，拨号失败或对端断开后周期重拨。Compose 里 gateway 等 chat healthy，避免启动瞬间 Docker DNS 还没有 `chat` 这个名字。
 
 ---
 

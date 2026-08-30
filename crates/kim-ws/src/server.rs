@@ -158,6 +158,9 @@ impl Server for WsServer {
         self.closed.store(true, Ordering::SeqCst);
         self.shutdown.notify_waiters();
         self.shutdown.notify_one();
+        for ch in self.channels.all().await {
+            ch.close().await;
+        }
         Ok(())
     }
 }

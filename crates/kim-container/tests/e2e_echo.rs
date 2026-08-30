@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_container::{Container, ContainerOpts, DownlinkHook, HashSelector, InnerTcpDialer};
+use kim_container::{Container, ContainerOpts, DownlinkHook, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
@@ -307,4 +307,216 @@ async fn unavailable_without_chat() {
         _ => panic!("logic"),
     }
     let _ = gw_c.shutdown().await;
+}
+
+async fn wait_slot(c: &Container, service: &str, id: &str, want: Option<u8>) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if c.slot_state(service, id).await == want {
+            return;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!(
+                "slot {service}/{id} still {:?}, want {want:?}",
+                c.slot_state(service, id).await
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+fn chat_reg(port: u16) -> DefaultRegistration {
+    DefaultRegistration {
+        service_id: "chat-1".into(),
+        service_name: "chat".into(),
+        protocol: "tcp".into(),
+        public_address: "127.0.0.1".into(),
+        public_port: port,
+        tags: vec![],
+        meta: HashMap::new(),
+    }
+}
+
+async fn start_chat(addr: std::net::SocketAddr) -> Arc<Container> {
+    let mut chat_server = TcpServer::bind(addr).await.unwrap();
+    let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
+    let chat_c = Container::new(ContainerOpts {
+        naming: chat_naming,
+        identity: ident("chat-1", "chat"),
+        dialer: Arc::new(InnerTcpDialer {
+            local_service_id: "chat-1".into(),
+        }),
+        deps: vec![],
+        adult_delay: Duration::from_millis(0),
+        selector: Arc::new(HashSelector),
+        after_downlink: vec![],
+    });
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let chat_h = Arc::new(ChatHandler {
+        container: chat_c.clone(),
+        seen,
+    });
+    chat_server.set_acceptor(chat_h.clone());
+    chat_server.set_message_listener(chat_h.clone());
+    chat_server.set_state_listener(chat_h);
+    chat_c.attach_server(Arc::new(chat_server));
+    let chat_run = chat_c.clone();
+    tokio::spawn(async move {
+        let _ = chat_run.start().await;
+    });
+    chat_c
+}
+
+async fn start_gateway(chat_port: u16) -> (Arc<Container>, std::net::SocketAddr) {
+    let mut gw_server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    let gw_addr = gw_server.local_addr();
+    let naming = Arc::new(StaticNaming::from_slice(vec![chat_reg(chat_port)]));
+    let gw_c = Container::new(ContainerOpts {
+        naming,
+        identity: ident("wg-1", "wgateway"),
+        dialer: Arc::new(InnerTcpDialer {
+            local_service_id: "wg-1".into(),
+        }),
+        deps: vec!["chat".into()],
+        adult_delay: Duration::from_millis(0),
+        selector: Arc::new(HashSelector),
+        after_downlink: vec![],
+    });
+    let gw_h = Arc::new(GatewayHandler {
+        container: gw_c.clone(),
+    });
+    gw_server.set_acceptor(gw_h.clone());
+    gw_server.set_message_listener(gw_h.clone());
+    gw_server.set_state_listener(gw_h);
+    gw_c.attach_server(Arc::new(gw_server));
+    let gw_run = gw_c.clone();
+    tokio::spawn(async move {
+        let _ = gw_run.start().await;
+    });
+    (gw_c, gw_addr)
+}
+
+async fn echo_roundtrip(gw_addr: std::net::SocketAddr, seq: u32, body: &'static [u8]) {
+    let mut client = WsClient::new(
+        "alice",
+        "test",
+        ClientOptions {
+            heartbeat: None,
+            ..ClientOptions::default()
+        },
+    );
+    client.set_dialer(Arc::new(WsIdentityDialer));
+    client.connect(&format!("ws://{gw_addr}/")).await.unwrap();
+    let req = LogicPkt::new(CMD_DEMO_ECHO, seq, Bytes::from_static(body));
+    client.send(marshal(&Packet::Logic(req))).await.unwrap();
+    let resp = tokio::time::timeout(Duration::from_secs(2), client.read())
+        .await
+        .unwrap()
+        .unwrap();
+    match read(&resp.payload).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.sequence, seq);
+            assert_eq!(p.header.status, Status::Success as i32);
+            assert_eq!(&p.body[..], body);
+        }
+        _ => panic!("logic"),
+    }
+}
+
+#[tokio::test]
+async fn dials_when_chat_listen_appears() {
+    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = probe.local_addr().unwrap();
+    drop(probe);
+
+    let (gw_c, gw_addr) = start_gateway(addr.port()).await;
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    assert_eq!(gw_c.slot_state("chat", "chat-1").await, None);
+
+    let mut chat_server = None;
+    for _ in 0..20 {
+        if let Ok(s) = TcpServer::bind(addr).await {
+            chat_server = Some(s);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut chat_server = chat_server.expect("rebind chat port");
+    let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
+    let chat_c = Container::new(ContainerOpts {
+        naming: chat_naming,
+        identity: ident("chat-1", "chat"),
+        dialer: Arc::new(InnerTcpDialer {
+            local_service_id: "chat-1".into(),
+        }),
+        deps: vec![],
+        adult_delay: Duration::from_millis(0),
+        selector: Arc::new(HashSelector),
+        after_downlink: vec![],
+    });
+    let chat_h = Arc::new(ChatHandler {
+        container: chat_c.clone(),
+        seen: Arc::new(Mutex::new(Vec::new())),
+    });
+    chat_server.set_acceptor(chat_h.clone());
+    chat_server.set_message_listener(chat_h.clone());
+    chat_server.set_state_listener(chat_h);
+    chat_c.attach_server(Arc::new(chat_server));
+    let chat_run = chat_c.clone();
+    tokio::spawn(async move {
+        let _ = chat_run.start().await;
+    });
+
+    wait_slot(&gw_c, "chat", "chat-1", Some(ADULT)).await;
+    echo_roundtrip(gw_addr, 3, b"late chat").await;
+    let _ = gw_c.shutdown().await;
+    let _ = chat_c.shutdown().await;
+}
+
+#[tokio::test]
+async fn redials_after_chat_restart() {
+    let mut chat_server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    let addr = chat_server.local_addr();
+    let chat_c = {
+        let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
+        let chat_c = Container::new(ContainerOpts {
+            naming: chat_naming,
+            identity: ident("chat-1", "chat"),
+            dialer: Arc::new(InnerTcpDialer {
+                local_service_id: "chat-1".into(),
+            }),
+            deps: vec![],
+            adult_delay: Duration::from_millis(0),
+            selector: Arc::new(HashSelector),
+            after_downlink: vec![],
+        });
+        let chat_h = Arc::new(ChatHandler {
+            container: chat_c.clone(),
+            seen: Arc::new(Mutex::new(Vec::new())),
+        });
+        chat_server.set_acceptor(chat_h.clone());
+        chat_server.set_message_listener(chat_h.clone());
+        chat_server.set_state_listener(chat_h);
+        chat_c.attach_server(Arc::new(chat_server));
+        let chat_run = chat_c.clone();
+        tokio::spawn(async move {
+            let _ = chat_run.start().await;
+        });
+        chat_c
+    };
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let (gw_c, gw_addr) = start_gateway(addr.port()).await;
+    wait_slot(&gw_c, "chat", "chat-1", Some(ADULT)).await;
+    echo_roundtrip(gw_addr, 1, b"before").await;
+
+    let _ = chat_c.shutdown().await;
+    wait_slot(&gw_c, "chat", "chat-1", None).await;
+
+    let chat_c = start_chat(addr).await;
+    wait_slot(&gw_c, "chat", "chat-1", Some(ADULT)).await;
+    echo_roundtrip(gw_addr, 2, b"after").await;
+
+    let _ = gw_c.shutdown().await;
+    let _ = chat_c.shutdown().await;
 }
