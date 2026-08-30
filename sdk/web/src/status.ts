@@ -40,5 +40,5 @@ export function isRetryable(status: number): boolean {
 
 /** Session is gone; close and (if enabled) log in again. */
 export function needsRelogin(status: number): boolean {
-  return status >= 400;
+  return Number(status) >= 400;
 }

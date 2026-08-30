@@ -79,57 +79,64 @@ export function doLogin(
     };
 
     conn.onmessage = (evt) => {
-      try {
-        const buf = toUint8(evt.data);
-        const wire = readPacket(buf);
-        if (wire.kind === "basic") {
-          return;
-        }
-        const pkt = wire.pkt;
-        if (pkt.flag !== Flag.Response) {
-          return;
-        }
-        if (pkt.status !== Status.Success) {
-          finish({
-            success: false,
-            err: new Error(`login status ${pkt.status}`),
-            conn,
-          });
-          return;
-        }
-        const resp = decodeLoginResp(pkt.payload);
-        if (!resp.channelId) {
-          finish({
-            success: false,
-            err: new Error("login missing channelId"),
-            conn,
-          });
-          return;
-        }
-        let account: string;
+      void (async () => {
         try {
-          account = accountFromToken(req.token);
+          const raw = evt.data;
+          const buf =
+            typeof Blob !== "undefined" && raw instanceof Blob
+              ? new Uint8Array(await raw.arrayBuffer())
+              : toUint8(raw);
+          const wire = readPacket(buf);
+          if (wire.kind === "basic") {
+            return;
+          }
+          const pkt = wire.pkt;
+          if (pkt.flag !== Flag.Response && pkt.flag !== 1) {
+            return;
+          }
+          if (pkt.status !== Status.Success) {
+            finish({
+              success: false,
+              err: new Error(`login status ${pkt.status}`),
+              conn,
+            });
+            return;
+          }
+          const resp = decodeLoginResp(pkt.payload);
+          const channelId = resp.channelId || pkt.channelId;
+          if (!channelId) {
+            finish({
+              success: false,
+              err: new Error("login missing channelId"),
+              conn,
+            });
+            return;
+          }
+          let account: string;
+          try {
+            account = accountFromToken(req.token);
+          } catch (err) {
+            finish({
+              success: false,
+              err: err instanceof Error ? err : new Error(String(err)),
+              conn,
+            });
+            return;
+          }
+          finish({
+            success: true,
+            channelId,
+            account,
+            conn,
+          });
         } catch (err) {
           finish({
             success: false,
             err: err instanceof Error ? err : new Error(String(err)),
             conn,
           });
-          return;
         }
-        finish({
-          success: true,
-          channelId: resp.channelId,
-          account,
-          conn,
-        });
-      } catch (err) {
-        finish({
-          success: false,
-          err: err instanceof Error ? err : new Error(String(err)),
-          conn,
-        });
-      }
+      })();
     };
   });
 }

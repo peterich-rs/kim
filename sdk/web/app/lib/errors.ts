@@ -51,6 +51,16 @@ export function mapUserError(err: unknown): string {
   if (msg.includes("登录网关") || msg.includes("login status 105")) {
     return COPY.authFailed;
   }
+  if (
+    msg.includes("login failed") ||
+    msg.includes("login missing") ||
+    msg.includes("already been connected") ||
+    msg.includes("expected binary") ||
+    msg.includes("incomplete logic") ||
+    msg.includes("login status")
+  ) {
+    return COPY.wsFailed;
+  }
   return COPY.unavailable;
 }
 

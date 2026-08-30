@@ -111,6 +111,16 @@ describe("KIMClient", () => {
     expect(opens).toBe(1);
   });
 
+  it("offline index 404 does not fail login.signin", async () => {
+    const gw = new LoopbackGw();
+    gw.statusFor[Command.OfflineIndex] = Status.SessionNotFound;
+    const cli = client(gw);
+    const { success, err } = await cli.login();
+    expect(err).toBeUndefined();
+    expect(success).toBe(true);
+    expect(cli.state).toBe(State.CONNECTED);
+  });
+
   it("logs in and exposes channelId from LoginResp", async () => {
     const gw = new LoopbackGw();
     const cli = client(gw);

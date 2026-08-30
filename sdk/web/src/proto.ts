@@ -75,16 +75,38 @@ export function encodeHeader(h: HeaderFields): Uint8Array {
   return encode(HeaderType, h);
 }
 
+function asUint(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return v >>> 0;
+  }
+  if (typeof v === "string" && v.length > 0) {
+    const named: Record<string, number> = {
+      Request: 0,
+      Response: 1,
+      Push: 2,
+      Success: 0,
+    };
+    if (v in named) {
+      return named[v]!;
+    }
+    const n = Number(v);
+    if (Number.isFinite(n)) {
+      return n >>> 0;
+    }
+  }
+  return 0;
+}
+
 export function decodeHeader(buf: Uint8Array): Required<HeaderFields> {
   const o = decode<HeaderFields>(HeaderType, buf);
   return {
     command: o.command ?? "",
     channelId: o.channelId ?? "",
-    sequence: o.sequence ?? 0,
-    flag: o.flag ?? 0,
-    status: o.status ?? 0,
+    sequence: asUint(o.sequence),
+    flag: asUint(o.flag),
+    status: asUint(o.status),
     dest: o.dest ?? "",
-    bodyLength: o.bodyLength ?? 0,
+    bodyLength: asUint(o.bodyLength),
   };
 }
 
