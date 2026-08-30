@@ -29,6 +29,11 @@ import type { Message } from "../../src/index.ts";
 
 export type ConnStatus = "connecting" | "online" | "reconnecting" | "offline";
 
+export interface Person {
+  account: string;
+  nickname: string;
+}
+
 export interface ChatMsg {
   key: string;
   dest: string;
@@ -207,11 +212,20 @@ interface ChatContextValue {
   toggleMembers: () => void;
   nickname: string;
   incomingCount: number;
-  searchUsers: (query: string) => Promise<{ account: string; nickname: string }[]>;
-  friends: () => Promise<{ account: string; nickname: string }[]>;
-  incoming: () => Promise<{ account: string; nickname: string }[]>;
+  people: Person[];
+  incomingPeople: Person[];
+  outgoing: string[];
+  socialReady: boolean;
+  isFriend: (account: string) => boolean;
+  isOutgoing: (account: string) => boolean;
+  isIncoming: (account: string) => boolean;
+  refreshSocial: () => Promise<void>;
+  searchUsers: (query: string) => Promise<Person[]>;
+  friends: () => Promise<Person[]>;
+  incoming: () => Promise<Person[]>;
   requestFriend: (account: string) => Promise<void>;
   acceptFriend: (account: string) => Promise<void>;
+  rejectFriend: (account: string) => Promise<void>;
   updateProfile: (nickname: string, bio: string) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
 }
@@ -230,6 +244,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
   const [nickname, setNickname] = useState(initial?.account ?? "");
   const [incomingCount, setIncomingCount] = useState(0);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [incomingPeople, setIncomingPeople] = useState<Person[]>([]);
+  const [outgoing, setOutgoing] = useState<string[]>([]);
+  const [socialReady, setSocialReady] = useState(false);
 
   const persistAccount = auth?.account;
 
@@ -286,6 +304,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setAuth(undefined);
     setNickname("");
     setIncomingCount(0);
+    setPeople([]);
+    setIncomingPeople([]);
+    setOutgoing([]);
+    setSocialReady(false);
     dispatch({ type: "reset" });
     if (notice) {
       toast.error(notice);
@@ -321,8 +343,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           void refreshGroup(groupId, session);
         },
         onFriend: (from, nick) => {
+          setIncomingPeople((cur) => {
+            if (cur.some((p) => p.account === from)) {
+              return cur;
+            }
+            return [{ account: from, nickname: nick || from }, ...cur];
+          });
           setIncomingCount((n) => n + 1);
-          toast.message(`${nick || from} ${COPY.incoming}`);
+          toast.message(`${nick || from} ${COPY.friendRequestToast}`);
         },
       });
       sessionRef.current = session;
@@ -337,8 +365,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             setNickname(me.nickname);
           }
           const pending = await session.incoming();
+          const friendRows = await session.friends();
           if (session.alive) {
+            setIncomingPeople(
+              pending.map((p) => ({ account: p.account, nickname: p.nickname || p.account })),
+            );
             setIncomingCount(pending.length);
+            setPeople(
+              friendRows.map((p) => ({ account: p.account, nickname: p.nickname || p.account })),
+            );
+            setSocialReady(true);
           }
           const items = await session.inbox();
           if (!session.alive) {
@@ -461,9 +497,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!session || !active) {
       throw new Error(COPY.notConnected);
     }
+    if (
+      active.kind === "user" &&
+      socialReady &&
+      !people.some((p) => p.account === active.id)
+    ) {
+      throw new Error(COPY.notFriends);
+    }
     const msg = await session.send(active.id, active.kind, text);
     pushMessage(msg, active.id, session.account);
-  }, [pushMessage]);
+  }, [people, pushMessage, socialReady]);
 
   const createGroup = useCallback(async (name: string, members: string[]) => {
     const session = sessionRef.current;
@@ -479,13 +522,44 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "membersOpen", open: !stateRef.current.membersOpen });
   }, []);
 
+  const asPeople = (rows: { account: string; nickname?: string }[]): Person[] =>
+    rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+
+  const refreshSocial = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) {
+      return;
+    }
+    const [friendRows, pending] = await Promise.all([session.friends(), session.incoming()]);
+    if (!session.alive) {
+      return;
+    }
+    const nextFriends = asPeople(friendRows);
+    const nextIncoming = asPeople(pending);
+    setPeople(nextFriends);
+    setIncomingPeople(nextIncoming);
+    setIncomingCount(nextIncoming.length);
+    setOutgoing((cur) => cur.filter((id) => !nextFriends.some((p) => p.account === id)));
+    setSocialReady(true);
+  }, []);
+
+  const isFriend = useCallback(
+    (account: string) => people.some((p) => p.account === account),
+    [people],
+  );
+  const isOutgoing = useCallback((account: string) => outgoing.includes(account), [outgoing]);
+  const isIncoming = useCallback(
+    (account: string) => incomingPeople.some((p) => p.account === account),
+    [incomingPeople],
+  );
+
   const searchUsers = useCallback(async (query: string) => {
     const session = sessionRef.current;
     if (!session) {
       return [];
     }
     const rows = await session.searchUsers(query);
-    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+    return asPeople(rows);
   }, []);
 
   const friends = useCallback(async () => {
@@ -494,7 +568,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return [];
     }
     const rows = await session.friends();
-    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+    const next = asPeople(rows);
+    setPeople(next);
+    return next;
   }, []);
 
   const incoming = useCallback(async () => {
@@ -503,8 +579,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return [];
     }
     const rows = await session.incoming();
-    setIncomingCount(rows.length);
-    return rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+    const next = asPeople(rows);
+    setIncomingPeople(next);
+    setIncomingCount(next.length);
+    return next;
   }, []);
 
   const requestFriend = useCallback(async (account: string) => {
@@ -513,8 +591,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       throw new Error(COPY.notConnected);
     }
     await session.requestFriend(account);
+    const friendRows = asPeople(await session.friends());
+    const pending = asPeople(await session.incoming());
+    if (!session.alive) {
+      return;
+    }
+    setPeople(friendRows);
+    setIncomingPeople(pending);
+    setIncomingCount(pending.length);
+    if (friendRows.some((p) => p.account === account)) {
+      setOutgoing((cur) => cur.filter((id) => id !== account));
+      toast.success(COPY.friendAccepted);
+      openThread(account, "user", account);
+      return;
+    }
+    setOutgoing((cur) => (cur.includes(account) ? cur : [...cur, account]));
     toast.success(COPY.requestSent);
-  }, []);
+  }, [openThread]);
 
   const acceptFriend = useCallback(async (account: string) => {
     const session = sessionRef.current;
@@ -522,10 +615,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       throw new Error(COPY.notConnected);
     }
     await session.acceptFriend(account);
-    setIncomingCount((n) => Math.max(0, n - 1));
+    await refreshSocial();
     toast.success(COPY.friendAccepted);
-    openThread(account, "user", account);
-  }, [openThread]);
+    const title = incomingPeople.find((p) => p.account === account)?.nickname ?? account;
+    openThread(account, "user", title);
+  }, [incomingPeople, openThread, refreshSocial]);
+
+  const rejectFriend = useCallback(async (account: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      throw new Error(COPY.notConnected);
+    }
+    await session.rejectFriend(account);
+    await refreshSocial();
+  }, [refreshSocial]);
 
   const updateProfile = useCallback(async (name: string, bio: string) => {
     const session = sessionRef.current;
@@ -571,11 +674,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       toggleMembers,
       nickname: nickname || auth?.account || "",
       incomingCount,
+      people,
+      incomingPeople,
+      outgoing,
+      socialReady,
+      isFriend,
+      isOutgoing,
+      isIncoming,
+      refreshSocial,
       searchUsers,
       friends,
       incoming,
       requestFriend,
       acceptFriend,
+      rejectFriend,
       updateProfile,
       changePassword: changePasswordFn,
     }),
@@ -599,11 +711,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       toggleMembers,
       nickname,
       incomingCount,
+      people,
+      incomingPeople,
+      outgoing,
+      socialReady,
+      isFriend,
+      isOutgoing,
+      isIncoming,
+      refreshSocial,
       searchUsers,
       friends,
       incoming,
       requestFriend,
       acceptFriend,
+      rejectFriend,
       updateProfile,
       changePasswordFn,
     ],

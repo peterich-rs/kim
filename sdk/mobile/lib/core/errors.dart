@@ -31,3 +31,23 @@ String mapUserError(Object err) {
   }
   return Copy.unavailable;
 }
+
+String mapTalkError(Object err) {
+  final msg = err.toString();
+  if (msg.contains(Copy.notConnected) || msg.contains('not connected')) {
+    return Copy.notConnected;
+  }
+  if (msg.contains('status 109') || msg.contains(Copy.notFriends)) {
+    return Copy.notFriends;
+  }
+  if (msg.contains('status 110') || msg.contains(Copy.blocked)) {
+    return Copy.blocked;
+  }
+  if (msg.contains('status 108') || msg.contains(Copy.userNotFound)) {
+    return Copy.userNotFound;
+  }
+  if (msg.contains('status 101') || msg.contains(Copy.cannotAddSelf)) {
+    return Copy.cannotAddSelf;
+  }
+  return Copy.sendFailed;
+}

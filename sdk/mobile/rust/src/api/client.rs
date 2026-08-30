@@ -53,6 +53,57 @@ impl KimApi {
     }
 
     #[flutter_rust_bridge::frb(sync)]
+    pub fn friend_request(&self, dest: String) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        rt().block_on(c.friend_request(&dest))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn friend_accept(&self, dest: String) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        rt().block_on(c.friend_accept(&dest))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn friend_reject(&self, dest: String) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        rt().block_on(c.friend_reject(&dest))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn friend_list(&self) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        let users = rt()
+            .block_on(c.friend_list())
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_list(&users)
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn friend_incoming(&self) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        let users = rt()
+            .block_on(c.friend_incoming())
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_list(&users)
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn search_users(&self, query: String) -> Result<String, String> {
+        let c = self.inner.lock().map_err(|e| e.to_string())?;
+        let users = rt()
+            .block_on(c.search_users(&query))
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_list(&users)
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
     pub fn disconnect(&self) -> Result<String, String> {
         let mut c = self.inner.lock().map_err(|e| e.to_string())?;
         rt().block_on(c.disconnect()).map_err(|e| e.to_string())?;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { COPY } from "../app/copy.ts";
-import { mapUserError } from "../app/lib/errors.ts";
+import { mapUserError, mapWireStatus } from "../app/lib/errors.ts";
 import { validateAccount, validateConfirm, validatePassword } from "../app/lib/validation.ts";
 
 describe("validation", () => {
@@ -41,5 +41,15 @@ describe("mapUserError", () => {
   it("does not leak raw technical messages", () => {
     expect(mapUserError(new Error("http 502"))).toBe(COPY.unavailable);
     expect(mapUserError(new Error("ECONNREFUSED"))).toBe(COPY.unavailable);
+  });
+});
+
+describe("mapWireStatus", () => {
+  it("maps talk and social statuses to product copy", () => {
+    expect(mapWireStatus(109)).toBe(COPY.notFriends);
+    expect(mapWireStatus(110)).toBe(COPY.blocked);
+    expect(mapWireStatus(108)).toBe(COPY.userNotFound);
+    expect(mapWireStatus(101)).toBe(COPY.cannotAddSelf);
+    expect(mapWireStatus(0)).toBeUndefined();
   });
 });

@@ -2,6 +2,15 @@ library;
 
 enum ThreadKind { user, group }
 
+class KimPerson {
+  const KimPerson({required this.account, required this.nickname});
+
+  final String account;
+  final String nickname;
+
+  String get title => nickname.isEmpty ? account : nickname;
+}
+
 enum ConnStatus { connecting, online, reconnecting, offline }
 
 class KimThread {
@@ -120,7 +129,10 @@ class KimChatMsg {
     final dest = raw['dest'];
     final sender = raw['sender'];
     final body = raw['body'];
-    if (key is! String || dest is! String || sender is! String || body is! String) {
+    if (key is! String ||
+        dest is! String ||
+        sender is! String ||
+        body is! String) {
       return null;
     }
     return KimChatMsg(

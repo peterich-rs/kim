@@ -63,7 +63,7 @@ flutter run
 
 FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-client`。`KimBridge.ffiReady == true`。账号 HTTP 走 `KimAuth`（`register/login/logout/change_password`），长连接走 `KimApi.connect/login/ping/talkToUser/disconnect`。编译走 `sdk/mobile/hook/build.dart`（`flutter_rust_bridge_hooks` / native_toolchain_rust），不是 `rust_builder` + cargokit / ffiPlugin。`rust/rust-toolchain.toml` 钉具体 toolchain。本仓库 workspace **不**收这个 crate（`unsafe` 生成代码），避免 `unsafe_code = deny`。
 
-没有 NDK / Xcode 时仍可用 CLI 验证协议。
+`KimApi` 另有 `friendRequest` / `friendAccept` / `friendReject` / `friendList` / `friendIncoming` / `searchUsers`（列表为 JSON）。没有 NDK / Xcode 时仍可用 CLI 验证协议。
 
 ### Flutter 壳现在有什么
 
@@ -74,7 +74,7 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 - `permission_handler`：启动时最多问一次通知；相机 / 麦克风 / 相册 **不**在启动时请求。
 - `package_info_plus` / `intl`：版本号、时间格式。
 - 产品 UI：`go_router` 底部三栏（消息 / 通讯录 / 我）+ 会话页；`flutter_riverpod` 管登录态和本地会话；`flutter_chat_ui` 气泡和输入栏；`flex_color_scheme`、`flutter_animate`、`wolt_modal_sheet`、`flutter_slidable`、`toastification`、`skeletonizer`、`lucide_icons_flutter` 负责主题、动效和常见交互。主题是 **Material 3**（跟随系统亮暗）。不用 Cupertino 当 app theme，不用 Dart `web_socket_channel`。登录后自动 `connect` + `login.signin`，不再露出 ping / talk 调试按钮。
-- 会话列表和消息缓存在 `shared_preferences`（按账号）。没有把收件箱 / 好友图从 FFI 拉上来；按账号发起私聊走现有 `talk_to_user`。
+- 会话列表和消息缓存在 `shared_preferences`（按账号）。通讯录 / 好友申请 / 搜索走 `kim-client` 的 `chat.friend.*` 与 `chat.user.search`。私聊发送前要求已是好友（`NotFriends=109` 时输入栏换成加好友）。
 - Android **main** `AndroidManifest` 声明 `INTERNET`（release WSS 以前缺这个会挂）。`usesCleartextTraffic` 仅 debug/profile，给本地 `ws://127.0.0.1:8001`。`allowBackup="false"`。
 - iOS `NSAllowsLocalNetworking`；**不**设 `NSAllowsArbitraryLoads`。相机 / 麦 / 相册的隐私文案先不写（还没有 picker，避免未使用 key 被拒）。
 - Xcode 编 iOS 时 Run Script 走 `ios/Scripts/run_xcode_backend.sh`，把 `~/.cargo/bin` 加进 PATH。否则 GUI 里找不到 `rustup`，`PhaseScriptExecution` 会以 native assets 失败退出。打开 `ios/Runner.xcworkspace`。插件走 SPM，不要把 `Pods_Runner.framework` 链进 Runner（否则 `ld: framework 'Pods_Runner' not found`）。

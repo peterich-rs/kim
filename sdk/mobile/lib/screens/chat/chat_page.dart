@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../copy.dart';
+import '../../core/errors.dart';
 import '../../models/models.dart';
+import '../../state/contacts.dart';
 import '../../state/inbox.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
@@ -65,9 +68,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final msg = await ref.read(inboxProvider.notifier).send(widget.id, text);
       await _controller.insertMessage(_toFlyer(msg));
     } catch (err) {
-      final message = err.toString().contains(Copy.notConnected)
-          ? Copy.notConnected
-          : Copy.sendFailed;
+      final message = mapTalkError(err);
       if (!mounted) {
         return;
       }
@@ -85,8 +86,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
+    final social = ref.watch(contactsProvider);
     final theme = Theme.of(context);
     final account = session.account;
+    final gated =
+        widget.kind == ThreadKind.user &&
+        social.ready &&
+        !social.isFriend(widget.id);
 
     return Scaffold(
       appBar: AppBar(
@@ -120,10 +126,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             child: Chat(
               chatController: _controller,
               currentUserId: account,
-              resolveUser: (id) async => User(
-                id: id,
-                name: id == account ? Copy.you : id,
-              ),
+              resolveUser: (id) async =>
+                  User(id: id, name: id == account ? Copy.you : id),
               onMessageSend: _send,
               theme: KimTheme.chat(theme),
               backgroundColor: theme.colorScheme.surface,
@@ -133,19 +137,126 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   title: Copy.noMessages,
                   subtitle: Copy.noMessagesHint,
                 ),
-                composerBuilder: (_) => Composer(
-                  hintText: Copy.messagePlaceholder,
-                  filled: true,
-                  handleSafeArea: true,
-                  sendIcon: const Icon(LucideIcons.send, size: 18),
-                  sendButtonVisibilityMode: SendButtonVisibilityMode.hidden,
-                  sendOnEnter: true,
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                ),
+                composerBuilder: (_) {
+                  if (gated) {
+                    return _FriendGate(
+                      dest: widget.id,
+                      title: widget.title,
+                      incoming: social.isIncoming(widget.id),
+                      outgoing: social.isOutgoing(widget.id),
+                    );
+                  }
+                  return Composer(
+                    hintText: Copy.messagePlaceholder,
+                    filled: true,
+                    handleSafeArea: true,
+                    sendIcon: const Icon(LucideIcons.send, size: 18),
+                    sendButtonVisibilityMode: SendButtonVisibilityMode.hidden,
+                    sendOnEnter: true,
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  );
+                },
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FriendGate extends ConsumerWidget {
+  const _FriendGate({
+    required this.dest,
+    required this.title,
+    required this.incoming,
+    required this.outgoing,
+  });
+
+  final String dest;
+  final String title;
+  final bool incoming;
+  final bool outgoing;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    Future<void> run(Future<void> Function() action, String ok) async {
+      try {
+        await action();
+        if (context.mounted) {
+          toastification.show(
+            context: context,
+            type: ToastificationType.success,
+            style: ToastificationStyle.flatColored,
+            title: Text(ok),
+            autoCloseDuration: const Duration(seconds: 2),
+            alignment: Alignment.topCenter,
+          );
+        }
+      } catch (err) {
+        if (context.mounted) {
+          toastification.show(
+            context: context,
+            type: ToastificationType.error,
+            style: ToastificationStyle.flatColored,
+            title: Text(socialError(err)),
+            autoCloseDuration: const Duration(seconds: 3),
+            alignment: Alignment.topCenter,
+          );
+        }
+      }
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                KimAvatar(name: title),
+                const Gap(10),
+                Text(Copy.notFriends, style: theme.textTheme.titleSmall),
+                const Gap(4),
+                Text(
+                  outgoing
+                      ? Copy.waitingAccept
+                      : incoming
+                      ? Copy.friendRequestToast
+                      : Copy.addFriendToChat,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+                const Gap(12),
+                if (outgoing)
+                  Text(Copy.requested, style: theme.textTheme.labelMedium)
+                else if (incoming)
+                  FilledButton(
+                    onPressed: () => run(
+                      () => ref.read(contactsProvider.notifier).accept(dest),
+                      Copy.friendAccepted,
+                    ),
+                    child: const Text(Copy.accept),
+                  )
+                else
+                  FilledButton.tonal(
+                    onPressed: () => run(
+                      () => ref.read(contactsProvider.notifier).request(dest),
+                      Copy.requestSent,
+                    ),
+                    child: const Text(Copy.addFriend),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

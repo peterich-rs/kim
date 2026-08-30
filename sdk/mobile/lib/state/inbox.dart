@@ -10,6 +10,7 @@ import '../core/format.dart';
 import '../core/haptics.dart';
 import '../core/validation.dart';
 import '../models/models.dart';
+import 'contacts.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -20,8 +21,7 @@ class InboxState {
     this.query = '',
   });
 
-  factory InboxState.empty() =>
-      const InboxState(threads: [], messages: {});
+  factory InboxState.empty() => const InboxState(threads: [], messages: {});
 
   final List<KimThread> threads;
   final Map<String, List<KimChatMsg>> messages;
@@ -77,10 +77,10 @@ class InboxNotifier extends Notifier<InboxState> {
       return cached;
     }
     final account = ref.read(sessionProvider).account;
-    final loaded = ref.read(conversationStoreProvider).loadMessages(account, dest);
-    state = state.copyWith(
-      messages: {...state.messages, dest: loaded},
-    );
+    final loaded = ref
+        .read(conversationStoreProvider)
+        .loadMessages(account, dest);
+    state = state.copyWith(messages: {...state.messages, dest: loaded});
     return loaded;
   }
 
@@ -134,6 +134,13 @@ class InboxNotifier extends Notifier<InboxState> {
     }
     if (session.status != ConnStatus.online) {
       throw StateError(Copy.notConnected);
+    }
+    final existing = _thread(dest);
+    final social = ref.read(contactsProvider);
+    if (existing?.kind != ThreadKind.group &&
+        social.ready &&
+        !social.isFriend(dest)) {
+      throw StateError(Copy.notFriends);
     }
     ensureThread(id: dest);
     final msg = KimChatMsg(
@@ -192,7 +199,9 @@ class InboxNotifier extends Notifier<InboxState> {
     prev.add(msg);
     final clipped = prev.length > 400 ? prev.sublist(prev.length - 400) : prev;
     final existing = _thread(msg.dest);
-    final unread = fromSelf || msg.sys ? (existing?.unread ?? 0) : (existing?.unread ?? 0) + 1;
+    final unread = fromSelf || msg.sys
+        ? (existing?.unread ?? 0)
+        : (existing?.unread ?? 0) + 1;
     _upsert(
       KimThread(
         id: msg.dest,
@@ -203,9 +212,7 @@ class InboxNotifier extends Notifier<InboxState> {
         unread: unread,
       ),
     );
-    state = state.copyWith(
-      messages: {...state.messages, msg.dest: clipped},
-    );
+    state = state.copyWith(messages: {...state.messages, msg.dest: clipped});
   }
 
   void _markFailed(String dest, String key) {
@@ -233,11 +240,9 @@ class InboxNotifier extends Notifier<InboxState> {
 
   Future<void> _persistMessages(String dest) async {
     final account = ref.read(sessionProvider).account;
-    await ref.read(conversationStoreProvider).saveMessages(
-      account,
-      dest,
-      state.messages[dest] ?? const [],
-    );
+    await ref
+        .read(conversationStoreProvider)
+        .saveMessages(account, dest, state.messages[dest] ?? const []);
   }
 }
 

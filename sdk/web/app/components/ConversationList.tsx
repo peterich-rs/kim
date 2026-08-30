@@ -1,5 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Hash, LogOut, Plus, Search, User } from "lucide-react";
+import { Hash, LogOut, Plus, Search, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { COPY } from "../copy.ts";
@@ -10,10 +10,12 @@ import { Avatar, Button, StatusDot } from "./ui.tsx";
 
 export function ConversationList({
   onNewChat,
+  onAddFriend,
   onNewGroup,
   onProfile,
 }: {
   onNewChat: () => void;
+  onAddFriend: () => void;
   onNewGroup: () => void;
   onProfile: () => void;
 }) {
@@ -44,38 +46,45 @@ export function ConversationList({
     <aside className="flex h-full min-h-0 w-full flex-col bg-panel md:w-[320px] md:border-r md:border-line">
       <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
         <h1 className="text-lg font-semibold">{COPY.conversations}</h1>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <Button variant="icon" aria-label={COPY.startChat} className="relative">
-              <Plus className="size-4" />
-              {incomingCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-brand" />
-              ) : null}
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="end"
-              sideOffset={6}
-              className="z-50 min-w-40 rounded-xl border border-line bg-elev p-1 shadow-xl"
-            >
-              <DropdownMenu.Item
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-[highlighted]:bg-panel"
-                onSelect={onNewChat}
+        <div className="flex items-center gap-1">
+          <Button variant="icon" aria-label={COPY.contacts} className="relative" onClick={onNewChat}>
+            <Users className="size-4" />
+            {incomingCount > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold leading-4 text-brand-ink">
+                {incomingCount > 9 ? "9+" : incomingCount}
+              </span>
+            ) : null}
+          </Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button variant="icon" aria-label={COPY.startChat}>
+                <Plus className="size-4" />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={6}
+                className="z-50 min-w-40 rounded-xl border border-line bg-elev p-1 shadow-xl"
               >
-                <User className="size-4 text-muted" />
-                {COPY.contacts}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-[highlighted]:bg-panel"
-                onSelect={onNewGroup}
-              >
-                <Hash className="size-4 text-muted" />
-                {COPY.newGroup}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+                <DropdownMenu.Item
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-[highlighted]:bg-panel"
+                  onSelect={onAddFriend}
+                >
+                  <UserPlus className="size-4 text-muted" />
+                  {COPY.addFriend}
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-[highlighted]:bg-panel"
+                  onSelect={onNewGroup}
+                >
+                  <Hash className="size-4 text-muted" />
+                  {COPY.newGroup}
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
       </header>
 
       <div className="px-3 pb-2">
@@ -97,6 +106,13 @@ export function ConversationList({
               <>
                 <p className="font-medium text-ink/80">{COPY.noConversations}</p>
                 <p className="mt-1">{COPY.noConversationsHint}</p>
+                <button
+                  type="button"
+                  onClick={onAddFriend}
+                  className="mt-3 text-xs font-medium text-brand hover:underline"
+                >
+                  {COPY.addFriend}
+                </button>
               </>
             ) : (
               COPY.noMatch

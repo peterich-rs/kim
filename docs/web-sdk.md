@@ -94,6 +94,8 @@ ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。循环大约每 `ac
 
 资料 / 好友 / 会话：`profile` / `updateProfile` / `searchUsers` / `friendRequest` / `friendAccept` / `friendList` / `friendIncoming` / `blockAdd` / `inbox` / `history` / `markRead`。私聊非好友返回 `NotFriends=109`。好友申请 Push 走 `onfriendrequest`。产品页登录后拉 inbox，点开会话再拉 history。改密走 `POST /api/v1/auth/password`。
 
+产品页私聊与后台好友墙对齐：通讯录选好友开聊，非好友会话隐藏输入栏、展示加好友 / 同意申请。`NotFriends=109` 与 `Blocked=110` 展示产品文案，不吞成「发送失败」。
+
 SDK **不发** `login.signout`；断开由网关 Disconnect 转发。
 
 ---

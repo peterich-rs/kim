@@ -9,6 +9,7 @@ import {
 } from "../../src/index.ts";
 import type { WireInboxItem, WireProfile } from "../../src/proto.ts";
 import { COPY } from "../copy.ts";
+import { mapWireStatus } from "./errors.ts";
 import type { Kind } from "./threads.ts";
 
 export interface ChatHandlers {
@@ -146,13 +147,7 @@ export class ChatSession {
         ? await cli.talkToGroup(dest, new Content(text))
         : await cli.talkToUser(dest, new Content(text));
     if (status !== 0) {
-      if (status === 109) {
-        throw new Error(COPY.notFriends);
-      }
-      if (status === 110) {
-        throw new Error(COPY.blocked);
-      }
-      throw err ?? new Error(`send ${status}`);
+      throw new Error(mapWireStatus(status) ?? err?.message ?? `send ${status}`);
     }
     const msg = new Message(resp?.messageId ?? 0n, resp?.sendTime ?? 0n);
     msg.sender = cli.account;
@@ -270,7 +265,7 @@ export class ChatSession {
     }
     const { status, err } = await cli.friendRequest(account);
     if (status !== 0) {
-      throw err ?? new Error(`request ${status}`);
+      throw new Error(mapWireStatus(status) ?? err?.message ?? `request ${status}`);
     }
   }
 
@@ -281,7 +276,18 @@ export class ChatSession {
     }
     const { status, err } = await cli.friendAccept(account);
     if (status !== 0) {
-      throw err ?? new Error(`accept ${status}`);
+      throw new Error(mapWireStatus(status) ?? err?.message ?? `accept ${status}`);
+    }
+  }
+
+  async rejectFriend(account: string): Promise<void> {
+    const cli = this.client;
+    if (!cli) {
+      throw new Error("not connected");
+    }
+    const { status, err } = await cli.friendReject(account);
+    if (status !== 0) {
+      throw new Error(mapWireStatus(status) ?? err?.message ?? `reject ${status}`);
     }
   }
 

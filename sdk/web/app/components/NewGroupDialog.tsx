@@ -1,11 +1,10 @@
-import { Loader2, Plus, X } from "lucide-react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { Loader2, X } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
 import { COPY } from "../copy.ts";
 import { mapUserError } from "../lib/errors.ts";
-import { validateAccount } from "../lib/validation.ts";
 import { useChat } from "../state/ChatProvider.tsx";
-import { Button, Field, Modal, TextInput } from "./ui.tsx";
+import { Avatar, Button, Field, Modal, TextInput } from "./ui.tsx";
 
 export function NewGroupDialog({
   open,
@@ -14,35 +13,15 @@ export function NewGroupDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { account, createGroup } = useChat();
+  const { account, createGroup, people } = useChat();
   const [name, setName] = useState("");
-  const [draft, setDraft] = useState("");
   const [members, setMembers] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
-  function addMember() {
-    const acc = draft.trim();
-    const invalid = validateAccount(acc);
-    if (invalid) {
-      setError(invalid);
-      return;
-    }
-    if (acc === account || members.includes(acc)) {
-      setDraft("");
-      setError("");
-      return;
-    }
-    setMembers((prev) => [...prev, acc]);
-    setDraft("");
+  function toggleMember(acc: string) {
+    setMembers((prev) => (prev.includes(acc) ? prev.filter((x) => x !== acc) : [...prev, acc]));
     setError("");
-  }
-
-  function onKey(ev: KeyboardEvent<HTMLInputElement>) {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      addMember();
-    }
   }
 
   async function onSubmit(ev: FormEvent) {
@@ -57,7 +36,6 @@ export function NewGroupDialog({
     try {
       await createGroup(title, members);
       setName("");
-      setDraft("");
       setMembers([]);
       onOpenChange(false);
     } catch (err) {
@@ -79,44 +57,36 @@ export function NewGroupDialog({
             autoFocus
           />
         </Field>
-        <Field label={COPY.groupMembers} error={error}>
-          <div className="flex gap-2">
-            <TextInput
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={COPY.memberPlaceholder}
-              spellCheck={false}
-              maxLength={32}
-            />
-            <Button type="button" variant="ghost" onClick={addMember}>
-              <Plus className="size-4" />
-              {COPY.addMember}
-            </Button>
-          </div>
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {account ? (
-              <li className="rounded-full bg-elev px-2.5 py-1 text-xs text-muted">
-                {account} · {COPY.you}
-              </li>
-            ) : null}
-            {members.map((m) => (
-              <li
-                key={m}
-                className="inline-flex items-center gap-1 rounded-full bg-elev px-2.5 py-1 text-xs"
-              >
-                {m}
-                <button
-                  type="button"
-                  className="text-muted hover:text-ink"
-                  aria-label={COPY.close}
-                  onClick={() => setMembers((prev) => prev.filter((x) => x !== m))}
-                >
-                  <X className="size-3" />
-                </button>
-              </li>
-            ))}
+        <Field label={COPY.groupMembers} error={error} hint={COPY.pickFriends}>
+          <ul className="msg-scroll flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-xl border border-line bg-stage p-1">
+            {people.length === 0 ? (
+              <li className="px-3 py-8 text-center text-xs text-muted">{COPY.noFriendsHint}</li>
+            ) : (
+              people.map((p) => {
+                const on = members.includes(p.account);
+                return (
+                  <li key={p.account}>
+                    <button
+                      type="button"
+                      onClick={() => toggleMember(p.account)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
+                        on ? "bg-elev" : "hover:bg-elev/70"
+                      }`}
+                    >
+                      <Avatar name={p.nickname} size="sm" />
+                      <span className="min-w-0 flex-1 truncate">{p.nickname}</span>
+                      {on ? <X className="size-3 text-muted" /> : null}
+                    </button>
+                  </li>
+                );
+              })
+            )}
           </ul>
+          {account ? (
+            <p className="mt-1 text-xs text-muted">
+              {account} · {COPY.you}
+            </p>
+          ) : null}
         </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

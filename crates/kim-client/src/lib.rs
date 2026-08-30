@@ -21,11 +21,14 @@ pub use config::{
     DEFAULT_LOCAL_HTTP_ORIGIN, DEFAULT_LOCAL_URL, DEFAULT_PROD_HTTP_ORIGIN, DEFAULT_PROD_URL,
 };
 pub use error::ClientError;
-pub use events::{Event, IncomingTalk, TalkResult};
+pub use events::{Event, IncomingTalk, Profile, TalkResult};
 pub use login::{login_on_conn, send_ping, wait_pong};
 pub use session::MemorySession;
 pub use token::account_from_token;
-pub use wire::{decode_event, encode_ack, encode_login, encode_ping, encode_user_talk, is_kickout};
+pub use wire::{
+    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_login, encode_ping,
+    encode_user_search, encode_user_talk, is_kickout,
+};
 
 #[cfg(test)]
 mod tests;
