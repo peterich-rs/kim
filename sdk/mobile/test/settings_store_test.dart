@@ -38,6 +38,26 @@ void main() {
     expect(store.dest, SettingsStore.defaultDest);
   });
 
+  test('local/prod presets keep http origin next to wgateway', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    expect(store.httpOrigin, SettingsStore.defaultHttp);
+    await store.useLocal();
+    expect(store.url, SettingsStore.localUrl);
+    expect(store.httpOrigin, SettingsStore.localHttp);
+    await store.useProd();
+    expect(store.url, SettingsStore.defaultUrl);
+    expect(store.httpOrigin, SettingsStore.defaultHttp);
+  });
+
+  test('clearSession drops token and account', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    await store.saveSession(token: 'tok', account: 'alice');
+    expect(store.account, 'alice');
+    await store.clearSession();
+    expect(store.token, isEmpty);
+    expect(store.account, isEmpty);
+  });
+
   test('notifications-asked flag is sticky and not spammed', () async {
     final first = await SettingsStore.load(useSecureStorage: false);
     expect(first.notificationsAsked, isFalse);

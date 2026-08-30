@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Machine-local Xcode env (PATH overrides). ios/.xcode.env is versioned.
+ios/.xcode.env.local
+

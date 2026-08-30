@@ -11,10 +11,14 @@ class SettingsStore {
 
   static const defaultUrl = 'wss://kim.ainexc.com/';
   static const localUrl = 'ws://127.0.0.1:8001/';
+  static const defaultHttp = 'https://kim.ainexc.com';
+  static const localHttp = 'http://127.0.0.1:8080';
   static const defaultDest = 'bob';
 
   static const _kUrl = 'kim.wgateway_url';
   static const _kDest = 'kim.dest_account';
+  static const _kHttp = 'kim.http_origin';
+  static const _kAccount = 'kim.account';
   static const _kNotifAsked = 'kim.notifications_asked';
   static const _kToken = 'kim.jwt';
 
@@ -24,6 +28,8 @@ class SettingsStore {
 
   String url = defaultUrl;
   String dest = defaultDest;
+  String httpOrigin = defaultHttp;
+  String account = '';
   String token = '';
   bool notificationsAsked = false;
 
@@ -58,6 +64,10 @@ class SettingsStore {
     dest = _prefs.getString(_kDest)?.trim().isNotEmpty == true
         ? _prefs.getString(_kDest)!.trim()
         : defaultDest;
+    httpOrigin = _prefs.getString(_kHttp)?.trim().isNotEmpty == true
+        ? _prefs.getString(_kHttp)!.trim()
+        : defaultHttp;
+    account = _prefs.getString(_kAccount)?.trim() ?? '';
     notificationsAsked = _prefs.getBool(_kNotifAsked) ?? false;
     token = await _readToken();
   }
@@ -70,6 +80,40 @@ class SettingsStore {
   Future<void> saveDest(String value) async {
     dest = value.trim().isEmpty ? defaultDest : value.trim();
     await _prefs.setString(_kDest, dest);
+  }
+
+  Future<void> saveHttpOrigin(String value) async {
+    httpOrigin = value.trim().isEmpty ? defaultHttp : value.trim().replaceAll(RegExp(r'/$'), '');
+    await _prefs.setString(_kHttp, httpOrigin);
+  }
+
+  Future<void> saveAccount(String value) async {
+    account = value.trim();
+    if (account.isEmpty) {
+      await _prefs.remove(_kAccount);
+    } else {
+      await _prefs.setString(_kAccount, account);
+    }
+  }
+
+  Future<void> saveSession({required String token, required String account}) async {
+    await saveToken(token);
+    await saveAccount(account);
+  }
+
+  Future<void> clearSession() async {
+    await saveToken('');
+    await saveAccount('');
+  }
+
+  Future<void> useLocal() async {
+    await saveUrl(localUrl);
+    await saveHttpOrigin(localHttp);
+  }
+
+  Future<void> useProd() async {
+    await saveUrl(defaultUrl);
+    await saveHttpOrigin(defaultHttp);
   }
 
   Future<void> saveToken(String value) async {

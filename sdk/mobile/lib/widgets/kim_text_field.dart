@@ -12,6 +12,14 @@ class KimTextField extends StatefulWidget {
     this.onEditingComplete,
     this.keyboardType,
     this.textInputAction = TextInputAction.next,
+    this.errorText,
+    this.helperText,
+    this.maxLength,
+    this.autofocus = false,
+    this.enabled = true,
+    this.autocorrect,
+    this.enableSuggestions,
+    this.autofillHints,
   });
 
   final TextEditingController controller;
@@ -20,6 +28,14 @@ class KimTextField extends StatefulWidget {
   final VoidCallback? onEditingComplete;
   final TextInputType? keyboardType;
   final TextInputAction textInputAction;
+  final String? errorText;
+  final String? helperText;
+  final int? maxLength;
+  final bool autofocus;
+  final bool enabled;
+  final bool? autocorrect;
+  final bool? enableSuggestions;
+  final Iterable<String>? autofillHints;
 
   @override
   State<KimTextField> createState() => _KimTextFieldState();
@@ -35,13 +51,20 @@ class _KimTextFieldState extends State<KimTextField> {
       child: TextField(
         controller: widget.controller,
         obscureText: _obscured,
-        enableSuggestions: !widget.obscureable,
-        autocorrect: !widget.obscureable,
+        enableSuggestions: widget.enableSuggestions ?? !widget.obscureable,
+        autocorrect: widget.autocorrect ?? !widget.obscureable,
         keyboardType: widget.keyboardType,
         textInputAction: widget.textInputAction,
         onEditingComplete: widget.onEditingComplete,
+        autofocus: widget.autofocus,
+        enabled: widget.enabled,
+        maxLength: widget.maxLength,
+        autofillHints: widget.autofillHints,
         decoration: InputDecoration(
           labelText: widget.label,
+          errorText: widget.errorText,
+          helperText: widget.helperText,
+          counterText: widget.maxLength == null ? null : '',
           suffixIcon: widget.obscureable
               ? IconButton(
                   tooltip: _obscured ? 'Show' : 'Hide',

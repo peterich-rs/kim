@@ -7,8 +7,6 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `rt`
-
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimApi>>
 abstract class KimApi implements RustOpaqueInterface {
   String connect();
@@ -17,8 +15,15 @@ abstract class KimApi implements RustOpaqueInterface {
 
   String login();
 
-  factory KimApi({required String url, required String token}) =>
-      RustLib.instance.api.crateApiClientKimApiNew(url: url, token: token);
+  factory KimApi({
+    required String url,
+    required String token,
+    required String userAgent,
+  }) => RustLib.instance.api.crateApiClientKimApiNew(
+    url: url,
+    token: token,
+    userAgent: userAgent,
+  );
 
   String ping();
 
