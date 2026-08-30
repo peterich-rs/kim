@@ -18,6 +18,19 @@ class KimAuthSession {
   final String account;
 }
 
+/// Long-lived WGateway session. Tests inject a fake; the app uses [KimBridge].
+abstract class KimClientPort {
+  Future<String> connect(String url, String token, {required String userAgent});
+
+  Future<String> loginWs();
+
+  Future<String> ping();
+
+  Future<String> talk(String dest, String body);
+
+  Future<String> disconnect();
+}
+
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
 abstract class KimAuthPort {
   Future<KimAuthSession> login({
@@ -51,7 +64,7 @@ abstract class KimAuthPort {
   String httpOriginFromWs(String wsUrl);
 }
 
-class KimBridge implements KimAuthPort {
+class KimBridge implements KimAuthPort, KimClientPort {
   static const flutterPin = '3.47.2';
   static const ffiReady = true;
 
@@ -141,6 +154,7 @@ class KimBridge implements KimAuthPort {
     return rust_auth.httpOriginFromWs(wsUrl: wsUrl);
   }
 
+  @override
   Future<String> connect(String url, String token, {required String userAgent}) async {
     if (token.trim().isEmpty) {
       throw StateError('JWT required (Royal /login). Do not mint in the app.');
@@ -154,6 +168,7 @@ class KimBridge implements KimAuthPort {
     return _api!.connect();
   }
 
+  @override
   Future<String> loginWs() async {
     final api = _api;
     if (api == null) {
@@ -162,6 +177,7 @@ class KimBridge implements KimAuthPort {
     return api.login();
   }
 
+  @override
   Future<String> ping() async {
     final api = _api;
     if (api == null) {
@@ -170,6 +186,7 @@ class KimBridge implements KimAuthPort {
     return api.ping();
   }
 
+  @override
   Future<String> talk(String dest, String body) async {
     final api = _api;
     if (api == null) {
@@ -178,6 +195,7 @@ class KimBridge implements KimAuthPort {
     return api.talkToUser(dest: dest, body: body);
   }
 
+  @override
   Future<String> disconnect() async {
     final api = _api;
     if (api == null) {

@@ -72,12 +72,13 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 - `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 存 WGateway URL、Royal HTTP origin、account、dest；token 不进 prefs。
 - `connectivity_plus`：离线横幅。不是 Dart socket。
 - `permission_handler`：启动时最多问一次通知；相机 / 麦克风 / 相册 **不**在启动时请求。
-- `package_info_plus` / `intl` / `animations`：版本号、日志时间、Material motion。
-- 主题是 **Material 3**（跟随系统亮暗）+ `FadeThroughPageTransitionsBuilder`。不用 Cupertino 当 app theme，不用 Riverpod / Dio / `web_socket_channel`。
+- `package_info_plus` / `intl`：版本号、时间格式。
+- 产品 UI：`go_router` 底部三栏（消息 / 通讯录 / 我）+ 会话页；`flutter_riverpod` 管登录态和本地会话；`flutter_chat_ui` 气泡和输入栏；`flex_color_scheme`、`flutter_animate`、`wolt_modal_sheet`、`flutter_slidable`、`toastification`、`skeletonizer`、`lucide_icons_flutter` 负责主题、动效和常见交互。主题是 **Material 3**（跟随系统亮暗）。不用 Cupertino 当 app theme，不用 Dart `web_socket_channel`。登录后自动 `connect` + `login.signin`，不再露出 ping / talk 调试按钮。
+- 会话列表和消息缓存在 `shared_preferences`（按账号）。没有把收件箱 / 好友图从 FFI 拉上来；按账号发起私聊走现有 `talk_to_user`。
 - Android **main** `AndroidManifest` 声明 `INTERNET`（release WSS 以前缺这个会挂）。`usesCleartextTraffic` 仅 debug/profile，给本地 `ws://127.0.0.1:8001`。`allowBackup="false"`。
 - iOS `NSAllowsLocalNetworking`；**不**设 `NSAllowsArbitraryLoads`。相机 / 麦 / 相册的隐私文案先不写（还没有 picker，避免未使用 key 被拒）。
 - Xcode 编 iOS 时 Run Script 走 `ios/Scripts/run_xcode_backend.sh`，把 `~/.cargo/bin` 加进 PATH。否则 GUI 里找不到 `rustup`，`PhaseScriptExecution` 会以 native assets 失败退出。打开 `ios/Runner.xcworkspace`。插件走 SPM，不要把 `Pods_Runner.framework` 链进 Runner（否则 `ld: framework 'Pods_Runner' not found`）。
 
 ## 非目标
 
-改 `sdk/web`、deploy、TGateway、把 JWT 放进 Upgrade URL、在 `kim-ws` 里写登录、Dart 侧 WebSocket / TCP / QUIC、Firebase / FCM、完整会话 UI（好友/群/历史）、启动时要相机权限。
+改 `sdk/web`、deploy、TGateway、把 JWT 放进 Upgrade URL、在 `kim-ws` 里写登录、Dart 侧 WebSocket / TCP / QUIC、Firebase / FCM、启动时要相机权限。服务端好友图 / 群 / 历史同步仍走后续 FFI，不在本壳伪造。

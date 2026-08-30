@@ -1,31 +1,26 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
+import 'package:toastification/toastification.dart';
 
 import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
-import '../core/runtime.dart';
-import '../core/user_agent.dart';
 import '../core/validation.dart';
-import '../kim_bridge.dart';
+import '../state/session.dart';
 import '../widgets/kim_text_field.dart';
 
-class PasswordPage extends StatefulWidget {
-  const PasswordPage({
-    super.key,
-    required this.runtime,
-    required this.auth,
-  });
-
-  final KimRuntime runtime;
-  final KimAuthPort auth;
+class PasswordPage extends ConsumerStatefulWidget {
+  const PasswordPage({super.key});
 
   @override
-  State<PasswordPage> createState() => _PasswordPageState();
+  ConsumerState<PasswordPage> createState() => _PasswordPageState();
 }
 
-class _PasswordPageState extends State<PasswordPage> {
+class _PasswordPageState extends ConsumerState<PasswordPage> {
   late final TextEditingController _old;
   late final TextEditingController _next;
   late final TextEditingController _confirm;
@@ -69,17 +64,22 @@ class _PasswordPageState extends State<PasswordPage> {
     }
     setState(() => _busy = true);
     try {
-      await widget.auth.changePassword(
-        origin: widget.runtime.settings.httpOrigin,
-        userAgent: kimUserAgent(widget.runtime),
-        token: widget.runtime.settings.token,
+      await ref.read(sessionProvider.notifier).changePassword(
         oldPassword: _old.text,
         newPassword: _next.text,
       );
-      await KimHaptics.success();
-      if (mounted) {
-        Navigator.of(context).pop(true);
+      if (!mounted) {
+        return;
       }
+      toastification.show(
+        context: context,
+        type: ToastificationType.success,
+        style: ToastificationStyle.flatColored,
+        title: const Text(Copy.passwordChanged),
+        autoCloseDuration: const Duration(seconds: 2),
+        alignment: Alignment.topCenter,
+      );
+      context.pop();
     } catch (err) {
       await KimHaptics.error();
       if (mounted) {
@@ -94,10 +94,11 @@ class _PasswordPageState extends State<PasswordPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text(Copy.changePassword)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
           KimTextField(
             controller: _old,
@@ -130,19 +131,20 @@ class _PasswordPageState extends State<PasswordPage> {
           if (_error.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                _error,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+              child: Text(_error, style: TextStyle(color: scheme.error)),
             ),
-          const SizedBox(height: 20),
+          const Gap(24),
           FilledButton(
             onPressed: _busy ? null : _save,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: _busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: scheme.onPrimary,
+                    ),
                   )
                 : const Text(Copy.save),
           ),
