@@ -1,7 +1,5 @@
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:gap/gap.dart';
@@ -12,6 +10,8 @@ import '../core/format.dart';
 import '../theme/motion.dart';
 import 'kim_avatar.dart';
 import 'kim_hairline.dart';
+import 'kim_image_viewer.dart';
+import 'kim_network_image.dart';
 
 Widget kimTextMessage(
   BuildContext context,
@@ -44,23 +44,28 @@ Widget kimImageMessage(
   final width = maxW;
   final height = (h * scale).clamp(72, 280).toDouble();
   final src = message.source;
-  final file = src.startsWith('http') ? null : File(src);
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(6),
-    child: SizedBox(
-      width: width,
-      height: height,
-      child: file != null
-          ? Image.file(
-              file,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _imageFallback(context),
-            )
-          : Image.network(
-              src,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _imageFallback(context),
-            ),
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+  final cacheW = (width * dpr).round();
+  final tag = 'img-${message.id}';
+  return GestureDetector(
+    onTap: () => showKimImageViewer(context, src: src, heroTag: tag),
+    child: Hero(
+      tag: tag,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: KimNetworkImage(
+            src: src,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            memCacheWidth: cacheW,
+            placeholder: _imageFallback(context),
+          ),
+        ),
+      ),
     ),
   );
 }

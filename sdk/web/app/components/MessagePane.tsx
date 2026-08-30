@@ -1,11 +1,14 @@
-import { ArrowLeft, Loader2, MessageSquare, Send, UserPlus, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { ArrowLeft, ImagePlus, Loader2, MessageSquare, Send, UserPlus, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
 import { COPY, memberCount } from "../copy.ts";
 import { cn } from "../lib/cn.ts";
 import { formatClock } from "../lib/format.ts";
+import { ACCEPT_IMAGE, isImageMessage } from "../lib/image.ts";
 import { useChat, type ChatMsg } from "../state/ChatProvider.tsx";
+import { ImageBubble } from "./ImageBubble.tsx";
+import { ImageViewer } from "./ImageViewer.tsx";
 import { Avatar, Button, IconTip } from "./ui.tsx";
 
 const GROUP_MS = 5 * 60 * 1000;
@@ -27,6 +30,7 @@ export function MessagePane() {
     membersOpen,
     status,
     send,
+    sendImage,
     closeThread,
     toggleMembers,
     socialReady,
@@ -38,8 +42,11 @@ export function MessagePane() {
   } = useChat();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [viewer, setViewer] = useState<string | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const rows = activeId ? (messages[activeId] ?? []) : [];
 
@@ -103,6 +110,35 @@ export function MessagePane() {
   function resize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }
+
+  async function onPickImage(ev: ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file || uploading || sending) {
+      return;
+    }
+    if (status !== "online") {
+      toast.error(COPY.notConnected);
+      return;
+    }
+    setUploading(true);
+    try {
+      await sendImage(file);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      const known = [
+        COPY.notConnected,
+        COPY.notFriends,
+        COPY.blocked,
+        COPY.userNotFound,
+        COPY.imageTooLarge,
+        COPY.imageUnsupported,
+      ];
+      toast.error(known.includes(msg) ? msg : COPY.imageFailed);
+    } finally {
+      setUploading(false);
+    }
   }
 
   if (!active) {
@@ -176,14 +212,23 @@ export function MessagePane() {
                         <time className="text-[11px] text-muted/70">{formatClock(row.at)}</time>
                       </div>
                     )}
-                    <div
-                      className={cn(
-                        "whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                        mine ? "rounded-tr-md bg-me" : "rounded-tl-md bg-them",
-                      )}
-                    >
-                      {row.body}
-                    </div>
+                    {isImageMessage(row.type, row.body, row.extra) ? (
+                      <ImageBubble
+                        src={row.body}
+                        size={row.width > 0 && row.height > 0 ? { w: row.width, h: row.height } : undefined}
+                        mine={mine}
+                        onOpen={setViewer}
+                      />
+                    ) : (
+                      <div
+                        className={cn(
+                          "whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm leading-relaxed",
+                          mine ? "rounded-tr-md bg-me" : "rounded-tl-md bg-them",
+                        )}
+                      >
+                        {row.body}
+                      </div>
+                    )}
                   </div>
                 </li>
               );
@@ -236,6 +281,27 @@ export function MessagePane() {
             className="flex items-end gap-2 border-t border-line bg-panel px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
             onSubmit={onSubmit}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ACCEPT_IMAGE}
+              className="hidden"
+              onChange={(ev) => {
+                void onPickImage(ev);
+              }}
+            />
+            <IconTip label={COPY.pickImage}>
+              <Button
+                type="button"
+                variant="icon"
+                className="h-11 w-11"
+                disabled={uploading || sending || status !== "online"}
+                aria-label={COPY.pickImage}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+              </Button>
+            </IconTip>
             <textarea
               ref={inputRef}
               rows={1}
@@ -283,6 +349,8 @@ export function MessagePane() {
           </ul>
         </aside>
       ) : null}
+
+      <ImageViewer src={viewer} open={Boolean(viewer)} onClose={() => setViewer(null)} />
     </div>
   );
 }

@@ -15,9 +15,20 @@ import { COPY } from "../copy.ts";
 import { changePassword as postPassword, login, logout, register } from "../lib/auth.ts";
 import { ChatSession } from "../lib/chat.ts";
 import { mapUserError } from "../lib/errors.ts";
-import { sendTimeMs, truncate } from "../lib/format.ts";
-import { InboxKind } from "../../src/command.ts";
+import { sendTimeMs } from "../lib/format.ts";
+import {
+  ACCEPT_IMAGE,
+  encodeImageExtra,
+  isImageMessage,
+  MAX_IMAGE_BYTES,
+  parseImageExtra,
+  previewBody,
+  readImageSize,
+} from "../lib/image.ts";
+import { InboxKind, MessageType } from "../../src/command.ts";
 import { gatewayUrl } from "../lib/gateway.ts";
+import { uploadImage } from "../../src/media.ts";
+import { Content, type Message } from "../../src/index.ts";
 import { clearSession, loadSession, saveSession, type StoredSession } from "../lib/session.ts";
 import {
   loadThreads,
@@ -25,7 +36,6 @@ import {
   type Kind,
   type Thread,
 } from "../lib/threads.ts";
-import type { Message } from "../../src/index.ts";
 
 export type ConnStatus = "connecting" | "online" | "reconnecting" | "offline";
 
@@ -41,6 +51,10 @@ export interface ChatMsg {
   body: string;
   at: number;
   sys: boolean;
+  type: number;
+  extra: string;
+  width: number;
+  height: number;
 }
 
 const MAX_MESSAGES = 400;
@@ -141,7 +155,9 @@ function reducer(state: ChatState, action: Action): ChatState {
           id: action.dest,
           kind: action.kind,
           title: action.title ?? existing?.title,
-          lastBody: action.msg.sys ? existing?.lastBody ?? "" : truncate(action.msg.body),
+          lastBody: action.msg.sys
+            ? (existing?.lastBody ?? "")
+            : previewBody(action.msg.type, action.msg.body, action.msg.extra),
           lastAt: action.msg.at,
           unread: (existing?.unread ?? 0) + unreadDelta,
         }),
@@ -182,6 +198,9 @@ function reducer(state: ChatState, action: Action): ChatState {
 }
 
 function toChatMsg(msg: Message, dest: string, me: string): ChatMsg {
+  const extra = msg.extra ?? "";
+  const type = msg.type || (isImageMessage(0, msg.body, extra) ? MessageType.Image : MessageType.Text);
+  const size = parseImageExtra(extra);
   return {
     key: msg.messageId === 0n ? `local-${msg.arrivalTime}-${msg.body}` : msg.messageId.toString(),
     dest,
@@ -189,6 +208,10 @@ function toChatMsg(msg: Message, dest: string, me: string): ChatMsg {
     body: msg.body,
     at: sendTimeMs(msg.sendTime, msg.arrivalTime),
     sys: false,
+    type,
+    extra,
+    width: size?.w ?? 0,
+    height: size?.h ?? 0,
   };
 }
 
@@ -208,6 +231,7 @@ interface ChatContextValue {
   openThread: (id: string, kind: Kind, title?: string) => void;
   closeThread: () => void;
   send: (text: string) => Promise<void>;
+  sendImage: (file: File) => Promise<void>;
   createGroup: (name: string, members: string[]) => Promise<void>;
   toggleMembers: () => void;
   nickname: string;
@@ -395,7 +419,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 id: item.dest,
                 kind: item.kind === InboxKind.Group ? "group" : "user",
                 title: item.title || item.dest,
-                lastBody: item.lastBody,
+                lastBody: previewBody(0, item.lastBody),
                 lastAt: sendTimeMs(item.lastSendTime),
                 unread: item.unread,
               },
@@ -484,7 +508,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           kind,
           title,
           msgs,
-          lastBody: last && !last.sys ? truncate(last.body) : "",
+          lastBody: last && !last.sys ? previewBody(last.type, last.body, last.extra) : "",
           lastAt: last?.at ?? 0,
         });
         const newest = rows[0];
@@ -513,6 +537,40 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       throw new Error(COPY.notFriends);
     }
     const msg = await session.send(active.id, active.kind, text);
+    pushMessage(msg, active.id, session.account);
+  }, [people, pushMessage, socialReady]);
+
+  const sendImage = useCallback(async (file: File) => {
+    const session = sessionRef.current;
+    const active = stateRef.current.threads.find((t) => t.id === stateRef.current.activeId);
+    const token = loadSession()?.token;
+    if (!session || !active || !token) {
+      throw new Error(COPY.notConnected);
+    }
+    if (
+      active.kind === "user" &&
+      socialReady &&
+      !people.some((p) => p.account === active.id)
+    ) {
+      throw new Error(COPY.notFriends);
+    }
+    const allowed = ACCEPT_IMAGE.split(",");
+    if (file.type && !allowed.includes(file.type) && file.type !== "image/jpg") {
+      throw new Error(COPY.imageUnsupported);
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new Error(COPY.imageTooLarge);
+    }
+    const [uploaded, size] = await Promise.all([
+      uploadImage(token, file, { contentType: file.type || "image/jpeg" }),
+      readImageSize(file).catch(() => ({ w: 0, h: 0 })),
+    ]);
+    const extra = encodeImageExtra(size.w, size.h);
+    const msg = await session.sendContent(
+      active.id,
+      active.kind,
+      new Content(uploaded.url, MessageType.Image, extra),
+    );
     pushMessage(msg, active.id, session.account);
   }, [people, pushMessage, socialReady]);
 
@@ -678,6 +736,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       openThread,
       closeThread,
       send,
+      sendImage,
       createGroup,
       toggleMembers,
       nickname: nickname || auth?.account || "",
@@ -715,6 +774,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       openThread,
       closeThread,
       send,
+      sendImage,
       createGroup,
       toggleMembers,
       nickname,

@@ -1,5 +1,5 @@
 /// App support / documents / cache / temp via path_provider.
-/// Held on the Dart side for a later SQLite path; not passed into KimApi yet.
+/// `support` holds `kim-cache.db`. Not passed into KimApi.
 library;
 
 import 'dart:io';

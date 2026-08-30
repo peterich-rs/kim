@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:kim_mobile/copy.dart';
@@ -47,28 +49,68 @@ void main() {
     expect(env.fake.talks, 0);
   });
 
-  test('sendImages stores image rows and does not talk text', () async {
+  test('sendImages uploads then talks type=2', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
     await env.container.read(gatewayProvider.future);
     await env.container.read(contactsProvider.notifier).refresh();
+    final file = File(
+      '${Directory.systemTemp.path}/kim-img-${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes(const [0xFF, 0xD8, 0xFF, 0xD9]);
+    addTearDown(() {
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    });
     final rows = await env.container.read(inboxProvider.notifier).sendImages(
       'bob',
-      const [
+      [
         KimMediaAsset(
           id: 'a',
-          path: '/tmp/a.jpg',
+          path: file.path,
           width: 100,
           height: 80,
-          size: 12,
+          size: 4,
           mimeType: 'image/jpeg',
         ),
       ],
     );
     expect(rows, hasLength(1));
     expect(rows.single.isImage, isTrue);
-    expect(rows.single.body, '/tmp/a.jpg');
     expect(env.fake.talks, 0);
+    expect(env.fake.imageTalks, 1);
+    expect(env.fake.lastImageUrl, 'https://media.kim.ainexc.com/alice/a.jpg');
+    expect(env.fake.lastImageExtra, '{"w":100,"h":80}');
+    expect(
+      env.container.read(inboxProvider).messages['bob']!.single.body,
+      'https://media.kim.ainexc.com/alice/a.jpg',
+    );
+    expect(
+      env.container.read(inboxProvider).threads.single.lastBody,
+      Copy.imageMessage,
+    );
+  });
+
+  test('incoming media URL is stored as an image row', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container
+        .read(inboxProvider.notifier)
+        .receive(
+          KimEvent(
+            kind: KimEventKind.talk,
+            dest: 'bob',
+            sender: 'bob',
+            body: 'https://media.kim.ainexc.com/bob/a.png',
+            extra: '{"w":10,"h":8}',
+            messageId: 9,
+            sendTime: 1_700_000_000_000,
+          ),
+        );
+    final row = env.container.read(inboxProvider).messages['bob']!.single;
+    expect(row.isImage, isTrue);
+    expect(row.width, 10);
+    expect(row.height, 8);
     expect(
       env.container.read(inboxProvider).threads.single.lastBody,
       Copy.imageMessage,

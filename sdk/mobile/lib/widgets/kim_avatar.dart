@@ -3,6 +3,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../core/format.dart';
+import 'kim_network_image.dart';
 
 enum KimAvatarSize { sm, md, lg }
 
@@ -60,19 +61,15 @@ class KimAvatar extends StatelessWidget {
     if (url.isEmpty) {
       avatar = fallback;
     } else {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
       avatar = ClipOval(
-        child: Image.network(
-          url,
+        child: KimNetworkImage(
+          src: url,
           width: _px,
           height: _px,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => fallback,
-          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded || frame != null) {
-              return child;
-            }
-            return fallback;
-          },
+          memCacheWidth: (_px * dpr).round(),
+          placeholder: fallback,
         ),
       );
     }

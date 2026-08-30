@@ -56,6 +56,11 @@ abstract final class Copy {
   static const camera = '拍摄';
   static const imageMessage = '[图片]';
   static const videoMessage = '[视频]';
+  static const viewImage = '查看图片';
+  static const closeViewer = '关闭';
+  static const imageFailed = '图片发送失败';
+  static const imageTooLarge = '图片不能超过 5MB';
+  static const imageUnsupported = '仅支持 JPEG、PNG、WebP、GIF';
   static const mediaFailed = '无法打开相机或相册';
   static const mediaPermission = '需要相机或相册权限才能继续';
   static const plusPanel = '更多';

@@ -1,3 +1,5 @@
+import { previewBody } from "./image.ts";
+
 export type Kind = "user" | "group";
 
 export interface Thread {
@@ -40,7 +42,7 @@ export function loadThreads(account: string): Thread[] {
         id: rec.id,
         kind: rec.kind,
         title: typeof rec.title === "string" && rec.title ? rec.title : rec.id,
-        lastBody: typeof rec.lastBody === "string" ? rec.lastBody : "",
+        lastBody: previewBody(0, typeof rec.lastBody === "string" ? rec.lastBody : ""),
         lastAt: typeof rec.lastAt === "number" ? rec.lastAt : 0,
         unread: 0,
       });

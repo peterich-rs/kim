@@ -62,6 +62,11 @@ dependencies:
   lucide_icons_flutter: ^3.1.17
   kim_media_picker:
     path: plugins/kim_media_picker
+  sqlite3: ^3.5.2
+  cached_network_image: ^4.0.0
+  path: ^1.9.1
+  photo_view: ^0.15.0
+  dismissible_page: ^1.0.2
 
 dev_dependencies:
   flutter_test:

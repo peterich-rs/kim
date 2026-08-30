@@ -31,6 +31,8 @@ abstract class KimClientPort {
 
   Future<String> talk(String dest, String body);
 
+  Future<String> talkImage(String dest, String url, {String extra = ''});
+
   Future<void> ack(int messageId);
 
   Stream<KimEvent> events();
@@ -236,6 +238,15 @@ class KimBridge implements KimAuthPort, KimClientPort {
       throw StateError('connect first');
     }
     return api.talkToUser(dest: dest, body: body);
+  }
+
+  @override
+  Future<String> talkImage(String dest, String url, {String extra = ''}) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('connect first');
+    }
+    return api.talkImage(dest: dest, url: url, extra: extra);
   }
 
   @override
