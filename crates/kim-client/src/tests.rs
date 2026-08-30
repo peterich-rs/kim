@@ -229,6 +229,43 @@ async fn friend_list_returns_profiles() {
     assert_eq!(users.len(), 1);
     assert_eq!(users[0].account, "bob");
     assert_eq!(users[0].nickname, "Bobby");
+    assert_eq!(users[0].avatar, "");
+}
+
+#[tokio::test]
+async fn profile_and_update_round_trip() {
+    use kim_protocol::{CMD_USER_PROFILE, CMD_USER_UPDATE};
+
+    let mut get = LogicPkt::new(CMD_USER_PROFILE, 2, Bytes::new());
+    get.header.flag = Flag::Response as i32;
+    get.write_body(&UserProfile {
+        account: "alice".into(),
+        nickname: "Ali".into(),
+        avatar: "https://media.kim.ainexc.com/alice/a.jpg".into(),
+        bio: String::new(),
+    });
+    let mut upd = LogicPkt::new(CMD_USER_UPDATE, 3, Bytes::new());
+    upd.header.flag = Flag::Response as i32;
+    upd.write_body(&UserProfile {
+        account: "alice".into(),
+        nickname: "Ali".into(),
+        avatar: "https://media.kim.ainexc.com/alice/b.jpg".into(),
+        bio: String::new(),
+    });
+    let client = logged_in(
+        mint("alice"),
+        vec![
+            Frame::binary(marshal(&Packet::Logic(get))),
+            Frame::binary(marshal(&Packet::Logic(upd))),
+        ],
+    );
+    let me = client.profile("").await.unwrap();
+    assert_eq!(me.avatar, "https://media.kim.ainexc.com/alice/a.jpg");
+    let next = client
+        .update_profile("Ali", "https://media.kim.ainexc.com/alice/b.jpg", "")
+        .await
+        .unwrap();
+    assert_eq!(next.avatar, "https://media.kim.ainexc.com/alice/b.jpg");
 }
 
 #[tokio::test]
