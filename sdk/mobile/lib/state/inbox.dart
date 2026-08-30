@@ -253,7 +253,46 @@ class InboxNotifier extends Notifier<InboxState> {
     state = state.copyWith(messages: {...state.messages, msg.dest: clipped});
   }
 
+  Future<void> retry(String dest, String key) async {
+    KimChatMsg? target;
+    for (final m in _loaded(dest)) {
+      if (m.key == key) {
+        target = m;
+        break;
+      }
+    }
+    if (target == null || !target.failed) {
+      return;
+    }
+    if (ref.read(sessionProvider).status != ConnStatus.online) {
+      throw StateError(Copy.notConnected);
+    }
+    _setFailed(dest, key, false);
+    await _persistMessages(dest);
+    if (!ref.mounted) {
+      return;
+    }
+    try {
+      await ref.read(clientPortProvider).talk(dest, target.body);
+      if (!ref.mounted) {
+        return;
+      }
+      await KimHaptics.light();
+    } catch (_) {
+      if (ref.mounted) {
+        _setFailed(dest, key, true);
+      }
+      await _persistMessages(dest);
+      await KimHaptics.error();
+      rethrow;
+    }
+  }
+
   void _markFailed(String dest, String key) {
+    _setFailed(dest, key, true);
+  }
+
+  void _setFailed(String dest, String key, bool failed) {
     final prev = state.messages[dest];
     if (prev == null) {
       return;
@@ -263,7 +302,7 @@ class InboxNotifier extends Notifier<InboxState> {
         ...state.messages,
         dest: [
           for (final m in prev)
-            if (m.key == key) m.copyWith(failed: true) else m,
+            if (m.key == key) m.copyWith(failed: failed) else m,
         ],
       },
     );

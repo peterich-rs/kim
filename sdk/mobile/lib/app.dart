@@ -42,9 +42,13 @@ class KimApp extends ConsumerWidget {
         ],
         routerConfig: router,
         builder: (context, child) {
-          return GestureDetector(
-            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-            behavior: HitTestBehavior.translucent,
+          return Listener(
+            onPointerDown: (event) {
+              if (event.position.dx < 24) {
+                return;
+              }
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
             child: KimOfflineBanner(child: child ?? const SizedBox.shrink()),
           );
         },

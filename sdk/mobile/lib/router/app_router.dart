@@ -15,6 +15,7 @@ import '../screens/password_page.dart';
 import '../state/auth.dart';
 import '../state/location.dart';
 import '../state/session.dart';
+import 'kim_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
@@ -81,20 +82,29 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/chat/:id',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['id'] ?? '';
           final extra = state.extra;
           final thread = extra is KimThread ? extra : null;
-          return ChatPage(
-            id: id,
-            title: thread?.title ?? id,
-            kind: thread?.kind ?? ThreadKind.user,
+          return kimPushPage(
+            key: state.pageKey,
+            name: state.name,
+            arguments: extra,
+            child: ChatPage(
+              id: id,
+              title: thread?.title ?? id,
+              kind: thread?.kind ?? ThreadKind.user,
+            ),
           );
         },
       ),
       GoRoute(
         path: '/password',
-        builder: (context, state) => const PasswordPage(),
+        pageBuilder: (context, state) => kimPushPage(
+          key: state.pageKey,
+          name: state.name,
+          child: const PasswordPage(),
+        ),
       ),
     ],
   );

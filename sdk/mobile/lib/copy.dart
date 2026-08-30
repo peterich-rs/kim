@@ -74,12 +74,15 @@ abstract final class Copy {
   static const retry = '重试';
   static const delete = '删除';
   static const cancel = '取消';
+  static const copy = '复制';
+  static const copied = '已复制';
 
   static const peerAccount = '对方账号';
   static const peerPlaceholder = '输入对方账号';
   static const cannotChatSelf = '不能选择自己的账号';
   static const openChat = '开始聊天';
   static const privateChat = '私聊';
+  static const groupChat = '群聊';
   static const you = '你';
   static const back = '返回';
 
@@ -91,6 +94,7 @@ abstract final class Copy {
   static const logout = '退出登录';
   static const loggingOut = '退出中…';
   static const yesterday = '昨天';
+  static const today = '今天';
   static const offlineBanner = '当前无网络，消息将在恢复后发送';
 
   static const profile = '个人资料';

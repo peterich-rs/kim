@@ -1,19 +1,39 @@
-/// Material 3 theme via flex_color_scheme. Teal brand, iMessage-like radii.
+/// Material 3 theme via flex_color_scheme. Layered surfaces, not iMessage bubbles.
 library;
 
 import 'package:flex_color_scheme/flex_color_scheme.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 
 abstract final class KimTheme {
   static const Color seed = Color(0xFF0F766E);
   static const Color outgoing = Color(0xFF0D9488);
-  static const Color incomingLight = Color(0xFFE9E9EB);
-  static const Color incomingDark = Color(0xFF2C2C2E);
 
-  static const BorderRadius bubbleRadius = BorderRadius.all(
-    Radius.circular(16),
-  );
+  static const double radiusControl = 8;
+  static const double radiusField = 12;
+  static const double radiusCard = 16;
+  static const double radiusSheet = 24;
+
+  static const Color _chatCanvasLight = Color(0xFFF4F5F7);
+  static const Color _chatCanvasDark = Color(0xFF121417);
+
+  static Color canvasOf(BuildContext context) =>
+      Theme.of(context).colorScheme.surfaceContainerLowest;
+
+  static Color chromeOf(BuildContext context) =>
+      Theme.of(context).colorScheme.surface;
+
+  static Color raisedOf(BuildContext context) =>
+      Theme.of(context).colorScheme.surfaceContainerLow;
+
+  static Color chatCanvasOf(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? _chatCanvasDark : _chatCanvasLight;
+  }
+
+  static Color hairlineOf(BuildContext context) =>
+      Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.72);
 
   static ThemeData light() => _from(Brightness.light);
 
@@ -45,17 +65,31 @@ abstract final class KimTheme {
             blendLevel: 8,
           );
     final scheme = base.colorScheme;
+    final hairline = scheme.outlineVariant.withValues(alpha: 0.72);
     return base.copyWith(
+      scaffoldBackgroundColor: scheme.surfaceContainerLowest,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       appBarTheme: base.appBarTheme.copyWith(
         centerTitle: false,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: Border(bottom: BorderSide(color: hairline, width: 0.5)),
       ),
       navigationBarTheme: base.navigationBarTheme.copyWith(
         backgroundColor: scheme.surface,
         elevation: 0,
         height: 56,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         indicatorColor: scheme.primary.withValues(alpha: 0.14),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -68,12 +102,26 @@ abstract final class KimTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusField),
+        ),
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outlineVariant.withValues(alpha: 0.6),
+        color: hairline,
         space: 0.5,
         thickness: 0.5,
+      ),
+      searchBarTheme: base.searchBarTheme.copyWith(
+        elevation: const WidgetStatePropertyAll(0),
+        backgroundColor: WidgetStatePropertyAll(scheme.surfaceContainerLow),
+        shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        side: WidgetStatePropertyAll(BorderSide(color: hairline)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusField),
+          ),
+        ),
       ),
     );
   }
@@ -83,39 +131,37 @@ abstract final class KimTheme {
     tintedDisabledControls: true,
     blendOnLevel: 10,
     useM2StyleDividerInM3: false,
-    defaultRadius: 16,
-    inputDecoratorRadius: 16,
+    defaultRadius: radiusField,
+    inputDecoratorRadius: radiusField,
     inputDecoratorBorderType: FlexInputBorderType.outline,
-    filledButtonRadius: 16,
-    elevatedButtonRadius: 16,
-    outlinedButtonRadius: 16,
+    filledButtonRadius: radiusField,
+    elevatedButtonRadius: radiusField,
+    outlinedButtonRadius: radiusField,
     filledButtonSchemeColor: SchemeColor.primary,
     navigationBarHeight: 56,
     navigationBarIndicatorRadius: 18,
     navigationBarLabelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-    cardRadius: 20,
-    bottomSheetRadius: 24,
+    cardRadius: radiusCard,
+    bottomSheetRadius: radiusSheet,
     alignedDropdown: true,
   );
 
   static ChatTheme chat(ThemeData theme) {
     final scheme = theme.colorScheme;
-    final isLight = scheme.brightness == Brightness.light;
     return ChatTheme.fromThemeData(theme).copyWith(
-      shape: bubbleRadius,
       colors: ChatColors(
-        primary: outgoing,
-        onPrimary: Colors.white,
-        surface: scheme.surface,
+        primary: scheme.primary,
+        onPrimary: scheme.onPrimary,
+        surface: chatCanvasColor(scheme),
         onSurface: scheme.onSurface,
-        surfaceContainer: isLight ? incomingLight : incomingDark,
+        surfaceContainer: scheme.surfaceContainerLow,
         surfaceContainerLow: scheme.surfaceContainerLow,
         surfaceContainerHigh: scheme.surfaceContainerHigh,
       ),
       typography: ChatTypography.fromThemeData(theme).copyWith(
         bodyMedium: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
           fontSize: 15,
-          height: 1.35,
+          height: 1.375,
         ),
         labelSmall: (theme.textTheme.labelSmall ?? const TextStyle()).copyWith(
           fontSize: 11,
@@ -123,5 +169,11 @@ abstract final class KimTheme {
         ),
       ),
     );
+  }
+
+  static Color chatCanvasColor(ColorScheme scheme) {
+    return scheme.brightness == Brightness.dark
+        ? _chatCanvasDark
+        : _chatCanvasLight;
   }
 }

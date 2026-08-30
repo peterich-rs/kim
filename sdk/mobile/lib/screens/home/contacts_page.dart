@@ -15,6 +15,7 @@ import '../../state/inbox.dart';
 import '../../state/mutations.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 import '../../widgets/kim_text_field.dart';
 
@@ -150,15 +151,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
               ),
             ),
             if (queried) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Text(
-                    Copy.searchPeople,
-                    style: theme.textTheme.titleSmall,
-                  ),
-                ),
-              ),
+              _sectionLabel(theme, Copy.searchPeople),
               if (hits.isEmpty)
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -167,68 +160,52 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                   ),
                 )
               else
-                SliverList.separated(
-                  itemCount: hits.length,
-                  separatorBuilder: (context, _) => const Divider(indent: 72),
-                  itemBuilder: (context, i) {
-                    final p = hits[i];
-                    return _HitTile(
-                      person: p,
-                      friend: social.isFriend(p.account),
-                      pending: social.isOutgoing(p.account),
-                      onChat: () => _open(p.account, p.title),
-                      onAdd: () => _request(p.account),
-                    );
-                  },
-                ),
+                _groupSliver([
+                  for (var i = 0; i < hits.length; i++) ...[
+                    _HitTile(
+                      person: hits[i],
+                      friend: social.isFriend(hits[i].account),
+                      pending: social.isOutgoing(hits[i].account),
+                      onChat: () => _open(hits[i].account, hits[i].title),
+                      onAdd: () => _request(hits[i].account),
+                    ),
+                    if (i != hits.length - 1) const Divider(indent: 72),
+                  ],
+                ]),
             ],
             if (social.incoming.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-                  child: Text(
-                    '${Copy.incoming} (${social.incomingCount})',
-                    style: theme.textTheme.titleSmall,
-                  ),
-                ),
+              _sectionLabel(
+                theme,
+                '${Copy.incoming} (${social.incomingCount})',
               ),
-              SliverList.separated(
-                itemCount: social.incoming.length,
-                separatorBuilder: (context, _) => const Divider(indent: 72),
-                itemBuilder: (context, i) {
-                  final p = social.incoming[i];
-                  return ListTile(
-                    leading: KimAvatar(name: p.title),
-                    title: Text(p.title),
-                    subtitle: Text('@${p.account}'),
+              _groupSliver([
+                for (var i = 0; i < social.incoming.length; i++) ...[
+                  ListTile(
+                    leading: KimAvatar(name: social.incoming[i].title),
+                    title: Text(social.incoming[i].title),
+                    subtitle: Text('@${social.incoming[i].account}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         TextButton(
                           onPressed: () => ref
                               .read(contactsProvider.notifier)
-                              .reject(p.account),
+                              .reject(social.incoming[i].account),
                           child: const Text(Copy.reject),
                         ),
                         FilledButton(
-                          onPressed: () => _accept(p),
+                          onPressed: () => _accept(social.incoming[i]),
                           child: const Text(Copy.accept),
                         ),
                       ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                  if (i != social.incoming.length - 1)
+                    const Divider(indent: 72),
+                ],
+              ]),
             ],
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-                child: Text(
-                  Copy.recentContacts,
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-            ),
+            _sectionLabel(theme, Copy.recentContacts),
             if (social.friends.isEmpty)
               const SliverToBoxAdapter(
                 child: Padding(
@@ -241,26 +218,45 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                 ),
               )
             else
-              SliverList.separated(
-                itemCount: social.friends.length,
-                separatorBuilder: (context, _) => const Divider(indent: 72),
-                itemBuilder: (context, i) {
-                  final p = social.friends[i];
-                  return ListTile(
-                    leading: KimAvatar(name: p.title),
-                    title: Text(p.title),
-                    subtitle: Text('@${p.account}'),
+              _groupSliver([
+                for (var i = 0; i < social.friends.length; i++) ...[
+                  ListTile(
+                    leading: KimAvatar(name: social.friends[i].title),
+                    title: Text(social.friends[i].title),
+                    subtitle: Text('@${social.friends[i].account}'),
                     trailing: const Text(Copy.chatAction),
-                    onTap: () => _open(p.account, p.title),
-                  );
-                },
-              ),
+                    onTap: () => _open(
+                      social.friends[i].account,
+                      social.friends[i].title,
+                    ),
+                  ),
+                  if (i != social.friends.length - 1) const Divider(indent: 72),
+                ],
+              ]),
             const SliverToBoxAdapter(child: Gap(24)),
           ],
         ),
       ),
     );
   }
+}
+
+SliverToBoxAdapter _sectionLabel(ThemeData theme, String text) {
+  return SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 8),
+      child: Text(text, style: theme.textTheme.titleSmall),
+    ),
+  );
+}
+
+SliverToBoxAdapter _groupSliver(List<Widget> children) {
+  return SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: KimGroupCard(children: children),
+    ),
+  );
 }
 
 class _HitTile extends StatelessWidget {

@@ -32,13 +32,18 @@ class KimAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final base = Color(avatarColor(name));
     final avatar = Container(
       width: _px,
       height: _px,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Color(avatarColor(name)),
         shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color.lerp(base, Colors.white, 0.16) ?? base, base],
+        ),
       ),
       child: Text(
         initialOf(name),

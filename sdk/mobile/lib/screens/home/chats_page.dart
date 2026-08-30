@@ -54,7 +54,6 @@ class ChatsPage extends ConsumerWidget {
                   size: 18,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                elevation: const WidgetStatePropertyAll(0),
                 onChanged: (v) => ref.read(inboxProvider.notifier).setQuery(v),
               ),
             ),

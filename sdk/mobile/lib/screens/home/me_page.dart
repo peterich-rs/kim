@@ -15,7 +15,9 @@ import '../../state/gateway.dart';
 import '../../state/mutations.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
+import '../../theme/kim_theme.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 import '../../widgets/status_chip.dart';
 
@@ -42,8 +44,9 @@ class MePage extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(24),
+                  color: KimTheme.raisedOf(context),
+                  borderRadius: BorderRadius.circular(KimTheme.radiusCard),
+                  border: Border.all(color: KimTheme.hairlineOf(context)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
@@ -91,7 +94,7 @@ class MePage extends ConsumerWidget {
             sliver: SliverList.list(
               children: [
                 _SectionLabel(Copy.accountSection),
-                _Card(
+                KimGroupCard(
                   children: [
                     ListTile(
                       leading: const Icon(LucideIcons.lock),
@@ -119,7 +122,7 @@ class MePage extends ConsumerWidget {
                 ),
                 const Gap(18),
                 _SectionLabel(Copy.generalSection),
-                _Card(
+                KimGroupCard(
                   children: [
                     ListTile(
                       leading: const Icon(LucideIcons.server),
@@ -192,23 +195,6 @@ class _SectionLabel extends StatelessWidget {
         style: Theme.of(context).textTheme.labelLarge
             ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest
-          .withValues(alpha: 0.45),
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
     );
   }
 }

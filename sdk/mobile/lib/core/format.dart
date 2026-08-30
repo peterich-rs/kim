@@ -95,6 +95,48 @@ String formatClock(int ts) {
   return _hm(d);
 }
 
+bool sameCalendarDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+String formatDateDivider(int ts, {DateTime? now}) {
+  final d = dateTimeFromEpoch(ts);
+  if (d == null) {
+    return '';
+  }
+  return _dayLabel(d, now ?? DateTime.now());
+}
+
+String formatMessageStamp(int ts, {DateTime? now}) {
+  final d = dateTimeFromEpoch(ts);
+  if (d == null) {
+    return '';
+  }
+  return '${_dayLabel(d, now ?? DateTime.now())} ${_hm(d)}';
+}
+
+String formatMessageStampAt(DateTime? d, {DateTime? now}) {
+  if (d == null) {
+    return '';
+  }
+  return formatMessageStamp(d.millisecondsSinceEpoch, now: now);
+}
+
+String _dayLabel(DateTime d, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  final point = DateTime(d.year, d.month, d.day);
+  if (point == today) {
+    return Copy.today;
+  }
+  if (point == today.subtract(const Duration(days: 1))) {
+    return Copy.yesterday;
+  }
+  if (d.year == now.year) {
+    return '${d.month}月${d.day}日';
+  }
+  return '${d.year}年${d.month}月${d.day}日';
+}
+
 String truncate(String text, {int max = 36}) {
   final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (t.length <= max) {
