@@ -8,19 +8,24 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class FakeAuth implements KimAuthPort {
-  FakeAuth({this.session, this.error});
+class FakeKim implements KimAuthPort, KimClientPort {
+  FakeKim({this.session, this.error});
 
   KimAuthSession? session;
   Object? error;
   int logins = 0;
   int registers = 0;
   int logouts = 0;
+  int connects = 0;
+  int talks = 0;
   String lastUserAgent = '';
   String lastOrigin = '';
+  String lastTalkDest = '';
+  String lastTalkBody = '';
 
   KimAuthSession _ok() {
     return session ??
@@ -81,9 +86,35 @@ class FakeAuth implements KimAuthPort {
 
   @override
   String httpOriginFromWs(String wsUrl) => 'http://127.0.0.1:8080';
+
+  @override
+  Future<String> connect(String url, String token, {required String userAgent}) async {
+    connects += 1;
+    return 'connected $url';
+  }
+
+  @override
+  Future<String> loginWs() async => 'channel_id=1 account=alice';
+
+  @override
+  Future<String> ping() async => 'pong';
+
+  @override
+  Future<String> talk(String dest, String body) async {
+    talks += 1;
+    lastTalkDest = dest;
+    lastTalkBody = body;
+    return 'message_id=1 send_time=1';
+  }
+
+  @override
+  Future<String> disconnect() async => 'disconnected';
 }
 
-Future<KimRuntime> testRuntime({String token = '', String account = ''}) async {
+Future<({KimRuntime runtime, ConversationStore store})> testRuntime({
+  String token = '',
+  String account = '',
+}) async {
   SharedPreferences.setMockInitialValues({});
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
   addTearDown(() {
@@ -95,7 +126,7 @@ Future<KimRuntime> testRuntime({String token = '', String account = ''}) async {
   if (token.isNotEmpty) {
     await settings.saveSession(token: token, account: account);
   }
-  return KimRuntime.bootstrap(
+  final runtime = await KimRuntime.bootstrap(
     requestNotifications: false,
     paths: KimPaths.forTest(tmp),
     settings: settings,
@@ -103,6 +134,17 @@ Future<KimRuntime> testRuntime({String token = '', String account = ''}) async {
     appName: 'KIM',
     version: '1.0.0',
     buildNumber: '1',
+  );
+  final store = ConversationStore(await SharedPreferences.getInstance());
+  return (runtime: runtime, store: store);
+}
+
+Widget host(KimRuntime runtime, FakeKim fake, ConversationStore store) {
+  return KimAppHost(
+    runtime: runtime,
+    auth: fake,
+    client: fake,
+    store: store,
   );
 }
 
@@ -122,21 +164,21 @@ Future<void> tapKey(WidgetTester tester, Key key) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('signed-out shows login form, not the WS shell', (tester) async {
-    final runtime = await testRuntime();
-    final auth = FakeAuth();
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+  testWidgets('signed-out shows login form, not the chat list', (tester) async {
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
 
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.byKey(const Key('auth-submit')), findsOneWidget);
-    expect(find.text('KIM (shell)'), findsNothing);
+    expect(find.text(Copy.conversations), findsNothing);
   });
 
   testWidgets('invalid account stays on form', (tester) async {
-    final runtime = await testRuntime();
-    final auth = FakeAuth();
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'ab');
@@ -144,31 +186,31 @@ void main() {
     await tapKey(tester, const Key('auth-submit'));
 
     expect(find.text(Copy.invalidAccount), findsOneWidget);
-    expect(auth.logins, 0);
+    expect(fake.logins, 0);
   });
 
-  testWidgets('successful login opens shell with account', (tester) async {
-    final runtime = await testRuntime();
-    final auth = FakeAuth();
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+  testWidgets('successful login opens conversation list', (tester) async {
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
     await tester.enterText(find.byType(TextField).at(1), 'secret123');
     await tapKey(tester, const Key('auth-submit'));
 
-    expect(auth.logins, 1);
-    expect(auth.lastUserAgent, contains('KIM/1.0.0'));
-    expect(find.text('KIM (shell)'), findsOneWidget);
-    expect(find.textContaining('alice'), findsWidgets);
-    expect(find.text('signin'), findsOneWidget);
-    expect(runtime.settings.token, 'tok.jwt');
+    expect(fake.logins, 1);
+    expect(fake.lastUserAgent, contains('KIM/1.0.0'));
+    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.text(Copy.noConversations), findsOneWidget);
+    expect(env.runtime.settings.token, 'tok.jwt');
+    expect(fake.connects, greaterThan(0));
   });
 
   testWidgets('http 401 maps to bad credentials', (tester) async {
-    final runtime = await testRuntime();
-    final auth = FakeAuth(error: Exception('http 401: 账号或密码错误'));
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+    final env = await testRuntime();
+    final fake = FakeKim(error: Exception('http 401: 账号或密码错误'));
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -176,15 +218,15 @@ void main() {
     await tapKey(tester, const Key('auth-submit'));
 
     expect(find.text(Copy.badCredentials), findsOneWidget);
-    expect(find.text('KIM (shell)'), findsNothing);
+    expect(find.text(Copy.conversations), findsNothing);
   });
 
   testWidgets('register toggle and success', (tester) async {
-    final runtime = await testRuntime();
-    final auth = FakeAuth(
+    final env = await testRuntime();
+    final fake = FakeKim(
       session: const KimAuthSession(token: 'reg.jwt', exp: 2, account: 'bob_1'),
     );
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
     await tapKey(tester, const Key('auth-toggle'));
     expect(find.text(Copy.registerTitle), findsOneWidget);
@@ -193,30 +235,32 @@ void main() {
     await tester.enterText(find.byType(TextField).at(1), 'secret123');
     await tester.enterText(find.byType(TextField).at(2), 'secret123');
     await tapKey(tester, const Key('auth-submit'));
-    expect(auth.registers, 1);
-    expect(find.text('KIM (shell)'), findsOneWidget);
+    expect(fake.registers, 1);
+    expect(find.text(Copy.conversations), findsWidgets);
   });
 
-  testWidgets('shell logout returns to login', (tester) async {
-    final runtime = await testRuntime(token: 'tok.jwt', account: 'alice');
-    final auth = FakeAuth();
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: auth));
+  testWidgets('me tab logout returns to login', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
-    expect(find.text('KIM (shell)'), findsOneWidget);
+    expect(find.text(Copy.conversations), findsWidgets);
 
+    await tester.tap(find.text(Copy.me));
+    await pumpUi(tester);
     await tapKey(tester, const Key('logout'));
-    expect(auth.logouts, 1);
+    expect(fake.logouts, 1);
     expect(find.text(Copy.loginTitle), findsWidgets);
-    expect(runtime.settings.token, isEmpty);
+    expect(env.runtime.settings.token, isEmpty);
   });
 
   testWidgets('offline banner appears when connectivity is down', (
     tester,
   ) async {
-    final runtime = await testRuntime();
-    runtime.connectivity.online.value = false;
-    await tester.pumpWidget(KimApp(runtime: runtime, auth: FakeAuth()));
+    final env = await testRuntime();
+    env.runtime.connectivity.online.value = false;
+    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
     await pumpUi(tester);
-    expect(find.textContaining('Offline'), findsOneWidget);
+    expect(find.textContaining(Copy.offlineBanner), findsOneWidget);
   });
 }

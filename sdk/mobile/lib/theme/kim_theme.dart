@@ -1,91 +1,121 @@
-/// Material 3 theme. Cupertino is not the app theme.
+/// Material 3 theme via flex_color_scheme. Teal brand, iMessage-like radii.
 library;
 
-import 'package:animations/animations.dart';
+import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-
-import 'motion.dart';
+import 'package:flutter_chat_core/flutter_chat_core.dart';
 
 abstract final class KimTheme {
   static const Color seed = Color(0xFF0F766E);
+  static const Color outgoing = Color(0xFF0D9488);
+  static const Color incomingLight = Color(0xFFE9E9EB);
+  static const Color incomingDark = Color(0xFF2C2C2E);
+
+  static const BorderRadius bubbleRadius = BorderRadius.all(Radius.circular(19));
 
   static ThemeData light() => _from(Brightness.light);
 
   static ThemeData dark() => _from(Brightness.dark);
 
   static ThemeData _from(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: brightness,
-    );
-    final base = ThemeData(
-      useMaterial3: true,
-      colorScheme: scheme,
-      brightness: brightness,
-      visualDensity: VisualDensity.standard,
-    );
+    final isLight = brightness == Brightness.light;
+    final colors = FlexSchemeColor.from(primary: seed);
+    final base = isLight
+        ? FlexThemeData.light(
+            colors: colors,
+            useMaterial3: true,
+            visualDensity: FlexColorScheme.comfortablePlatformDensity,
+            subThemesData: _subThemes,
+            appBarStyle: FlexAppBarStyle.surface,
+            appBarElevation: 0,
+            surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
+            blendLevel: 8,
+          )
+        : FlexThemeData.dark(
+            colors: colors,
+            useMaterial3: true,
+            visualDensity: FlexColorScheme.comfortablePlatformDensity,
+            subThemesData: _subThemes,
+            appBarStyle: FlexAppBarStyle.surface,
+            appBarElevation: 0,
+            darkIsTrueBlack: true,
+            surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
+            blendLevel: 8,
+          );
+    final scheme = base.colorScheme;
     return base.copyWith(
-      appBarTheme: AppBarTheme(
+      appBarTheme: base.appBarTheme.copyWith(
         centerTitle: false,
-        elevation: 0,
-        scrolledUnderElevation: 1,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
+        surfaceTintColor: Colors.transparent,
       ),
-      inputDecorationTheme: const InputDecorationTheme(
-        filled: true,
-        isDense: true,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: {
-          TargetPlatform.android: FadeThroughPageTransitionsBuilder(),
-          TargetPlatform.iOS: FadeThroughPageTransitionsBuilder(),
-          TargetPlatform.macOS: FadeThroughPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeThroughPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeThroughPageTransitionsBuilder(),
-        },
+      navigationBarTheme: base.navigationBarTheme.copyWith(
+        backgroundColor: scheme.surface,
+        elevation: 0,
+        height: 68,
+        indicatorColor: scheme.primary.withValues(alpha: 0.14),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? scheme.primary : scheme.onSurfaceVariant,
+          );
+        }),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: 0.6),
+        space: 0.5,
+        thickness: 0.5,
       ),
     );
   }
 
-  /// Shared-axis helper for later sibling screens (login steps, etc.).
-  static Widget sharedAxis({
-    required Animation<double> animation,
-    required Animation<double> secondaryAnimation,
-    required Widget child,
-    SharedAxisTransitionType type = SharedAxisTransitionType.horizontal,
-  }) {
-    return SharedAxisTransition(
-      animation: animation,
-      secondaryAnimation: secondaryAnimation,
-      transitionType: type,
-      child: child,
+  static const FlexSubThemesData _subThemes = FlexSubThemesData(
+    interactionEffects: true,
+    tintedDisabledControls: true,
+    blendOnLevel: 10,
+    useM2StyleDividerInM3: false,
+    defaultRadius: 16,
+    inputDecoratorRadius: 16,
+    inputDecoratorBorderType: FlexInputBorderType.outline,
+    filledButtonRadius: 16,
+    elevatedButtonRadius: 16,
+    outlinedButtonRadius: 16,
+    filledButtonSchemeColor: SchemeColor.primary,
+    navigationBarHeight: 68,
+    navigationBarIndicatorRadius: 18,
+    navigationBarLabelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+    cardRadius: 20,
+    bottomSheetRadius: 24,
+    alignedDropdown: true,
+  );
+
+  static ChatTheme chat(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final isLight = scheme.brightness == Brightness.light;
+    return ChatTheme.fromThemeData(theme).copyWith(
+      shape: bubbleRadius,
+      colors: ChatColors(
+        primary: outgoing,
+        onPrimary: Colors.white,
+        surface: scheme.surface,
+        onSurface: scheme.onSurface,
+        surfaceContainer: isLight ? incomingLight : incomingDark,
+        surfaceContainerLow: scheme.surfaceContainerLow,
+        surfaceContainerHigh: scheme.surfaceContainerHigh,
+      ),
+      typography: ChatTypography.fromThemeData(theme).copyWith(
+        bodyMedium: (theme.textTheme.bodyLarge ?? const TextStyle()).copyWith(
+          fontSize: 17,
+          height: 1.3,
+        ),
+      ),
     );
   }
-
-  static Duration get pageDuration => KimMotion.medium;
 }

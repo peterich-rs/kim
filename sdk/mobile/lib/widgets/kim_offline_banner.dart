@@ -1,7 +1,10 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:gap/gap.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../copy.dart';
 import '../core/connectivity.dart';
 import '../theme/motion.dart';
 
@@ -32,27 +35,27 @@ class KimOfflineBanner extends StatelessWidget {
                   ? const SizedBox(width: double.infinity, height: 0)
                   : Material(
                       color: scheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.cloud_off,
-                              size: 16,
-                              color: scheme.onErrorContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Offline — WGateway traffic waits until a network is back.',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: scheme.onErrorContainer),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.wifiOff,
+                                size: 16,
+                                color: scheme.onErrorContainer,
                               ),
-                            ),
-                          ],
+                              const Gap(8),
+                              Expanded(
+                                child: Text(
+                                  Copy.offlineBanner,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: scheme.onErrorContainer),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

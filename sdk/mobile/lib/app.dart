@@ -1,91 +1,82 @@
-/// MaterialApp shell: M3 light/dark, connectivity banner, tap-outside dismiss.
+/// MaterialApp.router: M3 light/dark, connectivity banner, tap-outside dismiss.
 library;
 
-import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:toastification/toastification.dart';
 
+import 'copy.dart';
 import 'core/runtime.dart';
+import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
-import 'screens/auth_page.dart';
-import 'screens/shell_page.dart';
+import 'router/app_router.dart';
+import 'state/providers.dart';
 import 'theme/kim_theme.dart';
 import 'widgets/kim_offline_banner.dart';
 
-class KimApp extends StatefulWidget {
-  const KimApp({super.key, required this.runtime, this.bridge, this.auth});
-
-  final KimRuntime runtime;
-  final KimBridge? bridge;
-  final KimAuthPort? auth;
+class KimApp extends ConsumerWidget {
+  const KimApp({super.key});
 
   @override
-  State<KimApp> createState() => _KimAppState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+    final runtime = ref.watch(runtimeProvider);
+    return ToastificationWrapper(
+      child: MaterialApp.router(
+        title: Copy.brand,
+        debugShowCheckedModeBanner: false,
+        theme: KimTheme.light(),
+        darkTheme: KimTheme.dark(),
+        themeMode: ThemeMode.system,
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        routerConfig: router,
+        builder: (context, child) {
+          return GestureDetector(
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            behavior: HitTestBehavior.translucent,
+            child: KimOfflineBanner(
+              connectivity: runtime.connectivity,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
-class _KimAppState extends State<KimApp> {
-  late final KimBridge _bridge;
-  late final KimAuthPort _auth;
-  late bool _signedIn;
+/// Test / preview host that injects runtime + ports into Riverpod.
+class KimAppHost extends StatelessWidget {
+  const KimAppHost({
+    super.key,
+    required this.runtime,
+    required this.auth,
+    required this.client,
+    required this.store,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _bridge = widget.bridge ?? KimBridge();
-    _auth = widget.auth ?? _bridge;
-    _signedIn = widget.runtime.settings.token.isNotEmpty;
-  }
-
-  void _signedInNow() {
-    setState(() => _signedIn = true);
-  }
-
-  void _signedOutNow() {
-    setState(() => _signedIn = false);
-  }
+  final KimRuntime runtime;
+  final KimAuthPort auth;
+  final KimClientPort client;
+  final ConversationStore store;
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'KIM',
-      debugShowCheckedModeBanner: false,
-      theme: KimTheme.light(),
-      darkTheme: KimTheme.dark(),
-      themeMode: ThemeMode.system,
-      builder: (context, child) {
-        return GestureDetector(
-          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-          behavior: HitTestBehavior.translucent,
-          child: KimOfflineBanner(
-            connectivity: widget.runtime.connectivity,
-            child: child ?? const SizedBox.shrink(),
-          ),
-        );
-      },
-      home: PageTransitionSwitcher(
-        duration: KimTheme.pageDuration,
-        transitionBuilder: (child, animation, secondaryAnimation) {
-          return SharedAxisTransition(
-            animation: animation,
-            secondaryAnimation: secondaryAnimation,
-            transitionType: SharedAxisTransitionType.horizontal,
-            child: child,
-          );
-        },
-        child: _signedIn
-            ? ShellPage(
-                key: const ValueKey('shell'),
-                runtime: widget.runtime,
-                bridge: _bridge,
-                auth: _auth,
-                onSignedOut: _signedOutNow,
-              )
-            : AuthPage(
-                key: const ValueKey('auth'),
-                runtime: widget.runtime,
-                auth: _auth,
-                onSignedIn: _signedInNow,
-              ),
-      ),
+    return ProviderScope(
+      overrides: [
+        runtimeProvider.overrideWithValue(runtime),
+        authPortProvider.overrideWithValue(auth),
+        clientPortProvider.overrideWithValue(client),
+        conversationStoreProvider.overrideWithValue(store),
+      ],
+      child: const KimApp(),
     );
   }
 }

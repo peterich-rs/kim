@@ -1,9 +1,10 @@
-/// User-visible Chinese copy. Matches H5 `sdk/web/app/copy.ts`.
+/// User-facing Chinese copy for the mobile app.
 library;
 
 abstract final class Copy {
   static const brand = 'KIM';
   static const brandSub = '即时通讯';
+  static const brandPitch = '会话、联系人和消息，都在这里。';
 
   static const loginTitle = '登录';
   static const registerTitle = '创建账号';
@@ -15,6 +16,8 @@ abstract final class Copy {
   static const confirmPlaceholder = '再次输入密码';
   static const accountHint = '3–32 位字母、数字或下划线';
   static const passwordHint = '8–128 位';
+  static const showPassword = '显示密码';
+  static const hidePassword = '隐藏密码';
   static const loginAction = '登录';
   static const registerAction = '注册';
   static const submittingLogin = '登录中…';
@@ -32,14 +35,65 @@ abstract final class Copy {
   static const unavailable = '服务暂时不可用，请稍后重试';
   static const authFailed = '登录失败，请稍后重试';
   static const timeout = '连接超时，请稍后重试';
+  static const required = '请填写完整信息';
+
+  static const conversations = '消息';
+  static const contacts = '通讯录';
+  static const me = '我';
+  static const searchPlaceholder = '搜索';
+  static const searchChats = '搜索会话';
+  static const newChat = '发起聊天';
+  static const startChat = '开始聊天';
+  static const noConversations = '还没有会话';
+  static const noConversationsHint = '点右上角，向一个账号发起第一条消息';
+  static const noMatch = '没有匹配的会话';
+  static const noMessages = '暂无消息';
+  static const noMessagesHint = '发一条消息，开始对话';
+  static const messagePlaceholder = '发消息';
+  static const send = '发送';
+  static const sendFailed = '发送失败';
+  static const notConnected = '尚未连接，请稍后重试';
+  static const retry = '重试';
+  static const delete = '删除';
+  static const cancel = '取消';
+
+  static const peerAccount = '对方账号';
+  static const peerPlaceholder = '输入对方账号';
+  static const cannotChatSelf = '不能选择自己的账号';
+  static const openChat = '开始聊天';
+  static const privateChat = '私聊';
+  static const you = '你';
+  static const back = '返回';
+
+  static const online = '在线';
+  static const connecting = '连接中';
+  static const reconnecting = '重连中';
+  static const offline = '未连接';
+  static const kicked = '账号已在其他设备登录';
   static const logout = '退出登录';
   static const loggingOut = '退出中…';
+  static const yesterday = '昨天';
+  static const offlineBanner = '当前无网络，消息将在恢复后发送';
+
+  static const profile = '个人资料';
   static const changePassword = '修改密码';
   static const oldPassword = '当前密码';
   static const newPassword = '新密码';
   static const passwordChanged = '密码已更新';
   static const save = '保存';
-  static const localServer = '本地 :8080';
-  static const prodServer = '生产';
-  static const signedInAs = '已登录';
+  static const localServer = '本地环境';
+  static const prodServer = '正式环境';
+  static const server = '服务器';
+  static const about = '关于';
+  static const version = '版本';
+  static const signedInAs = '当前账号';
+  static const connection = '连接状态';
+  static const environment = '运行环境';
+  static const accountSection = '账号';
+  static const generalSection = '通用';
+
+  static const noFriends = '还没有联系人';
+  static const noFriendsHint = '输入账号，直接开始聊天';
+  static const addByAccount = '按账号查找';
+  static const recentContacts = '最近会话';
 }
