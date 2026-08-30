@@ -3,6 +3,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../copy.dart';
@@ -153,24 +154,8 @@ class InboxNotifier extends Notifier<InboxState> {
     if (body.isEmpty) {
       throw StateError(Copy.required);
     }
-    final accountErr = validateAccount(dest);
-    if (accountErr != null) {
-      throw StateError(accountErr);
-    }
+    _assertCanTalk(dest);
     final session = ref.read(sessionProvider);
-    if (dest == session.account) {
-      throw StateError(Copy.cannotChatSelf);
-    }
-    if (session.status != ConnStatus.online) {
-      throw StateError(Copy.notConnected);
-    }
-    final existing = _thread(dest);
-    final social = ref.read(contactsProvider);
-    if (existing?.kind != ThreadKind.group &&
-        social.ready &&
-        !social.isFriend(dest)) {
-      throw StateError(Copy.notFriends);
-    }
     ensureThread(id: dest);
     final msg = KimChatMsg(
       key: _uuid.v4(),
@@ -199,6 +184,66 @@ class InboxNotifier extends Notifier<InboxState> {
       await _persistMessages(dest);
       await KimHaptics.error();
       rethrow;
+    }
+  }
+
+  Future<List<KimChatMsg>> sendImages(
+    String dest,
+    List<KimMediaAsset> assets,
+  ) async {
+    if (assets.isEmpty) {
+      throw StateError(Copy.required);
+    }
+    _assertCanTalk(dest);
+    ensureThread(id: dest);
+    final session = ref.read(sessionProvider);
+    final out = <KimChatMsg>[];
+    for (final asset in assets) {
+      if (asset.path.isEmpty) {
+        continue;
+      }
+      final msg = KimChatMsg(
+        key: _uuid.v4(),
+        dest: dest,
+        sender: session.account,
+        body: asset.path,
+        at: DateTime.now().millisecondsSinceEpoch,
+        kind: asset.isVideo ? KimMsgKind.video : KimMsgKind.image,
+        width: asset.width,
+        height: asset.height,
+      );
+      _append(msg, fromSelf: true);
+      out.add(msg);
+    }
+    if (out.isEmpty) {
+      throw StateError(Copy.required);
+    }
+    await _persistMessages(dest);
+    if (ref.mounted) {
+      _persistThreads();
+      await KimHaptics.light();
+    }
+    return out;
+  }
+
+  void _assertCanTalk(String dest) {
+    final accountErr = validateAccount(dest);
+    if (accountErr != null) {
+      throw StateError(accountErr);
+    }
+    final session = ref.read(sessionProvider);
+    if (dest == session.account) {
+      throw StateError(Copy.cannotChatSelf);
+    }
+    if (session.status != ConnStatus.online) {
+      throw StateError(Copy.notConnected);
+    }
+    final existing = _thread(dest);
+    final social = ref.read(contactsProvider);
+    if (existing?.kind != ThreadKind.group &&
+        social.ready &&
+        !social.isFriend(dest)) {
+      throw StateError(Copy.notFriends);
     }
   }
 
@@ -245,7 +290,13 @@ class InboxNotifier extends Notifier<InboxState> {
         id: msg.dest,
         kind: existing?.kind ?? ThreadKind.user,
         title: existing?.title ?? msg.dest,
-        lastBody: msg.sys ? (existing?.lastBody ?? '') : truncate(msg.body),
+        lastBody: msg.sys
+            ? (existing?.lastBody ?? '')
+            : msg.isVideo
+            ? Copy.videoMessage
+            : msg.isImage
+            ? Copy.imageMessage
+            : truncate(msg.body),
         lastAt: msg.at,
         unread: unread,
       ),
@@ -273,6 +324,10 @@ class InboxNotifier extends Notifier<InboxState> {
       return;
     }
     try {
+      if (target.isImage || target.isVideo) {
+        await KimHaptics.light();
+        return;
+      }
       await ref.read(clientPortProvider).talk(dest, target.body);
       if (!ref.mounted) {
         return;

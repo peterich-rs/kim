@@ -52,6 +52,13 @@ abstract final class Copy {
   static const messagePlaceholder = '发消息';
   static const send = '发送';
   static const sendFailed = '发送失败';
+  static const album = '相册';
+  static const camera = '拍摄';
+  static const imageMessage = '[图片]';
+  static const videoMessage = '[视频]';
+  static const mediaFailed = '无法打开相机或相册';
+  static const mediaPermission = '需要相机或相册权限才能继续';
+  static const plusPanel = '更多';
   static const notConnected = '尚未连接，请稍后重试';
   static const notFriends = '对方还不是你好友';
   static const blocked = '无法与该用户互动';
@@ -98,6 +105,15 @@ abstract final class Copy {
   static const offlineBanner = '当前无网络，消息将在恢复后发送';
 
   static const profile = '个人资料';
+  static const changeAvatar = '更换头像';
+  static const takePhoto = '拍照';
+  static const pickFromAlbum = '从相册选择';
+  static const avatarUpdated = '头像已更新';
+  static const avatarFailed = '头像更新失败';
+  static const avatarRelogin = '请重新登录后再换头像';
+  static const avatarExportFailed = '无法读取这张照片，请换一张再试';
+  static const avatarUnsupportedType = '仅支持 JPEG、PNG、WebP、GIF';
+  static const uploading = '上传中…';
   static const changePassword = '修改密码';
   static const oldPassword = '当前密码';
   static const newPassword = '新密码';

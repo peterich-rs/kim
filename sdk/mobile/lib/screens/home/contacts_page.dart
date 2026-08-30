@@ -181,7 +181,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
               _groupSliver([
                 for (var i = 0; i < social.incoming.length; i++) ...[
                   ListTile(
-                    leading: KimAvatar(name: social.incoming[i].title),
+                    leading: KimAvatar(
+                      name: social.incoming[i].title,
+                      url: social.incoming[i].avatar,
+                    ),
                     title: Text(social.incoming[i].title),
                     subtitle: Text('@${social.incoming[i].account}'),
                     trailing: Row(
@@ -221,7 +224,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
               _groupSliver([
                 for (var i = 0; i < social.friends.length; i++) ...[
                   ListTile(
-                    leading: KimAvatar(name: social.friends[i].title),
+                    leading: KimAvatar(
+                      name: social.friends[i].title,
+                      url: social.friends[i].avatar,
+                    ),
                     title: Text(social.friends[i].title),
                     subtitle: Text('@${social.friends[i].account}'),
                     trailing: const Text(Copy.chatAction),
@@ -277,7 +283,7 @@ class _HitTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: KimAvatar(name: person.title),
+      leading: KimAvatar(name: person.title, url: person.avatar),
       title: Text(person.title),
       subtitle: Text('@${person.account}'),
       trailing: friend

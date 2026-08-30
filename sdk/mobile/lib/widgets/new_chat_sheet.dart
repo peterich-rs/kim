@@ -61,7 +61,11 @@ class _NewChatBody extends ConsumerWidget {
       children: [
         for (final p in friends)
           ListTile(
-            leading: KimAvatar(name: p.title, size: KimAvatarSize.sm),
+            leading: KimAvatar(
+              name: p.title,
+              url: p.avatar,
+              size: KimAvatarSize.sm,
+            ),
             title: Text(p.title),
             subtitle: Text('@${p.account}'),
             onTap: () {

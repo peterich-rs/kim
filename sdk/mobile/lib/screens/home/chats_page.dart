@@ -9,8 +9,10 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
+import '../../state/contacts.dart';
 import '../../state/gateway.dart';
 import '../../state/inbox.dart';
+import '../../state/profile.dart';
 import '../../state/session.dart';
 import '../../widgets/conversation_tile.dart';
 import '../../widgets/empty_state.dart';
@@ -25,6 +27,8 @@ class ChatsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     final inbox = ref.watch(inboxProvider);
+    final me = ref.watch(profileProvider);
+    final social = ref.watch(contactsProvider);
     final visible = inbox.visible;
     final connecting =
         session.status == ConnStatus.connecting && inbox.threads.isEmpty;
@@ -115,6 +119,7 @@ class ChatsPage extends ConsumerWidget {
                   return ConversationTile(
                     index: i,
                     thread: thread,
+                    avatarUrl: avatarFor(me, social, thread.id),
                     onOpen: () {
                       KimHaptics.selection();
                       ref

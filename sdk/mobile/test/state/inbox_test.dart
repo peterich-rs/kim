@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/contacts.dart';
@@ -44,5 +45,59 @@ void main() {
       ),
     );
     expect(env.fake.talks, 0);
+  });
+
+  test('sendImages stores image rows and does not talk text', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await env.container.read(gatewayProvider.future);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final rows = await env.container.read(inboxProvider.notifier).sendImages(
+      'bob',
+      const [
+        KimMediaAsset(
+          id: 'a',
+          path: '/tmp/a.jpg',
+          width: 100,
+          height: 80,
+          size: 12,
+          mimeType: 'image/jpeg',
+        ),
+      ],
+    );
+    expect(rows, hasLength(1));
+    expect(rows.single.isImage, isTrue);
+    expect(rows.single.body, '/tmp/a.jpg');
+    expect(env.fake.talks, 0);
+    expect(
+      env.container.read(inboxProvider).threads.single.lastBody,
+      Copy.imageMessage,
+    );
+  });
+
+  test('sendImages stores a video row as [视频]', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await env.container.read(gatewayProvider.future);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final rows = await env.container.read(inboxProvider.notifier).sendImages(
+      'bob',
+      const [
+        KimMediaAsset(
+          id: 'v',
+          path: '/tmp/a.mp4',
+          width: 1280,
+          height: 720,
+          size: 99,
+          mimeType: 'video/mp4',
+          durationMs: 1200,
+        ),
+      ],
+    );
+    expect(rows.single.isVideo, isTrue);
+    expect(
+      env.container.read(inboxProvider).threads.single.lastBody,
+      Copy.videoMessage,
+    );
   });
 }

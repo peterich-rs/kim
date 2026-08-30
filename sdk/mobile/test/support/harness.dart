@@ -61,6 +61,7 @@ Future<KimHarness> kimHarness({
       auth: fake,
       client: fake,
       store: store,
+      media: FakeKimMedia(),
     ),
   );
   return KimHarness(

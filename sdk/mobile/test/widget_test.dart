@@ -308,7 +308,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField).last, 'ping');
     await tester.pump();
-    await tester.tap(find.byIcon(LucideIcons.send));
+    await tester.tap(find.byKey(const Key('composer-send')));
     await pumpUi(tester);
 
     expect(find.text('ping'), findsOneWidget);

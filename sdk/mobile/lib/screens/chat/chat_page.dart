@@ -8,6 +8,7 @@ import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
@@ -20,11 +21,13 @@ import '../../state/contacts.dart';
 import '../../state/gateway.dart';
 import '../../state/inbox.dart';
 import '../../state/mutations.dart';
+import '../../state/profile.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
+import '../../widgets/kim_composer.dart';
 import '../../widgets/kim_hairline.dart';
 import '../../widgets/status_chip.dart';
 
@@ -85,6 +88,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         text: m.body,
       );
     }
+    if (m.isVideo) {
+      return Message.video(
+        id: m.key,
+        authorId: m.sender,
+        createdAt: at,
+        source: m.body,
+        width: m.width > 0 ? m.width.toDouble() : null,
+        height: m.height > 0 ? m.height.toDouble() : null,
+        status: m.failed ? MessageStatus.error : MessageStatus.sent,
+      );
+    }
+    if (m.isImage) {
+      return Message.image(
+        id: m.key,
+        authorId: m.sender,
+        createdAt: at,
+        source: m.body,
+        width: m.width > 0 ? m.width.toDouble() : null,
+        height: m.height > 0 ? m.height.toDouble() : null,
+        status: m.failed ? MessageStatus.error : MessageStatus.sent,
+      );
+    }
     return Message.text(
       id: m.key,
       authorId: m.sender,
@@ -118,6 +143,86 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return;
     }
     await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+  }
+
+  Future<void> _pickAlbum() async {
+    try {
+      final assets = await KimMediaPicker.instance.pickMultiple();
+      if (assets.isEmpty) {
+        return;
+      }
+      await _sendImages(assets);
+    } on MissingPluginException {
+      return;
+    } on KimMediaPickerException catch (err) {
+      _toastMedia(err);
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    try {
+      final shot = await KimMediaPicker.instance.capture();
+      if (shot == null) {
+        return;
+      }
+      await _sendImages([shot]);
+    } on MissingPluginException {
+      return;
+    } on KimMediaPickerException catch (err) {
+      _toastMedia(err);
+    }
+  }
+
+  Future<void> _sendImages(List<KimMediaAsset> assets) async {
+    try {
+      await sendImagesMutation(widget.id).run(ref, (tsx) {
+        return tsx.get(inboxProvider.notifier).sendImages(widget.id, assets);
+      });
+    } on StateError catch (err) {
+      if (mounted) {
+        toastification.show(
+          context: context,
+          type: ToastificationType.error,
+          style: ToastificationStyle.flatColored,
+          title: Text(err.message),
+          autoCloseDuration: const Duration(seconds: 3),
+          alignment: Alignment.topCenter,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        toastification.show(
+          context: context,
+          type: ToastificationType.error,
+          style: ToastificationStyle.flatColored,
+          title: const Text(Copy.sendFailed),
+          autoCloseDuration: const Duration(seconds: 3),
+          alignment: Alignment.topCenter,
+        );
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+  }
+
+  void _toastMedia(KimMediaPickerException err) {
+    if (!mounted) {
+      return;
+    }
+    toastification.show(
+      context: context,
+      type: ToastificationType.error,
+      style: ToastificationStyle.flatColored,
+      title: Text(
+        err.code == 'permission_denied'
+            ? Copy.mediaPermission
+            : Copy.mediaFailed,
+      ),
+      autoCloseDuration: const Duration(seconds: 3),
+      alignment: Alignment.topCenter,
+    );
   }
 
   Future<void> _retry(String key) async {
@@ -216,6 +321,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final social = ref.watch(contactsProvider);
+    final me = ref.watch(profileProvider);
     final theme = Theme.of(context);
     final account = session.account;
     final gated =
@@ -241,6 +347,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             KimAvatar(
               name: widget.title,
+              url: avatarFor(me, social, widget.id),
               size: KimAvatarSize.sm,
               heroTag: 'avatar-${widget.id}',
             ),
@@ -294,6 +401,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   subtitle: Copy.noMessagesHint,
                 ),
                 textMessageBuilder: kimTextMessage,
+                imageMessageBuilder: kimImageMessage,
+                videoMessageBuilder: kimVideoMessage,
                 systemMessageBuilder: kimSystemMessage,
                 chatMessageBuilder:
                     (
@@ -321,6 +430,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         isSentByMe: isSentByMe,
                         groupStatus: groupStatus,
                         displayName: _nameOf(message.authorId, account, social),
+                        avatarUrl: avatarFor(me, social, message.authorId),
                         onRetry: message.status == MessageStatus.error
                             ? () => unawaited(_retry(message.id))
                             : null,
@@ -346,7 +456,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       outgoing: social.isOutgoing(widget.id),
                     );
                   }
-                  return const KimComposer(hintText: Copy.messagePlaceholder);
+                  return KimComposer(
+                    hintText: Copy.messagePlaceholder,
+                    onSend: (text) => unawaited(_send(text)),
+                    onPickAlbum: () => unawaited(_pickAlbum()),
+                    onTakePhoto: () => unawaited(_takePhoto()),
+                  );
                 },
               ),
             ),
@@ -373,6 +488,11 @@ class _FriendGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final avatarUrl = avatarFor(
+      ref.watch(profileProvider),
+      ref.watch(contactsProvider),
+      dest,
+    );
     Future<void> run(Future<void> Function() action, String ok) async {
       try {
         await action();
@@ -420,7 +540,7 @@ class _FriendGate extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      KimAvatar(name: title),
+                      KimAvatar(name: title, url: avatarUrl),
                       const Gap(10),
                       Text(Copy.notFriends, style: theme.textTheme.titleSmall),
                       const Gap(4),

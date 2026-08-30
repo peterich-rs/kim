@@ -19,6 +19,7 @@ class SettingsStore {
   static const _kDest = 'kim.dest_account';
   static const _kHttp = 'kim.http_origin';
   static const _kAccount = 'kim.account';
+  static const _kAvatar = 'kim.avatar';
   static const _kNotifAsked = 'kim.notifications_asked';
   static const _kToken = 'kim.jwt';
 
@@ -31,6 +32,7 @@ class SettingsStore {
   String httpOrigin = defaultHttp;
   String account = '';
   String token = '';
+  String avatar = '';
   bool notificationsAsked = false;
 
   static FlutterSecureStorage productionSecureStorage() {
@@ -68,8 +70,16 @@ class SettingsStore {
         ? _prefs.getString(_kHttp)!.trim()
         : defaultHttp;
     account = _prefs.getString(_kAccount)?.trim() ?? '';
+    avatar = avatarOf(account);
     notificationsAsked = _prefs.getBool(_kNotifAsked) ?? false;
     token = await _readToken();
+  }
+
+  String avatarOf(String account) {
+    if (account.isEmpty) {
+      return '';
+    }
+    return _prefs.getString('$_kAvatar.$account')?.trim() ?? '';
   }
 
   Future<void> saveUrl(String value) async {
@@ -98,17 +108,32 @@ class SettingsStore {
     }
   }
 
+  Future<void> saveAvatar(String value) async {
+    avatar = value.trim();
+    if (account.isEmpty) {
+      return;
+    }
+    final key = '$_kAvatar.$account';
+    if (avatar.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, avatar);
+    }
+  }
+
   Future<void> saveSession({
     required String token,
     required String account,
   }) async {
     await saveToken(token);
     await saveAccount(account);
+    avatar = avatarOf(account);
   }
 
   Future<void> clearSession() async {
     await saveToken('');
     await saveAccount('');
+    avatar = '';
   }
 
   Future<void> useLocal() async {

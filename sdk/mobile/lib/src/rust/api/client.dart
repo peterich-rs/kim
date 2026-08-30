@@ -44,9 +44,23 @@ abstract class KimApi implements RustOpaqueInterface {
 
   Future<String> ping();
 
+  Future<String> profile({required String dest});
+
   Future<String> searchUsers({required String query});
 
+  Future<String> talkImage({
+    required String dest,
+    required String url,
+    required String extra,
+  });
+
   Future<String> talkToUser({required String dest, required String body});
+
+  Future<String> updateProfile({
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
 }
 
 /// Push / kick / token / friend events after login.

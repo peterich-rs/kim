@@ -223,6 +223,25 @@ impl KimApi {
         kim_client::Profile::encode_list(&users)
     }
 
+    pub fn profile(&self, dest: String) -> Result<String, String> {
+        let p = rt()
+            .block_on(self.inner.profile(&dest))
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_one(&p)
+    }
+
+    pub fn update_profile(
+        &self,
+        nickname: String,
+        avatar: String,
+        bio: String,
+    ) -> Result<String, String> {
+        let p = rt()
+            .block_on(self.inner.update_profile(&nickname, &avatar, &bio))
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_one(&p)
+    }
+
     pub fn search_users(&self, query: String) -> Result<String, String> {
         let users = rt()
             .block_on(self.inner.search_users(&query))
