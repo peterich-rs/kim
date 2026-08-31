@@ -34,6 +34,8 @@ const EXPIRES_NANOS: i64 = 15 * DAY_NANOS;
 pub enum StoreError {
     #[error("idgen: {0}")]
     Id(#[from] IdError),
+    #[error("royal http {status}: {msg}")]
+    Http { status: u16, msg: String },
     #[error("{0}")]
     Backend(String),
 }
@@ -141,6 +143,7 @@ pub trait MessageStore: Send + Sync {
     async fn offline_content(
         &self,
         app: &str,
+        account: &str,
         message_ids: &[i64],
     ) -> Result<Vec<MessageContentRow>, StoreError>;
     async fn inbox(
@@ -479,14 +482,26 @@ impl MessageStore for MemoryMessageStore {
 
     async fn offline_content(
         &self,
-        _app: &str,
+        app: &str,
+        account: &str,
         message_ids: &[i64],
     ) -> Result<Vec<MessageContentRow>, StoreError> {
         let inner = self.read();
         Ok(message_ids
             .iter()
             .filter_map(|id| {
-                inner.contents.get(id).map(|c| MessageContentRow {
+                let c = inner.contents.get(id)?;
+                if c.app != app {
+                    return None;
+                }
+                let visible = inner
+                    .indexes
+                    .iter()
+                    .any(|r| r.message_id == *id && r.app == app && r.account_a == account);
+                if !visible {
+                    return None;
+                }
+                Some(MessageContentRow {
                     message_id: c.message_id,
                     msg_type: c.msg_type,
                     body: c.body.clone(),
@@ -943,12 +958,54 @@ mod tests {
             .await
             .unwrap();
         let rows = store
-            .offline_content("kim", &[b.message_id, 0, a.message_id])
+            .offline_content("kim", "bob", &[b.message_id, 0, a.message_id])
             .await
             .unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].body, "b");
         assert_eq!(rows[1].body, "a");
+    }
+
+    #[tokio::test]
+    async fn offline_content_skips_ids_without_index_for_account() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let a = store
+            .insert_user("kim", &sample("alice", "bob", 1, "secret"))
+            .await
+            .unwrap();
+        let rows = store
+            .offline_content("kim", "carol", &[a.message_id])
+            .await
+            .unwrap();
+        assert!(rows.is_empty());
+        let other_app = store
+            .offline_content("kim-gray", "bob", &[a.message_id])
+            .await
+            .unwrap();
+        assert!(other_app.is_empty());
+        let owner = store
+            .offline_content("kim", "alice", &[a.message_id])
+            .await
+            .unwrap();
+        assert_eq!(owner.len(), 1);
+        assert_eq!(owner[0].body, "secret");
+    }
+
+    #[tokio::test]
+    async fn offline_content_self_chat_hits_either_index_row() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let a = store
+            .insert_user("kim", &sample("alice", "alice", 1, "note"))
+            .await
+            .unwrap();
+        let rows = store
+            .offline_content("kim", "alice", &[a.message_id])
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].body, "note");
     }
 
     #[tokio::test]

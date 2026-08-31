@@ -14,6 +14,8 @@ pub use postgres::PostgresGroupDirectory;
 pub enum GroupError {
     #[error("idgen: {0}")]
     Id(#[from] IdError),
+    #[error("group not found")]
+    NotFound,
     #[error("{0}")]
     Backend(String),
 }
@@ -143,15 +145,12 @@ impl GroupDirectory for MemoryGroupDirectory {
     }
 
     async fn members(&self, app: &str, group_id: &str) -> Result<Vec<String>, GroupError> {
-        let members = {
-            let inner = self.read();
-            inner
-                .groups
-                .get(&(app.to_string(), group_id.to_string()))
-                .map(|g| g.members.clone())
-                .unwrap_or_default()
-        };
-        Ok(members)
+        let inner = self.read();
+        let group = inner
+            .groups
+            .get(&(app.to_string(), group_id.to_string()))
+            .ok_or(GroupError::NotFound)?;
+        Ok(group.members.clone())
     }
 
     async fn join(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
@@ -162,7 +161,7 @@ impl GroupDirectory for MemoryGroupDirectory {
         let group = inner
             .groups
             .get_mut(&(app.to_string(), group_id.to_string()))
-            .ok_or_else(|| GroupError::Backend("unknown group".into()))?;
+            .ok_or(GroupError::NotFound)?;
         if !group.members.iter().any(|m| m == account) {
             group.members.push(account.to_string());
         }
@@ -171,12 +170,11 @@ impl GroupDirectory for MemoryGroupDirectory {
 
     async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
         let mut inner = self.write();
-        if let Some(group) = inner
+        let group = inner
             .groups
             .get_mut(&(app.to_string(), group_id.to_string()))
-        {
-            group.members.retain(|m| m != account);
-        }
+            .ok_or(GroupError::NotFound)?;
+        group.members.retain(|m| m != account);
         Ok(())
     }
 
@@ -185,7 +183,7 @@ impl GroupDirectory for MemoryGroupDirectory {
         let group = inner
             .groups
             .get(&(app.to_string(), group_id.to_string()))
-            .ok_or_else(|| GroupError::Backend("unknown group".into()))?;
+            .ok_or(GroupError::NotFound)?;
         Ok(GroupInfo {
             id: group_id.to_string(),
             name: group.name.clone(),
@@ -227,11 +225,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_group_members_empty() {
+    async fn unknown_group_members_is_not_found() {
         let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
         let dir = MemoryGroupDirectory::new(idgen);
-        let members = dir.members("kim", "no-such").await.unwrap();
-        assert!(members.is_empty());
+        match dir.members("kim", "no-such").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -267,8 +267,17 @@ mod tests {
         dir.quit("kim", &id, "bob").await.unwrap();
         let members = dir.members("kim", &id).await.unwrap();
         assert!(!members.contains(&"bob".to_string()));
-        assert!(dir.join("kim", "nope", "x").await.is_err());
-        assert!(dir.detail("kim", "nope").await.is_err());
-        dir.quit("kim", "nope", "x").await.unwrap();
+        match dir.join("kim", "nope", "x").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        match dir.detail("kim", "nope").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        match dir.quit("kim", "nope", "x").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
     }
 }

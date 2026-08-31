@@ -2,7 +2,7 @@ use kim_protocol::pkt::{MessagePush, MessageReq, MessageResp, Status};
 use kim_router::{Context, SessionError};
 use tracing::{info, warn};
 
-use crate::directory::GroupDirectory;
+use crate::directory::{GroupDirectory, GroupError};
 use crate::filter::ContentFilter;
 use crate::social::SocialDirectory;
 use crate::store::{InsertMessage, MessageStore};
@@ -229,6 +229,12 @@ pub async fn do_group_talk(
 
     let members = match groups.members(&ctx.session().app, group).await {
         Ok(m) => m,
+        Err(GroupError::NotFound) => {
+            let _ = ctx
+                .resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
+                .await;
+            return;
+        }
         Err(err) => {
             warn!(%err, "group members failed");
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
@@ -519,6 +525,7 @@ mod tests {
         async fn offline_content(
             &self,
             _app: &str,
+            _account: &str,
             _message_ids: &[i64],
         ) -> Result<Vec<crate::store::MessageContentRow>, StoreError> {
             Ok(Vec::new())

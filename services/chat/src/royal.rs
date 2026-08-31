@@ -7,9 +7,9 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, ConversationRead,
-    GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupMembersResp, GroupQueryReq,
-    GroupQuitReq, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertMessageReq,
-    InsertMessageResp, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
+    GroupCreateResp, GroupDetail, GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery,
+    InboxResp, InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
+    InternalGroupQuery, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
     OfflineIndexReq, ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery,
     UserSearchResp,
 };
@@ -26,6 +26,17 @@ use crate::store::{
 use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
 
 const RETRIES: usize = 3;
+
+fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
+    StoreError::Http {
+        status: status.as_u16(),
+        msg: String::from_utf8_lossy(body).into_owned(),
+    }
+}
+
+fn retry_http(status: StatusCode) -> bool {
+    status.is_server_error()
+}
 
 #[derive(Clone)]
 pub struct RoyalClient {
@@ -70,14 +81,14 @@ impl RoyalClient {
                         .bytes()
                         .await
                         .map_err(|e| StoreError::Backend(e.to_string()))?;
-                    if !status.is_success() {
-                        last = StoreError::Backend(format!("royal http {status}"));
-                        if status == StatusCode::BAD_REQUEST {
-                            return Err(last);
-                        }
-                        continue;
+                    if status.is_success() {
+                        return T::decode(buf.as_ref())
+                            .map_err(|e| StoreError::Backend(e.to_string()));
                     }
-                    return T::decode(buf.as_ref()).map_err(|e| StoreError::Backend(e.to_string()));
+                    last = http_status_err(status, &buf);
+                    if !retry_http(status) {
+                        return Err(last);
+                    }
                 }
                 Err(err) => last = StoreError::Backend(err.to_string()),
             }
@@ -107,12 +118,12 @@ async fn post_maybe_empty(
         {
             Ok(resp) => {
                 let status = resp.status();
-                let _ = resp.bytes().await;
+                let buf = resp.bytes().await.unwrap_or_default();
                 if status.is_success() {
                     return Ok(());
                 }
-                last = StoreError::Backend(format!("royal http {status}"));
-                if status == StatusCode::BAD_REQUEST {
+                last = http_status_err(status, &buf);
+                if !retry_http(status) {
                     return Err(last);
                 }
             }
@@ -240,12 +251,14 @@ impl MessageStore for HttpMessageStore {
     async fn offline_content(
         &self,
         app: &str,
+        account: &str,
         message_ids: &[i64],
     ) -> Result<Vec<MessageContentRow>, StoreError> {
         let body = MessageContentReq {
             message_ids: message_ids.to_vec(),
+            account: account.to_string(),
+            app: app.to_string(),
         };
-        let _ = app;
         let path = "/api/v1/offline/content";
         let resp: MessageContentResp = self
             .client
@@ -368,20 +381,27 @@ impl HttpGroupDirectory {
 }
 
 fn group_err(e: StoreError) -> GroupError {
-    GroupError::Backend(e.to_string())
+    match e {
+        StoreError::Http { status: 404, .. } => GroupError::NotFound,
+        StoreError::Http { status, msg } => {
+            GroupError::Backend(format!("royal http {status}: {msg}"))
+        }
+        StoreError::Backend(s) => GroupError::Backend(s),
+        StoreError::Id(e) => GroupError::Id(e),
+    }
 }
 
 #[async_trait]
 impl GroupDirectory for HttpGroupDirectory {
     async fn create(&self, app: &str, req: &CreateGroup) -> Result<String, GroupError> {
-        let body = GroupCreateReq {
+        let body = InternalGroupCreate {
+            app: app.to_string(),
             name: req.name.clone(),
             avatar: req.avatar.clone(),
             introduction: req.introduction.clone(),
             owner: req.owner.clone(),
             members: req.members.clone(),
         };
-        let _ = app;
         let path = "/api/v1/group";
         let resp: GroupCreateResp = self
             .client
@@ -392,8 +412,8 @@ impl GroupDirectory for HttpGroupDirectory {
     }
 
     async fn members(&self, app: &str, group_id: &str) -> Result<Vec<String>, GroupError> {
-        let _ = app;
-        let body = GroupQueryReq {
+        let body = InternalGroupQuery {
+            app: app.to_string(),
             group_id: group_id.to_string(),
         };
         let resp: GroupMembersResp = self
@@ -405,30 +425,30 @@ impl GroupDirectory for HttpGroupDirectory {
     }
 
     async fn join(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
-        let body = GroupJoinReq {
-            account: account.to_string(),
+        let body = InternalGroupMember {
+            app: app.to_string(),
             group_id: group_id.to_string(),
+            account: account.to_string(),
         };
-        let _ = app;
         post_maybe_empty(&self.client, "/api/v1/group/member", &body)
             .await
             .map_err(group_err)
     }
 
     async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
-        let body = GroupQuitReq {
-            account: account.to_string(),
+        let body = InternalGroupMember {
+            app: app.to_string(),
             group_id: group_id.to_string(),
+            account: account.to_string(),
         };
-        let _ = app;
         post_maybe_empty(&self.client, "/api/v1/group/quit", &body)
             .await
             .map_err(group_err)
     }
 
     async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError> {
-        let _ = app;
-        let body = GroupQueryReq {
+        let body = InternalGroupQuery {
+            app: app.to_string(),
             group_id: group_id.to_string(),
         };
         let resp: GroupDetail = self
@@ -509,7 +529,7 @@ impl UserDirectory for HttpUserDirectory {
             .await
         {
             Ok(p) => Ok(Some(from_pb_profile(p))),
-            Err(e) if e.to_string().contains("404") => Ok(None),
+            Err(StoreError::Http { status: 404, .. }) => Ok(None),
             Err(e) => Err(user_err(e)),
         }
     }
@@ -610,15 +630,14 @@ impl HttpSocialDirectory {
 }
 
 fn social_err(e: StoreError) -> SocialError {
-    let s = e.to_string();
-    if s.contains("403") {
-        SocialError::Blocked
-    } else if s.contains("404") {
-        SocialError::NotFound
-    } else if s.contains("400") {
-        SocialError::SelfOp
-    } else {
-        SocialError::Backend(s)
+    match e {
+        StoreError::Http { status: 403, .. } => SocialError::Blocked,
+        StoreError::Http { status: 404, .. } => SocialError::NotFound,
+        StoreError::Http { status: 400, .. } => SocialError::SelfOp,
+        StoreError::Http { status, msg } => {
+            SocialError::Backend(format!("royal http {status}: {msg}"))
+        }
+        other => SocialError::Backend(other.to_string()),
     }
 }
 
@@ -759,4 +778,80 @@ pub fn http_backends(royal_url: &str) -> Result<HttpBackends, StoreError> {
         Arc::new(HttpUserDirectory::new(royal_url)?),
         Arc::new(HttpSocialDirectory::new(royal_url)?),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use axum::routing::post;
+    use axum::Router;
+
+    use super::*;
+    use crate::directory::GroupError;
+
+    #[test]
+    fn group_err_maps_http_404_without_string_match() {
+        match group_err(StoreError::Http {
+            status: 404,
+            msg: "gone".into(),
+        }) {
+            GroupError::NotFound => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        match group_err(StoreError::Http {
+            status: 500,
+            msg: "boom".into(),
+        }) {
+            GroupError::Backend(s) => assert!(s.contains("500"), "{s}"),
+            other => panic!("expected Backend, got {other:?}"),
+        }
+        match group_err(StoreError::Backend("dial tcp".into())) {
+            GroupError::Backend(s) => assert_eq!(s, "dial tcp"),
+            other => panic!("expected Backend, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_group_directory_404_is_not_found() {
+        async fn not_found() -> StatusCode {
+            StatusCode::NOT_FOUND
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route("/api/v1/group/detail", post(not_found));
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let dir = HttpGroupDirectory::new(&format!("http://{addr}")).unwrap();
+        match dir.detail("kim", "g1").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_group_directory_500_and_network_are_backend() {
+        async fn boom() -> StatusCode {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route("/api/v1/group/detail", post(boom));
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let dir = HttpGroupDirectory::new(&format!("http://{addr}")).unwrap();
+        match dir.detail("kim", "g1").await {
+            Err(GroupError::Backend(_)) => {}
+            other => panic!("expected Backend, got {other:?}"),
+        }
+
+        let closed = HttpGroupDirectory::new("http://127.0.0.1:1").unwrap();
+        match closed.detail("kim", "g1").await {
+            Err(GroupError::Backend(_)) => {}
+            other => panic!("expected Backend, got {other:?}"),
+        }
+    }
 }

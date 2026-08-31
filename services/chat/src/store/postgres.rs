@@ -291,16 +291,28 @@ impl MessageStore for PostgresMessageStore {
 
     async fn offline_content(
         &self,
-        _app: &str,
+        app: &str,
+        account: &str,
         message_ids: &[i64],
     ) -> Result<Vec<MessageContentRow>, StoreError> {
         if message_ids.is_empty() {
             return Ok(Vec::new());
         }
         let rows: Vec<(i64, i16, String, String)> = sqlx::query_as(
-            "SELECT id, msg_type, body, extra FROM message_content WHERE id = ANY($1)",
+            "SELECT c.id, c.msg_type, c.body, c.extra
+             FROM message_content c
+             WHERE c.id = ANY($1)
+               AND c.app = $2
+               AND EXISTS (
+                 SELECT 1 FROM message_index i
+                 WHERE i.message_id = c.id
+                   AND i.app = $2
+                   AND i.account_a = $3
+               )",
         )
         .bind(message_ids)
+        .bind(app)
+        .bind(account)
         .fetch_all(&self.pool)
         .await
         .map_err(pg_err)?;
@@ -568,7 +580,7 @@ mod tests {
         assert_eq!(idx[0].message_id, inserted.message_id);
         assert_eq!(idx[0].account_b, "alice");
         let body = store
-            .offline_content(&app, &[inserted.message_id])
+            .offline_content(&app, "bob", &[inserted.message_id])
             .await
             .unwrap();
         assert_eq!(body[0].body, "hello");

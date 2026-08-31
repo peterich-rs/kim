@@ -236,7 +236,7 @@ public_port = ${chatPort}
     await second.logout();
   });
 
-  it("creates a group and talks in it", async () => {
+  it("creates a private group that extra members cannot join", async () => {
     const alice = sdk(url, "alice");
     const bob = sdk(url, "bob");
     const bodies: string[] = [];
@@ -258,9 +258,13 @@ public_port = ${chatPort}
       new Content("group-hi"),
     );
     expect(status).toBe(0);
-    await expect.poll(() => bodies, { timeout: 3_000 }).toContain("group-hi");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(bodies).not.toContain("group-hi");
     const detail = await alice.groupDetail(created.groupId!);
     expect(detail.detail?.name).toBe("sdk");
+    expect(detail.detail?.members).toEqual(["alice"]);
+    const joined = await bob.joinGroup(created.groupId!);
+    expect(joined.status).not.toBe(0);
     await alice.logout();
     await bob.logout();
   });

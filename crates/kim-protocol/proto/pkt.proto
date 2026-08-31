@@ -133,6 +133,8 @@ message MessageIndexResp {
 
 message MessageContentReq {
   repeated int64 messageIds = 1;
+  string account = 2; // Chat→Royal; clients leave empty, handler overwrites
+  string app = 3;
 }
 
 message MessageContentResp {
@@ -351,4 +353,24 @@ message UserSearchQuery {
   string query = 1;
   repeated string exclude = 2;
   int32 limit = 3;
+}
+
+// Chat→Royal only. Client group commands still use GroupCreateReq /
+// GroupQueryReq / GroupJoinReq / GroupQuitReq.
+message InternalGroupCreate {
+  string app = 1;
+  string name = 2;
+  string avatar = 3;
+  string introduction = 4;
+  string owner = 5;
+  repeated string members = 6;
+}
+message InternalGroupQuery {
+  string app = 1;
+  string groupId = 2;
+}
+message InternalGroupMember {
+  string app = 1;
+  string groupId = 2;
+  string account = 3;
 }

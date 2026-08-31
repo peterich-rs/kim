@@ -61,6 +61,16 @@ impl GroupDirectory for PostgresGroupDirectory {
     }
 
     async fn members(&self, app: &str, group_id: &str) -> Result<Vec<String>, GroupError> {
+        let exists: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM groups WHERE app = $1 AND id = $2")
+                .bind(app)
+                .bind(group_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        if exists.is_none() {
+            return Err(GroupError::NotFound);
+        }
         let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT account FROM group_members
              WHERE app = $1 AND group_id = $2
@@ -86,7 +96,7 @@ impl GroupDirectory for PostgresGroupDirectory {
                 .await
                 .map_err(pg_err)?;
         if exists.is_none() {
-            return Err(GroupError::Backend("unknown group".into()));
+            return Err(GroupError::NotFound);
         }
         let next: (i32,) = sqlx::query_as(
             "SELECT COALESCE(MAX(pos), -1) + 1 FROM group_members WHERE app = $1 AND group_id = $2",
@@ -112,6 +122,16 @@ impl GroupDirectory for PostgresGroupDirectory {
     }
 
     async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError> {
+        let exists: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM groups WHERE app = $1 AND id = $2")
+                .bind(app)
+                .bind(group_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        if exists.is_none() {
+            return Err(GroupError::NotFound);
+        }
         sqlx::query("DELETE FROM group_members WHERE app = $1 AND group_id = $2 AND account = $3")
             .bind(app)
             .bind(group_id)
@@ -131,8 +151,7 @@ impl GroupDirectory for PostgresGroupDirectory {
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_err)?;
-        let (name, avatar, introduction, owner) =
-            row.ok_or_else(|| GroupError::Backend("unknown group".into()))?;
+        let (name, avatar, introduction, owner) = row.ok_or(GroupError::NotFound)?;
         let members = self.members(app, group_id).await?;
         Ok(GroupInfo {
             id: group_id.to_string(),
@@ -199,8 +218,17 @@ mod tests {
         dir.quit(&app, &id, "bob").await.unwrap();
         let after = dir.members(&app, &id).await.unwrap();
         assert!(!after.contains(&"bob".to_string()));
-        assert!(dir.join(&app, "nope", "x").await.is_err());
-        assert!(dir.detail(&app, "nope").await.is_err());
-        dir.quit(&app, "nope", "x").await.unwrap();
+        match dir.join(&app, "nope", "x").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        match dir.detail(&app, "nope").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        match dir.quit(&app, "nope", "x").await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
     }
 }
