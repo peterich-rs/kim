@@ -12,15 +12,15 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::Router;
-use chat::directory::{CreateGroup, GroupDirectory, MemoryGroupDirectory};
+use chat::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::social::{MemorySocialDirectory, SocialDirectory};
 use chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
 use kim_protocol::pkt::{
-    AccountExists, AccountQuery, AckMessageReq, GroupCreateReq, GroupCreateResp, GroupDetail,
-    GroupJoinReq, GroupMembersResp, GroupQueryReq, GroupQuitReq, InsertMessageReq,
-    InsertMessageResp, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
+    AccountExists, AccountQuery, AckMessageReq, GroupCreateResp, GroupDetail, GroupMembersResp,
+    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
+    InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
     MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
 };
 use prost::Message;
@@ -179,6 +179,21 @@ pub(crate) fn backend(err: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
+fn group_http(err: GroupError) -> (StatusCode, String) {
+    match err {
+        GroupError::NotFound => (StatusCode::NOT_FOUND, err.to_string()),
+        GroupError::Id(_) | GroupError::Backend(_) => backend(err),
+    }
+}
+
+fn require_app(app: &str) -> Result<(), (StatusCode, String)> {
+    if app.is_empty() {
+        Err((StatusCode::BAD_REQUEST, "empty app".into()))
+    } else {
+        Ok(())
+    }
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -308,9 +323,12 @@ async fn offline_content(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<MessageContentReq>(&body)?;
+    if req.app.is_empty() || req.account.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty app or account".into()));
+    }
     let rows = st
         .store
-        .offline_content(&st.app, &req.message_ids)
+        .offline_content(&req.app, &req.account, &req.message_ids)
         .await
         .map_err(backend)?;
     let resp = MessageContentResp {
@@ -332,11 +350,12 @@ async fn group_create(
 
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<GroupCreateReq>(&body)?;
+    let req = decode::<InternalGroupCreate>(&body)?;
+    require_app(&req.app)?;
     let group_id = st
         .groups
         .create(
-            &st.app,
+            &req.app,
             &CreateGroup {
                 name: req.name,
                 avatar: req.avatar,
@@ -346,7 +365,7 @@ async fn group_create(
             },
         )
         .await
-        .map_err(backend)?;
+        .map_err(group_http)?;
     Ok(encode(&GroupCreateResp { group_id }))
 }
 
@@ -355,11 +374,12 @@ async fn group_join(
 
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<GroupJoinReq>(&body)?;
+    let req = decode::<InternalGroupMember>(&body)?;
+    require_app(&req.app)?;
     st.groups
-        .join(&st.app, &req.group_id, &req.account)
+        .join(&req.app, &req.group_id, &req.account)
         .await
-        .map_err(backend)?;
+        .map_err(group_http)?;
     Ok(Bytes::new())
 }
 
@@ -368,11 +388,12 @@ async fn group_quit(
 
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<GroupQuitReq>(&body)?;
+    let req = decode::<InternalGroupMember>(&body)?;
+    require_app(&req.app)?;
     st.groups
-        .quit(&st.app, &req.group_id, &req.account)
+        .quit(&req.app, &req.group_id, &req.account)
         .await
-        .map_err(backend)?;
+        .map_err(group_http)?;
     Ok(Bytes::new())
 }
 
@@ -380,12 +401,13 @@ async fn group_members(
     State(st): State<RoyalState>,
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<GroupQueryReq>(&body)?;
+    let req = decode::<InternalGroupQuery>(&body)?;
+    require_app(&req.app)?;
     let members = st
         .groups
-        .members(&st.app, &req.group_id)
+        .members(&req.app, &req.group_id)
         .await
-        .map_err(backend)?;
+        .map_err(group_http)?;
     Ok(encode(&GroupMembersResp { members }))
 }
 
@@ -393,12 +415,13 @@ async fn group_detail(
     State(st): State<RoyalState>,
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<GroupQueryReq>(&body)?;
+    let req = decode::<InternalGroupQuery>(&body)?;
+    require_app(&req.app)?;
     let info = st
         .groups
-        .detail(&st.app, &req.group_id)
+        .detail(&req.app, &req.group_id)
         .await
-        .map_err(backend)?;
+        .map_err(group_http)?;
     Ok(encode(&GroupDetail {
         group_id: info.id,
         name: info.name,
@@ -678,5 +701,99 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn content_and_group_use_request_app_not_process_app() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default())).with_app("kim");
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let (store, groups, _, _) =
+            chat::http_backends(&format!("http://{addr}")).expect("backends");
+
+        let inserted = store
+            .insert_user(
+                "kim",
+                &InsertMessage {
+                    sender: "alice".into(),
+                    dest: "bob".into(),
+                    send_time: 1,
+                    msg_type: MESSAGE_TYPE_TEXT,
+                    body: "secret".into(),
+                    extra: String::new(),
+                    client_id: String::new(),
+                },
+            )
+            .await
+            .unwrap();
+        let gray = store
+            .offline_content("kim-gray", "bob", &[inserted.message_id])
+            .await
+            .unwrap();
+        assert!(gray.is_empty());
+        let bob = store
+            .offline_content("kim", "bob", &[inserted.message_id])
+            .await
+            .unwrap();
+        assert_eq!(bob.len(), 1);
+        assert_eq!(bob[0].body, "secret");
+        let carol = store
+            .offline_content("kim", "carol", &[inserted.message_id])
+            .await
+            .unwrap();
+        assert!(carol.is_empty());
+
+        let empty = reqwest::Client::new()
+            .post(format!("http://{addr}/api/v1/offline/content"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                MessageContentReq {
+                    message_ids: vec![inserted.message_id],
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+
+        let gid = groups
+            .create(
+                "kim-gray",
+                &CreateGroup {
+                    name: "g".into(),
+                    avatar: String::new(),
+                    introduction: String::new(),
+                    owner: "alice".into(),
+                    members: vec!["alice".into()],
+                },
+            )
+            .await
+            .unwrap();
+        let gray_detail = groups.detail("kim-gray", &gid).await.unwrap();
+        assert_eq!(gray_detail.name, "g");
+        match groups.detail("kim", &gid).await {
+            Err(GroupError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        let no_app = reqwest::Client::new()
+            .post(format!("http://{addr}/api/v1/group/detail"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                InternalGroupQuery {
+                    group_id: gid,
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(no_app.status(), StatusCode::BAD_REQUEST);
     }
 }

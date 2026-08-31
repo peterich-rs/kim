@@ -1,4 +1,4 @@
-//! Talk e2e: 1:1 online/offline and three-person group with one offline.
+//! Talk e2e: 1:1 online/offline and private-group create.
 
 mod harness;
 
@@ -127,7 +127,7 @@ async fn unknown_dest_is_user_not_found() {
 }
 
 #[tokio::test]
-async fn three_person_group_one_offline() {
+async fn create_drops_extra_members_so_others_do_not_get_group_push() {
     let stack = spawn_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
@@ -174,24 +174,8 @@ async fn three_person_group_one_offline() {
         _ => panic!("expected MessageResp"),
     }
     timeout_no_packet(&alice, Duration::from_millis(500)).await;
-
-    for (client, name) in [(&bob, "bob"), (&carol, "carol")] {
-        let push_frame = timeout_read_skip_group_notify(client).await;
-        match read(&push_frame.payload).expect("push decode") {
-            Packet::Logic(p) => {
-                assert_eq!(p.header.flag, Flag::Push as i32, "{name}");
-                assert_eq!(p.header.command, CMD_CHAT_GROUP_TALK, "{name}");
-                let push: MessagePush = p.read_body().expect("MessagePush");
-                assert_eq!(push.sender, "alice");
-                assert_eq!(push.body, "hellogroup");
-                assert_eq!(push.r#type, 1);
-                assert!(push.extra.is_empty());
-                assert!(push.message_id > 10000);
-                assert!(push.send_time > 1000);
-            }
-            _ => panic!("expected MessagePush for {name}"),
-        }
-    }
+    timeout_no_packet(&bob, Duration::from_millis(400)).await;
+    timeout_no_packet(&carol, Duration::from_millis(400)).await;
 
     let _ = stack.gw.shutdown().await;
     let _ = stack.chat.shutdown().await;

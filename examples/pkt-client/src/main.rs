@@ -355,6 +355,7 @@ async fn pull_offline(
         let mut pkt = LogicPkt::new(CMD_OFFLINE_CONTENT, seq, Bytes::new());
         pkt.write_body(&MessageContentReq {
             message_ids: chunk.to_vec(),
+            ..Default::default()
         });
         seq = seq.saturating_add(1);
         client.send(marshal(&Packet::Logic(pkt))).await?;

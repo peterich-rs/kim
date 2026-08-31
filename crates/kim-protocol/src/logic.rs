@@ -256,6 +256,7 @@ mod tests {
         let mut content_req = LogicPkt::new("chat.offline.content", 1, Bytes::new());
         content_req.write_body(&crate::pkt::MessageContentReq {
             message_ids: vec![8, 9],
+            ..Default::default()
         });
         let creq: crate::pkt::MessageContentReq = content_req.read_body().unwrap();
         assert_eq!(creq.message_ids, vec![8, 9]);

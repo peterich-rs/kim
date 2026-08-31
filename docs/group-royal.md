@@ -10,15 +10,15 @@
 
 | command | dest | 行为 |
 |---|---|---|
-| `chat.group.create` | 空 | 建群；在线成员收到 `Flag=Push` 的 `GroupCreateNotify`（同 command，跳过发送方） |
-| `chat.group.join` | group id | 加入。账号优先 session，body `account` 可填 |
-| `chat.group.quit` | group id | 退出。未知群也是 Success |
-| `chat.group.detail` | group id | 返回 `GroupDetail` |
-| `chat.group.members` | group id | 返回成员列表；未知群空列表 |
+| `chat.group.create` | 空 | 建群。`owner` 强制 session；初始成员只有创建者。请求里其它 `members` 丢掉。Notify 只打创建者其它设备 |
+| `chat.group.join` | group id | 默认私有群，禁用自助加入。已是成员 → Success；否则 `Unauthorized`。代他人操作 → `Unauthorized`。邀请协议落地前，入群只有 create |
+| `chat.group.quit` | group id | 只能退自己。未知群或非成员 → `NotGroupMember` |
+| `chat.group.detail` | group id | 须是成员。非成员或未知群 → `NotGroupMember`（无 body） |
+| `chat.group.members` | group id | 须是成员。非成员或未知群 → `NotGroupMember`（无 body） |
 
 group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册 REST Base32。
 
-未知群 join / detail → `SystemException`。`create` / join 失败不发 Notify。
+`GroupError::NotFound` 与目录 `Backend` 分开：未知群/非成员 → `NotGroupMember`；SQL / Royal 5xx → `SystemException`。Chat→Royal 群 HTTP 走 `InternalGroupCreate` / `InternalGroupQuery` / `InternalGroupMember`（带 session.app），不用客户端 `GroupQueryReq` 当租户字段。直打 Royal 填任意 app 仍能改库，直到内部控制面鉴权（G-01）。
 
 ---
 
@@ -41,13 +41,13 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/api/v1/message/ack` | protobuf |
 | POST | `/api/v1/offline/index` | protobuf |
 | POST | `/api/v1/offline/content` | protobuf |
-| POST | `/api/v1/group` | protobuf |
-| POST | `/api/v1/group/member` | protobuf |
-| POST | `/api/v1/group/quit` | protobuf `GroupQuitReq` |
-| POST | `/api/v1/group/members` | protobuf `GroupQueryReq` → `GroupMembersResp` |
-| POST | `/api/v1/group/detail` | protobuf `GroupQueryReq` → `GroupDetail` |
+| POST | `/api/v1/group` | protobuf `InternalGroupCreate` |
+| POST | `/api/v1/group/member` | protobuf `InternalGroupMember` |
+| POST | `/api/v1/group/quit` | protobuf `InternalGroupMember` |
+| POST | `/api/v1/group/members` | protobuf `InternalGroupQuery` → `GroupMembersResp` |
+| POST | `/api/v1/group/detail` | protobuf `InternalGroupQuery` → `GroupDetail` |
 
-`app` 不在 URL 里：Royal 进程用 `KIM_APP` / 配置（默认 `kim`），各部署用各自的 base URL。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
+`app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
 
 内部（loopback / compose 内网）：
 

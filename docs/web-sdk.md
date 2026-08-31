@@ -90,7 +90,7 @@ ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。循环大约每 `ac
 
 ## 群
 
-`createGroup` / `joinGroup` / `quitGroup` / `groupDetail` / `groupMembers`。dest 规则与 [group-royal.md](group-royal.md) 相同。`GroupCreateNotify` 走 `ongroupcreate`，不是 `onmessage`。
+`createGroup` / `joinGroup` / `quitGroup` / `groupDetail` / `groupMembers`。dest 规则与 [group-royal.md](group-royal.md) 相同。`createGroup({ members })` 仍 Success，但好友不会进群：服务端丢掉请求成员，只留创建者。自助 `joinGroup` 对非成员返回 `Unauthorized`。`GroupCreateNotify` 走 `ongroupcreate`，不是 `onmessage`。
 
 资料 / 好友 / 会话：`profile` / `updateProfile` / `searchUsers` / `friendRequest` / `friendAccept` / `friendList` / `friendIncoming` / `blockAdd` / `inbox` / `history` / `markRead`。私聊非好友返回 `NotFriends=109`。好友申请 Push 走 `onfriendrequest`。产品页登录后拉 inbox，点开会话再拉 history。改密走 `POST /api/v1/auth/password`。
 

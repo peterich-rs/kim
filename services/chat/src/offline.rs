@@ -72,7 +72,7 @@ pub async fn do_offline_content(ctx: Context, store: &dyn MessageStore) {
         return;
     }
     let rows = match store
-        .offline_content(&ctx.session().app, &req.message_ids)
+        .offline_content(&ctx.session().app, &ctx.session().account, &req.message_ids)
         .await
     {
         Ok(v) => v,
@@ -145,7 +145,10 @@ mod tests {
         let mut pkt = LogicPkt::new(CMD_OFFLINE_CONTENT, 1, Bytes::new());
         pkt.header.channel_id = "ch-bob".into();
         pkt.set_meta(META_DEST_SERVER, "wg-1");
-        pkt.write_body(&MessageContentReq { message_ids: ids });
+        pkt.write_body(&MessageContentReq {
+            message_ids: ids,
+            ..Default::default()
+        });
         router
             .serve(
                 pkt,

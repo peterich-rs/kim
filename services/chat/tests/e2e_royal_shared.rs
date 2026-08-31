@@ -161,19 +161,20 @@ async fn two_chats_see_the_same_group_via_royal() {
         _ => panic!("expected create"),
     };
 
-    let (bob, _) = login("bob", &ws_url(a2)).await;
+    let (alice2, _) = login("alice", &ws_url(a2)).await;
     let mut detail = LogicPkt::new(CMD_GROUP_DETAIL, 3, Bytes::new());
     detail.set_dest(&group_id);
-    bob.send(marshal(&Packet::Logic(detail)))
+    alice2
+        .send(marshal(&Packet::Logic(detail)))
         .await
         .expect("detail");
-    let detail_frame = timeout_read(&bob).await;
+    let detail_frame = timeout_read(&alice2).await;
     match read(&detail_frame.payload).expect("detail resp") {
         Packet::Logic(p) => {
             assert_eq!(p.header.status, Status::Success as i32);
             let d: GroupDetail = p.read_body().expect("GroupDetail");
             assert_eq!(d.name, "shared");
-            assert!(d.members.contains(&"alice".to_string()));
+            assert_eq!(d.members, vec!["alice".to_string()]);
         }
         _ => panic!("expected detail"),
     }

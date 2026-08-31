@@ -47,7 +47,7 @@ key：`chat:ack:{account}`（Redis）或进程内 map。TTL 30 天。`messageId=
 4. `send_time > start`，LIMIT 2000。
 5. 请求 `messageId>0` 时，返回前再 ACK 该 id。
 
-`offline.content` 按请求 id **顺序** 返回，缺失的 id 跳过。
+`offline.content` 按请求 id **顺序** 返回。可见性：`message_content.app` 匹配且 `message_index` 存在 `(app, account_a, message_id)`；越权或不存在的 id **跳过**，整包仍 Success（不靠错误码探测 id）。Chat handler 覆盖 session 的 app/account；Chat→Royal 的 `MessageContentReq` 带这两个字段。直打 Royal 填别人的 app/account 仍能读，直到 G-01。
 
 默认 Memory。`DATABASE_URL` + `--features postgres` 走 Postgres（列名 `group_id` / `msg_type`）。`REDIS_URL` + `--features redis` 时读索引走 Redis，与会话共用 URL。
 
