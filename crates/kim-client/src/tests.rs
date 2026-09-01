@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -9,24 +10,30 @@ use kim_core::{
     StateListener,
 };
 use kim_protocol::pkt::{
-    Flag, KickoutNotify, LoginReq, LoginResp, MessageAckReq, MessagePush, MessageReq, MessageResp,
-    Status, UserListResp, UserProfile,
+    Flag, HistoryItem as ProtoHistory, HistoryReq, HistoryResp, InboxItem as ProtoInbox, InboxReq,
+    InboxResp, KickoutNotify, LoginReq, LoginResp, Message as PktMessage, MessageAckReq,
+    MessageContentReq, MessageContentResp, MessageIndex as ProtoIndex, MessageIndexReq,
+    MessageIndexResp, MessagePush, MessageReq, MessageResp, Status, UserListResp, UserProfile,
 };
 use kim_protocol::{
-    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK,
-    CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET,
-    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
+    CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY, CMD_INBOX_LIST,
+    CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CODE_PING, DEMO_DEFAULT_SECRET,
+    INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
 use crate::client::KimClient;
 use crate::config::{ClientConfig, DEFAULT_DEVICE, DEFAULT_LOCAL_URL, DEFAULT_PROD_URL};
-use crate::events::Event;
+use crate::events::{Event, OutgoingContent};
 use crate::login::login_on_conn;
 use crate::session::MemorySession;
+use crate::supervisor::{LinkState, SessionEvent, SessionSupervisor};
+use crate::sync::{ConfirmGate, SyncEngine};
 use crate::token::account_from_token;
 use crate::wire::{
-    decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_ping, encode_user_image,
+    decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_history, encode_inbox_list,
+    encode_offline_content, encode_offline_index, encode_outgoing, encode_ping, encode_user_image,
     encode_user_talk, is_kickout,
 };
 
@@ -514,4 +521,442 @@ async fn loopback_ws_login_ping_talk() {
 
     client.disconnect().await.unwrap();
     let _ = server.shutdown().await;
+}
+
+struct SharedConn {
+    incoming: Arc<StdMutex<VecDeque<Frame>>>,
+    outgoing: Arc<StdMutex<Vec<Frame>>>,
+}
+
+#[async_trait]
+impl Conn for SharedConn {
+    async fn read_frame(&mut self) -> Result<Frame, CoreError> {
+        self.incoming
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
+            .ok_or(CoreError::Closed)
+    }
+
+    async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), CoreError> {
+        self.outgoing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Frame { opcode, payload });
+        Ok(())
+    }
+
+    async fn flush(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+fn resp_logic(command: &str, seq: u32, write: impl FnOnce(&mut LogicPkt)) -> Frame {
+    let mut pkt = LogicPkt::new(command, seq, Bytes::new());
+    pkt.header.flag = Flag::Response as i32;
+    pkt.header.status = Status::Success as i32;
+    write(&mut pkt);
+    Frame::binary(marshal(&Packet::Logic(pkt)))
+}
+
+fn logged_in_shared(incoming: Vec<Frame>) -> (KimClient, Arc<StdMutex<Vec<Frame>>>) {
+    let outgoing = Arc::new(StdMutex::new(Vec::new()));
+    let conn = SharedConn {
+        incoming: Arc::new(StdMutex::new(incoming.into())),
+        outgoing: outgoing.clone(),
+    };
+    let token = mint("alice");
+    let client = KimClient::with_conn(ClientConfig::local(token.clone()), Box::new(conn));
+    client.force_session(MemorySession {
+        channel_id: "wg-1_alice_1".into(),
+        account: "alice".into(),
+        token,
+    });
+    (client, outgoing)
+}
+
+#[test]
+fn encode_inbox_list_writes_limit() {
+    match read(&encode_inbox_list(4, 200)).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_INBOX_LIST);
+            assert_eq!(p.header.sequence, 4);
+            assert!(p.header.dest.is_empty());
+            let req: InboxReq = p.read_body().unwrap();
+            assert_eq!(req.limit, 200);
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_history_sets_dest_and_kind() {
+    match read(&encode_history(5, "bob", INBOX_KIND_USER, 10, 50)).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_HISTORY);
+            assert_eq!(p.header.dest, "bob");
+            let req: HistoryReq = p.read_body().unwrap();
+            assert_eq!(req.before_id, 10);
+            assert_eq!(req.limit, 50);
+            assert_eq!(req.kind, INBOX_KIND_USER);
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_offline_index_resume_true() {
+    match read(&encode_offline_index(6)).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_OFFLINE_INDEX);
+            let req: MessageIndexReq = p.read_body().unwrap();
+            assert_eq!(req.message_id, 0);
+            assert!(req.resume);
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_offline_content_leaves_account_app_empty() {
+    match read(&encode_offline_content(7, &[1, 2])).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_OFFLINE_CONTENT);
+            let req: MessageContentReq = p.read_body().unwrap();
+            assert_eq!(req.message_ids, vec![1, 2]);
+            assert!(req.account.is_empty());
+            assert!(req.app.is_empty());
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_outgoing_group_uses_group_talk() {
+    let bytes = encode_outgoing(
+        8,
+        "g1",
+        INBOX_KIND_GROUP,
+        &OutgoingContent::Text("hi".into()),
+        "cid-stable",
+    );
+    match read(&bytes).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_CHAT_GROUP_TALK);
+            assert_eq!(p.header.dest, "g1");
+            let req: MessageReq = p.read_body().unwrap();
+            assert_eq!(req.body, "hi");
+            assert_eq!(req.client_id, "cid-stable");
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[tokio::test]
+async fn inbox_history_offline_round_trip() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp {
+            items: vec![ProtoInbox {
+                dest: "bob".into(),
+                kind: INBOX_KIND_USER,
+                title: "Bobby".into(),
+                avatar: String::new(),
+                last_body: "yo".into(),
+                last_sender: "bob".into(),
+                last_message_id: 9,
+                last_send_time: 1,
+                unread: 2,
+            }],
+        });
+    });
+    let mut hist = resp_logic(CMD_HISTORY, 3, |p| {
+        p.write_body(&HistoryResp {
+            messages: vec![ProtoHistory {
+                message_id: 9,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "yo".into(),
+                extra: String::new(),
+                sender: "bob".into(),
+                send_time: 1,
+                direction: 0,
+            }],
+        });
+    });
+    if let Packet::Logic(mut p) = read(&hist.payload).unwrap() {
+        p.header.dest = "bob".into();
+        hist = Frame::binary(marshal(&Packet::Logic(p)));
+    }
+    let index = resp_logic(CMD_OFFLINE_INDEX, 4, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 9,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 5, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 9,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "yo".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let client = logged_in(mint("alice"), vec![inbox, hist, index, content]);
+    let items = client.inbox_list(200).await.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].dest, "bob");
+    assert_eq!(items[0].unread, 2);
+    let history = client.history("bob", INBOX_KIND_USER, 0, 50).await.unwrap();
+    assert_eq!(history[0].body, "yo");
+    let idx = client.offline_index().await.unwrap();
+    assert_eq!(idx[0].message_id, 9);
+    let msgs = client.offline_content(&[9]).await.unwrap();
+    assert_eq!(msgs[0].body, "yo");
+}
+
+#[tokio::test]
+async fn send_message_keeps_caller_client_id() {
+    let talk = resp_logic(CMD_CHAT_USER_TALK, 2, |p| {
+        p.write_body(&MessageResp {
+            message_id: 42,
+            send_time: 7,
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![talk]);
+    let result = client
+        .send_message(
+            "bob",
+            INBOX_KIND_USER,
+            OutgoingContent::Text("hello".into()),
+            "stable-cid",
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.message_id, 42);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    match read(&frames[0].payload).unwrap() {
+        Packet::Logic(p) => {
+            let req: MessageReq = p.read_body().unwrap();
+            assert_eq!(req.client_id, "stable-cid");
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[tokio::test]
+async fn sync_confirm_gate_blocks_ack() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp { items: vec![] });
+    });
+    let index = resp_logic(CMD_OFFLINE_INDEX, 3, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 11,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 4, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 11,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "later".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let empty_index = resp_logic(CMD_OFFLINE_INDEX, 6, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![],
+            has_more: false,
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![inbox, index, content, empty_index]);
+    let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+    let gate = ConfirmGate::new();
+    let stop = tokio::sync::Notify::new();
+    let run = tokio::spawn({
+        let gate = gate.clone();
+        async move {
+            let mut engine = SyncEngine::new();
+            engine.run(&client, &tx, &gate, &stop).await
+        }
+    });
+    let mut talks = 0usize;
+    loop {
+        let ev = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("event")
+            .expect("recv");
+        match ev {
+            SessionEvent::Talk(_) => talks += 1,
+            SessionEvent::SyncProgress {
+                page_pending: true, ..
+            } => break,
+            _ => {}
+        }
+    }
+    assert_eq!(talks, 1);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let acks = frames.iter().filter(|f| {
+        matches!(read(&f.payload), Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK)
+    }).count();
+    assert_eq!(acks, 0, "ack must wait for sync_confirm");
+    gate.confirm(11);
+    let pulled = tokio::time::timeout(Duration::from_secs(2), run)
+        .await
+        .expect("join")
+        .expect("task")
+        .expect("sync");
+    assert_eq!(pulled, 1);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let ack = frames
+        .iter()
+        .find_map(|f| match read(&f.payload) {
+            Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK => Some(p),
+            _ => None,
+        })
+        .expect("ack after confirm");
+    let req: MessageAckReq = ack.read_body().unwrap();
+    assert_eq!(req.message_ids, vec![11]);
+}
+
+struct DropGw {
+    accepts: AtomicU32,
+}
+
+#[async_trait]
+impl Acceptor for DropGw {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+        self.accepts.fetch_add(1, Ordering::SeqCst);
+        let frame = tokio::time::timeout(timeout, conn.read_frame())
+            .await
+            .map_err(|_| CoreError::HandshakeTimeout(timeout))??;
+        let pkt = match read(&frame.payload) {
+            Ok(Packet::Logic(p)) => p,
+            _ => return Err(CoreError::Handshake("expected login.signin".into())),
+        };
+        let req: LoginReq = pkt
+            .read_body()
+            .map_err(|e| CoreError::Handshake(e.to_string()))?;
+        let acc =
+            account_from_token(&req.token).map_err(|e| CoreError::Handshake(e.to_string()))?;
+        let n = self.accepts.load(Ordering::SeqCst);
+        let id = format!("wg-drop_{acc}_{n}");
+        let mut resp = LogicPkt::new(CMD_LOGIN_SIGN_IN, pkt.header.sequence, Bytes::new());
+        resp.header.flag = Flag::Response as i32;
+        resp.header.status = Status::Success as i32;
+        resp.write_body(&LoginResp {
+            channel_id: id.clone(),
+        });
+        conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
+            .await?;
+        Ok(id)
+    }
+
+    async fn on_channel_ready(&self, _channel_id: &str) -> Result<(), CoreError> {
+        Err(CoreError::other("drop after login"))
+    }
+}
+
+#[async_trait]
+impl MessageListener for DropGw {
+    async fn receive(&self, _agent: &dyn Agent, _payload: Bytes) {}
+}
+
+#[async_trait]
+impl StateListener for DropGw {
+    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn supervisor_reconnects_after_drop() {
+    let handler = Arc::new(DropGw {
+        accepts: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let token = mint("alice");
+    let url = format!("ws://{addr}/");
+    let mut cfg = ClientConfig::new(url, token);
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if handler.accepts.load(Ordering::SeqCst) >= 2 {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!(
+                "reconnect did not happen, accepts={}",
+                handler.accepts.load(Ordering::SeqCst)
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    sup.stop();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn supervisor_radio_up_retries_immediately() {
+    let token = mint("alice");
+    let mut cfg = ClientConfig::new("ws://127.0.0.1:1/", token);
+    cfg.handshake_timeout = Duration::from_millis(200);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if matches!(sup.state(), LinkState::Reconnecting { attempt } if attempt >= 1) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("never entered reconnecting, state={:?}", sup.state());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = sup.events();
+    let start = tokio::time::Instant::now();
+    sup.notify_radio_up();
+    loop {
+        let ev = tokio::time::timeout(Duration::from_millis(400), rx.recv())
+            .await
+            .expect("radio retry")
+            .expect("recv");
+        if matches!(ev, SessionEvent::Link(LinkState::Connecting)) {
+            break;
+        }
+    }
+    assert!(
+        start.elapsed() < Duration::from_millis(400),
+        "radio up should not wait out backoff"
+    );
+    sup.stop();
 }

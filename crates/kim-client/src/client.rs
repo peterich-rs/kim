@@ -8,18 +8,21 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::config::ClientConfig;
-use crate::events::{Event, Profile, TalkResult};
+use crate::events::{
+    Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
+};
 use crate::login::{login_on_conn, send_ping};
 use crate::pump::{start_split_pump, Live};
 use crate::session::MemorySession;
 use crate::wire::{
-    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_ping, encode_user_image,
-    encode_user_search, encode_user_talk, encode_user_update,
+    decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
+    encode_inbox_list, encode_offline_content, encode_offline_index, encode_outgoing, encode_ping,
+    encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
     CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST,
-    CMD_USER_PROFILE,
+    CMD_USER_PROFILE, INBOX_KIND_USER,
 };
 
 enum Io {
@@ -96,7 +99,7 @@ impl KimClient {
         let taken = std::mem::replace(&mut *io, Io::Off);
         match taken {
             Io::Handshake(mut ws) => {
-                match login_on_conn(&mut ws, &self.config.token, self.config.handshake_timeout)
+                match login_on_conn(&mut ws, &self.login_token(), self.config.handshake_timeout)
                     .await
                 {
                     Ok(session) => {
@@ -114,7 +117,7 @@ impl KimClient {
             Io::Conn(mut conn) => {
                 match login_on_conn(
                     &mut *conn,
-                    &self.config.token,
+                    &self.login_token(),
                     self.config.handshake_timeout,
                 )
                 .await
@@ -154,13 +157,20 @@ impl KimClient {
         }
     }
 
-    pub async fn talk_to_user(&self, dest: &str, body: &str) -> Result<TalkResult, ClientError> {
+    /// Unified send. `client_id` is the caller-owned idempotency key (G-14).
+    /// `kind` is `INBOX_KIND_USER` / `INBOX_KIND_GROUP` and selects the talk CMD.
+    pub async fn send_message(
+        &self,
+        dest: &str,
+        kind: i32,
+        content: OutgoingContent,
+        client_id: &str,
+    ) -> Result<TalkResult, ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-        let client_id = Uuid::new_v4().to_string();
-        let payload = encode_user_talk(seq, dest, body, &client_id);
+        let payload = encode_outgoing(seq, dest, kind, &content, client_id);
         self.write_wait(payload, seq, |ev| match ev {
             Event::TalkResp(r) if r.sequence == seq => Some(Ok(r.clone())),
             Event::Status {
@@ -171,21 +181,107 @@ impl KimClient {
         .await
     }
 
-    /// `MessageReq.type = 2`. `url` is the R2 public object URL, not file bytes.
+    /// Thin wrapper around [`Self::send_message`]. Generates a one-shot `client_id`.
+    /// Callers that retry must use `send_message` with a stable id.
+    pub async fn talk_to_user(&self, dest: &str, body: &str) -> Result<TalkResult, ClientError> {
+        let client_id = Uuid::new_v4().to_string();
+        self.send_message(
+            dest,
+            INBOX_KIND_USER,
+            OutgoingContent::Text(body.to_string()),
+            &client_id,
+        )
+        .await
+    }
+
+    /// `MessageReq.type = 2`. Thin wrapper; prefer `send_message` with a stable id.
     pub async fn talk_image(
         &self,
         dest: &str,
         url: &str,
         extra: &str,
     ) -> Result<TalkResult, ClientError> {
+        let client_id = Uuid::new_v4().to_string();
+        self.send_message(
+            dest,
+            INBOX_KIND_USER,
+            OutgoingContent::Image {
+                url: url.to_string(),
+                extra: extra.to_string(),
+            },
+            &client_id,
+        )
+        .await
+    }
+
+    pub async fn inbox_list(&self, limit: i32) -> Result<Vec<InboxItem>, ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-        let client_id = Uuid::new_v4().to_string();
-        let payload = encode_user_image(seq, dest, url, extra, &client_id);
-        self.write_wait(payload, seq, |ev| match ev {
-            Event::TalkResp(r) if r.sequence == seq => Some(Ok(r.clone())),
+        self.write_wait(encode_inbox_list(seq, limit), seq, |ev| match ev {
+            Event::Inbox { sequence, items } if *sequence == seq => Some(Ok(items.clone())),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    pub async fn history(
+        &self,
+        dest: &str,
+        kind: i32,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<HistoryItem>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_history(seq, dest, kind, before_id, limit),
+            seq,
+            |ev| match ev {
+                Event::History {
+                    sequence, messages, ..
+                } if *sequence == seq => Some(Ok(messages.clone())),
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn offline_index(&self) -> Result<Vec<MessageIndex>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_offline_index(seq), seq, |ev| match ev {
+            Event::OfflinePage {
+                sequence, indexes, ..
+            } if *sequence == seq => Some(Ok(indexes.clone())),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    pub async fn offline_content(&self, ids: &[i64]) -> Result<Vec<Message>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_offline_content(seq, ids), seq, |ev| match ev {
+            Event::OfflineContent { sequence, messages } if *sequence == seq => {
+                Some(Ok(messages.clone()))
+            }
             Event::Status {
                 status, sequence, ..
             } if *sequence == seq => Some(Err(ClientError::Status(*status))),
@@ -343,11 +439,28 @@ impl KimClient {
     }
 
     pub async fn ack(&self, message_id: i64) -> Result<(), ClientError> {
+        self.write_ack(encode_ack(
+            self.next_seq.fetch_add(1, Ordering::Relaxed),
+            message_id,
+        ))
+        .await
+    }
+
+    pub async fn ack_batch(&self, message_ids: &[i64]) -> Result<(), ClientError> {
+        if message_ids.is_empty() {
+            return Ok(());
+        }
+        self.write_ack(encode_ack_batch(
+            self.next_seq.fetch_add(1, Ordering::Relaxed),
+            message_ids,
+        ))
+        .await
+    }
+
+    async fn write_ack(&self, payload: bytes::Bytes) -> Result<(), ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
-        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-        let payload = encode_ack(seq, message_id);
         if let Some(live) = self.live().await {
             return live.write_frame(OpCode::Binary, payload).await;
         }
@@ -356,6 +469,19 @@ impl KimClient {
         conn.write_frame(OpCode::Binary, payload).await?;
         conn.flush().await?;
         Ok(())
+    }
+
+    pub(crate) fn store_token(&self, token: String) {
+        lock_session_mut(&self.session).token = token;
+    }
+
+    fn login_token(&self) -> String {
+        let session = lock_session(&self.session);
+        if session.token.is_empty() {
+            self.config.token.clone()
+        } else {
+            session.token
+        }
     }
 
     pub async fn recv(&self) -> Result<Event, ClientError> {

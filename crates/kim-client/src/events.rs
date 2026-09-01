@@ -38,6 +38,60 @@ impl Profile {
     }
 }
 
+/// Inbox row from `chat.inbox.list` (`InboxItem` proto fields).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InboxItem {
+    pub dest: String,
+    pub kind: i32,
+    pub title: String,
+    pub avatar: String,
+    pub last_body: String,
+    pub last_sender: String,
+    pub last_message_id: i64,
+    pub last_send_time: i64,
+    pub unread: i32,
+}
+
+/// History row from `chat.history`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HistoryItem {
+    pub message_id: i64,
+    pub msg_type: i32,
+    pub body: String,
+    pub extra: String,
+    pub sender: String,
+    pub send_time: i64,
+    pub direction: i32,
+}
+
+/// Offline index row from `chat.offline.index`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MessageIndex {
+    pub message_id: i64,
+    pub direction: i32,
+    pub send_time: i64,
+    pub account_b: String,
+    pub group: String,
+}
+
+/// Message body from `chat.offline.content`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Message {
+    pub message_id: i64,
+    pub msg_type: i32,
+    pub body: String,
+    pub extra: String,
+}
+
+/// One wire `MessageReq`. Mixed input is split by the caller into several of these.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutgoingContent {
+    Text(String),
+    Image { url: String, extra: String },
+    Voice { url: String, extra: String },
+    Video { url: String, extra: String },
+}
+
 /// Unsolicited (or unmatched) inbound traffic after login.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -67,6 +121,24 @@ pub enum Event {
     Profile {
         sequence: u32,
         profile: Profile,
+    },
+    Inbox {
+        sequence: u32,
+        items: Vec<InboxItem>,
+    },
+    History {
+        sequence: u32,
+        dest: String,
+        messages: Vec<HistoryItem>,
+    },
+    OfflinePage {
+        sequence: u32,
+        indexes: Vec<MessageIndex>,
+        has_more: bool,
+    },
+    OfflineContent {
+        sequence: u32,
+        messages: Vec<Message>,
     },
     Status {
         command: String,

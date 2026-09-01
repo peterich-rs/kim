@@ -11,7 +11,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kim_client::{ClientConfig, KimClient, DEFAULT_LOCAL_URL};
+use kim_client::{ClientConfig, KimClient, OutgoingContent, DEFAULT_LOCAL_URL, INBOX_KIND_USER};
 use kim_protocol::{generate, DEMO_DEFAULT_SECRET};
 use tracing::info;
 
@@ -47,10 +47,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.ping().await?;
     info!("pong");
     if let Some(dest) = talk_to {
-        let r = client.talk_to_user(&dest, &body).await?;
+        let client_id = format!("demo-{account}-{}", now_ts());
+        let r = client
+            .send_message(
+                &dest,
+                INBOX_KIND_USER,
+                OutgoingContent::Text(body),
+                &client_id,
+            )
+            .await?;
         info!(
             message_id = r.message_id,
             send_time = r.send_time,
+            client_id,
             "talk ok"
         );
     }
