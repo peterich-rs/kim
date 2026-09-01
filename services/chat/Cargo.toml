@@ -16,6 +16,7 @@ consul = ["kim-naming/consul"]
 async-trait.workspace = true
 axum.workspace = true
 bytes.workspace = true
+http-body-util = "0.1"
 kim-container.workspace = true
 kim-core.workspace = true
 kim-metrics.workspace = true

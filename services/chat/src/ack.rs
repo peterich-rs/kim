@@ -2,9 +2,15 @@ use kim_protocol::pkt::{MessageAckReq, Status};
 use kim_router::Context;
 use tracing::{info, warn};
 
-use crate::store::MessageStore;
+use crate::store::{collect_ack_ids, MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
 
-pub async fn do_talk_ack(ctx: Context, store: &dyn MessageStore) {
+#[derive(Debug, thiserror::Error)]
+enum AckError {
+    #[error("too many message ids")]
+    TooManyIds,
+}
+
+pub async fn do_talk_ack(ctx: Context, store: &dyn MessageStore, pending_receipt: bool) {
     let req = match ctx.read_body::<MessageAckReq>() {
         Ok(r) => r,
         Err(err) => {
@@ -13,17 +19,37 @@ pub async fn do_talk_ack(ctx: Context, store: &dyn MessageStore) {
             return;
         }
     };
-    if let Err(err) = store
-        .ack(&ctx.session().app, &ctx.session().account, req.message_id)
-        .await
-    {
+    let ids = collect_ack_ids(req.message_id, &req.message_ids);
+    if ids.len() > MESSAGE_MAX_COUNT_PER_PAGE {
+        let _ = ctx
+            .resp_with_error(Status::InvalidPacketBody, &AckError::TooManyIds)
+            .await;
+        return;
+    }
+    let session = ctx.session();
+    if pending_receipt {
+        if ids.is_empty() || session.jti.trim().is_empty() {
+            if let Err(err) = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await {
+                warn!(%err, "resp failed");
+            }
+            return;
+        }
+        if let Err(err) = store
+            .ack(&session.app, &session.account, session.jti.trim(), &ids)
+            .await
+        {
+            warn!(%err, "ack failed");
+            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            return;
+        }
+    } else if let Err(err) = store.ack(&session.app, &session.account, "", &ids).await {
         warn!(%err, "ack failed");
         let _ = ctx.resp_with_error(Status::SystemException, &err).await;
         return;
     }
     info!(
-        account = %ctx.session().account,
-        message_id = req.message_id,
+        account = %session.account,
+        count = ids.len(),
         "talk ack"
     );
     if let Err(err) = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await {
@@ -71,6 +97,7 @@ mod tests {
                     body: "hi".into(),
                     extra: String::new(),
                     client_id: String::new(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -81,13 +108,16 @@ mod tests {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();
-                async move { do_talk_ack(ctx, store.as_ref()).await }
+                async move { do_talk_ack(ctx, store.as_ref(), false).await }
             }
         });
         let mut pkt = LogicPkt::new(CMD_CHAT_TALK_ACK, 1, Bytes::new());
         pkt.header.channel_id = "ch-bob".into();
         pkt.set_meta(META_DEST_SERVER, "wg-1");
-        pkt.write_body(&MessageAckReq { message_id: 1 });
+        pkt.write_body(&MessageAckReq {
+            message_id: 1,
+            ..Default::default()
+        });
         router
             .serve(
                 pkt,
@@ -114,7 +144,7 @@ mod tests {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();
-                async move { do_talk_ack(ctx, store.as_ref()).await }
+                async move { do_talk_ack(ctx, store.as_ref(), false).await }
             }
         });
         let mut pkt = LogicPkt::new(CMD_CHAT_TALK_ACK, 1, Bytes::from_static(&[0xff]));

@@ -230,12 +230,18 @@ mod tests {
     #[test]
     fn ack_and_offline_roundtrip() {
         let mut ack_pkt = LogicPkt::new("chat.talk.ack", 1, Bytes::new());
-        ack_pkt.write_body(&crate::pkt::MessageAckReq { message_id: 7 });
+        ack_pkt.write_body(&crate::pkt::MessageAckReq {
+            message_id: 7,
+            ..Default::default()
+        });
         let ack: crate::pkt::MessageAckReq = ack_pkt.read_body().unwrap();
         assert_eq!(ack.message_id, 7);
 
         let mut idx_req = LogicPkt::new("chat.offline.index", 1, Bytes::new());
-        idx_req.write_body(&crate::pkt::MessageIndexReq { message_id: 0 });
+        idx_req.write_body(&crate::pkt::MessageIndexReq {
+            message_id: 0,
+            ..Default::default()
+        });
         let got: crate::pkt::MessageIndexReq = idx_req.read_body().unwrap();
         assert_eq!(got.message_id, 0);
 
@@ -248,6 +254,7 @@ mod tests {
                 account_b: "alice".into(),
                 group: String::new(),
             }],
+            has_more: false,
         });
         let idx: crate::pkt::MessageIndexResp = idx_resp.read_body().unwrap();
         assert_eq!(idx.indexes.len(), 1);

@@ -42,6 +42,7 @@ fn loc_of(session: &Session) -> Location {
         channel_id: session.channel_id.clone(),
         gate_id: session.gate_id.clone(),
         device: session.device.clone(),
+        jti: session.jti.clone(),
     }
 }
 
@@ -169,6 +170,17 @@ mod tests {
         assert!(locs
             .iter()
             .any(|l| l.channel_id == "c2" && l.device == "cli"));
+    }
+
+    #[tokio::test]
+    async fn loc_of_copies_jti() {
+        let store = MemorySessionStore::new();
+        let mut s = session("c1", "alice", "g");
+        s.jti = "jti-alice".into();
+        store.add(&s).await.unwrap();
+        let locs = store.list_locations("alice").await.unwrap();
+        assert_eq!(locs.len(), 1);
+        assert_eq!(locs[0].jti, "jti-alice");
     }
 
     #[tokio::test]

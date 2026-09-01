@@ -11,11 +11,11 @@ use tracing::warn;
 use crate::keys::{key_location, key_session};
 use crate::SESSION_TTL;
 
-/// HASH login:loc:{account} field=channel_id value=Location blob; always DEL sn.
+/// HASH login:loc:v2:{account} field=channel_id value=Location blob; always DEL sn.
 /// Pre-hash leftovers were a STRING Location blob; drop them instead of WRONGTYPE.
 const DELETE_LUA: &str = r#"
--- KEYS[1] = login:loc:{account}
--- KEYS[2] = login:sn:{channel_id}
+-- KEYS[1] = login:loc:v2:{account}
+-- KEYS[2] = login:sn:v2:{channel_id}
 -- ARGV[1] = channel_id
 redis.call('DEL', KEYS[2])
 local t = redis.call('TYPE', KEYS[1])
@@ -34,12 +34,13 @@ return 1
 static DELETE_SCRIPT: LazyLock<::redis::Script> =
     LazyLock::new(|| ::redis::Script::new(DELETE_LUA));
 
-pub(crate) struct RedisSessionStore {
+#[derive(Clone)]
+pub struct RedisSessionStore {
     conn: ConnectionManager,
 }
 
 impl RedisSessionStore {
-    pub(crate) async fn open(url: &str) -> Result<Self, SessionError> {
+    pub async fn open(url: &str) -> Result<Self, SessionError> {
         let client = Client::open(url).map_err(redis_err)?;
         let conn = ConnectionManager::new(client).await.map_err(redis_err)?;
         Ok(Self { conn })
@@ -109,6 +110,52 @@ impl RedisSessionStore {
             .query_async::<()>(&mut conn)
             .await
     }
+
+    pub async fn count_empty_jti_locations(&self) -> Result<u64, SessionError> {
+        let mut conn = self.conn.clone();
+        let mut cursor: u64 = 0;
+        let mut empty = 0u64;
+        loop {
+            let (next, keys): (u64, Vec<String>) = ::redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("login:loc:v2:*")
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
+                .await
+                .map_err(redis_err)?;
+            for key in keys {
+                let values: Result<Vec<Vec<u8>>, ::redis::RedisError> =
+                    ::redis::cmd("HVALS").arg(&key).query_async(&mut conn).await;
+                let values = match values {
+                    Ok(v) => v,
+                    Err(err) if is_wrong_type(&err) => continue,
+                    Err(err) => return Err(redis_err(err)),
+                };
+                for bytes in values {
+                    match Location::decode(&bytes) {
+                        Ok(loc) if loc.jti.is_empty() => empty += 1,
+                        _ => {}
+                    }
+                }
+            }
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(empty)
+    }
+}
+
+fn loc_of(session: &Session) -> Location {
+    Location {
+        channel_id: session.channel_id.clone(),
+        gate_id: session.gate_id.clone(),
+        device: session.device.clone(),
+        jti: session.jti.clone(),
+    }
 }
 
 fn is_wrong_type(err: &::redis::RedisError) -> bool {
@@ -122,11 +169,7 @@ fn redis_err(e: ::redis::RedisError) -> SessionError {
 #[async_trait]
 impl SessionStorage for RedisSessionStore {
     async fn add(&self, session: &Session) -> Result<(), SessionError> {
-        let loc = Location {
-            channel_id: session.channel_id.clone(),
-            gate_id: session.gate_id.clone(),
-            device: session.device.clone(),
-        };
+        let loc = loc_of(session);
         let loc_key = key_location(&session.account, "");
         let sn_key = key_session(&session.channel_id);
         let loc_bytes = loc.encode();
@@ -194,9 +237,40 @@ impl SessionStorage for RedisSessionStore {
         if accounts.is_empty() {
             return Err(SessionError::NotFound);
         }
-        let mut out = Vec::new();
+        if accounts.len() == 1 {
+            let out = self.hash_locs(&accounts[0]).await?;
+            return if out.is_empty() {
+                Err(SessionError::NotFound)
+            } else {
+                Ok(out)
+            };
+        }
+        let mut pipe = ::redis::pipe();
         for account in accounts {
-            out.extend(self.hash_locs(account).await?);
+            pipe.cmd("HVALS").arg(key_location(account, ""));
+        }
+        let mut conn = self.conn.clone();
+        let nested: Result<Vec<Vec<Vec<u8>>>, ::redis::RedisError> =
+            pipe.query_async(&mut conn).await;
+        let nested = match nested {
+            Ok(v) => v,
+            Err(_) => {
+                let mut out = Vec::new();
+                for account in accounts {
+                    out.extend(self.hash_locs(account).await?);
+                }
+                return if out.is_empty() {
+                    Err(SessionError::NotFound)
+                } else {
+                    Ok(out)
+                };
+            }
+        };
+        let mut out = Vec::new();
+        for values in nested {
+            for bytes in values {
+                out.push(Location::decode(&bytes)?);
+            }
         }
         if out.is_empty() {
             Err(SessionError::NotFound)

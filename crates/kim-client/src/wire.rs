@@ -58,7 +58,19 @@ pub fn encode_user_image(seq: u32, dest: &str, url: &str, extra: &str, client_id
 
 pub fn encode_ack(seq: u32, message_id: i64) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_CHAT_TALK_ACK, seq, Bytes::new());
-    pkt.write_body(&MessageAckReq { message_id });
+    pkt.write_body(&MessageAckReq {
+        message_id,
+        ..Default::default()
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_ack_batch(seq: u32, message_ids: &[i64]) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_CHAT_TALK_ACK, seq, Bytes::new());
+    pkt.write_body(&MessageAckReq {
+        message_ids: message_ids.to_vec(),
+        ..Default::default()
+    });
     marshal(&Packet::Logic(pkt))
 }
 

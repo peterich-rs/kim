@@ -29,7 +29,7 @@ Accept（未 split 的 Conn）
   读第一帧
   无 Magic / 非 Logic（如 utf8 "alice"）→ Handshake Err，写 WS Close，不进表
   Logic 但 command ≠ login.signin → Binary InvalidCommand=103，return Err
-  JWT 失败 / 空 account → Binary Unauthorized=105，return Err
+  JWT 失败 / 空 account / `app != "kim"` → Binary Unauthorized=105，return Err
   成功 → channel_id = {gatewayId}_{account}_{seq}（进程内从 1）
          body 改写成 Session；pending.insert；**只 return id，不 Forward**
 
@@ -42,7 +42,7 @@ read_loop
 
 客户端 `LoginDialer` 等 LoginResp。服务端 **不等** Chat 处理完。`Agent` 没有 Close。
 
-JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。
+JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`，并冻结 `app=kim`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。灰度按 account 白名单，见 [gray.md](gray.md)。
 
 握手后网关把 `jti` / 空闲窗口绑在 channel 上。Basic ping：先查吊销（失败则关连接），再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`，走现成 Kickout。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`（HMAC，与 Chat→Royal 同一密钥）；查询失败 **fail-closed**（拒绝登录 / 心跳关连接）。
 
@@ -66,7 +66,7 @@ JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`。密钥：非�
 | SystemException | 99 | 存储失败等 |
 | InvalidPacketBody | 101 | 登录 body 解不开 |
 | InvalidCommand | 103 | 握手 LogicPkt 不是 signin |
-| Unauthorized | 105 | JWT 非法 |
+| Unauthorized | 105 | JWT 非法或 `app != kim` |
 | SessionNotFound | 404 | 非 signin 且 cache miss；**必须带 dest.channels** |
 
 已落地 0/1/2/3/99 **不改号**。`NoDestination=300` 见 [control-layer-chat.md](control-layer-chat.md)。
@@ -81,8 +81,9 @@ Disconnect：网关发 `login.signout`。SDK **不发**登出包。
 
 `SessionStorage`（`kim-router` trait，`kim-session` 实现）：
 
-- Session 按 `channel_id`（key `login:sn:{id}`）
-- Location 按 account（key `login:loc:{account}`）。Memory 是 `Vec`；Redis 是 HASH，field=`channel_id`。热路径 `{channel_id, gate_id, device}`
+- Session 按 `channel_id`（key `login:sn:v2:{id}`）
+- Location 按 account（key `login:loc:v2:{account}`）。Memory 是 `Vec`；Redis 是 HASH，field=`channel_id`。blob 为 `{channel_id, gate_id, device, jti}`；三字段旧 blob 解码后 `jti=""`
+- 网关 Accept 把 JWT `jti` 写入 `Session.jti`。`KIM_REQUIRE_JTI=1` 时缺/空 jti → Unauthorized=105，不建 loc。续期 `generate_with_jti` 复用同一 jti。`jti` 不是稳定设备身份。
 - 默认 **Memory**（一把 `std::sync::RwLock`）。测试只 `MemorySessionStore::new()` / `open_session_store(None)`，**不读** `REDIS_URL`
 - Redis 是 `kim-session` 的 **默认关** feature；Chat `main` 才读 `REDIS_URL`
 
@@ -100,7 +101,7 @@ Talk / 群 / 好友通知：`get_locations` 返回该账号全部 location，Pus
 
 Kickout 的 command 仍是 `login.signin`，`Flag=Push`，body `KickoutNotify{channelId}`。
 
-Royal logout / Chat `/internal/kick` 踢掉该账号**全部** location。
+Royal logout / Chat `/internal/kick` 踢掉该账号**全部** location。kick 要 HMAC；重放 nonce 401。
 
 `LoginResp` 同 command、field 1 也是 channelId。hook **必须先判断 Flag=Push**，再 decode，再 `Server::close_channel`。LoginResp 不得关连接。
 

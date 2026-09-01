@@ -7,6 +7,9 @@ use crate::error::ProtocolError;
 /// override via env / config; never use this as a live key.
 pub const DEMO_DEFAULT_SECRET: &str = "jwt-1sNzdiSgnNuxyq2g7xml2JvLArU";
 
+/// The only JWT `app` this deployment issues and accepts. Not overridable.
+pub const ALLOWED_APP: &str = "kim";
+
 /// JWT payload: `acc` / `app` / `exp` / optional `jti` (login/register).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Claims {

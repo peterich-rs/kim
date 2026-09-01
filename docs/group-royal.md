@@ -28,7 +28,7 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 
 Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`；Postgres 只由 Royal 写。
 
-除 `/health` 与 `/api/v1/auth/*` 外，Royal HTTP 都要 HMAC-SHA256：`x-kim-timestamp`、`x-kim-nonce`、`x-kim-signature`。密钥是 `KIM_INTERNAL_HMAC_SECRET`（空则 demo 默认值，与 JWT 一样不可用于生产）。canonical 串是 `METHOD`、`PATH`、timestamp、nonce、body 各占一行。允许 ±60s 时钟差。缺签或错签返回 401，body 是 `unauthorized`，不含 Fanout。Chat `RoyalClient` 与网关 `HttpRevoke` 自动带签。Chat `/internal/kick` 仍裸（G-01 剩余）。
+除 `/health` 与 `/api/v1/auth/*` 外，Royal HTTP 都要 HMAC-SHA256：`x-kim-timestamp`、`x-kim-nonce`、`x-kim-signature`。密钥是 `KIM_INTERNAL_HMAC_SECRET`（空则 demo 默认值；生产 `strict_runtime` 拒 demo/`change-me`）。canonical 串是 `METHOD`、`PATH`、timestamp、nonce、body 各占一行。允许 ±60s 时钟差。验签成功后 Redis `SET kim:hmac-nonce:{nonce} NX EX 121` 占 nonce；重放 401，Redis 故障 503。缺签或错签返回 401，body 是 `unauthorized`，不含 Fanout。Chat `RoyalClient` 与网关 `HttpRevoke` 自动带签。Chat `POST /internal/kick` 走同一合同；Royal `kick_account` 签名后 2s 超时 POST，失败只打日志，logout 仍 204。
 
 | 方法 | 路径 | 格式 |
 |---|---|---|

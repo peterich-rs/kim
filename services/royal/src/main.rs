@@ -3,9 +3,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
-use chat::store::{open_pg_backends, PoolConfig};
+use chat::open_uncached_session_store;
+use chat::store::{open_pg_backends, pending_receipt_enabled, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
-use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret};
+use kim_protocol::{
+    check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
+    ALLOWED_APP,
+};
 use royal::{serve, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
 use serde::Deserialize;
 
@@ -91,6 +95,20 @@ async fn open_revoke(url: &str) -> Result<Arc<dyn TokenRevocation>, Box<dyn std:
     }
 }
 
+#[cfg(feature = "redis")]
+async fn open_nonce(
+    url: &str,
+) -> Result<Arc<dyn chat::HmacNonceGuard>, Box<dyn std::error::Error>> {
+    Ok(Arc::new(chat::RedisHmacNonceGuard::open(url).await?))
+}
+
+#[cfg(not(feature = "redis"))]
+async fn open_nonce(
+    _url: &str,
+) -> Result<Arc<dyn chat::HmacNonceGuard>, Box<dyn std::error::Error>> {
+    Err("rebuild royal with --features redis".into())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -126,14 +144,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let redis = env_or_cfg("REDIS_URL", &cfg.this.redis_url);
+    let consul = env_or_cfg("CONSUL_HTTP_ADDR", &cfg.this.consul_url);
+    let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
+    if is_demo_internal_hmac(&hmac) {
+        tracing::warn!(secret = "demo-default-hmac", "do not use in production");
+    }
+    check_strict_runtime(StrictCheck {
+        hmac: Some(&hmac),
+        jwt: Some(&jwt.secret),
+        redis_url: redis.as_deref(),
+        require_redis: true,
+        consul_addr: consul.as_deref(),
+    })?;
+
     let revoke: Arc<dyn TokenRevocation> = match redis.as_deref() {
         Some(url) => open_revoke(url).await?,
         None => Arc::new(MemoryRevocation::new()),
     };
+    let nonce: Arc<dyn chat::HmacNonceGuard> = match redis.as_deref() {
+        Some(url) => open_nonce(url).await?,
+        None => Arc::new(chat::MemoryHmacNonceGuard::new()),
+    };
 
+    let pending_receipt = pending_receipt_enabled();
     let state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
-        let backends =
-            open_pg_backends(&db, redis.as_deref(), idgen, PoolConfig::default()).await?;
+        let sessions = match redis.as_deref() {
+            None | Some("") => None,
+            Some(url) => Some(open_uncached_session_store(url).await?),
+        };
+        let backends = open_pg_backends(
+            &db,
+            redis.as_deref(),
+            idgen,
+            PoolConfig::default(),
+            sessions,
+            pending_receipt,
+        )
+        .await?;
         RoyalState::with_backends(
             backends.store,
             backends.groups,
@@ -142,23 +189,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             jwt,
             revoke,
         )
+        .with_pending_receipt(pending_receipt)
     } else {
-        RoyalState::memory_with_jwt(idgen, jwt).with_revoke(revoke)
+        RoyalState::memory_with_jwt_receipt(idgen, jwt, pending_receipt).with_revoke(revoke)
     };
-    let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| "kim".into());
-    let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
-    let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
-    if is_demo_internal_hmac(&hmac) {
-        tracing::warn!(secret = "demo-default-hmac", "do not use in production");
+    let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| ALLOWED_APP.into());
+    if kim_protocol::strict_runtime() && app != ALLOWED_APP {
+        return Err(format!("production KIM_APP must be {ALLOWED_APP}").into());
     }
+    let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
     let state = state
         .with_app(app)
         .with_chat_url(chat_url)
-        .with_hmac_secret(hmac);
+        .with_hmac_secret(hmac)
+        .with_nonce(nonce);
+    state.start_maintenance();
+    #[cfg(feature = "redis")]
+    if let Some(url) = redis.as_deref() {
+        let scanner = kim_session::RedisSessionStore::open(url).await?;
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                interval.tick().await;
+                match scanner.count_empty_jti_locations().await {
+                    Ok(n) => tracing::info!(kim_location_without_jti = n, "location jti scan"),
+                    Err(err) => tracing::warn!(%err, "location jti scan failed"),
+                }
+            }
+        });
+    }
 
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);
-    let consul = env_or_cfg("CONSUL_HTTP_ADDR", &cfg.this.consul_url);
     let naming = open_naming(consul.as_deref(), vec![])?;
     let service_id =
         env_or_cfg("KIM_SERVICE_ID", &cfg.this.service_id).unwrap_or_else(|| "royal-1".into());

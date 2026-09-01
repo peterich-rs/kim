@@ -59,12 +59,12 @@ INIT → CONNECTING → CONNECTED → CLOSING → CLOSED
 
 | 状态 | 行为 |
 |---|---|
-| CONNECTING | 已挂 `onmessage`，可 `request()`；**不** ACK、**不**把在线 Push 回调给 UI |
+| CONNECTING | 已挂 `onmessage`，可 `request()`；**不**跑 `messageAckLoop`、**不**把在线 Push 回调给 UI |
 | CONNECTED | 心跳、ACK loop、`onmessage` |
 | CLOSING | 主动 logout；`onclose` 不再重连 |
 | Kickout | `channelId` 必须等于自己的；不等则忽略。匹配则 `Kickout` 事件 + logout，不重连 |
 
-离线同步期间不能 ACK：服务端读索引不区分在线/离线。同步中途 ACK 一条在线消息，更早的离线会丢。同步窗口里到达的 Push 只进本地 Store，等索引回调；`messageId` 去重。
+离线同步窗口里 `messageAckLoop` 还没启动。新 SDK 对每页 index **本地 persist 后再 batch ACK**（≤200）。这与旧高水位不同：ACK 的是本页 id 集合，不会把更早的离线标成已同步。同步窗口里到达的 Push 只进本地 Store，等索引回调；`messageId` 去重。
 
 ---
 
@@ -76,13 +76,15 @@ INIT → CONNECTING → CONNECTED → CLOSING → CLOSED
 
 心跳若收到 `login.renew` Push（`AuthResp`），SDK 更新内存 token；产品页 `ontoken` 写回 `localStorage`。
 
-ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。循环大约每 `ackForceAfterMs`（默认 3s）对 `lastMessage` 发一次；到达不足 `ackDelayMs`（默认 500ms）则再等。未 ACK 超过 10 条不等待。
+ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。在线循环大约每 `ackForceAfterMs`（默认 3s）对 `lastMessage` 发一次；到达不足 `ackDelayMs`（默认 500ms）则再等。未 ACK 超过 10 条不等待。离线页在 persist 后走 `messageIds` 批量 ACK。
 
 ---
 
 ## 离线
 
-登录成功后循环 `chat.offline.index`，起点是本地 `Store.lastId()`。索引分组进 `OfflineMessages`（用户 / 群），`loadUser` / `loadGroup` 再按页拉 `chat.offline.content`（最多 200 id）。
+登录成功后循环 `chat.offline.index`：`encodeIndexReq({ resume: true })`，直到 `page.length===0 || !hasMore`。页 200。每页写入本地 Store 后再 batch ACK。索引分组进 `OfflineMessages`（用户 / 群），`loadUser` / `loadGroup` 再按页拉 `chat.offline.content`（最多 200 id）。
+
+遗留 `encodeIndexReq(lastId)`（无 `resume`）依赖服务端回路终止，不会热循环；有本地 lastId 的旧 H5 可能这次登录不拉离线。生产 H5 必须先升级。
 
 默认 `MemoryStore`。浏览器可用 `KeyValueStore(localStorage)` / `browserStore()`。
 

@@ -5,10 +5,15 @@
 .DS_Store
 node_modules/
 /deploy/kim.env
+/deploy/consul/secrets.hcl
+/deploy/consul/tls/*.pem
 /sdk/web/dist-app/
 
 # 付费小册原文，不进公开仓库
 /books/
+
+# 本地 CodeGraph 索引
+.codegraph/
 
 # Flutter
 /sdk/mobile/build/

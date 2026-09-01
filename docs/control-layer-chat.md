@@ -96,7 +96,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | 离线 | 无 Push；发送方仍 Success + messageId。接收方重连后可 `chat.offline.index` |
 | 发送方未收到 Resp | 客户端用 **identical** `clientId` 重发 → 从落库再 Push（按 `message_id` 去重） |
 
-ACK 仍是 Snowflake 高水位（G-03）；Flutter / `kim-client` 登录后仍不拉离线（G-14）。漏 Push 补偿未关。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
+ACK 在 Chat reader=1 时是 message id 集合（见 [reliable-delivery.md](reliable-delivery.md)）；Flutter / `kim-client` 登录后仍不拉离线（G-14）。漏 Push 由 pending receipt 补偿。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
 
 Talk 在 insert 之前跑 `ContentFilter` 链（默认 ChatHandler 是 `NoopFilter`；进程用 `builtin_talk_filter`：文本拦截 + 图片拦截，词表来自 `config.toml` 的 `sensitive_words` / `blocked_image`）。只拦对应 `MessageReq.type`；语音 / 视频以后加新 impl。命中 → `ContentBlocked`。
 

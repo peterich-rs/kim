@@ -5,7 +5,7 @@ mod product;
 mod revoke;
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
@@ -17,18 +17,21 @@ use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::social::{MemorySocialDirectory, SocialDirectory};
-use chat::store::{InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore};
+use chat::store::{
+    collect_ack_ids, DeliveryTarget, InsertMessage, InsertResult, MemoryMessageStore, MessageKind,
+    MessageStore,
+};
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
+use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use http_body_util::BodyExt;
 use kim_protocol::pkt::{
-    AccountExists, AccountQuery, AckMessageReq, GroupCreateResp, GroupDetail, GroupMembersResp,
-    InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
-    InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
-    MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
+    AccountExists, AccountQuery, AckMessageReq, DeliveryBackfillReq, GroupCreateResp, GroupDetail,
+    GroupMembersResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
+    InternalGroupMember, InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp,
+    MessageIndex, MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
 };
 use kim_protocol::{
-    resolve_internal_hmac_secret, verify_internal_hmac, HmacHeaders, HEADER_NONCE,
-    HEADER_SIGNATURE, HEADER_TIMESTAMP,
+    hmac_headers_from, resolve_internal_hmac_secret, sign_internal_hmac, verify_internal_hmac,
 };
 use prost::Message;
 
@@ -62,6 +65,8 @@ pub struct RoyalState {
     pub(crate) app: String,
     pub(crate) chat_url: String,
     hmac_secret: String,
+    nonce: Arc<dyn HmacNonceGuard>,
+    pending_receipt: bool,
 }
 
 impl RoyalState {
@@ -70,8 +75,21 @@ impl RoyalState {
     }
 
     pub fn memory_with_jwt(idgen: Arc<dyn IdGenerator>, jwt: JwtConfig) -> Self {
+        Self::memory_with_jwt_receipt(idgen, jwt, false)
+    }
+
+    pub fn memory_with_jwt_receipt(
+        idgen: Arc<dyn IdGenerator>,
+        jwt: JwtConfig,
+        pending_receipt: bool,
+    ) -> Self {
+        let store: Arc<dyn MessageStore> = if pending_receipt {
+            Arc::new(MemoryMessageStore::with_pending_receipt(idgen.clone()))
+        } else {
+            Arc::new(MemoryMessageStore::new(idgen.clone()))
+        };
         Self {
-            store: Arc::new(MemoryMessageStore::new(idgen.clone())),
+            store,
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
             users: Arc::new(MemoryUserDirectory::new()),
             social: Arc::new(MemorySocialDirectory::new()),
@@ -80,6 +98,8 @@ impl RoyalState {
             app: "kim".into(),
             chat_url: String::new(),
             hmac_secret: resolve_internal_hmac_secret(""),
+            nonce: Arc::new(MemoryHmacNonceGuard::new()),
+            pending_receipt,
         }
     }
 
@@ -105,6 +125,12 @@ impl RoyalState {
     #[must_use]
     pub fn with_hmac_secret(mut self, secret: impl Into<String>) -> Self {
         self.hmac_secret = secret.into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_nonce(mut self, nonce: Arc<dyn HmacNonceGuard>) -> Self {
+        self.nonce = nonce;
         self
     }
 
@@ -137,7 +163,19 @@ impl RoyalState {
             app: "kim".into(),
             chat_url: String::new(),
             hmac_secret: resolve_internal_hmac_secret(""),
+            nonce: Arc::new(MemoryHmacNonceGuard::new()),
+            pending_receipt: false,
         }
+    }
+
+    #[must_use]
+    pub fn with_pending_receipt(mut self, enabled: bool) -> Self {
+        self.pending_receipt = enabled;
+        self
+    }
+
+    pub fn start_maintenance(&self) {
+        spawn_maintenance(self.store.clone());
     }
 }
 
@@ -150,6 +188,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/message/group", post(insert_group))
         .route("/api/v1/message/ack", post(ack))
         .route("/api/v1/offline/index", post(offline_index))
+        .route("/api/v1/delivery/backfill", post(delivery_backfill))
         .route("/api/v1/offline/content", post(offline_content))
         .route("/api/v1/group", post(group_create))
         .route("/api/v1/group/member", post(group_join))
@@ -218,11 +257,7 @@ async fn require_hmac(
     if bytes.len() > 4 * 1024 * 1024 {
         return Err((StatusCode::PAYLOAD_TOO_LARGE, "payload too large".into()));
     }
-    let headers = HmacHeaders {
-        timestamp: header_str(&parts.headers, HEADER_TIMESTAMP).to_string(),
-        nonce: header_str(&parts.headers, HEADER_NONCE).to_string(),
-        signature: header_str(&parts.headers, HEADER_SIGNATURE).to_string(),
-    };
+    let headers = hmac_headers_from(|name| header_str(&parts.headers, name));
     if !verify_internal_hmac(
         st.hmac_secret.as_bytes(),
         parts.method.as_str(),
@@ -231,6 +266,14 @@ async fn require_hmac(
         &headers,
     ) {
         return Err(hmac_unauthorized());
+    }
+    match st.nonce.claim(&headers.nonce).await {
+        Ok(true) => {}
+        Ok(false) => return Err(hmac_unauthorized()),
+        Err(err) => {
+            tracing::error!(%err, "hmac nonce");
+            return Err((StatusCode::SERVICE_UNAVAILABLE, "unavailable".into()));
+        }
     }
     let req = Request::from_parts(parts, Body::from(bytes));
     Ok(next.run(req).await)
@@ -262,31 +305,91 @@ pub(crate) fn now_ts() -> i64 {
         .unwrap_or(0)
 }
 
+pub fn spawn_maintenance(store: Arc<dyn MessageStore>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            match store.gc_expired_deliveries(1000).await {
+                Ok(n) if n > 0 => tracing::info!(gc_deleted = n, "pending delivery gc"),
+                Ok(_) => {}
+                Err(err) => tracing::warn!(%err, "pending delivery gc failed"),
+            }
+            match store.pending_delivery_stats().await {
+                Ok((pending_rows, oldest_receipt_age_seconds)) => {
+                    if pending_rows > 10_000_000 {
+                        tracing::error!(pending_rows, "pending_delivery backlog");
+                    } else {
+                        tracing::info!(
+                            pending_rows,
+                            oldest_receipt_age_seconds,
+                            "pending delivery stats"
+                        );
+                    }
+                }
+                Err(err) => tracing::warn!(%err, "pending delivery stats failed"),
+            }
+        }
+    });
+}
+
+const PENDING_NOT_ENABLED: &str = "pending-not-enabled";
+
+fn pending_disabled() -> (StatusCode, String) {
+    (StatusCode::SERVICE_UNAVAILABLE, PENDING_NOT_ENABLED.into())
+}
+
+fn resolve_req_app(st: &RoyalState, req_app: &str) -> Result<String, (StatusCode, String)> {
+    if req_app.is_empty() || req_app == st.app {
+        Ok(st.app.clone())
+    } else {
+        Err((StatusCode::BAD_REQUEST, "app mismatch".into()))
+    }
+}
+
+fn is_new_ack(req: &AckMessageReq) -> bool {
+    !req.target_id.is_empty() || !req.message_ids.is_empty() || !req.app.is_empty()
+}
+
+fn is_new_index(req: &OfflineIndexReq) -> bool {
+    !req.target_id.is_empty() || req.resume || !req.app.is_empty()
+}
+
+fn insert_from_req(req: InsertMessageReq) -> InsertMessage {
+    let msg = req.message.unwrap_or_default();
+    InsertMessage {
+        sender: req.sender,
+        dest: req.dest,
+        send_time: req.send_time,
+        msg_type: msg.r#type,
+        body: msg.body,
+        extra: msg.extra,
+        client_id: if req.client_id.is_empty() {
+            msg.client_id
+        } else {
+            req.client_id
+        },
+        online_targets: req
+            .online_targets
+            .into_iter()
+            .map(|t| DeliveryTarget {
+                account: t.account,
+                target_id: t.target_id,
+            })
+            .collect(),
+    }
+}
+
 async fn insert_user(
     State(st): State<RoyalState>,
 
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InsertMessageReq>(&body)?;
-    let msg = req.message.unwrap_or_default();
     let inserted = st
         .store
-        .insert_user(
-            &st.app,
-            &InsertMessage {
-                sender: req.sender,
-                dest: req.dest,
-                send_time: req.send_time,
-                msg_type: msg.r#type,
-                body: msg.body,
-                extra: msg.extra,
-                client_id: if req.client_id.is_empty() {
-                    msg.client_id
-                } else {
-                    req.client_id
-                },
-            },
-        )
+        .insert_user(&st.app, &insert_from_req(req))
         .await
         .map_err(backend)?;
     Ok(encode(&encode_insert(&inserted)))
@@ -298,34 +401,17 @@ async fn insert_group(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InsertMessageReq>(&body)?;
-    let msg = req.message.unwrap_or_default();
     let members = if req.members.is_empty() {
         st.groups
             .members(&st.app, &req.dest)
             .await
             .map_err(backend)?
     } else {
-        req.members
+        req.members.clone()
     };
     let inserted = st
         .store
-        .insert_group(
-            &st.app,
-            &InsertMessage {
-                sender: req.sender,
-                dest: req.dest,
-                send_time: req.send_time,
-                msg_type: msg.r#type,
-                body: msg.body,
-                extra: msg.extra,
-                client_id: if req.client_id.is_empty() {
-                    msg.client_id
-                } else {
-                    req.client_id
-                },
-            },
-            &members,
-        )
+        .insert_group(&st.app, &insert_from_req(req), &members)
         .await
         .map_err(backend)?;
     Ok(encode(&encode_insert(&inserted)))
@@ -353,10 +439,23 @@ fn encode_insert(inserted: &InsertResult) -> InsertMessageResp {
 
 async fn ack(State(st): State<RoyalState>, body: Bytes) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AckMessageReq>(&body)?;
-    st.store
-        .ack(&st.app, &req.account, req.message_id)
-        .await
-        .map_err(backend)?;
+    if is_new_ack(&req) {
+        if !st.pending_receipt {
+            return Err(pending_disabled());
+        }
+        let app = resolve_req_app(&st, &req.app)?;
+        let ids = collect_ack_ids(req.message_id, &req.message_ids);
+        st.store
+            .ack(&app, &req.account, &req.target_id, &ids)
+            .await
+            .map_err(backend)?;
+    } else {
+        let ids = collect_ack_ids(req.message_id, &[]);
+        st.store
+            .ack(&st.app, &req.account, "", &ids)
+            .await
+            .map_err(backend)?;
+    }
     Ok(Bytes::new())
 }
 
@@ -366,11 +465,27 @@ async fn offline_index(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<OfflineIndexReq>(&body)?;
-    let rows = st
-        .store
-        .offline_index(&st.app, &req.account, req.message_id)
-        .await
-        .map_err(backend)?;
+    let (rows, has_more) = if is_new_index(&req) {
+        if !st.pending_receipt {
+            return Err(pending_disabled());
+        }
+        let app = resolve_req_app(&st, &req.app)?;
+        st.store
+            .offline_index(
+                &app,
+                &req.account,
+                &req.target_id,
+                req.message_id,
+                req.resume,
+            )
+            .await
+            .map_err(backend)?
+    } else {
+        st.store
+            .offline_index(&st.app, &req.account, "", req.message_id, false)
+            .await
+            .map_err(backend)?
+    };
     let resp = MessageIndexResp {
         indexes: rows
             .into_iter()
@@ -382,8 +497,25 @@ async fn offline_index(
                 group: r.group,
             })
             .collect(),
+        has_more,
     };
     Ok(encode(&resp))
+}
+
+async fn delivery_backfill(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    if !st.pending_receipt {
+        return Err(pending_disabled());
+    }
+    let req = decode::<DeliveryBackfillReq>(&body)?;
+    let app = resolve_req_app(&st, &req.app)?;
+    st.store
+        .backfill_delivery(&app, &req.account, &req.target_id)
+        .await
+        .map_err(backend)?;
+    Ok(Bytes::new())
 }
 
 async fn offline_content(
@@ -568,13 +700,31 @@ pub(crate) async fn kick_account(st: &RoyalState, account: &str) {
         app: st.app.clone(),
     }
     .encode_to_vec();
-    match reqwest::Client::new()
-        .post(&url)
-        .header("Content-Type", "application/x-protobuf")
-        .body(body)
-        .send()
-        .await
+    let headers =
+        match sign_internal_hmac(st.hmac_secret.as_bytes(), "POST", "/internal/kick", &body) {
+            Ok(h) => h,
+            Err(err) => {
+                tracing::error!(%err, account, "kick sign");
+                return;
+            }
+        };
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
     {
+        Ok(c) => c,
+        Err(err) => {
+            tracing::error!(%err, account, "kick client");
+            return;
+        }
+    };
+    let mut req = client
+        .post(&url)
+        .header("Content-Type", "application/x-protobuf");
+    for (k, v) in headers.pairs() {
+        req = req.header(k, v);
+    }
+    match req.body(body).send().await {
         Ok(resp) if resp.status().is_success() => {}
         Ok(resp) => tracing::error!(status = %resp.status(), account, "kick http"),
         Err(err) => tracing::error!(%err, account, "kick http"),
@@ -620,7 +770,7 @@ mod tests {
             let _ = serve(listener, state).await;
         });
         let base = format!("http://{addr}");
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
 
         let (store, groups, _users, _social) = chat::http_backends(&base).unwrap();
         let gid = groups
@@ -650,6 +800,7 @@ mod tests {
                     body: "hi".into(),
                     extra: String::new(),
                     client_id: String::new(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -669,7 +820,7 @@ mod tests {
             let _ = serve(listener, state).await;
         });
         let base = format!("http://{addr}");
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
 
         let (store, _, _, _) = chat::http_backends(&base).unwrap();
         let first = store
@@ -683,6 +834,7 @@ mod tests {
                     body: "orig".into(),
                     extra: String::new(),
                     client_id: "c1".into(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -699,6 +851,7 @@ mod tests {
                     body: "CHANGED".into(),
                     extra: String::new(),
                     client_id: "c1".into(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -718,7 +871,7 @@ mod tests {
             let _ = serve(listener, state).await;
         });
         let base = format!("http://{addr}");
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
 
         let health = reqwest::Client::new()
             .get(format!("{base}/health"))
@@ -739,6 +892,7 @@ mod tests {
                     body: "orig".into(),
                     extra: String::new(),
                     client_id: "c1".into(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -757,6 +911,7 @@ mod tests {
             }),
             members: Vec::new(),
             client_id: "c1".into(),
+            online_targets: Vec::new(),
         }
         .encode_to_vec();
         let resp = reqwest::Client::new()
@@ -792,7 +947,7 @@ mod tests {
         tokio::spawn(async move {
             let _ = serve(listener, state).await;
         });
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
         let http = reqwest::Client::new();
         let gone = http
             .post(format!("http://{addr}/api/kim/token"))
@@ -917,7 +1072,7 @@ mod tests {
         tokio::spawn(async move {
             let _ = serve(listener, state).await;
         });
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
         let (store, groups, _, _) =
             chat::http_backends(&format!("http://{addr}")).expect("backends");
 
@@ -932,6 +1087,7 @@ mod tests {
                     body: "secret".into(),
                     extra: String::new(),
                     client_id: String::new(),
+                    online_targets: Vec::new(),
                 },
             )
             .await
@@ -1015,5 +1171,227 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(no_app.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn replay_signed_request_is_unauthorized() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let body = MessageContentReq {
+            message_ids: vec![1],
+            account: "bob".into(),
+            app: "kim".into(),
+        }
+        .encode_to_vec();
+        let secret = resolve_internal_hmac_secret("");
+        let headers =
+            sign_internal_hmac(secret.as_bytes(), "POST", "/api/v1/offline/content", &body)
+                .unwrap();
+        let send = || {
+            let mut req = reqwest::Client::new()
+                .post(format!("http://{addr}/api/v1/offline/content"))
+                .header("Content-Type", "application/x-protobuf");
+            for (k, v) in headers.pairs() {
+                req = req.header(k, v);
+            }
+            req.body(body.clone())
+        };
+        let first = send().send().await.unwrap();
+        assert_ne!(first.status(), StatusCode::UNAUTHORIZED);
+        let second = send().send().await.unwrap();
+        assert_eq!(second.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(second.text().await.unwrap(), "unauthorized");
+    }
+
+    #[tokio::test]
+    async fn kick_account_sends_hmac_headers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let got = Arc::new(std::sync::Mutex::new(None::<axum::http::HeaderMap>));
+        let got2 = got.clone();
+        let app = Router::new().route(
+            "/internal/kick",
+            post(move |headers: axum::http::HeaderMap, body: Bytes| {
+                let got2 = got2.clone();
+                async move {
+                    *got2.lock().unwrap_or_else(|e| e.into_inner()) = Some(headers);
+                    let req = KickAccount::decode(body.as_ref()).unwrap();
+                    assert_eq!(req.account, "alice");
+                    StatusCode::NO_CONTENT
+                }
+            }),
+        );
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let st = RoyalState::memory(Arc::new(SequenceIdGen::default()))
+            .with_chat_url(format!("http://{addr}"))
+            .with_hmac_secret("kick-hmac-secret-xx");
+        kick_account(&st, "alice").await;
+        let headers = got
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .expect("headers");
+        assert!(!headers
+            .get(kim_protocol::HEADER_TIMESTAMP)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .is_empty());
+        assert!(!headers
+            .get(kim_protocol::HEADER_NONCE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .is_empty());
+        assert!(!headers
+            .get(kim_protocol::HEADER_SIGNATURE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn writer_off_rejects_new_ack_index_backfill() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let ack = AckMessageReq {
+            account: "bob".into(),
+            target_id: "j1".into(),
+            app: "kim".into(),
+            message_ids: vec![1],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let resp = signed_post(
+            &format!("http://{addr}/api/v1/message/ack"),
+            "/api/v1/message/ack",
+            ack,
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(resp.text().await.unwrap(), "pending-not-enabled");
+
+        let idx = OfflineIndexReq {
+            account: "bob".into(),
+            target_id: "j1".into(),
+            app: "kim".into(),
+            resume: true,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let resp = signed_post(
+            &format!("http://{addr}/api/v1/offline/index"),
+            "/api/v1/offline/index",
+            idx,
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let bf = DeliveryBackfillReq {
+            app: "kim".into(),
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }
+        .encode_to_vec();
+        let resp = signed_post(
+            &format!("http://{addr}/api/v1/delivery/backfill"),
+            "/api/v1/delivery/backfill",
+            bf,
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn writer_on_chat_off_piles_receipts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let mem = Arc::new(MemoryMessageStore::with_pending_receipt(idgen.clone()));
+        let state = RoyalState::with_backends(
+            mem.clone(),
+            Arc::new(MemoryGroupDirectory::new(idgen)),
+            Arc::new(MemoryUserDirectory::new()),
+            Arc::new(MemorySocialDirectory::new()),
+            JwtConfig::default(),
+            Arc::new(MemoryRevocation::new()),
+        )
+        .with_pending_receipt(true);
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let (store, _, _, _) = chat::http_backends(&format!("http://{addr}")).unwrap();
+        let req = InsertMessage {
+            sender: "alice".into(),
+            dest: "bob".into(),
+            send_time: 1,
+            msg_type: MESSAGE_TYPE_TEXT,
+            body: "hi".into(),
+            extra: String::new(),
+            client_id: String::new(),
+            online_targets: vec![DeliveryTarget {
+                account: "bob".into(),
+                target_id: "j1".into(),
+            }],
+        };
+        let inserted = store.insert_user("kim", &req).await.unwrap();
+        store
+            .ack("kim", "bob", "", &[inserted.message_id])
+            .await
+            .unwrap();
+        let (idx, _) = mem
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert!(idx.iter().any(|r| r.message_id == inserted.message_id));
+    }
+
+    #[tokio::test]
+    async fn chat_on_royal_off_new_ack_is_503() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let secret = resolve_internal_hmac_secret("");
+        let (store, _, _, _) =
+            chat::http_backends_with_hmac_receipt(&format!("http://{addr}"), &secret, true)
+                .unwrap();
+        let err = store.ack("kim", "bob", "j1", &[11]).await.unwrap_err();
+        match err {
+            chat::store::StoreError::Http { status, msg } => {
+                assert_eq!(status, 503);
+                assert!(msg.contains("pending-not-enabled"));
+            }
+            other => panic!("{other}"),
+        }
+        let err = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap_err();
+        match err {
+            chat::store::StoreError::Http { status, .. } => assert_eq!(status, 503),
+            other => panic!("{other}"),
+        }
     }
 }

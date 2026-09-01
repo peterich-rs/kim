@@ -9,7 +9,7 @@ use crate::directory::{GroupDirectory, GroupError};
 use crate::filter::ContentFilter;
 use crate::social::SocialDirectory;
 use crate::store::{
-    unique_accounts, Fanout, InsertMessage, InsertResult, MessageKind, MessageStore,
+    unique_accounts, DeliveryTarget, Fanout, InsertMessage, InsertResult, MessageKind, MessageStore,
 };
 use crate::users::UserDirectory;
 
@@ -131,6 +131,7 @@ pub async fn do_user_talk(
     }
 
     let send_time = unix_nano();
+    let online_targets = fallback_targets(&ctx, &[receiver.to_string()]).await;
     let inserted = match store
         .insert_user(
             &ctx.session().app,
@@ -142,6 +143,7 @@ pub async fn do_user_talk(
                 body: req.body.clone(),
                 extra: req.extra.clone(),
                 client_id: req.client_id.clone(),
+                online_targets,
             },
         )
         .await
@@ -220,6 +222,12 @@ pub async fn do_group_talk(
         return;
     }
 
+    let recv: Vec<String> = members
+        .iter()
+        .filter(|m| *m != &ctx.session().account)
+        .cloned()
+        .collect();
+    let online_targets = fallback_targets(&ctx, &recv).await;
     let inserted = match store
         .insert_group(
             &ctx.session().app,
@@ -231,6 +239,7 @@ pub async fn do_group_talk(
                 body: req.body.clone(),
                 extra: req.extra.clone(),
                 client_id: req.client_id.clone(),
+                online_targets,
             },
             &members,
         )
@@ -259,6 +268,29 @@ fn fanout_matches_req(kind: MessageKind, dest: &str, req: &MessageReq, f: &Fanou
         && f.msg_type == req.r#type
         && f.body == req.body
         && f.extra == req.extra
+}
+
+async fn fallback_targets(ctx: &Context, accounts: &[String]) -> Vec<DeliveryTarget> {
+    let collect = async {
+        let mut out = Vec::new();
+        for account in accounts {
+            if let Ok(locs) = ctx.get_locations(std::slice::from_ref(account)).await {
+                for loc in locs {
+                    if loc.jti.is_empty() {
+                        continue;
+                    }
+                    out.push(DeliveryTarget {
+                        account: account.clone(),
+                        target_id: loc.jti,
+                    });
+                }
+            }
+        }
+        out
+    };
+    tokio::time::timeout(Duration::from_millis(200), collect)
+        .await
+        .unwrap_or_default()
 }
 
 async fn persist_then_push(
@@ -559,7 +591,8 @@ mod tests {
             &self,
             _app: &str,
             _account: &str,
-            _message_id: i64,
+            _target_id: &str,
+            _message_ids: &[i64],
         ) -> Result<(), StoreError> {
             Ok(())
         }
@@ -568,9 +601,11 @@ mod tests {
             &self,
             _app: &str,
             _account: &str,
+            _target_id: &str,
             _message_id: i64,
-        ) -> Result<Vec<crate::store::MessageIndexRow>, StoreError> {
-            Ok(Vec::new())
+            _resume: bool,
+        ) -> Result<(Vec<crate::store::MessageIndexRow>, bool), StoreError> {
+            Ok((Vec::new(), false))
         }
 
         async fn offline_content(

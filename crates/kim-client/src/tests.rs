@@ -9,13 +9,13 @@ use kim_core::{
     StateListener,
 };
 use kim_protocol::pkt::{
-    Flag, KickoutNotify, LoginReq, LoginResp, MessagePush, MessageReq, MessageResp, Status,
-    UserListResp, UserProfile,
+    Flag, KickoutNotify, LoginReq, LoginResp, MessageAckReq, MessagePush, MessageReq, MessageResp,
+    Status, UserListResp, UserProfile,
 };
 use kim_protocol::{
-    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST,
-    CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_IMAGE,
-    MESSAGE_TYPE_TEXT,
+    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK,
+    CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_LOGIN_SIGN_IN, CODE_PING, DEMO_DEFAULT_SECRET,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -26,7 +26,8 @@ use crate::login::login_on_conn;
 use crate::session::MemorySession;
 use crate::token::account_from_token;
 use crate::wire::{
-    decode_event, encode_dest_cmd, encode_ping, encode_user_image, encode_user_talk, is_kickout,
+    decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_ping, encode_user_image,
+    encode_user_talk, is_kickout,
 };
 
 struct MockConn {
@@ -157,6 +158,31 @@ fn talk_packet_sets_dest_and_client_id() {
             assert_eq!(req.body, "hello world");
             assert_eq!(req.r#type, MESSAGE_TYPE_TEXT);
             assert_eq!(req.client_id, "cid-1");
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_ack_keeps_single_id_field() {
+    match read(&encode_ack(3, 11)).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_CHAT_TALK_ACK);
+            let req: MessageAckReq = p.read_body().unwrap();
+            assert_eq!(req.message_id, 11);
+            assert!(req.message_ids.is_empty());
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn encode_ack_batch_fills_message_ids() {
+    match read(&encode_ack_batch(4, &[10, 11])).unwrap() {
+        Packet::Logic(p) => {
+            let req: MessageAckReq = p.read_body().unwrap();
+            assert_eq!(req.message_id, 0);
+            assert_eq!(req.message_ids, vec![10, 11]);
         }
         _ => panic!("expected logic"),
     }

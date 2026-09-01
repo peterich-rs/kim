@@ -68,6 +68,9 @@ describe("empty protobuf bodies", () => {
   it("decodes 0-byte list/inbox/index as empty", () => {
     expect(decodeUserListResp(new Uint8Array())).toEqual([]);
     expect(decodeInboxResp(new Uint8Array())).toEqual([]);
-    expect(decodeIndexResp(new Uint8Array())).toEqual([]);
+    expect(decodeIndexResp(new Uint8Array())).toEqual({
+      indexes: [],
+      hasMore: false,
+    });
   });
 });

@@ -14,7 +14,7 @@ pub enum SessionError {
 
 /// Session store used by Chat receive and login handlers.
 ///
-/// `delete` must be atomic: always remove `login:sn:{channel_id}`; remove loc
+/// `delete` must be atomic: always remove `login:sn:v2:{channel_id}`; remove loc
 /// only when it still points at that `channel_id` (one write lock / Redis Lua,
 /// not GET-then-DEL). `get_location` / `get_locations` with no hits → `NotFound`.
 /// Callers pass `device = ""` in this milestone.

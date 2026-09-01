@@ -5,11 +5,22 @@
 #   docker compose --env-file kim.env up -d
 #   docker compose --env-file kim.env --profile edge up -d
 #
-# Redis, Postgres, and Consul stay on the compose network (Consul UI is
-# loopback-only). Only the Web gateway (and lookup/login) are on loopback
-# for a host reverse proxy.
+# Redis, Postgres, and Consul stay on the compose network (Consul HTTPS API is
+# loopback-only on the host). Only the Web gateway (and lookup/login) are on
+# loopback for a host reverse proxy.
+#
+# Production refuses to start without Redis password, Consul HTTPS/mTLS +
+# gossip encrypt + per-service ACL token, and non-demo JWT/HMAC. Gossip key
+# stays in consul/secrets.hcl (agent only). Roll new images Royal-before-Chat
+# (or this whole stack in one window). Do not bring up ACL/TLS/password
+# separately from the new binaries.
 
 name: kim
+
+x-kim-tls: &kim-tls
+  - ./consul/tls/consul-agent-ca.pem:/etc/kim/consul-ca.pem:ro
+  - ./consul/tls/consul-client.pem:/etc/kim/consul-client.pem:ro
+  - ./consul/tls/consul-client-key.pem:/etc/kim/consul-client-key.pem:ro
 
 services:
   postgres:
@@ -36,6 +47,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     command:
       - redis-server
       - --appendonly
@@ -43,11 +56,13 @@ services:
       - --maxmemory
       - 64mb
       - --maxmemory-policy
-      - volatile-lru
+      - noeviction
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,19 +76,27 @@ services:
   consul:
     image: hashicorp/consul:1.20
     restart: unless-stopped
-    command:
-      - agent
-      - -server
-      - -bootstrap-expect=1
-      - -ui
-      - -client=0.0.0.0
-      - -dns-port=8600
+    command: ["agent", "-config-dir=/consul/config", "-data-dir=/consul/data"]
+    environment:
+      CONSUL_HTTP_TOKEN: ${CONSUL_MANAGEMENT_TOKEN:?set CONSUL_MANAGEMENT_TOKEN}
     ports:
-      - "127.0.0.1:8500:8500"
+      - "127.0.0.1:8501:8501"
     volumes:
       - consul_data:/consul/data
+      - ./consul/agent.hcl:/consul/config/agent.hcl:ro
+      - ./consul/secrets.hcl:/consul/config/secrets.hcl:ro
+      - ./consul/tls:/consul/tls:ro
     healthcheck:
-      test: ["CMD", "consul", "members"]
+      test:
+        [
+          "CMD",
+          "consul",
+          "members",
+          "-http-addr=https://127.0.0.1:8501",
+          "-ca-file=/consul/tls/consul-agent-ca.pem",
+          "-client-cert=/consul/tls/consul-client.pem",
+          "-client-key=/consul/tls/consul-client-key.pem",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -84,6 +107,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  consul-acl:
+    image: hashicorp/consul:1.20
+    restart: "no"
+    depends_on:
+      consul:
+        condition: service_healthy
+    environment:
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_MANAGEMENT_TOKEN:?set CONSUL_MANAGEMENT_TOKEN}
+      CONSUL_CACERT: /consul/tls/consul-agent-ca.pem
+      CONSUL_CLIENT_CERT: /consul/tls/consul-client.pem
+      CONSUL_CLIENT_KEY: /consul/tls/consul-client-key.pem
+      CONSUL_TOKEN_CHAT: ${CONSUL_TOKEN_CHAT:?set CONSUL_TOKEN_CHAT}
+      CONSUL_TOKEN_ROYAL: ${CONSUL_TOKEN_ROYAL:?set CONSUL_TOKEN_ROYAL}
+      CONSUL_TOKEN_GATEWAY: ${CONSUL_TOKEN_GATEWAY:?set CONSUL_TOKEN_GATEWAY}
+      CONSUL_TOKEN_ROUTER: ${CONSUL_TOKEN_ROUTER:?set CONSUL_TOKEN_ROUTER}
+    volumes:
+      - ./consul/tls:/consul/tls:ro
+      - ./consul/acl-init.sh:/acl-init.sh:ro
+    entrypoint: ["/bin/sh", "/acl-init.sh"]
+
   royal:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped
@@ -93,17 +137,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      consul:
-        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
     environment:
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      KIM_ENV: production
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
       CHAT_URL: http://chat:9002
-      CONSUL_HTTP_ADDR: http://consul:8500
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_ROYAL:?set CONSUL_TOKEN_ROYAL}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: royal
+      KIM_APP: kim
+      KIM_LOC_CACHE: "0"
+      KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
@@ -128,16 +181,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      consul:
-        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
     environment:
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      KIM_ENV: production
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
       ROYAL_URL: http://royal:8080
       KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
-      CONSUL_HTTP_ADDR: http://consul:8500
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_CHAT:?set CONSUL_TOKEN_CHAT}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: chat
       KIM_SNOWFLAKE_NODE: "1"
+      KIM_LOC_CACHE: "0"
+      KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_CHAT:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
       interval: 15s
@@ -160,18 +221,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      consul:
-        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
     environment:
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      KIM_ENV: production
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
       ROYAL_URL: http://royal:8080
       KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
-      CONSUL_HTTP_ADDR: http://consul:8500
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_CHAT:?set CONSUL_TOKEN_CHAT}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: chat-gray
       KIM_SERVICE_ID: chat-2
       KIM_ZONE: zone_gray
       KIM_SNOWFLAKE_NODE: "2"
+      KIM_LOC_CACHE: "0"
+      KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_CHAT:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
       interval: 15s
@@ -190,8 +259,8 @@ services:
     restart: unless-stopped
     command: ["gateway", "/etc/kim/gateway.toml"]
     depends_on:
-      consul:
-        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       # Chat registers as `chat:8002`. Starting the gateway before that
@@ -200,12 +269,20 @@ services:
       chat:
         condition: service_healthy
     environment:
+      KIM_ENV: production
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
-      CONSUL_HTTP_ADDR: http://consul:8500
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_GATEWAY:?set CONSUL_TOKEN_GATEWAY}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: gateway
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
+      KIM_LOC_CACHE: "0"
+      KIM_REQUIRE_JTI: ${KIM_REQUIRE_JTI:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
     ports:
       - "127.0.0.1:8001:8001"
     healthcheck:
@@ -226,12 +303,18 @@ services:
     restart: unless-stopped
     command: ["router", "/etc/kim/router.toml"]
     depends_on:
-      consul:
-        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
     environment:
-      CONSUL_HTTP_ADDR: http://consul:8500
+      KIM_ENV: production
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_ROUTER:?set CONSUL_TOKEN_ROUTER}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: router
       RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
     ports:
       - "127.0.0.1:8088:8088"
     healthcheck:

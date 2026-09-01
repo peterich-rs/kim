@@ -27,7 +27,7 @@ pub use login::{login_on_conn, send_ping, wait_pong};
 pub use session::MemorySession;
 pub use token::account_from_token;
 pub use wire::{
-    decode_event, encode_ack, encode_dest_cmd, encode_empty_cmd, encode_login, encode_ping,
+    encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_login, encode_ping,
     encode_user_image, encode_user_search, encode_user_talk, encode_user_talk_typed,
     encode_user_update, is_kickout,
 };
