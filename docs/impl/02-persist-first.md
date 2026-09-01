@@ -2,15 +2,16 @@
 
 对应 [production-gaps.md](../production-gaps.md) **G-09**（H0 语义里「insert 成功 → `MessageResp`；duplicate 从落库 content/index 重建再 dispatch」那一段）。**不**把 H0 的 `try_send` / `kim_mailbox_full_total`（G-30）拉进本切片。
 
-Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 Success——`send_binary` 无超时，Bob 慢则 Alice 超时重试；必须 **先 resp 再有界投递**（见「核查：落库后被 Push 阻塞」）；(2) 保留 G-03/G-14 时 **不能删除 G-09**；(3) duplicate 必须在可变鉴权之前 preflight，不一致返回冲突而不是「条件式重放」。
+Addressing review feedback：(1) 已落库仍等 `dispatch().await` 才 Success——必须 **先尝试 resp，再有界投递**（见「核查」）；**不**承诺 Alice 在 `TALK_PUSH_BUDGET` 内一定收到 Success（resp 本身仍可能堵在已满的网关队列上，G-30）。(2) 保留 G-03/G-14 时 **不能删除 G-09**。(3) **不**新增 Royal 幂等查询接口（G-01 裸 HTTP 会泄露 body + 群成员快照）。冲突检测放在 **每次** `insert_*` 返回 `duplicate` 之后。`lookup` miss 后的并发 insert 也必须再比一次 Fanout。(4) at-least-once 重放要求调用方按 `message_id` 去重；`kim-client` 目前每条 Push 都 `Event::Talk`。
 
 本切片合入后 **不删 G-09**（对齐切片 1 对 G-02/G-08 的处理）。拆成：
 
 | 本切片关的 | 仍算 G-09 未关、依赖别人 |
 |---|---|
-| 发送方在 insert Ok 之后于有界时间内收到 Success（不再因 dispatch/locations 失败回 99） | 漏 Push 的可靠补偿：Snowflake 高水位仍会吞洞（G-03）；Flutter 登录不 pull（G-14） |
-| identical `(clientId, dest, type, body, extra, kind)` 从落库 Fanout 重放 | 网关下行仍 `send().await`（G-30）；本切片只给 **talk 的 get_locations+dispatch** 加预算，不改 `Channel` |
-| 改 dest/body 的同一 clientId → `IdempotencyConflict`，不把旧消息打到新 dest | |
+| insert Ok 后 **立刻尝试** `resp(Success)`；本次 Bob Push 不再排在该 Success 之前；dispatch Err/超时不再回 99 | 漏 Push 的可靠补偿：G-03 高水位、G-14 Flutter 不 pull |
+| 过了鉴权的 identical 重试：从落库 Fanout 再 Push | 网关下行仍 `send().await`（G-30）。resp 本身无超时；**不**承诺 3s 内一定送到 Alice |
+| `insert.duplicate` 且 payload/dest 与 Fanout 不一致 → 111，不 Push | 鉴权仍在 insert **前**。退群/删好友后 identical 重试仍 107/109，直到 G-01 能做受保护的 preflight |
+| | **禁止**本切片增加可按 sender+clientId 读正文的 Royal 查询接口 |
 
 **明确不关：**
 
@@ -18,7 +19,7 @@ Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 
 |---|---|
 | G-03 / G-04 / G-10 | ACK 仍是 Snowflake 高水位；`chat.talk.ack` / `offline.index` 不改 |
 | G-14 | Flutter / `kim-client` 登录后仍不 pull；**不**在 connect 时服务端 sync inbox |
-| G-30 | mailbox 仍 `send().await`；无 `kim_mailbox_full_total`。talk 路径用 `timeout` 包住 push，满信箱不再挡住 **Success** |
+| G-30 | mailbox 仍 `send().await`。talk 只保证 **本次 Push 不排在本次 Success 前**；队列事先已满时 Alice 的 `resp` 仍可能卡住 |
 | G-01 | Royal HTTP 仍裸；Compose Redis / Consul 不变 |
 | G-05 | 寻址仍只有 account |
 | H5 | 无 outbox 表、无分批 index；发送时成员快照 = 当时写下的 `message_index` 行 |
@@ -47,10 +48,10 @@ Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 
 
 | 表面 | 现状 | 本切片 |
 |---|---|---|
-| `do_user_talk`（`services/chat/src/talk.rs` 37–195） | dest 空 / decode / filter / exists / block / friend → **先** `get_locations` → `insert_user` → 用 **本次** `req` 组 Push → `if !duplicate { dispatch }`；dispatch Err → 99 且 **不** Success | 非空 `clientId` 先 `lookup_idempotency`；命中且字段一致 → 跳过鉴权直接 `persist_then_push`；不一致 → 111。未命中才 filter/friend 再 insert。**先 Success，再有界** locations+dispatch |
-| `do_group_talk`（同文件 197–322） | filter → `members()` → `insert_group` → `get_locations(members)` → duplicate 跳过、dispatch Err=99 | 同样 preflight。`members()` 只服务 **新 insert**。重放收件人 = index 快照 |
+| `do_user_talk`（`services/chat/src/talk.rs` 37–195） | dest 空 / decode / filter / exists / block / friend → **先** `get_locations` → `insert_user` → 用 **本次** `req` 组 Push → `if !duplicate { dispatch }`；dispatch Err → 99 且 **不** Success | 鉴权顺序不变。insert 后若 `duplicate && !fanout_matches_req` → 111。否则立刻 Success，再有界 locations+dispatch |
+| `do_group_talk`（同文件 197–322） | filter → `members()` → `insert_group` → `get_locations(members)` → duplicate 跳过、dispatch Err=99 | 同上。`members()` 仍在 **新 insert** 前。重放收件人 = index 快照 |
 | `InsertResult`（`store/mod.rs` 53–57） | `{ message_id, send_time, duplicate }` | 嵌 `Fanout` |
-| `MessageStore::lookup_idempotency` | 无 | `(app, sender, client_id) → Option<InsertResult>`；未命中 `Ok(None)` |
+| `MessageStore` trait | 无 lookup | **不加** `lookup_idempotency`（避免 Royal 新读接口，G-01） |
 | Memory duplicate（`store/mod.rs` 304–313、369–376） | 幂等表命中只回 id/time | 命中后从 `contents` + `indexes` 填 `Fanout` |
 | Postgres `insert_fanout`（`store/postgres.rs` 65–198） | `SELECT message_id, send_time FROM message_idempotency`；ON CONFLICT 回滚后再读同样两列 | 同上，再 JOIN content/index |
 | `HttpMessageStore`（`royal.rs` 149–211） | 映射三字段 | 映射新 proto 字段 |
@@ -58,7 +59,7 @@ Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 
 | `InsertMessageResp`（`pkt.proto` 186–190） | 三个字段 | proto3 嵌套 `InsertFanout fanout = 4`（prost `Option`） |
 | `Context::dispatch` | 跳过本 session `channel_id`；按 `gate_id` 合包；先记第一个 Err | **不改** |
 | `KimMetrics`（`crates/kim-metrics/src/lib.rs`） | `kim_talk_total{kind}`；`on_talk` 在 `ChatHandler::receive`（`lib.rs` 518–524） | 新增 `kim_dispatch_fail_total`；talk handler 在 dispatch/locations 失败时 `inc` |
-| `FailStore`（`talk.rs` 486–565） | 实现全部 `MessageStore` 方法 | 加 `lookup_idempotency` → `Ok(None)` |
+| `FailStore`（`talk.rs` 486–565） | 实现全部 `MessageStore` 方法 | 无新方法；`InsertResult` 构造带空 `fanout` |
 | `same_client_id_does_not_insert_or_push_twice`（约 648） | 两次 Success、同一 id；**断言 Push 恰好 1** | identical 重试 → 两次 Push（at-least-once） |
 | `send_binary`（`crates/kim-core/src/channel.rs` 225–238） | 无超时 `tx.send().await` | **不改** Channel。talk 用 `timeout(TALK_PUSH_BUDGET, locations+dispatch)` |
 | `Status`（`pkt.proto` 10–27） | 到 `Blocked=110` | 新增 `IdempotencyConflict = 111`（1xx，Web 不重试） |
@@ -73,7 +74,9 @@ Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 
 
 ## Design
 
-落库是真相，在线 Push 是尽力。`insert_*` 返回 `Ok`（或 idempotency 命中）之后，发送方在 **`TALK_PUSH_BUDGET` 内**看到 `Status::Success` + `MessageResp`——Success **先于** `get_locations` / `dispatch` 发出。网关 push 失败、超时、locations 故障，只 `warn` + `kim_dispatch_fail_total`。客户端按 `messageId` 去重。
+落库是真相，在线 Push 是尽力。`insert_*` 返回 `Ok` 且（若 `duplicate`）请求与 Fanout 一致之后，**立刻尝试** `resp(Success, MessageResp)`，然后再 `timeout(TALK_PUSH_BUDGET, get_locations+dispatch)`。预算只约束 **resp 之后** 的投递，**不**约束 `ctx.resp` 本身。dispatch Err/超时只 `warn` + `kim_dispatch_fail_total`。
+
+Web / 当前 Flutter UI 按 `message_id` 去重。`kim-client`（`wire.rs` 138–149）每条 Talk Push 都产出 `Event::Talk`，**本切片不改 SDK**；其它调用方必须自己按 `message_id` 去重。
 
 `talk.rs` **禁止**再用 `req.r#type` / `req.body` / `req.extra` / `header.dest` / 当前 `members()` 组 `MessagePush` 或 dispatch 目标。唯一输入是已持久化的 `Fanout`。
 
@@ -99,26 +102,37 @@ Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 
 
 3. **群重放的收件人 = 该 `message_id` 的 index `account_a`，不是现在的 `groups.members()`。**
    - 后加入者这次重试 **不会** 收到旧消息。已退出但仍留着 index 行的人 **会** 再收到一次 Push（at-least-once）。接受；H5 outbox 以后再说。
-   - `members()` **只**在 preflight 未命中、要做 **新 insert** 时跑。identical 重试（退群后同一 clientId+dest+body）**跳过** `members()`，按 index 快照补投。这是 P1-3 相对旧稿「退群 → 107 不重放」的订正。
+   - `members()` 仍在 **新 insert 之前**跑。退群后再发 identical clientId → 107，**不会**补投。要在鉴权前识别 duplicate，必须有受 G-01 保护的查询；本切片不加那个接口。
 
 4. **空 `clientId` 不去重。** 每次请求新 insert，dispatch 用该次写入的 `Fanout`。行为与今天一致，只是 Push 改从 store 结构来。
 
 5. **自聊。** index 仍是 SEND+RECV 两行、同一 account。`recipients` 去重成一个账号。`dispatch` 仍跳过本 `channel_id`；发送方其它设备仍会收到。Success 不变。
 
-6. **非空 `clientId`：在 filter / friend / members 之前 `lookup_idempotency`。命中且请求与落库 Fanout **完全一致** → 跳过可变鉴权，直接重放。不一致 → `IdempotencyConflict=111`，不重放、不 insert。**
-   - **拒绝旧稿「鉴权过了才 insert，duplicate 再忽略 dest」：** 好友关系变化、退群、词表更新会让 **完全相同的重试** 再也补不上 Push，等于把 G-09 的 duplicate 合同做成「条件式重放」。
-   - **拒绝「不一致仍打给原来的 dest」**（原 G-09 建议那条单测）：客户端以为在给 carol 发，服务端却把旧 bob 消息再推一遍。改成 111，客户端换新 `clientId`。
-   - **一致：** `fanout.kind` 对得上本 command（user/group）、`fanout.dest == header.dest`、`msg_type/body/extra` 等于本次 `MessageReq`。不比 recipients（请求里没有）。
-   - **未命中：** 走今天的 filter / exists / friend / block / `members()`，再 insert。新产品消息仍先鉴权再落库。
-   - **空 `clientId`：** 不 lookup。
-   - **额外 RPC：** 生产 Chat 对每次带 `clientId` 的 talk 多一次 Royal `POST /api/v1/message/idempotency`；404 → 未命中。第一次发送 = lookup 404 + insert；identical 重试 = 一次 lookup、无 insert。G-16 的 HTTP 次数 +1，接受（否则无法在鉴权前知道 duplicate）。
-   - **并发首次：** 两个请求都 miss lookup，都过鉴权，insert 的 `ON CONFLICT` 仍保证一条 content；两边都会 `persist_then_push`（at-least-once）。
+6. **不新增幂等查询 HTTP（P0）。冲突检测在每次 `insert_*` 返回之后。**
+   - **拒绝** `POST /api/v1/message/idempotency`（以及任何按 `sender+clientId` 返回 `InsertFanout` 的新路由）。Royal `router`（`lib.rs` 128）无调用方认证；G-01 已把裸 protobuf POST 列为 P0。新接口会让内网任意调用方用可猜的 `clientId` 读正文和群 `recipients` 快照。Caddy 不反代不是边界。该读接口 **依赖切片 3（G-01 HMAC/mTLS）** 才能放进 `/internal/...`。
+   - **选定：** 鉴权顺序与今天相同（filter / exists / friend / block / `members()` → insert）。`insert_*` 返回后：
 
-7. **`kim_dispatch_fail_total` 在这些路径 +1（含 duplicate 重放）：`dispatch` 返回 Err；locations 非 NotFound；`fanout.recipients` 为空（混版本 / 幽灵 content）。**
-   - label 对齐 `kim_talk_total`：`service_id`、`service_name`、`kind=user|group`。不加 `reason`（基数、H0 只要这一根计数器）。全员离线（`NotFound`）**不** +1。
+     ```text
+     if inserted.duplicate && !fanout_matches_req(kind, dest, &req, &inserted.fanout) {
+         resp IdempotencyConflict=111;  // 不 persist_then_push
+         return
+     }
+     persist_then_push(&inserted)
+     ```
+
+   - **这补上 lookup miss 竞态（P1）：** `postgres.rs` 154 `ON CONFLICT DO NOTHING` 再回读已有行。两个请求同时 `clientId=c1`、body=A / body=B，都过鉴权、都 miss 早先的 SELECT；A 写入，B 得到 `duplicate=true` + **A 的 Fanout**。若不在 insert 后再比一次，B 会 Success 并重推 A。比完之后 B 必须 111、不 Push。
+   - **一致（sequential identical 重试，鉴权仍过）：** `duplicate && matches` → 从落库 Fanout 再 Push。
+   - **不一致：** dest/type/body/extra/kind 任一不同 → 111，库里仍是第一次那条，不把旧消息打到新 dest。
+   - **鉴权仍在 insert 前（本切片接受的缺口）：** 删好友 / 退群 / 词表变更后，identical 重试会 109/107/106，**不会**补投。这是「条件式重放」里鉴权那一层；要拿掉必须等 G-01 保护下的 preflight。**不得**把「退群后仍补投」写成本切片的测试契约。
+   - **空 `clientId`：** 不去重；每次新 insert。
+
+7. **`kim_dispatch_fail_total` 在这些路径 +1（含 duplicate 重放）：`dispatch` 返回 Err；locations 非 NotFound；`fanout.recipients` 为空（混版本 / 幽灵 content）；push 预算耗尽。**
+   - label 对齐 `kim_talk_total`：`service_id`、`service_name`、`kind=user|group`。不加 `reason`。全员离线（`NotFound`）**不** +1。
    - 不改 `Context::dispatch` 的部分成功 Err。
 
-8. **加 `MessageStore::lookup_idempotency`；不新增表，不 sqlx migrate。** 幂等表已是 `(app, sender, client_id)`。`insert_*` 仍在命中时返回带 `Fanout` 的 `InsertResult`（给 lookup 未覆盖的并发窗口）。`FailStore` 的 lookup 回 `Ok(None)`。空 members 幽灵 content 仍是 G-16/G-01 的直接 HTTP 问题。content 在、index 为空：`recipients=[]`，`kind=User`，`dest=""`，**不是** `DecodeError`。Memory 与 Postgres **共用** `fanout_from_index_rows`。
+8. **不新增 trait 方法、不新增表、不 sqlx migrate。** duplicate 的 Fanout 由 `insert_*` 内部 load。`FailStore` 只 `Err`。Memory/Postgres 共用 `fanout_from_index_rows`。
+
+
 
 ### Concrete types
 
@@ -145,20 +159,7 @@ pub struct InsertResult {
 
 `recipients`：index 行 `account_a` 去重、保持写入顺序。单聊 `[sender, dest]`（自聊一个）；群聊 = insert 当时的 members 顺序。
 
-`insert_user` / `insert_group` 的返回值变宽。另加：
-
-```rust
-async fn lookup_idempotency(
-    &self,
-    app: &str,
-    sender: &str,
-    client_id: &str,
-) -> Result<Option<InsertResult>, StoreError>;
-```
-
-`client_id` 为空时 talk **不调用**。命中：`duplicate=true`，`fanout` 与 insert 命中同一套 `load_fanout`。未命中：`Ok(None)`。Postgres：`SELECT message_id FROM message_idempotency` 再 `load_fanout`。Memory：幂等 HashMap。`HttpMessageStore`：`POST /api/v1/message/idempotency`，404 → `None`。
-
-所有 `InsertResult` 构造点（Memory、Postgres、Http）一起改，否则不能编译。`FailStore` 必须实现 lookup。
+`insert_user` / `insert_group` 的返回值变宽。**不加** `lookup_idempotency`。所有 `InsertResult` 构造点（Memory、Postgres、Http）一起改。`FailStore` 无需新方法。
 
 crate 内 helper（`store/mod.rs`，`pub(crate)`）。**Memory duplicate 与 Postgres duplicate 都只走 `fanout_from_index_rows`**，不要 Memory 读 `StoredMessage.kind/dest`、Postgres 走另一套。
 
@@ -278,18 +279,9 @@ Blocked = 110;
 IdempotencyConflict = 111; // same clientId, different dest/type/body/extra/kind
 ```
 
-lookup HTTP（仅 Chat→Royal，不是长连接 command）：
+**不加** `IdempotencyQuery` / `/api/v1/message/idempotency`。冲突只在长连接 talk 里比 `InsertResult.fanout` 与本次请求。
 
-```protobuf
-message IdempotencyQuery {
-  string sender = 1;
-  string clientId = 2;
-}
-```
-
-路径 `POST /api/v1/message/idempotency`。空 sender/clientId → 400。未命中 → **404**（`Http` 404 → `Ok(None)`，与群 NotFound 同一套）。命中 → `InsertMessageResp`（`duplicate=true` + `fanout`）。app 仍是进程 `st.app`（G-05）。
-
-`sdk/web/scripts/gen-proto.mjs` 重写 `sdk/web/src/proto/pkt.json`。Web 运行时不用 `InsertMessageResp`（那是 Chat↔Royal HTTP）。
+`sdk/web/scripts/gen-proto.mjs` 重写 `sdk/web/src/proto/pkt.json`。Web 运行时不用 `InsertMessageResp`。
 
 Royal（新版本永远填 `Some`）：
 
@@ -457,9 +449,9 @@ insert_* Ok 或 identical lookup 命中
 | 本切片改 `try_send` / 满则断连 | 那是 G-30 整段 |
 | 把 `resp` 也包进同一 timeout | Alice 的 Success 和 Bob 的 Push 解绑后，Success 应尽快发出；resp 失败只 warn |
 
-剩余：网关写队列在 **本次 talk 之前**已经 64/64 满时，Alice 的 `resp` 自己也会 `send().await`。那是既有积压，不是「等这次 Bob Push」。记在 G-30。
+**本切片能保证的：** 本次 Bob Push 不再排在本次 Alice Success **尝试**之前。`TALK_PUSH_BUDGET`（生产 3s，测试 50ms）只包住 **resp 之后** 的 `get_locations+dispatch`。
 
-生产 `TALK_PUSH_BUDGET = 3s`。超时 drop `dispatch` future，取消这次 `send().await`；帧可能已进队或未进队。Alice 已收到 Success；identical 重试会再 Push。单测注入 50ms。
+**不能保证的：** Alice 在 3s 内一定收到 Success。`ctx.resp` **无超时**，走同一 `dispatcher.push` → `send().await`。队列在本次 talk 之前已满时，Success 会堵在 `resp` 上。hang 测试只模拟 **Bob 的网关** `pending()`，覆盖不到 Alice 响应队列已满。有界 Success 依赖 G-30（try_send / 保留槽）。文档禁止写「发送方会在 TALK_PUSH_BUDGET 内看到 Success」。
 
 ### talk 控制流
 
@@ -553,20 +545,16 @@ async fn persist_then_push(
 }
 ```
 
-`do_user_talk` / `do_group_talk` 在 decode 之后、filter 之前：
+`do_user_talk` / `do_group_talk`：
 
 ```text
 if dest.is_empty() → NoDestination
-if !req.client_id.is_empty():
-    match store.lookup_idempotency(app, sender, client_id)
-        Some(row) if fanout_matches_req(...) → persist_then_push(&row); return
-        Some(_) → IdempotencyConflict=111; return
-        None → 继续
-        Err → SystemException; return
-filter / exists / friend / block   # 仅未命中
-members()                          # 仅群、未命中
+decode MessageReq
+filter / exists / friend / block
+members()                            # 仅群
 insert_*
-persist_then_push
+if duplicate && !fanout_matches_req → IdempotencyConflict=111; return
+persist_then_push                    # 先尝试 resp(Success)，再 timeout(push)
 ```
 
 生产 `push_budget = TALK_PUSH_BUDGET`。单元测试可传入更短预算。`RecordingDispatcher` 增加 `hang_on(gateway)`：先记下 Push（与 `fail_on` 一样），再 `std::future::pending().await`。
@@ -643,7 +631,7 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 
 合入后 **保留 G-09 条目**，在节首加一段（对齐 G-02/G-08）：
 
-> **Chat 错误语义（本切片已落地）：** insert Ok 后发送方有界时间内 Success；identical clientId 从 index 重建并补投；改 payload → 111。**未关：** 漏 Push 的可靠补偿（G-03 高水位、G-14 Flutter 不 pull）。mailbox `try_send` 仍是 G-30；talk 路径已用预算包住 dispatch，其它 Push（群 Notify 等）未改。
+> **Chat 错误语义（本切片已落地）：** insert Ok 后立刻 **尝试** Success（本次 Push 不再排在前面）；过鉴权的 identical clientId 从 index 补投；insert 返回 duplicate 但 payload 不一致 → 111。**未关：** 漏 Push 补偿（G-03/G-14）；resp 无超时（G-30）；鉴权前无法识别 duplicate（等 G-01 才能加受保护的查询）。
 
 同一提交还要：
 
@@ -669,10 +657,9 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 **File: `services/chat/src/store/mod.rs`**
 
 - 加 `Fanout`；扩展 `InsertResult`。
-- `lookup_idempotency`。
 - `fanout_from_write` / `fanout_from_index_rows` / `unique_accounts`。
 - Memory first：`fanout_from_write`。
-- Memory duplicate 与 lookup：content 取 body/type/extra；index 映射成元组后走 **同一** `fanout_from_index_rows`。缺 content → `StoreError`。
+- Memory duplicate：content 取 body/type/extra；index 映射成元组后走 **同一** `fanout_from_index_rows`。缺 content → `StoreError`。
 - 测试：
   - `insert_user_client_id_is_idempotent`：第二次改 `body`/`dest`，`duplicate=true`，`fanout.body` 仍是 `"hi"`，`fanout.dest=="bob"`，`recipients` 含 alice/bob。
   - `insert_group` 第二次换 members 列表，`recipients` 仍是第一次的三人。
@@ -683,20 +670,18 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 **File: `services/chat/src/store/postgres.rs`**
 
 - first：`fanout_from_write`，无额外 SELECT。
-- `lookup_idempotency` + insert 的 early hit / ON CONFLICT 回读：共用 `load_fanout`。
+- early hit / ON CONFLICT 回读：共用 `load_fanout`。
 - `#[cfg(test)]`：有 `DATABASE_URL` 时 `postgres_duplicate_reloads_fanout`（换 body/dest，断言 fanout）；可选同一幽灵 duplicate 断言 `recipients=[]`。
 
 **File: `services/chat/src/royal.rs`**
 
 - `HttpMessageStore::insert_user` / `insert_group` 映射 `resp.fanout`；`None` → 空 `Fanout` + warn。
-- `lookup_idempotency` → `POST /api/v1/message/idempotency`；`Http { status: 404 }` → `Ok(None)`。
 
 **File: `services/royal/src/lib.rs`**
 
 - `insert_user` / `insert_group` 编码 `InsertMessageResp { fanout: Some(...) }`。
-- `POST /api/v1/message/idempotency`：解码 `IdempotencyQuery`；空字段 400；lookup；未命中 404。
 - `http_create_join_detail`（约 561 行）断言 first insert 的 `fanout.body` / `recipients`。
-- **新增** `http_lookup_idempotency_hit_and_404`：insert 一次后 lookup 同一 clientId → `duplicate` + 原文 fanout；改 body 的冲突在 talk 层测，这里只测 store 返回原文。未知 clientId → 404 / `Ok(None)`。
+- **新增** `http_insert_user_duplicate_returns_original_fanout`：同一 `client_id` insert 两次，第二次改 body/dest；断言 `duplicate`、fanout 是原文。talk 层再测 111。
 
 本 phase **不**改 talk 行为：dispatch 仍 99。目的是类型与 HTTP 先对齐。
 
@@ -721,10 +706,10 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 
 **File: `services/chat/src/talk.rs`**
 
-- `do_user_talk` / `do_group_talk` 增加 `metrics: Option<&KimMetrics>`；preflight lookup。
+- `do_user_talk` / `do_group_talk` 增加 `metrics`；insert 后 `fanout_matches_req`。
 - 单聊删 insert 前 `get_locations`。
-- `persist_then_push`：先 Success，再 `timeout(push_budget, locations+dispatch)`。
-- `FailStore`：实现 `lookup_idempotency` → `Ok(None)`。
+- `persist_then_push`：先 **尝试** `resp(Success)`（无超时），再 `timeout(push_budget, locations+dispatch)`。
+- `FailStore`：无新方法。
 - `RecordingDispatcher::hang_on`。
 
 **改写现有测试：**
@@ -740,16 +725,17 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 
 1. `same_client_id_changed_body_is_idempotency_conflict`：第一次 dest=bob、body=`hello`、`c1`。第二次同一 dest、body=`CHANGED`。bob 在线。断言：`IdempotencyConflict=111`；store 仍 1 条原文；Push 仍 1（只有第一次）。**不要**把原文再推一遍。
 2. `same_client_id_changed_dest_is_idempotency_conflict`：alice 与 bob、carol 都是好友。第二次 dest=carol、同一 body。111；carol 从未收到；bob 只有第一次 Push。
-3. `identical_retry_after_unfriend_still_replays`：第一次 dest=bob 成功。去掉好友。第二次 **完全相同** 的 clientId/dest/body → Success；第二次 Push 仍到 bob（跳过 NotFriends）。
-4. `group_duplicate_uses_index_snapshot_not_current_members`：`g1` 先 `[alice,bob]`，talk 一次（bob 在线）。`seed` 成 `[alice,carol]`。identical 再 talk。第二次 Push 仍到 bob，**不到** carol。
-5. `identical_retry_after_quit_still_replays`：alice 发群消息后 quit。identical clientId/dest/body 再发 → **不是** 107；按原 index 再 Push 给当时的成员。
-6. `group_duplicate_changed_dest_is_idempotency_conflict`：alice 在 `g1` 与 `g2`。第一次 dest=`g1`。第二次 dest=`g2`、同一 body → 111；不把 `g1` 消息打到 `g2`。
-7. `empty_client_id_inserts_and_pushes_twice`：两次空 clientId，两条 content、两次 Push、两个 id。
-8. `self_chat_success_skips_own_channel`：dest=alice；session `ch-alice`。再 `cache.add` `ch-alice-web`。Success；无 Push 到 `ch-alice`；**有** Push 到 `ch-alice-web`。
-9. `duplicate_dispatch_fail_still_success_and_metric`：第一次 `fail_on`（仍 Success）；identical 第二次再 fail；两次 Success；指标 ≥1。
-10. `dispatch_hang_still_success_within_budget`：Bob 在 `wg-2`。`hang_on("wg-2")`（先记下 Push，再 `pending()`）。`push_budget=50ms`。断言：`store.recorded().len()==1`；Alice 的 Response 是 Success + 可解 `MessageResp`（`message_id` 对得上那一行）；`serve` 在 <200ms 返回；`kim_dispatch_fail_total{kind="user"}` = 1。
-11. `get_locations_hang_still_success_within_budget`：`HangLocationStore`（`get_locations` 里 `pending()`）。insert 仍发生。`push_budget=50ms`。断言：库 1 行；Alice Success；无 Push；指标 +1。
-12. `offline_receiver_success_without_dispatch_fail_metric`：Bob 不在线（Memory 空 loc → `NotFound`）。库 1 行；Success；无 Push；**不**增加 `kim_dispatch_fail_total`。
+3. `concurrent_same_client_id_different_body_is_conflict`：**P1 必测。** 同一 alice，两个任务 `barrier` 对齐后同时 talk：`clientId=c1` body=A dest=bob，与 `c1` body=B dest=bob。两边都过好友检查。断言：库 **1** 行（A 或 B 的原文）；恰好一条 Success + 对应 Push；另一条 **111**、不把对方的 body 再 Push。Memory 写锁串行也能复现「后到的 insert 看到 duplicate」；有 `DATABASE_URL` 时 Postgres 再跑一遍（`ON CONFLICT` 路径）。
+4. `group_duplicate_uses_index_snapshot_not_current_members`：`g1` 先 `[alice,bob]`，talk 一次（bob 在线）。`seed` 成 `[alice,carol]`。**仍是成员的** alice identical 再 talk。第二次 Push 仍到 bob，**不到** carol。
+5. `group_duplicate_changed_dest_is_idempotency_conflict`：alice 在 `g1` 与 `g2`。第一次 dest=`g1`。第二次 dest=`g2`、同一 body → 111；不把 `g1` 消息打到 `g2`。
+6. `identical_retry_after_unfriend_is_not_friends`：第一次成功后删好友。identical 重试 → **109**，不补投。明示本切片不做鉴权前 preflight。
+7. `identical_retry_after_quit_is_not_group_member`：发群消息后 quit。identical 重试 → **107**。
+8. `empty_client_id_inserts_and_pushes_twice`：两次空 clientId，两条 content、两次 Push、两个 id。
+9. `self_chat_success_skips_own_channel`：dest=alice；session `ch-alice`。再 `cache.add` `ch-alice-web`。Success；无 Push 到 `ch-alice`；**有** Push 到 `ch-alice-web`。
+10. `duplicate_dispatch_fail_still_success_and_metric`：第一次 `fail_on`（仍 Success）；identical 第二次再 fail；两次 Success；指标 ≥1。
+11. `dispatch_hang_still_success_within_budget`：Bob 在 `wg-2`。`hang_on("wg-2")`。`push_budget=50ms`。断言：库 1 行；Response Success 在 Push hang 被 timeout 之前进入 recorded；`serve` <200ms 返回；指标 +1。**不**覆盖 Alice 自己的网关队列已满。
+12. `get_locations_hang_still_success_within_budget`：`HangLocationStore`。库 1 行；Success；无 Push；指标 +1。
+13. `offline_receiver_success_without_dispatch_fail_metric`：Bob 离线。库 1 行；Success；无 Push；**不**增加失败指标。
 
 **File: `crates/kim-router` test_support**（或 chat 测试里的 dispatcher）
 
@@ -762,7 +748,7 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 
 - identical `clientId` 再发：bob 第二帧 Push 仍是原文（Success）。
 - 改 body 的同一 `clientId`：响应 `IdempotencyConflict`，bob 不再多一帧。
-- 用现有 `spawn_stack` / `become_friends`。HTTP lookup 见 Phase 1 Royal 测试。
+- 用现有 `spawn_stack` / `become_friends`。HTTP 层 duplicate fanout 见 Phase 1 Royal 测试。
 
 ---
 
@@ -799,26 +785,26 @@ cargo fmt --all -- --check
 cargo clippy -p chat -p royal -p kim-metrics -p kim-protocol -- -D warnings
 ```
 
-人工扫：`talk.rs` 里 `MessagePush` 不得再用 `req.body`。`do_user_talk` 在 `insert_user` 之前不得 `get_locations`。`persist_then_push` 里 `ctx.resp(Success)` 的源码行号必须 **小于** `timeout(... dispatch)`。`lookup_idempotency` 在 `filter.check` / `is_friend` / `groups.members` 之前。`!inserted.duplicate` 不得挡住 dispatch。
+人工扫：`talk.rs` 不得用 `req.body` 组 `MessagePush`。insert 前不得 `get_locations`。`resp(Success)` 行号小于 `timeout(dispatch)`。仓库里 **没有** `/api/v1/message/idempotency`。每个 `duplicate==true` 都走 `fanout_matches_req`，不匹配不得 Push。
 
-验收（本 bug）：
+验收（Push 阻塞）：
 
-- `dispatch_hang_still_success_within_budget`：库 1 行；Alice 短时限内 Success + `MessageResp`；指标 +1。
-- `get_locations_hang_still_success_within_budget`：同上，无 Push，指标 +1。
-- locations 非 NotFound / `dispatch` Err / 超时：指标 +1，Alice 仍 Success。
-- Bob 离线（NotFound）：Success，**指标不 +1**。
+- hang Bob 的 dispatch / hang locations：库 1 行；Success **尝试**排在本次 Push 等待之前；指标 +1。
+- **不**验收 Alice 网关队列已满时 3s 内一定收到包。
+- Bob 离线：Success，指标不 +1。
+- 并发不同 body 同一 clientId：一胜一 111。
 
 ---
 
 ## Architectural Notes
 
-- **at-least-once 是故意的。** duplicate 总是再 dispatch。第一次已经 Push 成功、客户端只是没收到 Success 而重试，对端会再收到同一 `messageId`。SDK 去重（Web 对 Push 与 offline content 已按 id 去重）。进程内「是否 dispatch 过」以及 `dispatch` 的 Err 都不能当权威：部分网关可能已经成功。
+- **at-least-once 是故意的。** 过鉴权的 identical 重试会再 dispatch。Web 与当前 Flutter UI 按 `message_id` 去重。`kim-client`（`crates/kim-client/src/wire.rs` 138）对每个 Talk Push 都 `Event::Talk`，**本切片不改**；其它调用方必须自己去重。进程内「是否 dispatch 过」以及 `dispatch` 的 Err 都不能当权威。
 - **persist-first 之后，发送方看到 Success 不再保证对端在线收到。** 补偿两条：(1) 发送方没收到 Resp → **identical** `clientId` 重试 → 从库重放 Push；(2) 已收到 Success → 客户端不再试。**(2) 不是可靠补偿：** G-03 高水位会吞漏 Push 的 id；G-14 Flutter 根本不 pull。因此 **不能删除 G-09**。
-- **Young 连接 / 写队列满** 今天会 99，或在 `send().await` 上挂死（注释谎称会失败）。之后 Alice 在本次 Push **之前**收到 Success；Bob 可能仍没 Push。队列在本次 talk 之前已经满，是 G-30。
+- **Young 连接 / 写队列满** 今天会 99，或在 `send().await` 上挂死。之后本次 Success **尝试**排在本次 Bob Push 前；队列事先已满时 Alice 仍可能收不到包（G-30）。
 - **同一 `gate_id`。** Chat→该网关只有一个 `Channel`（`write_queue=64`）。先 `resp` 再 `dispatch`，是让本条 Success 抢在本条 Bob Push 前面进队。不把 Channel 改成 `try_send`。
 - **G-03 仍然会丢。** 重放 Push 若晚于一个更大的 `messageId` 被 ACK，offline pull 仍可能跳过。
 - **不改 `Context::dispatch` / `send_binary`。** 部分成功仍返回第一个 Err；handler 不把它变成 99。talk 用 `timeout` 包住这次 await，避免 Success 被永久卡住。G-30 再改 `try_send`。
-- **lookup 多一次 Royal HTTP。** 带 `clientId` 的首次 talk：idempotency 404 + insert。这是在鉴权前识别 duplicate 的代价，不接受「条件式重放」。
+- **不加幂等查询 HTTP。** 那会在 G-01 之前泄露 body + recipients。insert 后比对覆盖并发 miss；鉴权前 identical 重试仍可能 109/107。
 - **H5 成员快照已经在 index 里。** 不要为 G-09 加 outbox。大群分批是 G-25。
 - **Web `isRetryable`。** 99 离开 persist-success 路径之后，Web 不会把已落库当失败重试。剩下的 99 是真的 insert/目录故障，不应盲目重试。本切片不改 `status.ts`。
 - **Royal 仍丢掉 `session.app`。** insert 仍写进程 `st.app`。G-05 / G-01。Fanout 不引入 app 字段。
@@ -834,7 +820,7 @@ crate / 路径字母序，一行一个文件。实现 PR 相对 `main`。
 |---|---|
 | `crates/kim-metrics/src/lib.rs` | `kim_dispatch_fail_total` + `on_dispatch_fail(kind)` |
 | `crates/kim-metrics/tests/scrape.rs` | scrape 含该计数器 |
-| `crates/kim-protocol/proto/pkt.proto` | `InsertFanout`；`InsertMessageResp.fanout = 4`；`IdempotencyConflict=111`；`IdempotencyQuery` |
+| `crates/kim-protocol/proto/pkt.proto` | `InsertFanout`；`InsertMessageResp.fanout = 4`；`IdempotencyConflict=111` |
 | `crates/kim-router/src/test_support.rs` | `RecordingDispatcher::hang_on` |
 | `docs/control-layer-chat.md` | 99 不再含 dispatch fail；identical duplicate 重放；111 冲突 |
 | `docs/impl/README.md` | 切片 2 标已合入；G-09 不删 |
@@ -843,12 +829,12 @@ crate / 路径字母序，一行一个文件。实现 PR 相对 `main`。
 | `docs/reliable-delivery.md` | 落库真相、先 Success 再有界 Push、identical 才重放 |
 | `sdk/web/src/proto/pkt.json` | gen-proto |
 | `services/chat/src/lib.rs` | `ChatSvc.metrics` 唯一 mutex；删 `ChatHandler.metrics` |
-| `services/chat/src/royal.rs` | 映射 `Option<InsertFanout>`；`lookup_idempotency` HTTP |
-| `services/chat/src/store/mod.rs` | `Fanout` / `InsertResult` / `lookup_idempotency`；共用 helper |
-| `services/chat/src/store/postgres.rs` | lookup + duplicate JOIN load |
-| `services/chat/src/talk.rs` | preflight；`persist_then_push` 先 resp 再 timeout |
+| `services/chat/src/royal.rs` | 映射 `Option<InsertFanout>` |
+| `services/chat/src/store/mod.rs` | `Fanout` / `InsertResult`；共用 helper |
+| `services/chat/src/store/postgres.rs` | duplicate JOIN load |
+| `services/chat/src/talk.rs` | insert 后比对；先尝试 resp，再 timeout push |
 | `services/chat/tests/e2e_talk.rs` | identical 重放；改 body → 111 |
-| `services/royal/src/lib.rs` | 编码 fanout；idempotency 路由 |
+| `services/royal/src/lib.rs` | 编码 fanout；HTTP duplicate 返回原文 |
 
 不改：`crates/kim-core`（`send_binary` 仍无超时）、生产 `Dispatcher` 语义、`sdk/web/src/status.ts`、`sdk/mobile`、`crates/kim-client`、migrations、`docs/architecture.md`、`docs/protocol-container.md`。
 
@@ -856,15 +842,15 @@ crate / 路径字母序，一行一个文件。实现 PR 相对 `main`。
 
 ## Key Decisions
 
-1. 方案 A：enrich `InsertResult` + 嵌套 `InsertFanout fanout = 4`。拒绝二次 `load_fanout` HTTP 当 insert 的第二枪，但 **接受** 鉴权前的 `lookup_idempotency`。
-2. 先 `resp(Success)`，再 `timeout(TALK_PUSH_BUDGET, get_locations+dispatch)`。不改 `send_binary`。Chat→网关一条 Channel、`send().await` 无超时（注释与实现不符）。hang dispatch / hang locations 两条单测。离线 NotFound 不加失败指标。
-3. 群收件人 = 发送时 index 行。identical 重试跳过 `members()`。
-4. 空 `clientId` 不去重、不 lookup。
-5. 自聊 recipients 去重；dispatch 仍跳过本 channel。
-6. preflight：字段完全一致才重放；dest/body/kind 不一致 → `IdempotencyConflict=111`。拒绝条件式重放，拒绝静默打到原 dest。
-7. `kim_dispatch_fail_total`：dispatch Err、locations 故障、空 recipients、**push 预算耗尽**。全员离线 NotFound 不加。
-8. 新增 `lookup_idempotency`；无新表、无 migrate。不删 G-09。不做 connect-time sync，不改 ACK，不改 `isRetryable`。
-9. 一个实现 PR。升级先 Royal 再 Chat。混版本 = Success + 无 Push + 指标。
+1. 方案 A：enrich `InsertResult` + 嵌套 `InsertFanout`。拒绝新的幂等查询 HTTP（G-01）。
+2. 先 **尝试** `resp(Success)`，再 `timeout` locations+dispatch。预算不覆盖 resp。不承诺 3s 内送到 Alice。
+3. 群收件人 = 发送时 index。`members()` 仍在新 insert 前。
+4. 空 `clientId` 不去重。
+5. 自聊 recipients 去重。
+6. **每次** `duplicate` 都 `fanout_matches_req`；不匹配 111。并发不同 body 必测。鉴权前 identical 重试仍可能 109/107。
+7. `kim_dispatch_fail_total`：dispatch Err、locations 故障、空 recipients、预算耗尽。离线 NotFound 不加。
+8. 无新 trait 方法、无新表。不删 G-09。kim-client 不去重，调用方按 `message_id` 去重。
+9. 一个实现 PR。升级先 Royal 再 Chat。
 
 ---
 
@@ -874,9 +860,9 @@ crate / 路径字母序，一行一个文件。实现 PR 相对 `main`。
 
 ### PR 1: persist-first：insert 成功即 Success，duplicate 从落库重建 Push
 
-- **Description:** G-09 的服务端错误语义 + identical clientId 重放，**不是整条关闭**。`lookup_idempotency` 在鉴权前；完全一致从 index 补投；dest/body 不一致 → 111。`persist_then_push` 先 Success，再有界 dispatch。改写把 99 锁死的单测。合入后 **保留** G-09，注明漏 Push 补偿仍依赖 G-03/G-14。
+- **Description:** G-09 错误语义 + 过鉴权的 identical 重放，**不是整条关闭**。不加幂等查询 HTTP。insert 返回 duplicate 后比对 Fanout，不一致 111。先尝试 resp，再有界 dispatch（预算不含 resp）。合入后保留 G-09。
 - **Deploy / rollback:** 升级先 Royal 或一次发 `KIM_IMAGE`，再 Chat（含 `chat-gray`）。回滚先 Chat 再 Royal。禁止新 Chat 对着旧 Royal。
 - **Files/components affected:** 见 File Change Summary。
 - **Dependencies:** 无。不把 G-03/G-14/G-30 整段纳入本 PR；文档写明这三项仍开。
 
-若 review 强求拆分，唯一干净的切法是：(1) proto + `InsertResult` + Memory/Postgres/Http/Royal load（本文件 Phase 1）；(2) talk + metrics + 测试 + 文档（Phase 2–3）。(1) 必须独立可测 store 的 lookup/insert fanout；(2) 依赖 (1)。不要第三 PR。talk 层改 body → 111，store 层同一 clientId 仍返回原文 Fanout。
+若 review 强求拆分，唯一干净的切法是：(1) proto + `InsertResult` + Memory/Postgres/Http/Royal load（本文件 Phase 1）；(2) talk + metrics + 测试 + 文档（Phase 2–3）。(1) 必须独立可测 store 的 insert fanout；(2) 依赖 (1)。不要第三 PR。talk 层改 body → 111，store 层同一 clientId 仍返回原文 Fanout。
