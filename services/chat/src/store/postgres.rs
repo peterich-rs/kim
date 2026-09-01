@@ -1157,7 +1157,7 @@ mod tests {
 
     async fn connect_pending(
         sessions: Option<Arc<dyn SessionStorage>>,
-    ) -> Option<(PostgresMessageStore, sqlx::PgPool)> {
+    ) -> Option<(PostgresMessageStore, PgPool)> {
         let url = std::env::var("DATABASE_URL")
             .ok()
             .filter(|s| !s.is_empty())?;
@@ -1244,10 +1244,13 @@ mod tests {
             return;
         };
         let app = format!("kim_pg_boom_{}", now_unix_nano());
-        let err = store
+        let err = match store
             .insert_user(&app, &sample("alice", "bob", now_unix_nano(), "x"))
             .await
-            .unwrap_err();
+        {
+            Err(e) => e,
+            Ok(_) => panic!("expected list-locations boom"),
+        };
         assert!(err.to_string().contains("boom"));
         let count: (i64,) =
             sqlx::query_as("SELECT COUNT(*)::bigint FROM message_content WHERE app = $1")

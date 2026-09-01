@@ -675,7 +675,7 @@ mod tests {
         generate_with_jti, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN, DEMO_DEFAULT_SECRET,
     };
 
-    use super::{strip_port, GatewayHandler, LoginReq, RevokeCheck};
+    use super::{strip_port, AllowAllRevoke, GatewayHandler, LoginReq, RevokeCheck};
 
     #[test]
     fn strip_ipv4_port() {
@@ -773,6 +773,19 @@ mod tests {
             .expect_err("login without revoke store must fail");
         let msg = handshake_err(err);
         assert!(msg.contains("revoke store"), "{msg}");
+    }
+
+    /// Local/demo gateway (no REDIS_URL/ROYAL_URL) installs [`AllowAllRevoke`].
+    #[tokio::test]
+    async fn allow_all_revoke_satisfies_login_store() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(AllowAllRevoke));
+        let mut conn = login_conn("jti-ok");
+        let id = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect("demo AllowAllRevoke must satisfy login revoke store");
+        assert!(id.starts_with("wg-1_alice_"));
     }
 
     #[tokio::test]

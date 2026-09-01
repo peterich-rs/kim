@@ -12,7 +12,10 @@ use kim_protocol::{check_strict_runtime, StrictCheck};
 use serde::Deserialize;
 
 use crate::selector::{Route, RouteFile, RouteSelector};
-use crate::{resolve_jwt_secret, GatewayHandler, HttpRevoke, KickHook, MetricsHook, RevokeStore};
+use crate::{
+    resolve_jwt_secret, AllowAllRevoke, GatewayHandler, HttpRevoke, KickHook, MetricsHook,
+    RevokeStore,
+};
 
 #[derive(Deserialize)]
 struct File {
@@ -281,7 +284,13 @@ where
                 handler.set_revoke(Arc::new(store));
             }
             None => {
-                return Err("REDIS_URL or ROYAL_URL required for JWT revoke checks".into());
+                // Production never reaches this: check_strict_runtime(require_redis: true)
+                // already failed when REDIS_URL is missing. Local/demo/e2e (Memory chat,
+                // no Redis, no Royal) still need a revoke store for login.
+                tracing::warn!(
+                    "do not use in production: JWT revoke checks disabled without REDIS_URL or ROYAL_URL"
+                );
+                handler.set_revoke(Arc::new(AllowAllRevoke));
             }
         }
     }
@@ -322,6 +331,13 @@ mod tests {
             Ok(_) => panic!("{why}"),
             Err(err) => err,
         }
+    }
+
+    #[tokio::test]
+    async fn allow_all_revoke_never_blocks_jti() {
+        use crate::{AllowAllRevoke, RevokeCheck};
+        let store = AllowAllRevoke;
+        assert!(!store.is_revoked("any-jti").await.unwrap());
     }
 
     #[tokio::test]

@@ -78,10 +78,10 @@ fn wrap_cache(store: Arc<dyn SessionStorage>) -> Arc<dyn SessionStorage> {
 
 #[cfg(feature = "redis")]
 async fn open_redis_primary(url: &str) -> Result<Arc<dyn SessionStorage>, SessionError> {
-    let primary = Arc::new(redis::RedisSessionStore::open(url).await?);
+    let primary = Arc::new(RedisSessionStore::open(url).await?);
     let store: Arc<dyn SessionStorage> = match std::env::var("REDIS_MIRROR_URL") {
         Ok(m) if !m.trim().is_empty() => {
-            let mirror = Arc::new(redis::RedisSessionStore::open(m.trim()).await?);
+            let mirror = Arc::new(RedisSessionStore::open(m.trim()).await?);
             DualWriteStore::new(primary, mirror)
         }
         _ => primary,
