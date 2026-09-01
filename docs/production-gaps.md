@@ -42,15 +42,14 @@
 | 2 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
 | 3 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
 | 4 | 心跳 Redis 错误有界宽限 | G-31 |
-| 5 | Router 去掉 token-in-URL | G-11 |
-| 6 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 7 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 8 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 9 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 10 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 11 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 12 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 13 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 5 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 6 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 7 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 8 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 9 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 10 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 11 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 12 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
 通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03～G-07 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
@@ -92,6 +91,7 @@
 | G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 / G-14 |
 | G-01 控制面 HMAC / Redis 密码 / Consul mTLS+ACL | [group-royal.md](group-royal.md)、[deploy.md](deploy.md) |
 | G-12 生产拒 demo JWT/HMAC | 并入控制面 strict 启动 |
+| G-11 Router JWT 进 URL / 哈希 raw token | [routing.md](routing.md)。`GET /api/lookup` 只接受 Authorization；哈希 `acc`/`jti`，renew 复用 jti 不换桶 |
 
 ---
 
@@ -238,25 +238,6 @@ unix 上 SIGTERM+SIGINT。与 G-32 **统一**为一条顺序，禁止两处各�
 ---
 
 ## P1 —— 常见路径错误或扩大爆炸半径
-
-### G-11 Router 把 JWT 当哈希键，并提供 URL 路径
-
-**文件**
-
-- `services/router/src/lib.rs` — `/api/lookup` 与 `/api/lookup/{token}`
-- `services/router/src/lookup.rs` — `hash_key` 在 token 非空时用 raw token 字符串（约 78–82 行）
-- `deploy/Caddyfile` — `handle /api/lookup*`
-- Web SDK `lookupWs` 走 Authorization（正确），path 形式仍在
-
-**问题**
-
-lookup **不 parse JWT**。token 只是一致性哈希输入。path 把完整 JWT 放进 URL（access log / Referer / CDN）。`?ip=` 与 XFF 第一段可伪造地理。`login.renew` 换 JWT 字符串后哈希键变了，可能换网关。
-
-**建议**
-
-删除 path 形式。lookup 先校验 JWT，用 `acc`/`jti` 做哈希。
-
----
 
 ### G-14 客户端补偿对不上服务端语义
 

@@ -49,7 +49,7 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/api/v1/group/members` | protobuf `InternalGroupQuery` → `GroupMembersResp` |
 | POST | `/api/v1/group/detail` | protobuf `InternalGroupQuery` → `GroupDetail` |
 
-`app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup*` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
+`app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
 
 内部（loopback / compose 内网）：
 

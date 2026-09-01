@@ -8,7 +8,7 @@
 kim.ainexc.com {
 	encode gzip zstd
 
-	handle /api/lookup* {
+	handle /api/lookup {
 		reverse_proxy 127.0.0.1:8088
 	}
 

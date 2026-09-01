@@ -2,6 +2,8 @@
 listen = "127.0.0.1:8088"
 default_location = "default"
 default_region = "local"
+# empty = DEMO_DEFAULT_SECRET (demo-only)
+jwt_secret = ""
 
 [[ip_map]]
 ip = "10.0.0.8"

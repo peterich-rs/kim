@@ -2,6 +2,7 @@
 listen = "0.0.0.0:8088"
 default_location = "default"
 default_region = "local"
+jwt_secret = ""
 consul_url = ""
 public_address = "router"
 public_port = 8088
