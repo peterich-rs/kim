@@ -313,6 +313,7 @@ services:
       CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
       CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
       KIM_PUBLIC_ADDRESS: router
+      KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       RUST_LOG: ${RUST_LOG:-info}
     volumes: *kim-tls
     ports:

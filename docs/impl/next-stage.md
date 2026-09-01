@@ -27,4 +27,4 @@
 | — | 心跳 Redis 有界宽限 | G-31 |
 | — | `TcpConn<S>` + TGateway TLS | G-34 |
 
-其余 G-11、G-15～G-18、G-20、G-33 仍按 [production-gaps.md](../production-gaps.md) 总表，不插到 G-03 rollout 前面。
+其余 G-15～G-18、G-20、G-33 仍按 [production-gaps.md](../production-gaps.md) 总表，不插到 G-03 rollout 前面。

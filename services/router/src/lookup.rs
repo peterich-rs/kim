@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kim_naming::Naming;
+use kim_protocol::{parse, Claims, ALLOWED_APP};
 use serde::Serialize;
 
 use crate::slots::build_slots;
@@ -61,6 +62,7 @@ pub struct Lookup {
     pub default_region: String,
     pub mapping: Vec<Mapping>,
     pub regions: Vec<Region>,
+    pub jwt_secret: String,
 }
 
 impl Lookup {
@@ -75,13 +77,9 @@ impl Lookup {
         let Some(reg) = self.regions.iter().find(|r| r.id == region) else {
             return Err(LookupError::BadConfig);
         };
-        let hash_key = if token.is_empty() {
-            ip.to_string()
-        } else {
-            token.to_string()
-        };
-        let idc = pick_idc(reg, &hash_key).ok_or(LookupError::BadConfig)?;
-        match self.pick_gateways(&idc, &hash_key).await {
+        let key = hash_key(ip, token, &self.jwt_secret)?;
+        let idc = pick_idc(reg, &key).ok_or(LookupError::BadConfig)?;
+        match self.pick_gateways(&idc, &key).await {
             Ok(pair) => Ok(LookupResp {
                 utc: now_ts(),
                 location,
@@ -97,7 +95,7 @@ impl Lookup {
                 let Some(fidc) = fallback else {
                     return Err(LookupError::NoGateway);
                 };
-                let (ws, tcp) = self.pick_gateways(&fidc, &hash_key).await?;
+                let (ws, tcp) = self.pick_gateways(&fidc, &key).await?;
                 Ok(LookupResp {
                     utc: now_ts(),
                     location,
@@ -138,6 +136,31 @@ impl Lookup {
     }
 }
 
+/// Consistency-hash input: `acc` and `jti` when present, never the compact JWT.
+/// Empty token falls back to the client IP (anonymous lookup).
+pub fn hash_key(ip: IpAddr, token: &str, secret: &str) -> Result<String, LookupError> {
+    if token.is_empty() {
+        return Ok(ip.to_string());
+    }
+    let claims = parse(secret, token).map_err(|_| LookupError::Unauthorized)?;
+    if claims.app != ALLOWED_APP {
+        return Err(LookupError::Unauthorized);
+    }
+    Ok(claims_hash_key(&claims))
+}
+
+pub fn claims_hash_key(claims: &Claims) -> String {
+    match claims
+        .jti
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(jti) => format!("{}:{jti}", claims.account),
+        None => claims.account.clone(),
+    }
+}
+
 fn pick_idc(region: &Region, key: &str) -> Option<String> {
     let slots = build_slots(&region.idcs.iter().map(|i| i.weight).collect::<Vec<_>>());
     if slots.is_empty() {
@@ -173,6 +196,8 @@ pub enum LookupError {
     NoGateway,
     #[error("bad config")]
     BadConfig,
+    #[error("unauthorized")]
+    Unauthorized,
     #[error("{0}")]
     Other(String),
 }

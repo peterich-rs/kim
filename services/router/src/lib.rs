@@ -1,19 +1,22 @@
 mod lookup;
 mod slots;
 
-pub use lookup::{Idc, IpRegion, Lookup, LookupError, LookupResp, Mapping, Region, StaticIpRegion};
+pub use lookup::{
+    claims_hash_key, hash_key, Idc, IpRegion, Lookup, LookupError, LookupResp, Mapping, Region,
+    StaticIpRegion,
+};
 pub use slots::build_slots;
 
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
 use kim_naming::{open_naming, DefaultRegistration};
-use kim_protocol::{check_strict_runtime, StrictCheck};
+use kim_protocol::{check_strict_runtime, StrictCheck, DEMO_DEFAULT_SECRET};
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -23,14 +26,12 @@ pub struct AppState {
 
 #[derive(Deserialize)]
 struct LookupQuery {
-    token: Option<String>,
     ip: Option<String>,
 }
 
 pub fn app(state: AppState, registry: prometheus::Registry) -> Router {
     let api = Router::new()
         .route("/api/lookup", get(lookup_q))
-        .route("/api/lookup/{token}", get(lookup_path))
         .with_state(state);
     api.merge(kim_metrics::router(registry))
 }
@@ -40,25 +41,15 @@ async fn lookup_q(
     headers: HeaderMap,
     Query(q): Query<LookupQuery>,
 ) -> Result<Json<LookupResp>, StatusCode> {
-    handle(&st, headers, q.token, q.ip).await
-}
-
-async fn lookup_path(
-    State(st): State<AppState>,
-    headers: HeaderMap,
-    Path(token): Path<String>,
-    Query(q): Query<LookupQuery>,
-) -> Result<Json<LookupResp>, StatusCode> {
-    handle(&st, headers, Some(token), q.ip).await
+    handle(&st, headers, q.ip).await
 }
 
 async fn handle(
     st: &AppState,
     headers: HeaderMap,
-    token: Option<String>,
     ip_q: Option<String>,
 ) -> Result<Json<LookupResp>, StatusCode> {
-    let token = token.or_else(|| bearer(&headers)).unwrap_or_default();
+    let token = bearer(&headers).unwrap_or_default();
     let ip = ip_q
         .and_then(|s| s.parse::<IpAddr>().ok())
         .or_else(|| xff(&headers))
@@ -66,6 +57,7 @@ async fn handle(
     match st.lookup.lookup(ip, &token).await {
         Ok(resp) => Ok(Json(resp)),
         Err(LookupError::NoGateway) => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Err(LookupError::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
@@ -78,6 +70,21 @@ fn bearer(h: &HeaderMap) -> Option<String> {
 fn xff(h: &HeaderMap) -> Option<IpAddr> {
     let v = h.get("x-forwarded-for")?.to_str().ok()?;
     v.split(',').next()?.trim().parse().ok()
+}
+
+pub fn resolve_jwt_secret(config_secret: &str) -> String {
+    if let Ok(env) = std::env::var("KIM_JWT_SECRET") {
+        let trimmed = env.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let trimmed = config_secret.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    tracing::warn!(secret = "demo-default", "do not use in production");
+    DEMO_DEFAULT_SECRET.to_string()
 }
 
 #[derive(Deserialize)]
@@ -101,6 +108,8 @@ struct SelfSection {
     default_region: String,
     #[serde(default)]
     consul_url: String,
+    #[serde(default)]
+    jwt_secret: String,
 }
 
 #[derive(Deserialize)]
@@ -189,10 +198,11 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
                 Some(t.to_string())
             }
         });
+    let jwt_secret = resolve_jwt_secret(&cfg.this.jwt_secret);
     let naming = if consul.is_some() {
         check_strict_runtime(StrictCheck {
             hmac: None,
-            jwt: None,
+            jwt: Some(jwt_secret.as_str()),
             redis_url: None,
             require_redis: false,
             consul_addr: consul.as_deref(),
@@ -228,6 +238,7 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
                     .collect(),
             })
             .collect(),
+        jwt_secret,
     };
     Ok((
         cfg.this.listen,

@@ -22,7 +22,7 @@
 {$KIM_DOMAIN:kim.ainexc.com} {
 	encode gzip zstd
 
-	handle /api/lookup* {
+	handle /api/lookup {
 		reverse_proxy router:8088
 	}
 

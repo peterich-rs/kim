@@ -66,7 +66,7 @@ TLS：
 
 - 产品页用 Worker Route 时：`kim.ainexc.com` **橙云** A/AAAA 指向 VPS，Caddy 仍是源站。浏览器 TLS 在 Cloudflare。zone SSL 是 **Full**（CF→源站 HTTPS，不校验源站证书）。Origin 证书 + Full Strict 更好，但 SSL 模式是整站的，不要为 kim 单独改到 Strict。灰云则 Worker 不会接到流量。橙云后 Caddy HTTP-01 续期看不到挑战；Let’s Encrypt 到期前换成 Origin 证书或 DNS-01。
 - 不用 Worker、compose 自己占 80/443：`docker compose --env-file kim.env --profile edge up -d`，DNS 可灰云做 Caddy HTTP-01。
-- 宿主机已经有反代：不要开 `edge`。把 `deploy/host.Caddyfile` 的 `kim.ainexc.com` 块合进 `/etc/caddy/Caddyfile`：`/api/v1/auth/*` → `127.0.0.1:8080`（Royal），`/api/lookup*` → `:8088`，Upgrade → `:8001`（关读超时）。**不要**把整站 `reverse_proxy` 到网关，否则注册 POST 会 404。
+- 宿主机已经有反代：不要开 `edge`。把 `deploy/host.Caddyfile` 的 `kim.ainexc.com` 块合进 `/etc/caddy/Caddyfile`：`/api/v1/auth/*` → `127.0.0.1:8080`（Royal），`/api/lookup` → `:8088`，Upgrade → `:8001`（关读超时）。**不要**把整站 `reverse_proxy` 到网关，否则注册 POST 会 404。
 
 公网 TGateway（裸 TCP+TLS）和同城双活：**以后**。UFW 默认只放 22/80/443。
 
