@@ -37,7 +37,7 @@
 
 节奏：盘点 → 切片细化 → 写代码。不要对着 gaps 直接开巨型 PR。
 
-- [impl/README.md](impl/README.md) — 切片表。切片 1（G-02 / G-08 Chat 长连接）已落地，完全关洞仍依赖 G-01
+- [impl/README.md](impl/README.md) — 切片表。切片 1（G-02 / G-08 Chat 长连接）已落地；切片 2 设计见 [impl/02-persist-first.md](impl/02-persist-first.md)（G-09）
 
 ## 文档怎么保持不腐烂
 
