@@ -477,6 +477,7 @@ async fn loopback_ws_login_ping_talk() {
         seq: StdMutex::new(0),
     });
     let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

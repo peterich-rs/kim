@@ -79,6 +79,7 @@ where
     let cache = open_session_store(None).await.expect("memory store");
 
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.expect("chat bind");
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_addr = chat_server.local_addr();
     let chat_c = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
@@ -100,6 +101,7 @@ where
     });
 
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.expect("gw bind");
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let hook = Arc::new(KickHook::new());
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {
@@ -153,6 +155,7 @@ where
 
 pub async fn spawn_gateway_only() -> (Arc<Container>, std::net::SocketAddr) {
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.expect("gw bind");
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let hook = Arc::new(KickHook::new());
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {

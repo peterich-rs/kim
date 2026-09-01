@@ -10,7 +10,7 @@ use kim_protocol::{
     check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
     ALLOWED_APP,
 };
-use royal::{serve, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
+use royal::{router, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -262,16 +262,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     }
 
+    let registered = public_address.is_some();
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     let n2 = naming.clone();
     let sid = service_id.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        if public_address.is_some() {
-            let _ = Naming::deregister(n2.as_ref(), &sid).await;
-        }
-        std::process::exit(0);
-    });
-    serve(listener, state).await?;
+    axum::serve(listener, router(state))
+        .with_graceful_shutdown(async move {
+            kim_core::wait_shutdown_signal().await;
+            if registered {
+                let _ = Naming::deregister(n2.as_ref(), &sid).await;
+            }
+        })
+        .await?;
     Ok(())
 }

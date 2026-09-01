@@ -313,7 +313,7 @@ where
 
     let c = container.clone();
     tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
+        kim_core::wait_shutdown_signal().await;
         let _ = c.shutdown().await;
     });
     container.start().await?;

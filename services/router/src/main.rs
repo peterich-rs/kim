@@ -45,15 +45,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = router::app_from_state(state.clone())?;
     let addr: SocketAddr = listen.parse()?;
     tracing::info!(%addr, "router listen");
+    let registered = public_address.is_some();
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let naming = state.lookup.naming.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        if public_address.is_some() {
-            let _ = Naming::deregister(naming.as_ref(), "router-1").await;
-        }
-        std::process::exit(0);
-    });
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            kim_core::wait_shutdown_signal().await;
+            if registered {
+                let _ = Naming::deregister(naming.as_ref(), "router-1").await;
+            }
+        })
+        .await?;
     Ok(())
 }

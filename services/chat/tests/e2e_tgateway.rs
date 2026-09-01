@@ -31,6 +31,7 @@ fn ident(id: &str, name: &str) -> DefaultRegistration {
 async fn tcp_gateway_login() {
     let cache = open_session_store(None).await.expect("memory");
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.expect("chat bind");
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_addr = chat_server.local_addr();
     let chat_c = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
@@ -54,6 +55,7 @@ async fn tcp_gateway_login() {
     });
 
     let mut gw_server = TcpServer::bind("127.0.0.1:0").await.expect("tgw bind");
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let hook = Arc::new(KickHook::new());
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {

@@ -45,6 +45,7 @@ impl StateListener for EchoHandler {
 async fn ws_echo_roundtrip() {
     let handler = Arc::new(EchoHandler);
     let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
@@ -79,6 +80,7 @@ async fn ws_echo_roundtrip() {
 async fn push_then_close_channel_emits_binary_then_close() {
     let handler = Arc::new(EchoHandler);
     let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

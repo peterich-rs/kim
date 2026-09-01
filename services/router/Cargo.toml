@@ -13,6 +13,7 @@ consul = ["kim-naming/consul"]
 [dependencies]
 axum = { workspace = true, features = ["json", "query"] }
 crc32fast.workspace = true
+kim-core.workspace = true
 kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
