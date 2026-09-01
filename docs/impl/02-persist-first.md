@@ -2,7 +2,7 @@
 
 对应 [production-gaps.md](../production-gaps.md) **G-09**（H0 语义里「insert 成功 → `MessageResp`；duplicate 从落库 content/index 重建再 dispatch」那一段）。**不**把 H0 的 `try_send` / `kim_mailbox_full_total`（G-30）拉进本切片。
 
-Addressing review feedback（P1）：(1) `dispatch().await` 之后才 Success 会被满信箱永久卡住，必须 **先 resp 再有界投递**；(2) 保留 G-03/G-14 时 **不能删除 G-09**；(3) duplicate 必须在可变鉴权之前 preflight，不一致返回冲突而不是「条件式重放」。
+Addressing review feedback（P1）：(1) 已落库仍等 `dispatch().await` 才 Success——`send_binary` 无超时，Bob 慢则 Alice 超时重试；必须 **先 resp 再有界投递**（见「核查：落库后被 Push 阻塞」）；(2) 保留 G-03/G-14 时 **不能删除 G-09**；(3) duplicate 必须在可变鉴权之前 preflight，不一致返回冲突而不是「条件式重放」。
 
 本切片合入后 **不删 G-09**（对齐切片 1 对 G-02/G-08 的处理）。拆成：
 
@@ -95,12 +95,7 @@ Addressing review feedback（P1）：(1) `dispatch().await` 之后才 Success �
      | 回滚 | **先 Chat（含 chat-gray），再 Royal。** 新 Chat 对着旧 Royal 是本切片的洞。 |
      | 禁止 | 新 Chat 跑在旧 Royal 上；只滚 `chat-gray` 而 Royal 停在旧 fanout。 |
 
-2. **`get_locations` 统一到 persist 之后；Success **先于** 有界的 locations+dispatch。**
-   - **选定：** `persist_then_push` 先 `ctx.resp(Success, MessageResp)`，再 `timeout(TALK_PUSH_BUDGET, get_locations + dispatch)`。`NotFound` → 空 loc、不 Push（离线），**不**打失败指标。其它 `SessionError`、`dispatch` Err、预算耗尽 → warn + `kim_dispatch_fail_total`。
-   - **拒绝「dispatch().await 之后再 Success」：** `send_binary` 是无超时 `tx.send().await`（`channel.rs` 225–238）。慢接收端会让 handler 永远到不了 Success，也加不了失败指标。这正是 G-30 的热路径，但 G-09 的「落库即 Success」若被它卡住就没关。本切片 **不**改 Channel / 不满则断连；只给 talk 这条 push 加预算。
-   - **预算：** `TALK_PUSH_BUDGET = 3s`（生产）。测试注入更短（例如 50ms）或用 `hang_on` 验证「Success 出现在预算内、serve 不会永远挂」。
-   - **拒绝维持单聊「先寻址再 insert」：** locations 故障今天会挡住尚未发生的 insert。统一之后 insert 已发生，Success 已发出。
-   - 改写 `get_location_other_is_system_exception_without_insert_or_push`：insert **会**发生，响应是 Success。群路径同样。
+2. **落库与「告诉 Alice 成功」解绑：insert Ok 之后立刻 `resp(Success)`，再有界地 `get_locations` + `dispatch`。** 详见下一节「核查：落库后被 Push 阻塞」。
 
 3. **群重放的收件人 = 该 `message_id` 的 index `account_a`，不是现在的 `groups.members()`。**
    - 后加入者这次重试 **不会** 收到旧消息。已退出但仍留着 index 行的人 **会** 再收到一次 Push（at-least-once）。接受；H5 outbox 以后再说。
@@ -415,9 +410,60 @@ Memory duplicate：`contents.get(message_id)` 只取 `msg_type/body/extra`；`in
 
 幂等表 schema 不变。
 
+### 核查：落库后被 Push 阻塞
+
+对照当前源码（不是文档推断）。
+
+**今天 user 路径**（`talk.rs`）：
+
+1. `get_locations`（128–135）在 **insert 之前**。Redis / `OtherLocationStore` 失败 → 99，**库里没有行**。
+2. `insert_user`（138–159）。
+3. `ctx.dispatch().await`（170–176），仅 `!duplicate && !locs.is_empty()`。
+4. dispatch Err → `resp_with_error(SystemException)` 并 `return`，**不**发 Success。
+5. 走到 192 才 `resp(Success, MessageResp)`。
+
+**今天 group 路径**（251–321）：先 `insert_group`，再 `get_locations`（276），再 `dispatch`（294），最后 `resp(Success)`。insert 已成功时，locations/dispatch 失败或挂起都会让 Alice 看不到 Success。
+
+**`dispatch` 实际在等什么**
+
+```text
+talk.rs:171     ctx.dispatch(&push, &locs).await
+context.rs:120  dispatcher.push(gate_id, channel_ids, pkt).await
+chat/lib.rs:81  ContainerDispatcher → Container::push (container.rs:186)
+kim-tcp/server.rs:129  channels.get(gateway_id).push(payload)
+channel.rs:145/220     Channel::push → send_binary
+channel.rs:233         tx.send(WriteOp::Frame { ... }).await   // 无超时
+```
+
+`ChannelOpts` 注释写「满了 Push 会失败」（`channel.rs` 32–33），默认 `write_queue = 64`（41 行；`kim-tcp` / `kim-ws` server 硬编码 64）。实现是 `mpsc::Sender::send().await`：队列满时 **等腾槽，不返回 Err**。注释与代码不一致，这是 G-30；本切片 **不**改 `send_binary`。
+
+Chat 进程里 **一条网关 TCP = 一个 Channel**。Alice 的 Success（`context.rs:164` `push_to_sender` → `dispatcher.push(session.gate_id, [alice.channel])`）和给 Bob 的 Push 若 `gate_id` 相同，抢同一条写队列。今日顺序是先等 Bob 的帧进队，再给 Alice 回 Success：Bob 慢 → 网关读 Chat 变慢 → Chat 写队列堆满 → `dispatch` 永不返回 → 消息已落库，Alice 当超时并可能重试。
+
+读循环还在 `listener.receive(...).await`（`channel.rs:199`）。慢 Push 同时挡住这条链路上后续拆帧（G-29）。本切片只保证 **本条 talk 的 Success 不再排在本次 Bob Push 之后**；预算内 handler 仍占读循环，那是 G-29。
+
+**选定修复（不改 Channel）**
+
+```text
+insert_* Ok 或 identical lookup 命中
+  → 立刻 ctx.resp(Success, MessageResp)    // 先占用网关写队列的一个槽
+  → timeout(TALK_PUSH_BUDGET, get_locations + dispatch)
+  → 超时 / dispatch Err / locations 非 NotFound：warn + kim_dispatch_fail_total
+  → locations NotFound（全员离线）：不 Push、不打失败指标
+```
+
+| 拒绝 | 原因 |
+|---|---|
+| 只把 dispatch Err 改成 Success，仍 `await dispatch` 后再 resp | 处理不了「Push 永远不返回」 |
+| 本切片改 `try_send` / 满则断连 | 那是 G-30 整段 |
+| 把 `resp` 也包进同一 timeout | Alice 的 Success 和 Bob 的 Push 解绑后，Success 应尽快发出；resp 失败只 warn |
+
+剩余：网关写队列在 **本次 talk 之前**已经 64/64 满时，Alice 的 `resp` 自己也会 `send().await`。那是既有积压，不是「等这次 Bob Push」。记在 G-30。
+
+生产 `TALK_PUSH_BUDGET = 3s`。超时 drop `dispatch` future，取消这次 `send().await`；帧可能已进队或未进队。Alice 已收到 Success；identical 重试会再 Push。单测注入 50ms。
+
 ### talk 控制流
 
-抽出 `persist_then_push`，user/group 共用。**去掉** `if !inserted.duplicate`。**先 Success，再有界投递。** 这是 P1「落库即返回 Success」相对旧稿的订正：旧稿把 `dispatch().await` 放在 `resp` 之前，满信箱会让 Success 永远发不出去。
+抽出 `persist_then_push`，user/group 共用。**去掉** `if !inserted.duplicate`。**先 Success，再有界投递。**
 
 ```rust
 const TALK_PUSH_BUDGET: Duration = Duration::from_secs(3);
@@ -687,8 +733,8 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 |---|---|
 | `dispatch_fail_is_system_exception_without_success_resp`（约 813） | **改名** `dispatch_fail_is_success_with_message_resp`。`RecordingDispatcher::fail_on("wg-2")`。断言：一条 Flag=Push（尝试过）；一条 Success + 可解的 `MessageResp`；`message_id` 与 store 一致。带 `KimMetrics` 时 `kim_dispatch_fail_total{kind="user"}` = 1 |
 | `same_client_id_does_not_insert_or_push_twice`（约 648） | **改名** `same_client_id_replays_push_from_store`。insert 仍 1；Push **2** 次；两次 Success 同一 id/time；两次 Push body 都是第一次 |
-| `get_location_other_is_system_exception_without_insert_or_push`（约 844） | **改名** `get_location_other_is_success_after_insert_without_push`。`store.recorded().len()==1`；Success；无 Push |
-| `group_get_locations_other_is_system_exception_after_insert`（约 1237） | **改名** `group_get_location_other_is_success_after_insert_without_push`。insert 1；Success；无 Push |
+| `get_location_other_is_system_exception_without_insert_or_push`（约 844） | **改名** `get_location_other_is_success_after_insert_without_push`。库 1 行；Success；无 Push；`kim_dispatch_fail_total` +1 |
+| `group_get_locations_other_is_system_exception_after_insert`（约 1237） | **改名** `group_get_location_other_is_success_after_insert_without_push`。insert 1；Success；无 Push；指标 +1 |
 
 **新增测试：**
 
@@ -701,11 +747,14 @@ pub fn on_dispatch_fail(&self, kind: &str) {
 7. `empty_client_id_inserts_and_pushes_twice`：两次空 clientId，两条 content、两次 Push、两个 id。
 8. `self_chat_success_skips_own_channel`：dest=alice；session `ch-alice`。再 `cache.add` `ch-alice-web`。Success；无 Push 到 `ch-alice`；**有** Push 到 `ch-alice-web`。
 9. `duplicate_dispatch_fail_still_success_and_metric`：第一次 `fail_on`（仍 Success）；identical 第二次再 fail；两次 Success；指标 ≥1。
-10. `dispatch_hang_still_success_within_budget`：**P1 必测。** `hang_on("wg-2")`（记录 Push 后 `pending()`）。`push_budget=50ms`。断言：发送方 Response 是 Success + `MessageResp`；`serve` 在 ~预算内返回（例如 <200ms），不会一直挂；`kim_dispatch_fail_total` +1。
+10. `dispatch_hang_still_success_within_budget`：Bob 在 `wg-2`。`hang_on("wg-2")`（先记下 Push，再 `pending()`）。`push_budget=50ms`。断言：`store.recorded().len()==1`；Alice 的 Response 是 Success + 可解 `MessageResp`（`message_id` 对得上那一行）；`serve` 在 <200ms 返回；`kim_dispatch_fail_total{kind="user"}` = 1。
+11. `get_locations_hang_still_success_within_budget`：`HangLocationStore`（`get_locations` 里 `pending()`）。insert 仍发生。`push_budget=50ms`。断言：库 1 行；Alice Success；无 Push；指标 +1。
+12. `offline_receiver_success_without_dispatch_fail_metric`：Bob 不在线（Memory 空 loc → `NotFound`）。库 1 行；Success；无 Push；**不**增加 `kim_dispatch_fail_total`。
 
 **File: `crates/kim-router` test_support**（或 chat 测试里的 dispatcher）
 
-- `RecordingDispatcher::hang_on`。这是 talk 单测需要的测试缝，不是生产 `Dispatcher` 语义变更。
+- `RecordingDispatcher::hang_on`：记下 Push 后 `std::future::pending().await`。不是生产 `Dispatcher` 语义变更。
+- talk 测试里 `HangLocationStore`：`get_locations` 永不返回。
 
 群 `group_two_gates_coalesce_skip_sender_and_omit_offline` 等 happy path 应继续绿：first insert 的 `Fanout.recipients` 等于当时 members。
 
@@ -750,7 +799,14 @@ cargo fmt --all -- --check
 cargo clippy -p chat -p royal -p kim-metrics -p kim-protocol -- -D warnings
 ```
 
-人工扫：`talk.rs` 里 `MessagePush` 构造不得再出现 `req.body` / `req.r#type` / `req.extra`。`do_user_talk` 在 `insert_user` 之前不得 `get_locations`。`persist_then_push` 里 `ctx.resp(Success)` 必须在 `timeout(... dispatch)` **之前**。`lookup_idempotency` 必须在 `filter.check` / `is_friend` / `groups.members` **之前**。`!inserted.duplicate` 不得再挡住 dispatch。
+人工扫：`talk.rs` 里 `MessagePush` 不得再用 `req.body`。`do_user_talk` 在 `insert_user` 之前不得 `get_locations`。`persist_then_push` 里 `ctx.resp(Success)` 的源码行号必须 **小于** `timeout(... dispatch)`。`lookup_idempotency` 在 `filter.check` / `is_friend` / `groups.members` 之前。`!inserted.duplicate` 不得挡住 dispatch。
+
+验收（本 bug）：
+
+- `dispatch_hang_still_success_within_budget`：库 1 行；Alice 短时限内 Success + `MessageResp`；指标 +1。
+- `get_locations_hang_still_success_within_budget`：同上，无 Push，指标 +1。
+- locations 非 NotFound / `dispatch` Err / 超时：指标 +1，Alice 仍 Success。
+- Bob 离线（NotFound）：Success，**指标不 +1**。
 
 ---
 
@@ -758,7 +814,8 @@ cargo clippy -p chat -p royal -p kim-metrics -p kim-protocol -- -D warnings
 
 - **at-least-once 是故意的。** duplicate 总是再 dispatch。第一次已经 Push 成功、客户端只是没收到 Success 而重试，对端会再收到同一 `messageId`。SDK 去重（Web 对 Push 与 offline content 已按 id 去重）。进程内「是否 dispatch 过」以及 `dispatch` 的 Err 都不能当权威：部分网关可能已经成功。
 - **persist-first 之后，发送方看到 Success 不再保证对端在线收到。** 补偿两条：(1) 发送方没收到 Resp → **identical** `clientId` 重试 → 从库重放 Push；(2) 已收到 Success → 客户端不再试。**(2) 不是可靠补偿：** G-03 高水位会吞漏 Push 的 id；G-14 Flutter 根本不 pull。因此 **不能删除 G-09**。
-- **Young 连接 / 写队列满** 今天会 99 或挂死。之后发送方在预算内 Success；接收方可能仍没 Push。满信箱本身仍是 G-30。
+- **Young 连接 / 写队列满** 今天会 99，或在 `send().await` 上挂死（注释谎称会失败）。之后 Alice 在本次 Push **之前**收到 Success；Bob 可能仍没 Push。队列在本次 talk 之前已经满，是 G-30。
+- **同一 `gate_id`。** Chat→该网关只有一个 `Channel`（`write_queue=64`）。先 `resp` 再 `dispatch`，是让本条 Success 抢在本条 Bob Push 前面进队。不把 Channel 改成 `try_send`。
 - **G-03 仍然会丢。** 重放 Push 若晚于一个更大的 `messageId` 被 ACK，offline pull 仍可能跳过。
 - **不改 `Context::dispatch` / `send_binary`。** 部分成功仍返回第一个 Err；handler 不把它变成 99。talk 用 `timeout` 包住这次 await，避免 Success 被永久卡住。G-30 再改 `try_send`。
 - **lookup 多一次 Royal HTTP。** 带 `clientId` 的首次 talk：idempotency 404 + insert。这是在鉴权前识别 duplicate 的代价，不接受「条件式重放」。
@@ -800,7 +857,7 @@ crate / 路径字母序，一行一个文件。实现 PR 相对 `main`。
 ## Key Decisions
 
 1. 方案 A：enrich `InsertResult` + 嵌套 `InsertFanout fanout = 4`。拒绝二次 `load_fanout` HTTP 当 insert 的第二枪，但 **接受** 鉴权前的 `lookup_idempotency`。
-2. 先 `resp(Success)`，再 `timeout(TALK_PUSH_BUDGET, get_locations+dispatch)`。不改 `send_binary`。补 hang 测试。
+2. 先 `resp(Success)`，再 `timeout(TALK_PUSH_BUDGET, get_locations+dispatch)`。不改 `send_binary`。Chat→网关一条 Channel、`send().await` 无超时（注释与实现不符）。hang dispatch / hang locations 两条单测。离线 NotFound 不加失败指标。
 3. 群收件人 = 发送时 index 行。identical 重试跳过 `members()`。
 4. 空 `clientId` 不去重、不 lookup。
 5. 自聊 recipients 去重；dispatch 仍跳过本 channel。
