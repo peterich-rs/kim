@@ -17,23 +17,58 @@ type Callback = Arc<dyn Fn(Vec<DefaultRegistration>) + Send + Sync>;
 
 pub struct ConsulNaming {
     base: String,
+    token: Option<String>,
     http: reqwest::Client,
     wait_http: reqwest::Client,
     watches: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
+fn build_client(
+    timeout: Duration,
+    ca_pem: Option<&str>,
+    client_identity: Option<&[u8]>,
+) -> Result<reqwest::Client, Error> {
+    let mut builder = reqwest::Client::builder().timeout(timeout);
+    if let Some(pem) = ca_pem.filter(|s| !s.trim().is_empty()) {
+        let cert = reqwest::Certificate::from_pem(pem.as_bytes())
+            .map_err(|e| Error::Other(e.to_string()))?;
+        builder = builder
+            .tls_built_in_root_certs(false)
+            .add_root_certificate(cert);
+    }
+    if let Some(id) = client_identity.filter(|b| !b.is_empty()) {
+        let identity = reqwest::Identity::from_pem(id).map_err(|e| Error::Other(e.to_string()))?;
+        builder = builder.identity(identity);
+    }
+    builder.build().map_err(|e| Error::Other(e.to_string()))
+}
+
+fn with_token(req: reqwest::RequestBuilder, token: Option<&str>) -> reqwest::RequestBuilder {
+    match token {
+        Some(t) if !t.is_empty() => req.header("X-Consul-Token", t),
+        _ => req,
+    }
+}
+
 impl ConsulNaming {
     pub fn new(base: &str) -> Result<Self, Error> {
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .map_err(|e| Error::Other(e.to_string()))?;
-        let wait_http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(70))
-            .build()
-            .map_err(|e| Error::Other(e.to_string()))?;
+        Self::connect(base, None, None, None)
+    }
+
+    pub fn connect(
+        base: &str,
+        token: Option<&str>,
+        ca_pem: Option<&str>,
+        client_identity: Option<&[u8]>,
+    ) -> Result<Self, Error> {
+        let http = build_client(Duration::from_secs(5), ca_pem, client_identity)?;
+        let wait_http = build_client(Duration::from_secs(70), ca_pem, client_identity)?;
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
+            token: token
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
             http,
             wait_http,
             watches: Mutex::new(HashMap::new()),
@@ -77,8 +112,7 @@ impl ConsulNaming {
             url.push_str("&wait=");
             url.push_str(w);
         }
-        let resp = client
-            .get(&url)
+        let resp = with_token(client.get(&url), self.token.as_deref())
             .send()
             .await
             .map_err(|e| Error::Other(e.to_string()))?;
@@ -152,9 +186,10 @@ impl Naming for ConsulNaming {
         }
         let this_base = self.base.clone();
         let wait_http = self.wait_http.clone();
+        let token = self.token.clone();
         let name = service_name.to_string();
         tokio::spawn(async move {
-            watch_loop(this_base, wait_http, name, callback, stop).await;
+            watch_loop(this_base, wait_http, token, name, callback, stop).await;
         });
         Ok(())
     }
@@ -191,9 +226,7 @@ impl Naming for ConsulNaming {
                 "Timeout": "2s",
             }
         });
-        let resp = self
-            .http
-            .put(&url)
+        let resp = with_token(self.http.put(&url), self.token.as_deref())
             .json(&body)
             .send()
             .await
@@ -206,9 +239,7 @@ impl Naming for ConsulNaming {
 
     async fn deregister(&self, service_id: &str) -> Result<(), Error> {
         let url = format!("{}/v1/agent/service/deregister/{service_id}", self.base);
-        let resp = self
-            .http
-            .put(&url)
+        let resp = with_token(self.http.put(&url), self.token.as_deref())
             .send()
             .await
             .map_err(|e| Error::Other(e.to_string()))?;
@@ -222,6 +253,7 @@ impl Naming for ConsulNaming {
 async fn watch_loop(
     base: String,
     http: reqwest::Client,
+    token: Option<String>,
     service_name: String,
     callback: Callback,
     stop: Arc<AtomicBool>,
@@ -230,7 +262,7 @@ async fn watch_loop(
     while !stop.load(Ordering::SeqCst) {
         let url =
             format!("{base}/v1/health/service/{service_name}?passing=1&index={index}&wait=60s");
-        let resp = match http.get(&url).send().await {
+        let resp = match with_token(http.get(&url), token.as_deref()).send().await {
             Ok(r) => r,
             Err(err) => {
                 tracing::warn!(%err, service = %service_name, "consul watch");
@@ -297,6 +329,7 @@ mod tests {
         index: u64,
         rows: Value,
         last_register: Option<Value>,
+        last_token: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -309,7 +342,12 @@ mod tests {
         State(m): State<Mock>,
         Path(_name): Path<String>,
         Query(q): Query<Q>,
+        headers: HeaderMap,
     ) -> (HeaderMap, Json<Value>) {
+        m.inner.lock().unwrap_or_else(|e| e.into_inner()).last_token = headers
+            .get("x-consul-token")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         let wait = q.wait.is_some();
         let req_index = q.index.unwrap_or(0);
         if wait {
@@ -331,11 +369,17 @@ mod tests {
         (headers, Json(g.rows.clone()))
     }
 
-    async fn register(State(m): State<Mock>, Json(body): Json<Value>) -> StatusCode {
-        m.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .last_register = Some(body);
+    async fn register(
+        State(m): State<Mock>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> StatusCode {
+        let mut g = m.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.last_token = headers
+            .get("x-consul-token")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        g.last_register = Some(body);
         StatusCode::OK
     }
 
@@ -345,6 +389,7 @@ mod tests {
                 index: 1,
                 rows: json!([]),
                 last_register: None,
+                last_token: None,
             })),
             changed: Arc::new(Notify::new()),
         };
@@ -456,5 +501,33 @@ mod tests {
         let got = hits.lock().unwrap().clone();
         assert!(got.contains(&1), "got {got:?}");
         naming.unsubscribe("chat").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn requests_send_consul_token() {
+        let (base, mock) = mock_listen().await;
+        mock.inner.lock().unwrap().rows = tcp_row();
+        let naming = ConsulNaming::connect(&base, Some("svc-token"), None, None).unwrap();
+        naming.find("chat", &[]).await.unwrap();
+        assert_eq!(
+            mock.inner.lock().unwrap().last_token.as_deref(),
+            Some("svc-token")
+        );
+        let mut reg = DefaultRegistration {
+            service_id: "chat-1".into(),
+            service_name: "chat".into(),
+            protocol: "tcp".into(),
+            public_address: "chat".into(),
+            public_port: 8002,
+            tags: vec![],
+            meta: HashMap::new(),
+        };
+        reg.meta
+            .insert("health_url".into(), "http://chat:9002/health".into());
+        naming.register(reg).await.unwrap();
+        assert_eq!(
+            mock.inner.lock().unwrap().last_token.as_deref(),
+            Some("svc-token")
+        );
     }
 }

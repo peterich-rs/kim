@@ -81,6 +81,7 @@ async fn tcp_gateway_login() {
         "tg-1",
         DEMO_DEFAULT_SECRET,
     ));
+    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());

@@ -66,6 +66,7 @@ message Session {
   string device = 7;
   string app = 8;
   repeated string tags = 9;
+  string jti = 10; // P0 delivery target; empty = no receipts for this session
 }
 
 message KickoutNotify {
@@ -106,7 +107,8 @@ message GroupCreateResp {
 }
 
 message MessageAckReq {
-  int64 messageId = 1;
+  int64 messageId = 1;            // 旧客户端：单条
+  repeated int64 messageIds = 2;  // 新客户端：批量
 }
 
 message MessageIndex {
@@ -125,11 +127,13 @@ message Message {
 }
 
 message MessageIndexReq {
-  int64 messageId = 1;
+  int64 messageId = 1; // 不再当高水位
+  bool resume = 2;     // 新客户端 true；省略/false = 遗留回路
 }
 
 message MessageIndexResp {
   repeated MessageIndex indexes = 1;
+  bool hasMore = 2;
 }
 
 message MessageContentReq {
@@ -175,6 +179,11 @@ message GroupCreateNotify {
 }
 
 // Royal HTTP bodies. Long-connection dest still carries group id / account.
+message DeliveryTarget {
+  string account = 1;
+  string targetId = 2; // jti
+}
+
 message InsertMessageReq {
   string sender = 1;
   string dest = 2;
@@ -182,6 +191,7 @@ message InsertMessageReq {
   MessageReq message = 4;
   repeated string members = 5;
   string clientId = 6;
+  repeated DeliveryTarget onlineTargets = 7;
 }
 
 message InsertFanout {
@@ -204,11 +214,23 @@ message InsertMessageResp {
 message AckMessageReq {
   string account = 1;
   int64 messageId = 2;
+  repeated int64 messageIds = 3;
+  string targetId = 4;
+  string app = 5;
 }
 
 message OfflineIndexReq {
   string account = 1;
   int64 messageId = 2;
+  string targetId = 3;
+  string app = 4;
+  bool resume = 5;
+}
+
+message DeliveryBackfillReq {
+  string app = 1;
+  string account = 2;
+  string targetId = 3;
 }
 
 message AuthReq {

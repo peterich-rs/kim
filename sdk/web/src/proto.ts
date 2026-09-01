@@ -205,12 +205,27 @@ export function encodeMessagePush(p: {
   });
 }
 
-export function encodeAckReq(messageId: bigint): Uint8Array {
-  return encode(MessageAckReqType, { messageId: messageId.toString() });
+export function encodeAckReq(ids: bigint | readonly bigint[]): Uint8Array {
+  const list = Array.isArray(ids) ? [...ids] : [ids];
+  return encode(MessageAckReqType, {
+    messageId: list.length === 1 ? list[0]!.toString() : "0",
+    messageIds: list.map((id) => id.toString()),
+  });
 }
 
-export function encodeIndexReq(messageId: bigint): Uint8Array {
-  return encode(MessageIndexReqType, { messageId: messageId.toString() });
+export function encodeIndexReq(
+  arg: bigint | { resume?: boolean; messageId?: bigint } = 0n,
+): Uint8Array {
+  if (typeof arg === "bigint") {
+    return encode(MessageIndexReqType, {
+      messageId: arg.toString(),
+      resume: false,
+    });
+  }
+  return encode(MessageIndexReqType, {
+    messageId: (arg.messageId ?? 0n).toString(),
+    resume: arg.resume ?? false,
+  });
 }
 
 export interface WireIndex {
@@ -221,7 +236,28 @@ export interface WireIndex {
   group: string;
 }
 
-export function decodeIndexResp(buf: Uint8Array): WireIndex[] {
+export interface IndexPage {
+  indexes: WireIndex[];
+  hasMore: boolean;
+}
+
+function mapWireIndex(idx: {
+  messageId?: unknown;
+  direction?: number;
+  sendTime?: unknown;
+  accountB?: string;
+  group?: string;
+}): WireIndex {
+  return {
+    messageId: asBigInt(idx.messageId),
+    direction: idx.direction ?? 0,
+    sendTime: asBigInt(idx.sendTime),
+    accountB: idx.accountB ?? "",
+    group: idx.group ?? "",
+  };
+}
+
+export function decodeIndexResp(buf: Uint8Array): IndexPage {
   const o = decode<{
     indexes?: Array<{
       messageId?: unknown;
@@ -230,17 +266,15 @@ export function decodeIndexResp(buf: Uint8Array): WireIndex[] {
       accountB?: string;
       group?: string;
     }>;
+    hasMore?: boolean;
   }>(MessageIndexRespType, buf);
-  return (o.indexes ?? []).map((idx) => ({
-    messageId: asBigInt(idx.messageId),
-    direction: idx.direction ?? 0,
-    sendTime: asBigInt(idx.sendTime),
-    accountB: idx.accountB ?? "",
-    group: idx.group ?? "",
-  }));
+  return {
+    indexes: (o.indexes ?? []).map(mapWireIndex),
+    hasMore: Boolean(o.hasMore),
+  };
 }
 
-export function encodeIndexResp(indexes: WireIndex[]): Uint8Array {
+export function encodeIndexResp(indexes: WireIndex[], hasMore = false): Uint8Array {
   return encode(MessageIndexRespType, {
     indexes: indexes.map((idx) => ({
       messageId: idx.messageId.toString(),
@@ -249,7 +283,24 @@ export function encodeIndexResp(indexes: WireIndex[]): Uint8Array {
       accountB: idx.accountB,
       group: idx.group,
     })),
+    hasMore,
   });
+}
+
+export function decodeIndexReq(buf: Uint8Array): { messageId: bigint; resume: boolean } {
+  const o = decode<{ messageId?: unknown; resume?: boolean }>(MessageIndexReqType, buf);
+  return {
+    messageId: asBigInt(o.messageId),
+    resume: Boolean(o.resume),
+  };
+}
+
+export function decodeAckReq(buf: Uint8Array): { messageId: bigint; messageIds: bigint[] } {
+  const o = decode<{ messageId?: unknown; messageIds?: unknown[] }>(MessageAckReqType, buf);
+  return {
+    messageId: asBigInt(o.messageId),
+    messageIds: (o.messageIds ?? []).map((id) => asBigInt(id)),
+  };
 }
 
 export function encodeContentReq(ids: bigint[]): Uint8Array {

@@ -28,7 +28,46 @@ pub const HISTORY_PAGE: usize = 50;
 pub const HISTORY_MAX: usize = 100;
 pub const ACK_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
 pub(crate) const DAY_NANOS: i64 = 24 * 60 * 60 * 1_000_000_000;
-const EXPIRES_NANOS: i64 = 15 * DAY_NANOS;
+pub(crate) const EXPIRES_NANOS: i64 = 15 * DAY_NANOS;
+#[cfg(feature = "postgres")]
+const LIST_LOCATIONS_BUDGET: Duration = Duration::from_millis(500);
+
+pub fn env_flag(name: &str) -> bool {
+    matches!(
+        std::env::var(name).ok().as_deref().map(str::trim),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
+pub fn pending_receipt_enabled() -> bool {
+    env_flag("KIM_PENDING_RECEIPT")
+}
+
+pub fn collect_ack_ids(message_id: i64, extra: &[i64]) -> Vec<i64> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    if message_id != 0 && seen.insert(message_id) {
+        out.push(message_id);
+    }
+    for &id in extra {
+        if id != 0 && seen.insert(id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+pub(crate) fn recv_accounts(req: &InsertMessage, members: Option<&[String]>) -> Vec<String> {
+    match members {
+        None => vec![req.dest.clone()],
+        Some(list) => unique_accounts(
+            list.iter()
+                .filter(|m| *m != &req.sender)
+                .cloned()
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -40,6 +79,13 @@ pub enum StoreError {
     Backend(String),
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeliveryTarget {
+    pub account: String,
+    pub target_id: String,
+}
+
+#[derive(Clone, Default)]
 pub struct InsertMessage {
     pub sender: String,
     pub dest: String,
@@ -48,6 +94,7 @@ pub struct InsertMessage {
     pub body: String,
     pub extra: String,
     pub client_id: String,
+    pub online_targets: Vec<DeliveryTarget>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -239,13 +286,37 @@ pub trait MessageStore: Send + Sync {
         req: &InsertMessage,
         members: &[String],
     ) -> Result<InsertResult, StoreError>;
-    async fn ack(&self, app: &str, account: &str, message_id: i64) -> Result<(), StoreError>;
+    async fn ack(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+        message_ids: &[i64],
+    ) -> Result<(), StoreError>;
     async fn offline_index(
         &self,
         app: &str,
         account: &str,
+        target_id: &str,
         message_id: i64,
-    ) -> Result<Vec<MessageIndexRow>, StoreError>;
+        resume: bool,
+    ) -> Result<(Vec<MessageIndexRow>, bool), StoreError>;
+    async fn backfill_delivery(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+    ) -> Result<(), StoreError> {
+        let _ = (app, account, target_id);
+        Ok(())
+    }
+    async fn gc_expired_deliveries(&self, limit: i64) -> Result<u64, StoreError> {
+        let _ = limit;
+        Ok(0)
+    }
+    async fn pending_delivery_stats(&self) -> Result<(i64, i64), StoreError> {
+        Ok((0, 0))
+    }
     async fn offline_content(
         &self,
         app: &str,
@@ -356,6 +427,7 @@ pub(crate) fn clamp_start(start: i64, now: i64) -> i64 {
 pub struct MemoryMessageStore {
     idgen: Arc<dyn IdGenerator>,
     ack: Arc<dyn AckIndex>,
+    pending_receipt: bool,
     inner: RwLock<Inner>,
 }
 
@@ -366,6 +438,13 @@ struct Inner {
     idempotency: HashMap<(String, String, String), (i64, i64)>,
     /// (app, account, peer, group_id) -> last_read_id
     reads: HashMap<(String, String, String, String), i64>,
+    pending: HashMap<(String, String, String, i64), PendingEntry>,
+}
+
+struct PendingEntry {
+    created_at: Instant,
+    expires_at: Instant,
+    acked_at: Option<Instant>,
 }
 
 #[derive(Clone, Debug)]
@@ -381,14 +460,31 @@ struct InboxRow {
 
 impl MemoryMessageStore {
     pub fn new(idgen: Arc<dyn IdGenerator>) -> Self {
-        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()))
+        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), false)
     }
 
-    fn with_ack(idgen: Arc<dyn IdGenerator>, ack: Arc<dyn AckIndex>) -> Self {
+    pub fn with_pending_receipt(idgen: Arc<dyn IdGenerator>) -> Self {
+        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), true)
+    }
+
+    fn with_ack(
+        idgen: Arc<dyn IdGenerator>,
+        ack: Arc<dyn AckIndex>,
+        pending_receipt: bool,
+    ) -> Self {
         Self {
             idgen,
             ack,
+            pending_receipt,
             inner: RwLock::new(Inner::default()),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn expire_pending_for_test(&self) {
+        let mut inner = self.write();
+        for e in inner.pending.values_mut() {
+            e.expires_at = e.created_at;
         }
     }
 
@@ -426,6 +522,37 @@ impl MemoryMessageStore {
         ))
     }
 
+    fn upsert_receipts(
+        inner: &mut Inner,
+        app: &str,
+        message_id: i64,
+        req: &InsertMessage,
+        members: Option<&[String]>,
+    ) {
+        let recv = recv_accounts(req, members);
+        let recv_set: HashSet<&str> = recv.iter().map(String::as_str).collect();
+        let now = Instant::now();
+        let expires = now + Duration::from_secs(15 * 24 * 3600);
+        for t in &req.online_targets {
+            if t.target_id.is_empty() || !recv_set.contains(t.account.as_str()) {
+                continue;
+            }
+            inner
+                .pending
+                .entry((
+                    app.to_string(),
+                    t.account.clone(),
+                    t.target_id.clone(),
+                    message_id,
+                ))
+                .or_insert(PendingEntry {
+                    created_at: now,
+                    expires_at: expires,
+                    acked_at: None,
+                });
+        }
+    }
+
     fn insert(
         &self,
         app: &str,
@@ -433,15 +560,26 @@ impl MemoryMessageStore {
         req: &InsertMessage,
         members: &[String],
     ) -> Result<InsertResult, StoreError> {
+        let members_opt = if kind == MessageKind::Group {
+            Some(members)
+        } else {
+            None
+        };
         if !req.client_id.is_empty() {
             let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
             let inner = self.read();
             if let Some(&(message_id, send_time)) = inner.idempotency.get(&key) {
+                let fanout = Self::fanout_from_memory(&inner, message_id)?;
+                drop(inner);
+                if self.pending_receipt {
+                    let mut inner = self.write();
+                    Self::upsert_receipts(&mut inner, app, message_id, req, members_opt);
+                }
                 return Ok(InsertResult {
                     message_id,
                     send_time,
                     duplicate: true,
-                    fanout: Self::fanout_from_memory(&inner, message_id)?,
+                    fanout,
                 });
             }
         }
@@ -502,6 +640,9 @@ impl MemoryMessageStore {
         if !req.client_id.is_empty() {
             let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
             if let Some(&(id, send_time)) = inner.idempotency.get(&key) {
+                if self.pending_receipt {
+                    Self::upsert_receipts(&mut inner, app, id, req, members_opt);
+                }
                 return Ok(InsertResult {
                     message_id: id,
                     send_time,
@@ -513,6 +654,9 @@ impl MemoryMessageStore {
         }
         inner.contents.insert(message_id, content);
         inner.indexes.extend(indexes);
+        if self.pending_receipt {
+            Self::upsert_receipts(&mut inner, app, message_id, req, members_opt);
+        }
         Ok(InsertResult {
             message_id,
             send_time: req.send_time,
@@ -527,6 +671,15 @@ impl MemoryMessageStore {
         let mut rec: Vec<_> = inner.contents.values().cloned().collect();
         rec.sort_by_key(|m| m.message_id);
         rec
+    }
+
+    #[cfg(test)]
+    pub fn pending_count(&self) -> usize {
+        self.read()
+            .pending
+            .values()
+            .filter(|e| e.acked_at.is_none() && e.expires_at > Instant::now())
+            .count()
     }
 
     #[cfg(test)]
@@ -573,46 +726,213 @@ impl MessageStore for MemoryMessageStore {
         self.insert(app, MessageKind::Group, req, members)
     }
 
-    async fn ack(&self, _app: &str, account: &str, message_id: i64) -> Result<(), StoreError> {
-        if message_id == 0 {
+    async fn ack(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+        message_ids: &[i64],
+    ) -> Result<(), StoreError> {
+        if !self.pending_receipt || target_id.is_empty() {
+            let id = message_ids.first().copied().unwrap_or(0);
+            if id == 0 {
+                return Ok(());
+            }
+            return self.ack.set(account, id).await;
+        }
+        if target_id.is_empty() || message_ids.is_empty() {
             return Ok(());
         }
-        self.ack.set(account, message_id).await
+        let now = Instant::now();
+        let mut inner = self.write();
+        for id in message_ids {
+            if let Some(row) = inner.pending.get_mut(&(
+                app.to_string(),
+                account.to_string(),
+                target_id.to_string(),
+                *id,
+            )) {
+                if row.acked_at.is_none() {
+                    row.acked_at = Some(now);
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn offline_index(
         &self,
         app: &str,
         account: &str,
+        target_id: &str,
         message_id: i64,
-    ) -> Result<Vec<MessageIndexRow>, StoreError> {
-        let start = self.sent_time(account, message_id).await?;
-        let mut rows: Vec<MessageIndexRow> = {
-            let inner = self.read();
-            inner
-                .indexes
-                .iter()
-                .filter(|r| {
-                    r.app == app
-                        && r.account_a == account
-                        && r.direction == DIRECTION_RECV
-                        && r.send_time > start
-                })
-                .map(|r| MessageIndexRow {
-                    message_id: r.message_id,
-                    direction: r.direction,
-                    send_time: r.send_time,
-                    account_b: r.account_b.clone(),
-                    group: r.group_id.clone(),
-                })
-                .collect()
-        };
-        rows.sort_by_key(|r| r.send_time);
-        rows.truncate(OFFLINE_SYNC_INDEX_COUNT);
-        if message_id > 0 {
-            self.ack.set(account, message_id).await?;
+        resume: bool,
+    ) -> Result<(Vec<MessageIndexRow>, bool), StoreError> {
+        if !self.pending_receipt || target_id.is_empty() {
+            let start = self.sent_time(account, message_id).await?;
+            let mut rows: Vec<MessageIndexRow> = {
+                let inner = self.read();
+                inner
+                    .indexes
+                    .iter()
+                    .filter(|r| {
+                        r.app == app
+                            && r.account_a == account
+                            && r.direction == DIRECTION_RECV
+                            && r.send_time > start
+                    })
+                    .map(|r| MessageIndexRow {
+                        message_id: r.message_id,
+                        direction: r.direction,
+                        send_time: r.send_time,
+                        account_b: r.account_b.clone(),
+                        group: r.group_id.clone(),
+                    })
+                    .collect()
+            };
+            rows.sort_by_key(|r| r.send_time);
+            rows.truncate(OFFLINE_SYNC_INDEX_COUNT);
+            if message_id > 0 {
+                self.ack.set(account, message_id).await?;
+            }
+            return Ok((rows, false));
         }
-        Ok(rows)
+        if target_id.is_empty() {
+            return Ok((Vec::new(), false));
+        }
+        if !resume && message_id != 0 {
+            return Ok((Vec::new(), false));
+        }
+        let now = Instant::now();
+        let inner = self.read();
+        let mut pending: Vec<(Instant, i64)> = inner
+            .pending
+            .iter()
+            .filter(|((a, acc, tid, _), e)| {
+                a == app
+                    && acc == account
+                    && tid == target_id
+                    && e.acked_at.is_none()
+                    && e.expires_at > now
+            })
+            .map(|((_, _, _, id), e)| (e.created_at, *id))
+            .collect();
+        pending.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let cap = MESSAGE_MAX_COUNT_PER_PAGE;
+        let has_more = resume && pending.len() > cap;
+        if !resume {
+            pending.truncate(cap);
+        } else {
+            pending.truncate(cap + 1);
+            if pending.len() > cap {
+                pending.truncate(cap);
+            }
+        }
+        let rows = pending
+            .into_iter()
+            .filter_map(|(_, id)| {
+                inner
+                    .indexes
+                    .iter()
+                    .find(|r| {
+                        r.app == app
+                            && r.account_a == account
+                            && r.message_id == id
+                            && r.direction == DIRECTION_RECV
+                    })
+                    .map(|r| MessageIndexRow {
+                        message_id: r.message_id,
+                        direction: r.direction,
+                        send_time: r.send_time,
+                        account_b: r.account_b.clone(),
+                        group: r.group_id.clone(),
+                    })
+            })
+            .collect();
+        Ok((rows, has_more))
+    }
+
+    async fn backfill_delivery(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+    ) -> Result<(), StoreError> {
+        if !self.pending_receipt || target_id.is_empty() {
+            return Ok(());
+        }
+        let cutoff = now_unix_nano().saturating_sub(EXPIRES_NANOS);
+        let now = Instant::now();
+        let expires = now + Duration::from_secs(15 * 24 * 3600);
+        let mut inner = self.write();
+        let ids: Vec<i64> = inner
+            .indexes
+            .iter()
+            .filter(|r| {
+                r.app == app
+                    && r.account_a == account
+                    && r.direction == DIRECTION_RECV
+                    && r.send_time >= cutoff
+            })
+            .map(|r| r.message_id)
+            .collect();
+        if ids.len() > 10_000 {
+            tracing::warn!(account, rows = ids.len(), "backfill_rows");
+        } else {
+            tracing::info!(account, backfill_rows = ids.len(), "backfill");
+        }
+        for id in ids {
+            inner
+                .pending
+                .entry((
+                    app.to_string(),
+                    account.to_string(),
+                    target_id.to_string(),
+                    id,
+                ))
+                .or_insert(PendingEntry {
+                    created_at: now,
+                    expires_at: expires,
+                    acked_at: None,
+                });
+        }
+        Ok(())
+    }
+
+    async fn gc_expired_deliveries(&self, limit: i64) -> Result<u64, StoreError> {
+        let now = Instant::now();
+        let mut inner = self.write();
+        let mut keys: Vec<_> = inner
+            .pending
+            .iter()
+            .filter(|(_, e)| e.expires_at < now)
+            .map(|(k, e)| (e.expires_at, k.clone()))
+            .collect();
+        keys.sort_by_key(|(exp, _)| *exp);
+        let take = usize::try_from(limit.max(0)).unwrap_or(0);
+        keys.truncate(take);
+        let n = keys.len() as u64;
+        for (_, k) in keys {
+            inner.pending.remove(&k);
+        }
+        Ok(n)
+    }
+
+    async fn pending_delivery_stats(&self) -> Result<(i64, i64), StoreError> {
+        let now = Instant::now();
+        let inner = self.read();
+        let mut count = 0i64;
+        let mut oldest: Option<Instant> = None;
+        for e in inner.pending.values() {
+            if e.acked_at.is_none() && e.expires_at > now {
+                count += 1;
+                oldest = Some(oldest.map_or(e.created_at, |o| o.min(e.created_at)));
+            }
+        }
+        let age = oldest
+            .map(|t| i64::try_from(now.saturating_duration_since(t).as_secs()).unwrap_or(0))
+            .unwrap_or(0);
+        Ok((count, age))
     }
 
     async fn offline_content(
@@ -816,7 +1136,11 @@ pub async fn open_message_store(
 ) -> Result<Arc<dyn MessageStore>, StoreError> {
     let ack = open_ack_index(redis_url).await?;
     match database_url {
-        None | Some("") => Ok(Arc::new(MemoryMessageStore::with_ack(idgen, ack))),
+        None | Some("") => Ok(Arc::new(MemoryMessageStore::with_ack(
+            idgen,
+            ack,
+            pending_receipt_enabled(),
+        ))),
         Some(url) => open_postgres_store(url, idgen, ack, pool).await,
     }
 }
@@ -826,8 +1150,18 @@ pub async fn open_pg_backends(
     redis_url: Option<&str>,
     idgen: Arc<dyn IdGenerator>,
     pool: PoolConfig,
+    sessions: Option<Arc<dyn kim_router::SessionStorage>>,
+    pending_receipt: bool,
 ) -> Result<PgBackends, StoreError> {
-    open_pg_backends_inner(database_url, redis_url, idgen, pool).await
+    open_pg_backends_inner(
+        database_url,
+        redis_url,
+        idgen,
+        pool,
+        sessions,
+        pending_receipt,
+    )
+    .await
 }
 
 #[derive(Clone, Copy)]
@@ -892,6 +1226,8 @@ async fn open_pg_backends_inner(
     redis_url: Option<&str>,
     idgen: Arc<dyn IdGenerator>,
     pool: PoolConfig,
+    sessions: Option<Arc<dyn kim_router::SessionStorage>>,
+    pending_receipt: bool,
 ) -> Result<PgBackends, StoreError> {
     let pg = connect_pool(
         database_url,
@@ -907,6 +1243,8 @@ async fn open_pg_backends_inner(
         pg.clone(),
         idgen.clone(),
         ack,
+        sessions,
+        pending_receipt,
     ));
     let groups: Arc<dyn GroupDirectory> = Arc::new(
         crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen),
@@ -929,6 +1267,8 @@ async fn open_pg_backends_inner(
     _redis_url: Option<&str>,
     _idgen: Arc<dyn IdGenerator>,
     _pool: PoolConfig,
+    _sessions: Option<Arc<dyn kim_router::SessionStorage>>,
+    _pending_receipt: bool,
 ) -> Result<PgBackends, StoreError> {
     Err(StoreError::Backend(
         "rebuild with --features postgres".into(),
@@ -961,6 +1301,7 @@ mod tests {
             body: body.into(),
             extra: String::new(),
             client_id: String::new(),
+            online_targets: Vec::new(),
         }
     }
 
@@ -1052,6 +1393,268 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ack_large_id_keeps_smaller_pending() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut first = sample("alice", "bob", now_unix_nano(), "one");
+        first.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        let a = store.insert_user("kim", &first).await.unwrap();
+        let mut second = sample("alice", "bob", now_unix_nano(), "two");
+        second.online_targets = first.online_targets.clone();
+        let b = store.insert_user("kim", &second).await.unwrap();
+        store
+            .ack("kim", "bob", "j1", &[b.message_id])
+            .await
+            .unwrap();
+        let (idx, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert!(idx.iter().any(|r| r.message_id == a.message_id));
+        assert!(idx.iter().all(|r| r.message_id != b.message_id));
+        store.backfill_delivery("kim", "bob", "j1").await.unwrap();
+        let (again, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert!(again.iter().any(|r| r.message_id == a.message_id));
+        assert!(again.iter().all(|r| r.message_id != b.message_id));
+    }
+
+    #[tokio::test]
+    async fn two_jtis_ack_independently() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut req = sample("alice", "bob", now_unix_nano(), "hi");
+        req.online_targets = vec![
+            DeliveryTarget {
+                account: "bob".into(),
+                target_id: "j1".into(),
+            },
+            DeliveryTarget {
+                account: "bob".into(),
+                target_id: "j2".into(),
+            },
+        ];
+        let got = store.insert_user("kim", &req).await.unwrap();
+        store
+            .ack("kim", "bob", "j1", &[got.message_id])
+            .await
+            .unwrap();
+        let (a, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        let (b, _) = store
+            .offline_index("kim", "bob", "j2", 0, true)
+            .await
+            .unwrap();
+        assert!(a.iter().all(|r| r.message_id != got.message_id));
+        assert!(b.iter().any(|r| r.message_id == got.message_id));
+    }
+
+    #[tokio::test]
+    async fn self_chat_one_receipt_per_recv_jti() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut req = sample("alice", "alice", now_unix_nano(), "note");
+        req.online_targets = vec![
+            DeliveryTarget {
+                account: "alice".into(),
+                target_id: "web".into(),
+            },
+            DeliveryTarget {
+                account: "alice".into(),
+                target_id: "cli".into(),
+            },
+        ];
+        let got = store.insert_user("kim", &req).await.unwrap();
+        let idx = store.recorded_indexes();
+        assert_eq!(idx.len(), 2);
+        let (web, _) = store
+            .offline_index("kim", "alice", "web", 0, true)
+            .await
+            .unwrap();
+        let (cli, _) = store
+            .offline_index("kim", "alice", "cli", 0, true)
+            .await
+            .unwrap();
+        assert_eq!(web.len(), 1);
+        assert_eq!(cli.len(), 1);
+        assert_eq!(web[0].message_id, got.message_id);
+        assert_eq!(cli[0].message_id, got.message_id);
+    }
+
+    #[tokio::test]
+    async fn leftover_index_circuit_stops_without_resume() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut req = sample("alice", "bob", now_unix_nano(), "hi");
+        req.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        store.insert_user("kim", &req).await.unwrap();
+        let (first, more) = store
+            .offline_index("kim", "bob", "j1", 0, false)
+            .await
+            .unwrap();
+        assert!(!first.is_empty());
+        assert!(!more);
+        let (second, more2) = store
+            .offline_index("kim", "bob", "j1", first[0].message_id, false)
+            .await
+            .unwrap();
+        assert!(second.is_empty());
+        assert!(!more2);
+    }
+
+    #[tokio::test]
+    async fn gc_deletes_expired_acked_and_pending() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut req = sample("alice", "bob", now_unix_nano(), "hi");
+        req.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        let got = store.insert_user("kim", &req).await.unwrap();
+        store
+            .ack("kim", "bob", "j1", &[got.message_id])
+            .await
+            .unwrap();
+        store.expire_pending_for_test();
+        let n = store.gc_expired_deliveries(1000).await.unwrap();
+        assert_eq!(n, 1);
+        let (idx, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert!(idx.is_empty());
+    }
+
+    #[tokio::test]
+    async fn duplicate_insert_upserts_receipt_for_new_jti() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut first = sample("alice", "bob", now_unix_nano(), "hi");
+        first.client_id = "c1".into();
+        first.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        let a = store.insert_user("kim", &first).await.unwrap();
+        let mut again = first.clone();
+        again.online_targets.push(DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j2".into(),
+        });
+        let b = store.insert_user("kim", &again).await.unwrap();
+        assert!(b.duplicate);
+        assert_eq!(a.message_id, b.message_id);
+        let (j1, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        let (j2, _) = store
+            .offline_index("kim", "bob", "j2", 0, true)
+            .await
+            .unwrap();
+        assert!(j1.iter().any(|r| r.message_id == a.message_id));
+        assert!(j2.iter().any(|r| r.message_id == a.message_id));
+    }
+
+    #[tokio::test]
+    async fn backfill_after_offline_insert_has_no_gap() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let got = store
+            .insert_user("kim", &sample("alice", "bob", now_unix_nano(), "missed"))
+            .await
+            .unwrap();
+        store
+            .backfill_delivery("kim", "bob", "j-login")
+            .await
+            .unwrap();
+        let (idx, _) = store
+            .offline_index("kim", "bob", "j-login", 0, true)
+            .await
+            .unwrap();
+        assert!(idx.iter().any(|r| r.message_id == got.message_id));
+    }
+
+    #[tokio::test]
+    async fn leftover_index_does_not_ack_the_request_id() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut req = sample("alice", "bob", now_unix_nano(), "hi");
+        req.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        let got = store.insert_user("kim", &req).await.unwrap();
+        let (first, _) = store
+            .offline_index("kim", "bob", "j1", 0, false)
+            .await
+            .unwrap();
+        let _ = store
+            .offline_index("kim", "bob", "j1", first[0].message_id, false)
+            .await
+            .unwrap();
+        let (again, _) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert!(again.iter().any(|r| r.message_id == got.message_id));
+    }
+
+    #[tokio::test]
+    async fn resume_paginates_201_pending() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_pending_receipt(idgen);
+        let mut ids = Vec::new();
+        for i in 0..201 {
+            let mut req = sample("alice", "bob", now_unix_nano() + i, "x");
+            req.online_targets = vec![DeliveryTarget {
+                account: "bob".into(),
+                target_id: "j1".into(),
+            }];
+            ids.push(store.insert_user("kim", &req).await.unwrap().message_id);
+        }
+        let (page, more) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert_eq!(page.len(), MESSAGE_MAX_COUNT_PER_PAGE);
+        assert!(more);
+        let acked: Vec<i64> = page.iter().map(|r| r.message_id).collect();
+        store.ack("kim", "bob", "j1", &acked).await.unwrap();
+        let (rest, more2) = store
+            .offline_index("kim", "bob", "j1", 0, true)
+            .await
+            .unwrap();
+        assert_eq!(rest.len(), 1);
+        assert!(!more2);
+        assert_eq!(rest[0].message_id, ids[200]);
+    }
+
+    #[tokio::test]
+    async fn gate_off_insert_does_not_write_receipts() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let mut req = sample("alice", "bob", now_unix_nano(), "hi");
+        req.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        store.insert_user("kim", &req).await.unwrap();
+        assert_eq!(store.pending_count(), 0);
+    }
+
+    #[tokio::test]
     async fn insert_group_fans_out_one_row_per_member() {
         let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
         let store = MemoryMessageStore::new(idgen);
@@ -1119,12 +1722,18 @@ mod tests {
             .insert_user("kim", &sample("alice", "bob", now_unix_nano(), "two"))
             .await
             .unwrap();
-        store.ack("kim", "bob", 0).await.unwrap();
-        let before = store.offline_index("kim", "bob", 0).await.unwrap();
+        store.ack("kim", "bob", "", &[]).await.unwrap();
+        let (before, _) = store
+            .offline_index("kim", "bob", "", 0, false)
+            .await
+            .unwrap();
         assert_eq!(before.len(), 2);
 
-        store.ack("kim", "bob", b.message_id).await.unwrap();
-        let after = store.offline_index("kim", "bob", 0).await.unwrap();
+        store.ack("kim", "bob", "", &[b.message_id]).await.unwrap();
+        let (after, _) = store
+            .offline_index("kim", "bob", "", 0, false)
+            .await
+            .unwrap();
         assert!(after.iter().all(|r| r.message_id != a.message_id));
         assert!(after.iter().all(|r| r.message_id != b.message_id));
     }
@@ -1143,7 +1752,10 @@ mod tests {
             .insert_user("kim", &sample("alice", "bob", recent, "fresh"))
             .await
             .unwrap();
-        let idx = store.offline_index("kim", "bob", 0).await.unwrap();
+        let (idx, _) = store
+            .offline_index("kim", "bob", "", 0, false)
+            .await
+            .unwrap();
         assert_eq!(idx.len(), 1);
         assert_eq!(idx[0].message_id, fresh.message_id);
     }

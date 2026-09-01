@@ -4,6 +4,9 @@ import {
   encodeIndexResp,
   encodeLoginResp,
   encodeMessageResp,
+  decodeIndexReq,
+  decodeAckReq,
+  type WireIndex,
 } from "../src/proto.ts";
 import { Flag, Status } from "../src/status.ts";
 import {
@@ -59,6 +62,8 @@ export class LoopbackGw {
   lastTalkBody = "";
   dropOn = "";
   statusFor: Record<string, number> = {};
+  pending: WireIndex[] = [];
+  acked: bigint[] = [];
 
   factory = (_url: string): FakeSocket => {
     const s = new FakeSocket(this);
@@ -97,7 +102,22 @@ export class LoopbackGw {
     if (pkt.command === Command.SignIn) {
       resp.payload = encodeLoginResp(this.channelId);
     } else if (pkt.command === Command.OfflineIndex) {
-      resp.payload = encodeIndexResp([]);
+      const req = decodeIndexReq(pkt.payload);
+      if (req.resume) {
+        const rest = this.pending.slice(0, 200);
+        const hasMore = this.pending.length > 200;
+        resp.payload = encodeIndexResp(rest, hasMore);
+      } else if (req.messageId === 0n) {
+        resp.payload = encodeIndexResp(this.pending.slice(0, 200), false);
+      } else {
+        resp.payload = encodeIndexResp([], false);
+      }
+    } else if (pkt.command === Command.ChatTalkAck) {
+      const ack = decodeAckReq(pkt.payload);
+      const ids = ack.messageIds.length > 0 ? ack.messageIds : [ack.messageId];
+      this.acked.push(...ids.filter((id) => id !== 0n));
+      const acked = new Set(this.acked.map((id) => id.toString()));
+      this.pending = this.pending.filter((idx) => !acked.has(idx.messageId.toString()));
     } else if (
       pkt.command === Command.ChatUserTalk ||
       pkt.command === Command.ChatGroupTalk

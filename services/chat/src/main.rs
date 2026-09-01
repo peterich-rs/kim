@@ -9,10 +9,13 @@ use chat::royal::http_backends_with_hmac;
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
+use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
 use kim_naming::{open_naming, DefaultRegistration};
-use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret};
+use kim_protocol::{
+    check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
+};
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use serde::Deserialize;
@@ -127,6 +130,20 @@ fn port_from_listen(listen: &str) -> Option<u16> {
     listen.rsplit_once(':')?.1.parse().ok()
 }
 
+#[cfg(feature = "redis")]
+async fn open_nonce_guard(
+    url: &str,
+) -> Result<Arc<dyn HmacNonceGuard>, Box<dyn std::error::Error>> {
+    Ok(Arc::new(chat::RedisHmacNonceGuard::open(url).await?))
+}
+
+#[cfg(not(feature = "redis"))]
+async fn open_nonce_guard(
+    _url: &str,
+) -> Result<Arc<dyn HmacNonceGuard>, Box<dyn std::error::Error>> {
+    Err("rebuild chat with --features redis".into())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -151,6 +168,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(cfg.this.public_port);
     let consul = env_or_cfg("CONSUL_HTTP_ADDR", &cfg.this.consul_url);
+    let redis_url = redis_url_from_env_or_cfg(&cfg.this.redis_url);
+    let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
+    if is_demo_internal_hmac(&hmac) {
+        tracing::warn!(secret = "demo-default-hmac", "do not use in production");
+    }
+    check_strict_runtime(StrictCheck {
+        hmac: Some(&hmac),
+        jwt: None,
+        redis_url: redis_url.as_deref(),
+        require_redis: true,
+        consul_addr: consul.as_deref(),
+    })?;
     let naming = open_naming(consul.as_deref(), vec![])?;
     let mut tags = Vec::new();
     if !zone.is_empty() {
@@ -185,8 +214,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta,
     };
 
-    let redis_url = redis_url_from_env_or_cfg(&cfg.this.redis_url);
     let cache = open_session_store(redis_url.as_deref()).await?;
+    let nonce: Arc<dyn HmacNonceGuard> = match redis_url.as_deref() {
+        Some(url) => open_nonce_guard(url).await?,
+        None => Arc::new(MemoryHmacNonceGuard::new()),
+    };
 
     let node = resolve_snowflake_node(Some(cfg.this.snowflake_node));
     let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
@@ -198,10 +230,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (store, groups, users, social) =
         if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
-            let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
-            if is_demo_internal_hmac(&hmac) {
-                tracing::warn!(secret = "demo-default-hmac", "do not use in production");
-            }
             http_backends_with_hmac(&royal, &hmac)?
         } else {
             let store = open_message_store(
@@ -244,10 +272,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chat::builtin_talk_filter(cfg.this.sensitive_words, cfg.this.blocked_image),
         users,
         social,
+        chat::store::pending_receipt_enabled(),
     ));
     if !cfg.this.metrics_listen.is_empty() {
         if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {
-            let mut http = chat::admin_router(handler.admin());
+            let mut http = chat::admin_router(handler.admin(hmac.clone(), nonce.clone()));
             if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {
                 handler.with_metrics(m.clone());
                 http = http.merge(kim_metrics::router(m.registry()));

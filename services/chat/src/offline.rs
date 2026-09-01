@@ -13,7 +13,7 @@ enum OfflineError {
     TooManyIds,
 }
 
-pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore) {
+pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore, pending_receipt: bool) {
     let req = match ctx.read_body::<MessageIndexReq>() {
         Ok(r) => r,
         Err(err) => {
@@ -22,15 +22,40 @@ pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore) {
             return;
         }
     };
-    let rows = match store
-        .offline_index(&ctx.session().app, &ctx.session().account, req.message_id)
-        .await
-    {
-        Ok(v) => v,
-        Err(err) => {
-            warn!(%err, "offline index failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+    let session = ctx.session();
+    let (rows, has_more) = if pending_receipt {
+        if session.jti.trim().is_empty() {
+            (Vec::new(), false)
+        } else {
+            match store
+                .offline_index(
+                    &session.app,
+                    &session.account,
+                    session.jti.trim(),
+                    req.message_id,
+                    req.resume,
+                )
+                .await
+            {
+                Ok(v) => v,
+                Err(err) => {
+                    warn!(%err, "offline index failed");
+                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                    return;
+                }
+            }
+        }
+    } else {
+        match store
+            .offline_index(&session.app, &session.account, "", req.message_id, false)
+            .await
+        {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(%err, "offline index failed");
+                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                return;
+            }
         }
     };
     let resp = MessageIndexResp {
@@ -44,6 +69,7 @@ pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore) {
                 group: r.group,
             })
             .collect(),
+        has_more,
     };
     info!(
         account = %ctx.session().account,
@@ -179,13 +205,16 @@ mod tests {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();
-                async move { super::do_offline_index(ctx, store.as_ref()).await }
+                async move { super::do_offline_index(ctx, store.as_ref(), false).await }
             }
         });
         let mut pkt = LogicPkt::new(CMD_OFFLINE_INDEX, 1, Bytes::from_static(&[0xff]));
         pkt.header.channel_id = "ch-bob".into();
         pkt.set_meta(META_DEST_SERVER, "wg-1");
-        let _ = MessageIndexReq { message_id: 0 };
+        let _ = MessageIndexReq {
+            message_id: 0,
+            ..Default::default()
+        };
         router
             .serve(
                 pkt,

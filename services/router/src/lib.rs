@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
 use kim_naming::{open_naming, DefaultRegistration};
+use kim_protocol::{check_strict_runtime, StrictCheck};
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -189,6 +190,13 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
             }
         });
     let naming = if consul.is_some() {
+        check_strict_runtime(StrictCheck {
+            hmac: None,
+            jwt: None,
+            redis_url: None,
+            require_redis: false,
+            consul_addr: consul.as_deref(),
+        })?;
         open_naming(consul.as_deref(), vec![])?
     } else {
         open_naming(None, regs)?

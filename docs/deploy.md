@@ -22,9 +22,26 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 ## Docker 栈（一台干净的 VPS）
 
-`deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul UI `127.0.0.1:8500`。
+`deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul HTTPS API `127.0.0.1:8501`（明文 8500 已关）。
 
-已有 VPS 的 `kim.env` **不会**被 `bootstrap.sh` 改写。部署新栈前手工确认容器环境（compose 已注入 `ROYAL_URL` / `CONSUL_HTTP_ADDR` / `KIM_INTERNAL_HMAC_SECRET`）。已有 `kim.env` 须自行补上 `KIM_INTERNAL_HMAC_SECRET`，否则 compose 拒绝启动。Chat **不再**直连 `DATABASE_URL`。
+已有 VPS 的 `kim.env` **密钥不会**被 `bootstrap.sh` 改写，但脚本会 **preflight**：补齐缺失的 Consul TLS leaf、`secrets.hcl`（含 gossip `encrypt`）、并检查 `kim.env` 必填键。缺项退出非 0，不会只因 CA 文件存在就跳过。Gossip 共享密钥只进 Consul agent 的 `secrets.hcl`，不进业务容器。`consul-acl` 创建 token 失败必须非 0（compose 不得放行业务）。Gateway 在 `REDIS_URL` 已配置但 revoke store 打不开时 **拒绝启动**，不得跳过吊销检查。部署新栈前确认：`KIM_ENV=production`、`REDIS_PASSWORD` / 带密码的 `REDIS_URL`、每服务 `CONSUL_TOKEN_*`、Consul 私有 CA 与 client cert、非 demo 的 `KIM_JWT_SECRET` / `KIM_INTERNAL_HMAC_SECRET`。缺任一项，生产进程拒绝启动。Chat **不再**直连 `DATABASE_URL`。
+
+滚动：**同一窗口**切换镜像 + `kim.env` + Consul ACL/mTLS + Redis 密码。分镜像滚动时 **Royal 先于 Chat**（先签名后验签）。禁止「先发认 token 的代码打旧 HTTP Consul」。紧急用新二进制打旧 Consul 只允许 `KIM_ENV=development`（生产禁止长期）。Cloudflare TLS 只覆盖公网用户 → Caddy/WGateway，不进 Consul。
+
+租户冻结（`app=kim`）另加一条：**Chat / Gateway / Royal 切到 `login:loc:v2` / `login:sn:v2` 之后，再重启全部 Gateway**，断开仍持有旧 `login:sn:*` 的 TCP。新 Gateway 只拒新的非 kim 登录；不排空则旧 kim-gray 长连接仍可能打到新 Chat。灰度白名单按 account，不是 `kim-gray` JWT；目标 zone 无实例时不要指望回退正式池。
+
+pending receipt（默认关）顺序不可颠倒：
+
+1. 先发 Web SDK（`resume=true`、按 `has_more` 循环、页 200、persist 后再 batch ACK）。
+2. migrate `0007`（空表；可与 1 并行）。GC 随 Royal。
+3. 部署兼容代码：`KIM_REQUIRE_JTI=0`；Royal/Chat `KIM_PENDING_RECEIPT=0`。Gateway 已写 `Session.jti`。
+4. Gateway `KIM_REQUIRE_JTI=1`（此后保持开）。无 jti JWT 必须重新登录。
+5. 全量 SCAN `login:loc:v2:*` 空 jti = 0。不要用 talk 路径抽样 gauge。
+6. Royal `KIM_PENDING_RECEIPT=1`，Chat 仍 0。确认 `pending_delivery` 有新行。
+7. Chat `KIM_PENDING_RECEIPT=1`。
+8. 回滚：Chat 先 0，再 Royal 0。禁止 Chat=1 且 Royal=0。
+
+未走完 4–7 **不要**从 [production-gaps.md](production-gaps.md) 删 G-03 / G-04 / G-10。语义见 [reliable-delivery.md](reliable-delivery.md)。
 
 | 路径 | 用途 |
 |---|---|
@@ -34,7 +51,7 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 | `deploy/kim.env.example` | 环境变量模板；真正的 `kim.env` 只活在 VPS |
 | `deploy/Caddyfile` | `--profile edge` 时栈自己占 80/443（docker DNS：`royal:8080`） |
 | `deploy/host.Caddyfile` | 宿主机 Caddy 的 `kim.ainexc.com` 块（loopback 端口） |
-| `deploy/bootstrap.sh` | 第一次在 VPS 上生成 `kim.env`（不打印密钥） |
+| `deploy/bootstrap.sh` | 生成 `kim.env`（一次）、Consul 私有 CA/mTLS、gossip encrypt、每服务 ACL token；已有 `kim.env` 做 TLS/`secrets.hcl`/必填键 preflight（不打印密钥，永不写 `change-me`） |
 | `deploy/remote-up.sh` | CI 调用：login GHCR → pull → up |
 
 ```bash

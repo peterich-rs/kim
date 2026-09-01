@@ -146,6 +146,10 @@
                   "rule": "repeated",
                   "type": "string",
                   "id": 9
+                },
+                "jti": {
+                  "type": "string",
+                  "id": 10
                 }
               }
             },
@@ -255,6 +259,11 @@
                 "messageId": {
                   "type": "int64",
                   "id": 1
+                },
+                "messageIds": {
+                  "rule": "repeated",
+                  "type": "int64",
+                  "id": 2
                 }
               }
             },
@@ -307,6 +316,10 @@
                 "messageId": {
                   "type": "int64",
                   "id": 1
+                },
+                "resume": {
+                  "type": "bool",
+                  "id": 2
                 }
               }
             },
@@ -316,6 +329,10 @@
                   "rule": "repeated",
                   "type": "MessageIndex",
                   "id": 1
+                },
+                "hasMore": {
+                  "type": "bool",
+                  "id": 2
                 }
               }
             },
@@ -428,6 +445,18 @@
                 }
               }
             },
+            "DeliveryTarget": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "targetId": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
             "InsertMessageReq": {
               "fields": {
                 "sender": {
@@ -454,6 +483,11 @@
                 "clientId": {
                   "type": "string",
                   "id": 6
+                },
+                "onlineTargets": {
+                  "rule": "repeated",
+                  "type": "DeliveryTarget",
+                  "id": 7
                 }
               }
             },
@@ -519,6 +553,19 @@
                 "messageId": {
                   "type": "int64",
                   "id": 2
+                },
+                "messageIds": {
+                  "rule": "repeated",
+                  "type": "int64",
+                  "id": 3
+                },
+                "targetId": {
+                  "type": "string",
+                  "id": 4
+                },
+                "app": {
+                  "type": "string",
+                  "id": 5
                 }
               }
             },
@@ -531,6 +578,34 @@
                 "messageId": {
                   "type": "int64",
                   "id": 2
+                },
+                "targetId": {
+                  "type": "string",
+                  "id": 3
+                },
+                "app": {
+                  "type": "string",
+                  "id": 4
+                },
+                "resume": {
+                  "type": "bool",
+                  "id": 5
+                }
+              }
+            },
+            "DeliveryBackfillReq": {
+              "fields": {
+                "app": {
+                  "type": "string",
+                  "id": 1
+                },
+                "account": {
+                  "type": "string",
+                  "id": 2
+                },
+                "targetId": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             },

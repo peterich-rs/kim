@@ -62,6 +62,16 @@ pub async fn spawn_stack_seams(
     spawn_stack_with_chat(move |c, cache| ChatHandler::with_seams(c, cache, store, groups)).await
 }
 
+pub async fn spawn_stack_pending(
+    store: Arc<dyn MessageStore>,
+    groups: Arc<dyn GroupDirectory>,
+) -> Stack {
+    spawn_stack_with_chat(move |c, cache| {
+        ChatHandler::with_seams_pending(c, cache, store, groups, true)
+    })
+    .await
+}
+
 async fn spawn_stack_with_chat<F>(make_chat: F) -> Stack
 where
     F: FnOnce(Arc<Container>, Arc<dyn SessionStorage>) -> ChatHandler,
@@ -117,6 +127,7 @@ where
         "wg-1",
         DEMO_DEFAULT_SECRET,
     ));
+    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());
@@ -169,6 +180,7 @@ pub async fn spawn_gateway_only() -> (Arc<Container>, std::net::SocketAddr) {
         "wg-1",
         DEMO_DEFAULT_SECRET,
     ));
+    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());
@@ -263,6 +275,23 @@ pub async fn login_with_device(
     device: &str,
 ) -> (WsClient, Arc<LoginDialer>) {
     let dialer = Arc::new(LoginDialer::new(DEMO_DEFAULT_SECRET).with_device(device));
+    login_with_dialer(account, url, dialer).await
+}
+
+pub async fn login_with_token(
+    account: &str,
+    url: &str,
+    token: String,
+) -> (WsClient, Arc<LoginDialer>) {
+    let dialer = Arc::new(LoginDialer::new(DEMO_DEFAULT_SECRET).with_token(token));
+    login_with_dialer(account, url, dialer).await
+}
+
+async fn login_with_dialer(
+    account: &str,
+    url: &str,
+    dialer: Arc<LoginDialer>,
+) -> (WsClient, Arc<LoginDialer>) {
     let mut client = WsClient::new(
         account,
         "test",

@@ -36,6 +36,7 @@ fn loc_of(session: &Session) -> Location {
         channel_id: session.channel_id.clone(),
         gate_id: session.gate_id.clone(),
         device: session.device.clone(),
+        jti: session.jti.clone(),
     }
 }
 

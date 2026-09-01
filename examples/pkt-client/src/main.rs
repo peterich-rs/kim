@@ -332,6 +332,7 @@ async fn pull_offline(
     let mut pkt = LogicPkt::new(CMD_OFFLINE_INDEX, seq, Bytes::new());
     pkt.write_body(&MessageIndexReq {
         message_id: ack_from,
+        ..Default::default()
     });
     seq = seq.saturating_add(1);
     client.send(marshal(&Packet::Logic(pkt))).await?;
@@ -441,7 +442,10 @@ async fn hold_read_loop(
                     tokio::time::sleep(ack_delay).await;
                     let mut ack = LogicPkt::new(CMD_CHAT_TALK_ACK, seq, Bytes::new());
                     seq = seq.saturating_add(1);
-                    ack.write_body(&MessageAckReq { message_id: max_id });
+                    ack.write_body(&MessageAckReq {
+                        message_id: max_id,
+                        ..Default::default()
+                    });
                     client.send(marshal(&Packet::Logic(ack))).await?;
                 }
             }

@@ -7,6 +7,7 @@ mod echo;
 pub mod filter;
 mod friends;
 mod group;
+mod hmac_nonce;
 pub mod idgen;
 mod inbox;
 mod login;
@@ -28,7 +29,7 @@ use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,
+    read_logic, ALLOWED_APP, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,
     CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING,
     CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
     CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
@@ -44,7 +45,7 @@ use tracing::{info, warn};
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use crate::social::{MemorySocialDirectory, SocialDirectory};
-use crate::store::{MemoryMessageStore, MessageStore};
+use crate::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
 use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
@@ -58,11 +59,15 @@ pub use friends::{
     do_friend_list, do_friend_reject, do_friend_remove, do_friend_request,
 };
 pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
+#[cfg(feature = "redis")]
+pub use hmac_nonce::RedisHmacNonceGuard;
+pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
 pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
+pub use kim_session::open_uncached_session_store;
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
 pub use profile::{do_user_profile, do_user_search, do_user_update};
-pub use royal::{http_backends, http_backends_with_hmac};
+pub use royal::{http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt};
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -73,6 +78,7 @@ pub(crate) struct ChatSvc {
     users: Arc<dyn UserDirectory>,
     social: Arc<dyn SocialDirectory>,
     metrics: Arc<Mutex<Option<Arc<KimMetrics>>>>,
+    pending_receipt: bool,
 }
 
 struct ContainerDispatcher(Arc<Container>);
@@ -140,6 +146,26 @@ impl ChatHandler {
         Self::with_seams_and_zone(container, cache, store, groups, String::new())
     }
 
+    pub fn with_seams_pending(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        pending_receipt: bool,
+    ) -> Self {
+        Self::with_social(
+            container,
+            cache,
+            store,
+            groups,
+            String::new(),
+            Arc::new(NoopFilter),
+            Arc::new(MemoryUserDirectory::new()),
+            Arc::new(MemorySocialDirectory::new()),
+            pending_receipt,
+        )
+    }
+
     pub fn with_seams_and_zone(
         container: Arc<Container>,
         cache: Arc<dyn SessionStorage>,
@@ -187,6 +213,7 @@ impl ChatHandler {
             filter,
             users,
             Arc::new(MemorySocialDirectory::new()),
+            pending_receipt_enabled(),
         )
     }
 
@@ -200,16 +227,28 @@ impl ChatHandler {
         filter: Arc<dyn ContentFilter>,
         users: Arc<dyn UserDirectory>,
         social: Arc<dyn SocialDirectory>,
+        pending_receipt: bool,
     ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let mut router = Router::new();
         {
             let zone = zone.clone();
             let users = users.clone();
+            let store = store.clone();
             router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
                 let zone = zone.clone();
                 let users = users.clone();
-                async move { do_sys_login_with_zone(ctx, &zone, users.as_ref()).await }
+                let store = store.clone();
+                async move {
+                    do_sys_login_with_zone(
+                        ctx,
+                        &zone,
+                        users.as_ref(),
+                        Some(store.as_ref()),
+                        pending_receipt,
+                    )
+                    .await
+                }
             });
         }
         router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
@@ -221,6 +260,7 @@ impl ChatHandler {
             users,
             social,
             metrics: Arc::new(Mutex::new(None)),
+            pending_receipt,
         };
         {
             let svc = svc.clone();
@@ -306,14 +346,14 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(CMD_CHAT_TALK_ACK, move |ctx| {
                 let svc = svc.clone();
-                async move { do_talk_ack(ctx, svc.store.as_ref()).await }
+                async move { do_talk_ack(ctx, svc.store.as_ref(), svc.pending_receipt).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(CMD_OFFLINE_INDEX, move |ctx| {
                 let svc = svc.clone();
-                async move { do_offline_index(ctx, svc.store.as_ref()).await }
+                async move { do_offline_index(ctx, svc.store.as_ref(), svc.pending_receipt).await }
             });
         }
         {
@@ -449,8 +489,17 @@ impl ChatHandler {
         *self.svc.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
     }
 
-    pub fn admin(&self) -> ChatAdmin {
-        ChatAdmin::new(self.cache.clone(), self.dispatcher.clone())
+    pub fn admin(
+        &self,
+        hmac_secret: impl Into<String>,
+        nonce: Arc<dyn HmacNonceGuard>,
+    ) -> ChatAdmin {
+        ChatAdmin::new(
+            self.cache.clone(),
+            self.dispatcher.clone(),
+            hmac_secret,
+            nonce,
+        )
     }
 
     fn metrics(&self) -> Option<Arc<KimMetrics>> {
@@ -529,6 +578,10 @@ impl MessageListener for ChatHandler {
                 }
             }
         };
+        if pkt.header.command != CMD_LOGIN_SIGN_IN && session.app != ALLOWED_APP {
+            resp_err(&self.container, pkt, Status::Unauthorized).await;
+            return;
+        }
         if let Some(m) = self.metrics() {
             m.on_message_in(payload.len() as u64);
             if pkt.header.command == CMD_CHAT_USER_TALK {
@@ -557,5 +610,112 @@ impl StateListener for ChatHandler {
     async fn disconnect(&self, channel_id: &str) -> Result<(), Error> {
         info!(channel = channel_id, "gateway disconnected");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
+    use kim_naming::{DefaultRegistration, StaticNaming};
+    use kim_protocol::pkt::MessageReq;
+    use kim_protocol::{marshal, LogicPkt, Packet, MESSAGE_TYPE_TEXT};
+    use kim_session::MemorySessionStore;
+
+    use super::*;
+    use crate::directory::MemoryGroupDirectory;
+    use crate::idgen::SequenceIdGen;
+    use crate::social::{MemorySocialDirectory, SocialDirectory};
+    use crate::store::MemoryMessageStore;
+    use crate::users::{MemoryUserDirectory, UserDirectory};
+
+    struct NoopAgent;
+
+    #[async_trait]
+    impl Agent for NoopAgent {
+        fn id(&self) -> &str {
+            "noop"
+        }
+
+        async fn push(&self, _payload: Bytes) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    fn ident() -> DefaultRegistration {
+        DefaultRegistration {
+            service_id: "chat-1".into(),
+            service_name: "chat".into(),
+            protocol: "tcp".into(),
+            public_address: String::new(),
+            public_port: 0,
+            tags: vec![],
+            meta: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_non_kim_session_before_store() {
+        let cache: Arc<dyn SessionStorage> = Arc::new(MemorySessionStore::new());
+        let store = Arc::new(MemoryMessageStore::new(Arc::new(SequenceIdGen::new(1))));
+        let groups = Arc::new(MemoryGroupDirectory::new(Arc::new(SequenceIdGen::new(2))));
+        let users = Arc::new(MemoryUserDirectory::new());
+        let social = Arc::new(MemorySocialDirectory::new());
+        users.upsert("kim-gray", "alice").await.unwrap();
+        users.upsert("kim-gray", "bob").await.unwrap();
+        social.request("kim-gray", "alice", "bob").await.unwrap();
+        social.accept("kim-gray", "bob", "alice").await.unwrap();
+
+        let container = Container::new(ContainerOpts {
+            naming: Arc::new(StaticNaming::from_slice(vec![])),
+            identity: ident(),
+            dialer: Arc::new(InnerTcpDialer {
+                local_service_id: "chat-1".into(),
+            }),
+            deps: vec![],
+            adult_delay: Duration::from_millis(0),
+            selector: Arc::new(HashSelector),
+            after_downlink: vec![],
+        });
+        let handler = ChatHandler::with_social(
+            container,
+            cache.clone(),
+            store.clone(),
+            groups,
+            String::new(),
+            Arc::new(NoopFilter),
+            users,
+            social,
+            false,
+        );
+
+        cache
+            .add(&Session {
+                channel_id: "ch-gray".into(),
+                gate_id: "wg-1".into(),
+                account: "alice".into(),
+                app: "kim-gray".into(),
+                ..Session::default()
+            })
+            .await
+            .unwrap();
+
+        let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 1, Bytes::new());
+        pkt.header.channel_id = "ch-gray".into();
+        pkt.set_dest("bob");
+        pkt.write_body(&MessageReq {
+            r#type: MESSAGE_TYPE_TEXT,
+            body: "hi".into(),
+            extra: String::new(),
+            client_id: String::new(),
+        });
+        handler
+            .receive(&NoopAgent, marshal(&Packet::Logic(pkt)))
+            .await;
+        assert!(
+            store.recorded().is_empty(),
+            "kim-gray session must not reach the message store"
+        );
     }
 }

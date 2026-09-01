@@ -8,10 +8,14 @@ use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, Sele
 use kim_core::Server;
 use kim_metrics::KimMetrics;
 use kim_naming::{open_naming, DefaultRegistration};
+use kim_protocol::{check_strict_runtime, StrictCheck};
 use serde::Deserialize;
 
 use crate::selector::{Route, RouteFile, RouteSelector};
-use crate::{resolve_jwt_secret, GatewayHandler, HttpRevoke, KickHook, MetricsHook, RevokeStore};
+use crate::{
+    resolve_jwt_secret, AllowAllRevoke, GatewayHandler, HttpRevoke, KickHook, MetricsHook,
+    RevokeStore,
+};
 
 #[derive(Deserialize)]
 struct File {
@@ -128,6 +132,16 @@ pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Err
     })
 }
 
+/// Open Redis-backed JWT revoke storage. A configured `REDIS_URL` must succeed;
+/// callers must not skip revoke checks after a connection error.
+pub async fn open_redis_revoke(url: Option<&str>) -> Result<Arc<RevokeStore>, String> {
+    let url = url
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "REDIS_URL is empty".to_string())?;
+    Ok(Arc::new(RevokeStore::open(url).await?))
+}
+
 pub async fn run_gateway<S>(
     cfg: GatewayConfig,
     mut server: S,
@@ -147,6 +161,17 @@ where
                 Some(t.to_string())
             }
         });
+    let redis_url = std::env::var("REDIS_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    check_strict_runtime(StrictCheck {
+        hmac: None,
+        jwt: Some(&cfg.jwt_secret),
+        redis_url: redis_url.as_deref(),
+        require_redis: true,
+        consul_addr: consul.as_deref(),
+    })?;
     let public_address = std::env::var("KIM_PUBLIC_ADDRESS")
         .ok()
         .map(|s| s.trim().to_string())
@@ -233,19 +258,10 @@ where
     if let Some(m) = &metrics {
         handler.with_metrics(m.clone());
     }
-    if let Some(url) = std::env::var("REDIS_URL")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-    {
-        match RevokeStore::open(&url).await {
-            Ok(store) => {
-                let store = Arc::new(store);
-                handler.set_redis(store.clone());
-                handler.set_revoke(store);
-            }
-            Err(err) => tracing::warn!(%err, "revoke store"),
-        }
+    if redis_url.is_some() {
+        let store = open_redis_revoke(redis_url.as_deref()).await?;
+        handler.set_redis(store.clone());
+        handler.set_revoke(store);
     } else {
         let royal = std::env::var("ROYAL_URL")
             .ok()
@@ -259,13 +275,22 @@ where
                     Some(t.to_string())
                 }
             });
-        if let Some(base) = royal {
-            match HttpRevoke::with_hmac(
-                &base,
-                &kim_protocol::resolve_internal_hmac_secret(&cfg.hmac_secret),
-            ) {
-                Ok(store) => handler.set_revoke(Arc::new(store)),
-                Err(err) => tracing::warn!(%err, "royal revoke"),
+        match royal {
+            Some(base) => {
+                let store = HttpRevoke::with_hmac(
+                    &base,
+                    &kim_protocol::resolve_internal_hmac_secret(&cfg.hmac_secret),
+                )?;
+                handler.set_revoke(Arc::new(store));
+            }
+            None => {
+                // Production never reaches this: check_strict_runtime(require_redis: true)
+                // already failed when REDIS_URL is missing. Local/demo/e2e (Memory chat,
+                // no Redis, no Royal) still need a revoke store for login.
+                tracing::warn!(
+                    "do not use in production: JWT revoke checks disabled without REDIS_URL or ROYAL_URL"
+                );
+                handler.set_revoke(Arc::new(AllowAllRevoke));
             }
         }
     }
@@ -293,4 +318,50 @@ where
     });
     container.start().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::open_redis_revoke;
+
+    fn must_err(result: Result<Arc<super::RevokeStore>, String>, why: &str) -> String {
+        match result {
+            Ok(_) => panic!("{why}"),
+            Err(err) => err,
+        }
+    }
+
+    #[tokio::test]
+    async fn allow_all_revoke_never_blocks_jti() {
+        use crate::{AllowAllRevoke, RevokeCheck};
+        let store = AllowAllRevoke;
+        assert!(!store.is_revoked("any-jti").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn missing_redis_url_is_error() {
+        let err = must_err(open_redis_revoke(None).await, "empty url");
+        assert!(err.contains("REDIS_URL"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn invalid_redis_url_is_error_not_skip() {
+        let err = must_err(
+            open_redis_revoke(Some("not-a-redis-url")).await,
+            "bad url must fail",
+        );
+        assert!(!err.is_empty(), "{err}");
+    }
+
+    #[tokio::test]
+    async fn unreachable_redis_is_error_not_skip() {
+        let fut = open_redis_revoke(Some("redis://:secret@127.0.0.1:1/0"));
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), fut)
+            .await
+            .unwrap_or_else(|_| Err("timed out connecting to redis".into()));
+        let err = must_err(result, "refused redis must fail start");
+        assert!(!err.is_empty(), "{err}");
+    }
 }

@@ -7,7 +7,7 @@
 1. 产品/正确性演进报告（多设备、离线、Royal、群、推送）
 2. 开源库与运行时硬化报告（tokio / redis-rs / sqlx / rustls / Channel 隔离）
 3. 按热路径核对源码后的修订
-4. 对本文方案的审查（G-05 在线跨 app 投递、控制面 Consul/Redis、自聊唯一约束、H1 顺序、停机顺序等）
+4. 对本文方案的审查（跨 app 在线投递已用冻结 `app=kim` 关闭、控制面 Consul/Redis、自聊唯一约束、H1 顺序、停机顺序等）
 5. 复核：ACK 不得用 Snowflake 当无洞游标、duplicate 从落库重建、TGateway 组合 trait、outbox 成员快照
 
 行号以整理日工作区为准，之后提交可能漂移，以标识符为准。
@@ -22,10 +22,10 @@
 
 不能当生产 IM 用的原因不是「缺撤回」，也不是「没用 io_uring」，而是：
 
-1. **读索引语义会丢消息**（单设备空洞、多设备抢游标、Snowflake 高水位）。
+1. **读索引代码已换成 pending receipt，默认门闩仍关**（G-03 / G-04 / G-10）。compose `KIM_PENDING_RECEIPT=0` 时仍走 Redis 高水位。关上这三条要走完 [reliable-delivery.md](reliable-delivery.md) rollout，不是镜像合入。
 2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
-3. **内部控制面认证未完**：Royal HTTP 已 HMAC。Chat `/internal/kick` 仍裸；Compose 里 Redis 无密码、Consul 无 ACL，同网络可伪造网关注册。
-4. **`app` 不是完整租户**：Royal 丢掉 session.app；会话寻址只有 account，同名账号会跨 app 收到在线 Push。单产品可冻结为 `kim`，不能只改 Redis key。
+3. **内部控制面已关**：Chat `/internal/kick` 与 Royal 同 HMAC；nonce Redis NX EX 121；生产 Redis `requirepass` + `noeviction`；Consul 关明文 8500、HTTPS/mTLS 8501、ACL deny、每服务最小权限 token。demo/`change-me` JWT/HMAC 在 strict 下拒启动。
+4. **租户已冻结为 `app=kim`**（[gray.md](gray.md)）。G-05 / G-06 已关。
 5. **通信层骨架对、运维合同不够**：读循环串行等待业务、满信箱阻塞、shutdown 不等在途任务、TGateway 无 TLS。这些能在现有 `Conn`/`Channel` 边界内改，不必换架构。
 
 两份外部报告的大方向都对。产品报告若干事实写错；库报告把硬化排在鉴权/读索引前面，且 Phase 0 的 duplicate 语义不能照抄。订正见下文两张表。
@@ -38,30 +38,27 @@
 
 | 序 | 项 | 条目 |
 |---:|---|---|
-| 1 | Chat kick HMAC；Redis 密码；Consul ACL | G-01 |
-| 2 | 读游标：禁止任何 Snowflake 高水位；per-device 用 receipt 或会话内 delivery_seq | G-03, G-04, G-10 |
-| 3 | 会话寻址带 app，或冻结单租户并拒绝其它 JWT app | G-05 |
-| 4 | `CachedSessionStore` 失效或默认关闭 | G-06 |
-| 5 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
-| 6 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
-| 7 | JWT 空 secret fail-fast；心跳 Redis 错误有界宽限 | G-12, G-31 |
-| 8 | Router 去掉 token-in-URL | G-11 |
-| 9 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 10 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 11 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 12 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 13 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 14 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 15 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 16 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
+| 2 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
+| 3 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
+| 4 | 心跳 Redis 错误有界宽限 | G-31 |
+| 5 | Router 去掉 token-in-URL | G-11 |
+| 6 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 7 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 8 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 9 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 10 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 11 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 12 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 13 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-01 / G-03～G-07 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03～G-07 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
 1. 本文件只做盘点与优先级，不写逐步补丁。
 2. 高优先级按 [impl/](impl/README.md) **一份一切片** 写细化设计（文件、SQL、测试、明确不改什么）。
-3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。G-05 单租户 vs 贯穿 `app` 仍须拍板。漏 Push 补偿见 G-03 / G-14。
+3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。租户已冻结为 `app=kim`（见 [gray.md](gray.md)）。漏 Push 补偿见 G-03 / G-14。
 
 ---
 
@@ -70,15 +67,15 @@
 | 能力 | 落点 | 备注 |
 |---|---|---|
 | TCP / WS、分帧、读写分离 | `kim-tcp` / `kim-ws` / `kim-core::Channel` | WS `read_frame` 非 cancel-safe |
-| JWT 登录 / 续期 / 吊销 | gateway Accept、`login.renew` Push、`kim:revoke:{jti}` | 续期复用同一 `jti` |
+| JWT 登录 / 续期 / 吊销 | gateway Accept、`login.renew` Push、`kim:revoke:{jti}` | 冻结 `app=kim`；续期复用同一 `jti` |
 | 互踢 | `exclusive_device`：mobile/ios/android 单端；web/desktop/cli 可并存 | `LoginReq.device` 客户端自报 |
 | 单聊 / 群聊写扩散 | `insert_user` / `insert_group` | 群：1 content + N index，单事务 |
-| ACK + 离线 Pull | `chat.talk.ack`、`chat.offline.index/content` | 读索引 per-account |
+| ACK + 离线 Pull | `chat.talk.ack`、`chat.offline.index/content` | 默认高水位；`KIM_PENDING_RECEIPT=1` 后是 per-jti receipt |
 | 会话列表 / 历史 / 会话级已读 | `chat.inbox.*`、`chat.history`、`conversation_reads` | inbox 每次全量聚合 |
 | 好友全流程 + 黑名单 | `chat.friend.*`、`chat.block.*` | 申请 Push 失败无离线补偿 |
 | 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
-| Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | 灰度不隔离数据 |
+| Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
 | Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`；无端到端/Royal RPC；无告警规则 |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter 登录后不拉离线 |
 
@@ -93,40 +90,16 @@
 | G-02 Chat `offline.content` 越权 | [reliable-delivery.md](reliable-delivery.md)。越权 id 跳过。直打 Royal 要 HMAC |
 | G-08 Chat 群指令鉴权 | [group-royal.md](group-royal.md) |
 | G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 / G-14 |
-| G-01 Royal HTTP HMAC | [group-royal.md](group-royal.md)。剩余见下条 |
+| G-01 控制面 HMAC / Redis 密码 / Consul mTLS+ACL | [group-royal.md](group-royal.md)、[deploy.md](deploy.md) |
+| G-12 生产拒 demo JWT/HMAC | 并入控制面 strict 启动 |
 
 ---
 
 ## P0 —— 丢消息或可被打穿
 
-### G-01 内部控制面未完（kick / Redis / Consul）
-
-Royal HTTP HMAC 已落地，见 [group-royal.md](group-royal.md)。空密钥仍落到 demo 默认值（G-12）。
-
-**文件**
-
-- `services/chat/src/admin.rs` — `/internal/kick` 无 token
-- `services/royal/src/lib.rs` — `kick_account` 向 `CHAT_URL/internal/kick` 裸 POST
-- `deploy/compose.yml` — Redis 无 `--requirepass` / ACL；Consul `-client=0.0.0.0`、无 ACL
-- `crates/kim-naming/src/consul.rs` — `register` 裸 `PUT /v1/agent/service/register`；无 token、无强制 TLS
-
-**问题**
-
-Chat `/internal/kick` 仍无 HMAC。同网络还可以无密码读写 Redis（改会话 location、ACK、吊销 key），以及无 ACL 的 Consul 注册伪造 `wgateway`（Router lookup 把登录 JWT 送到攻击者网关）。
-
-compose 里 Royal 映射 `127.0.0.1:8080`、Caddy 不暴露 message API，这是部署巧合，不是信任边界。
-
-**建议**
-
-1. Chat `/internal/kick` 与 Royal 共用 HMAC；空密钥 fail-fast（G-12）。
-2. Redis：密码或 ACL，仅应用网段可达。
-3. Consul：ACL + 服务最小权限 token + TLS；`kim-naming` 支持 `X-Consul-Token` 和 HTTPS，禁止明文无 token 的生产启动。
-
-不要把「端口没发布到宿主机」当成鉴权。
-
----
-
 ### G-03 全局 ACK 高水位在消息空洞时丢数据（单设备也丢）
+
+代码已落地：`pending_delivery` + 按进程 `KIM_PENDING_RECEIPT`，见 [reliable-delivery.md](reliable-delivery.md)。compose 默认 0，生产仍走 Redis 高水位。未完成 Gateway `KIM_REQUIRE_JTI=1` 持续生效、SCAN `login:loc:v2:*` 空 jti = 0、Royal writer=1 再 Chat reader=1 **之前，不得从本文件删 G-03 / G-04 / G-10**。
 
 **文件**
 
@@ -178,63 +151,9 @@ ACK 是 `SET` 不是 `GREATEST`。电脑若 ACK 了更小的 `lastMessage`，游
 
 **建议**
 
-G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条之一，**不要**把 Snowflake `message_id` 当 ACK 游标。`device_id` 用 G-13 的稳定凭证，不能绑一次性 `jti`。若保留多租户，键带 `app`（G-05）。会话漫游仍用 `history`。
+G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条之一，**不要**把 Snowflake `message_id` 当 ACK 游标。`device_id` 用 G-13 的稳定凭证，不能绑一次性 `jti`。租户已冻结为 `kim`。会话漫游仍用 `history`。
 
 补测试：两个并发 insert，小 id 事务后提交；设备 ACK 了大 id 之后，小 id 仍能被该设备 pull / 出现在 pending 集合里。
-
----
-
-### G-05 会话寻址不含 `app`：同名账号会跨租户收到在线 Push
-
-**文件**
-
-- `crates/kim-router/src/storage.rs` — `SessionStorage::get_locations(accounts: &[String])`（约 22–30 行），无 `app`
-- `services/chat/src/talk.rs` — `ctx.get_locations(&accounts)`（约 123–128 行）
-- `crates/kim-session/src/keys.rs` — `login:loc:{account}`，`add`/`delete`/`list_locations` 同样只有 account
-- `services/chat/src/admin.rs` — `ChatAdmin::kick(account)`（约 28 行）
-- `services/chat/src/royal.rs` — HTTP 适配器 `let _ = app`
-- `services/royal/src/lib.rs` — 进程级 `RoyalState.app`，默认 `"kim"`
-- `docs/gray.md`：会话 key 不含 app，同一 account 跨 app 会互踢
-- `deploy/compose.yml` — `chat` 与 `chat-gray` 共用一个 Royal
-
-**问题**
-
-这不只是 Redis key / ACK 串租户。`talk` 按账号取全部 location，**另一 JWT `app` 下同名账号的在线 channel 也会收到当前这条 `MessagePush`**。灰度用 `app=kim-gray` 的 JWT（`e2e_gray.rs`），和正式 `kim` 撞账号时就是实时串话，不是离线窗口问题。
-
-Royal HTTP 还丢掉 `session.app`，消息落进配置里的单一 `app`。zone 只决定打到哪台 Chat。
-
-只改 `chat:ack:{account}` 的 key **不够**。`add` / `delete` / `get` / `get_locations` / `list_locations`、loc cache、Redis loc hash、`ChatAdmin::kick` 全部按 account 工作。
-
-产品上目前只有一个 `kim`。多租户是半截壳（见对话结论：可以冻结，不要补完假租户）。无论选哪条路，跨 app 在线投递这条 e2e 都要有。
-
-**建议（二选一，必须先拍板）**
-
-1. **冻结单租户（推荐，若没有第二产品）：** 注册/登录只签 `app=kim`；网关/Royal 拒绝其它 `app`。灰度 whitelist 改绑 **account**，不再发 `kim-gray` JWT。PG `app` 列恒写 `'kim'`，先不拆主键。SessionStorage 可以暂时不带 app，但必须加测试：非 `kim` token 登不进去；撞名账号不会因为历史 `kim-gray` 会话而串 Push。
-2. **保留多租户：** `SessionStorage` 的 `add`/`delete`/`get_locations`/`list_locations` 全部改为 `(app, account)`；Redis loc/ACK/session 带 app；`kick` 带 app。HTTP 把 `app` 传给 Royal。补 e2e：**跨 app 同 account 在线不得收到对方 MessagePush**。
-
-禁止第三种：只改 Redis key、接口仍按账号列表寻址。
-
----
-
-### G-06 `CachedSessionStore` 无 TTL、无跨节点失效
-
-**文件**
-
-- `crates/kim-session/src/cache.rs` — 无界 `HashMap`，命中不回源
-- `crates/kim-session/src/lib.rs` — `KIM_LOC_CACHE=0` 可关，默认开
-- `crates/kim-container/src/selector.rs` — `HashSelector` 按 `channel_id` 哈希
-
-**问题**
-
-Chat 实例按连接哈希。Bob 在节点 C 登出并删 Redis，Alice 所在节点 A 仍缓存 Bob 的旧 `channel_id`，dispatch 打到死连接。Bob 若只是换了 channel、仍在线，不会走 offline pull —— 消息丢在「在线」窗口。
-
-原报告只写「网关重启后 channel_id 要有测试」。真正的洞是多 Chat 实例 + 写穿缓存不失效。
-
-`get_locations` 在 Redis 实现里对每个账号一次 `HVALS`。500 人群 = 500 次 Redis + 500 行同事务。
-
-**建议**
-
-生产默认关 loc cache，或短 TTL + Redis pubsub 失效。加测试：它机登出后本机不得 dispatch 到死 channel。
 
 ---
 
@@ -292,22 +211,6 @@ unix 上 SIGTERM+SIGINT。与 G-32 **统一**为一条顺序，禁止两处各�
 **建议**
 
 分页协议：返回 `has_more` + 稳定 `next`（receipt 集合的续拉，或 `delivery_seq`，**不是** Snowflake `message_id`）。ACK 与 index 请求解耦。找不到 id 时用 15 天或明确错误，不要 1 天。无洞语义见 G-03，不要在 G-10 另发明一套 `id > cursor`。
-
----
-
-### G-12 DEMO JWT secret 空配置 fail-open
-
-**文件**
-
-- `crates/kim-protocol/src/token.rs` — `DEMO_DEFAULT_SECRET = "jwt-1sNzdiSgnNuxyq2g7xml2JvLArU"`
-- `services/gateway/src/lib.rs` — `resolve_jwt_secret`（约 33–46 行）
-- `services/royal/src/main.rs` — `jwt_secret`（约 72–77 行）
-
-**问题**
-
-env 与 config 都空时 warn 后用源码里的默认值。该字面量进二进制。JWT 仅 HS256，无 `iss`/`aud`。`check_account` 只拒空串和控制字符。
-
-原报告这条成立。生产必须 fail-fast 拒启动。
 
 ---
 
@@ -467,7 +370,7 @@ Royal 有 register / login / logout / `POST /api/v1/auth/password`（Argon2）�
 
 **建议**
 
-抽出统一的「有效 claims」：签名、`app`、revoke。改密必须走它。改密后让既有会话失效：账户级 `token_version` / `session_epoch` 写入 JWT，改密时递增；并只踢对应 `(app, account)` 的连接（不要误伤其它租户，叠 G-05）。仅吊销当前 jti 不够，因为其它设备各有 jti。
+抽出统一的「有效 claims」：签名、`app`、revoke。改密必须走它。改密后让既有会话失效：账户级 `token_version` / `session_epoch` 写入 JWT，改密时递增；并踢该 account 的连接（租户已冻结为 kim）。仅吊销当前 jti 不够，因为其它设备各有 jti。
 
 ---
 
@@ -564,7 +467,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 - Ping/Pong/Close 仍在读专员，不进 lane。
 - 文档写明：响应顺序与请求到达顺序一致；`MessageListener` 不再假设与读同任务，但同一 channel 上仍是 FIFO。
 
-不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-01 / G-03～G-07，高于 vectored write。
+不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-03～G-07，高于 vectored write。
 
 ---
 
@@ -716,7 +619,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 - 好友申请 Push 失败只打日志；离线方靠 `incoming` 主动拉。
 - `kim-ws` Upgrade 不查 Origin。
 - 网关无全局连接数上限（G-34）。
-- inbox/history 的 Royal HTTP 要 HMAC；Chat `/internal/kick` 仍裸（G-01）。
+- inbox/history 的 Royal HTTP 要 HMAC；Chat `/internal/kick` 同样要 HMAC。
 - `do_user_profile` 可查任意账号资料（文档按搜索产品写的，叠加无限流）。
 - Chat `db_max_connections` 默认 5，inbox 重查询容易把池打满。
 - metrics HTTP 与 `/internal/kick` 同绑定；容器内网可达。
@@ -740,7 +643,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | 无账号体系 | 有账号密码、改密、JWT。缺的是验证、找回、2FA、注销 |
 | 读索引 per-account，两台设备会丢 | 成立，且 **单设备消息空洞也会丢**（G-03） |
 | 会话漫游靠 history 补 | history 按账号限定；Chat `offline.content` 按 session 过滤。直打 Royal 要 HMAC |
-| 会话 key 不含 app 只会导致互踢 / ACK 串 | 还会 **跨 app 实时 Push**（`get_locations` 只有 account，G-05） |
+| 会话 key 不含 app 只会导致互踢 / ACK 串 | 已用冻结 `app=kim` + loc/session v2 + Chat 拒非 kim session 关闭（见 [gray.md](gray.md)） |
 
 原报告成立、且仍应保留的判断：多设备读索引、Royal 单点、inbox 全量聚合、无系统推送、无撤回/已读回执、无限流、DEMO secret、无分布式追踪、无告警规则、Memory 一把大锁。群长连接已鉴权；无角色/邀请仍是功能缺口。
 
@@ -754,15 +657,15 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 |---|---|
 | Phase 0：`inserted.duplicate` 保持不二次 dispatch | 已否。identical 重试从落库再 Push |
 | Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿 |
-| PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与 Royal HMAC 已落地；try_send 仍排在 G-01 剩余项和游标之后 |
+| PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与控制面 HMAC 已落地；try_send 仍排在游标之后 |
 | SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter 不拉离线（G-14），「靠 Pull 补洞」对移动端不成立 |
 | 引入 `tokio-util` 为了 JoinSet | `tokio::task::JoinSet` 已在 tokio。tokio-util 只为 `CancellationToken` 才值得加 |
 | `write_all_vectored` 示例 | 稳定 tokio 上该 API 常要 `tokio_unstable`。未验证前不要写进热路径 |
 | ChannelMap 立刻分片 | `get` 已 clone `Channel` 再放锁，登录写锁才会挡全表。先做 G-29，profile 后再分片。拒绝 DashMap 作为第一刀是对的 |
 | HASH 分区脚本做成迁移 | 草稿列名是 `account` 不是 `account_a`。按人 HASH 对 `offline.content` 按 id 取不友好。更合理的是 `message_index` RANGE(时间) + 索引；**不要**进默认 `sqlx::migrate!` |
-| 手写 Consul HTTP，无官方 consul crate | 可接受。**生产必须** ACL token + TLS（G-01）；缺的不是换官方 crate |
+| 手写 Consul HTTP，无官方 consul crate | 可接受。生产已是 ACL token + 私有 CA mTLS；缺的不是换官方 crate |
 | 心跳 Redis 错误 fail-open | 瞬时错误不要踢全员。长故障必须有界宽限，不能无限续已吊销 JTI（G-31） |
-| 生产 JWT 仍是 DEMO 则退出 | 与 G-12 一致，应做 |
+| 生产 JWT 仍是 DEMO 则退出 | 已并入控制面 strict 启动 |
 | 雪花 init 失败禁止 Sequence 降级 | 与 G-22 一致 |
 | 群仍写扩散，>200 分批 | 与 G-25 一致；现在就改读扩散会推翻 ACK/inbox，拒绝得对 |
 | Dual-write 默认 fail-open | 对 |
@@ -775,7 +678,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 
 ## 运行时与开源库（订正后的二期）
 
-**不要按原文 H0～H6 原样开工。** 先收 G-01 剩余（kick / Redis / Consul）、G-05 租户拍板、停机顺序以 G-07 为准。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持；若走 G-05 方案 2，`SessionStorage` 签名会加 `app`。不要给自聊加 `(app, account_a, message_id)` 唯一约束。
+**不要按原文 H0～H6 原样开工。** 租户已冻结为 `app=kim`。停机顺序以 G-07 为准。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持。不要给自聊加 `(app, account_a, message_id)` 唯一约束。
 
 ### 目标形状（通信层）
 
@@ -804,7 +707,7 @@ accept
   tokio-rustls       TGateway 服务端 TLS（客户端 kim-ws 已有 rustls）
   rustls-pemfile     证书
   tower-http         Royal/Router REST 中间件
-  moka 或 lru        有界会话缓存（先考虑默认关 loc cache，G-06）
+  moka 或 lru        有界会话缓存（loc cache 已 opt-in 默认关）
   governor           握手/发言限流（放 gateway / Royal，不放 kim-tcp）
   tikv-jemallocator  Linux 网关 feature；macOS 保持系统分配器
 
@@ -842,7 +745,7 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - TGateway：`tls_cert`/`tls_key` 空则明文；e2e 仿 `crates/kim-ws/tests/wss.rs`。
 - TLS 终止放 tgateway，不把证书逻辑放进 kim-tcp。
 
-**H3 — 用尽 redis / sqlx / axum / jwt（G-12, G-31, G-33）**
+**H3 — 用尽 redis / sqlx / axum / jwt（G-31, G-33）**
 
 - `get_locations` pipeline；ConnectionManager timeout。
 - 心跳 Redis 错误：有界宽限，不是无限 fail-open；登录 revoke 仍 fail-closed（G-31）。
@@ -851,9 +754,9 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - 空 secret / DEMO secret：**生产启动失败**。
 - 显式 Tokio runtime Builder。
 
-**H4 — 内存与 lint（G-06 深化）**
+**H4 — 内存与 lint**
 
-- loc cache：有界 TTL，或默认关。
+- loc cache：已 opt-in 默认关。有界 TTL / pubsub 失效仍后置。
 - ChannelMap 分片 `RwLock<HashMap>`（N=16/32）——在 G-29 之后、有 profile 再做。
 - Linux `jemalloc` feature。
 - workspace clippy `unwrap_used` 对 `crates/*` deny（测试 allow）。
@@ -926,9 +829,9 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 ## 部署隐含假设
 
 - Caddy 只把 auth 和 lookup、WS 暴露到公网。不要把「没反代」写成安全设计。
-- `CHAT_URL=http://chat:9002` 让 Royal 打 Chat admin。compose 网络即信任域：Redis 无密码、Consul `-client=0.0.0.0` 无 ACL（G-01）。
+- `CHAT_URL=http://chat:9002` 让 Royal 打 Chat admin（HMAC + nonce）。Redis `requirepass` + `noeviction`；Consul HTTPS/mTLS 8501 + ACL deny。
 - Consul bootstrap-expect=1，Redis/PG 单节点。
-- `KIM_JWT_SECRET` 与 `KIM_INTERNAL_HMAC_SECRET` 在 `kim.env.example` 是 `change-me`。空 JWT/HMAC secret 还会落到 DEMO 默认值（G-12）。
+- 生产 `KIM_JWT_SECRET` / `KIM_INTERNAL_HMAC_SECRET` 不得为 demo 或 `change-me`（strict 拒启动）。`bootstrap.sh` 用 openssl hex，不写 `change-me`。
 
 ---
 
@@ -937,7 +840,7 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 应新增、目前没有的：
 
 - 自聊 insert 仍成功（两条 index）；不得依赖 `(app, account_a, message_id)` 唯一约束
-- 同 account、不同 `app` 的两个在线会话：A 的 talk **不得** Push 到 B 的 channel（G-05）
+- 非 `kim` JWT 登录失败（105）；预置 `app=kim-gray` 的 session 不得 talk / insert
 - 设备 A ACK 后设备 B 仍能 pull 未被自己 ACK 的段
 - 两个并发 insert：小 snowflake id 后提交；ACK 大 id 之后小 id 对该设备仍可见（G-03/G-04）
 - id=10 dispatch 失败、id=11 已 Push：10 对该设备仍可见（不是被高水位吃掉）
@@ -946,7 +849,6 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - SIGTERM：**先摘发现**，drain 窗口内 lookup 不得再返回该实例
 - 同一 channel 上 join 未完成时并发 talk 的顺序（H1 lane）
 - 改密后旧 JWT 不可调 `/auth/me` 与发消息；kick 只打对应 account（G-20）
-- `app=kim-gray` 的消息不得出现在 `app=kim` 的 index（若冻结单租户则改为：非 `kim` JWT 登录失败）
 - 未签名的 Chat `/internal/kick` 被拒
 
 命令（仓库惯例）：

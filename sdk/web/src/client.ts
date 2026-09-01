@@ -758,24 +758,43 @@ export class KIMClient implements ContentLoader {
 
   private async loadOfflineMessage(): Promise<void> {
     const indexes: WireIndex[] = [];
-    let messageId = await this.opts.store.lastId();
     for (;;) {
       const pkt = LogicPkt.build(
         Command.OfflineIndex,
         "",
-        encodeIndexReq(messageId),
+        encodeIndexReq({ resume: true }),
         this.allocSeq(),
       );
       const resp = await this.request(pkt);
       if (resp.status !== Status.Success) {
         break;
       }
-      const page = decodeIndexResp(resp.payload);
+      const { indexes: page, hasMore } = decodeIndexResp(resp.payload);
       if (page.length === 0) {
         break;
       }
-      messageId = page[page.length - 1]!.messageId;
+      for (const idx of page) {
+        if (await this.opts.store.exist(idx.messageId)) {
+          continue;
+        }
+        await this.opts.store.insert(new Message(idx.messageId, idx.sendTime));
+      }
+      const ids = page.map((idx) => idx.messageId);
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = ids.slice(i, i + 200);
+        const ack = LogicPkt.build(
+          Command.ChatTalkAck,
+          "",
+          encodeAckReq(batch),
+          this.allocSeq(),
+        );
+        this.send(ack.bytes());
+        await this.opts.store.setAck(batch[batch.length - 1]!);
+      }
       indexes.push(...page);
+      if (!hasMore) {
+        break;
+      }
     }
     const om = new OfflineMessages(this, indexes);
     try {

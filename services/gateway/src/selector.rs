@@ -5,6 +5,7 @@ use kim_naming::DefaultRegistration;
 use kim_protocol::pkt::Header;
 use kim_protocol::{META_ACCOUNT, META_APP};
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::slots::build_slots;
 
@@ -102,8 +103,8 @@ impl Selector for RouteSelector {
         if app.is_empty() && account.is_empty() {
             return hash_pick(&header.channel_id, srvs);
         }
-        let zone_id = if let Some(z) = self.route.whitelist.get(&app) {
-            z.clone()
+        let (zone_id, from_whitelist) = if let Some(z) = self.route.whitelist.get(&account) {
+            (z.clone(), true)
         } else if self.route.slots.is_empty() || self.route.zones.is_empty() {
             return hash_pick(&header.channel_id, srvs);
         } else {
@@ -119,24 +120,26 @@ impl Selector for RouteSelector {
             };
             let slot = crc32fast::hash(key.as_bytes()) as usize % self.route.slots.len();
             let zi = self.route.slots[slot];
-            self.route.zones[zi].id.clone()
+            (self.route.zones[zi].id.clone(), false)
         };
         let zone_srvs: Vec<DefaultRegistration> = srvs
             .iter()
             .filter(|r| in_zone(r, &zone_id))
             .cloned()
             .collect();
-        let pool = if zone_srvs.is_empty() {
-            srvs
-        } else {
-            &zone_srvs
-        };
         let pick_key = if account.is_empty() {
-            &header.channel_id
+            header.channel_id.as_str()
         } else {
-            &account
+            account.as_str()
         };
-        hash_pick(pick_key, pool)
+        if zone_srvs.is_empty() {
+            if from_whitelist {
+                warn!(account = %account, zone = %zone_id, "gray zone empty");
+                return None;
+            }
+            return hash_pick(pick_key, srvs);
+        }
+        hash_pick(pick_key, &zone_srvs)
     }
 }
 
@@ -158,10 +161,27 @@ mod tests {
         }
     }
 
+    fn header(app: &str, account: &str) -> Header {
+        Header {
+            channel_id: "c".into(),
+            meta: vec![
+                kim_protocol::pkt::Meta {
+                    key: META_APP.into(),
+                    value: app.into(),
+                },
+                kim_protocol::pkt::Meta {
+                    key: META_ACCOUNT.into(),
+                    value: account.into(),
+                },
+            ],
+            ..Header::default()
+        }
+    }
+
     #[test]
     fn never_empty_when_adult_exists() {
         let route = Route::from_config(RouteFile {
-            route_by: "app".into(),
+            route_by: "account".into(),
             zones: vec![ZoneFile {
                 id: "z1".into(),
                 weight: 100,
@@ -169,28 +189,17 @@ mod tests {
             whitelist: HashMap::new(),
         });
         let sel = RouteSelector::new(route);
-        let header = Header {
-            channel_id: "c".into(),
-            meta: vec![
-                kim_protocol::pkt::Meta {
-                    key: META_APP.into(),
-                    value: "kim".into(),
-                },
-                kim_protocol::pkt::Meta {
-                    key: META_ACCOUNT.into(),
-                    value: "alice".into(),
-                },
-            ],
-            ..Header::default()
-        };
         let srvs = vec![r("chat-2", "other")];
-        assert_eq!(sel.lookup(&header, &srvs).as_deref(), Some("chat-2"));
+        assert_eq!(
+            sel.lookup(&header("kim", "alice"), &srvs).as_deref(),
+            Some("chat-2")
+        );
     }
 
     #[test]
     fn empty_slots_hash_pick() {
         let route = Route::from_config(RouteFile {
-            route_by: "app".into(),
+            route_by: "account".into(),
             zones: vec![ZoneFile {
                 id: "z1".into(),
                 weight: 0,
@@ -198,24 +207,16 @@ mod tests {
             whitelist: HashMap::new(),
         });
         let sel = RouteSelector::new(route);
-        let header = Header {
-            channel_id: "c".into(),
-            meta: vec![kim_protocol::pkt::Meta {
-                key: META_APP.into(),
-                value: "kim".into(),
-            }],
-            ..Header::default()
-        };
         let srvs = vec![r("a", "z1"), r("b", "z1")];
-        assert!(sel.lookup(&header, &srvs).is_some());
+        assert!(sel.lookup(&header("kim", ""), &srvs).is_some());
     }
 
     #[test]
-    fn whitelist_hits_zone() {
+    fn whitelist_account_hits_zone() {
         let mut whitelist = HashMap::new();
-        whitelist.insert("kim-gray".into(), "zone_gray".into());
+        whitelist.insert("alice".into(), "zone_gray".into());
         let route = Route::from_config(RouteFile {
-            route_by: "app".into(),
+            route_by: "account".into(),
             zones: vec![
                 ZoneFile {
                     id: "zone_local".into(),
@@ -229,21 +230,41 @@ mod tests {
             whitelist,
         });
         let sel = RouteSelector::new(route);
-        let header = Header {
-            channel_id: "c".into(),
-            meta: vec![
-                kim_protocol::pkt::Meta {
-                    key: META_APP.into(),
-                    value: "kim-gray".into(),
+        let srvs = vec![r("chat-1", "zone_local"), r("chat-2", "zone_gray")];
+        assert_eq!(
+            sel.lookup(&header("kim", "alice"), &srvs).as_deref(),
+            Some("chat-2")
+        );
+        assert_eq!(
+            sel.lookup(&header("kim", "bob"), &srvs).as_deref(),
+            Some("chat-1")
+        );
+    }
+
+    #[test]
+    fn whitelist_empty_zone_is_none() {
+        let mut whitelist = HashMap::new();
+        whitelist.insert("alice".into(), "zone_gray".into());
+        let route = Route::from_config(RouteFile {
+            route_by: "account".into(),
+            zones: vec![
+                ZoneFile {
+                    id: "zone_local".into(),
+                    weight: 100,
                 },
-                kim_protocol::pkt::Meta {
-                    key: META_ACCOUNT.into(),
-                    value: "alice".into(),
+                ZoneFile {
+                    id: "zone_gray".into(),
+                    weight: 0,
                 },
             ],
-            ..Header::default()
-        };
-        let srvs = vec![r("chat-1", "zone_local"), r("chat-2", "zone_gray")];
-        assert_eq!(sel.lookup(&header, &srvs).as_deref(), Some("chat-2"));
+            whitelist,
+        });
+        let sel = RouteSelector::new(route);
+        let srvs = vec![r("chat-1", "zone_local")];
+        assert_eq!(sel.lookup(&header("kim", "alice"), &srvs), None);
+        assert_eq!(
+            sel.lookup(&header("kim", "bob"), &srvs).as_deref(),
+            Some("chat-1")
+        );
     }
 }

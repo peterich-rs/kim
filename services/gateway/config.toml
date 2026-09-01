@@ -20,10 +20,12 @@ public_port = 8002
 tags = ["zone:zone_local"]
 
 [route]
-route_by = "app"
+route_by = "account"
 
 [[route.zones]]
 id = "zone_local"
 weight = 100
 
 [route.whitelist]
+# account -> zone. Do not use JWT app keys such as "kim-gray".
+# "alice" = "zone_gray"

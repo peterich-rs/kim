@@ -7,11 +7,12 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, ConversationRead,
-    GroupCreateResp, GroupDetail, GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery,
-    InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
-    InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
-    MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
-    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
+    DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail,
+    GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertFanout,
+    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
+    InternalGroupQuery, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
+    OfflineIndexReq, ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery,
+    UserSearchResp,
 };
 use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
 use prost::Message;
@@ -72,7 +73,7 @@ fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
 }
 
 fn retry_http(status: StatusCode) -> bool {
-    status.is_server_error()
+    status.is_server_error() && status != StatusCode::SERVICE_UNAVAILABLE
 }
 
 #[derive(Clone)]
@@ -189,12 +190,14 @@ async fn post_maybe_empty(
 
 pub struct HttpMessageStore {
     client: RoyalClient,
+    pending_receipt: bool,
 }
 
 impl HttpMessageStore {
     pub fn new(base: &str) -> Result<Self, StoreError> {
         Ok(Self {
             client: RoyalClient::new(base)?,
+            pending_receipt: crate::store::pending_receipt_enabled(),
         })
     }
 }
@@ -218,6 +221,14 @@ impl MessageStore for HttpMessageStore {
             }),
             members: Vec::new(),
             client_id: req.client_id.clone(),
+            online_targets: req
+                .online_targets
+                .iter()
+                .map(|t| PbDeliveryTarget {
+                    account: t.account.clone(),
+                    target_id: t.target_id.clone(),
+                })
+                .collect(),
         };
         let _ = app;
         let path = "/api/v1/message/user";
@@ -251,6 +262,14 @@ impl MessageStore for HttpMessageStore {
             }),
             members: members.to_vec(),
             client_id: req.client_id.clone(),
+            online_targets: req
+                .online_targets
+                .iter()
+                .map(|t| PbDeliveryTarget {
+                    account: t.account.clone(),
+                    target_id: t.target_id.clone(),
+                })
+                .collect(),
         };
         let _ = app;
         let path = "/api/v1/message/group";
@@ -266,12 +285,28 @@ impl MessageStore for HttpMessageStore {
         })
     }
 
-    async fn ack(&self, app: &str, account: &str, message_id: i64) -> Result<(), StoreError> {
-        let body = AckMessageReq {
-            account: account.to_string(),
-            message_id,
+    async fn ack(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+        message_ids: &[i64],
+    ) -> Result<(), StoreError> {
+        let body = if self.pending_receipt {
+            AckMessageReq {
+                account: account.to_string(),
+                message_id: 0,
+                message_ids: message_ids.to_vec(),
+                target_id: target_id.to_string(),
+                app: app.to_string(),
+            }
+        } else {
+            AckMessageReq {
+                account: account.to_string(),
+                message_id: message_ids.first().copied().unwrap_or(0),
+                ..Default::default()
+            }
         };
-        let _ = app;
         post_maybe_empty(&self.client, "/api/v1/message/ack", &body).await
     }
 
@@ -279,29 +314,60 @@ impl MessageStore for HttpMessageStore {
         &self,
         app: &str,
         account: &str,
+        target_id: &str,
         message_id: i64,
-    ) -> Result<Vec<MessageIndexRow>, StoreError> {
-        let body = OfflineIndexReq {
-            account: account.to_string(),
-            message_id,
+        resume: bool,
+    ) -> Result<(Vec<MessageIndexRow>, bool), StoreError> {
+        let body = if self.pending_receipt {
+            OfflineIndexReq {
+                account: account.to_string(),
+                message_id,
+                target_id: target_id.to_string(),
+                app: app.to_string(),
+                resume,
+            }
+        } else {
+            OfflineIndexReq {
+                account: account.to_string(),
+                message_id,
+                ..Default::default()
+            }
         };
-        let _ = app;
         let path = "/api/v1/offline/index";
         let resp: MessageIndexResp = self
             .client
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
-        Ok(resp
-            .indexes
-            .into_iter()
-            .map(|r| MessageIndexRow {
-                message_id: r.message_id,
-                direction: r.direction,
-                send_time: r.send_time,
-                account_b: r.account_b,
-                group: r.group,
-            })
-            .collect())
+        Ok((
+            resp.indexes
+                .into_iter()
+                .map(|r| MessageIndexRow {
+                    message_id: r.message_id,
+                    direction: r.direction,
+                    send_time: r.send_time,
+                    account_b: r.account_b,
+                    group: r.group,
+                })
+                .collect(),
+            resp.has_more,
+        ))
+    }
+
+    async fn backfill_delivery(
+        &self,
+        app: &str,
+        account: &str,
+        target_id: &str,
+    ) -> Result<(), StoreError> {
+        if !self.pending_receipt {
+            return Ok(());
+        }
+        let body = DeliveryBackfillReq {
+            app: app.to_string(),
+            account: account.to_string(),
+            target_id: target_id.to_string(),
+        };
+        post_maybe_empty(&self.client, "/api/v1/delivery/backfill", &body).await
     }
 
     async fn offline_content(
@@ -833,10 +899,23 @@ pub fn http_backends_with_hmac(
     royal_url: &str,
     hmac_secret: &str,
 ) -> Result<HttpBackends, StoreError> {
+    http_backends_with_hmac_receipt(
+        royal_url,
+        hmac_secret,
+        crate::store::pending_receipt_enabled(),
+    )
+}
+
+pub fn http_backends_with_hmac_receipt(
+    royal_url: &str,
+    hmac_secret: &str,
+    pending_receipt: bool,
+) -> Result<HttpBackends, StoreError> {
     let client = RoyalClient::with_hmac(royal_url, hmac_secret)?;
     Ok((
         Arc::new(HttpMessageStore {
             client: client.clone(),
+            pending_receipt,
         }),
         Arc::new(HttpGroupDirectory {
             client: client.clone(),
@@ -921,5 +1000,11 @@ mod tests {
             Err(GroupError::Backend(_)) => {}
             other => panic!("expected Backend, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn service_unavailable_is_not_retried() {
+        assert!(!retry_http(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(retry_http(StatusCode::INTERNAL_SERVER_ERROR));
     }
 }

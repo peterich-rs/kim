@@ -68,3 +68,4 @@ kim-client = { path = "crates/kim-client" }
 uuid = { version = "1", features = ["v4"] }
 hmac = "0.12"
 sha2 = "0.10"
+url = "2"

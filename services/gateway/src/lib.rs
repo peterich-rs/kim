@@ -5,11 +5,11 @@ mod selector;
 mod slots;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-pub use run::{load_config, run_gateway, GatewayConfig};
+pub use run::{load_config, open_redis_revoke, run_gateway, GatewayConfig};
 pub use selector::{Route, RouteFile, RouteSelector, ZoneFile};
 pub use slots::build_slots;
 
@@ -23,7 +23,7 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::{
     generate_with_jti, marshal, parse, read, read_logic, resolve_internal_hmac_secret,
-    sign_internal_hmac, token_revoke_key, BasicPkt, LogicPkt, Packet, CMD_LOGIN_RENEW,
+    sign_internal_hmac, token_revoke_key, BasicPkt, LogicPkt, Packet, ALLOWED_APP, CMD_LOGIN_RENEW,
     CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT,
     META_APP, SN_LOGIN,
 };
@@ -66,6 +66,13 @@ fn strip_port(peer: &str) -> String {
     }
 }
 
+fn env_flag(name: &str) -> bool {
+    matches!(
+        std::env::var(name).ok().as_deref().map(str::trim),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
 async fn write_status(
     conn: &mut dyn Conn,
     header: &kim_protocol::pkt::Header,
@@ -96,6 +103,16 @@ fn now_ts() -> i64 {
 #[async_trait]
 pub trait RevokeCheck: Send + Sync {
     async fn is_revoked(&self, jti: &str) -> Result<bool, String>;
+}
+
+/// Always `false`. Local / e2e stacks without Redis still accept JWT `jti`.
+pub struct AllowAllRevoke;
+
+#[async_trait]
+impl RevokeCheck for AllowAllRevoke {
+    async fn is_revoked(&self, _jti: &str) -> Result<bool, String> {
+        Ok(false)
+    }
 }
 
 pub struct RevokeStore {
@@ -207,6 +224,7 @@ pub struct GatewayHandler {
     revoke: OnceLock<Arc<dyn RevokeCheck>>,
     redis: OnceLock<Arc<RevokeStore>>,
     server: OnceLock<Arc<dyn Server + Send + Sync>>,
+    require_jti: AtomicBool,
 }
 
 impl GatewayHandler {
@@ -240,7 +258,12 @@ impl GatewayHandler {
             revoke: OnceLock::new(),
             redis: OnceLock::new(),
             server: OnceLock::new(),
+            require_jti: AtomicBool::new(env_flag("KIM_REQUIRE_JTI")),
         }
+    }
+
+    pub fn set_require_jti(&self, require: bool) {
+        self.require_jti.store(require, Ordering::Relaxed);
     }
 
     pub fn with_metrics(&self, m: Arc<KimMetrics>) {
@@ -439,23 +462,40 @@ impl Acceptor for GatewayHandler {
                 return Err(Error::Handshake("unauthorized".into()));
             }
         };
-        if let Some(jti) = claims.jti.as_deref() {
-            if let Some(store) = self.revoke.get() {
-                match store.is_revoked(jti).await {
-                    Ok(true) => {
-                        warn!(account = %claims.account, "revoked token");
-                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
-                        return Err(Error::Handshake("revoked".into()));
-                    }
-                    Ok(false) => {}
-                    Err(err) => {
-                        warn!(%err, "revoke check failed");
-                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
-                        return Err(Error::Handshake("revoke check failed".into()));
-                    }
+        if claims.app != ALLOWED_APP {
+            write_status(conn, &pkt.header, Status::Unauthorized).await?;
+            return Err(Error::Handshake("app not allowed".into()));
+        }
+        let jti = claims
+            .jti
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        if self.require_jti.load(Ordering::Relaxed) && jti.is_none() {
+            write_status(conn, &pkt.header, Status::Unauthorized).await?;
+            return Err(Error::Handshake("unauthorized".into()));
+        }
+        if let Some(jti) = jti {
+            let Some(store) = self.revoke.get() else {
+                warn!("revoke store missing; refusing login");
+                write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                return Err(Error::Handshake("revoke store required".into()));
+            };
+            match store.is_revoked(jti).await {
+                Ok(true) => {
+                    warn!(account = %claims.account, "revoked token");
+                    write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                    return Err(Error::Handshake("revoked".into()));
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    warn!(%err, "revoke check failed");
+                    write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                    return Err(Error::Handshake("revoke check failed".into()));
                 }
             }
         }
+        let jti = jti.unwrap_or("").to_string();
         let id = self.generate_channel_id(&claims.account);
         pkt.header.channel_id = id.clone();
         pkt.write_body(&Session {
@@ -465,15 +505,10 @@ impl Acceptor for GatewayHandler {
             app: claims.app.clone(),
             remote_ip: remote_ip(conn),
             device: req.device,
+            jti: jti.clone(),
             ..Session::default()
         });
-        self.insert_meta(
-            &id,
-            claims.app,
-            claims.account.clone(),
-            claims.jti.unwrap_or_default(),
-            claims.exp,
-        );
+        self.insert_meta(&id, claims.app, claims.account.clone(), jti, claims.exp);
         {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             pending.insert(id.clone(), pkt);
@@ -628,7 +663,19 @@ impl DownlinkHook for KickHook {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_port;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use async_trait::async_trait;
+    use bytes::Bytes;
+    use kim_container::{Container, ContainerOpts, InnerTcpDialer};
+    use kim_core::{Acceptor, Conn, Error, Frame, OpCode};
+    use kim_naming::{DefaultRegistration, StaticNaming};
+    use kim_protocol::{
+        generate_with_jti, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN, DEMO_DEFAULT_SECRET,
+    };
+
+    use super::{strip_port, AllowAllRevoke, GatewayHandler, LoginReq, RevokeCheck};
 
     #[test]
     fn strip_ipv4_port() {
@@ -638,5 +685,152 @@ mod tests {
     #[test]
     fn strip_ipv6_port() {
         assert_eq!(strip_port("[::1]:8001"), "::1");
+    }
+
+    struct ScriptedConn {
+        incoming: Option<Frame>,
+    }
+
+    #[async_trait]
+    impl Conn for ScriptedConn {
+        async fn read_frame(&mut self) -> Result<Frame, Error> {
+            self.incoming.take().ok_or(Error::Closed)
+        }
+        async fn write_frame(&mut self, _opcode: OpCode, _payload: Bytes) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn flush(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    struct AlwaysRevoked;
+
+    #[async_trait]
+    impl RevokeCheck for AlwaysRevoked {
+        async fn is_revoked(&self, _jti: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+    }
+
+    fn test_handler() -> GatewayHandler {
+        let container = Container::new(ContainerOpts {
+            naming: Arc::new(StaticNaming::from_slice(vec![])),
+            identity: DefaultRegistration {
+                service_id: "wg-1".into(),
+                service_name: "wgateway".into(),
+                protocol: "ws".into(),
+                public_address: "127.0.0.1".into(),
+                public_port: 8001,
+                tags: vec![],
+                meta: Default::default(),
+            },
+            dialer: Arc::new(InnerTcpDialer {
+                local_service_id: "wg-1".into(),
+            }),
+            deps: vec![],
+            adult_delay: Duration::from_millis(0),
+            selector: Arc::new(kim_container::HashSelector),
+            after_downlink: vec![],
+        });
+        GatewayHandler::new(container, "wg-1", DEMO_DEFAULT_SECRET)
+    }
+
+    fn login_conn(jti: &str) -> ScriptedConn {
+        let exp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+            .saturating_add(3600);
+        let token = generate_with_jti(DEMO_DEFAULT_SECRET, "alice", "kim", exp, jti).unwrap();
+        let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
+        pkt.write_body(&LoginReq {
+            token,
+            device: "web".into(),
+        });
+        ScriptedConn {
+            incoming: Some(Frame::binary(marshal(&Packet::Logic(pkt)))),
+        }
+    }
+
+    fn handshake_err(err: Error) -> String {
+        match err {
+            Error::Handshake(msg) => msg,
+            other => panic!("expected handshake error, got {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_revoke_store_rejects_login() {
+        let handler = test_handler();
+        let mut conn = login_conn("jti-revoked");
+        let err = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect_err("login without revoke store must fail");
+        let msg = handshake_err(err);
+        assert!(msg.contains("revoke store"), "{msg}");
+    }
+
+    /// Local/demo gateway (no REDIS_URL/ROYAL_URL) installs [`AllowAllRevoke`].
+    #[tokio::test]
+    async fn allow_all_revoke_satisfies_login_store() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(AllowAllRevoke));
+        let mut conn = login_conn("jti-ok");
+        let id = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect("demo AllowAllRevoke must satisfy login revoke store");
+        assert!(id.starts_with("wg-1_alice_"));
+    }
+
+    #[tokio::test]
+    async fn revoked_jti_cannot_login() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(AlwaysRevoked));
+        let mut conn = login_conn("jti-revoked");
+        let err = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect_err("revoked jwt must not login");
+        assert_eq!(handshake_err(err), "revoked");
+    }
+
+    struct NeverRevoked;
+
+    #[async_trait]
+    impl RevokeCheck for NeverRevoked {
+        async fn is_revoked(&self, _jti: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_jti_rejected_when_required() {
+        let handler = test_handler();
+        handler.set_require_jti(true);
+        handler.set_revoke(Arc::new(NeverRevoked));
+        let mut conn = login_conn("");
+        let err = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect_err("empty jti must not login when required");
+        assert_eq!(handshake_err(err), "unauthorized");
+    }
+
+    #[tokio::test]
+    async fn missing_jti_allowed_when_not_required() {
+        let handler = test_handler();
+        handler.set_require_jti(false);
+        let mut conn = login_conn("");
+        let id = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect("empty jti is compatible when require=0");
+        assert!(id.starts_with("wg-1_alice_"));
     }
 }

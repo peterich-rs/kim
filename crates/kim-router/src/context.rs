@@ -239,11 +239,13 @@ mod tests {
                     channel_id: "ch-a".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
                 Location {
                     channel_id: "ch-b".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
             ];
             let _ = ctx
@@ -285,6 +287,7 @@ mod tests {
                 channel_id: "ch-x".into(),
                 gate_id: "gate-b".into(),
                 device: String::new(),
+                jti: String::new(),
             }];
             let _ = ctx
                 .dispatch(
@@ -321,11 +324,13 @@ mod tests {
                     channel_id: "ch-self".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
                 Location {
                     channel_id: "ch-other".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
             ];
             let _ = ctx
@@ -370,16 +375,19 @@ mod tests {
                     channel_id: "ch-a".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
                 Location {
                     channel_id: "ch-b".into(),
                     gate_id: "wg-2".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
                 Location {
                     channel_id: "ch-c".into(),
                     gate_id: "wg-1".into(),
                     device: String::new(),
+                    jti: String::new(),
                 },
             ],
         )
@@ -419,11 +427,13 @@ mod tests {
                         channel_id: "ch-a".into(),
                         gate_id: "wg-1".into(),
                         device: String::new(),
+                        jti: String::new(),
                     },
                     Location {
                         channel_id: "ch-b".into(),
                         gate_id: "wg-2".into(),
                         device: String::new(),
+                        jti: String::new(),
                     },
                 ],
             )
@@ -477,11 +487,13 @@ mod tests {
             channel_id: "ch-a".into(),
             gate_id: "gw-1".into(),
             device: String::new(),
+            jti: String::new(),
         };
         let loc_b = Location {
             channel_id: "ch-b".into(),
             gate_id: "gw-2".into(),
             device: String::new(),
+            jti: String::new(),
         };
         let ctx = Context::new(
             request("chat.group.talk", Bytes::new()),

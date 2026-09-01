@@ -259,4 +259,25 @@ describe("KIMClient", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(seen).toEqual([99n]);
   });
+
+  it("offline sync pages 201 pending and batch-acks 200 then 1", async () => {
+    const gw = new LoopbackGw();
+    gw.pending = Array.from({ length: 201 }, (_, i) => ({
+      messageId: BigInt(i + 1),
+      direction: 0,
+      sendTime: BigInt(i + 1),
+      accountB: "bob",
+      group: "",
+    }));
+    const cli = client(gw);
+    let groups = 0;
+    cli.onofflinemessage((om) => {
+      groups = om.getUserMessagesCount("bob");
+    });
+    await cli.login();
+    expect(groups).toBe(201);
+    expect(gw.acked).toHaveLength(201);
+    expect(gw.pending).toHaveLength(0);
+    await cli.logout();
+  });
 });

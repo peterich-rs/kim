@@ -136,6 +136,7 @@ pub struct LoginDialer {
     bad_token: bool,
     device: String,
     channel_id: Mutex<Option<String>>,
+    token: Option<String>,
 }
 
 impl LoginDialer {
@@ -145,6 +146,7 @@ impl LoginDialer {
             bad_token: false,
             device: String::new(),
             channel_id: Mutex::new(None),
+            token: None,
         }
     }
 
@@ -155,6 +157,11 @@ impl LoginDialer {
 
     pub fn with_device(mut self, device: impl Into<String>) -> Self {
         self.device = device.into();
+        self
+    }
+
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
         self
     }
 
@@ -176,6 +183,8 @@ impl WsDialer for LoginDialer {
         let mut conn = connect_ws(&ctx.address).await?;
         let token = if self.bad_token {
             "not-a-jwt".to_string()
+        } else if let Some(token) = &self.token {
+            token.clone()
         } else {
             mint_token(&self.secret, &ctx.id).await?
         };

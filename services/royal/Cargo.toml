@@ -9,7 +9,7 @@ publish = false
 [features]
 default = []
 postgres = ["chat/postgres"]
-redis = ["chat/redis", "dep:redis"]
+redis = ["chat/redis", "kim-session/redis", "dep:redis"]
 consul = ["kim-naming/consul"]
 
 [dependencies]
@@ -22,6 +22,7 @@ chat = { path = "../chat" }
 http-body-util = "0.1"
 kim-naming.workspace = true
 kim-protocol.workspace = true
+kim-session.workspace = true
 prost.workspace = true
 redis = { workspace = true, optional = true }
 reqwest.workspace = true

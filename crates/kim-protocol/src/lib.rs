@@ -13,15 +13,17 @@ pub mod pkt {
 pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use error::ProtocolError;
 pub use internal_hmac::{
-    is_demo_internal_hmac, resolve_internal_hmac_secret, sign as sign_internal_hmac,
-    sign_at as sign_internal_hmac_at, verify as verify_internal_hmac,
-    verify_at as verify_internal_hmac_at, HmacHeaders, DEMO_INTERNAL_HMAC_SECRET, HEADER_NONCE,
-    HEADER_SIGNATURE, HEADER_TIMESTAMP, MAX_SKEW_SECS,
+    check_strict_runtime, consul_url_is_https, hmac_headers_from, hmac_nonce_key,
+    is_demo_internal_hmac, redis_url_has_password, resolve_internal_hmac_secret,
+    sign as sign_internal_hmac, sign_at as sign_internal_hmac_at, strict_runtime,
+    verify as verify_internal_hmac, verify_at as verify_internal_hmac_at, HmacHeaders, StrictCheck,
+    DEMO_INTERNAL_HMAC_SECRET, HEADER_NONCE, HEADER_SIGNATURE, HEADER_TIMESTAMP,
+    HMAC_NONCE_TTL_SECS, MAX_SKEW_SECS,
 };
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
 pub use token::{
-    generate, generate_with_jti, parse, token_revoke_key, Claims, DEMO_DEFAULT_SECRET,
+    generate, generate_with_jti, parse, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,
 };
 pub use wire::{
     service_name, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,
@@ -101,5 +103,10 @@ mod tests {
         assert_eq!(Status::SessionNotFound as i32, 404);
         assert!(Status::try_from(100).is_err());
         assert!(Status::try_from(300).is_ok());
+    }
+
+    #[test]
+    fn allowed_app_is_kim() {
+        assert_eq!(ALLOWED_APP, "kim");
     }
 }
