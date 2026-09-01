@@ -48,6 +48,8 @@ struct SelfSection {
     #[serde(default)]
     royal_url: String,
     #[serde(default)]
+    hmac_secret: String,
+    #[serde(default)]
     token_ttl_secs: i64,
 }
 
@@ -78,6 +80,7 @@ pub struct GatewayConfig {
     pub consul_url: String,
     pub adult_delay_ms: u64,
     pub royal_url: String,
+    pub hmac_secret: String,
     pub token_ttl_secs: i64,
     pub services: Vec<DefaultRegistration>,
     pub route: Option<RouteFile>,
@@ -118,6 +121,7 @@ pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Err
         consul_url: cfg.this.consul_url,
         adult_delay_ms: cfg.this.adult_delay_ms,
         royal_url: cfg.this.royal_url,
+        hmac_secret: cfg.this.hmac_secret,
         token_ttl_secs: cfg.this.token_ttl_secs,
         services,
         route: cfg.route,
@@ -256,7 +260,10 @@ where
                 }
             });
         if let Some(base) = royal {
-            match HttpRevoke::new(&base) {
+            match HttpRevoke::with_hmac(
+                &base,
+                &kim_protocol::resolve_internal_hmac_secret(&cfg.hmac_secret),
+            ) {
                 Ok(store) => handler.set_revoke(Arc::new(store)),
                 Err(err) => tracing::warn!(%err, "royal revoke"),
             }

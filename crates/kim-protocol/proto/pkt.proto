@@ -22,6 +22,7 @@ enum Status {
   UserNotFound = 108;    // talk dest is not a registered account
   NotFriends = 109;      // 1:1 talk without an accepted friendship
   Blocked = 110;         // blocked either direction
+  IdempotencyConflict = 111; // same clientId, different dest/type/body/extra/kind
   NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }
@@ -183,10 +184,21 @@ message InsertMessageReq {
   string clientId = 6;
 }
 
+message InsertFanout {
+  int32 type = 1;                 // MessageReq.type / MessagePush.type
+  string body = 2;
+  string extra = 3;
+  string sender = 4;
+  string dest = 5;                // 1:1 peer account; group id
+  int32 kind = 6;                 // 0 user, 1 group (same as InboxItem.kind)
+  repeated string recipients = 7;
+}
+
 message InsertMessageResp {
   int64 messageId = 1;
   int64 sendTime = 2;
   bool duplicate = 3;
+  InsertFanout fanout = 4;        // proto3 optional message → prost Option
 }
 
 message AckMessageReq {

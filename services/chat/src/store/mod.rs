@@ -1,6 +1,6 @@
 //! Message persistence: write-fanout inbox rows + content + a per-account read index.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -50,16 +50,122 @@ pub struct InsertMessage {
     pub client_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fanout {
+    pub msg_type: i32,
+    pub body: String,
+    pub extra: String,
+    pub sender: String,
+    pub dest: String,
+    pub kind: MessageKind,
+    pub recipients: Vec<String>,
+}
+
 pub struct InsertResult {
     pub message_id: i64,
     pub send_time: i64,
     pub duplicate: bool,
+    pub fanout: Fanout,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MessageKind {
     User,
     Group,
+}
+
+pub(crate) fn unique_accounts(accounts: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for account in accounts {
+        if seen.insert(account.clone()) {
+            out.push(account);
+        }
+    }
+    out
+}
+
+/// Only real index rows (no NULLs). Empty slice = ghost content.
+pub(crate) fn fanout_from_index_rows(
+    msg_type: i32,
+    body: String,
+    extra: String,
+    rows: &[(String, String, i32, String)],
+) -> Fanout {
+    if rows.is_empty() {
+        return Fanout {
+            msg_type,
+            body,
+            extra,
+            sender: String::new(),
+            dest: String::new(),
+            kind: MessageKind::User,
+            recipients: Vec::new(),
+        };
+    }
+    let recipients = unique_accounts(rows.iter().map(|r| r.0.clone()));
+    if let Some((_, account_b, _, group_id)) = rows.iter().find(|r| !r.3.is_empty()) {
+        return Fanout {
+            msg_type,
+            body,
+            extra,
+            sender: account_b.clone(),
+            dest: group_id.clone(),
+            kind: MessageKind::Group,
+            recipients,
+        };
+    }
+    let (sender, dest) = match rows.iter().find(|r| r.2 == DIRECTION_SEND) {
+        Some((a, b, _, _)) => (a.clone(), b.clone()),
+        None => {
+            let (a, b, _, _) = &rows[0];
+            (b.clone(), a.clone())
+        }
+    };
+    Fanout {
+        msg_type,
+        body,
+        extra,
+        sender,
+        dest,
+        kind: MessageKind::User,
+        recipients,
+    }
+}
+
+pub(crate) fn fanout_from_write(
+    kind: MessageKind,
+    req: &InsertMessage,
+    members: &[String],
+) -> Fanout {
+    let tuples: Vec<(String, String, i32, String)> = match kind {
+        MessageKind::User => vec![
+            (
+                req.sender.clone(),
+                req.dest.clone(),
+                DIRECTION_SEND,
+                String::new(),
+            ),
+            (
+                req.dest.clone(),
+                req.sender.clone(),
+                DIRECTION_RECV,
+                String::new(),
+            ),
+        ],
+        MessageKind::Group => members
+            .iter()
+            .map(|m| {
+                let dir = if m == &req.sender {
+                    DIRECTION_SEND
+                } else {
+                    DIRECTION_RECV
+                };
+                (m.clone(), req.sender.clone(), dir, req.dest.clone())
+            })
+            .collect(),
+    };
+    fanout_from_index_rows(req.msg_type, req.body.clone(), req.extra.clone(), &tuples)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -294,6 +400,32 @@ impl MemoryMessageStore {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn fanout_from_memory(inner: &Inner, message_id: i64) -> Result<Fanout, StoreError> {
+        let content = inner
+            .contents
+            .get(&message_id)
+            .ok_or_else(|| StoreError::Backend("fanout missing".into()))?;
+        let rows: Vec<(String, String, i32, String)> = inner
+            .indexes
+            .iter()
+            .filter(|r| r.message_id == message_id)
+            .map(|r| {
+                (
+                    r.account_a.clone(),
+                    r.account_b.clone(),
+                    r.direction,
+                    r.group_id.clone(),
+                )
+            })
+            .collect();
+        Ok(fanout_from_index_rows(
+            content.msg_type,
+            content.body.clone(),
+            content.extra.clone(),
+            &rows,
+        ))
+    }
+
     fn insert(
         &self,
         app: &str,
@@ -309,6 +441,7 @@ impl MemoryMessageStore {
                     message_id,
                     send_time,
                     duplicate: true,
+                    fanout: Self::fanout_from_memory(&inner, message_id)?,
                 });
             }
         }
@@ -373,6 +506,7 @@ impl MemoryMessageStore {
                     message_id: id,
                     send_time,
                     duplicate: true,
+                    fanout: Self::fanout_from_memory(&inner, id)?,
                 });
             }
             inner.idempotency.insert(key, (message_id, req.send_time));
@@ -383,6 +517,7 @@ impl MemoryMessageStore {
             message_id,
             send_time: req.send_time,
             duplicate: false,
+            fanout: fanout_from_write(kind, req, members),
         })
     }
 
@@ -842,6 +977,55 @@ mod tests {
         assert!(!a.duplicate);
         assert!(b.duplicate);
         assert_eq!(store.recorded().len(), 1);
+        assert_eq!(a.fanout.body, "hi");
+        assert_eq!(a.fanout.dest, "bob");
+        assert!(a.fanout.recipients.contains(&"alice".into()));
+        assert!(a.fanout.recipients.contains(&"bob".into()));
+        let mut changed = sample("alice", "carol", 50, "CHANGED");
+        changed.client_id = "c1".into();
+        let c = store.insert_user("kim", &changed).await.unwrap();
+        assert!(c.duplicate);
+        assert_eq!(c.fanout.body, "hi");
+        assert_eq!(c.fanout.dest, "bob");
+        assert_eq!(c.message_id, a.message_id);
+        assert!(c.fanout.recipients.contains(&"alice".into()));
+        assert!(c.fanout.recipients.contains(&"bob".into()));
+    }
+
+    #[tokio::test]
+    async fn insert_group_duplicate_keeps_first_recipients() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let mut req = sample("alice", "g1", 60, "hey");
+        req.client_id = "c1".into();
+        let first = store
+            .insert_group("kim", &req, &["alice".into(), "bob".into(), "carol".into()])
+            .await
+            .unwrap();
+        let second = store
+            .insert_group("kim", &req, &["alice".into(), "dave".into()])
+            .await
+            .unwrap();
+        assert!(second.duplicate);
+        assert_eq!(first.fanout.recipients, second.fanout.recipients);
+        assert_eq!(
+            second.fanout.recipients,
+            vec!["alice".to_string(), "bob".into(), "carol".into()]
+        );
+    }
+
+    #[tokio::test]
+    async fn self_chat_recipients_dedup_to_one() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let got = store
+            .insert_user("kim", &sample("alice", "alice", 50, "note"))
+            .await
+            .unwrap();
+        assert_eq!(got.fanout.recipients.len(), 1);
+        assert_eq!(got.fanout.recipients[0], "alice");
+        assert_eq!(got.fanout.kind, MessageKind::User);
+        assert_eq!(got.fanout.dest, "alice");
     }
 
     #[tokio::test]
@@ -896,12 +1080,31 @@ mod tests {
     async fn empty_members_writes_content_without_index() {
         let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
         let store = MemoryMessageStore::new(idgen);
-        store
+        let first = store
             .insert_group("kim", &sample("alice", "gone", 1, "x"), &[])
             .await
             .unwrap();
         assert_eq!(store.recorded().len(), 1);
         assert!(store.recorded_indexes().is_empty());
+        assert!(first.fanout.recipients.is_empty());
+        assert_eq!(first.fanout.kind, MessageKind::User);
+        assert!(first.fanout.dest.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_members_duplicate_is_empty_recipients_not_error() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let mut req = sample("alice", "gone", 1, "x");
+        req.client_id = "c1".into();
+        let first = store.insert_group("kim", &req, &[]).await.unwrap();
+        let second = store.insert_group("kim", &req, &[]).await.unwrap();
+        assert!(!first.duplicate);
+        assert!(second.duplicate);
+        assert!(second.fanout.recipients.is_empty());
+        assert_eq!(second.fanout.kind, MessageKind::User);
+        assert!(second.fanout.dest.is_empty());
+        assert_eq!(first.message_id, second.message_id);
     }
 
     #[tokio::test]

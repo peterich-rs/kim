@@ -1,5 +1,6 @@
 mod basic;
 mod error;
+mod internal_hmac;
 mod logic;
 mod magic;
 mod token;
@@ -11,6 +12,12 @@ pub mod pkt {
 
 pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use error::ProtocolError;
+pub use internal_hmac::{
+    is_demo_internal_hmac, resolve_internal_hmac_secret, sign as sign_internal_hmac,
+    sign_at as sign_internal_hmac_at, verify as verify_internal_hmac,
+    verify_at as verify_internal_hmac_at, HmacHeaders, DEMO_INTERNAL_HMAC_SECRET, HEADER_NONCE,
+    HEADER_SIGNATURE, HEADER_TIMESTAMP, MAX_SKEW_SECS,
+};
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
 pub use token::{
@@ -89,6 +96,7 @@ mod tests {
         assert_eq!(Status::UserNotFound as i32, 108);
         assert_eq!(Status::NotFriends as i32, 109);
         assert_eq!(Status::Blocked as i32, 110);
+        assert_eq!(Status::IdempotencyConflict as i32, 111);
         assert_eq!(Status::NoDestination as i32, 300);
         assert_eq!(Status::SessionNotFound as i32, 404);
         assert!(Status::try_from(100).is_err());

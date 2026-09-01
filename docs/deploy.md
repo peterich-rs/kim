@@ -24,7 +24,7 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 `deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul UI `127.0.0.1:8500`。
 
-已有 VPS 的 `kim.env` **不会**被 `bootstrap.sh` 改写。部署新栈前手工确认容器环境（compose 已注入 `ROYAL_URL` / `CONSUL_HTTP_ADDR`）。Chat **不再**直连 `DATABASE_URL`。
+已有 VPS 的 `kim.env` **不会**被 `bootstrap.sh` 改写。部署新栈前手工确认容器环境（compose 已注入 `ROYAL_URL` / `CONSUL_HTTP_ADDR` / `KIM_INTERNAL_HMAC_SECRET`）。已有 `kim.env` 须自行补上 `KIM_INTERNAL_HMAC_SECRET`，否则 compose 拒绝启动。Chat **不再**直连 `DATABASE_URL`。
 
 | 路径 | 用途 |
 |---|---|

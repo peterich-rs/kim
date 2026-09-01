@@ -7,21 +7,28 @@ mod revoke;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::body::Bytes;
-use axum::extract::State;
+use axum::body::{Body, Bytes};
+use axum::extract::{Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::social::{MemorySocialDirectory, SocialDirectory};
-use chat::store::{InsertMessage, MemoryMessageStore, MessageStore};
+use chat::store::{InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore};
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
+use http_body_util::BodyExt;
 use kim_protocol::pkt::{
     AccountExists, AccountQuery, AckMessageReq, GroupCreateResp, GroupDetail, GroupMembersResp,
-    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
+    InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
     InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
     MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
+};
+use kim_protocol::{
+    resolve_internal_hmac_secret, verify_internal_hmac, HmacHeaders, HEADER_NONCE,
+    HEADER_SIGNATURE, HEADER_TIMESTAMP,
 };
 use prost::Message;
 
@@ -54,6 +61,7 @@ pub struct RoyalState {
     pub(crate) revoke: Arc<dyn TokenRevocation>,
     pub(crate) app: String,
     pub(crate) chat_url: String,
+    hmac_secret: String,
 }
 
 impl RoyalState {
@@ -71,6 +79,7 @@ impl RoyalState {
             revoke: Arc::new(MemoryRevocation::new()),
             app: "kim".into(),
             chat_url: String::new(),
+            hmac_secret: resolve_internal_hmac_secret(""),
         }
     }
 
@@ -90,6 +99,12 @@ impl RoyalState {
     #[must_use]
     pub fn with_chat_url(mut self, url: impl Into<String>) -> Self {
         self.chat_url = url.into().trim_end_matches('/').to_string();
+        self
+    }
+
+    #[must_use]
+    pub fn with_hmac_secret(mut self, secret: impl Into<String>) -> Self {
+        self.hmac_secret = secret.into();
         self
     }
 
@@ -121,18 +136,13 @@ impl RoyalState {
             revoke,
             app: "kim".into(),
             chat_url: String::new(),
+            hmac_secret: resolve_internal_hmac_secret(""),
         }
     }
 }
 
 pub fn router(state: RoyalState) -> Router {
     Router::new()
-        .route("/health", get(health))
-        .route("/api/v1/auth/register", post(auth::register))
-        .route("/api/v1/auth/login", post(auth::login))
-        .route("/api/v1/auth/logout", post(auth::logout))
-        .route("/api/v1/auth/password", post(auth::change_password))
-        .route("/api/v1/auth/me", get(auth::me))
         .route("/internal/user/lookup", post(user_lookup))
         .route("/internal/user/upsert", post(user_upsert))
         .route("/internal/revoke/check", post(revoke_check))
@@ -164,6 +174,13 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/inbox", post(product::inbox_list))
         .route("/api/v1/history", post(product::history))
         .route("/api/v1/inbox/read", post(product::inbox_read))
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_hmac))
+        .route("/health", get(health))
+        .route("/api/v1/auth/register", post(auth::register))
+        .route("/api/v1/auth/login", post(auth::login))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/auth/password", post(auth::change_password))
+        .route("/api/v1/auth/me", get(auth::me))
         .with_state(state)
 }
 
@@ -177,6 +194,46 @@ pub(crate) fn encode(msg: &impl Message) -> Bytes {
 
 pub(crate) fn backend(err: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+}
+
+fn hmac_unauthorized() -> (StatusCode, String) {
+    (StatusCode::UNAUTHORIZED, "unauthorized".into())
+}
+
+fn header_str<'a>(headers: &'a axum::http::HeaderMap, name: &'static str) -> &'a str {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+}
+
+async fn require_hmac(
+    State(st): State<RoyalState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, String)> {
+    let (parts, body) = req.into_parts();
+    let collected = body.collect().await.map_err(|_| hmac_unauthorized())?;
+    let bytes = collected.to_bytes();
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err((StatusCode::PAYLOAD_TOO_LARGE, "payload too large".into()));
+    }
+    let headers = HmacHeaders {
+        timestamp: header_str(&parts.headers, HEADER_TIMESTAMP).to_string(),
+        nonce: header_str(&parts.headers, HEADER_NONCE).to_string(),
+        signature: header_str(&parts.headers, HEADER_SIGNATURE).to_string(),
+    };
+    if !verify_internal_hmac(
+        st.hmac_secret.as_bytes(),
+        parts.method.as_str(),
+        parts.uri.path(),
+        &bytes,
+        &headers,
+    ) {
+        return Err(hmac_unauthorized());
+    }
+    let req = Request::from_parts(parts, Body::from(bytes));
+    Ok(next.run(req).await)
 }
 
 fn group_http(err: GroupError) -> (StatusCode, String) {
@@ -232,11 +289,7 @@ async fn insert_user(
         )
         .await
         .map_err(backend)?;
-    Ok(encode(&InsertMessageResp {
-        message_id: inserted.message_id,
-        send_time: inserted.send_time,
-        duplicate: inserted.duplicate,
-    }))
+    Ok(encode(&encode_insert(&inserted)))
 }
 
 async fn insert_group(
@@ -275,11 +328,27 @@ async fn insert_group(
         )
         .await
         .map_err(backend)?;
-    Ok(encode(&InsertMessageResp {
+    Ok(encode(&encode_insert(&inserted)))
+}
+
+fn encode_insert(inserted: &InsertResult) -> InsertMessageResp {
+    InsertMessageResp {
         message_id: inserted.message_id,
         send_time: inserted.send_time,
         duplicate: inserted.duplicate,
-    }))
+        fanout: Some(InsertFanout {
+            r#type: inserted.fanout.msg_type,
+            body: inserted.fanout.body.clone(),
+            extra: inserted.fanout.extra.clone(),
+            sender: inserted.fanout.sender.clone(),
+            dest: inserted.fanout.dest.clone(),
+            kind: match inserted.fanout.kind {
+                MessageKind::User => 0,
+                MessageKind::Group => 1,
+            },
+            recipients: inserted.fanout.recipients.clone(),
+        }),
+    }
 }
 
 async fn ack(State(st): State<RoyalState>, body: Bytes) -> Result<Bytes, (StatusCode, String)> {
@@ -526,8 +595,21 @@ pub async fn serve(listener: tokio::net::TcpListener, state: RoyalState) -> std:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kim_protocol::MESSAGE_TYPE_TEXT;
+    use kim_protocol::{sign_internal_hmac, MESSAGE_TYPE_TEXT};
     use prost::Message;
+
+    fn signed_post(url: &str, path: &str, body: Vec<u8>) -> reqwest::RequestBuilder {
+        let secret = resolve_internal_hmac_secret("");
+        let headers = sign_internal_hmac(secret.as_bytes(), "POST", path, &body).unwrap();
+        let mut req = reqwest::Client::new()
+            .post(url)
+            .header("Content-Type", "application/x-protobuf")
+            .header("Accept", "application/x-protobuf");
+        for (k, v) in headers.pairs() {
+            req = req.header(k, v);
+        }
+        req.body(body)
+    }
 
     #[tokio::test]
     async fn http_create_join_detail() {
@@ -573,6 +655,129 @@ mod tests {
             .await
             .unwrap();
         assert!(inserted.message_id > 10_000);
+        assert_eq!(inserted.fanout.body, "hi");
+        assert!(inserted.fanout.recipients.contains(&"alice".into()));
+        assert!(inserted.fanout.recipients.contains(&"bob".into()));
+    }
+
+    #[tokio::test]
+    async fn http_insert_user_duplicate_returns_original_fanout() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        let base = format!("http://{addr}");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        let (store, _, _, _) = chat::http_backends(&base).unwrap();
+        let first = store
+            .insert_user(
+                "kim",
+                &InsertMessage {
+                    sender: "alice".into(),
+                    dest: "bob".into(),
+                    send_time: 1,
+                    msg_type: MESSAGE_TYPE_TEXT,
+                    body: "orig".into(),
+                    extra: String::new(),
+                    client_id: "c1".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!first.duplicate);
+        let second = store
+            .insert_user(
+                "kim",
+                &InsertMessage {
+                    sender: "alice".into(),
+                    dest: "carol".into(),
+                    send_time: 2,
+                    msg_type: MESSAGE_TYPE_TEXT,
+                    body: "CHANGED".into(),
+                    extra: String::new(),
+                    client_id: "c1".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(second.duplicate);
+        assert_eq!(second.message_id, first.message_id);
+        assert_eq!(second.fanout.body, "orig");
+        assert_eq!(second.fanout.dest, "bob");
+    }
+
+    #[tokio::test]
+    async fn unauthenticated_duplicate_insert_is_unauthorized_without_fanout() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        let base = format!("http://{addr}");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        let health = reqwest::Client::new()
+            .get(format!("{base}/health"))
+            .send()
+            .await
+            .unwrap();
+        assert!(health.status().is_success());
+
+        let (store, _, _, _) = chat::http_backends(&base).unwrap();
+        let first = store
+            .insert_user(
+                "kim",
+                &InsertMessage {
+                    sender: "alice".into(),
+                    dest: "bob".into(),
+                    send_time: 1,
+                    msg_type: MESSAGE_TYPE_TEXT,
+                    body: "orig".into(),
+                    extra: String::new(),
+                    client_id: "c1".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!first.duplicate);
+
+        let body = InsertMessageReq {
+            sender: "alice".into(),
+            dest: "carol".into(),
+            send_time: 2,
+            message: Some(kim_protocol::pkt::MessageReq {
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "CHANGED".into(),
+                extra: String::new(),
+                client_id: "c1".into(),
+            }),
+            members: Vec::new(),
+            client_id: "c1".into(),
+        }
+        .encode_to_vec();
+        let resp = reqwest::Client::new()
+            .post(format!("{base}/api/v1/message/user"))
+            .header("Content-Type", "application/x-protobuf")
+            .header("Accept", "application/x-protobuf")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let buf = resp.bytes().await.unwrap();
+        assert!(!buf.as_ref().windows(b"orig".len()).any(|w| w == b"orig"));
+        assert!(!buf
+            .as_ref()
+            .windows(b"CHANGED".len())
+            .any(|w| w == b"CHANGED"));
+        if let Ok(decoded) = InsertMessageResp::decode(buf.as_ref()) {
+            assert!(decoded.fanout.is_none());
+            assert_eq!(decoded.message_id, 0);
+        }
     }
 
     #[tokio::test]
@@ -632,8 +837,9 @@ mod tests {
         assert!(created.status().is_success());
         let buf = created.bytes().await.unwrap();
         let resp = kim_protocol::pkt::AuthResp::decode(buf.as_ref()).unwrap();
-        let looked = post_pb(
+        let looked = signed_post(
             &format!("http://{addr}/internal/user/lookup"),
+            "/internal/user/lookup",
             AccountQuery {
                 account: "alice".into(),
             }
@@ -747,19 +953,34 @@ mod tests {
             .unwrap();
         assert!(carol.is_empty());
 
-        let empty = reqwest::Client::new()
+        let unsigned = reqwest::Client::new()
             .post(format!("http://{addr}/api/v1/offline/content"))
             .header("Content-Type", "application/x-protobuf")
             .body(
                 MessageContentReq {
                     message_ids: vec![inserted.message_id],
-                    ..Default::default()
+                    account: "bob".into(),
+                    app: "kim".into(),
                 }
                 .encode_to_vec(),
             )
             .send()
             .await
             .unwrap();
+        assert_eq!(unsigned.status(), StatusCode::UNAUTHORIZED);
+
+        let empty = signed_post(
+            &format!("http://{addr}/api/v1/offline/content"),
+            "/api/v1/offline/content",
+            MessageContentReq {
+                message_ids: vec![inserted.message_id],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
         assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
 
         let gid = groups
@@ -781,19 +1002,18 @@ mod tests {
             Err(GroupError::NotFound) => {}
             other => panic!("expected NotFound, got {other:?}"),
         }
-        let no_app = reqwest::Client::new()
-            .post(format!("http://{addr}/api/v1/group/detail"))
-            .header("Content-Type", "application/x-protobuf")
-            .body(
-                InternalGroupQuery {
-                    group_id: gid,
-                    ..Default::default()
-                }
-                .encode_to_vec(),
-            )
-            .send()
-            .await
-            .unwrap();
+        let no_app = signed_post(
+            &format!("http://{addr}/api/v1/group/detail"),
+            "/api/v1/group/detail",
+            InternalGroupQuery {
+                group_id: gid,
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
         assert_eq!(no_app.status(), StatusCode::BAD_REQUEST);
     }
 }

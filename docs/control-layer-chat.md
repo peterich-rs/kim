@@ -45,13 +45,14 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | InvalidPacket | 1 | 不变 |
 | CommandNotFound | 2 | 不变 |
 | ServiceUnavailable | 3 | 不变 |
-| SystemException | 99 | insert / members / 非 NotFound 的寻址 / dispatch 失败 |
+| SystemException | 99 | insert / members / exists·friend·block **存储**失败 |
 | InvalidPacketBody | 101 | MessageReq / GroupCreateReq 解不开 |
 | ContentBlocked | 106 | talk `ContentFilter` 拒绝（文本词表 / 图片 URL 等）。不 insert、不 Push。不在 SDK 重试区间 |
 | NotGroupMember | 107 | 群聊发送方不在成员列表（含未知群）。不 insert、不 Push。不在 SDK 重试区间 |
 | UserNotFound | 108 | `chat.user.talk` dest 不是用户表里的账号。不 insert、不 Push。不在 SDK 重试区间 |
 | NotFriends | 109 | 私聊双方还不是好友。不 insert、不 Push |
 | Blocked | 110 | 任一方拉黑。不 insert、不 Push |
+| IdempotencyConflict | 111 | 同一 `clientId` 的 dest / type / body / extra / kind 与落库 Fanout 不一致。不 Push |
 | NoDestination | 300 | `Header.dest` 为空；不 decode、不 insert |
 | SessionNotFound | 404 | 非 signin 且 cache miss（到不了 Handler） |
 
@@ -70,9 +71,9 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 
 本里程碑 group id 是雪花 i64 的 **base36** 字符串，这就是长连接 dest。第 22 章 Royal HTTP 的 Base32 是 REST 主键，**不要**把 dest 改成 Base32。
 
-对自己发（dest = 本 session.account）：insert + Success，`dispatch` 跳过自身 channel，无 Push。
+对自己发（dest = 本 session.account）：insert + Success，`dispatch` 跳过本 session `channel_id`；同一账号其它设备仍会收到 Push。
 
-`MessageReq.clientId` 非空时按 `(app, sender, client_id)` 去重：命中则返回第一次的 `messageId` / `sendTime`，不再 insert、不再 Push。空 clientId 不去重。SDK 一次 `talkToUser` 生成 UUID，3xx 重试复用。
+`MessageReq.clientId` 非空时按 `(app, sender, client_id)` 去重。字段完全一致则返回第一次的 `messageId` / `sendTime`，从落库 `message_content` + `message_index` 重建 Push，并在 `TALK_PUSH_BUDGET` 内尽力 dispatch；dest / body / type / extra / kind 不一致 → `IdempotencyConflict=111`，不 Push。空 clientId 不去重。SDK 一次 `talkToUser` 生成 UUID，3xx 重试复用。鉴权仍在 insert 前：退群 / 删好友后 identical 重试仍是 107 / 109，不会补投。99 不再表示「已落库」。
 
 ---
 
@@ -90,12 +91,12 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 
 | 场景 | 本里程碑 |
 |---|---|
-| 在线且 dispatch 成功 | 对端至多一次 Push；接收方可 ACK |
-| 在线但网关 push 失败 | 发送方 `SystemException`；可能部分成员已收到 |
+| 在线且 dispatch 成功 | 对端至少一次 Push（identical 重试会再推）；接收方可 ACK |
+| 在线但网关 push 失败 / 超时 | 发送方 **已经 Success**；可能部分成员已收到；失败打 `kim_dispatch_fail_total` |
 | 离线 | 无 Push；发送方仍 Success + messageId。接收方重连后可 `chat.offline.index` |
-| 发送方未收到 Resp | 客户端可重发 → 可能重复消息 |
+| 发送方未收到 Resp | 客户端用 **identical** `clientId` 重发 → 从落库再 Push（按 `message_id` 去重） |
 
-ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
+ACK 仍是 Snowflake 高水位（G-03）；Flutter / `kim-client` 登录后仍不拉离线（G-14）。漏 Push 补偿未关。ACK / 离线见 [reliable-delivery.md](reliable-delivery.md)。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
 
 Talk 在 insert 之前跑 `ContentFilter` 链（默认 ChatHandler 是 `NoopFilter`；进程用 `builtin_talk_filter`：文本拦截 + 图片拦截，词表来自 `config.toml` 的 `sensitive_words` / `blocked_image`）。只拦对应 `MessageReq.type`；语音 / 视频以后加新 impl。命中 → `ContentBlocked`。
 

@@ -21,12 +21,14 @@ if ! command -v openssl >/dev/null 2>&1; then
 fi
 
 jwt="$(openssl rand -hex 32)"
+hmac="$(openssl rand -hex 32)"
 pg="$(openssl rand -hex 24)"
 
 umask 077
 cat >"$DEPLOY_DIR/kim.env" <<EOF
 KIM_IMAGE=${IMAGE_DEFAULT}
 KIM_JWT_SECRET=${jwt}
+KIM_INTERNAL_HMAC_SECRET=${hmac}
 POSTGRES_USER=kim
 POSTGRES_PASSWORD=${pg}
 POSTGRES_DB=kim

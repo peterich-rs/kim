@@ -22,9 +22,10 @@ use kim_protocol::pkt::{
     AuthResp, Flag, KickoutNotify, LoginReq, RevokeQuery, RevokeStatus, Session, Status,
 };
 use kim_protocol::{
-    generate_with_jti, marshal, parse, read, read_logic, token_revoke_key, BasicPkt, LogicPkt,
-    Packet, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG,
-    DEMO_DEFAULT_SECRET, META_ACCOUNT, META_APP, SN_LOGIN,
+    generate_with_jti, marshal, parse, read, read_logic, resolve_internal_hmac_secret,
+    sign_internal_hmac, token_revoke_key, BasicPkt, LogicPkt, Packet, CMD_LOGIN_RENEW,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT,
+    META_APP, SN_LOGIN,
 };
 use kim_session::{key_location, key_session, SESSION_TTL};
 use prost::Message;
@@ -146,10 +147,15 @@ impl RevokeCheck for RevokeStore {
 pub struct HttpRevoke {
     base: String,
     http: reqwest::Client,
+    hmac_secret: String,
 }
 
 impl HttpRevoke {
     pub fn new(base: &str) -> Result<Self, String> {
+        Self::with_hmac(base, &resolve_internal_hmac_secret(""))
+    }
+
+    pub fn with_hmac(base: &str, hmac_secret: &str) -> Result<Self, String> {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(3))
             .build()
@@ -157,6 +163,7 @@ impl HttpRevoke {
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
             http,
+            hmac_secret: hmac_secret.to_string(),
         })
     }
 }
@@ -164,18 +171,21 @@ impl HttpRevoke {
 #[async_trait]
 impl RevokeCheck for HttpRevoke {
     async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
+        let path = "/internal/revoke/check";
         let body = RevokeQuery {
             jti: jti.to_string(),
         }
         .encode_to_vec();
-        let resp = self
-            .http
-            .post(format!("{}/internal/revoke/check", self.base))
-            .header("Content-Type", "application/x-protobuf")
-            .body(body)
-            .send()
-            .await
+        let headers = sign_internal_hmac(self.hmac_secret.as_bytes(), "POST", path, &body)
             .map_err(|e| e.to_string())?;
+        let mut req = self
+            .http
+            .post(format!("{}{path}", self.base))
+            .header("Content-Type", "application/x-protobuf");
+        for (k, v) in headers.pairs() {
+            req = req.header(k, v);
+        }
+        let resp = req.body(body).send().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             return Err(format!("royal http {}", resp.status()));
         }

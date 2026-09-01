@@ -66,3 +66,5 @@ prometheus = { version = "0.14", default-features = false }
 kim-metrics = { path = "crates/kim-metrics" }
 kim-client = { path = "crates/kim-client" }
 uuid = { version = "1", features = ["v4"] }
+hmac = "0.12"
+sha2 = "0.10"

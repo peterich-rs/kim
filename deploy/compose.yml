@@ -99,6 +99,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
       CHAT_URL: http://chat:9002
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: royal
@@ -132,6 +133,7 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ROYAL_URL: http://royal:8080
+      KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: chat
       KIM_SNOWFLAKE_NODE: "1"
@@ -163,6 +165,7 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ROYAL_URL: http://royal:8080
+      KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: chat-gray
       KIM_SERVICE_ID: chat-2
@@ -198,6 +201,7 @@ services:
         condition: service_healthy
     environment:
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
       CONSUL_HTTP_ADDR: http://consul:8500
       KIM_PUBLIC_ADDRESS: gateway
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}

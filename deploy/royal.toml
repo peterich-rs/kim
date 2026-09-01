@@ -11,3 +11,4 @@ redis_url = ""
 jwt_secret = ""
 token_ttl_secs = 86400
 chat_url = "http://chat:9002"
+hmac_secret = ""

@@ -8,9 +8,11 @@ description = "KIM 业务包：Magic、BasicPkt、LogicPkt"
 
 [dependencies]
 bytes.workspace = true
+hmac.workspace = true
 jsonwebtoken.workspace = true
 prost.workspace = true
 serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

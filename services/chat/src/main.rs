@@ -5,13 +5,14 @@ use std::time::Duration;
 
 use chat::directory::MemoryGroupDirectory;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
-use chat::royal::http_backends;
+use chat::royal::http_backends_with_hmac;
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
 use kim_naming::{open_naming, DefaultRegistration};
+use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret};
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use serde::Deserialize;
@@ -34,6 +35,8 @@ struct SelfSection {
     database_url: String,
     #[serde(default)]
     royal_url: String,
+    #[serde(default)]
+    hmac_secret: String,
     #[serde(default = "default_db_max_connections")]
     db_max_connections: u32,
     #[serde(default = "default_db_acquire_timeout_ms")]
@@ -195,7 +198,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (store, groups, users, social) =
         if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
-            http_backends(&royal)?
+            let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
+            if is_demo_internal_hmac(&hmac) {
+                tracing::warn!(secret = "demo-default-hmac", "do not use in production");
+            }
+            http_backends_with_hmac(&royal, &hmac)?
         } else {
             let store = open_message_store(
                 database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),

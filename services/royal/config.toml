@@ -2,3 +2,4 @@
 listen = "127.0.0.1:8080"
 snowflake_node = 10
 chat_url = "http://127.0.0.1:9002"
+hmac_secret = ""

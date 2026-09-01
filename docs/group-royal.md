@@ -18,7 +18,7 @@
 
 group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册 REST Base32。
 
-`GroupError::NotFound` 与目录 `Backend` 分开：未知群/非成员 → `NotGroupMember`；SQL / Royal 5xx → `SystemException`。Chat→Royal 群 HTTP 走 `InternalGroupCreate` / `InternalGroupQuery` / `InternalGroupMember`（带 session.app），不用客户端 `GroupQueryReq` 当租户字段。直打 Royal 填任意 app 仍能改库，直到内部控制面鉴权（G-01）。
+`GroupError::NotFound` 与目录 `Backend` 分开：未知群/非成员 → `NotGroupMember`；SQL / Royal 5xx → `SystemException`。Chat→Royal 群 HTTP 走 `InternalGroupCreate` / `InternalGroupQuery` / `InternalGroupMember`（带 session.app），不用客户端 `GroupQueryReq` 当租户字段。无 HMAC 直打 Royal 是 401。
 
 ---
 
@@ -27,6 +27,8 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 进程：`services/royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
 
 Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`；Postgres 只由 Royal 写。
+
+除 `/health` 与 `/api/v1/auth/*` 外，Royal HTTP 都要 HMAC-SHA256：`x-kim-timestamp`、`x-kim-nonce`、`x-kim-signature`。密钥是 `KIM_INTERNAL_HMAC_SECRET`（空则 demo 默认值，与 JWT 一样不可用于生产）。canonical 串是 `METHOD`、`PATH`、timestamp、nonce、body 各占一行。允许 ±60s 时钟差。缺签或错签返回 401，body 是 `unauthorized`，不含 Fanout。Chat `RoyalClient` 与网关 `HttpRevoke` 自动带签。Chat `/internal/kick` 仍裸（G-01 剩余）。
 
 | 方法 | 路径 | 格式 |
 |---|---|---|

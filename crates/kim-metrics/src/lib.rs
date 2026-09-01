@@ -48,6 +48,7 @@ pub struct KimMetrics {
     handler_duration: HistogramVec,
     talk_total: IntCounterVec,
     session_not_found: IntCounterVec,
+    dispatch_fail_total: IntCounterVec,
 }
 
 impl KimMetrics {
@@ -98,6 +99,14 @@ impl KimMetrics {
             labels,
         )
         .map_err(|e| Error::Other(e.to_string()))?;
+        let dispatch_fail_total = IntCounterVec::new(
+            Opts::new(
+                "kim_dispatch_fail_total",
+                "talk persist ok but online push did not complete",
+            ),
+            &["service_id", "service_name", "kind"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
 
         registry
             .register(Box::new(channel_total.clone()))
@@ -126,6 +135,9 @@ impl KimMetrics {
         registry
             .register(Box::new(session_not_found.clone()))
             .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(dispatch_fail_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Arc::new(Self {
             registry,
@@ -140,6 +152,7 @@ impl KimMetrics {
             handler_duration,
             talk_total,
             session_not_found,
+            dispatch_fail_total,
         }))
     }
 
@@ -205,6 +218,12 @@ impl KimMetrics {
 
     pub fn on_session_not_found(&self) {
         self.session_not_found.with_label_values(&self.svc()).inc();
+    }
+
+    pub fn on_dispatch_fail(&self, kind: &str) {
+        self.dispatch_fail_total
+            .with_label_values(&[self.service_id.as_str(), self.service_name.as_str(), kind])
+            .inc();
     }
 }
 

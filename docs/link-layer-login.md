@@ -44,7 +44,7 @@ read_loop
 
 JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。
 
-握手后网关把 `jti` / 空闲窗口绑在 channel 上。Basic ping：先查吊销（失败则关连接），再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`，走现成 Kickout。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`；查询失败 **fail-closed**（拒绝登录 / 心跳关连接）。
+握手后网关把 `jti` / 空闲窗口绑在 channel 上。Basic ping：先查吊销（失败则关连接），再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`，走现成 Kickout。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`（HMAC，与 Chat→Royal 同一密钥）；查询失败 **fail-closed**（拒绝登录 / 心跳关连接）。
 
 ---
 
