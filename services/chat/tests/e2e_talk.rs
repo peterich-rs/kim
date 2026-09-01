@@ -15,13 +15,23 @@ use kim_protocol::{
 };
 
 fn talk_pkt(command: &str, seq: u32, dest: &str, body: &str) -> LogicPkt {
+    talk_pkt_with_client(command, seq, dest, body, "")
+}
+
+fn talk_pkt_with_client(
+    command: &str,
+    seq: u32,
+    dest: &str,
+    body: &str,
+    client_id: &str,
+) -> LogicPkt {
     let mut pkt = LogicPkt::new(command, seq, Bytes::new());
     pkt.set_dest(dest);
     pkt.write_body(&MessageReq {
         r#type: MESSAGE_TYPE_TEXT,
         body: body.to_string(),
         extra: String::new(),
-        client_id: String::new(),
+        client_id: client_id.to_string(),
     });
     pkt
 }
@@ -69,6 +79,111 @@ async fn alice_to_bob_one_to_one() {
         }
         _ => panic!("expected MessagePush"),
     }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn identical_client_id_replays_original_push() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
+
+    let first = talk_pkt_with_client(CMD_CHAT_USER_TALK, 2, "bob", "hello world", "c1");
+    alice
+        .send(marshal(&Packet::Logic(first)))
+        .await
+        .expect("talk send");
+    let first_resp = timeout_read(&alice).await;
+    let message_id = match read(&first_resp.payload).expect("resp decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::Success as i32);
+            let resp: MessageResp = p.read_body().expect("MessageResp");
+            resp.message_id
+        }
+        _ => panic!("expected MessageResp"),
+    };
+    let first_push = timeout_read(&bob).await;
+    match read(&first_push.payload).expect("push decode") {
+        Packet::Logic(p) => {
+            let push: MessagePush = p.read_body().expect("MessagePush");
+            assert_eq!(push.message_id, message_id);
+            assert_eq!(push.body, "hello world");
+        }
+        _ => panic!("expected MessagePush"),
+    }
+
+    let retry = talk_pkt_with_client(CMD_CHAT_USER_TALK, 3, "bob", "hello world", "c1");
+    alice
+        .send(marshal(&Packet::Logic(retry)))
+        .await
+        .expect("retry send");
+    let retry_resp = timeout_read(&alice).await;
+    match read(&retry_resp.payload).expect("retry decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::Success as i32);
+            let resp: MessageResp = p.read_body().expect("MessageResp");
+            assert_eq!(resp.message_id, message_id);
+        }
+        _ => panic!("expected MessageResp"),
+    }
+    let retry_push = timeout_read(&bob).await;
+    match read(&retry_push.payload).expect("replay decode") {
+        Packet::Logic(p) => {
+            let push: MessagePush = p.read_body().expect("MessagePush");
+            assert_eq!(push.message_id, message_id);
+            assert_eq!(push.body, "hello world");
+        }
+        _ => panic!("expected replay MessagePush"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn changed_body_same_client_id_is_idempotency_conflict() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
+
+    let first = talk_pkt_with_client(CMD_CHAT_USER_TALK, 2, "bob", "hello world", "c1");
+    alice
+        .send(marshal(&Packet::Logic(first)))
+        .await
+        .expect("talk send");
+    let first_resp = timeout_read(&alice).await;
+    match read(&first_resp.payload).expect("resp decode") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::Success as i32),
+        _ => panic!("expected MessageResp"),
+    }
+    let first_push = timeout_read(&bob).await;
+    match read(&first_push.payload).expect("push decode") {
+        Packet::Logic(p) => {
+            let push: MessagePush = p.read_body().expect("MessagePush");
+            assert_eq!(push.body, "hello world");
+        }
+        _ => panic!("expected MessagePush"),
+    }
+
+    let changed = talk_pkt_with_client(CMD_CHAT_USER_TALK, 3, "bob", "CHANGED", "c1");
+    alice
+        .send(marshal(&Packet::Logic(changed)))
+        .await
+        .expect("conflict send");
+    let conflict = timeout_read(&alice).await;
+    match read(&conflict.payload).expect("conflict decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::IdempotencyConflict as i32);
+        }
+        _ => panic!("expected IdempotencyConflict"),
+    }
+    timeout_no_packet(&bob, Duration::from_secs(2)).await;
 
     let _ = stack.gw.shutdown().await;
     let _ = stack.chat.shutdown().await;

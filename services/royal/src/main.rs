@@ -5,6 +5,7 @@ use std::sync::Arc;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
 use chat::store::{open_pg_backends, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
+use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret};
 use royal::{serve, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
 use serde::Deserialize;
 
@@ -41,6 +42,8 @@ struct SelfSection {
     app: String,
     #[serde(default)]
     chat_url: String,
+    #[serde(default)]
+    hmac_secret: String,
 }
 
 fn default_node() -> u16 {
@@ -144,7 +147,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| "kim".into());
     let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
-    let state = state.with_app(app).with_chat_url(chat_url);
+    let hmac = resolve_internal_hmac_secret(&cfg.this.hmac_secret);
+    if is_demo_internal_hmac(&hmac) {
+        tracing::warn!(secret = "demo-default-hmac", "do not use in production");
+    }
+    let state = state
+        .with_app(app)
+        .with_chat_url(chat_url)
+        .with_hmac_secret(hmac);
 
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);

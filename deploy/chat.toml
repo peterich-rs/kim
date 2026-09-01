@@ -10,6 +10,7 @@ db_max_connections = 5
 db_acquire_timeout_ms = 3000
 db_idle_timeout_secs = 60
 royal_url = ""
+hmac_secret = ""
 snowflake_node = 1
 zone = "zone_local"
 metrics_listen = "0.0.0.0:9002"

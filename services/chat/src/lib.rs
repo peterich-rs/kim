@@ -62,7 +62,7 @@ pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
 pub use profile::{do_user_profile, do_user_search, do_user_update};
-pub use royal::http_backends;
+pub use royal::{http_backends, http_backends_with_hmac};
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -72,6 +72,7 @@ pub(crate) struct ChatSvc {
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
     social: Arc<dyn SocialDirectory>,
+    metrics: Arc<Mutex<Option<Arc<KimMetrics>>>>,
 }
 
 struct ContainerDispatcher(Arc<Container>);
@@ -98,9 +99,7 @@ pub struct ChatHandler {
     router: Router,
     cache: Arc<dyn SessionStorage>,
     dispatcher: Arc<dyn Dispatcher>,
-    #[allow(dead_code)]
     svc: ChatSvc,
-    metrics: Mutex<Option<Arc<KimMetrics>>>,
 }
 
 impl ChatHandler {
@@ -221,18 +220,26 @@ impl ChatHandler {
             filter,
             users,
             social,
+            metrics: Arc::new(Mutex::new(None)),
         };
         {
             let svc = svc.clone();
             router.handle(CMD_CHAT_USER_TALK, move |ctx| {
                 let svc = svc.clone();
                 async move {
+                    let metrics = svc
+                        .metrics
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
                     do_user_talk(
                         ctx,
                         svc.store.as_ref(),
                         svc.filter.as_ref(),
                         svc.users.as_ref(),
                         svc.social.as_ref(),
+                        metrics.as_deref(),
+                        talk::TALK_PUSH_BUDGET,
                     )
                     .await
                 }
@@ -243,11 +250,18 @@ impl ChatHandler {
             router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
                 let svc = svc.clone();
                 async move {
+                    let metrics = svc
+                        .metrics
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
                     do_group_talk(
                         ctx,
                         svc.store.as_ref(),
                         svc.groups.as_ref(),
                         svc.filter.as_ref(),
+                        metrics.as_deref(),
+                        talk::TALK_PUSH_BUDGET,
                     )
                     .await
                 }
@@ -428,12 +442,11 @@ impl ChatHandler {
             cache,
             dispatcher,
             svc,
-            metrics: Mutex::new(None),
         }
     }
 
     pub fn with_metrics(&self, m: Arc<KimMetrics>) {
-        *self.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
+        *self.svc.metrics.lock().unwrap_or_else(|e| e.into_inner()) = Some(m);
     }
 
     pub fn admin(&self) -> ChatAdmin {
@@ -441,7 +454,8 @@ impl ChatHandler {
     }
 
     fn metrics(&self) -> Option<Arc<KimMetrics>> {
-        self.metrics
+        self.svc
+            .metrics
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()

@@ -26,6 +26,7 @@
                 "UserNotFound": 108,
                 "NotFriends": 109,
                 "Blocked": 110,
+                "IdempotencyConflict": 111,
                 "NoDestination": 300,
                 "SessionNotFound": 404
               }
@@ -324,6 +325,14 @@
                   "rule": "repeated",
                   "type": "int64",
                   "id": 1
+                },
+                "account": {
+                  "type": "string",
+                  "id": 2
+                },
+                "app": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             },
@@ -448,6 +457,39 @@
                 }
               }
             },
+            "InsertFanout": {
+              "fields": {
+                "type": {
+                  "type": "int32",
+                  "id": 1
+                },
+                "body": {
+                  "type": "string",
+                  "id": 2
+                },
+                "extra": {
+                  "type": "string",
+                  "id": 3
+                },
+                "sender": {
+                  "type": "string",
+                  "id": 4
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 5
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 6
+                },
+                "recipients": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 7
+                }
+              }
+            },
             "InsertMessageResp": {
               "fields": {
                 "messageId": {
@@ -461,6 +503,10 @@
                 "duplicate": {
                   "type": "bool",
                   "id": 3
+                },
+                "fanout": {
+                  "type": "InsertFanout",
+                  "id": 4
                 }
               }
             },
@@ -882,6 +928,63 @@
                 },
                 "limit": {
                   "type": "int32",
+                  "id": 3
+                }
+              }
+            },
+            "InternalGroupCreate": {
+              "fields": {
+                "app": {
+                  "type": "string",
+                  "id": 1
+                },
+                "name": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                },
+                "introduction": {
+                  "type": "string",
+                  "id": 4
+                },
+                "owner": {
+                  "type": "string",
+                  "id": 5
+                },
+                "members": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 6
+                }
+              }
+            },
+            "InternalGroupQuery": {
+              "fields": {
+                "app": {
+                  "type": "string",
+                  "id": 1
+                },
+                "groupId": {
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "InternalGroupMember": {
+              "fields": {
+                "app": {
+                  "type": "string",
+                  "id": 1
+                },
+                "groupId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "account": {
+                  "type": "string",
                   "id": 3
                 }
               }

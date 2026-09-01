@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use kim_metrics::KimMetrics;
+use prometheus::Encoder;
 
 #[tokio::test]
 async fn serve_and_scrape() {
@@ -26,6 +27,21 @@ async fn serve_and_scrape() {
         }
     };
     assert!(body.contains("kim_channel_total"), "metrics body: {body}");
+}
+
+#[tokio::test]
+async fn scrape_includes_dispatch_fail_total() {
+    let m = KimMetrics::new("chat-1", "chat").expect("metrics");
+    m.on_dispatch_fail("user");
+    let mut buf = Vec::new();
+    prometheus::TextEncoder::new()
+        .encode(&m.registry().gather(), &mut buf)
+        .expect("encode");
+    let body = String::from_utf8(buf).expect("utf8");
+    assert!(
+        body.contains("kim_dispatch_fail_total"),
+        "metrics body: {body}"
+    );
 }
 
 #[tokio::test]

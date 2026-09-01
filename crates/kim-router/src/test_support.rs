@@ -10,6 +10,7 @@ use crate::{Dispatcher, Location, RouterError, SessionError, SessionStorage};
 pub struct RecordingDispatcher {
     pushes: Mutex<Vec<RecordedPush>>,
     fail_gateways: Mutex<Vec<String>>,
+    hang_gateways: Mutex<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -29,6 +30,13 @@ impl RecordingDispatcher {
 
     pub fn fail_on(&self, gateway: &str) {
         self.fail_gateways
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(gateway.to_string());
+    }
+
+    pub fn hang_on(&self, gateway: &str) {
+        self.hang_gateways
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(gateway.to_string());
@@ -59,6 +67,15 @@ impl Dispatcher for RecordingDispatcher {
                 channels: channels.to_vec(),
                 pkt,
             });
+        let hang = self
+            .hang_gateways
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|g| g == gateway);
+        if hang {
+            std::future::pending::<()>().await;
+        }
         if fail {
             return Err(RouterError::Dispatcher(gateway.to_string()));
         }

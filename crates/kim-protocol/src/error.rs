@@ -20,4 +20,6 @@ pub enum ProtocolError {
     InvalidToken,
     #[error("invalid account")]
     InvalidAccount,
+    #[error("invalid hmac secret")]
+    InvalidHmacSecret,
 }

@@ -8,24 +8,61 @@ use bytes::Bytes;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, ConversationRead,
     GroupCreateResp, GroupDetail, GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery,
-    InboxResp, InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
-    InternalGroupQuery, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
-    OfflineIndexReq, ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery,
-    UserSearchResp,
+    InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
+    InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
+    MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
+    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
+use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
 use prost::Message;
 use reqwest::StatusCode;
+use tracing::warn;
 
 use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
 use crate::inbox::parse_kind;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
 use crate::store::{
-    HistoryEntry, InboxEntry, InsertMessage, InsertResult, MessageContentRow, MessageIndexRow,
-    MessageKind, MessageStore, StoreError,
+    Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult, MessageContentRow,
+    MessageIndexRow, MessageKind, MessageStore, StoreError,
 };
 use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
 
 const RETRIES: usize = 3;
+
+fn fanout_from_resp(fanout: Option<InsertFanout>) -> Fanout {
+    match fanout {
+        Some(f) => {
+            let kind = match parse_kind(f.kind) {
+                Some(k) => k,
+                None => {
+                    warn!(kind = f.kind, "royal insert fanout unknown kind");
+                    MessageKind::User
+                }
+            };
+            Fanout {
+                msg_type: f.r#type,
+                body: f.body,
+                extra: f.extra,
+                sender: f.sender,
+                dest: f.dest,
+                kind,
+                recipients: f.recipients,
+            }
+        }
+        None => {
+            warn!("royal insert resp missing fanout");
+            Fanout {
+                msg_type: 0,
+                body: String::new(),
+                extra: String::new(),
+                sender: String::new(),
+                dest: String::new(),
+                kind: MessageKind::User,
+                recipients: Vec::new(),
+            }
+        }
+    }
+}
 
 fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
     StoreError::Http {
@@ -42,10 +79,15 @@ fn retry_http(status: StatusCode) -> bool {
 pub struct RoyalClient {
     base: String,
     http: reqwest::Client,
+    hmac_secret: String,
 }
 
 impl RoyalClient {
     pub fn new(base: &str) -> Result<Self, StoreError> {
+        Self::with_hmac(base, &resolve_internal_hmac_secret(""))
+    }
+
+    pub fn with_hmac(base: &str, hmac_secret: &str) -> Result<Self, StoreError> {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
@@ -53,7 +95,31 @@ impl RoyalClient {
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
             http,
+            hmac_secret: hmac_secret.to_string(),
         })
+    }
+
+    fn signed(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: &[u8],
+    ) -> Result<reqwest::RequestBuilder, StoreError> {
+        let url = format!("{}{path}", self.base);
+        let headers = sign_internal_hmac(self.hmac_secret.as_bytes(), method.as_str(), path, body)
+            .map_err(|e| StoreError::Backend(e.to_string()))?;
+        let mut req = self
+            .http
+            .request(method, &url)
+            .header("Content-Type", "application/x-protobuf")
+            .header("Accept", "application/x-protobuf");
+        for (k, v) in headers.pairs() {
+            req = req.header(k, v);
+        }
+        if !body.is_empty() {
+            req = req.body(body.to_vec());
+        }
+        Ok(req)
     }
 
     async fn send_pb<T: Message + Default, B: Message>(
@@ -62,18 +128,11 @@ impl RoyalClient {
         path: &str,
         body: Option<&B>,
     ) -> Result<T, StoreError> {
-        let url = format!("{}{path}", self.base);
         let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
+        let payload = bytes.as_deref().unwrap_or(&[]);
         let mut last = StoreError::Backend("royal request failed".into());
         for _ in 0..RETRIES {
-            let mut req = self
-                .http
-                .request(method.clone(), &url)
-                .header("Content-Type", "application/x-protobuf")
-                .header("Accept", "application/x-protobuf");
-            if let Some(b) = bytes.clone() {
-                req = req.body(b);
-            }
+            let req = self.signed(method.clone(), path, payload)?;
             match req.send().await {
                 Ok(resp) => {
                     let status = resp.status();
@@ -103,16 +162,11 @@ async fn post_maybe_empty(
     path: &str,
     body: &impl Message,
 ) -> Result<(), StoreError> {
-    let url = format!("{}{path}", client.base);
     let bytes = Bytes::from(body.encode_to_vec());
     let mut last = StoreError::Backend("royal request failed".into());
     for _ in 0..RETRIES {
         match client
-            .http
-            .post(&url)
-            .header("Content-Type", "application/x-protobuf")
-            .header("Accept", "application/x-protobuf")
-            .body(bytes.clone())
+            .signed(reqwest::Method::POST, path, &bytes)?
             .send()
             .await
         {
@@ -175,6 +229,7 @@ impl MessageStore for HttpMessageStore {
             message_id: resp.message_id,
             send_time: resp.send_time,
             duplicate: resp.duplicate,
+            fanout: fanout_from_resp(resp.fanout),
         })
     }
 
@@ -207,6 +262,7 @@ impl MessageStore for HttpMessageStore {
             message_id: resp.message_id,
             send_time: resp.send_time,
             duplicate: resp.duplicate,
+            fanout: fanout_from_resp(resp.fanout),
         })
     }
 
@@ -770,13 +826,25 @@ pub type HttpBackends = (
 );
 
 pub fn http_backends(royal_url: &str) -> Result<HttpBackends, StoreError> {
+    http_backends_with_hmac(royal_url, &resolve_internal_hmac_secret(""))
+}
+
+pub fn http_backends_with_hmac(
+    royal_url: &str,
+    hmac_secret: &str,
+) -> Result<HttpBackends, StoreError> {
+    let client = RoyalClient::with_hmac(royal_url, hmac_secret)?;
     Ok((
-        Arc::new(HttpMessageStore::new(royal_url)?),
-        Arc::new(
-            HttpGroupDirectory::new(royal_url).map_err(|e| StoreError::Backend(e.to_string()))?,
-        ),
-        Arc::new(HttpUserDirectory::new(royal_url)?),
-        Arc::new(HttpSocialDirectory::new(royal_url)?),
+        Arc::new(HttpMessageStore {
+            client: client.clone(),
+        }),
+        Arc::new(HttpGroupDirectory {
+            client: client.clone(),
+        }),
+        Arc::new(HttpUserDirectory {
+            client: client.clone(),
+        }),
+        Arc::new(HttpSocialDirectory { client }),
     ))
 }
 

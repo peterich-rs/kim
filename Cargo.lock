@@ -349,6 +349,7 @@ dependencies = [
  "kim-ws",
  "kimbench",
  "pkt-client",
+ "prometheus",
  "prost",
  "redis",
  "reqwest",
@@ -1352,11 +1353,13 @@ name = "kim-protocol"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "hmac",
  "jsonwebtoken",
  "prost",
  "prost-build",
  "protobuf-src",
  "serde",
+ "sha2",
  "thiserror 2.0.20",
  "uuid",
 ]
@@ -2238,6 +2241,7 @@ dependencies = [
  "axum",
  "bytes",
  "chat",
+ "http-body-util",
  "kim-naming",
  "kim-protocol",
  "prost",

@@ -31,6 +31,8 @@
 
 `insert_group`：1 条 content + 每个成员 1 条 index。发送方 `direction=1`，其余 `0`。成员列表由 Handler 在 insert **之前** 从 `GroupDirectory` 取出。未知群或发送方不在成员中：`NotGroupMember`，不 insert。
 
+落库是真相，在线 Push 是尽力。`insert_*` 成功后立刻尝试 `MessageResp` Success，再在 `TALK_PUSH_BUDGET`（3s）内 `get_locations` + `dispatch`。通过当前 filter / 用户存在 / 好友 / 黑名单（群聊：当前成员关系）之后，identical `clientId` 才从 `message_content` + `message_index` 重建 Push 与收件人，不信本次请求的 body / dest。删好友、拉黑或退群后的完全相同重试在 insert 前返回 109 / 107，不会重放。dispatch 失败或超时只打 `kim_dispatch_fail_total`，不再回 99。ACK 模型见下文，游标仍是 Snowflake 高水位（G-03）。
+
 离线拉取只读 `direction=0`。
 
 ---
@@ -47,7 +49,7 @@ key：`chat:ack:{account}`（Redis）或进程内 map。TTL 30 天。`messageId=
 4. `send_time > start`，LIMIT 2000。
 5. 请求 `messageId>0` 时，返回前再 ACK 该 id。
 
-`offline.content` 按请求 id **顺序** 返回。可见性：`message_content.app` 匹配且 `message_index` 存在 `(app, account_a, message_id)`；越权或不存在的 id **跳过**，整包仍 Success（不靠错误码探测 id）。Chat handler 覆盖 session 的 app/account；Chat→Royal 的 `MessageContentReq` 带这两个字段。直打 Royal 填别人的 app/account 仍能读，直到 G-01。
+`offline.content` 按请求 id **顺序** 返回。可见性：`message_content.app` 匹配且 `message_index` 存在 `(app, account_a, message_id)`；越权或不存在的 id **跳过**，整包仍 Success（不靠错误码探测 id）。Chat handler 覆盖 session 的 app/account；Chat→Royal 的 `MessageContentReq` 带这两个字段。无 HMAC 直打 Royal 是 401。
 
 默认 Memory。`DATABASE_URL` + `--features postgres` 走 Postgres（列名 `group_id` / `msg_type`）。`REDIS_URL` + `--features redis` 时读索引走 Redis，与会话共用 URL。
 

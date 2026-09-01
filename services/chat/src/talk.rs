@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{MessagePush, MessageReq, MessageResp, Status};
 use kim_router::{Context, SessionError};
 use tracing::{info, warn};
@@ -5,8 +8,12 @@ use tracing::{info, warn};
 use crate::directory::{GroupDirectory, GroupError};
 use crate::filter::ContentFilter;
 use crate::social::SocialDirectory;
-use crate::store::{InsertMessage, MessageStore};
+use crate::store::{
+    unique_accounts, Fanout, InsertMessage, InsertResult, MessageKind, MessageStore,
+};
 use crate::users::UserDirectory;
+
+pub(crate) const TALK_PUSH_BUDGET: Duration = Duration::from_secs(3);
 
 #[derive(Debug, thiserror::Error)]
 pub enum TalkError {
@@ -40,6 +47,8 @@ pub async fn do_user_talk(
     filter: &dyn ContentFilter,
     users: &dyn UserDirectory,
     social: &dyn SocialDirectory,
+    metrics: Option<&KimMetrics>,
+    push_budget: Duration,
 ) {
     if ctx.header().dest.is_empty() {
         warn!(
@@ -120,19 +129,6 @@ pub async fn do_user_talk(
             }
         }
     }
-    let mut accounts = vec![receiver.to_string()];
-    if receiver != ctx.session().account {
-        accounts.push(ctx.session().account.clone());
-    }
-    let locs = match ctx.get_locations(&accounts).await {
-        Ok(v) => v,
-        Err(SessionError::NotFound) => Vec::new(),
-        Err(err) => {
-            warn!(%err, account = %receiver, "get_locations failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
-        }
-    };
 
     let send_time = unix_nano();
     let inserted = match store
@@ -157,41 +153,15 @@ pub async fn do_user_talk(
             return;
         }
     };
-    let send_time = inserted.send_time;
-
-    let push = MessagePush {
-        message_id: inserted.message_id,
-        r#type: req.r#type,
-        body: req.body,
-        extra: req.extra,
-        sender: ctx.session().account.clone(),
-        send_time,
-    };
-    if !inserted.duplicate && !locs.is_empty() {
-        if let Err(err) = ctx.dispatch(&push, &locs).await {
-            warn!(%err, "dispatch user talk failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
-        }
+    if inserted.duplicate
+        && !fanout_matches_req(MessageKind::User, receiver, &req, &inserted.fanout)
+    {
+        let _ = ctx
+            .resp(Status::IdempotencyConflict, None::<&MessageResp>)
+            .await;
+        return;
     }
-
-    let resp = MessageResp {
-        message_id: inserted.message_id,
-        send_time,
-    };
-    info!(
-        dest = %receiver,
-        message_id = inserted.message_id,
-        send_time,
-        duplicate = inserted.duplicate,
-        online = !locs.is_empty(),
-        msg_type = push.r#type,
-        body_len = push.body.len(),
-        "user talk"
-    );
-    if let Err(err) = ctx.resp(Status::Success, Some(&resp)).await {
-        warn!(%err, "resp failed");
-    }
+    persist_then_push(&ctx, &inserted, "user", metrics, push_budget).await;
 }
 
 pub async fn do_group_talk(
@@ -199,6 +169,8 @@ pub async fn do_group_talk(
     store: &dyn MessageStore,
     groups: &dyn GroupDirectory,
     filter: &dyn ContentFilter,
+    metrics: Option<&KimMetrics>,
+    push_budget: Duration,
 ) {
     if ctx.header().dest.is_empty() {
         warn!(
@@ -271,54 +243,97 @@ pub async fn do_group_talk(
             return;
         }
     };
-    let send_time = inserted.send_time;
+    if inserted.duplicate && !fanout_matches_req(MessageKind::Group, group, &req, &inserted.fanout)
+    {
+        let _ = ctx
+            .resp(Status::IdempotencyConflict, None::<&MessageResp>)
+            .await;
+        return;
+    }
+    persist_then_push(&ctx, &inserted, "group", metrics, push_budget).await;
+}
 
-    let locs = match ctx.get_locations(&members).await {
-        Ok(v) => v,
-        Err(SessionError::NotFound) => Vec::new(),
-        Err(err) => {
-            warn!(%err, "get_locations failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
-        }
+fn fanout_matches_req(kind: MessageKind, dest: &str, req: &MessageReq, f: &Fanout) -> bool {
+    f.kind == kind
+        && f.dest == dest
+        && f.msg_type == req.r#type
+        && f.body == req.body
+        && f.extra == req.extra
+}
+
+async fn persist_then_push(
+    ctx: &Context,
+    inserted: &InsertResult,
+    kind_label: &str,
+    metrics: Option<&KimMetrics>,
+    push_budget: Duration,
+) {
+    let resp = MessageResp {
+        message_id: inserted.message_id,
+        send_time: inserted.send_time,
     };
+    if let Err(err) = ctx.resp(Status::Success, Some(&resp)).await {
+        warn!(%err, "resp failed");
+    }
 
     let push = MessagePush {
         message_id: inserted.message_id,
-        r#type: req.r#type,
-        body: req.body,
-        extra: req.extra,
-        sender: ctx.session().account.clone(),
-        send_time,
+        r#type: inserted.fanout.msg_type,
+        body: inserted.fanout.body.clone(),
+        extra: inserted.fanout.extra.clone(),
+        sender: inserted.fanout.sender.clone(),
+        send_time: inserted.send_time,
     };
-    if !inserted.duplicate && !locs.is_empty() {
-        if let Err(err) = ctx.dispatch(&push, &locs).await {
-            warn!(%err, "dispatch group talk failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+    let accounts = unique_accounts(inserted.fanout.recipients.iter().cloned());
+    let push_fut = async {
+        if accounts.is_empty() {
+            warn!(
+                message_id = inserted.message_id,
+                "fanout recipients empty; skip push"
+            );
+            if let Some(m) = metrics {
+                m.on_dispatch_fail(kind_label);
+            }
             return;
         }
+        let locs = match ctx.get_locations(&accounts).await {
+            Ok(v) => v,
+            Err(SessionError::NotFound) => Vec::new(),
+            Err(err) => {
+                warn!(%err, "get_locations failed");
+                if let Some(m) = metrics {
+                    m.on_dispatch_fail(kind_label);
+                }
+                Vec::new()
+            }
+        };
+        if locs.is_empty() {
+            return;
+        }
+        if let Err(err) = ctx.dispatch(&push, &locs).await {
+            warn!(%err, "dispatch failed");
+            if let Some(m) = metrics {
+                m.on_dispatch_fail(kind_label);
+            }
+        }
+    };
+    if tokio::time::timeout(push_budget, push_fut).await.is_err() {
+        warn!(
+            message_id = inserted.message_id,
+            "talk push budget exceeded"
+        );
+        if let Some(m) = metrics {
+            m.on_dispatch_fail(kind_label);
+        }
     }
-
     info!(
-        dest = %group,
+        dest = %inserted.fanout.dest,
         message_id = inserted.message_id,
-        send_time,
-        member_count = members.len(),
-        loc_count = locs.len(),
+        send_time = inserted.send_time,
         duplicate = inserted.duplicate,
-        msg_type = push.r#type,
-        body_len = push.body.len(),
-        "group talk"
+        recipients = accounts.len(),
+        "talk"
     );
-    let _ = ctx
-        .resp(
-            Status::Success,
-            Some(&MessageResp {
-                message_id: inserted.message_id,
-                send_time,
-            }),
-        )
-        .await;
 }
 
 #[cfg(test)]
@@ -327,6 +342,9 @@ mod tests {
 
     use async_trait::async_trait;
     use bytes::Bytes;
+    use std::time::{Duration, Instant};
+
+    use kim_metrics::KimMetrics;
     use kim_protocol::pkt::{Flag, MessagePush, MessageReq, MessageResp, Session, Status};
     use kim_protocol::{
         LogicPkt, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
@@ -335,6 +353,7 @@ mod tests {
     use kim_router::test_support::{RecordedPush, RecordingDispatcher};
     use kim_router::{Location, Router, SessionError, SessionStorage};
     use kim_session::MemorySessionStore;
+    use prometheus::Encoder;
 
     use super::{do_group_talk, do_user_talk};
     use crate::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
@@ -344,6 +363,7 @@ mod tests {
     use crate::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
     };
+    use crate::talk::TALK_PUSH_BUDGET;
     use crate::users::{MemoryUserDirectory, UserDirectory};
 
     fn sender_session() -> Session {
@@ -463,12 +483,41 @@ mod tests {
         users: Arc<dyn UserDirectory>,
         social: Arc<dyn SocialDirectory>,
     ) {
+        serve_user_talk_full(
+            store,
+            cache,
+            dispatcher,
+            pkt,
+            session,
+            filter,
+            users,
+            social,
+            None,
+            TALK_PUSH_BUDGET,
+        )
+        .await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn serve_user_talk_full(
+        store: Arc<dyn MessageStore>,
+        cache: Arc<dyn SessionStorage>,
+        dispatcher: Arc<RecordingDispatcher>,
+        pkt: LogicPkt,
+        session: Session,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
+        metrics: Option<Arc<KimMetrics>>,
+        push_budget: Duration,
+    ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_USER_TALK, move |ctx| {
             let store = store.clone();
             let filter = filter.clone();
             let users = users.clone();
             let social = social.clone();
+            let metrics = metrics.clone();
             async move {
                 do_user_talk(
                     ctx,
@@ -476,6 +525,8 @@ mod tests {
                     filter.as_ref(),
                     users.as_ref(),
                     social.as_ref(),
+                    metrics.as_deref(),
+                    push_budget,
                 )
                 .await
             }
@@ -593,6 +644,60 @@ mod tests {
         }
     }
 
+    struct HangLocationStore;
+
+    #[async_trait]
+    impl SessionStorage for HangLocationStore {
+        async fn add(&self, _session: &Session) -> Result<(), SessionError> {
+            Ok(())
+        }
+
+        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+            Ok(())
+        }
+
+        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+            Err(SessionError::NotFound)
+        }
+
+        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+            std::future::pending().await
+        }
+
+        async fn get_location(
+            &self,
+            _account: &str,
+            _device: &str,
+        ) -> Result<Location, SessionError> {
+            std::future::pending().await
+        }
+    }
+
+    fn dispatch_fail_count(metrics: &KimMetrics, kind: &str) -> u64 {
+        let mut buf = Vec::new();
+        prometheus::TextEncoder::new()
+            .encode(&metrics.registry().gather(), &mut buf)
+            .expect("encode metrics");
+        let text = String::from_utf8(buf).expect("utf8");
+        for line in text.lines() {
+            if !line.starts_with("kim_dispatch_fail_total{") {
+                continue;
+            }
+            if !line.contains(&format!("kind=\"{kind}\"")) {
+                continue;
+            }
+            let Some(value) = line.rsplit(' ').next() else {
+                continue;
+            };
+            return value.parse().unwrap_or(0);
+        }
+        0
+    }
+
+    fn test_metrics() -> Arc<KimMetrics> {
+        KimMetrics::new("chat-test", "chat").expect("metrics")
+    }
+
     #[tokio::test]
     async fn empty_dest_is_no_destination_without_insert_or_push() {
         let store = memory_store();
@@ -645,7 +750,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn same_client_id_does_not_insert_or_push_twice() {
+    async fn same_client_id_replays_push_from_store() {
         let store = memory_store();
         let cache = Arc::new(MemorySessionStore::new());
         cache.add(&receiver_session()).await.unwrap();
@@ -674,8 +779,13 @@ mod tests {
             .iter()
             .filter(|p| p.pkt.header.flag == Flag::Push as i32)
             .collect();
-        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes.len(), 2);
         assert_eq!(store.recorded().len(), 1);
+        let first: MessagePush = pushes[0].pkt.read_body().unwrap();
+        let second: MessagePush = pushes[1].pkt.read_body().unwrap();
+        assert_eq!(first.body, req.body);
+        assert_eq!(second.body, req.body);
+        assert_eq!(first.message_id, second.message_id);
         let resps: Vec<_> = got
             .iter()
             .filter(|p| {
@@ -810,7 +920,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_fail_is_system_exception_without_success_resp() {
+    async fn dispatch_fail_is_success_with_message_resp() {
         let store = memory_store();
         let cache = Arc::new(MemorySessionStore::new());
         let mut bob = receiver_session();
@@ -818,50 +928,522 @@ mod tests {
         cache.add(&bob).await.unwrap();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         dispatcher.fail_on("wg-2");
+        let metrics = test_metrics();
+        serve_user_talk_full(
+            store.clone(),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
+            Some(metrics.clone()),
+            TALK_PUSH_BUDGET,
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        assert!(got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| {
+                p.pkt.header.flag == Flag::Response as i32
+                    && p.pkt.header.status == Status::Success as i32
+            })
+            .collect();
+        assert_eq!(resps.len(), 1);
+        let resp: MessageResp = resps[0].pkt.read_body().unwrap();
+        assert_eq!(resp.message_id, store.recorded()[0].message_id);
+        assert_eq!(dispatch_fail_count(&metrics, "user"), 1);
+    }
+
+    #[tokio::test]
+    async fn get_location_other_is_success_after_insert_without_push() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let metrics = test_metrics();
+        serve_user_talk_full(
+            store.clone(),
+            Arc::new(OtherLocationStore),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
+            Some(metrics.clone()),
+            TALK_PUSH_BUDGET,
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let resps: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+            .collect();
+        assert_eq!(resps.len(), 1);
+        assert_eq!(resps[0].pkt.header.status, Status::Success as i32);
+        assert_eq!(store.recorded().len(), 1);
+        assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+        assert_eq!(dispatch_fail_count(&metrics, "user"), 1);
+    }
+
+    #[tokio::test]
+    async fn same_client_id_changed_body_is_idempotency_conflict() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let mut first = sample_req();
+        first.client_id = "c1".into();
+        first.body = "hello".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
         serve_user_talk(
-            store,
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &first),
+            sender_session(),
+        )
+        .await;
+        let mut second = first.clone();
+        second.body = "CHANGED".into();
+        serve_user_talk(
+            store.clone(),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("bob", &second),
+            sender_session(),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let conflicts: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.status == Status::IdempotencyConflict as i32)
+            .collect();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(store.recorded().len(), 1);
+        assert_eq!(store.recorded()[0].body, "hello");
+        let pushes: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        let push: MessagePush = pushes[0].pkt.read_body().unwrap();
+        assert_eq!(push.body, "hello");
+    }
+
+    #[tokio::test]
+    async fn same_client_id_changed_dest_is_idempotency_conflict() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        cache
+            .add(&Session {
+                channel_id: "ch-carol".into(),
+                gate_id: "wg-1".into(),
+                account: "carol".into(),
+                app: "kim".into(),
+                ..Session::default()
+            })
+            .await
+            .unwrap();
+        let mut first = sample_req();
+        first.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let users = seed_users(&["alice", "bob", "carol"]).await;
+        let social = seed_friends(&[("alice", "bob"), ("alice", "carol")]).await;
+        serve_user_talk_users(
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &first),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users.clone(),
+            social.clone(),
+        )
+        .await;
+        serve_user_talk_users(
+            store.clone(),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("carol", &first),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users,
+            social,
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.status == Status::IdempotencyConflict as i32)
+                .count(),
+            1
+        );
+        let pushes: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].channels, vec!["ch-bob".to_string()]);
+        assert!(!got
+            .iter()
+            .any(|p| p.channels.iter().any(|c| c == "ch-carol")));
+    }
+
+    #[tokio::test]
+    async fn concurrent_same_client_id_different_body_is_conflict() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let users = seed_users(&["alice", "bob"]).await;
+        let social = seed_friends(&[("alice", "bob")]).await;
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let mut req_a = sample_req();
+        req_a.client_id = "c1".into();
+        req_a.body = "A".into();
+        let mut req_b = sample_req();
+        req_b.client_id = "c1".into();
+        req_b.body = "B".into();
+
+        let a = {
+            let store = store.clone();
+            let cache = cache.clone();
+            let dispatcher = dispatcher.clone();
+            let users = users.clone();
+            let social = social.clone();
+            let barrier = barrier.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                serve_user_talk_users(
+                    store,
+                    cache,
+                    dispatcher,
+                    talk_req_pkt("bob", &req_a),
+                    sender_session(),
+                    Arc::new(NoopFilter),
+                    users,
+                    social,
+                )
+                .await;
+            })
+        };
+        let b = {
+            let store = store.clone();
+            let cache = cache.clone();
+            let dispatcher = dispatcher.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                serve_user_talk_users(
+                    store,
+                    cache,
+                    dispatcher,
+                    talk_req_pkt("bob", &req_b),
+                    sender_session(),
+                    Arc::new(NoopFilter),
+                    users,
+                    social,
+                )
+                .await;
+            })
+        };
+        a.await.unwrap();
+        b.await.unwrap();
+
+        assert_eq!(store.recorded().len(), 1);
+        let winner = store.recorded()[0].body.clone();
+        assert!(winner == "A" || winner == "B");
+        let got = dispatcher.recorded();
+        let successes: Vec<_> = got
+            .iter()
+            .filter(|p| {
+                p.pkt.header.flag == Flag::Response as i32
+                    && p.pkt.header.status == Status::Success as i32
+            })
+            .collect();
+        let conflicts: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.status == Status::IdempotencyConflict as i32)
+            .collect();
+        assert_eq!(successes.len(), 1);
+        assert_eq!(conflicts.len(), 1);
+        let pushes: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        let push: MessagePush = pushes[0].pkt.read_body().unwrap();
+        assert_eq!(push.body, winner);
+    }
+
+    #[tokio::test]
+    async fn empty_client_id_inserts_and_pushes_twice() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_user_talk(
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+        )
+        .await;
+        serve_user_talk(
+            store.clone(),
             cache,
             dispatcher.clone(),
             talk_req_pkt("bob", &sample_req()),
             sender_session(),
         )
         .await;
-
-        let got = dispatcher.recorded();
-        assert!(!got.iter().any(|p| {
-            p.pkt.header.flag == Flag::Response as i32
-                && p.pkt.header.status == Status::Success as i32
-        }));
-        let resps: Vec<_> = got
-            .iter()
-            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
+        assert_eq!(store.recorded().len(), 2);
+        let pushes: Vec<_> = dispatcher
+            .recorded()
+            .into_iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
             .collect();
-        assert_eq!(resps.len(), 1);
-        assert_eq!(resps[0].pkt.header.status, Status::SystemException as i32);
+        assert_eq!(pushes.len(), 2);
+        let a: MessagePush = pushes[0].pkt.read_body().unwrap();
+        let b: MessagePush = pushes[1].pkt.read_body().unwrap();
+        assert_ne!(a.message_id, b.message_id);
     }
 
     #[tokio::test]
-    async fn get_location_other_is_system_exception_without_insert_or_push() {
+    async fn self_chat_success_skips_own_channel() {
         let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache
+            .add(&Session {
+                channel_id: "ch-alice-web".into(),
+                gate_id: "wg-1".into(),
+                account: "alice".into(),
+                app: "kim".into(),
+                ..Session::default()
+            })
+            .await
+            .unwrap();
         let dispatcher = Arc::new(RecordingDispatcher::default());
-        serve_user_talk(
+        serve_user_talk_users(
             store.clone(),
-            Arc::new(OtherLocationStore),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("alice", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice"]).await,
+            seed_friends(&[]).await,
+        )
+        .await;
+        let got = dispatcher.recorded();
+        assert_eq!(success_resps(&got).len(), 1);
+        let pushes: Vec<_> = got
+            .iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].channels, vec!["ch-alice-web".to_string()]);
+        assert!(!pushes[0].channels.iter().any(|c| c == "ch-alice"));
+    }
+
+    #[tokio::test]
+    async fn duplicate_dispatch_fail_still_success_and_metric() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        let mut bob = receiver_session();
+        bob.gate_id = "wg-2".into();
+        cache.add(&bob).await.unwrap();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        dispatcher.fail_on("wg-2");
+        let metrics = test_metrics();
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        for _ in 0..2 {
+            serve_user_talk_full(
+                store.clone(),
+                cache.clone(),
+                dispatcher.clone(),
+                talk_req_pkt("bob", &req),
+                sender_session(),
+                Arc::new(NoopFilter),
+                seed_users(&["alice", "bob"]).await,
+                seed_friends(&[("alice", "bob")]).await,
+                Some(metrics.clone()),
+                TALK_PUSH_BUDGET,
+            )
+            .await;
+        }
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| {
+                    p.pkt.header.flag == Flag::Response as i32
+                        && p.pkt.header.status == Status::Success as i32
+                })
+                .count(),
+            2
+        );
+        assert!(dispatch_fail_count(&metrics, "user") >= 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_hang_still_success_within_budget() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        let mut bob = receiver_session();
+        bob.gate_id = "wg-2".into();
+        cache.add(&bob).await.unwrap();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        dispatcher.hang_on("wg-2");
+        let metrics = test_metrics();
+        let started = Instant::now();
+        serve_user_talk_full(
+            store.clone(),
+            cache,
             dispatcher.clone(),
             talk_req_pkt("bob", &sample_req()),
             sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
+            Some(metrics.clone()),
+            Duration::from_millis(50),
         )
         .await;
-
+        assert!(started.elapsed() < Duration::from_millis(200));
         let got = dispatcher.recorded();
-        let resps: Vec<_> = got
+        let success_idx = got
             .iter()
-            .filter(|p| p.pkt.header.flag == Flag::Response as i32)
-            .collect();
-        assert_eq!(resps.len(), 1);
-        assert_eq!(resps[0].pkt.header.status, Status::SystemException as i32);
-        assert!(store.recorded().is_empty());
+            .position(|p| {
+                p.pkt.header.flag == Flag::Response as i32
+                    && p.pkt.header.status == Status::Success as i32
+            })
+            .expect("success");
+        let push_idx = got
+            .iter()
+            .position(|p| p.pkt.header.flag == Flag::Push as i32)
+            .expect("push recorded before hang");
+        assert!(success_idx < push_idx);
+        assert_eq!(store.recorded().len(), 1);
+        assert_eq!(dispatch_fail_count(&metrics, "user"), 1);
+    }
+
+    #[tokio::test]
+    async fn get_locations_hang_still_success_within_budget() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let metrics = test_metrics();
+        serve_user_talk_full(
+            store.clone(),
+            Arc::new(HangLocationStore),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
+            Some(metrics.clone()),
+            Duration::from_millis(50),
+        )
+        .await;
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.status == Status::Success as i32)
+                .count(),
+            1
+        );
+        assert_eq!(store.recorded().len(), 1);
         assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+        assert_eq!(dispatch_fail_count(&metrics, "user"), 1);
+    }
+
+    #[tokio::test]
+    async fn offline_receiver_success_without_dispatch_fail_metric() {
+        let store = memory_store();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let metrics = test_metrics();
+        serve_user_talk_full(
+            store.clone(),
+            Arc::new(MemorySessionStore::new()),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            seed_users(&["alice", "bob"]).await,
+            seed_friends(&[("alice", "bob")]).await,
+            Some(metrics.clone()),
+            TALK_PUSH_BUDGET,
+        )
+        .await;
+        assert_eq!(store.recorded().len(), 1);
+        assert_eq!(
+            dispatcher
+                .recorded()
+                .iter()
+                .filter(|p| p.pkt.header.status == Status::Success as i32)
+                .count(),
+            1
+        );
+        assert!(!dispatcher
+            .recorded()
+            .iter()
+            .any(|p| p.pkt.header.flag == Flag::Push as i32));
+        assert_eq!(dispatch_fail_count(&metrics, "user"), 0);
+    }
+
+    #[tokio::test]
+    async fn identical_retry_after_unfriend_is_not_friends() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let social = seed_friends(&[("alice", "bob")]).await;
+        let users = seed_users(&["alice", "bob"]).await;
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_user_talk_users(
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users.clone(),
+            social.clone(),
+        )
+        .await;
+        social.remove("kim", "alice", "bob").await.unwrap();
+        serve_user_talk_users(
+            store.clone(),
+            cache,
+            dispatcher.clone(),
+            talk_req_pkt("bob", &req),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users,
+            social,
+        )
+        .await;
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.status == Status::NotFriends as i32)
+                .count(),
+            1
+        );
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+                .count(),
+            1
+        );
     }
 
     fn group_sender_session() -> Session {
@@ -932,13 +1514,48 @@ mod tests {
         session: Session,
         filter: Arc<dyn ContentFilter>,
     ) {
+        serve_group_talk_full(
+            store,
+            groups,
+            cache,
+            dispatcher,
+            pkt,
+            session,
+            filter,
+            None,
+            TALK_PUSH_BUDGET,
+        )
+        .await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn serve_group_talk_full(
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        cache: Arc<dyn SessionStorage>,
+        dispatcher: Arc<RecordingDispatcher>,
+        pkt: LogicPkt,
+        session: Session,
+        filter: Arc<dyn ContentFilter>,
+        metrics: Option<Arc<KimMetrics>>,
+        push_budget: Duration,
+    ) {
         let mut router = Router::new();
         router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
             let store = store.clone();
             let groups = groups.clone();
             let filter = filter.clone();
+            let metrics = metrics.clone();
             async move {
-                do_group_talk(ctx, store.as_ref(), groups.as_ref(), filter.as_ref()).await
+                do_group_talk(
+                    ctx,
+                    store.as_ref(),
+                    groups.as_ref(),
+                    filter.as_ref(),
+                    metrics.as_deref(),
+                    push_budget,
+                )
+                .await
             }
         });
         router.serve(pkt, dispatcher, cache, session).await.unwrap();
@@ -1234,18 +1851,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn group_get_locations_other_is_system_exception_after_insert() {
+    async fn group_get_location_other_is_success_after_insert_without_push() {
         let store = memory_store();
         let groups = memory_groups();
         groups.seed("kim", "g1", vec!["alice".into(), "bob".into()]);
         let dispatcher = Arc::new(RecordingDispatcher::default());
-        serve_group_talk(
+        let metrics = test_metrics();
+        serve_group_talk_full(
             store.clone(),
             groups,
             Arc::new(OtherLocationsStore),
             dispatcher.clone(),
             group_talk_req_pkt("g1", &sample_req()),
             group_sender_session(),
+            Arc::new(NoopFilter),
+            Some(metrics.clone()),
+            TALK_PUSH_BUDGET,
         )
         .await;
 
@@ -1255,9 +1876,154 @@ mod tests {
             .filter(|p| p.pkt.header.flag == Flag::Response as i32)
             .collect();
         assert_eq!(resps.len(), 1);
-        assert_eq!(resps[0].pkt.header.status, Status::SystemException as i32);
+        assert_eq!(resps[0].pkt.header.status, Status::Success as i32);
         assert_eq!(store.recorded().len(), 1);
         assert!(!got.iter().any(|p| p.pkt.header.flag == Flag::Push as i32));
+        assert_eq!(dispatch_fail_count(&metrics, "group"), 1);
+    }
+
+    #[tokio::test]
+    async fn group_duplicate_uses_index_snapshot_not_current_members() {
+        let store = memory_store();
+        let groups = memory_groups();
+        groups.seed("kim", "g1", vec!["alice".into(), "bob".into()]);
+        let cache = Arc::new(MemorySessionStore::new());
+        cache
+            .add(&member_session("bob", "ch-bob", "wg-1"))
+            .await
+            .unwrap();
+        cache
+            .add(&member_session("carol", "ch-carol", "wg-1"))
+            .await
+            .unwrap();
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_group_talk(
+            store.clone(),
+            groups.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+        )
+        .await;
+        groups.seed("kim", "g1", vec!["alice".into(), "carol".into()]);
+        serve_group_talk(
+            store.clone(),
+            groups,
+            cache,
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        let pushes = push_pkts(&got);
+        assert_eq!(pushes.len(), 2);
+        for p in &pushes {
+            assert_eq!(p.channels, vec!["ch-bob".to_string()]);
+            assert!(!p.channels.iter().any(|c| c == "ch-carol"));
+        }
+        assert_eq!(store.recorded().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn group_duplicate_changed_dest_is_idempotency_conflict() {
+        let store = memory_store();
+        let groups = memory_groups();
+        groups.seed("kim", "g1", vec!["alice".into(), "bob".into()]);
+        groups.seed("kim", "g2", vec!["alice".into(), "carol".into()]);
+        let cache = Arc::new(MemorySessionStore::new());
+        cache
+            .add(&member_session("bob", "ch-bob", "wg-1"))
+            .await
+            .unwrap();
+        cache
+            .add(&member_session("carol", "ch-carol", "wg-1"))
+            .await
+            .unwrap();
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_group_talk(
+            store.clone(),
+            groups.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+        )
+        .await;
+        serve_group_talk(
+            store.clone(),
+            groups,
+            cache,
+            dispatcher.clone(),
+            group_talk_req_pkt("g2", &req),
+            group_sender_session(),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.status == Status::IdempotencyConflict as i32)
+                .count(),
+            1
+        );
+        let pushes = push_pkts(&got);
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].channels, vec!["ch-bob".to_string()]);
+        assert!(!got
+            .iter()
+            .any(|p| p.channels.iter().any(|c| c == "ch-carol")));
+        assert_eq!(store.recorded().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn identical_retry_after_quit_is_not_group_member() {
+        let store = memory_store();
+        let groups = memory_groups();
+        groups.seed("kim", "g1", vec!["alice".into(), "bob".into()]);
+        let cache = Arc::new(MemorySessionStore::new());
+        cache
+            .add(&member_session("bob", "ch-bob", "wg-1"))
+            .await
+            .unwrap();
+        let mut req = sample_req();
+        req.client_id = "c1".into();
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_group_talk(
+            store.clone(),
+            groups.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+        )
+        .await;
+        groups.quit("kim", "g1", "alice").await.unwrap();
+        serve_group_talk(
+            store.clone(),
+            groups,
+            cache,
+            dispatcher.clone(),
+            group_talk_req_pkt("g1", &req),
+            group_sender_session(),
+        )
+        .await;
+
+        let got = dispatcher.recorded();
+        assert_eq!(
+            got.iter()
+                .filter(|p| p.pkt.header.status == Status::NotGroupMember as i32)
+                .count(),
+            1
+        );
+        assert_eq!(push_pkts(&got).len(), 1);
+        assert_eq!(store.recorded().len(), 1);
     }
 
     #[tokio::test]

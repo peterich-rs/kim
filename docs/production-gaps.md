@@ -22,9 +22,9 @@
 
 不能当生产 IM 用的原因不是「缺撤回」，也不是「没用 io_uring」，而是：
 
-1. **读索引语义会丢消息**（单设备空洞、多设备抢游标、Snowflake 高水位、离线 content 不鉴权）。
-2. **写成功与投递成功绑在同一个错误码上**，发送方看到的结果和库里的事实不一致。
-3. **内部控制面没有认证**：Royal/Chat HTTP 裸接口，Compose 里 Redis 无密码、Consul 无 ACL，同网络可伪造网关注册。
+1. **读索引语义会丢消息**（单设备空洞、多设备抢游标、Snowflake 高水位）。
+2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
+3. **内部控制面认证未完**：Royal HTTP 已 HMAC。Chat `/internal/kick` 仍裸；Compose 里 Redis 无密码、Consul 无 ACL，同网络可伪造网关注册。
 4. **`app` 不是完整租户**：Royal 丢掉 session.app；会话寻址只有 account，同名账号会跨 app 收到在线 Push。单产品可冻结为 `kim`，不能只改 Redis key。
 5. **通信层骨架对、运维合同不够**：读循环串行等待业务、满信箱阻塞、shutdown 不等在途任务、TGateway 无 TLS。这些能在现有 `Conn`/`Channel` 边界内改，不必换架构。
 
@@ -38,35 +38,30 @@
 
 | 序 | 项 | 条目 |
 |---:|---|---|
-| 1 | 内部控制面认证（HTTP + Redis + Consul） | G-01 |
-| 2 | `offline.content` 按 `(app, account)` 授权；**不加**自聊会炸的唯一约束 | G-02 |
-| 3 | 读游标：禁止任何 Snowflake 高水位；per-device 用 receipt 或会话内 delivery_seq | G-03, G-04, G-10 |
-| 4 | 会话寻址带 app，或冻结单租户并拒绝其它 JWT app | G-05 |
-| 5 | `CachedSessionStore` 失效或默认关闭 | G-06 |
-| 6 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
-| 7 | 群：create 强制 owner=session；join/quit 只能操作自己；detail/members 须是成员 | G-08 |
-| 8 | insert 成功回成功；duplicate **从落库原文**重建再投，不信本次请求 body/dest | G-09 |
-| 9 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
-| 11 | JWT 空 secret fail-fast；心跳 Redis 错误有界宽限 | G-12, G-31 |
-| 12 | Router 去掉 token-in-URL | G-11 |
-| 13 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 14 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 15 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 16 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 17 | 投递指标；改掉「dispatch fail → 99」单测 | G-15, G-09 |
-| 18 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 19 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 20 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 1 | Chat kick HMAC；Redis 密码；Consul ACL | G-01 |
+| 2 | 读游标：禁止任何 Snowflake 高水位；per-device 用 receipt 或会话内 delivery_seq | G-03, G-04, G-10 |
+| 3 | 会话寻址带 app，或冻结单租户并拒绝其它 JWT app | G-05 |
+| 4 | `CachedSessionStore` 失效或默认关闭 | G-06 |
+| 5 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
+| 6 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
+| 7 | JWT 空 secret fail-fast；心跳 Redis 错误有界宽限 | G-12, G-31 |
+| 8 | Router 去掉 token-in-URL | G-11 |
+| 9 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 10 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 11 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 12 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 13 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 14 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 15 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 16 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-01～G-08 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-01 / G-03～G-07 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
 1. 本文件只做盘点与优先级，不写逐步补丁。
 2. 高优先级按 [impl/](impl/README.md) **一份一切片** 写细化设计（文件、SQL、测试、明确不改什么）。
-3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。
-
-切片 1（G-02 + G-08 的 **Chat 长连接** 边界）已落地。**不**把 G-02/G-08 标已关闭：Royal 裸 HTTP 仍在，依赖切片 3（G-01）。G-05 单租户 vs 贯穿 `app` 仍须拍板后才能写切片 4。
+3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。G-05 单租户 vs 贯穿 `app` 仍须拍板。漏 Push 补偿见 G-03 / G-14。
 
 ---
 
@@ -81,79 +76,53 @@
 | ACK + 离线 Pull | `chat.talk.ack`、`chat.offline.index/content` | 读索引 per-account |
 | 会话列表 / 历史 / 会话级已读 | `chat.inbox.*`、`chat.history`、`conversation_reads` | inbox 每次全量聚合 |
 | 好友全流程 + 黑名单 | `chat.friend.*`、`chat.block.*` | 申请 Push 失败无离线补偿 |
-| 群 CRUD | create/join/quit/detail/members | **无角色**；join/quit 可代他人操作 |
+| 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | 灰度不隔离数据 |
-| Prometheus | `kim-metrics` | 无 dispatch/端到端/Royal RPC；无告警规则 |
+| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`；无端到端/Royal RPC；无告警规则 |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter 登录后不拉离线 |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
 
 `Header`（`pkt.proto`）字段是 command / channelId / sequence / flag / status / dest / bodyLength / meta。**没有 version。**
 
+## 已关闭
+
+| 条目 | 形状 |
+|---|---|
+| G-02 Chat `offline.content` 越权 | [reliable-delivery.md](reliable-delivery.md)。越权 id 跳过。直打 Royal 要 HMAC |
+| G-08 Chat 群指令鉴权 | [group-royal.md](group-royal.md) |
+| G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 / G-14 |
+| G-01 Royal HTTP HMAC | [group-royal.md](group-royal.md)。剩余见下条 |
+
 ---
 
 ## P0 —— 丢消息或可被打穿
 
-### G-01 内部控制面无认证（HTTP / Redis / Consul）
+### G-01 内部控制面未完（kick / Redis / Consul）
+
+Royal HTTP HMAC 已落地，见 [group-royal.md](group-royal.md)。空密钥仍落到 demo 默认值（G-12）。
 
 **文件**
 
-- `services/royal/src/lib.rs` — `router`（约 128–168 行）
-- `services/chat/src/admin.rs` — `router` / `kick_handler`（约 58–79 行）
-- `deploy/Caddyfile` — 只反代 `/api/v1/auth/*` 和 `/api/lookup*`
-- `deploy/compose.yml` — Redis 无 `--requirepass` / ACL（约 36–47 行）；Consul `-client=0.0.0.0`、无 ACL（约 61–70 行）
-- `crates/kim-naming/src/consul.rs` — `register` 裸 `PUT /v1/agent/service/register`（约 169–200 行）；`ConsulNaming::new` 的 reqwest 无 token、无强制 TLS
+- `services/chat/src/admin.rs` — `/internal/kick` 无 token
+- `services/royal/src/lib.rs` — `kick_account` 向 `CHAT_URL/internal/kick` 裸 POST
+- `deploy/compose.yml` — Redis 无 `--requirepass` / ACL；Consul `-client=0.0.0.0`、无 ACL
+- `crates/kim-naming/src/consul.rs` — `register` 裸 `PUT /v1/agent/service/register`；无 token、无强制 TLS
 
 **问题**
 
-Royal 上 `/api/v1/message/user|group`、`/api/v1/message/ack`、`/api/v1/offline/*`、群与好友写接口、`/internal/user/upsert`、`/internal/revoke/check` 都是裸 protobuf POST。鉴权只包了 `/api/v1/auth/*`。
+Chat `/internal/kick` 仍无 HMAC。同网络还可以无密码读写 Redis（改会话 location、ACK、吊销 key），以及无 ACL 的 Consul 注册伪造 `wgateway`（Router lookup 把登录 JWT 送到攻击者网关）。
 
-Chat `/internal/kick` 同样无 token。Royal `kick_account` 向 `CHAT_URL/internal/kick` POST。compose 里 Royal 映射 `127.0.0.1:8080`、Caddy 不暴露 message API，这是部署巧合，不是代码里的信任边界。
-
-同网络容器还可以：
-
-- 无密码读写 Redis：改会话 location、ACK、吊销 key。
-- 无 ACL 的 Consul：注册伪造 `wgateway`。Router lookup 会把该地址交给客户端，登录 JWT 被送到攻击者网关。
+compose 里 Royal 映射 `127.0.0.1:8080`、Caddy 不暴露 message API，这是部署巧合，不是信任边界。
 
 **建议**
 
-把范围写成「内部控制面」，不要只锁 HTTP：
-
-1. Royal/Chat 内部口 mTLS 或共享 HMAC；kick / upsert / insert 校验调用方。
+1. Chat `/internal/kick` 与 Royal 共用 HMAC；空密钥 fail-fast（G-12）。
 2. Redis：密码或 ACL，仅应用网段可达。
 3. Consul：ACL + 服务最小权限 token + TLS；`kim-naming` 支持 `X-Consul-Token` 和 HTTPS，禁止明文无 token 的生产启动。
 
 不要把「端口没发布到宿主机」当成鉴权。
-
----
-
-### G-02 `chat.offline.content` 越权读正文
-
-**Chat 长连接已修（2026-08-31）。** handler 用 session `(app, account)` 过滤；越权 id 当缺失跳过。完全关闭依赖 G-01：直打 Royal 仍可填任意 app/account。
-
-**文件**
-
-- `services/chat/src/offline.rs` — `do_offline_content`（约 58–76 行）
-- `services/chat/src/store/postgres.rs` — `offline_content`（约 292–301 行）
-- `services/chat/src/store/mod.rs` — Memory 实现同样按 id 取、不看账号（约 480–496 行）
-- `services/royal/src/lib.rs` — `POST /api/v1/offline/content`
-
-**问题**
-
-handler 把 `ctx.session().app` 传入 store，Postgres 参数名是 `_app`，SQL 为：
-
-```sql
-SELECT id, msg_type, body, extra FROM message_content WHERE id = ANY($1)
-```
-
-不检查请求者是否出现在 `message_index (app, account_a, message_id)`。任意登录用户枚举雪花 id（时间有序、机器位 5 bit）即可读他人私聊/群消息。`chat.history` 是按会话账号限定的，唯独这条快捷通道没有。
-
-**建议**
-
-content 查询同时校验 `message_content.app = $app` 和 `EXISTS (SELECT 1 FROM message_index WHERE message_id = id AND app = $app AND account_a = $account)`。Chat→Royal 必须传 **app 和 account**（均从 session 注入），Royal 用请求值，不能用进程 `st.app` 顶掉。群 HTTP 同样：用内部 RPC body 带 `app`，不要在客户端 `GroupQueryReq` 上加租户字段。直打 Royal 仍能填别人的字段，直到 G-01。
-
-**不要**加 `(app, account_a, message_id)` 唯一约束。自聊走 `insert_fanout` 的 user 分支时，同一账号会写 SEND + RECV 两行 index（`postgres.rs` 约 108–121 行）；该约束会让自聊 insert 失败，历史数据也可能已不满足。需要索引时用**非唯一** `(app, account_a, message_id)`。
 
 ---
 
@@ -299,70 +268,6 @@ unix 上 SIGTERM+SIGINT。与 G-32 **统一**为一条顺序，禁止两处各�
 
 ---
 
-### G-08 群操作无角色、无成员门槛
-
-**Chat 长连接已修（2026-08-31）。** create 强制 owner=session、只留创建者；禁用自助 join；quit 只能退自己；detail/members 须是成员；`NotFound` 与 `Backend` 分开。完全关闭依赖 G-01。
-
-**文件**
-
-- `services/chat/src/group.rs` — `do_group_join` / `do_group_quit`（约 78–136 行）：`account` 空才用 session
-- 同文件 `do_group_detail` / `do_group_members`（约 138–178 行）：不检查是否在群内
-- `do_group_create`：`owner` 来自请求体，不是 `ctx.session().account`
-- `services/chat/src/directory.rs` / `directory/postgres.rs`：join 只查群是否存在
-
-**问题**
-
-任何人可以把任意账号加入任意存在的群，也可以把别人 quit 掉。任何登录用户凭 `group_id`（雪花 base36，可猜）可读成员列表。create 可把 owner 写成别人。join/quit 无成员变更 Push（只有 `GroupCreateNotify`）。
-
-`owner` 列存了不用，原报告写对了；漏了 **读路径同样无门槛**。
-
-**建议**
-
-最小切片必须包含 create，且默认 **私有群**：
-
-- `do_group_create`：`owner` **强制** `ctx.session().account`。初始成员只有创建者。
-- **禁用自助 join**（含「只 join 自己」）：否则知道 `group_id` 就能入群再读成员/历史。邀请协议落地前，唯一入群路径是 create。
-- quit 只能退自己。detail/members：非成员或未知群 → `NotGroupMember`；目录/SQL 故障 → `SystemException`（`GroupError::NotFound` 与 `Backend` 必须分开）。
-
-角色、审批、踢人、禁言、公告、邀请、成员变更 Push 下一阶段。Chat 长连接修完后 G-08 仍依赖 G-01 才能从看板上关掉。
-
----
-
-### G-09 insert 成功 + dispatch 失败仍回 SystemException
-
-**文件**
-
-- `services/chat/src/talk.rs` — `do_user_talk`（约 170–175 行）、`do_group_talk`（约 288–293 行）
-- 同文件测试 `dispatch_fail_is_system_exception_without_success_resp`（约 806 行）：**断言** 这个行为
-- `inserted.duplicate` 为 true 时跳过 dispatch
-- 单聊先 `get_locations` 再 insert；群聊先 `insert_group` 再 `get_locations`
-
-**问题**
-
-消息已落库，发送方收到 99，客户端提示失败，接收方稍后可能 offline pull 到。Young 连接（`adult_delay` 默认 10s）和写队列满（`ChannelOpts.write_queue = 64`）都会走到这条路径。
-
-幂等短路：第一次 insert 成功、dispatch 失败；客户端用同一 `clientId` 再发，第二次 `duplicate=true`，**永远不再 Push**。
-
-Web `isRetryable` 只认 `300 <= status < 400`（`sdk/web/src/status.ts`）。`SystemException=99`、`ServiceUnavailable=3` 不重试。
-
-重连后服务端不主动推增量，只等客户端 `offline.index`。Flutter / `kim-client` 登录后根本不拉（G-14）。
-
-`InsertResult` 只有 `message_id` / `send_time` / `duplicate`（`store/mod.rs`）。`MessagePush` 用的是**本次请求**的 `type`/`body`/`extra`/`dest`（`talk.rs` 约 162–169 行），不是落库行。同一 `clientId` 若改了 body 或 dest，补投会把旧 id 配上错误内容或打到错误接收方。
-
-`Context::dispatch`（`context.rs` 约 115–130 行）是「每个网关都试，记下第一个 Err」：部分网关已成功仍返回失败，内存布尔值无法表示「从未成功 dispatch」。
-
-**建议**
-
-insert 成功即 `MessageResp`。dispatch 失败打指标。改掉那条把错误语义锁死的单测。连接建立时服务端 sync。
-
-补投的 at-least-once 基线：**duplicate 总是从持久化的 `message_content` + `message_index` 重建 Push 和目标**，再 dispatch；客户端按 `message_id` 去重。不要用本次请求的 body/dest，也不要用进程内「是否 dispatch 过」标志。
-
-若坚持只补「未成功」的投递：必须有 outbox / 每收件人投递状态，以及**发送时的成员快照**（H5），重试只消费快照。
-
-补测试：同一 `clientId` 第二次请求改 body 或 dest，对端收到的仍是第一次落库的内容和目标。
-
----
-
 ### G-10 离线游标类型错、隐藏截断、1 天 fallback
 
 **文件**
@@ -468,13 +373,13 @@ lookup **不 parse JWT**。token 只是一致性哈希输入。path 把完整 JW
 | 99 / 3 当可重试 | 否 | 否 |
 | 默认 device | 调用方传 | `mobile`（互踢） |
 
-没有系统推送时，移动端 = 在线 Push 或什么都没有。叠 G-09。
+没有系统推送时，移动端 = 在线 Push 或什么都没有。叠 G-03 / G-14。
 
 本地 `KeyValueStore.lastId` 与服务器 ACK 是两套。清 localStorage 会从 0 再拉；另一台设备的服务器 ACK 会让这台的本地游标显得落后。
 
 **建议**
 
-Flutter 登录后走与 Web 相同的 sync。`isRetryable` 覆盖 3 和 99，或服务端不再用 99 表示「已落库」。权威游标只放服务端。
+Flutter 登录后走与 Web 相同的 sync。服务端已落库不再回 99；`isRetryable` 仍可不覆盖 99。权威游标只放服务端。
 
 ---
 
@@ -482,7 +387,7 @@ Flutter 登录后走与 Web 相同的 sync。`isRetryable` 覆盖 3 和 99，或
 
 **文件**
 
-- `crates/kim-metrics/src/lib.rs` — 已有 channel / bytes / `no_server_found` / login / handler RT / talk / session_not_found
+- `crates/kim-metrics/src/lib.rs` — 已有 channel / bytes / `no_server_found` / login / handler RT / talk / `kim_dispatch_fail_total` / session_not_found
 - `COMMANDS` 白名单停在 offline/group，好友/inbox/history 进 `other`
 - `deploy/prometheus.yml` — 只有 scrape，无 rule
 - 无 OpenTelemetry，无跨进程 trace id
@@ -491,7 +396,7 @@ Flutter 登录后走与 Web 相同的 sync。`isRetryable` 覆盖 3 和 99，或
 
 dispatch 失败率、send→ack 延迟、离线拉取量、Royal RPC 延迟/错误率、补投队列深度。handler span 只在进程内。
 
-e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径偏 happy path。故障注入（Royal 5xx、Redis 断、网关 kill 后消息不丢）缺。更糟的是 G-09 的单测把错误语义写成契约。
+e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径偏 happy path。故障注入（Royal 5xx、Redis 断、网关 kill 后消息不丢）缺。`kim_dispatch_fail_total` 已有；缺口是 send→ack 延迟、Royal RPC、告警规则。
 
 ---
 
@@ -500,14 +405,14 @@ e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径�
 **文件**
 
 - `services/chat/src/royal.rs` — `RoyalClient`：`RETRIES = 3`，无退避，无熔断，timeout 5s；4xx 立即失败，5xx 空转三次
-- `services/chat/src/talk.rs` — 私聊：exists → blocked → friend，再本进程 `get_locations`，再 insert
+- `services/chat/src/talk.rs` — 私聊：exists → blocked → friend，再 insert，再本进程 `get_locations`
 - `deploy/compose.yml` — 单实例 Royal；未注册进 Chat 的 naming 依赖
 
 **问题**
 
 原报告「一次 talk 串 5 次 HTTP」不准确。私聊是 3 次 Royal HTTP（exists / blocked / friend）+ Redis locations + 1 次 insert。群聊是 members HTTP + insert HTTP。数量级仍不可接受。
 
-`royal.rs` 的 insert_group 在 Chat 侧会带 members。Royal handler 在 `req.members` 为空时再查群（`services/royal/src/lib.rs` 约 234–241 行）。正常 talk 不双查；**未鉴权的直接 HTTP** 会打到这条 fallback。members 为空时 Memory store 会写下无 index 的幽灵 content（`empty_members_writes_content_without_index`）。
+`royal.rs` 的 insert_group 在 Chat 侧会带 members。Royal handler 在 `req.members` 为空时再查群。正常 talk 不双查；有 HMAC 的直接 HTTP 仍会打到这条 fallback。members 为空时 Memory store 会写下无 index 的幽灵 content（`empty_members_writes_content_without_index`）。
 
 好友关系无短 TTL 缓存。Royal 重启数秒内全部发消息变 99。
 
@@ -515,7 +420,7 @@ compose 里 Consul / Redis / PG 也是单节点。Royal 不是唯一 SPOF。
 
 **建议**
 
-Royal 进 Consul，多实例（Memory 换 PG 后接近无状态）。Chat 侧熔断 + 好友短缓存。内部口鉴权（G-01）先做。
+Royal 进 Consul，多实例（Memory 换 PG 后接近无状态）。Chat 侧熔断 + 好友短缓存。
 
 ---
 
@@ -621,7 +526,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 
 `hash_partition.sql` 写 `PARTITION BY HASH (account)`，列名是 `account_a`，sketch 不能用，且不被 migrate 应用。
 
-空 members 仍写 content、不写 index（单测明确允许）。叠 G-01 的裸 insert_group。
+空 members 仍写 content、不写 index（单测明确允许）。insert 要 HMAC，不能再裸打。
 
 大群中期要分批提交 + 幂等续传，或切读扩散。
 
@@ -659,7 +564,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 - Ping/Pong/Close 仍在读专员，不进 lane。
 - 文档写明：响应顺序与请求到达顺序一致；`MessageListener` 不再假设与读同任务，但同一 channel 上仍是 FIFO。
 
-不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-01～G-08，高于 vectored write。
+不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-01 / G-03～G-07，高于 vectored write。
 
 ---
 
@@ -811,7 +716,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 - 好友申请 Push 失败只打日志；离线方靠 `incoming` 主动拉。
 - `kim-ws` Upgrade 不查 Origin。
 - 网关无全局连接数上限（G-34）。
-- inbox/history 的 Royal HTTP 同样无调用方身份（G-01）。
+- inbox/history 的 Royal HTTP 要 HMAC；Chat `/internal/kick` 仍裸（G-01）。
 - `do_user_profile` 可查任意账号资料（文档按搜索产品写的，叠加无限流）。
 - Chat `db_max_connections` 默认 5，inbox 重查询容易把池打满。
 - metrics HTTP 与 `/internal/kick` 同绑定；容器内网可达。
@@ -834,10 +739,10 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | Push 只发给当时在线的设备 | 接收方成立。发送方其它在线 channel 会收到（dispatch 跳过自己） |
 | 无账号体系 | 有账号密码、改密、JWT。缺的是验证、找回、2FA、注销 |
 | 读索引 per-account，两台设备会丢 | 成立，且 **单设备消息空洞也会丢**（G-03） |
-| 会话漫游靠 history 补 | history 按账号限定；`offline.content` 不鉴权，可变成读别人的历史 |
+| 会话漫游靠 history 补 | history 按账号限定；Chat `offline.content` 按 session 过滤。直打 Royal 要 HMAC |
 | 会话 key 不含 app 只会导致互踢 / ACK 串 | 还会 **跨 app 实时 Push**（`get_locations` 只有 account，G-05） |
 
-原报告成立、且仍应保留的判断：多设备读索引、dispatch 语义、Royal 单点、inbox 全量聚合、群无角色、无系统推送、无撤回/已读回执、无限流、DEMO secret、无分布式追踪、无告警规则、Memory 一把大锁。
+原报告成立、且仍应保留的判断：多设备读索引、Royal 单点、inbox 全量聚合、无系统推送、无撤回/已读回执、无限流、DEMO secret、无分布式追踪、无告警规则、Memory 一把大锁。群长连接已鉴权；无角色/邀请仍是功能缺口。
 
 ---
 
@@ -847,9 +752,9 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 
 | 原句 / 决策 | 代码事实或冲突 |
 |---|---|
-| Phase 0：`inserted.duplicate` 保持不二次 dispatch | 与 G-09 冲突。第一次 insert 成功、dispatch 失败后，同一 `clientId` 再来会永远不补 Push |
-| Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿。persist-first 必须和游标语义一起改 |
-| PR 顺序把 persist-first / try_send 放第 1 步 | 排在内部鉴权（G-01）和 content IDOR（G-02）前面，生产会被打穿 |
+| Phase 0：`inserted.duplicate` 保持不二次 dispatch | 已否。identical 重试从落库再 Push |
+| Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿 |
+| PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与 Royal HMAC 已落地；try_send 仍排在 G-01 剩余项和游标之后 |
 | SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter 不拉离线（G-14），「靠 Pull 补洞」对移动端不成立 |
 | 引入 `tokio-util` 为了 JoinSet | `tokio::task::JoinSet` 已在 tokio。tokio-util 只为 `CancellationToken` 才值得加 |
 | `write_all_vectored` 示例 | 稳定 tokio 上该 API 常要 `tokio_unstable`。未验证前不要写进热路径 |
@@ -864,13 +769,13 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | `panic = "abort"` 不第一期切 | 对 |
 | 明确不引入 tungstenite / diesel / monoio / 自研 Raft | 对 |
 
-**原则里成立、应保留的：** 合同不动；落库是真相、在线推是尽力（须补 G-03/G-09）；TGateway rustls 不靠把 App 改成 WSS；redis-rs 用尽再评估 fred；trait 对象继续 `async_trait`。
+**原则里成立、应保留的：** 合同不动；落库是真相、在线推是尽力（须补 G-03 / G-14）；TGateway rustls 不靠把 App 改成 WSS；redis-rs 用尽再评估 fred；trait 对象继续 `async_trait`。
 
 ---
 
 ## 运行时与开源库（订正后的二期）
 
-**不要按原文 H0～H6 原样开工。** 先落地 G-01～G-08（含 G-05 租户拍板、G-02 不做自聊唯一约束、停机顺序以 G-07 为准）。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持；若走 G-05 方案 2，`SessionStorage` 签名会加 `app`。
+**不要按原文 H0～H6 原样开工。** 先收 G-01 剩余（kick / Redis / Consul）、G-05 租户拍板、停机顺序以 G-07 为准。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持；若走 G-05 方案 2，`SessionStorage` 签名会加 `app`。不要给自聊加 `(app, account_a, message_id)` 唯一约束。
 
 ### 目标形状（通信层）
 
@@ -914,13 +819,11 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 
 下面替代库报告原文的 Phase 0–6 顺序。语义条目仍以本文 G-xx 为准。
 
-**H0 — 语义（无新库，叠 G-09/G-15/G-30）**
+**H0 — 语义（无新库，叠 G-15/G-30）**
 
-- `talk.rs`：insert 成功 → `MessageResp`；dispatch 失败只 warn + `kim_dispatch_fail_total`。
-- duplicate：**从落库 content/index 重建**再 dispatch，忽略本次请求的 body/dest。不要用内存「是否 dispatch 过」；`dispatch` 的部分成功仍返回 Err，不能当权威。
-- 网关下行 `try_send`；满信箱 Disconnect + `kim_mailbox_full_total`。
-- 改掉 `dispatch_fail_is_system_exception_without_success_resp`。
-- 同步 [reliable-delivery.md](reliable-delivery.md)：落库是真相，在线推尽力；ACK **不是** Snowflake 高水位（G-03）。
+- persist-first **已做**，形状见 [control-layer-chat.md](control-layer-chat.md)。
+- 网关下行 `try_send` 仍未做；满信箱 Disconnect + `kim_mailbox_full_total`。
+- ACK **不是** Snowflake 高水位（G-03）。
 
 **H1 — 隔离与停机（G-29, G-32, G-07）**
 
@@ -1004,13 +907,13 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - 不上自研 Raft / 2PC；可靠性靠 PG 事务 + 幂等 + at-least-once
 - 不改内核、不用 DPDK
 - 不承诺 exactly-once，不引入 `delivered` 列
-- 协议指令名与 JWT HS256 默认保持；persist-first 是客户端可观察行为变化，必须改文档和 Web `isRetryable`
+- 协议指令名与 JWT HS256 默认保持；persist-first 是客户端可观察行为变化（已落库不再回 99）。Web `isRetryable` **不改**
 
 ---
 
 ## 客户端如何放大服务端问题
 
-服务端 G-09（99 = 已落库）+ Web 不重试 99 → 用户看到失败，对端库里可能有行。
+服务端 persist-first 之后已落库回 Success；剩下的 99 是 insert / 目录故障。Web 仍不重试 99。漏 Push 仍可能静默（G-03 / G-14）。
 
 服务端无主动 sync + Flutter 不拉离线 + 无 APNs → 杀进程后消息静默，直到用户碰巧再打开且将来补了 sync。
 
@@ -1025,36 +928,30 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - Caddy 只把 auth 和 lookup、WS 暴露到公网。不要把「没反代」写成安全设计。
 - `CHAT_URL=http://chat:9002` 让 Royal 打 Chat admin。compose 网络即信任域：Redis 无密码、Consul `-client=0.0.0.0` 无 ACL（G-01）。
 - Consul bootstrap-expect=1，Redis/PG 单节点。
-- `KIM_JWT_SECRET` 在 `kim.env.example` 是 `change-me`。空 secret 还会落到 DEMO 默认值（G-12）。
+- `KIM_JWT_SECRET` 与 `KIM_INTERNAL_HMAC_SECRET` 在 `kim.env.example` 是 `change-me`。空 JWT/HMAC secret 还会落到 DEMO 默认值（G-12）。
 
 ---
 
 ## 验证（修复时用，不是现在的绿灯）
 
-现有测试会把错误语义锁住，改 G-09 必须先改：
-
-- `services/chat/src/talk.rs`：`dispatch_fail_is_system_exception_without_success_resp`
-
 应新增、目前没有的：
 
-- 登录用户用他人 `message_id` 调 `offline.content` → 空或 Unauthorized
 - 自聊 insert 仍成功（两条 index）；不得依赖 `(app, account_a, message_id)` 唯一约束
 - 同 account、不同 `app` 的两个在线会话：A 的 talk **不得** Push 到 B 的 channel（G-05）
 - 设备 A ACK 后设备 B 仍能 pull 未被自己 ACK 的段
 - 两个并发 insert：小 snowflake id 后提交；ACK 大 id 之后小 id 对该设备仍可见（G-03/G-04）
-- 同一 `clientId` 第二次改 body/dest：投递仍是第一次落库的内容和目标（G-09）
 - id=10 dispatch 失败、id=11 已 Push：10 对该设备仍可见（不是被高水位吃掉）
 - Chat 节点缓存的 location，它机 delete 后不得再 push 到旧 channel
-- Royal 无 HMAC 的 insert 被拒
 - 无 Consul token 时生产配置拒绝 register（或测试替身）
 - SIGTERM：**先摘发现**，drain 窗口内 lookup 不得再返回该实例
 - 同一 channel 上 join 未完成时并发 talk 的顺序（H1 lane）
 - 改密后旧 JWT 不可调 `/auth/me` 与发消息；kick 只打对应 account（G-20）
 - `app=kim-gray` 的消息不得出现在 `app=kim` 的 index（若冻结单租户则改为：非 `kim` JWT 登录失败）
+- 未签名的 Chat `/internal/kick` 被拒
 
 命令（仓库惯例）：
 
 - `cargo fmt && cargo clippy --workspace --all-targets -- -D warnings && env -u REDIS_URL cargo test --workspace`
 - 通信层改动另跑 `cargo test -p kim-tcp --test echo` 与 `cargo test -p kim-ws --test echo --test wss`
-- persist-first / ACK 语义：`cargo test -p chat --test e2e_talk --test e2e_offline`，并改 talk 单测
+- ACK 语义：`cargo test -p chat --test e2e_talk --test e2e_offline`
 - 改协议或 ACK 语义时同步 [reliable-delivery.md](reliable-delivery.md)、[gray.md](gray.md)、[group-royal.md](group-royal.md)、[web-sdk.md](web-sdk.md)、[mobile-client.md](mobile-client.md)、[perf.md](perf.md)、[observability.md](observability.md)、[deploy.md](deploy.md)
