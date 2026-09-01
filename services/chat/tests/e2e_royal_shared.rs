@@ -41,6 +41,7 @@ async fn spawn_chat_gw(
     gw_id: &str,
 ) -> (Arc<Container>, Arc<Container>, std::net::SocketAddr) {
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.expect("chat bind");
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_addr = chat_server.local_addr();
     let chat_c = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
@@ -69,6 +70,7 @@ async fn spawn_chat_gw(
     });
 
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.expect("gw bind");
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let hook = Arc::new(KickHook::new());
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {

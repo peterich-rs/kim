@@ -7,11 +7,13 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify};
+use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
     Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, MessageListener, OpCode,
-    Server, StateListener, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT, DEFAULT_WRITE_WAIT,
+    Server, StateListener, DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT,
+    DEFAULT_WRITE_WAIT,
 };
 
 use crate::conn::TcpConn;
@@ -26,8 +28,10 @@ pub struct TcpServer {
     login_wait: Duration,
     read_wait: Duration,
     write_wait: Duration,
+    drain_wait: Duration,
     shutdown: Notify,
     closed: AtomicBool,
+    tasks: Mutex<JoinSet<()>>,
 }
 
 impl TcpServer {
@@ -44,8 +48,10 @@ impl TcpServer {
             login_wait: DEFAULT_LOGIN_WAIT,
             read_wait: DEFAULT_READ_WAIT,
             write_wait: DEFAULT_WRITE_WAIT,
+            drain_wait: DEFAULT_DRAIN_WAIT,
             shutdown: Notify::new(),
             closed: AtomicBool::new(false),
+            tasks: Mutex::new(JoinSet::new()),
         })
     }
 
@@ -55,6 +61,10 @@ impl TcpServer {
 
     pub fn channel_map(&self) -> ChannelMap {
         self.channels.clone()
+    }
+
+    pub fn set_drain_wait(&mut self, wait: Duration) {
+        self.drain_wait = wait;
     }
 }
 
@@ -103,6 +113,9 @@ impl Server for TcpServer {
                             continue;
                         }
                     };
+                    if self.closed.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     let ctx = ConnCtx {
                         acceptor: self.acceptor.clone(),
                         messages: self.messages.clone(),
@@ -115,7 +128,11 @@ impl Server for TcpServer {
                             write_queue: 64,
                         },
                     };
-                    tokio::spawn(async move {
+                    let mut tasks = self.tasks.lock().await;
+                    if self.closed.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    tasks.spawn(async move {
                         if let Err(err) = handle_conn(stream, peer, ctx).await {
                             warn!(%peer, %err, "connection ended");
                         }
@@ -145,9 +162,26 @@ impl Server for TcpServer {
         self.closed.store(true, Ordering::SeqCst);
         self.shutdown.notify_waiters();
         self.shutdown.notify_one();
+
+        let drain = self.drain_wait;
+        {
+            let mut tasks = self.tasks.lock().await;
+            let timed_out =
+                tokio::time::timeout(drain, async { while tasks.join_next().await.is_some() {} })
+                    .await
+                    .is_err();
+            if timed_out {
+                info!(?drain, "tcp drain timed out; closing connections");
+            }
+        }
+
         for ch in self.channels.all().await {
             ch.close().await;
         }
+
+        let mut tasks = self.tasks.lock().await;
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
         Ok(())
     }
 }

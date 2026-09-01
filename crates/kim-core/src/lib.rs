@@ -9,6 +9,7 @@ mod error;
 mod frame;
 mod opcode;
 mod server;
+mod signal;
 
 pub use channel::{Channel, ChannelOpts, ChannelReadLoop};
 pub use channel_map::ChannelMap;
@@ -17,6 +18,7 @@ pub use error::Error;
 pub use frame::Frame;
 pub use opcode::OpCode;
 pub use server::{Client, Server};
+pub use signal::wait_shutdown_signal;
 
 use std::time::Duration;
 
@@ -28,3 +30,5 @@ pub const DEFAULT_READ_WAIT: Duration = Duration::from_secs(60);
 pub const DEFAULT_WRITE_WAIT: Duration = Duration::from_secs(10);
 /// 客户端默认多久发一次 Ping。
 pub const DEFAULT_HEARTBEAT: Duration = Duration::from_secs(30);
+/// Shutdown waits this long for in-flight connection tasks, then aborts them.
+pub const DEFAULT_DRAIN_WAIT: Duration = Duration::from_secs(15);

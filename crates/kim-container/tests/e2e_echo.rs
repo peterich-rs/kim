@@ -133,6 +133,7 @@ fn ident(id: &str, name: &str) -> DefaultRegistration {
 #[tokio::test]
 async fn ping_stays_on_gateway_echo_roundtrips() {
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_addr = chat_server.local_addr();
     let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
     let chat_c = Container::new(ContainerOpts {
@@ -162,6 +163,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
     tokio::time::sleep(Duration::from_millis(30)).await;
 
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {
         service_id: "chat-1".into(),
@@ -250,6 +252,7 @@ async fn ping_stays_on_gateway_echo_roundtrips() {
 #[tokio::test]
 async fn unavailable_without_chat() {
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let naming = Arc::new(StaticNaming::from_slice(vec![DefaultRegistration {
         service_id: "chat-1".into(),
@@ -339,6 +342,7 @@ fn chat_reg(port: u16) -> DefaultRegistration {
 
 async fn start_chat(addr: std::net::SocketAddr) -> Arc<Container> {
     let mut chat_server = TcpServer::bind(addr).await.unwrap();
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
     let chat_c = Container::new(ContainerOpts {
         naming: chat_naming,
@@ -369,6 +373,7 @@ async fn start_chat(addr: std::net::SocketAddr) -> Arc<Container> {
 
 async fn start_gateway(chat_port: u16) -> (Arc<Container>, std::net::SocketAddr) {
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let naming = Arc::new(StaticNaming::from_slice(vec![chat_reg(chat_port)]));
     let gw_c = Container::new(ContainerOpts {
@@ -435,7 +440,8 @@ async fn dials_when_chat_listen_appears() {
 
     let mut chat_server = None;
     for _ in 0..20 {
-        if let Ok(s) = TcpServer::bind(addr).await {
+        if let Ok(mut s) = TcpServer::bind(addr).await {
+            s.set_drain_wait(Duration::from_millis(50));
             chat_server = Some(s);
             break;
         }
@@ -476,6 +482,7 @@ async fn dials_when_chat_listen_appears() {
 #[tokio::test]
 async fn redials_after_chat_restart() {
     let mut chat_server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let addr = chat_server.local_addr();
     let chat_c = {
         let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));

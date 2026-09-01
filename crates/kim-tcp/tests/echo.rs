@@ -49,6 +49,7 @@ impl StateListener for EchoHandler {
 async fn echo_roundtrip() {
     let handler = Arc::new(EchoHandler);
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
@@ -81,6 +82,7 @@ async fn echo_roundtrip() {
 async fn send_while_read_pending() {
     let handler = Arc::new(EchoHandler);
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
@@ -119,6 +121,7 @@ async fn send_while_read_pending() {
 async fn push_then_close_channel_emits_binary_then_close() {
     let handler = Arc::new(EchoHandler);
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
@@ -174,6 +177,7 @@ async fn push_then_close_channel_emits_binary_then_close() {
 async fn shutdown_before_start_returns() {
     let handler = Arc::new(EchoHandler);
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);
@@ -286,6 +290,7 @@ async fn duplicate_id_abandons_without_ready() {
         fail_ready: false,
     });
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(probe.clone());
     server.set_message_listener(probe.clone());
     server.set_state_listener(probe);
@@ -330,6 +335,7 @@ async fn missing_listener_abandons_without_ready() {
         fail_ready: false,
     });
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(probe.clone());
     server.set_state_listener(probe);
     let addr = server.local_addr().to_string();
@@ -367,6 +373,7 @@ async fn ready_err_closes_without_abandon() {
         fail_ready: true,
     });
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(probe.clone());
     server.set_message_listener(probe.clone());
     server.set_state_listener(probe);
@@ -394,5 +401,165 @@ async fn ready_err_closes_without_abandon() {
     assert!(snapshot(&log.abandoned).is_empty());
     assert!(snapshot(&log.received).is_empty());
     assert!(snapshot(&log.disconnected).is_empty());
+    let _ = server.shutdown().await;
+}
+
+struct SlowEcho {
+    started: tokio::sync::Notify,
+    delay: Duration,
+    finished: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait]
+impl Acceptor for SlowEcho {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+        assert_accept_peer(conn);
+        let frame = tokio::time::timeout(timeout, conn.read_frame())
+            .await
+            .map_err(|_| Error::HandshakeTimeout(timeout))??;
+        Ok(String::from_utf8_lossy(&frame.payload).to_string())
+    }
+}
+
+#[async_trait]
+impl MessageListener for SlowEcho {
+    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+        self.started.notify_waiters();
+        tokio::time::sleep(self.delay).await;
+        self.finished
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut out = payload.to_vec();
+        out.extend_from_slice(b" from server");
+        let _ = agent.push(Bytes::from(out)).await;
+    }
+}
+
+#[async_trait]
+impl StateListener for SlowEcho {
+    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn drain_completes_in_flight_before_close() {
+    let handler = Arc::new(SlowEcho {
+        started: tokio::sync::Notify::new(),
+        delay: Duration::from_millis(80),
+        finished: std::sync::atomic::AtomicBool::new(false),
+    });
+    let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_secs(2));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let mut client = TcpClient::new(
+        "slow",
+        "test",
+        ClientOptions {
+            heartbeat: None,
+            ..ClientOptions::default()
+        },
+    );
+    client.set_dialer(Arc::new(IdentityDialer));
+    client.connect(&addr.to_string()).await.unwrap();
+    let started = handler.started.notified();
+    client.send(Bytes::from_static(b"hello")).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), started)
+        .await
+        .expect("handler started");
+
+    let t0 = std::time::Instant::now();
+    server.shutdown().await.unwrap();
+    assert!(
+        handler.finished.load(std::sync::atomic::Ordering::SeqCst),
+        "in-flight receive must finish during drain"
+    );
+    assert!(
+        t0.elapsed() < Duration::from_secs(3),
+        "drain should finish at drain_wait, not DEFAULT_READ_WAIT"
+    );
+}
+
+#[tokio::test]
+async fn shutdown_stops_accept() {
+    let handler = Arc::new(EchoHandler);
+    let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_secs(2));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let hold = connect_named(&addr.to_string(), "hold").await;
+    let shutting = {
+        let server = server.clone();
+        tokio::spawn(async move { server.shutdown().await })
+    };
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let mut late = TcpClient::new(
+        "late",
+        "test",
+        ClientOptions {
+            heartbeat: None,
+            ..ClientOptions::default()
+        },
+    );
+    late.set_dialer(Arc::new(IdentityDialer));
+    let late_ok =
+        tokio::time::timeout(Duration::from_millis(400), late.connect(&addr.to_string())).await;
+    if let Ok(Ok(())) = late_ok {
+        panic!("accept should have stopped");
+    }
+    drop(hold);
+    shutting.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_aborts_heartbeat() {
+    let handler = Arc::new(EchoHandler);
+    let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let mut client = TcpClient::new(
+        "hb",
+        "test",
+        ClientOptions {
+            heartbeat: Some(Duration::from_secs(30)),
+            ..ClientOptions::default()
+        },
+    );
+    client.set_dialer(Arc::new(IdentityDialer));
+    client.connect(&addr.to_string()).await.unwrap();
+    let t0 = std::time::Instant::now();
+    client.shutdown().await.unwrap();
+    assert!(
+        t0.elapsed() < Duration::from_millis(500),
+        "heartbeat task must abort instead of waiting for the next tick"
+    );
     let _ = server.shutdown().await;
 }
