@@ -68,8 +68,9 @@ pub struct Container {
     wanted: RwLock<HashMap<String, HashMap<String, DefaultRegistration>>>,
     dialing: Mutex<HashSet<String>>,
     wake: Notify,
-    shutdown: Notify,
+    finished: Notify,
     closed: AtomicBool,
+    done: AtomicBool,
 }
 
 impl Container {
@@ -87,8 +88,9 @@ impl Container {
             wanted: RwLock::new(HashMap::new()),
             dialing: Mutex::new(HashSet::new()),
             wake: Notify::new(),
-            shutdown: Notify::new(),
+            finished: Notify::new(),
             closed: AtomicBool::new(false),
+            done: AtomicBool::new(false),
         })
     }
 
@@ -105,11 +107,18 @@ impl Container {
         for name in &self.deps {
             self.connect_to_service(name).await?;
         }
+        if self.closed.load(Ordering::SeqCst) {
+            self.wait_finished().await;
+            return Ok(());
+        }
         if !self.identity.public_address.is_empty() {
             self.naming.register(self.identity.clone()).await?;
         }
         if self.closed.load(Ordering::SeqCst) {
-            let _ = srv.shutdown().await;
+            if !self.identity.public_address.is_empty() {
+                let _ = self.naming.deregister(&self.identity.service_id).await;
+            }
+            self.wait_finished().await;
             return Ok(());
         }
         let srv2 = srv.clone();
@@ -117,18 +126,35 @@ impl Container {
             let _ = srv2.start().await;
         });
         if self.closed.load(Ordering::SeqCst) {
-            let _ = srv.shutdown().await;
+            self.wait_finished().await;
             return Ok(());
         }
-        self.shutdown.notified().await;
+        self.wait_finished().await;
         Ok(())
     }
 
+    async fn wait_finished(&self) {
+        let notified = self.finished.notified();
+        if self.done.load(Ordering::SeqCst) {
+            return;
+        }
+        notified.await;
+    }
+
     pub async fn shutdown(&self) -> Result<(), Error> {
-        self.closed.store(true, Ordering::SeqCst);
+        if self.closed.swap(true, Ordering::SeqCst) {
+            self.wait_finished().await;
+            return Ok(());
+        }
         self.wake.notify_waiters();
-        self.shutdown.notify_waiters();
-        self.shutdown.notify_one();
+        // G-07/G-32: deregister first so Router/Consul stop sending new clients,
+        // then stop accept, bounded drain, close connections.
+        if !self.identity.public_address.is_empty() {
+            let _ = self.naming.deregister(&self.identity.service_id).await;
+        }
+        for name in &self.deps {
+            let _ = self.naming.unsubscribe(name).await;
+        }
         if let Some(srv) = self.server.get() {
             let _ = srv.shutdown().await;
         }
@@ -145,12 +171,8 @@ impl Container {
         for client in outbound {
             let _ = client.shutdown().await;
         }
-        for name in &self.deps {
-            let _ = self.naming.unsubscribe(name).await;
-        }
-        if !self.identity.public_address.is_empty() {
-            let _ = self.naming.deregister(&self.identity.service_id).await;
-        }
+        self.done.store(true, Ordering::SeqCst);
+        self.finished.notify_waiters();
         Ok(())
     }
 
@@ -231,7 +253,6 @@ impl Container {
     async fn reconnect_loop(self: Arc<Self>, service: String) {
         loop {
             tokio::select! {
-                _ = self.shutdown.notified() => return,
                 _ = self.wake.notified() => {}
                 _ = tokio::time::sleep(RECONNECT_INTERVAL) => {}
             }
@@ -373,6 +394,9 @@ impl Container {
         service_name: &str,
         reg: DefaultRegistration,
     ) -> Result<bool, Error> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
         if reg.protocol != "tcp" {
             warn!(id = %reg.service_id, "skip non-tcp");
             return Ok(false);
@@ -498,5 +522,152 @@ impl Container {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    use crate::selector::HashSelector;
+    use crate::InnerTcpDialer;
+    use kim_core::Error as CoreError;
+    use kim_naming::StaticNaming;
+    use tokio::sync::Notify as TokioNotify;
+
+    struct Rec {
+        log: Arc<StdMutex<Vec<&'static str>>>,
+    }
+
+    struct RecordingNaming {
+        inner: StaticNaming,
+        rec: Rec,
+    }
+
+    #[async_trait]
+    impl Naming for RecordingNaming {
+        async fn find(
+            &self,
+            service_name: &str,
+            tags: &[&str],
+        ) -> Result<Vec<DefaultRegistration>, kim_naming::Error> {
+            self.inner.find(service_name, tags).await
+        }
+
+        async fn subscribe(
+            &self,
+            service_name: &str,
+            callback: Arc<dyn Fn(Vec<DefaultRegistration>) + Send + Sync>,
+        ) -> Result<(), kim_naming::Error> {
+            self.inner.subscribe(service_name, callback).await
+        }
+
+        async fn unsubscribe(&self, service_name: &str) -> Result<(), kim_naming::Error> {
+            self.rec.log.lock().unwrap().push("unsubscribe");
+            self.inner.unsubscribe(service_name).await
+        }
+
+        async fn register(&self, service: DefaultRegistration) -> Result<(), kim_naming::Error> {
+            self.inner.register(service).await
+        }
+
+        async fn deregister(&self, service_id: &str) -> Result<(), kim_naming::Error> {
+            self.rec.log.lock().unwrap().push("deregister");
+            self.inner.deregister(service_id).await
+        }
+    }
+
+    struct BlockingServer {
+        rec: Rec,
+        entered: Arc<TokioNotify>,
+        release: Arc<TokioNotify>,
+    }
+
+    #[async_trait]
+    impl Server for BlockingServer {
+        fn set_acceptor(&mut self, _acceptor: Arc<dyn kim_core::Acceptor>) {}
+        fn set_message_listener(&mut self, _listener: Arc<dyn kim_core::MessageListener>) {}
+        fn set_state_listener(&mut self, _listener: Arc<dyn kim_core::StateListener>) {}
+        fn set_read_wait(&mut self, _wait: Duration) {}
+
+        async fn start(&self) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn push(&self, _channel_id: &str, _payload: Bytes) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn close_channel(&self, _channel_id: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn shutdown(&self) -> Result<(), CoreError> {
+            self.rec.log.lock().unwrap().push("server_shutdown");
+            self.entered.notify_waiters();
+            self.release.notified().await;
+            Ok(())
+        }
+    }
+
+    fn ident() -> DefaultRegistration {
+        DefaultRegistration {
+            service_id: "gw-1".into(),
+            service_name: "wgateway".into(),
+            protocol: "ws".into(),
+            public_address: "127.0.0.1".into(),
+            public_port: 8001,
+            tags: vec![],
+            meta: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn shutdown_deregisters_before_server() {
+        let log = Arc::new(StdMutex::new(Vec::new()));
+        let rec = Rec { log: log.clone() };
+        let naming = Arc::new(RecordingNaming {
+            inner: StaticNaming::from_slice(vec![]),
+            rec: Rec { log: log.clone() },
+        });
+        Naming::register(naming.as_ref(), ident()).await.unwrap();
+        assert_eq!(naming.find("wgateway", &[]).await.unwrap().len(), 1);
+
+        let entered = Arc::new(TokioNotify::new());
+        let release = Arc::new(TokioNotify::new());
+        let server = Arc::new(BlockingServer {
+            rec,
+            entered: entered.clone(),
+            release: release.clone(),
+        });
+
+        let c = Container::new(ContainerOpts {
+            naming: naming.clone(),
+            identity: ident(),
+            dialer: Arc::new(InnerTcpDialer {
+                local_service_id: "gw-1".into(),
+            }),
+            deps: vec![],
+            adult_delay: Duration::ZERO,
+            selector: Arc::new(HashSelector),
+            after_downlink: vec![],
+        });
+        c.attach_server(server);
+
+        let run = {
+            let c = c.clone();
+            tokio::spawn(async move { c.shutdown().await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), entered.notified())
+            .await
+            .expect("server shutdown should start");
+        assert_eq!(
+            log.lock().unwrap().as_slice(),
+            ["deregister", "server_shutdown"]
+        );
+        assert!(
+            naming.find("wgateway", &[]).await.unwrap().is_empty(),
+            "lookup must not return this instance after deregister, while drain still runs"
+        );
+        release.notify_waiters();
+        run.await.unwrap().unwrap();
     }
 }

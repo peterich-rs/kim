@@ -14,11 +14,13 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify};
+use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
     Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, MessageListener, OpCode,
-    Server, StateListener, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT, DEFAULT_WRITE_WAIT,
+    Server, StateListener, DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT,
+    DEFAULT_WRITE_WAIT,
 };
 
 use crate::conn::WsConn;
@@ -33,8 +35,10 @@ pub struct WsServer {
     login_wait: Duration,
     read_wait: Duration,
     write_wait: Duration,
+    drain_wait: Duration,
     shutdown: Notify,
-    closed: AtomicBool,
+    closed: Arc<AtomicBool>,
+    tasks: Arc<Mutex<JoinSet<()>>>,
 }
 
 impl WsServer {
@@ -51,8 +55,10 @@ impl WsServer {
             login_wait: DEFAULT_LOGIN_WAIT,
             read_wait: DEFAULT_READ_WAIT,
             write_wait: DEFAULT_WRITE_WAIT,
+            drain_wait: DEFAULT_DRAIN_WAIT,
             shutdown: Notify::new(),
-            closed: AtomicBool::new(false),
+            closed: Arc::new(AtomicBool::new(false)),
+            tasks: Arc::new(Mutex::new(JoinSet::new())),
         })
     }
 
@@ -62,6 +68,10 @@ impl WsServer {
 
     pub fn channel_map(&self) -> ChannelMap {
         self.channels.clone()
+    }
+
+    pub fn set_drain_wait(&mut self, wait: Duration) {
+        self.drain_wait = wait;
     }
 }
 
@@ -109,6 +119,9 @@ impl Server for WsServer {
                             continue;
                         }
                     };
+                    if self.closed.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     let ctx = HttpCtx {
                         acceptor: self.acceptor.clone(),
                         messages: self.messages.clone(),
@@ -118,7 +131,12 @@ impl Server for WsServer {
                         read_wait: self.read_wait,
                         write_wait: self.write_wait,
                         peer,
+                        closed: self.closed.clone(),
+                        tasks: self.tasks.clone(),
                     };
+                    if self.closed.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     tokio::spawn(async move {
                         let io = TokioIo::new(stream);
                         let svc = service_fn(move |req| {
@@ -158,9 +176,26 @@ impl Server for WsServer {
         self.closed.store(true, Ordering::SeqCst);
         self.shutdown.notify_waiters();
         self.shutdown.notify_one();
+
+        let drain = self.drain_wait;
+        {
+            let mut tasks = self.tasks.lock().await;
+            let timed_out =
+                tokio::time::timeout(drain, async { while tasks.join_next().await.is_some() {} })
+                    .await
+                    .is_err();
+            if timed_out {
+                info!(?drain, "ws drain timed out; closing connections");
+            }
+        }
+
         for ch in self.channels.all().await {
             ch.close().await;
         }
+
+        let mut tasks = self.tasks.lock().await;
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
         Ok(())
     }
 }
@@ -175,6 +210,8 @@ struct HttpCtx {
     read_wait: Duration,
     write_wait: Duration,
     peer: SocketAddr,
+    closed: Arc<AtomicBool>,
+    tasks: Arc<Mutex<JoinSet<()>>>,
 }
 
 async fn handle_http(
@@ -203,21 +240,37 @@ async fn handle_http(
                 .unwrap());
         }
     };
-    tokio::spawn(async move {
-        match fut.await {
-            Ok(mut ws) => {
-                ws.set_auto_pong(false);
-                ws.set_auto_close(false);
-                ws.set_writev(true);
-                ws.set_max_message_size(1024 * 1024);
-                let conn = WsConn::new(ws, Some(ctx.peer.to_string()));
-                if let Err(err) = handle_ws(conn, ctx).await {
-                    warn!(%err, "ws session ended");
-                }
-            }
-            Err(err) => warn!(%err, "ws upgrade failed"),
+    if ctx.closed.load(Ordering::SeqCst) {
+        return Ok(Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Empty::new())
+            .unwrap());
+    }
+    let session = ctx.clone();
+    {
+        let mut tasks = ctx.tasks.lock().await;
+        if ctx.closed.load(Ordering::SeqCst) {
+            return Ok(Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .body(Empty::new())
+                .unwrap());
         }
-    });
+        tasks.spawn(async move {
+            match fut.await {
+                Ok(mut ws) => {
+                    ws.set_auto_pong(false);
+                    ws.set_auto_close(false);
+                    ws.set_writev(true);
+                    ws.set_max_message_size(1024 * 1024);
+                    let conn = WsConn::new(ws, Some(session.peer.to_string()));
+                    if let Err(err) = handle_ws(conn, session).await {
+                        warn!(%err, "ws session ended");
+                    }
+                }
+                Err(err) => warn!(%err, "ws upgrade failed"),
+            }
+        });
+    }
     Ok(response)
 }
 

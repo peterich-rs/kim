@@ -26,7 +26,7 @@
 2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
 3. **内部控制面已关**：Chat `/internal/kick` 与 Royal 同 HMAC；nonce Redis NX EX 121；生产 Redis `requirepass` + `noeviction`；Consul 关明文 8500、HTTPS/mTLS 8501、ACL deny、每服务最小权限 token。demo/`change-me` JWT/HMAC 在 strict 下拒启动。
 4. **租户已冻结为 `app=kim`**（[gray.md](gray.md)）。G-05 / G-06 已关。
-5. **通信层骨架对、运维合同不够**：读循环串行等待业务、满信箱阻塞、shutdown 不等在途任务、TGateway 无 TLS。这些能在现有 `Conn`/`Channel` 边界内改，不必换架构。
+5. **通信层骨架对、运维合同不够**：读循环串行等待业务、满信箱阻塞、TGateway 无 TLS。停机顺序已关（G-07 / G-32）。这些能在现有 `Conn`/`Channel` 边界内改，不必换架构。
 
 两份外部报告的大方向都对。产品报告若干事实写错；库报告把硬化排在鉴权/读索引前面，且 Phase 0 的 duplicate 语义不能照抄。订正见下文两张表。
 
@@ -39,20 +39,19 @@
 | 序 | 项 | 条目 |
 |---:|---|---|
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
-| 2 | SIGTERM；**先从发现摘除**再有界 drain | G-07, G-32 |
-| 3 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
-| 4 | 心跳 Redis 错误有界宽限 | G-31 |
-| 5 | Router 去掉 token-in-URL | G-11 |
-| 6 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 7 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 8 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 9 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 10 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 11 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 12 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 13 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 2 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
+| 3 | 心跳 Redis 错误有界宽限 | G-31 |
+| 4 | Router 去掉 token-in-URL | G-11 |
+| 5 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 6 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 7 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 8 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 9 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 10 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 11 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 12 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03～G-07 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03 rollout 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
@@ -92,6 +91,7 @@
 | G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 / G-14 |
 | G-01 控制面 HMAC / Redis 密码 / Consul mTLS+ACL | [group-royal.md](group-royal.md)、[deploy.md](deploy.md) |
 | G-12 生产拒 demo JWT/HMAC | 并入控制面 strict 启动 |
+| G-07 / G-32 SIGTERM 先摘发现再 drain | [deploy.md](deploy.md)。unix SIGTERM+SIGINT；Container 先 Consul deregister，再停 accept、JoinSet 有界 drain、关连接；TcpClient 心跳 abort；Royal/Router HTTP graceful。无「请换网关」Push；未在 K8s 杀进程验证 |
 
 ---
 
@@ -154,36 +154,6 @@ ACK 是 `SET` 不是 `GREATEST`。电脑若 ACK 了更小的 `lastMessage`，游
 G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条之一，**不要**把 Snowflake `message_id` 当 ACK 游标。`device_id` 用 G-13 的稳定凭证，不能绑一次性 `jti`。租户已冻结为 `kim`。会话漫游仍用 `history`。
 
 补测试：两个并发 insert，小 id 事务后提交；设备 ACK 了大 id 之后，小 id 仍能被该设备 pull / 出现在 pending 集合里。
-
----
-
-### G-07 容器停机只捕获 SIGINT，drain 顺序先杀连接
-
-**文件**
-
-- `services/gateway/src/run.rs`（约 282–286 行）：`ctrl_c` → `container.shutdown()`
-- `services/chat/src/main.rs`、`services/router/src/main.rs`、`services/royal/src/main.rs`：同样只 `tokio::signal::ctrl_c()`
-- `crates/kim-container/src/container.rs` — `shutdown`（约 127–154 行）：先 `srv.shutdown()`，再 deregister
-- Royal / Router：deregister 后 `process::exit(0)`
-
-**问题**
-
-原报告写「gateway main 没有 ctrl_c、Container shutdown 无人触发」——**不成立**。`run.rs` 会调 `shutdown()`，其中包含 Consul deregister。
-
-真实问题：
-
-1. 只听 SIGINT。K8s/Compose 发 SIGTERM，这段代码不跑。
-2. drain 顺序是先掐全部连接，再从 Consul 摘自己，重连风暴打到自己。
-3. 没有「请换网关」Push。
-4. Royal/Router 不排空 HTTP。
-
-**建议**
-
-unix 上 SIGTERM+SIGINT。与 G-32 **统一**为一条顺序，禁止两处各写一套：
-
-**从发现摘除 / 标记 draining → 停 accept → 有界 drain 已有请求和写队列 → 关闭连接。**
-
-先摘除是为了 Router/Consul 不再把新客户端打到正在退出的实例。摘除之后再 drain，不是 drain 完再 deregister（那会在 drain 窗口继续接新连接）。JoinSet、在途 handler 的实现细节见 G-32。
 
 ---
 
@@ -467,7 +437,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 - Ping/Pong/Close 仍在读专员，不进 lane。
 - 文档写明：响应顺序与请求到达顺序一致；`MessageListener` 不再假设与读同任务，但同一 channel 上仍是 FIFO。
 
-不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-03～G-07，高于 vectored write。
+不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-03 rollout，高于 vectored write。
 
 ---
 
@@ -499,29 +469,6 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 **建议**
 
 心跳：仅 `Ok(true)`（确认已吊销）才立刻踢。存储错误 **不要**无限 fail-open 续签同一 JTI——Redis 长故障时已吊销的 token 会一直活着。改为有界宽限（例如连续失败 N 次或 T 秒）：期内 warn + metrics、连接保持；超期断开并要求重登。登录路径 revoke 检查失败仍 fail-closed。
-
----
-
-### G-32 shutdown 不等在途任务；TcpClient 心跳不随关闭取消
-
-**文件**
-
-- `crates/kim-tcp/src/server.rs` — `shutdown`（约 144–152 行）：notify + `ch.close()`，不 join 连接任务
-- `crates/kim-container/src/container.rs` — `start` 里 `tokio::spawn` server（约 116 行）；`shutdown` 先掐连接再 deregister
-- `crates/kim-tcp/src/client.rs`（约 106–128 行）：心跳独立 `spawn`，`shutdown` 不 abort
-- `services/chat/src/lib.rs` — `ChatHandler::disconnect`（约 543–546 行）：只打日志，会话靠网关 forward `login.signout`
-
-**问题**
-
-库报告「Notify 单方面停 accept」对 TCP/WS server 成立。在途 talk 会被取消或写一半。网关进程被杀且 signout 没送到时，Chat 侧 Redis 会话靠 TTL（48h）和心跳；Chat 自己的 disconnect 不扫残留。
-
-**建议**
-
-`CancellationToken` 从 main 传入。顺序与 G-07 **同一条**，此处只补实现，不再另写「flush 后再 deregister」：
-
-**从发现摘除 / 标记 draining → 停 accept → 有界 drain 已有请求和写队列 → 关闭连接。**
-
-连接任务进 `tokio::task::JoinSet`（不必为 JoinSet 引 tokio-util）。心跳绑定 token。SIGTERM 与 G-07 同一条链路。摘除之后 Consul/Router 不得再把新客户端打到该实例。
 
 ---
 
@@ -632,7 +579,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 
 | 原句 | 代码事实 |
 |---|---|
-| gateway 的 main 没有 ctrl_c；Container shutdown 无人触发完整链路 | `run.rs` 有 `ctrl_c` + `shutdown()`，shutdown **会** deregister。缺的是 SIGTERM 和 drain 顺序 |
+| gateway 的 main 没有 ctrl_c；Container shutdown 无人触发完整链路 | 已关：unix SIGTERM+SIGINT；先 deregister 再 drain。见 [deploy.md](deploy.md) |
 | LogicPkt 无版本号（现在恒 0） | `Header` **没有** version 字段 |
 | 只有 MESSAGE_TYPE_TEXT/IMAGE | 协议已有 VOICE=3、VIDEO=4；SDK/过滤未接；无 FILE；无白名单 |
 | 超过 2000 条静默丢窗口 | 库内仍在。Web 会连拉。丢数据发生在 send_time 游标、1 天 fallback、全局 ACK 高水位 |
@@ -678,7 +625,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 
 ## 运行时与开源库（订正后的二期）
 
-**不要按原文 H0～H6 原样开工。** 租户已冻结为 `app=kim`。停机顺序以 G-07 为准。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持。不要给自聊加 `(app, account_a, message_id)` 唯一约束。
+**不要按原文 H0～H6 原样开工。** 租户已冻结为 `app=kim`。停机顺序已落地（见 [deploy.md](deploy.md)）。然后才是下面这套硬化。每期独立可编译、可测。合同：`Conn` / `Acceptor` / `MessageListener` / `Naming` / `SessionStorage` / `MessageStore` 保持。不要给自聊加 `(app, account_a, message_id)` 唯一约束。
 
 ### 目标形状（通信层）
 
@@ -728,12 +675,10 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - 网关下行 `try_send` 仍未做；满信箱 Disconnect + `kim_mailbox_full_total`。
 - ACK **不是** Snowflake 高水位（G-03）。
 
-**H1 — 隔离与停机（G-29, G-32, G-07）**
+**H1 — 隔离（G-29）**。停机（G-07 / G-32）已合入，形状见 [deploy.md](deploy.md)。
 
 - 读帧与业务解耦；**同一 `header.channel_id` 一条串行 lane**，只允许不同逻辑 channel 并发。把顺序保证、背压、响应 FIFO 写成测试（join 未完成不得 talk 乱序）。
 - 每 lane / 每进程 Semaphore；满则停读或断开。
-- Server/Container/TcpClient 用 `CancellationToken` + `JoinSet` drain。
-- 停机顺序与 G-07 相同：先摘发现，再停 accept，再有界 drain，最后关连接。
 - 全进程连接上限。
 - 保持 `kim-ws` `read_frame` 超时即拆连接（非 cancel-safe，禁止半帧 `select!` 再读）。
 
@@ -846,7 +791,7 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - id=10 dispatch 失败、id=11 已 Push：10 对该设备仍可见（不是被高水位吃掉）
 - Chat 节点缓存的 location，它机 delete 后不得再 push 到旧 channel
 - 无 Consul token 时生产配置拒绝 register（或测试替身）
-- SIGTERM：**先摘发现**，drain 窗口内 lookup 不得再返回该实例
+- SIGTERM：**先摘发现**，drain 窗口内 lookup 不得再返回该实例（单元测试已覆盖顺序；未做 K8s 杀进程）
 - 同一 channel 上 join 未完成时并发 talk 的顺序（H1 lane）
 - 改密后旧 JWT 不可调 `/auth/me` 与发消息；kick 只打对应 account（G-20）
 - 未签名的 Chat `/internal/kick` 被拒

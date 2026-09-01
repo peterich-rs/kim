@@ -93,6 +93,7 @@ async fn spawn_chat(
     node: i64,
 ) -> (Arc<Container>, std::net::SocketAddr) {
     let mut chat = TcpServer::bind("127.0.0.1:0").await.expect("chat bind");
+    chat.set_drain_wait(Duration::from_millis(50));
     let addr = chat.local_addr();
     let c = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
@@ -143,6 +144,7 @@ async fn spawn_gray(whitelist: HashMap<String, String>, with_gray_chat: bool) ->
     }
 
     let mut gw_server = WsServer::bind("127.0.0.1:0").await.expect("gw");
+    gw_server.set_drain_wait(Duration::from_millis(50));
     let gw_addr = gw_server.local_addr();
     let hook = Arc::new(KickHook::new());
     let naming = Arc::new(StaticNaming::from_slice(regs));

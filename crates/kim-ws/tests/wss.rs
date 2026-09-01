@@ -111,6 +111,7 @@ impl WsDialer for TlsDialer {
 async fn wss_echo_through_tls_terminator() {
     let handler = Arc::new(EchoHandler);
     let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

@@ -5,6 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tracing::debug;
 
 use kim_core::{
@@ -43,8 +44,9 @@ pub struct TcpClient {
     dialer: Option<Arc<dyn TcpDialer>>,
     reader: Option<Mutex<TcpReadHalf>>,
     writer: Option<Arc<Mutex<TcpWriteHalf>>>,
-    connected: AtomicBool,
+    connected: Arc<AtomicBool>,
     options: ClientOptions,
+    heartbeat: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl TcpClient {
@@ -55,8 +57,9 @@ impl TcpClient {
             dialer: None,
             reader: None,
             writer: None,
-            connected: AtomicBool::new(false),
+            connected: Arc::new(AtomicBool::new(false)),
             options,
+            heartbeat: Mutex::new(None),
         }
     }
 
@@ -106,11 +109,15 @@ impl TcpClient {
         if let Some(interval) = self.options.heartbeat {
             let write_wait = self.options.write_wait;
             let id = self.id.clone();
-            tokio::spawn(async move {
+            let connected = self.connected.clone();
+            let handle = tokio::spawn(async move {
                 let mut tick = tokio::time::interval(interval);
                 tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 loop {
                     tick.tick().await;
+                    if !connected.load(Ordering::SeqCst) {
+                        break;
+                    }
                     debug!(client = %id, "send ping");
                     let mut guard = writer.lock().await;
                     let ping = tokio::time::timeout(
@@ -126,6 +133,7 @@ impl TcpClient {
                     }
                 }
             });
+            *self.heartbeat.lock().await = Some(handle);
         }
         Ok(())
     }
@@ -178,6 +186,10 @@ impl TcpClient {
     /// Close the write half without `&mut self` so `Arc<TcpClient>` can drop a slot.
     pub async fn shutdown(&self) -> Result<(), Error> {
         self.connected.store(false, Ordering::SeqCst);
+        if let Some(h) = self.heartbeat.lock().await.take() {
+            h.abort();
+            let _ = h.await;
+        }
         if let Some(writer) = &self.writer {
             let mut guard = writer.lock().await;
             let _ = guard.write_frame(OpCode::Close, Bytes::new()).await;

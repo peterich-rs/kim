@@ -2219,6 +2219,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "crc32fast",
+ "kim-core",
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
@@ -2244,6 +2245,7 @@ dependencies = [
  "bytes",
  "chat",
  "http-body-util",
+ "kim-core",
  "kim-naming",
  "kim-protocol",
  "kim-session",
