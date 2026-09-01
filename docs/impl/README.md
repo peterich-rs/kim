@@ -11,7 +11,7 @@
 | 序 | 文档 | 覆盖 | 依赖 |
 |---:|---|---|---|
 | 1 | （已合入）Chat 离线正文与群指令鉴权 | G-02、G-08 Chat 长连接边界 | 仍依赖 G-01 才算关洞 |
-| 2 | [02-persist-first.md](02-persist-first.md) | G-09 persist-first + 从落库重建 Push | 无 |
+| 2 | [02-persist-first.md](02-persist-first.md) | G-09 错误语义 + identical 重放 | 合入后 **不删** G-09；漏 Push 补偿仍依赖 G-03/G-14 |
 | 3 | （未写）内部控制面 HTTP HMAC；Redis 密码；Consul ACL | G-01 | 部署密钥 |
 | 4 | （未写）单租户冻结 **或** SessionStorage 带 app | G-05 | **先拍板** |
 | 5 | （未写）receipt / delivery_seq，不用 Snowflake 高水位 | G-03、G-04、G-10 | 建议在 G-09 之后 |
