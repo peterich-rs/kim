@@ -4,6 +4,8 @@
 
 `kim-client` 是 TDLib 形：session / login / talk / ack 在 Rust。Flutter 只是壳。
 
+`kim-client` 现在还有 `inbox_list` / `history` / `offline_index` / `offline_content`、统一 `send_message(dest, kind, content, client_id)`，以及 `SessionSupervisor`（重连退避 + `SyncEngine` 分页补拉，persist-then-ack）。Flutter FFI 仍走旧的 `talk_to_user` / `KimApi.listen`，还没接到 supervisor；G-14 要等 Dart outbox 持稳定 `client_id` 才算关上。
+
 ## Crate
 
 `crates/kim-client`。业务只碰 [`kim_core::Conn`]。本 PR 的 Conn 实现是 `kim_ws::connect_ws`（`ws://` 明文 Upgrade，`wss://` 先 TLS）。
@@ -14,10 +16,13 @@ let mut cli = KimClient::new(ClientConfig::local(token)); // ws://127.0.0.1:8001
 cli.connect().await?;          // HTTP Upgrade；token 不进 URL
 let session = cli.login().await?; // 第一帧 JWT login.signin
 cli.ping().await?;
-cli.talk_to_user("bob", "hello").await?;
-cli.ack(message_id).await?;
+cli.send_message("bob", INBOX_KIND_USER, OutgoingContent::Text("hello".into()), client_id).await?;
+cli.inbox_list(200).await?;
+cli.history("bob", INBOX_KIND_USER, 0, 50).await?;
+cli.ack_batch(&[message_id]).await?;
 cli.recv().await?;             // Push / Kickout
 cli.disconnect().await?;
+// 或 SessionSupervisor::start(config)：connect → login → sync → recv，断线退避重连
 ```
 
 内存会话：`MemorySession { channel_id, account, token }`。

@@ -215,7 +215,11 @@ async fn dispatch(
         }
         Event::Status { sequence, .. }
         | Event::UserList { sequence, .. }
-        | Event::Profile { sequence, .. } => {
+        | Event::Profile { sequence, .. }
+        | Event::Inbox { sequence, .. }
+        | Event::History { sequence, .. }
+        | Event::OfflinePage { sequence, .. }
+        | Event::OfflineContent { sequence, .. } => {
             if let Some(tx) = pending.lock().await.remove(sequence) {
                 let _ = tx.send(event);
                 return;
