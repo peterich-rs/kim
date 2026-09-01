@@ -71,7 +71,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<KimPush> dco_decode_StreamSink_kim_push_Sse(dynamic raw);
+  RustStreamSink<KimSessionEvent> dco_decode_StreamSink_kim_session_event_Sse(
+    dynamic raw,
+  );
 
   @protected
   String dco_decode_String(dynamic raw);
@@ -80,13 +82,49 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AuthSession dco_decode_auth_session(dynamic raw);
 
   @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
+  KimOutgoingContent dco_decode_box_autoadd_kim_outgoing_content(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
-  KimPush dco_decode_kim_push(dynamic raw);
+  KimHistoryItem dco_decode_kim_history_item(dynamic raw);
+
+  @protected
+  KimInboxItem dco_decode_kim_inbox_item(dynamic raw);
+
+  @protected
+  KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw);
+
+  @protected
+  KimSessionEvent dco_decode_kim_session_event(dynamic raw);
+
+  @protected
+  KimTalkResult dco_decode_kim_talk_result(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<KimHistoryItem> dco_decode_list_kim_history_item(dynamic raw);
+
+  @protected
+  List<KimInboxItem> dco_decode_list_kim_inbox_item(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -137,7 +175,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<KimPush> sse_decode_StreamSink_kim_push_Sse(
+  RustStreamSink<KimSessionEvent> sse_decode_StreamSink_kim_session_event_Sse(
     SseDeserializer deserializer,
   );
 
@@ -148,13 +186,57 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AuthSession sse_decode_auth_session(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  KimOutgoingContent sse_decode_box_autoadd_kim_outgoing_content(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
-  KimPush sse_decode_kim_push(SseDeserializer deserializer);
+  KimHistoryItem sse_decode_kim_history_item(SseDeserializer deserializer);
+
+  @protected
+  KimInboxItem sse_decode_kim_inbox_item(SseDeserializer deserializer);
+
+  @protected
+  KimOutgoingContent sse_decode_kim_outgoing_content(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  KimSessionEvent sse_decode_kim_session_event(SseDeserializer deserializer);
+
+  @protected
+  KimTalkResult sse_decode_kim_talk_result(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<KimHistoryItem> sse_decode_list_kim_history_item(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<KimInboxItem> sse_decode_list_kim_inbox_item(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -164,12 +246,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
-
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
-
-  @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -220,8 +296,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_StreamSink_kim_push_Sse(
-    RustStreamSink<KimPush> self,
+  void sse_encode_StreamSink_kim_session_event_Sse(
+    RustStreamSink<KimSessionEvent> self,
     SseSerializer serializer,
   );
 
@@ -232,16 +308,70 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_auth_session(AuthSession self, SseSerializer serializer);
 
   @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_kim_outgoing_content(
+    KimOutgoingContent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
-  void sse_encode_kim_push(KimPush self, SseSerializer serializer);
+  void sse_encode_kim_history_item(
+    KimHistoryItem self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_kim_inbox_item(KimInboxItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_kim_outgoing_content(
+    KimOutgoingContent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_kim_session_event(
+    KimSessionEvent self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_kim_talk_result(KimTalkResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_kim_history_item(
+    List<KimHistoryItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_kim_inbox_item(
+    List<KimInboxItem> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
@@ -251,12 +381,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
 }
 
 // Section: wire_class

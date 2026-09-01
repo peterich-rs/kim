@@ -178,4 +178,127 @@ void main() {
       'abcdefgh…',
     );
   });
+
+  test('upsertThread updates on conflict', () async {
+    final db = store();
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        lastBody: 'hi',
+        lastAt: 1,
+        unread: 1,
+      ),
+    );
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'Bobby',
+        lastBody: 'there',
+        lastAt: 2,
+        unread: 0,
+      ),
+    );
+    final row = db.loadThreads('alice').single;
+    expect(row.title, 'Bobby');
+    expect(row.lastBody, 'there');
+    expect(row.unread, 0);
+  });
+
+  test(
+    'upsertMessages patches on key conflict and pages newest first',
+    () async {
+      final db = store();
+      await db.upsertMessages('alice', 'bob', [
+        const KimChatMsg(
+          key: 'a',
+          dest: 'bob',
+          sender: 'alice',
+          body: 'one',
+          at: 1,
+          status: KimSendStatus.sending,
+        ),
+        const KimChatMsg(
+          key: 'b',
+          dest: 'bob',
+          sender: 'bob',
+          body: 'two',
+          at: 2,
+          messageId: 9,
+        ),
+      ]);
+      await db.upsertMessages('alice', 'bob', [
+        const KimChatMsg(
+          key: 'a',
+          dest: 'bob',
+          sender: 'alice',
+          body: 'one',
+          at: 1,
+          messageId: 8,
+          status: KimSendStatus.sent,
+        ),
+      ]);
+      final all = db.loadMessages('alice', 'bob');
+      expect(all, hasLength(2));
+      expect(all.first.messageId, 8);
+      expect(all.first.status, KimSendStatus.sent);
+      final page = db.loadMessagesPage('alice', 'bob', limit: 1);
+      expect(page, hasLength(1));
+      expect(page.single.key, 'b');
+      final older = db.loadMessagesPage('alice', 'bob', beforeAt: 2, limit: 10);
+      expect(older.single.key, 'a');
+    },
+  );
+
+  test('markThreadRead clears unread', () async {
+    final db = store();
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        unread: 3,
+      ),
+    );
+    await db.markThreadRead('alice', 'bob');
+    expect(db.loadThreads('alice').single.unread, 0);
+  });
+
+  test('loadPending is sending-only; loadFailed is failed', () async {
+    final db = store();
+    await db.upsertMessages('alice', 'bob', [
+      const KimChatMsg(
+        key: 's',
+        dest: 'bob',
+        sender: 'alice',
+        body: 'sending',
+        at: 1,
+        status: KimSendStatus.sending,
+      ),
+      const KimChatMsg(
+        key: 'f',
+        dest: 'bob',
+        sender: 'alice',
+        body: 'failed',
+        at: 2,
+        failed: true,
+        status: KimSendStatus.failed,
+      ),
+      const KimChatMsg(
+        key: 'ok',
+        dest: 'bob',
+        sender: 'alice',
+        body: 'sent',
+        at: 3,
+        status: KimSendStatus.sent,
+      ),
+    ]);
+    expect(db.loadPending('alice').single.key, 's');
+    expect(db.loadFailed('alice').single.key, 'f');
+  });
 }

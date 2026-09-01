@@ -7,7 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
 import '../models/models.dart';
-import '../state/gateway.dart';
+import '../state/link.dart';
 import '../state/providers.dart';
 import '../state/session.dart';
 import '../theme/motion.dart';
@@ -57,7 +57,8 @@ class KimOfflineBanner extends ConsumerWidget {
                           ),
                           if (noSocket && !noRadio)
                             TextButton(
-                              onPressed: () => ref.invalidate(gatewayProvider),
+                              onPressed: () =>
+                                  ref.read(linkProvider.notifier).retry(),
                               child: Text(
                                 Copy.retry,
                                 style: TextStyle(

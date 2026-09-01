@@ -80,7 +80,29 @@ class ConversationStore {
     db.execute(
       'CREATE INDEX IF NOT EXISTS messages_by_thread ON messages (account, dest, at)',
     );
+    _ensureColumn(db, 'threads', 'avatar', "TEXT NOT NULL DEFAULT ''");
+    _ensureColumn(db, 'messages', 'message_id', 'INTEGER NOT NULL DEFAULT 0');
+    _ensureColumn(db, 'messages', 'batch_id', "TEXT NOT NULL DEFAULT ''");
+    _ensureColumn(db, 'messages', 'status', "TEXT NOT NULL DEFAULT 'sent'");
+    db.execute(
+      'CREATE INDEX IF NOT EXISTS messages_by_id ON messages (account, dest, message_id)',
+    );
     return db;
+  }
+
+  static void _ensureColumn(
+    Database db,
+    String table,
+    String column,
+    String spec,
+  ) {
+    final rows = db.select('PRAGMA table_info($table)');
+    for (final row in rows) {
+      if (row['name'] == column) {
+        return;
+      }
+    }
+    db.execute('ALTER TABLE $table ADD COLUMN $column $spec');
   }
 
   List<KimThread> loadThreads(String account) {
@@ -88,21 +110,11 @@ class ConversationStore {
       return const [];
     }
     final rows = _db.select(
-      'SELECT id, kind, title, last_body, last_at, unread '
+      'SELECT id, kind, title, last_body, last_at, unread, avatar '
       'FROM threads WHERE account = ? ORDER BY last_at DESC, title COLLATE NOCASE',
       [account],
     );
-    return [
-      for (final row in rows)
-        KimThread(
-          id: row['id'] as String,
-          kind: row['kind'] == 'group' ? ThreadKind.group : ThreadKind.user,
-          title: row['title'] as String,
-          lastBody: row['last_body'] as String,
-          lastAt: row['last_at'] as int,
-          unread: row['unread'] as int,
-        ),
-    ];
+    return [for (final row in rows) _thread(row)];
   }
 
   Future<void> saveThreads(String account, List<KimThread> threads) async {
@@ -113,8 +125,8 @@ class ConversationStore {
     try {
       _db.execute('DELETE FROM threads WHERE account = ?', [account]);
       final insert = _db.prepare(
-        'INSERT INTO threads (account, id, kind, title, last_body, last_at, unread) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       );
       try {
         for (final t in threads) {
@@ -126,6 +138,7 @@ class ConversationStore {
             t.lastBody,
             t.lastAt,
             t.unread,
+            t.avatar,
           ]);
         }
       } finally {
@@ -143,7 +156,8 @@ class ConversationStore {
       return const [];
     }
     final rows = _db.select(
-      'SELECT key, dest, sender, body, at, sys, failed, kind, width, height '
+      'SELECT key, dest, sender, body, at, sys, failed, kind, width, height, '
+      'message_id, batch_id, status '
       'FROM messages WHERE account = ? AND dest = ? ORDER BY at ASC, key ASC',
       [account, dest],
     );
@@ -168,24 +182,12 @@ class ConversationStore {
         dest,
       ]);
       final insert = _db.prepare(
-        'INSERT INTO messages (account, dest, key, sender, body, at, sys, failed, kind, width, height) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO messages (account, dest, key, sender, body, at, sys, failed, kind, width, height, message_id, batch_id, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       );
       try {
         for (final m in clipped) {
-          insert.execute([
-            account,
-            dest,
-            m.key,
-            m.sender,
-            m.body,
-            m.at,
-            m.sys ? 1 : 0,
-            m.failed ? 1 : 0,
-            m.kind.name,
-            m.width,
-            m.height,
-          ]);
+          insert.execute(_msgValues(account, dest, m));
         }
       } finally {
         insert.close();
@@ -219,8 +221,28 @@ class ConversationStore {
     _db.close();
   }
 
+  KimThread _thread(Row row) {
+    return KimThread(
+      id: row['id'] as String,
+      kind: row['kind'] == 'group' ? ThreadKind.group : ThreadKind.user,
+      title: row['title'] as String,
+      lastBody: row['last_body'] as String,
+      lastAt: row['last_at'] as int,
+      unread: row['unread'] as int,
+      avatar: row['avatar'] as String? ?? '',
+    );
+  }
+
   KimChatMsg _msg(Row row) {
     final kindRaw = row['kind'] as String;
+    final statusRaw = row['status'] as String? ?? 'sent';
+    final failed = (row['failed'] as int) == 1 || statusRaw == 'failed';
+    final status = statusRaw == 'sending'
+        ? KimSendStatus.sending
+        : failed
+        ? KimSendStatus.failed
+        : KimSendStatus.sent;
+    final batch = row['batch_id'] as String? ?? '';
     return KimChatMsg(
       key: row['key'] as String,
       dest: row['dest'] as String,
@@ -228,7 +250,7 @@ class ConversationStore {
       body: row['body'] as String,
       at: row['at'] as int,
       sys: (row['sys'] as int) == 1,
-      failed: (row['failed'] as int) == 1,
+      failed: failed,
       kind: kindRaw == 'video'
           ? KimMsgKind.video
           : kindRaw == 'image'
@@ -236,7 +258,159 @@ class ConversationStore {
           : KimMsgKind.text,
       width: row['width'] as int,
       height: row['height'] as int,
+      messageId: row['message_id'] as int? ?? 0,
+      batchId: batch.isEmpty ? null : batch,
+      status: status,
     );
+  }
+
+  List<Object?> _msgValues(String account, String dest, KimChatMsg m) {
+    return [
+      account,
+      dest,
+      m.key,
+      m.sender,
+      m.body,
+      m.at,
+      m.sys ? 1 : 0,
+      m.isFailed ? 1 : 0,
+      m.kind.name,
+      m.width,
+      m.height,
+      m.messageId,
+      m.batchId ?? '',
+      m.status.name,
+    ];
+  }
+
+  Future<void> upsertThread(String account, KimThread t) async {
+    if (account.isEmpty || t.id.isEmpty) {
+      return;
+    }
+    _db.execute(
+      'INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT(account, id) DO UPDATE SET '
+      'kind = excluded.kind, '
+      'title = excluded.title, '
+      'last_body = excluded.last_body, '
+      'last_at = excluded.last_at, '
+      'unread = excluded.unread, '
+      'avatar = CASE WHEN excluded.avatar != \'\' THEN excluded.avatar ELSE threads.avatar END',
+      [
+        account,
+        t.id,
+        t.kind.name,
+        t.title,
+        t.lastBody,
+        t.lastAt,
+        t.unread,
+        t.avatar,
+      ],
+    );
+  }
+
+  Future<void> upsertMessages(
+    String account,
+    String dest,
+    Iterable<KimChatMsg> msgs,
+  ) async {
+    if (account.isEmpty || dest.isEmpty) {
+      return;
+    }
+    final list = msgs.toList();
+    if (list.isEmpty) {
+      return;
+    }
+    _db.execute('BEGIN IMMEDIATE');
+    try {
+      final insert = _db.prepare(
+        'INSERT INTO messages (account, dest, key, sender, body, at, sys, failed, kind, width, height, message_id, batch_id, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT(account, dest, key) DO UPDATE SET '
+        'sender = excluded.sender, '
+        'body = excluded.body, '
+        'at = excluded.at, '
+        'sys = excluded.sys, '
+        'failed = excluded.failed, '
+        'kind = excluded.kind, '
+        'width = excluded.width, '
+        'height = excluded.height, '
+        'message_id = CASE WHEN excluded.message_id != 0 THEN excluded.message_id ELSE messages.message_id END, '
+        'batch_id = CASE WHEN excluded.batch_id != \'\' THEN excluded.batch_id ELSE messages.batch_id END, '
+        'status = excluded.status',
+      );
+      try {
+        for (final m in list) {
+          insert.execute(_msgValues(account, dest, m));
+        }
+      } finally {
+        insert.close();
+      }
+      _db.execute('COMMIT');
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  Future<void> markThreadRead(String account, String dest) async {
+    if (account.isEmpty || dest.isEmpty) {
+      return;
+    }
+    _db.execute('UPDATE threads SET unread = 0 WHERE account = ? AND id = ?', [
+      account,
+      dest,
+    ]);
+  }
+
+  List<KimChatMsg> loadMessagesPage(
+    String account,
+    String dest, {
+    int? beforeAt,
+    int limit = 50,
+  }) {
+    if (account.isEmpty || dest.isEmpty) {
+      return const [];
+    }
+    final rows = beforeAt == null
+        ? _db.select(
+            'SELECT key, dest, sender, body, at, sys, failed, kind, width, height, '
+            'message_id, batch_id, status '
+            'FROM messages WHERE account = ? AND dest = ? '
+            'ORDER BY at DESC, key DESC LIMIT ?',
+            [account, dest, limit],
+          )
+        : _db.select(
+            'SELECT key, dest, sender, body, at, sys, failed, kind, width, height, '
+            'message_id, batch_id, status '
+            'FROM messages WHERE account = ? AND dest = ? AND at < ? '
+            'ORDER BY at DESC, key DESC LIMIT ?',
+            [account, dest, beforeAt, limit],
+          );
+    return [for (final row in rows) _msg(row)];
+  }
+
+  List<KimChatMsg> loadPending(String account) {
+    return _loadByStatus(account, 'sending');
+  }
+
+  List<KimChatMsg> loadFailed(String account) {
+    return _loadByStatus(account, 'failed');
+  }
+
+  List<KimChatMsg> _loadByStatus(String account, String status) {
+    if (account.isEmpty) {
+      return const [];
+    }
+    final rows = _db.select(
+      'SELECT key, dest, sender, body, at, sys, failed, kind, width, height, '
+      'message_id, batch_id, status '
+      'FROM messages WHERE account = ? AND status = ? '
+      'ORDER BY at ASC, key ASC',
+      [account, status],
+    );
+    return [for (final row in rows) _msg(row)];
   }
 
   Future<void> _importPrefs(SharedPreferences prefs) async {

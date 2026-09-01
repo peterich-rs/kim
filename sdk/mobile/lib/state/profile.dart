@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
 import 'contacts.dart';
-import 'gateway.dart';
+import 'link.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -36,7 +36,7 @@ class ProfileNotifier extends Notifier<ProfileState> {
     final account = ref.watch(sessionProvider.select((s) => s.account));
     final cached = ref.watch(runtimeProvider).settings.avatarOf(account);
     final online = ref.watch(
-      gatewayProvider.select((g) => g.value == ConnStatus.online),
+      linkProvider.select((g) => g.status == ConnStatus.online),
     );
     if (account.isEmpty) {
       _fetched = '';

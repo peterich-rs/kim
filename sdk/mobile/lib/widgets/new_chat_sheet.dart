@@ -70,7 +70,7 @@ class _NewChatBody extends ConsumerWidget {
             subtitle: Text('@${p.account}'),
             onTap: () {
               final thread = ref
-                  .read(inboxProvider.notifier)
+                  .read(threadsProvider.notifier)
                   .ensureThread(
                     id: p.account,
                     kind: ThreadKind.user,

@@ -10,7 +10,7 @@ import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
-import '../../state/gateway.dart';
+import '../../state/link.dart';
 import '../../state/inbox.dart';
 import '../../state/profile.dart';
 import '../../state/session.dart';
@@ -26,7 +26,7 @@ class ChatsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
-    final inbox = ref.watch(inboxProvider);
+    final inbox = ref.watch(threadsProvider);
     final me = ref.watch(profileProvider);
     final social = ref.watch(contactsProvider);
     final visible = inbox.visible;
@@ -58,7 +58,8 @@ class ChatsPage extends ConsumerWidget {
                   size: 18,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                onChanged: (v) => ref.read(inboxProvider.notifier).setQuery(v),
+                onChanged: (v) =>
+                    ref.read(threadsProvider.notifier).setQuery(v),
               ),
             ),
           ),
@@ -66,7 +67,7 @@ class ChatsPage extends ConsumerWidget {
             child: ConnectionBanner(
               status: session.status,
               error: session.connectError,
-              onRetry: () => ref.invalidate(gatewayProvider),
+              onRetry: () => ref.read(linkProvider.notifier).retry(),
             ),
           ),
           if (connecting)
@@ -123,7 +124,7 @@ class ChatsPage extends ConsumerWidget {
                     onOpen: () {
                       KimHaptics.selection();
                       ref
-                          .read(inboxProvider.notifier)
+                          .read(threadsProvider.notifier)
                           .ensureThread(
                             id: thread.id,
                             kind: thread.kind,
@@ -132,7 +133,7 @@ class ChatsPage extends ConsumerWidget {
                       context.push('/chat/${thread.id}', extra: thread);
                     },
                     onDelete: () => ref
-                        .read(inboxProvider.notifier)
+                        .read(threadsProvider.notifier)
                         .deleteThread(thread.id),
                   );
                 },

@@ -4,9 +4,11 @@ library;
 
 import 'dart:convert';
 
+import 'core/format.dart';
+import 'core/image_extra.dart';
 import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
-import 'src/rust/api/client.dart';
+import 'src/rust/api/client.dart' as rust;
 import 'src/rust/frb_generated.dart';
 
 class KimAuthSession {
@@ -23,19 +25,39 @@ class KimAuthSession {
 
 /// Long-lived WGateway session. Tests inject a fake; the app uses [KimBridge].
 abstract class KimClientPort {
-  Future<String> connect(String url, String token, {required String userAgent});
+  Stream<KimEvent> sessionEvents();
 
-  Future<String> loginWs();
+  KimLinkState linkState();
 
-  Future<String> ping();
+  Future<void> startSession(
+    String url,
+    String token, {
+    required String userAgent,
+  });
 
-  Future<String> talk(String dest, String body);
+  Future<void> stopSession();
 
-  Future<String> talkImage(String dest, String url, {String extra = ''});
+  Future<void> syncConfirm(int cursor);
+
+  Future<void> notifyRadioUp();
+
+  Future<KimTalkResult> sendMessage(
+    String dest,
+    ThreadKind kind,
+    KimOutgoingContent content, {
+    required String clientId,
+  });
+
+  Future<List<KimHistoryMsg>> history(
+    String dest,
+    ThreadKind kind, {
+    int beforeId = 0,
+    int limit = 50,
+  });
+
+  Future<List<KimThread>> inboxList({int limit = 200});
 
   Future<void> ack(int messageId);
-
-  Stream<KimEvent> events();
 
   Future<List<KimPerson>> friendList();
 
@@ -56,8 +78,6 @@ abstract class KimClientPort {
     required String avatar,
     String bio = '',
   });
-
-  Future<String> disconnect();
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -98,9 +118,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
   static const ffiReady = true;
 
   static bool _inited = false;
-  KimApi? _api;
+  rust.KimApi? _api;
+  Stream<KimEvent>? _events;
 
-  /// Last WGateway URL passed to [connect]. Not a second source of truth —
+  /// Last WGateway URL passed to [startSession]. Not a second source of truth —
   /// [SettingsStore] persists it.
   String? lastUrl;
 
@@ -124,6 +145,14 @@ class KimBridge implements KimAuthPort, KimClientPort {
       exp: s.exp.toInt(),
       account: s.account,
     );
+  }
+
+  rust.KimApi _require() {
+    final api = _api;
+    if (api == null) {
+      throw StateError('startSession first');
+    }
+    return api;
   }
 
   @override
@@ -190,7 +219,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<String> connect(
+  Future<void> startSession(
     String url,
     String token, {
     required String userAgent,
@@ -206,74 +235,152 @@ class KimBridge implements KimAuthPort, KimClientPort {
     final prev = _api;
     if (prev != null) {
       try {
-        await prev.disconnect();
+        await prev.stop();
       } catch (_) {}
     }
-    _api = KimApi(url: url, token: token, userAgent: userAgent);
-    return _api!.connect();
+    final api = rust.KimApi.start(url: url, token: token, userAgent: userAgent);
+    _api = api;
+    _events = api.sessionEvents().map(_event);
   }
 
   @override
-  Future<String> loginWs() async {
+  Future<void> stopSession() async {
     final api = _api;
+    _api = null;
+    _events = null;
     if (api == null) {
-      throw StateError('connect first');
+      return;
     }
-    return api.login();
+    try {
+      await api.stop();
+    } catch (_) {}
   }
 
   @override
-  Future<String> ping() async {
+  KimLinkState linkState() {
     final api = _api;
     if (api == null) {
-      throw StateError('connect first');
+      return const KimLinkState();
     }
-    return api.ping();
+    return KimLinkState(status: KimLinkState.statusFromLabel(api.linkState()));
   }
 
   @override
-  Future<String> talk(String dest, String body) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return api.talkToUser(dest: dest, body: body);
+  Stream<KimEvent> sessionEvents() {
+    return _events ?? const Stream.empty();
   }
 
   @override
-  Future<String> talkImage(String dest, String url, {String extra = ''}) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return api.talkImage(dest: dest, url: url, extra: extra);
+  Future<void> syncConfirm(int cursor) async {
+    await _require().syncConfirm(cursor: cursor);
+  }
+
+  @override
+  Future<void> notifyRadioUp() async {
+    await _require().notifyRadioUp();
+  }
+
+  @override
+  Future<KimTalkResult> sendMessage(
+    String dest,
+    ThreadKind kind,
+    KimOutgoingContent content, {
+    required String clientId,
+  }) async {
+    final result = await _require().sendMessage(
+      dest: dest,
+      kind: kind == ThreadKind.group ? 1 : 0,
+      content: _wire(content),
+      clientId: clientId,
+    );
+    return KimTalkResult(
+      messageId: result.messageId.toInt(),
+      sendTime: result.sendTime.toInt(),
+    );
+  }
+
+  rust.KimOutgoingContent _wire(KimOutgoingContent content) {
+    return switch (content) {
+      KimTextContent(:final text) => rust.KimOutgoingContent(
+        kind: 1,
+        body: text,
+        extra: '',
+      ),
+      KimImageContent(:final url, :final width, :final height) =>
+        rust.KimOutgoingContent(
+          kind: 2,
+          body: url,
+          extra: encodeImageExtra(width: width, height: height),
+        ),
+      KimVideoContent(:final url) => rust.KimOutgoingContent(
+        kind: 4,
+        body: url,
+        extra: '',
+      ),
+    };
+  }
+
+  @override
+  Future<List<KimHistoryMsg>> history(
+    String dest,
+    ThreadKind kind, {
+    int beforeId = 0,
+    int limit = 50,
+  }) async {
+    final items = await _require().history(
+      dest: dest,
+      kind: kind == ThreadKind.group ? 1 : 0,
+      beforeId: beforeId,
+      limit: limit,
+    );
+    return [
+      for (final item in items)
+        KimHistoryMsg(
+          messageId: item.messageId.toInt(),
+          msgType: item.msgType,
+          body: item.body,
+          extra: item.extra,
+          sender: item.sender,
+          sendTime: item.sendTime.toInt(),
+          direction: item.direction,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<KimThread>> inboxList({int limit = 200}) async {
+    final items = await _require().inbox(limit: limit);
+    return [
+      for (final item in items)
+        KimThread(
+          id: item.dest,
+          kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
+          title: item.title.isEmpty ? item.dest : item.title,
+          lastBody: item.lastBody,
+          lastAt: sendTimeMs(item.lastSendTime.toInt()),
+          unread: item.unread,
+          avatar: item.avatar,
+        ),
+    ];
   }
 
   @override
   Future<void> ack(int messageId) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    await api.ack(messageId: messageId);
+    await _require().ack(messageId: messageId);
   }
 
-  @override
-  Stream<KimEvent> events() {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return api.listen().map(_event);
-  }
-
-  KimEvent _event(KimPush push) {
+  KimEvent _event(rust.KimSessionEvent push) {
     final kind = switch (push.kind) {
       'talk' => KimEventKind.talk,
       'kick' => KimEventKind.kick,
       'friend' => KimEventKind.friend,
       'group' => KimEventKind.group,
       'token' => KimEventKind.token,
+      'link' => KimEventKind.link,
+      'inbox' => KimEventKind.inbox,
+      'sync_progress' => KimEventKind.syncProgress,
+      'sync_done' => KimEventKind.syncDone,
+      'sync_failed' => KimEventKind.syncFailed,
       _ => KimEventKind.closed,
     };
     return KimEvent(
@@ -286,6 +393,25 @@ class KimBridge implements KimAuthPort, KimClientPort {
       sendTime: push.sendTime.toInt(),
       token: push.token,
       exp: push.exp.toInt(),
+      state: push.state,
+      attempt: push.attempt,
+      inbox: [
+        for (final item in push.items)
+          KimThread(
+            id: item.dest,
+            kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
+            title: item.title.isEmpty ? item.dest : item.title,
+            lastBody: item.lastBody,
+            lastAt: sendTimeMs(item.lastSendTime.toInt()),
+            unread: item.unread,
+            avatar: item.avatar,
+          ),
+      ],
+      pulled: push.pulled.toInt(),
+      pagePending: push.pagePending,
+      error: push.error,
+      msgType: push.msgType,
+      nickname: push.nickname,
     );
   }
 
@@ -307,56 +433,32 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   @override
   Future<List<KimPerson>> friendList() async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return _people(await api.friendList());
+    return _people(await _require().friendList());
   }
 
   @override
   Future<List<KimPerson>> friendIncoming() async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return _people(await api.friendIncoming());
+    return _people(await _require().friendIncoming());
   }
 
   @override
   Future<List<KimPerson>> searchUsers(String query) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return _people(await api.searchUsers(query: query));
+    return _people(await _require().searchUsers(query: query));
   }
 
   @override
   Future<void> friendRequest(String dest) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    await api.friendRequest(dest: dest);
+    await _require().friendRequest(dest: dest);
   }
 
   @override
   Future<void> friendAccept(String dest) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    await api.friendAccept(dest: dest);
+    await _require().friendAccept(dest: dest);
   }
 
   @override
   Future<void> friendReject(String dest) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    await api.friendReject(dest: dest);
+    await _require().friendReject(dest: dest);
   }
 
   KimPerson _person(String raw) {
@@ -377,11 +479,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimPerson> profile({String dest = ''}) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
-    return _person(await api.profile(dest: dest));
+    return _person(await _require().profile(dest: dest));
   }
 
   @override
@@ -390,23 +488,12 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String avatar,
     String bio = '',
   }) async {
-    final api = _api;
-    if (api == null) {
-      throw StateError('connect first');
-    }
     return _person(
-      await api.updateProfile(nickname: nickname, avatar: avatar, bio: bio),
+      await _require().updateProfile(
+        nickname: nickname,
+        avatar: avatar,
+        bio: bio,
+      ),
     );
-  }
-
-  @override
-  Future<String> disconnect() async {
-    final api = _api;
-    if (api == null) {
-      return 'not connected';
-    }
-    final out = await api.disconnect();
-    _api = null;
-    return out;
   }
 }

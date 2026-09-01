@@ -18,7 +18,44 @@ class KimPerson {
 
 enum ConnStatus { connecting, online, reconnecting, offline }
 
-enum KimEventKind { talk, kick, friend, group, token, closed }
+class KimLinkState {
+  const KimLinkState({
+    this.status = ConnStatus.offline,
+    this.attempt = 0,
+    this.error,
+  });
+
+  final ConnStatus status;
+  final int attempt;
+  final String? error;
+
+  static ConnStatus statusFromLabel(String raw) {
+    switch (raw) {
+      case 'Connecting':
+        return ConnStatus.connecting;
+      case 'Online':
+        return ConnStatus.online;
+      case 'Reconnecting':
+        return ConnStatus.reconnecting;
+      default:
+        return ConnStatus.offline;
+    }
+  }
+}
+
+enum KimEventKind {
+  talk,
+  kick,
+  friend,
+  group,
+  token,
+  closed,
+  link,
+  inbox,
+  syncProgress,
+  syncDone,
+  syncFailed,
+}
 
 class KimEvent {
   const KimEvent({
@@ -31,6 +68,14 @@ class KimEvent {
     this.sendTime = 0,
     this.token = '',
     this.exp = 0,
+    this.state = '',
+    this.attempt = 0,
+    this.inbox = const [],
+    this.pulled = 0,
+    this.pagePending = false,
+    this.error = '',
+    this.msgType = 0,
+    this.nickname = '',
   });
 
   final KimEventKind kind;
@@ -42,6 +87,80 @@ class KimEvent {
   final int sendTime;
   final String token;
   final int exp;
+  final String state;
+  final int attempt;
+  final List<KimThread> inbox;
+  final int pulled;
+  final bool pagePending;
+  final String error;
+  final int msgType;
+  final String nickname;
+}
+
+class KimTalkResult {
+  const KimTalkResult({required this.messageId, required this.sendTime});
+
+  final int messageId;
+  final int sendTime;
+}
+
+class KimHistoryMsg {
+  const KimHistoryMsg({
+    required this.messageId,
+    required this.msgType,
+    required this.body,
+    required this.extra,
+    required this.sender,
+    required this.sendTime,
+    required this.direction,
+  });
+
+  final int messageId;
+  final int msgType;
+  final String body;
+  final String extra;
+  final String sender;
+  final int sendTime;
+  final int direction;
+}
+
+sealed class KimOutgoingContent {
+  const KimOutgoingContent();
+
+  const factory KimOutgoingContent.text(String text) = KimTextContent;
+
+  const factory KimOutgoingContent.image({
+    required String url,
+    required int width,
+    required int height,
+  }) = KimImageContent;
+
+  const factory KimOutgoingContent.video({required String url}) =
+      KimVideoContent;
+}
+
+class KimTextContent extends KimOutgoingContent {
+  const KimTextContent(this.text);
+
+  final String text;
+}
+
+class KimImageContent extends KimOutgoingContent {
+  const KimImageContent({
+    required this.url,
+    required this.width,
+    required this.height,
+  });
+
+  final String url;
+  final int width;
+  final int height;
+}
+
+class KimVideoContent extends KimOutgoingContent {
+  const KimVideoContent({required this.url});
+
+  final String url;
 }
 
 class KimThread {
@@ -52,6 +171,7 @@ class KimThread {
     this.lastBody = '',
     this.lastAt = 0,
     this.unread = 0,
+    this.avatar = '',
   });
 
   final String id;
@@ -60,6 +180,7 @@ class KimThread {
   final String lastBody;
   final int lastAt;
   final int unread;
+  final String avatar;
 
   KimThread copyWith({
     String? id,
@@ -68,6 +189,7 @@ class KimThread {
     String? lastBody,
     int? lastAt,
     int? unread,
+    String? avatar,
   }) {
     return KimThread(
       id: id ?? this.id,
@@ -76,6 +198,7 @@ class KimThread {
       lastBody: lastBody ?? this.lastBody,
       lastAt: lastAt ?? this.lastAt,
       unread: unread ?? this.unread,
+      avatar: avatar ?? this.avatar,
     );
   }
 
@@ -86,6 +209,7 @@ class KimThread {
     'lastBody': lastBody,
     'lastAt': lastAt,
     'unread': unread,
+    'avatar': avatar,
   };
 
   static KimThread? fromJson(Object? raw) {
@@ -107,11 +231,14 @@ class KimThread {
       lastBody: raw['lastBody'] is String ? raw['lastBody'] as String : '',
       lastAt: raw['lastAt'] is int ? raw['lastAt'] as int : 0,
       unread: raw['unread'] is int ? raw['unread'] as int : 0,
+      avatar: raw['avatar'] is String ? raw['avatar'] as String : '',
     );
   }
 }
 
 enum KimMsgKind { text, image, video }
+
+enum KimSendStatus { sending, sent, failed }
 
 class KimChatMsg {
   const KimChatMsg({
@@ -125,6 +252,9 @@ class KimChatMsg {
     this.kind = KimMsgKind.text,
     this.width = 0,
     this.height = 0,
+    this.messageId = 0,
+    this.batchId,
+    this.status = KimSendStatus.sent,
   });
 
   final String key;
@@ -137,10 +267,17 @@ class KimChatMsg {
   final KimMsgKind kind;
   final int width;
   final int height;
+  final int messageId;
+  final String? batchId;
+  final KimSendStatus status;
 
   bool get isImage => kind == KimMsgKind.image;
 
   bool get isVideo => kind == KimMsgKind.video;
+
+  bool get isFailed => failed || status == KimSendStatus.failed;
+
+  bool get isSending => status == KimSendStatus.sending;
 
   KimChatMsg copyWith({
     String? body,
@@ -148,18 +285,31 @@ class KimChatMsg {
     KimMsgKind? kind,
     int? width,
     int? height,
+    int? messageId,
+    String? batchId,
+    KimSendStatus? status,
+    int? at,
   }) {
+    final nextStatus =
+        status ??
+        (failed == null
+            ? this.status
+            : (failed ? KimSendStatus.failed : KimSendStatus.sent));
+    final nextFailed = failed ?? (nextStatus == KimSendStatus.failed);
     return KimChatMsg(
       key: key,
       dest: dest,
       sender: sender,
       body: body ?? this.body,
-      at: at,
+      at: at ?? this.at,
       sys: sys,
-      failed: failed ?? this.failed,
+      failed: nextFailed,
       kind: kind ?? this.kind,
       width: width ?? this.width,
       height: height ?? this.height,
+      messageId: messageId ?? this.messageId,
+      batchId: batchId ?? this.batchId,
+      status: nextStatus,
     );
   }
 
@@ -170,10 +320,13 @@ class KimChatMsg {
     'body': body,
     'at': at,
     'sys': sys,
-    'failed': failed,
+    'failed': isFailed,
     'kind': kind.name,
     'width': width,
     'height': height,
+    'messageId': messageId,
+    'batchId': batchId,
+    'status': status.name,
   };
 
   static KimChatMsg? fromJson(Object? raw) {
@@ -190,6 +343,13 @@ class KimChatMsg {
         body is! String) {
       return null;
     }
+    final statusRaw = raw['status'];
+    final failed = raw['failed'] == true;
+    final status = statusRaw == 'sending'
+        ? KimSendStatus.sending
+        : statusRaw == 'failed' || failed
+        ? KimSendStatus.failed
+        : KimSendStatus.sent;
     return KimChatMsg(
       key: key,
       dest: dest,
@@ -197,7 +357,7 @@ class KimChatMsg {
       body: body,
       at: raw['at'] is int ? raw['at'] as int : 0,
       sys: raw['sys'] == true,
-      failed: raw['failed'] == true,
+      failed: status == KimSendStatus.failed,
       kind: raw['kind'] == 'video'
           ? KimMsgKind.video
           : raw['kind'] == 'image'
@@ -205,6 +365,9 @@ class KimChatMsg {
           : KimMsgKind.text,
       width: raw['width'] is int ? raw['width'] as int : 0,
       height: raw['height'] is int ? raw['height'] as int : 0,
+      messageId: raw['messageId'] is int ? raw['messageId'] as int : 0,
+      batchId: raw['batchId'] is String ? raw['batchId'] as String : null,
+      status: status,
     );
   }
 }
