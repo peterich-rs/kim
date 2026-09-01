@@ -50,6 +50,7 @@ pub struct KimMetrics {
     session_not_found: IntCounterVec,
     dispatch_fail_total: IntCounterVec,
     heartbeat_revoke_error_total: IntCounterVec,
+    mailbox_full_total: IntCounterVec,
 }
 
 impl KimMetrics {
@@ -116,6 +117,14 @@ impl KimMetrics {
             labels,
         )
         .map_err(|e| Error::Other(e.to_string()))?;
+        let mailbox_full_total = IntCounterVec::new(
+            Opts::new(
+                "kim_mailbox_full_total",
+                "gateway downlink write mailbox full; slow connection disconnected",
+            ),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
 
         registry
             .register(Box::new(channel_total.clone()))
@@ -150,6 +159,9 @@ impl KimMetrics {
         registry
             .register(Box::new(heartbeat_revoke_error_total.clone()))
             .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(mailbox_full_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Arc::new(Self {
             registry,
@@ -166,6 +178,7 @@ impl KimMetrics {
             session_not_found,
             dispatch_fail_total,
             heartbeat_revoke_error_total,
+            mailbox_full_total,
         }))
     }
 
@@ -243,6 +256,10 @@ impl KimMetrics {
         self.heartbeat_revoke_error_total
             .with_label_values(&self.svc())
             .inc();
+    }
+
+    pub fn on_mailbox_full(&self) {
+        self.mailbox_full_total.with_label_values(&self.svc()).inc();
     }
 }
 

@@ -46,8 +46,8 @@ kim-core  ChannelMap ──clone──► 写信箱 ──► 写专员 ──�
                      │
                      │  Channel 可 clone，所有人持有的是信箱，不是专员本人
                      │
-Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► receive（业务）
-                                      └── Ping 也丢给写信箱
+Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► Binary 入该 channel 的串行 lane ──► receive（业务）
+                                      └── Ping 也丢给写信箱（不进 lane）
 ```
 
 写是 **N 对 1**（投递）；读是 **1 对 1**（监听）。
@@ -114,7 +114,7 @@ TcpServer::start
     读循环：
         Ping  → 自己回 Pong（业务看不见）
         Close → 结束
-        Binary → MessageListener::receive(Agent, payload)
+        Binary → 该 header.channel_id（或连接 id）的串行 lane → MessageListener::receive
     断开：
         ChannelMap.remove
         StateListener::disconnect
@@ -124,7 +124,7 @@ TcpServer::start
 |---|---|---|---|
 | `Conn` | `kim-tcp`、`kim-ws` | 握手、Channel 读写 | 读/写一帧 |
 | `Acceptor` | 业务（现在 EchoHandler） | TcpServer 接进来之后 | 这是谁 |
-| `MessageListener` | 业务 | Channel 读循环 | 收到业务字节 |
+| `MessageListener` | 业务 | 该 channel 的串行 lane（不在读专员上 await） | 收到业务字节 |
 | `StateListener` | 业务 | 连接结束时 | 清理 |
 | `Agent` | Channel 内部 | 业务在 receive 里 | 只能 id + push，不能 Close |
 | `Dialer` / `TcpDialer` | 业务或 IdentityDialer | Client::connect | 拨号 + 握手 |
@@ -146,7 +146,7 @@ TcpServer::start
 - **写**：N 对 1。谁都可以 `push`，顺序 = **入队顺序**。真正碰插座的只有写协程。
 - **读**：1 对 1。读专员自己守网线，有数据再喊业务。别人不持有「读信箱」去使唤他。
 
-「不加锁」指的是：**不再握着互斥锁做整段网络 syscall**。同步还在，只是挪到写专员的 FIFO 桌子上（入队/出队，临界区很短）。桌子满了 `push` 失败，这是反压，防止慢连接撑爆内存。
+「不加锁」指的是：**不再握着互斥锁做整段网络 syscall**。同步还在，只是挪到写专员的 FIFO 桌子上（入队/出队，临界区很短）。桌子满了：`WriteFullPolicy::Disconnect`（网关下行）`try_send` 失败并拆连接、打 `kim_mailbox_full_total`；`Block`（内部链路默认）仍 `send().await`。
 
 两把不同的锁，不要混：
 
@@ -156,7 +156,7 @@ TcpServer::start
 | 写专员的 `mpsc` | 多个人往同一插座投递的顺序 | 已落地。插座上无写写竞争 |
 | 读循环 | 谁从插座 read | 每个连接一个任务，无多读者 |
 
-`MessageListener` 在 `start` 前登记，读循环跑起来后不热替换，所以「注册 Receiver」没有运行时锁。我们的 `receive` 在读循环里 `await`（同一连接串行），不需要为「同时喊两次业务」加锁。小册若 `go Receive`，那是业务层自己要线程安全。
+`MessageListener` 在 `start` 前登记，读循环跑起来后不热替换。Ping/Pong/Close 仍在读专员；Binary 进 per-`channel_id` 串行 lane（`Semaphore(max_in_flight)` 满则停读）。`receive` **不再**假设与读同任务，但同一逻辑 channel 仍 FIFO，不同 channel_id 可以并发。不要无界 spawn 每个包。
 
 尚未对齐的一点：**`TcpClient` 写侧**仍是 `Mutex` 包着写半边（自己 `send` + 心跳 Ping）。客户端写并发少，先这样。服务端 Channel 才是完整的「信箱 + 写专员」。
 
@@ -189,6 +189,10 @@ TcpServer::start
 - 再往后：io_uring、`SO_REUSEPORT`  
 
 改内核、换拥塞算法、用户态协议栈，是流量和尾延迟证明瓶颈在内核之后的事，大厂才养专门团队。本项目把合同留在 `Conn`：谁履行可靠有序有边界都可以换；默认履行者是内核 TCP。
+
+## 串行 lane 与写满策略（G-29 / G-30）
+
+`ChannelOpts` 增加 `write_full`（Block / Disconnect）、`max_in_flight`、可选 `lane_key`（从 payload 取 `header.channel_id`）。Chat 的 `TcpServer` 用 `logic_channel_id`；网关 `run_gateway` 设 Disconnect。kim-ws `read_frame` 非 cancel-safe：超时只拆连接，禁止 `select!` 后继续读半帧。
 
 ## 怎么验收通信层没坏
 

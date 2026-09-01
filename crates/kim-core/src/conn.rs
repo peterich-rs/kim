@@ -44,6 +44,7 @@ pub trait Acceptor: Send + Sync {
 
 /// 收到一帧业务数据（Ping/Pong/Close 已经被 Channel 吃掉）。
 ///
+/// 不保证与读循环同任务；同一 `header.channel_id`（或连接 id）上仍 FIFO。
 /// 第一个参数是 Agent：只能回消息、能知道 id，不能直接把连接关掉。
 #[async_trait]
 pub trait MessageListener: Send + Sync {

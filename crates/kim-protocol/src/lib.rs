@@ -73,6 +73,13 @@ pub fn read_logic(buf: &[u8]) -> Result<LogicPkt, ProtocolError> {
     }
 }
 
+pub fn logic_channel_id(buf: &[u8]) -> Option<String> {
+    read_logic(buf)
+        .ok()
+        .map(|p| p.header.channel_id)
+        .filter(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

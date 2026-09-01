@@ -286,6 +286,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
     }
+    server.set_lane_key(Arc::new(|payload: &[u8]| {
+        kim_protocol::logic_channel_id(payload)
+    }));
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());
     server.set_state_listener(handler);

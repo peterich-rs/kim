@@ -17,6 +17,9 @@ pub enum Error {
     #[error("connection closed")]
     Closed,
 
+    #[error("write mailbox full")]
+    MailboxFull,
+
     #[error("channel `{0}` not found")]
     ChannelNotFound(String),
 

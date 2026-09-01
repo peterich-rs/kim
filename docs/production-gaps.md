@@ -26,7 +26,7 @@
 2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
 3. **内部控制面已关**：Chat `/internal/kick` 与 Royal 同 HMAC；nonce Redis NX EX 121；生产 Redis `requirepass` + `noeviction`；Consul 关明文 8500、HTTPS/mTLS 8501、ACL deny、每服务最小权限 token。demo/`change-me` JWT/HMAC 在 strict 下拒启动。
 4. **租户已冻结为 `app=kim`**（[gray.md](gray.md)）。G-05 / G-06 已关。
-5. **通信层骨架对、运维合同不够**：读循环串行等待业务、满信箱阻塞、TGateway 无 TLS。停机顺序已关（G-07 / G-32）。这些能在现有 `Conn`/`Channel` 边界内改，不必换架构。
+5. **通信层骨架对、运维合同不够**：读循环按 channel 串行 lane、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。仍缺 TGateway TLS（G-34）。停机顺序已关（G-07 / G-32）。
 
 两份外部报告的大方向都对。产品报告若干事实写错；库报告把硬化排在鉴权/读索引前面，且 Phase 0 的 duplicate 语义不能照抄。订正见下文两张表。
 
@@ -39,17 +39,16 @@
 | 序 | 项 | 条目 |
 |---:|---|---|
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
-| 2 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
-| 3 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 4 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 5 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 6 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 7 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 8 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 9 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 10 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 2 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 3 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 4 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 5 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 6 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 7 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 8 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 9 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03 rollout 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+读循环隔离、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。剩余通信层硬化（TLS）仍排在 G-03 rollout 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
@@ -73,7 +72,7 @@
 | 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
-| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`；无端到端/Royal RPC；无告警规则 |
+| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`；无端到端/Royal RPC；无告警规则 |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
@@ -92,6 +91,8 @@
 | G-11 Router JWT 进 URL / 哈希 raw token | [routing.md](routing.md)。`GET /api/lookup` 只接受 Authorization；哈希 `acc`/`jti`，renew 复用 jti 不换桶 |
 | G-07 / G-32 SIGTERM 先摘发现再 drain | [deploy.md](deploy.md)。unix SIGTERM+SIGINT；Container 先 Consul deregister，再停 accept、JoinSet 有界 drain、关连接；TcpClient 心跳 abort；Royal/Router HTTP graceful。无「请换网关」Push；未在 K8s 杀进程验证 |
 | G-31 心跳 Redis 错误踢全员 | [link-layer-login.md](link-layer-login.md)、[observability.md](observability.md)。仅 `Ok(true)` 立刻关；存储错误连续 3 次（`HEARTBEAT_REVOKE_ERROR_GRACE`）后断开；期内 warn + `kim_heartbeat_revoke_error_total`、不续签 JWT。登录 revoke 仍 fail-closed |
+| G-29 读循环与 handler 按 channel 串行隔离 | [communication-layer.md](communication-layer.md)。Binary 入 per `header.channel_id` 串行 lane；Ping/Pong/Close 留读专员；满 in-flight 停读。MessageListener 不再假设与读同任务，同一 channel 仍 FIFO |
+| G-30 下行 try_send / 满信箱 Disconnect | [communication-layer.md](communication-layer.md)。`ChannelOpts.write_full`：网关 Disconnect + `kim_mailbox_full_total`；内部链路默认 Block |
 
 ---
 
@@ -394,48 +395,6 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 
 ---
 
-### G-29 读循环串行等待业务，慢 SQL 饿死心跳
-
-**文件**
-
-- `crates/kim-core/src/channel.rs` — `read_until_err`（约 167–204 行）：`listener.receive(...).await` 占着读专员
-- `services/chat/src/lib.rs` — `ChatHandler::receive`（约 479–538 行）：整段 router 在这条 await 里
-- 默认 `read_wait` 见 `kim_core::DEFAULT_READ_WAIT`（60s 量级）
-
-**问题**
-
-网关↔Chat 是一条 TCP 上复用该网关全部用户。Chat 读循环里跑 `insert` / Royal HTTP 时，同一链路上的 Ping 发不出去，对端按读超时拆连接，表现为「偶发掉线」。注释写「满了 Push 会失败」，读路径却把业务和拆帧绑在同一任务。
-
-**建议**
-
-读帧可以与业务并发，**同一逻辑 channel 的业务必须串行**。当前 `receive().await` 保证同一连接上 `group.join`、talk、ACK 与响应的顺序。H1 若对 `work_tx` 开多个 worker 抢同一 `header.channel_id`，会出现加入群尚未完成就 talk、ACK 与 Success 乱序。
-
-约定：
-
-- 按 `header.channel_id` 建串行 lane（每条用户连接一个队列，或按 id 分片到单 worker）。
-- 只允许**不同**逻辑 channel 之间并发。
-- 每 lane / 每进程 `Semaphore(max_in_flight)`；满则停读或断开（背压写进测试）。
-- Ping/Pong/Close 仍在读专员，不进 lane。
-- 文档写明：响应顺序与请求到达顺序一致；`MessageListener` 不再假设与读同任务，但同一 channel 上仍是 FIFO。
-
-不要无界 `spawn` 每个包。这是库报告里最值得做的通信层改动，优先级低于 G-03 rollout，高于 vectored write。
-
----
-
-### G-30 满信箱 `send().await` 阻塞热路径
-
-**文件**
-
-- `crates/kim-core/src/channel.rs` — `send_binary`（约 225–239 行）：`tx.send().await`
-- `ChannelOpts.write_queue = 64`；注释称满了会失败，实现是阻塞
-- 群 `dispatch` 对每个网关 `push`，会卡在最慢那个成员的信箱上，并堵住 Chat 读循环（叠 G-29）
-
-**建议**
-
-网关下行走 `try_send`；满则 `kim_mailbox_full_total` + 断开慢连接（`WriteFullPolicy::Disconnect`）。内部 TcpClient 仍可 Block 或带超时。不要在热路径上无限等。
-
----
-
 ### G-33 已接入库用得浅：Redis / SQLx / Axum / Tokio
 
 **文件与缺口**
@@ -568,7 +527,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 |---|---|
 | Phase 0：`inserted.duplicate` 保持不二次 dispatch | 已否。identical 重试从落库再 Push |
 | Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿 |
-| PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与控制面 HMAC 已落地；try_send 仍排在游标之后 |
+| PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与控制面 HMAC 已落地；try_send/lanes 已关（G-29/G-30），仍排在游标 rollout 之后作为通信层 |
 | SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter supervisor 已拉离线；G-14 仍开因为 Web `isRetryable` 与 chat_ui leftover |
 | 引入 `tokio-util` 为了 JoinSet | `tokio::task::JoinSet` 已在 tokio。tokio-util 只为 `CancellationToken` 才值得加 |
 | `write_all_vectored` 示例 | 稳定 tokio 上该 API 常要 `tokio_unstable`。未验证前不要写进热路径 |
@@ -636,14 +595,14 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 **H0 — 语义（无新库，叠 G-15/G-30）**
 
 - persist-first **已做**，形状见 [control-layer-chat.md](control-layer-chat.md)。
-- 网关下行 `try_send` 仍未做；满信箱 Disconnect + `kim_mailbox_full_total`。
+- 网关下行 `try_send` **已做**（G-30）：`WriteFullPolicy::Disconnect` + `kim_mailbox_full_total`；内部链路默认 Block。
 - ACK **不是** Snowflake 高水位（G-03）。
 
-**H1 — 隔离（G-29）**。停机（G-07 / G-32）已合入，形状见 [deploy.md](deploy.md)。
+**H1 — 隔离（G-29）**。停机（G-07 / G-32）已合入，形状见 [deploy.md](deploy.md)。读循环隔离 **已做**，形状见 [communication-layer.md](communication-layer.md)。
 
-- 读帧与业务解耦；**同一 `header.channel_id` 一条串行 lane**，只允许不同逻辑 channel 并发。把顺序保证、背压、响应 FIFO 写成测试（join 未完成不得 talk 乱序）。
-- 每 lane / 每进程 Semaphore；满则停读或断开。
-- 全进程连接上限。
+- 读帧与业务解耦；**同一 `header.channel_id` 一条串行 lane**，只允许不同逻辑 channel 并发。join 未完成不得 talk 乱序；Ping 留读专员。
+- 每 lane / 每进程 Semaphore；满则停读。
+- 全进程连接上限仍属 G-34。
 - 保持 `kim-ws` `read_frame` 超时即拆连接（非 cancel-safe，禁止半帧 `select!` 再读）。
 
 **H2 — 套接字与 TGateway TLS（G-34）**
