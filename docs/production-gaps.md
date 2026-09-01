@@ -40,15 +40,14 @@
 |---:|---|---|
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
 | 2 | 下行 `try_send`；满信箱断慢连接；读循环与 handler 隔离（**按 channel 串行**） | G-29, G-30 |
-| 3 | 心跳 Redis 错误有界宽限 | G-31 |
-| 4 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
-| 5 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 6 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 7 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 8 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 9 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 10 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 11 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 3 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 4 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
+| 5 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
+| 6 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
+| 7 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
+| 8 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
+| 9 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
+| 10 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
 通信层硬化（读循环隔离、try_send、TLS）合理，但排在 G-03 rollout 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
@@ -74,7 +73,7 @@
 | 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
-| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`；无端到端/Royal RPC；无告警规则 |
+| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`；无端到端/Royal RPC；无告警规则 |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
@@ -92,6 +91,7 @@
 | G-12 生产拒 demo JWT/HMAC | 并入控制面 strict 启动 |
 | G-11 Router JWT 进 URL / 哈希 raw token | [routing.md](routing.md)。`GET /api/lookup` 只接受 Authorization；哈希 `acc`/`jti`，renew 复用 jti 不换桶 |
 | G-07 / G-32 SIGTERM 先摘发现再 drain | [deploy.md](deploy.md)。unix SIGTERM+SIGINT；Container 先 Consul deregister，再停 accept、JoinSet 有界 drain、关连接；TcpClient 心跳 abort；Royal/Router HTTP graceful。无「请换网关」Push；未在 K8s 杀进程验证 |
+| G-31 心跳 Redis 错误踢全员 | [link-layer-login.md](link-layer-login.md)、[observability.md](observability.md)。仅 `Ok(true)` 立刻关；存储错误连续 3 次（`HEARTBEAT_REVOKE_ERROR_GRACE`）后断开；期内 warn + `kim_heartbeat_revoke_error_total`、不续签 JWT。登录 revoke 仍 fail-closed |
 
 ---
 
@@ -366,7 +366,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 - `crates/kim-session/src/dual.rs` — 读 primary；mirror 失败只 warn
 - `deploy/compose.yml` — Redis 64MB、`volatile-lru`
 
-主 Redis 挂：session 查不到 → `SessionNotFound`。gateway 心跳里 revoke check 失败则关连接（fail-closed），登录也拒绝 —— 可用性比「查不到 session」更差。
+主 Redis 挂：session 查不到 → `SessionNotFound`。gateway 心跳吊销查询存储错误有界宽限（连续 3 次后断开）；登录 revoke 仍 fail-closed。
 
 `volatile-lru` 会先踢带 TTL 的 ACK（30 天）和 session（48h），表现为有人突然从 15 天窗口重拉。
 
@@ -433,23 +433,6 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 **建议**
 
 网关下行走 `try_send`；满则 `kim_mailbox_full_total` + 断开慢连接（`WriteFullPolicy::Disconnect`）。内部 TcpClient 仍可 Block 或带超时。不要在热路径上无限等。
-
----
-
-### G-31 心跳路径 Redis 错误会踢全员
-
-**文件**
-
-- `services/gateway/src/lib.rs` — `heartbeat`（约 296 行）：`Ok(true) | Err(_) => close`
-- 登录路径 revoke 失败 → Unauthorized（约 441–445 行）——登录 fail-closed 可保留
-
-**问题**
-
-瞬时 Redis 抖动把所有靠心跳续命的连接踢光。库报告这条成立，应单独做，不要和登录鉴权混成一个开关。
-
-**建议**
-
-心跳：仅 `Ok(true)`（确认已吊销）才立刻踢。存储错误 **不要**无限 fail-open 续签同一 JTI——Redis 长故障时已吊销的 token 会一直活着。改为有界宽限（例如连续失败 N 次或 T 秒）：期内 warn + metrics、连接保持；超期断开并要求重登。登录路径 revoke 检查失败仍 fail-closed。
 
 ---
 
@@ -592,7 +575,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | ChannelMap 立刻分片 | `get` 已 clone `Channel` 再放锁，登录写锁才会挡全表。先做 G-29，profile 后再分片。拒绝 DashMap 作为第一刀是对的 |
 | HASH 分区脚本做成迁移 | 草稿列名是 `account` 不是 `account_a`。按人 HASH 对 `offline.content` 按 id 取不友好。更合理的是 `message_index` RANGE(时间) + 索引；**不要**进默认 `sqlx::migrate!` |
 | 手写 Consul HTTP，无官方 consul crate | 可接受。生产已是 ACL token + 私有 CA mTLS；缺的不是换官方 crate |
-| 心跳 Redis 错误 fail-open | 瞬时错误不要踢全员。长故障必须有界宽限，不能无限续已吊销 JTI（G-31） |
+| 心跳 Redis 错误 fail-open | 已关：仅确认吊销立刻踢；存储错误连续 3 次后断开，期内不续签 JWT。登录仍 fail-closed（G-31） |
 | 生产 JWT 仍是 DEMO 则退出 | 已并入控制面 strict 启动 |
 | 雪花 init 失败禁止 Sequence 降级 | 与 G-22 一致 |
 | 群仍写扩散，>200 分批 | 与 G-25 一致；现在就改读扩散会推翻 ACK/inbox，拒绝得对 |
@@ -671,10 +654,10 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - TGateway：`tls_cert`/`tls_key` 空则明文；e2e 仿 `crates/kim-ws/tests/wss.rs`。
 - TLS 终止放 tgateway，不把证书逻辑放进 kim-tcp。
 
-**H3 — 用尽 redis / sqlx / axum / jwt（G-31, G-33）**
+**H3 — 用尽 redis / sqlx / axum / jwt（G-33）**
 
 - `get_locations` pipeline；ConnectionManager timeout。
-- 心跳 Redis 错误：有界宽限，不是无限 fail-open；登录 revoke 仍 fail-closed（G-31）。
+- 心跳 Redis 错误有界宽限已落地（G-31）：连续 3 次失败后断开；登录 revoke 仍 fail-closed。
 - sqlx `statement_timeout`；pool 可配，默认不要停在 5 不说明。
 - Royal/Router `tower-http`。
 - 空 secret / DEMO secret：**生产启动失败**。

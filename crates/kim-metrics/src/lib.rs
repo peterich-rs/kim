@@ -49,6 +49,7 @@ pub struct KimMetrics {
     talk_total: IntCounterVec,
     session_not_found: IntCounterVec,
     dispatch_fail_total: IntCounterVec,
+    heartbeat_revoke_error_total: IntCounterVec,
 }
 
 impl KimMetrics {
@@ -107,6 +108,14 @@ impl KimMetrics {
             &["service_id", "service_name", "kind"],
         )
         .map_err(|e| Error::Other(e.to_string()))?;
+        let heartbeat_revoke_error_total = IntCounterVec::new(
+            Opts::new(
+                "kim_heartbeat_revoke_error_total",
+                "heartbeat revoke store/transport errors (bounded grace then disconnect)",
+            ),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
 
         registry
             .register(Box::new(channel_total.clone()))
@@ -138,6 +147,9 @@ impl KimMetrics {
         registry
             .register(Box::new(dispatch_fail_total.clone()))
             .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(heartbeat_revoke_error_total.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Arc::new(Self {
             registry,
@@ -153,6 +165,7 @@ impl KimMetrics {
             talk_total,
             session_not_found,
             dispatch_fail_total,
+            heartbeat_revoke_error_total,
         }))
     }
 
@@ -223,6 +236,12 @@ impl KimMetrics {
     pub fn on_dispatch_fail(&self, kind: &str) {
         self.dispatch_fail_total
             .with_label_values(&[self.service_id.as_str(), self.service_name.as_str(), kind])
+            .inc();
+    }
+
+    pub fn on_heartbeat_revoke_error(&self) {
+        self.heartbeat_revoke_error_total
+            .with_label_values(&self.svc())
             .inc();
     }
 }
