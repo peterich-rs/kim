@@ -351,7 +351,7 @@ dependencies = [
  "kimbench",
  "pkt-client",
  "prometheus",
- "prost",
+ "prost 0.13.5",
  "redis",
  "reqwest",
  "royal",
@@ -824,7 +824,7 @@ dependencies = [
  "kim-protocol",
  "kim-session",
  "kim-ws",
- "prost",
+ "prost 0.13.5",
  "redis",
  "reqwest",
  "serde",
@@ -1271,7 +1271,7 @@ dependencies = [
  "kim-core",
  "kim-protocol",
  "kim-ws",
- "prost",
+ "prost 0.13.5",
  "reqwest",
  "serde",
  "serde_json",
@@ -1304,7 +1304,7 @@ dependencies = [
  "kim-protocol",
  "kim-tcp",
  "kim-ws",
- "prost",
+ "prost 0.13.5",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -1356,7 +1356,7 @@ dependencies = [
  "bytes",
  "hmac",
  "jsonwebtoken",
- "prost",
+ "prost 0.13.5",
  "prost-build",
  "protobuf-src",
  "serde",
@@ -1373,7 +1373,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "kim-protocol",
- "prost",
+ "prost 0.13.5",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -1386,7 +1386,7 @@ dependencies = [
  "async-trait",
  "kim-protocol",
  "kim-router",
- "prost",
+ "prost 0.13.5",
  "redis",
  "tokio",
  "tracing",
@@ -1732,11 +1732,12 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "petgraph"
-version = "0.7.1"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
 dependencies = [
  "fixedbitset",
+ "hashbrown 0.15.5",
  "indexmap",
 ]
 
@@ -1802,7 +1803,7 @@ dependencies = [
  "kim-core",
  "kim-protocol",
  "kim-ws",
- "prost",
+ "prost 0.13.5",
  "reqwest",
  "tokio",
  "tracing",
@@ -1895,23 +1896,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.13.5",
+]
+
+[[package]]
+name = "prost"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
+dependencies = [
+ "bytes",
+ "prost-derive 0.14.4",
 ]
 
 [[package]]
 name = "prost-build"
-version = "0.13.5"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
+checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
  "heck",
  "itertools",
  "log",
  "multimap",
- "once_cell",
  "petgraph",
  "prettyplease",
- "prost",
+ "prost 0.14.4",
  "prost-types",
  "regex",
  "syn 2.0.119",
@@ -1932,12 +1942,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost-types"
-version = "0.13.5"
+name = "prost-derive"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
+checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
- "prost",
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
+dependencies = [
+ "prost 0.14.4",
 ]
 
 [[package]]
@@ -2249,7 +2272,7 @@ dependencies = [
  "kim-naming",
  "kim-protocol",
  "kim-session",
- "prost",
+ "prost 0.13.5",
  "rand_core 0.6.4",
  "redis",
  "reqwest",
@@ -2841,7 +2864,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
