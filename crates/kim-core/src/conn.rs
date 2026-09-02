@@ -45,10 +45,10 @@ pub trait Acceptor: Send + Sync {
 /// 收到一帧业务数据（Ping/Pong/Close 已经被 Channel 吃掉）。
 ///
 /// 不保证与读循环同任务；同一 `header.channel_id`（或连接 id）上仍 FIFO。
-/// 第一个参数是 Agent：只能回消息、能知道 id，不能直接把连接关掉。
+/// 第一个参数是 [`ChannelHandle`]：只能回消息、能知道 id，不能直接把连接关掉。
 #[async_trait]
 pub trait MessageListener: Send + Sync {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes);
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes);
 }
 
 /// 连接断开时通知业务。以后这里会清会话、改在线状态。
@@ -58,8 +58,10 @@ pub trait StateListener: Send + Sync {
 }
 
 /// 业务层能对一条连接做的最小操作：我是谁、推一串字节。
+///
+/// 不能关连接；关连接是通信层的事（[`crate::Server::close_channel`]）。
 #[async_trait]
-pub trait Agent: Send + Sync {
+pub trait ChannelHandle: Send + Sync {
     fn id(&self) -> &str;
     async fn push(&self, payload: Bytes) -> Result<(), Error>;
 }

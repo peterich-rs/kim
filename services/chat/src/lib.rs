@@ -25,7 +25,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::Container;
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, StateListener};
+use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, StateListener};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
@@ -540,7 +540,7 @@ impl Acceptor for ChatHandler {
 
 #[async_trait]
 impl MessageListener for ChatHandler {
-    async fn receive(&self, _agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
         let pkt = match read_logic(&payload) {
             Ok(p) => p,
             Err(err) => {
@@ -630,10 +630,10 @@ mod tests {
     use crate::store::MemoryMessageStore;
     use crate::users::{MemoryUserDirectory, UserDirectory};
 
-    struct NoopAgent;
+    struct NoopHandle;
 
     #[async_trait]
-    impl Agent for NoopAgent {
+    impl ChannelHandle for NoopHandle {
         fn id(&self) -> &str {
             "noop"
         }
@@ -711,7 +711,7 @@ mod tests {
             client_id: String::new(),
         });
         handler
-            .receive(&NoopAgent, marshal(&Packet::Logic(pkt)))
+            .receive(&NoopHandle, marshal(&Packet::Logic(pkt)))
             .await;
         assert!(
             store.recorded().is_empty(),

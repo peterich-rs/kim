@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, Server, StateListener};
 use kim_ws::{ClientOptions, WsClient, WsIdentityDialer, WsServer};
 
 struct EchoHandler;
@@ -27,10 +27,10 @@ impl Acceptor for EchoHandler {
 
 #[async_trait]
 impl MessageListener for EchoHandler {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
-        let _ = agent.push(Bytes::from(out)).await;
+        let _ = handle.push(Bytes::from(out)).await;
     }
 }
 

@@ -17,7 +17,7 @@ crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧
 
 | 路径 | 职责 |
 |---|---|
-| `crates/kim-core` | 说明书：`Conn` / `Frame` / `OpCode` / `Channel::pair` / `ChannelMap` / `Acceptor` / `MessageListener` / `StateListener` / `Agent` / `Server` / `Client` |
+| `crates/kim-core` | 说明书：`Conn` / `Frame` / `OpCode` / `Channel::pair` / `ChannelMap` / `Acceptor` / `MessageListener` / `StateListener` / `ChannelHandle` / `Server` / `Client` |
 | `crates/kim-tcp` | TCP 履行者：`opcode 1B \| len 4B LE \| payload`，`TcpServer` / `TcpClient` / `IdentityDialer` |
 | `crates/kim-tcp/tests/echo.rs` | 进程内 TCP 回声验收：第一帧当名字，原文加 ` from server` |
 
@@ -153,7 +153,7 @@ gateway 读专员
   │  Channel 已把 WS Ping/Pong/Close 吃掉
   │  MessageListener 拿到 payload
   │  kim_protocol::read() 认出 LogicPkt
-  │  填 Header.channel_id = agent.id()
+  │  填 Header.channel_id = handle.id()
   │  填 Meta dest.server = "wg-1"（本网关）
   │  command="chat.demo.echo" → 前缀 "chat"
   ▼
@@ -182,7 +182,7 @@ pkt-client  BasicPkt ping
     ▼
 gateway  receive
     │  认出 MagicBasicPkt，code=1
-    │  立刻 agent.push(BasicPkt pong)
+    │  立刻 handle.push(BasicPkt pong)
     │  return          ← 不调用 Forward
     ▼
 pkt-client  收到 pong
@@ -546,7 +546,7 @@ pub struct BasicPkt {
 
 规则：
 
-- 网关 `receive` 见 `CODE_PING` → `agent.push(marshal(BasicPkt { code: CODE_PONG, body: empty }))`，**return**。
+- 网关 `receive` 见 `CODE_PING` → `handle.push(marshal(BasicPkt { code: CODE_PONG, body: empty }))`，**return**。
 - 不 Forward。Chat 进程若解码到 BasicPkt：打 `warn` 并丢弃（验收时用这条证明 ping 没到 Chat）。
 - `length > 4096` 拒绝（心跳不该有大 body）。
 
@@ -1100,11 +1100,11 @@ Accept:
 Receive:
     Packet = read(payload)     // Channel 把 Binary 和 Text 都当字节送来，没有 opcode
     解包失败（坏 Magic / 半包）→ warn，return
-    Basic + ping → agent.push(pong)；info!("basic ping, local pong"); return
-    Logic → header.channel_id = agent.id();
+    Basic + ping → handle.push(pong)；info!("basic ping, local pong"); return
+    Logic → header.channel_id = handle.id();
             container.forward(pkt.service_name(), pkt).await
             Forward 失败 → 构造 Response（同一 sequence），
-              Status=ServiceUnavailable 或 SystemException，agent.push
+              Status=ServiceUnavailable 或 SystemException，handle.push
 
 Disconnect:
     info!(channel, "disconnect")

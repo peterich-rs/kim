@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, Notify, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
 use tracing::debug;
 
-use crate::{Agent, Conn, Error, MessageListener, OpCode};
+use crate::{ChannelHandle, Conn, Error, MessageListener, OpCode};
 
 /// 写协程接收的任务。业务 Push、心跳 Pong、关闭全部走这里，
 /// 避免读循环和写循环同时写同一条 TCP 流。
@@ -248,7 +248,7 @@ impl Channel {
 }
 
 #[async_trait]
-impl Agent for Channel {
+impl ChannelHandle for Channel {
     fn id(&self) -> &str {
         &self.id
     }
@@ -280,7 +280,7 @@ struct LaneSet {
     in_flight: Arc<Semaphore>,
     lane_cap: usize,
     listener: Arc<dyn MessageListener>,
-    agent: ChannelAgent,
+    handle: PushHandle,
 }
 
 impl LaneSet {
@@ -288,7 +288,7 @@ impl LaneSet {
         in_flight: Arc<Semaphore>,
         lane_cap: usize,
         listener: Arc<dyn MessageListener>,
-        agent: ChannelAgent,
+        handle: PushHandle,
     ) -> Self {
         Self {
             txs: Mutex::new(HashMap::new()),
@@ -296,7 +296,7 @@ impl LaneSet {
             in_flight,
             lane_cap,
             listener,
-            agent,
+            handle,
         }
     }
 
@@ -315,17 +315,17 @@ impl LaneSet {
                 let (tx, rx) = mpsc::channel(self.lane_cap);
                 map.insert(key, tx.clone());
                 let listener = self.listener.clone();
-                let agent = self.agent.clone();
-                let handle = tokio::spawn(async move {
+                let handle = self.handle.clone();
+                let worker = tokio::spawn(async move {
                     let mut rx = rx;
                     while let Some(job) = rx.recv().await {
-                        listener.receive(&agent, job.payload).await;
+                        listener.receive(&handle, job.payload).await;
                     }
                 });
                 self.workers
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .push(handle);
+                    .push(worker);
                 tx
             }
         };
@@ -348,11 +348,11 @@ impl LaneSet {
 
 impl<R: Conn> ChannelReadLoop<R> {
     pub async fn run(mut self, listener: Arc<dyn MessageListener>) -> Result<(), Error> {
-        let agent = ChannelAgent {
+        let handle = PushHandle {
             id: self.id.clone(),
             write: self.write.clone(),
         };
-        let lanes = LaneSet::new(self.in_flight.clone(), self.max_in_flight, listener, agent);
+        let lanes = LaneSet::new(self.in_flight.clone(), self.max_in_flight, listener, handle);
         let result = self.read_until_err(&lanes).await;
         lanes.drain().await;
         self.write.close().await;
@@ -408,13 +408,13 @@ impl<R: Conn> ChannelReadLoop<R> {
 /// 读循环交给 MessageListener 的手柄：能回消息，不能关连接。
 /// receive 不在读任务上跑；同一 lane（channel_id）仍 FIFO。
 #[derive(Clone)]
-struct ChannelAgent {
+struct PushHandle {
     id: Arc<str>,
     write: WriteShared,
 }
 
 #[async_trait]
-impl Agent for ChannelAgent {
+impl ChannelHandle for PushHandle {
     fn id(&self) -> &str {
         &self.id
     }
@@ -655,7 +655,7 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for FifoListener {
-        async fn receive(&self, _agent: &dyn Agent, payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
             match payload.as_ref() {
                 b"join" => {
                     self.order
@@ -747,7 +747,7 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for OverlapListener {
-        async fn receive(&self, _agent: &dyn Agent, payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
             match payload.as_ref() {
                 b"ch-a" => {
                     self.a_running.store(true, Ordering::SeqCst);
@@ -825,7 +825,7 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for SlowListener {
-        async fn receive(&self, _agent: &dyn Agent, _payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
             self.started.notify_waiters();
             self.gate.notified().await;
         }

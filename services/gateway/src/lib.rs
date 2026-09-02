@@ -16,7 +16,9 @@ pub use slots::build_slots;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::{Container, DownlinkHook};
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, OpCode, Server, StateListener};
+use kim_core::{
+    Acceptor, ChannelHandle, Conn, Error, MessageListener, OpCode, Server, StateListener,
+};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
     AuthResp, DeviceCheckQuery, DeviceCheckStatus, Flag, KickoutNotify, LoginReq, RevokeQuery,
@@ -839,7 +841,7 @@ impl Acceptor for GatewayHandler {
 
 #[async_trait]
 impl MessageListener for GatewayHandler {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         let pkt = match read(&payload) {
             Ok(p) => p,
             Err(err) => {
@@ -849,20 +851,20 @@ impl MessageListener for GatewayHandler {
         };
         match pkt {
             Packet::Basic(p) if p.code == CODE_PING => {
-                let id = agent.id().to_string();
+                let id = handle.id().to_string();
                 let renew = match self.heartbeat(&id).await {
                     Ok(v) => v,
                     Err(()) => return,
                 };
                 info!(channel = %id, "basic ping, local pong");
-                let _ = agent
+                let _ = handle
                     .push(marshal(&Packet::Basic(BasicPkt {
                         code: CODE_PONG,
                         body: Bytes::new(),
                     })))
                     .await;
                 if let Some(pkt) = renew {
-                    let _ = agent.push(marshal(&Packet::Logic(pkt))).await;
+                    let _ = handle.push(marshal(&Packet::Logic(pkt))).await;
                 }
             }
             Packet::Basic(_) => {}
@@ -870,7 +872,7 @@ impl MessageListener for GatewayHandler {
                 if let Some(m) = self.metrics() {
                     m.on_message_in(payload.len() as u64);
                 }
-                logic.header.channel_id = agent.id().to_string();
+                logic.header.channel_id = handle.id().to_string();
                 let svc = logic.service_name().to_string();
                 let header = logic.header.clone();
                 if let Err(err) = self.forward_logic(&svc, logic).await {
@@ -878,7 +880,7 @@ impl MessageListener for GatewayHandler {
                     let mut resp = LogicPkt::new_from(&header);
                     resp.header.flag = Flag::Response as i32;
                     resp.header.status = Status::ServiceUnavailable as i32;
-                    let _ = agent.push(marshal(&Packet::Logic(resp))).await;
+                    let _ = handle.push(marshal(&Packet::Logic(resp))).await;
                 }
             }
         }

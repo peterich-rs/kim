@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, Server, StateListener};
 use kim_tcp::{ClientOptions, IdentityDialer, TcpClient, TcpServer};
 
 fn assert_accept_peer(conn: &dyn Conn) {
@@ -31,10 +31,10 @@ impl Acceptor for EchoHandler {
 
 #[async_trait]
 impl MessageListener for EchoHandler {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
-        let _ = agent.push(Bytes::from(out)).await;
+        let _ = handle.push(Bytes::from(out)).await;
     }
 }
 
@@ -230,7 +230,7 @@ impl Acceptor for Probe {
 
 #[async_trait]
 impl MessageListener for Probe {
-    async fn receive(&self, _agent: &dyn Agent, _payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
         self.log.received.lock().unwrap().push("recv".into());
     }
 }
@@ -423,14 +423,14 @@ impl Acceptor for SlowEcho {
 
 #[async_trait]
 impl MessageListener for SlowEcho {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         self.started.notify_waiters();
         tokio::time::sleep(self.delay).await;
         self.finished
             .store(true, std::sync::atomic::Ordering::SeqCst);
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
-        let _ = agent.push(Bytes::from(out)).await;
+        let _ = handle.push(Bytes::from(out)).await;
     }
 }
 

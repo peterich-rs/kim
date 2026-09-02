@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::{Container, ContainerOpts, DownlinkHook, HashSelector, InnerTcpDialer, ADULT};
-use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, Server, StateListener};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
 use kim_protocol::{
@@ -33,20 +33,20 @@ impl Acceptor for GatewayHandler {
 
 #[async_trait]
 impl MessageListener for GatewayHandler {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == kim_protocol::CODE_PING => {
-                let _ = agent.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
+                let _ = handle.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
             }
             Ok(Packet::Logic(mut logic)) => {
-                logic.header.channel_id = agent.id().to_string();
+                logic.header.channel_id = handle.id().to_string();
                 let svc = logic.service_name().to_string();
                 if self.container.forward(&svc, logic).await.is_err() {
                     let mut resp = read_logic(&payload).unwrap();
-                    resp.header.channel_id = agent.id().to_string();
+                    resp.header.channel_id = handle.id().to_string();
                     resp.header.flag = Flag::Response as i32;
                     resp.header.status = Status::ServiceUnavailable as i32;
-                    let _ = agent.push(marshal(&Packet::Logic(resp))).await;
+                    let _ = handle.push(marshal(&Packet::Logic(resp))).await;
                 }
             }
             _ => {}
@@ -80,7 +80,7 @@ impl Acceptor for ChatHandler {
 
 #[async_trait]
 impl MessageListener for ChatHandler {
-    async fn receive(&self, _agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
         let mut pkt = match read_logic(&payload) {
             Ok(p) => p,
             Err(_) => {
