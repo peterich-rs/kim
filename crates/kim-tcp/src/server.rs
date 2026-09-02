@@ -12,9 +12,8 @@ use tracing::{info, warn};
 
 use kim_core::{
     Acceptor, Channel, ChannelHandle, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
-    MailboxFullHook,
-    MessageListener, OpCode, Server, StateListener, WriteFullPolicy, DEFAULT_DRAIN_WAIT,
-    DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
+    MailboxFullHook, MessageListener, OpCode, Server, StateListener, WriteFullPolicy,
+    DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
 };
 
 use crate::conn::TcpConn;
