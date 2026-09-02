@@ -40,10 +40,10 @@ void main() {
     expect(camera, 1);
 
     await tester.enterText(find.byType(TextField), 'hello');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('composer-plus')), findsNothing);
     await tester.tap(find.byKey(const Key('composer-send')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(sent, 'hello');
   });
 }

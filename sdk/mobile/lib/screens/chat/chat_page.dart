@@ -1,11 +1,10 @@
 library;
 
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_core/flutter_chat_core.dart';
-import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
@@ -25,6 +24,7 @@ import '../../state/mutations.dart';
 import '../../state/profile.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
+import '../../widgets/chat/chat_list.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
@@ -38,120 +38,52 @@ class ChatPage extends ConsumerStatefulWidget {
     required this.id,
     required this.title,
     required this.kind,
+    this.initialUnread = 0,
   });
 
   final String id;
   final String title;
   final ThreadKind kind;
+  final int initialUnread;
 
   @override
   ConsumerState<ChatPage> createState() => _ChatPageState();
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
-  late final InMemoryChatController _controller;
+  final _list = ChatListController();
+  final _composer = GlobalKey<KimComposerState>();
 
   @override
   void initState() {
     super.initState();
-    final rows = ref.read(threadMessagesProvider(widget.id)).items;
-    _controller = InMemoryChatController(
-      messages: [for (final m in rows) _toFlyer(m)],
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sync(List<KimChatMsg> rows) async {
-    final have = {for (final m in _controller.messages) m.id: m};
-    for (final m in rows) {
-      final next = _toFlyer(m);
-      final old = have[m.key];
-      if (old == null) {
-        await _controller.insertMessage(next);
-      } else if (old.status != next.status) {
-        await _controller.updateMessage(old, next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
       }
-    }
-  }
-
-  Message _toFlyer(KimChatMsg m) {
-    final at = (dateTimeFromEpoch(m.at) ?? DateTime.now()).toUtc();
-    if (m.sys) {
-      return Message.system(
-        id: m.key,
-        authorId: m.sender,
-        createdAt: at,
-        text: m.body,
+      final messages = ref.read(threadMessagesProvider(widget.id).notifier);
+      messages.captureUnreadAnchor(
+        unread: widget.initialUnread,
+        self: ref.read(sessionProvider).account,
       );
-    }
-    if (m.isVideo) {
-      return Message.video(
-        id: m.key,
-        authorId: m.sender,
-        createdAt: at,
-        source: m.body,
-        width: m.width > 0 ? m.width.toDouble() : null,
-        height: m.height > 0 ? m.height.toDouble() : null,
-        status: m.isFailed
-            ? MessageStatus.error
-            : m.isSending
-            ? MessageStatus.sending
-            : MessageStatus.sent,
-      );
-    }
-    if (m.isImage) {
-      return Message.image(
-        id: m.key,
-        authorId: m.sender,
-        createdAt: at,
-        source: m.body,
-        width: m.width > 0 ? m.width.toDouble() : null,
-        height: m.height > 0 ? m.height.toDouble() : null,
-        status: m.isFailed
-            ? MessageStatus.error
-            : m.isSending
-            ? MessageStatus.sending
-            : MessageStatus.sent,
-      );
-    }
-    return Message.text(
-      id: m.key,
-      authorId: m.sender,
-      createdAt: at,
-      text: m.body,
-      status: m.failed ? MessageStatus.error : MessageStatus.sent,
-    );
+      unawaited(messages.reconcile());
+      unawaited(messages.markRead());
+    });
   }
 
   Future<void> _send(String text) async {
-    final send = sendMessageMutation(widget.id);
     try {
-      await send.run(ref, (tsx) {
+      await sendMessageMutation(widget.id).run(ref, (tsx) {
         return tsx.get(outboxProvider.notifier).sendText(widget.id, text);
       });
     } on StateError catch (err) {
-      if (mounted) {
-        toastification.show(
-          context: context,
-          type: ToastificationType.error,
-          style: ToastificationStyle.flatColored,
-          title: Text(err.message),
-          autoCloseDuration: const Duration(seconds: 3),
-          alignment: Alignment.topCenter,
-        );
-      }
+      _toast(err.message, error: true);
     } catch (_) {
       // Talk failures stay on the row with a retry control.
     }
-    if (!mounted) {
-      return;
+    if (_list.atBottomEdge) {
+      unawaited(_list.scrollToBottom(animated: true));
     }
-    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
   Future<void> _pickAlbum() async {
@@ -188,49 +120,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         return tsx.get(outboxProvider.notifier).sendImages(widget.id, assets);
       });
     } on StateError catch (err) {
-      if (mounted) {
-        toastification.show(
-          context: context,
-          type: ToastificationType.error,
-          style: ToastificationStyle.flatColored,
-          title: Text(err.message),
-          autoCloseDuration: const Duration(seconds: 3),
-          alignment: Alignment.topCenter,
-        );
-      }
+      _toast(err.message, error: true);
     } catch (_) {
-      if (mounted) {
-        toastification.show(
-          context: context,
-          type: ToastificationType.error,
-          style: ToastificationStyle.flatColored,
-          title: const Text(Copy.sendFailed),
-          autoCloseDuration: const Duration(seconds: 3),
-          alignment: Alignment.topCenter,
-        );
-      }
+      _toast(Copy.sendFailed, error: true);
     }
-    if (!mounted) {
-      return;
+    if (_list.atBottomEdge) {
+      unawaited(_list.scrollToBottom(animated: true));
     }
-    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
-  void _toastMedia(KimMediaPickerException err) {
+  void _toast(String message, {bool error = false}) {
     if (!mounted) {
       return;
     }
     toastification.show(
       context: context,
-      type: ToastificationType.error,
+      type: error ? ToastificationType.error : ToastificationType.success,
       style: ToastificationStyle.flatColored,
-      title: Text(
-        err.code == 'permission_denied'
-            ? Copy.mediaPermission
-            : Copy.mediaFailed,
-      ),
-      autoCloseDuration: const Duration(seconds: 3),
+      title: Text(message),
+      autoCloseDuration: Duration(seconds: error ? 3 : 2),
       alignment: Alignment.topCenter,
+    );
+  }
+
+  void _toastMedia(KimMediaPickerException err) {
+    _toast(
+      err.code == 'permission_denied' ? Copy.mediaPermission : Copy.mediaFailed,
+      error: true,
     );
   }
 
@@ -238,45 +154,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     try {
       await ref.read(outboxProvider.notifier).retry(widget.id, key);
     } on StateError catch (err) {
-      if (!mounted) {
-        return;
-      }
-      toastification.show(
-        context: context,
-        type: ToastificationType.error,
-        style: ToastificationStyle.flatColored,
-        title: Text(err.message),
-        autoCloseDuration: const Duration(seconds: 3),
-        alignment: Alignment.topCenter,
-      );
+      _toast(err.message, error: true);
     } catch (_) {
       // Stay failed; the retry control remains on the row.
     }
-    if (!mounted) {
-      return;
-    }
-    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
-  Future<void> _onLongPress(
-    BuildContext context,
-    Message message, {
-    required int index,
-    required LongPressStartDetails details,
-  }) async {
-    final text = switch (message) {
-      TextMessage(:final text) => text,
-      SystemMessage(:final text) => text,
-      _ => '',
-    };
-    if (text.isEmpty) {
-      return;
-    }
+  Future<void> _onLongPress(BuildContext context, KimChatMsg message) async {
     await KimHaptics.light();
     if (!context.mounted) {
       return;
     }
-    final stamp = formatMessageStampAt(message.createdAt);
+    final text = message.sys || message.isImage || message.isVideo
+        ? ''
+        : message.body;
+    final stamp = formatMessageStamp(message.at);
     await WoltModalSheet.show<void>(
       context: context,
       showDragHandle: true,
@@ -290,27 +182,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (stamp.isNotEmpty) ListTile(dense: true, title: Text(stamp)),
-                ListTile(
-                  leading: const Icon(LucideIcons.copy, size: 18),
-                  title: const Text(Copy.copy),
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: text));
-                    if (sheetContext.mounted) {
+                if (text.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(LucideIcons.copy, size: 18),
+                    title: const Text(Copy.copy),
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: text));
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                      if (!context.mounted) {
+                        return;
+                      }
+                      _toast(Copy.copied);
+                    },
+                  ),
+                if (text.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(LucideIcons.quote, size: 18),
+                    title: const Text(Copy.quote),
+                    onTap: () {
                       Navigator.of(sheetContext).pop();
-                    }
-                    if (!context.mounted) {
-                      return;
-                    }
-                    toastification.show(
-                      context: context,
-                      type: ToastificationType.success,
-                      style: ToastificationStyle.flatColored,
-                      title: const Text(Copy.copied),
-                      autoCloseDuration: const Duration(seconds: 2),
-                      alignment: Alignment.topCenter,
-                    );
-                  },
-                ),
+                      _composer.currentState?.quote(text);
+                    },
+                  ),
+                if (message.isFailed)
+                  ListTile(
+                    leading: Icon(
+                      LucideIcons.refreshCw,
+                      size: 18,
+                      color: Theme.of(sheetContext).colorScheme.error,
+                    ),
+                    title: const Text(Copy.retry),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      unawaited(_retry(message.key));
+                    },
+                  ),
               ],
             ),
           ),
@@ -331,23 +239,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final session = ref.watch(sessionProvider);
     final social = ref.watch(contactsProvider);
     final me = ref.watch(profileProvider);
-    final theme = Theme.of(context);
+    final thread = ref.watch(threadMessagesProvider(widget.id));
     final account = session.account;
     final gated =
         widget.kind == ThreadKind.user &&
         social.ready &&
         !social.isFriend(widget.id);
 
-    ref.listen<List<KimChatMsg>>(
-      threadMessagesProvider(widget.id).select((s) => s.items),
-      (prev, next) => unawaited(_sync(next)),
-    );
-
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: KimTheme.chatCanvasOf(context),
       appBar: AppBar(
-        centerTitle: true,
-        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        centerTitle: false,
+        leadingWidth: 52,
+        leading: const _FrostedBack(),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontSize: KimTheme.fontTitle,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              session.statusLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontSize: KimTheme.fontMeta,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
       body: Column(
         children: [
@@ -357,77 +285,41 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             onRetry: () => ref.read(linkProvider.notifier).retry(),
           ),
           Expanded(
-            child: Chat(
-              chatController: _controller,
-              currentUserId: account,
-              resolveUser: (id) async =>
-                  User(id: id, name: _nameOf(id, account, social)),
-              onMessageSend: _send,
-              onMessageLongPress: _onLongPress,
-              theme: KimTheme.chat(theme),
-              backgroundColor: KimTheme.chatCanvasOf(context),
-              builders: Builders(
-                emptyChatListBuilder: (_) => const EmptyState(
-                  icon: LucideIcons.messageCircle,
-                  title: Copy.noMessages,
-                  subtitle: Copy.noMessagesHint,
-                ),
-                textMessageBuilder: kimTextMessage,
-                imageMessageBuilder: kimImageMessage,
-                videoMessageBuilder: kimVideoMessage,
-                systemMessageBuilder: kimSystemMessage,
-                chatAnimatedListBuilder: (context, itemBuilder) {
-                  return ChatAnimatedList(
-                    itemBuilder: itemBuilder,
-                    handleSafeArea: false,
-                    bottomPadding: 8,
-                  );
-                },
-                composerBuilder: (_) => const SizedBox.shrink(),
-                chatMessageBuilder:
-                    (
-                      context,
-                      message,
-                      index,
-                      animation,
-                      child, {
-                      isRemoved,
-                      required isSentByMe,
-                      groupStatus,
-                    }) {
-                      DateTime? previousCreatedAt;
-                      final rows = _controller.messages;
-                      if (index > 0 && index < rows.length) {
-                        previousCreatedAt = rows[index - 1].createdAt;
-                      }
-                      return kimChatMessage(
-                        context,
-                        message,
-                        index,
-                        animation,
-                        child,
-                        isRemoved: isRemoved,
-                        isSentByMe: isSentByMe,
-                        groupStatus: groupStatus,
-                        displayName: _nameOf(message.authorId, account, social),
-                        avatarUrl: avatarFor(me, social, message.authorId),
-                        onRetry: message.status == MessageStatus.error
-                            ? () => unawaited(_retry(message.id))
-                            : null,
-                        previousCreatedAt: previousCreatedAt,
-                        onLongPress: (details) {
-                          unawaited(
-                            _onLongPress(
-                              context,
-                              message,
-                              index: index,
-                              details: details,
-                            ),
-                          );
-                        },
-                      );
-                    },
+            child: ChatList(
+              items: thread.items,
+              controller: _list,
+              loadingOlder: thread.loadingOlder,
+              hasMore: thread.hasMore,
+              onLoadOlder: () => unawaited(
+                ref
+                    .read(threadMessagesProvider(widget.id).notifier)
+                    .loadOlder(),
               ),
+              empty: const EmptyState(
+                icon: LucideIcons.messageCircle,
+                title: Copy.noMessages,
+                subtitle: Copy.noMessagesHint,
+              ),
+              itemBuilder: (context, msg, index) {
+                final prev = index > 0 ? thread.items[index - 1] : null;
+                final next = index + 1 < thread.items.length
+                    ? thread.items[index + 1]
+                    : null;
+                return KimMessageRow(
+                  key: Key('msg-${msg.key}'),
+                  message: msg,
+                  previous: prev,
+                  next: next,
+                  isSentByMe: msg.sender == account,
+                  displayName: _nameOf(msg.sender, account, social),
+                  avatarUrl: avatarFor(me, social, msg.sender),
+                  unreadAnchor: thread.unreadAnchorId == msg.key,
+                  onRetry: msg.isFailed
+                      ? () => unawaited(_retry(msg.key))
+                      : null,
+                  onLongPress: (_) => unawaited(_onLongPress(context, msg)),
+                );
+              },
             ),
           ),
           if (gated)
@@ -438,14 +330,38 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               outgoing: social.isOutgoing(widget.id),
             )
           else
-            KimComposer(
+            KeyedSubtree(
               key: const Key('chat-composer'),
-              hintText: Copy.messagePlaceholder,
-              onSend: (text) => unawaited(_send(text)),
-              onPickAlbum: () => unawaited(_pickAlbum()),
-              onTakePhoto: () => unawaited(_takePhoto()),
+              child: KimComposer(
+                key: _composer,
+                hintText: Copy.messagePlaceholder,
+                onSend: (text) => unawaited(_send(text)),
+                onPickAlbum: () => unawaited(_pickAlbum()),
+                onTakePhoto: () => unawaited(_takePhoto()),
+              ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _FrostedBack extends StatelessWidget {
+  const _FrostedBack();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, top: 6, bottom: 6),
+      child: Material(
+        color: scheme.surface.withValues(alpha: 0.55),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: const BackButton(),
+        ),
       ),
     );
   }

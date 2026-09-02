@@ -6,7 +6,7 @@ import 'package:flutter/animation.dart';
 
 abstract final class KimMotion {
   static const Duration short = Duration(milliseconds: 180);
-  static const Duration medium = Duration(milliseconds: 280);
+  static const Duration medium = Duration(milliseconds: 260);
   static const Duration long = Duration(milliseconds: 400);
 
   static const Curve standard = Curves.easeOutCubic;

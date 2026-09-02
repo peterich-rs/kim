@@ -21,13 +21,13 @@ class KimAvatar extends StatelessWidget {
 
   double get _px => switch (size) {
     KimAvatarSize.sm => 36,
-    KimAvatarSize.md => 52,
+    KimAvatarSize.md => 48,
     KimAvatarSize.lg => 72,
   };
 
   double get _font => switch (size) {
     KimAvatarSize.sm => 14,
-    KimAvatarSize.md => 20,
+    KimAvatarSize.md => 18,
     KimAvatarSize.lg => 28,
   };
 

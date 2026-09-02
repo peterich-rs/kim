@@ -145,22 +145,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.15.1"
-  cross_cache:
-    dependency: transitive
-    description:
-      name: cross_cache
-      sha256: "4983a16603cc99b0a14de6a772fa8ee4533411f46f3c423f1386fea7566049c5"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.0"
-  cross_file:
-    dependency: transitive
-    description:
-      name: cross_file
-      sha256: f141ea4f277af142a0356955707f6556f37b03947d39d55585981a06ca437bd6
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.5+5"
   crypto:
     dependency: transitive
     description:
@@ -193,30 +177,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.15"
-  diffutil_dart:
-    dependency: transitive
-    description:
-      name: diffutil_dart
-      sha256: "5e74883aedf87f3b703cb85e815bdc1ed9208b33501556e4a8a5572af9845c81"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.0.1"
-  dio:
-    dependency: transitive
-    description:
-      name: dio
-      sha256: "0df44ebba85e503958eb75d07eedd3c86275a58c1d3eda2f2ce8f0a2c3abbb3c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.11.0"
-  dio_web_adapter:
-    dependency: transitive
-    description:
-      name: dio_web_adapter
-      sha256: "0786d0b7295a373de356fc0af4f6f1d0ab2844ed31b19dfc5e7556b70e24212c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.1"
   dismissible_page:
     dependency: "direct main"
     description:
@@ -310,22 +270,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.2"
-  flutter_chat_core:
-    dependency: "direct main"
-    description:
-      name: flutter_chat_core
-      sha256: "8c46790f64f106bf6e610e2a7324b3844320e9e295867c06d45d9deb134d848d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.9.0"
-  flutter_chat_ui:
-    dependency: "direct main"
-    description:
-      name: flutter_chat_ui
-      sha256: cfbaac38f429beb33d9cc1ca920ae7ccbadbed282c99335d590d61306d3a3d0f
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.11.1"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -437,14 +381,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  freezed_annotation:
-    dependency: transitive
-    description:
-      name: freezed_annotation
-      sha256: "7294967ff0a6d98638e7acb774aac3af2550777accd8149c90af5b014e6d44d8"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
   frontend_server_client:
     dependency: transitive
     description:
@@ -509,14 +445,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
-  idb_shim:
-    dependency: transitive
-    description:
-      name: idb_shim
-      sha256: e36a748165663a165e1f292e9d85af6e3aa087f6e2291d16f86b2035103b2950
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.9.8"
   intl:
     dependency: "direct main"
     description:
@@ -557,14 +485,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
-  json_annotation:
-    dependency: transitive
-    description:
-      name: json_annotation
-      sha256: "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.12.0"
   kim_media_picker:
     dependency: "direct main"
     description:
@@ -684,14 +604,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.4+0"
-  nested:
-    dependency: transitive
-    description:
-      name: nested
-      sha256: "03bac4c528c64c95c722ec99280375a6f2fc708eec17c7b3f07253b626cd2a20"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.0"
   nm:
     dependency: transitive
     description:
@@ -900,14 +812,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.3"
-  provider:
-    dependency: transitive
-    description:
-      name: provider
-      sha256: "4e82183fa20e5ca25703ead7e05de9e4cceed1fbd1eadc1ac3cb6f565a09f272"
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.1.5+1"
   pub_semver:
     dependency: transitive
     description:
@@ -940,22 +844,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.28.0"
-  scrollview_observer:
-    dependency: transitive
-    description:
-      name: scrollview_observer
-      sha256: dade0a94815a105fe8b24df706e9945b9b9b4039f509220a988d1e0c3f8dabd5
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.27.1"
-  sembast:
-    dependency: transitive
-    description:
-      name: sembast
-      sha256: a58b26925e23071cf0f4754d8449aabe829e9a9930a872fb18e6ae4c2c88e025
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.8.9+1"
   shared_preferences:
     dependency: "direct main"
     description:

@@ -88,6 +88,9 @@ abstract final class Copy {
   static const cancel = '取消';
   static const copy = '复制';
   static const copied = '已复制';
+  static const quote = '引用';
+  static const unreadBelow = '以下未读';
+  static const newMessages = '条新消息';
 
   static const peerAccount = '对方账号';
   static const peerPlaceholder = '输入对方账号';
