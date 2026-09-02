@@ -13,14 +13,14 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, Semaphore};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
-    Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, MessageListener, OpCode,
-    Server, StateListener, DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT,
-    DEFAULT_WRITE_WAIT,
+    Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn, MailboxFullHook,
+    MessageListener, OpCode, Server, StateListener, WriteFullPolicy, DEFAULT_DRAIN_WAIT,
+    DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
 };
 
 use crate::conn::WsConn;
@@ -33,8 +33,7 @@ pub struct WsServer {
     states: Option<Arc<dyn StateListener>>,
     channels: ChannelMap,
     login_wait: Duration,
-    read_wait: Duration,
-    write_wait: Duration,
+    opts: ChannelOpts,
     drain_wait: Duration,
     shutdown: Notify,
     closed: Arc<AtomicBool>,
@@ -53,8 +52,10 @@ impl WsServer {
             states: None,
             channels: ChannelMap::new(),
             login_wait: DEFAULT_LOGIN_WAIT,
-            read_wait: DEFAULT_READ_WAIT,
-            write_wait: DEFAULT_WRITE_WAIT,
+            opts: ChannelOpts {
+                in_flight: Some(Arc::new(Semaphore::new(DEFAULT_MAX_IN_FLIGHT))),
+                ..ChannelOpts::default()
+            },
             drain_wait: DEFAULT_DRAIN_WAIT,
             shutdown: Notify::new(),
             closed: Arc::new(AtomicBool::new(false)),
@@ -73,6 +74,16 @@ impl WsServer {
     pub fn set_drain_wait(&mut self, wait: Duration) {
         self.drain_wait = wait;
     }
+
+    pub fn set_lane_key(&mut self, key: LaneKeyFn) {
+        self.opts.lane_key = Some(key);
+    }
+
+    pub fn set_max_in_flight(&mut self, n: usize) {
+        let n = n.max(1);
+        self.opts.max_in_flight = n;
+        self.opts.in_flight = Some(Arc::new(Semaphore::new(n)));
+    }
 }
 
 #[async_trait]
@@ -90,7 +101,15 @@ impl Server for WsServer {
     }
 
     fn set_read_wait(&mut self, wait: Duration) {
-        self.read_wait = wait;
+        self.opts.read_wait = wait;
+    }
+
+    fn set_write_full(&mut self, policy: WriteFullPolicy) {
+        self.opts.write_full = policy;
+    }
+
+    fn set_on_mailbox_full(&mut self, hook: MailboxFullHook) {
+        self.opts.on_mailbox_full = Some(hook);
     }
 
     async fn start(&self) -> Result<(), Error> {
@@ -128,8 +147,7 @@ impl Server for WsServer {
                         states: self.states.clone(),
                         channels: self.channels.clone(),
                         login_wait: self.login_wait,
-                        read_wait: self.read_wait,
-                        write_wait: self.write_wait,
+                        opts: self.opts.clone(),
                         peer,
                         closed: self.closed.clone(),
                         tasks: self.tasks.clone(),
@@ -207,8 +225,7 @@ struct HttpCtx {
     states: Option<Arc<dyn StateListener>>,
     channels: ChannelMap,
     login_wait: Duration,
-    read_wait: Duration,
-    write_wait: Duration,
+    opts: ChannelOpts,
     peer: SocketAddr,
     closed: Arc<AtomicBool>,
     tasks: Arc<Mutex<JoinSet<()>>>,
@@ -309,12 +326,7 @@ where
         return Err(Error::ChannelExists(id));
     }
     let (reader, writer) = conn.into_split();
-    let opts = ChannelOpts {
-        read_wait: ctx.read_wait,
-        write_wait: ctx.write_wait,
-        write_queue: 64,
-    };
-    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, opts);
+    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, ctx.opts);
     ctx.channels.add(channel).await;
     let Some(messages) = ctx.messages else {
         ctx.acceptor.on_accept_abandoned(&id).await;

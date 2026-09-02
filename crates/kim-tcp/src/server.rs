@@ -6,14 +6,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, Semaphore};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
-    Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, MessageListener, OpCode,
-    Server, StateListener, DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_READ_WAIT,
-    DEFAULT_WRITE_WAIT,
+    Acceptor, Agent, Channel, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn, MailboxFullHook,
+    MessageListener, OpCode, Server, StateListener, WriteFullPolicy, DEFAULT_DRAIN_WAIT,
+    DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
 };
 
 use crate::conn::TcpConn;
@@ -26,8 +26,7 @@ pub struct TcpServer {
     states: Option<Arc<dyn StateListener>>,
     channels: ChannelMap,
     login_wait: Duration,
-    read_wait: Duration,
-    write_wait: Duration,
+    opts: ChannelOpts,
     drain_wait: Duration,
     shutdown: Notify,
     closed: AtomicBool,
@@ -46,8 +45,10 @@ impl TcpServer {
             states: None,
             channels: ChannelMap::new(),
             login_wait: DEFAULT_LOGIN_WAIT,
-            read_wait: DEFAULT_READ_WAIT,
-            write_wait: DEFAULT_WRITE_WAIT,
+            opts: ChannelOpts {
+                in_flight: Some(Arc::new(Semaphore::new(DEFAULT_MAX_IN_FLIGHT))),
+                ..ChannelOpts::default()
+            },
             drain_wait: DEFAULT_DRAIN_WAIT,
             shutdown: Notify::new(),
             closed: AtomicBool::new(false),
@@ -66,6 +67,16 @@ impl TcpServer {
     pub fn set_drain_wait(&mut self, wait: Duration) {
         self.drain_wait = wait;
     }
+
+    pub fn set_lane_key(&mut self, key: LaneKeyFn) {
+        self.opts.lane_key = Some(key);
+    }
+
+    pub fn set_max_in_flight(&mut self, n: usize) {
+        let n = n.max(1);
+        self.opts.max_in_flight = n;
+        self.opts.in_flight = Some(Arc::new(Semaphore::new(n)));
+    }
 }
 
 #[async_trait]
@@ -83,7 +94,15 @@ impl Server for TcpServer {
     }
 
     fn set_read_wait(&mut self, wait: Duration) {
-        self.read_wait = wait;
+        self.opts.read_wait = wait;
+    }
+
+    fn set_write_full(&mut self, policy: WriteFullPolicy) {
+        self.opts.write_full = policy;
+    }
+
+    fn set_on_mailbox_full(&mut self, hook: MailboxFullHook) {
+        self.opts.on_mailbox_full = Some(hook);
     }
 
     async fn start(&self) -> Result<(), Error> {
@@ -122,11 +141,7 @@ impl Server for TcpServer {
                         states: self.states.clone(),
                         channels: self.channels.clone(),
                         login_wait: self.login_wait,
-                        opts: ChannelOpts {
-                            read_wait: self.read_wait,
-                            write_wait: self.write_wait,
-                            write_queue: 64,
-                        },
+                        opts: self.opts.clone(),
                     };
                     let mut tasks = self.tasks.lock().await;
                     if self.closed.load(Ordering::SeqCst) {

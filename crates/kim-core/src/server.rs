@@ -4,7 +4,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-use crate::{Acceptor, Error, MessageListener, StateListener};
+use crate::{Acceptor, Error, MailboxFullHook, MessageListener, StateListener, WriteFullPolicy};
 
 #[async_trait]
 pub trait Server: Send {
@@ -12,6 +12,8 @@ pub trait Server: Send {
     fn set_message_listener(&mut self, listener: Arc<dyn MessageListener>);
     fn set_state_listener(&mut self, listener: Arc<dyn StateListener>);
     fn set_read_wait(&mut self, wait: Duration);
+    fn set_write_full(&mut self, _policy: WriteFullPolicy) {}
+    fn set_on_mailbox_full(&mut self, _hook: MailboxFullHook) {}
 
     async fn start(&self) -> Result<(), Error>;
     async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error>;

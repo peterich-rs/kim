@@ -26,6 +26,7 @@ crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧
 - 每条连接 **两个专员**：写走 `mpsc` + 唯一写任务；读是独占循环。`ChannelMap` 的 `RwLock` **只护字典**；`get` 时 clone 出 `Channel`（里面是写信箱）立刻放锁。
 - `Conn` 合同：**可靠、有序、有边界**。TCP / WebSocket / 以后的 QUIC 可靠流都能履行；裸 UDP 不能。
 - `TcpClient` 写侧仍是 `Mutex` 包着写半边。本阶段 **不改**。
+- Binary 进 per-`header.channel_id` 串行 lane（G-29）；网关下行 `try_send` + Disconnect（G-30）。Ping 不进 lane。细节见 [communication-layer.md](communication-layer.md)。
 
 链路（已经存在，WS 必须复用，禁止再抄一套）：
 
@@ -33,7 +34,7 @@ crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧
 张三 push ─┐
 李四 push ─┼──► Alice 的写信箱（mpsc）──► 写专员（唯一 write）──► 网线
 心跳 Pong ─┘
-Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► receive（业务）
+Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► Binary 入串行 lane ──► receive（业务）
                                       └── Ping 也丢给写信箱
 ```
 

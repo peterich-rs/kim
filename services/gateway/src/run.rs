@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, Selector};
-use kim_core::Server;
+use kim_core::{Server, WriteFullPolicy};
 use kim_metrics::KimMetrics;
 use kim_naming::{open_naming, DefaultRegistration};
 use kim_protocol::{check_strict_runtime, StrictCheck};
@@ -293,6 +293,11 @@ where
                 handler.set_revoke(Arc::new(AllowAllRevoke));
             }
         }
+    }
+    server.set_write_full(WriteFullPolicy::Disconnect);
+    if let Some(m) = &metrics {
+        let mm = m.clone();
+        server.set_on_mailbox_full(Arc::new(move || mm.on_mailbox_full()));
     }
     server.set_acceptor(handler.clone());
     server.set_message_listener(handler.clone());

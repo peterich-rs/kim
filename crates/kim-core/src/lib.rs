@@ -11,7 +11,9 @@ mod opcode;
 mod server;
 mod signal;
 
-pub use channel::{Channel, ChannelOpts, ChannelReadLoop};
+pub use channel::{
+    Channel, ChannelOpts, ChannelReadLoop, LaneKeyFn, MailboxFullHook, WriteFullPolicy,
+};
 pub use channel_map::ChannelMap;
 pub use conn::{Acceptor, Agent, Conn, Dialer, DialerContext, MessageListener, StateListener};
 pub use error::Error;
@@ -32,3 +34,7 @@ pub const DEFAULT_WRITE_WAIT: Duration = Duration::from_secs(10);
 pub const DEFAULT_HEARTBEAT: Duration = Duration::from_secs(30);
 /// Shutdown waits this long for in-flight connection tasks, then aborts them.
 pub const DEFAULT_DRAIN_WAIT: Duration = Duration::from_secs(15);
+/// Default write mailbox depth. Full + Disconnect fails Push instead of blocking.
+pub const DEFAULT_WRITE_QUEUE: usize = 64;
+/// Per-lane queue and process-wide in-flight handler budget.
+pub const DEFAULT_MAX_IN_FLIGHT: usize = 64;
