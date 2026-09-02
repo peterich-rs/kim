@@ -32,15 +32,15 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 租户冻结（`app=kim`）另加一条：**Chat / Gateway / Royal 切到 `login:loc:v2` / `login:sn:v2` 之后，再重启全部 Gateway**，断开仍持有旧 `login:sn:*` 的 TCP。新 Gateway 只拒新的非 kim 登录；不排空则旧 kim-gray 长连接仍可能打到新 Chat。灰度白名单按 account，不是 `kim-gray` JWT；目标 zone 无实例时不要指望回退正式池。
 
-pending receipt（默认关）顺序不可颠倒：
+pending receipt（默认关）顺序不可颠倒。compose 默认保持 0。切片稿：[impl/b0-pending-receipt-rollout.md](impl/b0-pending-receipt-rollout.md)。
 
 1. 先发 Web SDK（`resume=true`、按 `has_more` 循环、页 200、persist 后再 batch ACK）。
 2. migrate `0007`（空表；可与 1 并行）。GC 随 Royal。
 3. 部署兼容代码：`KIM_REQUIRE_JTI=0`；Royal/Chat `KIM_PENDING_RECEIPT=0`。Gateway 已写 `Session.jti`。
-4. Gateway `KIM_REQUIRE_JTI=1`（此后保持开）。无 jti JWT 必须重新登录。
-5. 全量 SCAN `login:loc:v2:*` 空 jti = 0。不要用 talk 路径抽样 gauge。
-6. Royal `KIM_PENDING_RECEIPT=1`，Chat 仍 0。确认 `pending_delivery` 有新行。
-7. Chat `KIM_PENDING_RECEIPT=1`。
+4. 改 VPS `kim.env`：`KIM_REQUIRE_JTI=1`，`docker compose up -d gateway`。此后保持开。无 jti JWT 必须重新登录。
+5. `deploy/scan-empty-jti.sh` 必须 exit 0（`empty_jti=0`）。不要用 talk 路径抽样 gauge。Royal 日志每 60s 打 `kim_location_without_jti`。
+6. `KIM_PENDING_RECEIPT_ROYAL=1`，Chat 仍 0，`docker compose up -d royal`。确认 `pending_delivery` 有新行。
+7. `KIM_PENDING_RECEIPT_CHAT=1`，`docker compose up -d chat chat-gray`。
 8. 回滚：Chat 先 0，再 Royal 0。禁止 Chat=1 且 Royal=0。
 
 未走完 4–7 **不要**从 [production-gaps.md](production-gaps.md) 删 G-03 / G-04 / G-10。语义见 [reliable-delivery.md](reliable-delivery.md)。

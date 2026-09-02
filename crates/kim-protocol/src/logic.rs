@@ -160,6 +160,7 @@ mod tests {
         pkt.write_body(&crate::pkt::LoginReq {
             token: "tok".into(),
             device: String::new(),
+            ..Default::default()
         });
         let got: crate::pkt::LoginReq = pkt.read_body().unwrap();
         assert_eq!(got.token, "tok");

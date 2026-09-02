@@ -42,9 +42,9 @@ read_loop
 
 客户端 `LoginDialer` 等 LoginResp。服务端 **不等** Chat 处理完。`Agent` 没有 Close。
 
-JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`，并冻结 `app=kim`。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。灰度按 account 白名单，见 [gray.md](gray.md)。
+JWT：HS256，claims `{acc, app, exp, jti, ver, did?}`，拒绝 `alg=none`，并冻结 `app=kim`。`ver` 是账户 `token_epoch`（旧 token 缺省 0）。`did` 仅在 Royal enroll / 出示有效 device credential 时写入。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。灰度按 account 白名单，见 [gray.md](gray.md)。
 
-握手后网关把 `jti` / 空闲窗口绑在 channel 上。Basic ping：先查吊销（仅 `Ok(true)` 立刻关连接）。存储/传输错误有界宽限：连续 3 次失败（`HEARTBEAT_REVOKE_ERROR_GRACE`）才断开并要求重登；期内 warn + `kim_heartbeat_revoke_error_total`、连接保持、不续签 JWT，避免 Redis 长故障时无限刷新已吊销 JTI。再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`，走现成 Kickout。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`（HMAC，与 Chat→Royal 同一密钥）。登录/握手路径查询失败仍 **fail-closed**（Unauthorized）。
+握手后网关把 `jti` / `ver` / 可选 `did` / 空闲窗口绑在 channel 上。Basic ping：先查 jti 吊销与 `ver < epoch`。确认吊销或 `ver < epoch` 立刻关连接。存储/传输错误有界宽限：连续 3 次失败（`HEARTBEAT_REVOKE_ERROR_GRACE`）才断开并要求重登；期内 warn + `kim_heartbeat_revoke_error_total`、连接保持、不续签 JWT，避免 Redis 长故障时无限刷新已吊销 JTI。再滑动空闲窗口；JWT 剩余不足一半 ttl 时 Push `login.renew`，续期必须抄回同一 `jti`+`ver`（及 `did`），禁止 `generate_with_jti(..., ver=0)` 把已吊销会话救活。Royal `POST /api/v1/auth/logout` 写吊销表并 `POST {CHAT_URL}/internal/kick`（仍踢该账号全部 location）。改密走同一 kick，并一条语句 bump `users.token_epoch`。`/me` 与 `/internal/token-epoch` 读 `max(缓存, 用户表)`，不把缓存缺省当 0。设备绑定 JWT 仅在 `kim:device:{did}` 热 key 写入成功后签发。无 `REDIS_URL` 时网关用 `ROYAL_URL` 的 `/internal/revoke/check`、`/internal/token-epoch`、`/internal/device/check`（HMAC，与 Chat→Royal 同一密钥）。登录/握手路径查询失败仍 **fail-closed**（Unauthorized）；心跳查吊销走有界宽限。
 
 ---
 
@@ -55,7 +55,7 @@ JWT：HS256，claims `{acc, app, exp, jti}`，拒绝 `alg=none`，并冻结 `app
 | `login.signin` Request | Chat `DoSysLogin`（先 `upsert` 用户表） |
 | `login.signin` Push + `KickoutNotify` | 网关 `after_downlink`（先看 Flag） |
 | `login.signout` | 网关 Disconnect 转发；Chat `DoSysLogout` |
-| `login.renew` Push + `AuthResp` | 网关心跳：JWT 剩余寿命 < ttl/2 时同一 `jti` 续签 |
+| `login.renew` Push + `AuthResp` | 网关心跳：JWT 剩余寿命 < ttl/2 时同一 `jti`+`ver` 续签 |
 | `chat.demo.echo` | Chat `DoEcho`（必须已有会话） |
 
 | Status | 值 | 何时 |
@@ -83,7 +83,7 @@ Disconnect：网关发 `login.signout`。SDK **不发**登出包。
 
 - Session 按 `channel_id`（key `login:sn:v2:{id}`）
 - Location 按 account（key `login:loc:v2:{account}`）。Memory 是 `Vec`；Redis 是 HASH，field=`channel_id`。blob 为 `{channel_id, gate_id, device, jti}`；三字段旧 blob 解码后 `jti=""`
-- 网关 Accept 把 JWT `jti` 写入 `Session.jti`。`KIM_REQUIRE_JTI=1` 时缺/空 jti → Unauthorized=105，不建 loc。续期 `generate_with_jti` 复用同一 jti。`jti` 不是稳定设备身份。
+- 网关 Accept 把 JWT `jti` 写入 `Session.jti`，可选 `did` 写入 `Session.deviceId`（Location blob **不加**字段）。`KIM_REQUIRE_JTI=1` 时缺/空 jti → Unauthorized=105，不建 loc。续期 `generate_with_session` / `generate_with_device` 复用同一 jti 与 `ver`。`jti` 不是稳定设备身份；稳定凭证是可选 `did`（客户端持久化仍开，见 G-13）。`pending_delivery.target_id` 仍是 `jti`。
 - 默认 **Memory**（一把 `std::sync::RwLock`）。测试只 `MemorySessionStore::new()` / `open_session_store(None)`，**不读** `REDIS_URL`
 - Redis 是 `kim-session` 的 **默认关** feature；Chat `main` 才读 `REDIS_URL`
 

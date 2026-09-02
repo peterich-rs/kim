@@ -10,7 +10,7 @@ pub const DEMO_DEFAULT_SECRET: &str = "jwt-1sNzdiSgnNuxyq2g7xml2JvLArU";
 /// The only JWT `app` this deployment issues and accepts. Not overridable.
 pub const ALLOWED_APP: &str = "kim";
 
-/// JWT payload: `acc` / `app` / `exp` / optional `jti` (login/register).
+/// JWT payload: `acc` / `app` / `exp` / optional `jti` / `ver` (token_epoch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Claims {
     #[serde(rename = "acc")]
@@ -20,10 +20,26 @@ pub struct Claims {
     pub exp: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jti: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub ver: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub did: Option<String>,
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
 }
 
 pub fn token_revoke_key(jti: &str) -> String {
     format!("kim:revoke:{jti}")
+}
+
+pub fn token_epoch_key(account: &str) -> String {
+    format!("kim:token_epoch:{account}")
+}
+
+pub fn device_hot_key(device_id: &str) -> String {
+    format!("kim:device:{device_id}")
 }
 
 pub fn generate(secret: &str, account: &str, app: &str, exp: i64) -> Result<String, ProtocolError> {
@@ -37,8 +53,35 @@ pub fn generate_with_jti(
     exp: i64,
     jti: &str,
 ) -> Result<String, ProtocolError> {
+    generate_with_session(secret, account, app, exp, jti, 0)
+}
+
+pub fn generate_with_session(
+    secret: &str,
+    account: &str,
+    app: &str,
+    exp: i64,
+    jti: &str,
+    ver: u32,
+) -> Result<String, ProtocolError> {
+    generate_with_device(secret, account, app, exp, jti, ver, None)
+}
+
+pub fn generate_with_device(
+    secret: &str,
+    account: &str,
+    app: &str,
+    exp: i64,
+    jti: &str,
+    ver: u32,
+    did: Option<&str>,
+) -> Result<String, ProtocolError> {
     check_account(account)?;
     let jti = jti.trim();
+    let did = did
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     let claims = Claims {
         account: account.to_string(),
         app: app.to_string(),
@@ -48,6 +91,8 @@ pub fn generate_with_jti(
         } else {
             Some(jti.to_string())
         },
+        ver,
+        did,
     };
     jsonwebtoken::encode(
         &Header::new(Algorithm::HS256),
@@ -128,6 +173,38 @@ mod tests {
         assert_eq!(claims.app, "kim");
         assert_eq!(claims.exp, exp);
         assert!(claims.jti.as_ref().is_some_and(|j| !j.is_empty()));
+        assert_eq!(claims.ver, 0);
+        assert_eq!(claims.did, None);
+    }
+
+    #[test]
+    fn session_keeps_ver_and_legacy_defaults_zero() {
+        let exp = now_ts() + 3600;
+        let token =
+            generate_with_session(DEMO_DEFAULT_SECRET, "alice", "kim", exp, "j", 3).unwrap();
+        let claims = parse(DEMO_DEFAULT_SECRET, &token).unwrap();
+        assert_eq!(claims.ver, 3);
+        let legacy = parse(DEMO_DEFAULT_SECRET, &mint_hs256("alice", exp)).unwrap();
+        assert_eq!(legacy.ver, 0);
+        assert_eq!(legacy.did, None);
+    }
+
+    #[test]
+    fn device_claim_roundtrip() {
+        let exp = now_ts() + 3600;
+        let token = generate_with_device(
+            DEMO_DEFAULT_SECRET,
+            "alice",
+            "kim",
+            exp,
+            "j",
+            1,
+            Some("dev-1"),
+        )
+        .unwrap();
+        let claims = parse(DEMO_DEFAULT_SECRET, &token).unwrap();
+        assert_eq!(claims.did.as_deref(), Some("dev-1"));
+        assert_eq!(claims.ver, 1);
     }
 
     #[test]

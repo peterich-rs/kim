@@ -1,12 +1,14 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
 mod auth;
+mod device;
 mod product;
 mod revoke;
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::device::hash_secret;
 use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
@@ -25,16 +27,22 @@ use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
 use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use http_body_util::BodyExt;
 use kim_protocol::pkt::{
-    AccountExists, AccountQuery, AckMessageReq, DeliveryBackfillReq, GroupCreateResp, GroupDetail,
-    GroupMembersResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
-    InternalGroupMember, InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp,
-    MessageIndex, MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus,
+    AccountExists, AccountQuery, AckMessageReq, DeliveryBackfillReq, DeviceCheckQuery,
+    DeviceCheckStatus, GroupCreateResp, GroupDetail, GroupMembersResp, InsertFanout,
+    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
+    InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
+    MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus, TokenEpoch, TokenEpochQuery,
 };
 use kim_protocol::{
     hmac_headers_from, resolve_internal_hmac_secret, sign_internal_hmac, verify_internal_hmac,
 };
 use prost::Message;
 
+#[cfg(feature = "postgres")]
+pub use device::PostgresDeviceDirectory;
+#[cfg(feature = "redis")]
+pub use device::RedisDeviceHot;
+pub use device::{DeviceDirectory, DeviceHot, MemoryDeviceDirectory, MemoryDeviceHot};
 #[cfg(feature = "redis")]
 pub use revoke::RedisRevocation;
 pub use revoke::{MemoryRevocation, TokenRevocation};
@@ -62,6 +70,8 @@ pub struct RoyalState {
     pub(crate) social: Arc<dyn SocialDirectory>,
     pub(crate) jwt: JwtConfig,
     pub(crate) revoke: Arc<dyn TokenRevocation>,
+    pub(crate) devices: Arc<dyn DeviceDirectory>,
+    pub(crate) device_hot: Arc<dyn DeviceHot>,
     pub(crate) app: String,
     pub(crate) chat_url: String,
     hmac_secret: String,
@@ -95,6 +105,8 @@ impl RoyalState {
             social: Arc::new(MemorySocialDirectory::new()),
             jwt,
             revoke: Arc::new(MemoryRevocation::new()),
+            devices: Arc::new(MemoryDeviceDirectory::new()),
+            device_hot: Arc::new(MemoryDeviceHot::new()),
             app: "kim".into(),
             chat_url: String::new(),
             hmac_secret: resolve_internal_hmac_secret(""),
@@ -160,12 +172,26 @@ impl RoyalState {
             social,
             jwt,
             revoke,
+            devices: Arc::new(MemoryDeviceDirectory::new()),
+            device_hot: Arc::new(MemoryDeviceHot::new()),
             app: "kim".into(),
             chat_url: String::new(),
             hmac_secret: resolve_internal_hmac_secret(""),
             nonce: Arc::new(MemoryHmacNonceGuard::new()),
             pending_receipt: false,
         }
+    }
+
+    #[must_use]
+    pub fn with_devices(mut self, devices: Arc<dyn DeviceDirectory>) -> Self {
+        self.devices = devices;
+        self
+    }
+
+    #[must_use]
+    pub fn with_device_hot(mut self, hot: Arc<dyn DeviceHot>) -> Self {
+        self.device_hot = hot;
+        self
     }
 
     #[must_use]
@@ -184,6 +210,8 @@ pub fn router(state: RoyalState) -> Router {
         .route("/internal/user/lookup", post(user_lookup))
         .route("/internal/user/upsert", post(user_upsert))
         .route("/internal/revoke/check", post(revoke_check))
+        .route("/internal/token-epoch", post(token_epoch))
+        .route("/internal/device/check", post(device_check))
         .route("/api/v1/message/user", post(insert_user))
         .route("/api/v1/message/group", post(insert_group))
         .route("/api/v1/message/ack", post(ack))
@@ -690,6 +718,55 @@ async fn revoke_check(
     Ok(encode(&RevokeStatus { revoked }))
 }
 
+async fn token_epoch(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<TokenEpochQuery>(&body)?;
+    if req.account.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty account".into()));
+    }
+    let epoch = auth::account_epoch(&st, &req.account).await?;
+    Ok(encode(&TokenEpoch { epoch }))
+}
+
+async fn device_check(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<DeviceCheckQuery>(&body)?;
+    if req.device_id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty device id".into()));
+    }
+    let ok = if !req.device_credential.is_empty() {
+        let hash = hash_secret(&req.device_credential);
+        match st
+            .devices
+            .lookup_hash(&st.app, &req.account, &hash)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        {
+            Some(rec) => rec.device_id == req.device_id && !rec.revoked,
+            None => false,
+        }
+    } else {
+        match st
+            .devices
+            .get(&req.device_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        {
+            Some(rec) => !rec.revoked && rec.account == req.account,
+            None => st
+                .device_hot
+                .ok(&req.device_id, &req.account)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        }
+    };
+    Ok(encode(&DeviceCheckStatus { ok }))
+}
+
 pub(crate) async fn kick_account(st: &RoyalState, account: &str) {
     if st.chat_url.is_empty() || account.is_empty() {
         return;
@@ -963,6 +1040,7 @@ mod tests {
             kim_protocol::pkt::AuthReq {
                 account: account.into(),
                 password: password.into(),
+                ..Default::default()
             }
             .encode_to_vec()
         };
@@ -1062,6 +1140,446 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn change_password_invalidates_all_jwts_and_kicks() {
+        let kick_got = Arc::new(std::sync::Mutex::new(None::<KickAccount>));
+        let kick_got2 = kick_got.clone();
+        let kick_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let kick_addr = kick_listener.local_addr().unwrap();
+        let kick_app = Router::new().route(
+            "/internal/kick",
+            post(move |body: Bytes| {
+                let kick_got2 = kick_got2.clone();
+                async move {
+                    *kick_got2.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(KickAccount::decode(body.as_ref()).unwrap());
+                    StatusCode::NO_CONTENT
+                }
+            }),
+        );
+        tokio::spawn(async move {
+            let _ = axum::serve(kick_listener, kick_app).await;
+        });
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt)
+            .with_chat_url(format!("http://{kick_addr}"))
+            .with_hmac_secret("kick-hmac-secret-xx");
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let pb = |account: &str, password: &str| {
+            kim_protocol::pkt::AuthReq {
+                account: account.into(),
+                password: password.into(),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        };
+        let created = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(pb("alice", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert!(created.status().is_success());
+        let first =
+            kim_protocol::pkt::AuthResp::decode(created.bytes().await.unwrap().as_ref()).unwrap();
+        let second = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(pb("alice", "secret123"))
+            .send()
+            .await
+            .unwrap();
+        assert!(second.status().is_success());
+        let second =
+            kim_protocol::pkt::AuthResp::decode(second.bytes().await.unwrap().as_ref()).unwrap();
+        assert_eq!(
+            kim_protocol::parse("test-secret", &first.token)
+                .unwrap()
+                .ver,
+            0
+        );
+        let changed = http
+            .post(format!("http://{addr}/api/v1/auth/password"))
+            .header("Authorization", format!("Bearer {}", first.token))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::PasswordChangeReq {
+                    old_password: "secret123".into(),
+                    new_password: "secret456".into(),
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(changed.status(), StatusCode::NO_CONTENT);
+        for token in [&first.token, &second.token] {
+            let me = http
+                .get(format!("http://{addr}/api/v1/auth/me"))
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(me.status(), StatusCode::UNAUTHORIZED, "old jwt must die");
+        }
+        let kicked = kick_got
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .expect("kick");
+        assert_eq!(kicked.account, "alice");
+        let again = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(pb("alice", "secret456"))
+            .send()
+            .await
+            .unwrap();
+        assert!(again.status().is_success());
+        let fresh =
+            kim_protocol::pkt::AuthResp::decode(again.bytes().await.unwrap().as_ref()).unwrap();
+        let claims = kim_protocol::parse("test-secret", &fresh.token).unwrap();
+        assert_eq!(claims.ver, 1);
+        assert!(claims.did.is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_user_change_password_is_unauthorized() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt);
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let upserted = signed_post(
+            &format!("http://{addr}/internal/user/upsert"),
+            "/internal/user/upsert",
+            AccountQuery {
+                account: "carol".into(),
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(upserted.status(), StatusCode::NO_CONTENT);
+        let token = kim_protocol::generate_with_jti(
+            "test-secret",
+            "carol",
+            "kim",
+            now_ts() + 60,
+            "upsert-jti",
+        )
+        .unwrap();
+        let resp = reqwest::Client::new()
+            .post(format!("http://{addr}/api/v1/auth/password"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::PasswordChangeReq {
+                    old_password: "secret123".into(),
+                    new_password: "secret456".into(),
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn token_epoch_and_me_use_durable_user_state() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt);
+        let users = state.users.clone();
+        let revoke = state.revoke.clone();
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let created = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert!(created.status().is_success());
+        let resp =
+            kim_protocol::pkt::AuthResp::decode(created.bytes().await.unwrap().as_ref()).unwrap();
+        assert_eq!(revoke.get_epoch("alice").await.unwrap(), 0);
+        users.bump_token_epoch("kim", "alice").await.unwrap();
+        assert_eq!(revoke.get_epoch("alice").await.unwrap(), 0);
+
+        let epoch_resp = signed_post(
+            &format!("http://{addr}/internal/token-epoch"),
+            "/internal/token-epoch",
+            TokenEpochQuery {
+                account: "alice".into(),
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert!(epoch_resp.status().is_success());
+        let epoch = TokenEpoch::decode(epoch_resp.bytes().await.unwrap().as_ref()).unwrap();
+        assert_eq!(epoch.epoch, 1);
+
+        let me = http
+            .get(format!("http://{addr}/api/v1/auth/me"))
+            .header("Authorization", format!("Bearer {}", resp.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(me.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    struct FailDeviceHot;
+
+    #[async_trait::async_trait]
+    impl DeviceHot for FailDeviceHot {
+        async fn put(&self, _device_id: &str, _account: &str) -> Result<(), device::DeviceError> {
+            Err(device::DeviceError::Backend("hot unavailable".into()))
+        }
+
+        async fn drop_key(&self, _device_id: &str) -> Result<(), device::DeviceError> {
+            Ok(())
+        }
+
+        async fn ok(&self, _device_id: &str, _account: &str) -> Result<bool, device::DeviceError> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn device_bound_auth_fails_when_hot_put_fails() {
+        let devices = Arc::new(MemoryDeviceDirectory::new());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt)
+            .with_devices(devices.clone())
+            .with_device_hot(Arc::new(FailDeviceHot));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let enrolled = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    enroll_device: true,
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(enrolled.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            kim_protocol::pkt::AuthResp::decode(enrolled.bytes().await.unwrap().as_ref()).is_err()
+        );
+
+        let plain = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert!(plain.status().is_success());
+        let plain =
+            kim_protocol::pkt::AuthResp::decode(plain.bytes().await.unwrap().as_ref()).unwrap();
+        assert!(kim_protocol::parse("test-secret", &plain.token)
+            .unwrap()
+            .did
+            .is_none());
+
+        devices
+            .enroll("kim", "alice", "d1", &hash_secret("device-secret"))
+            .await
+            .unwrap();
+        let bound = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    device_credential: "device-secret".into(),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bound.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            kim_protocol::pkt::AuthResp::decode(bound.bytes().await.unwrap().as_ref()).is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn enroll_device_writes_did_and_logout_still_kicks() {
+        let devices = Arc::new(MemoryDeviceDirectory::new());
+        let hot = Arc::new(MemoryDeviceHot::new());
+        let kick_got = Arc::new(std::sync::Mutex::new(0_u32));
+        let kick_got2 = kick_got.clone();
+        let kick_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let kick_addr = kick_listener.local_addr().unwrap();
+        let kick_app = Router::new().route(
+            "/internal/kick",
+            post(move |_body: Bytes| {
+                let kick_got2 = kick_got2.clone();
+                async move {
+                    *kick_got2.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+                    StatusCode::NO_CONTENT
+                }
+            }),
+        );
+        tokio::spawn(async move {
+            let _ = axum::serve(kick_listener, kick_app).await;
+        });
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "test-secret".into(),
+            ttl_secs: 60,
+        };
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt)
+            .with_devices(devices.clone())
+            .with_device_hot(hot.clone())
+            .with_chat_url(format!("http://{kick_addr}"));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let enrolled = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    enroll_device: true,
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert!(enrolled.status().is_success());
+        let resp =
+            kim_protocol::pkt::AuthResp::decode(enrolled.bytes().await.unwrap().as_ref()).unwrap();
+        assert!(!resp.device_id.is_empty());
+        assert!(!resp.device_credential.is_empty());
+        let claims = kim_protocol::parse("test-secret", &resp.token).unwrap();
+        assert_eq!(claims.did.as_deref(), Some(resp.device_id.as_str()));
+        devices.revoke(&resp.device_id).await.unwrap();
+        hot.drop_key(&resp.device_id).await.unwrap();
+        let checked = signed_post(
+            &format!("http://{addr}/internal/device/check"),
+            "/internal/device/check",
+            DeviceCheckQuery {
+                account: "alice".into(),
+                device_id: resp.device_id.clone(),
+                device_credential: String::new(),
+            }
+            .encode_to_vec(),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert!(checked.status().is_success());
+        let status = DeviceCheckStatus::decode(checked.bytes().await.unwrap().as_ref()).unwrap();
+        assert!(!status.ok);
+
+        let plain = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(
+                kim_protocol::pkt::AuthReq {
+                    account: "alice".into(),
+                    password: "secret123".into(),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            )
+            .send()
+            .await
+            .unwrap();
+        assert!(plain.status().is_success());
+        let plain =
+            kim_protocol::pkt::AuthResp::decode(plain.bytes().await.unwrap().as_ref()).unwrap();
+        assert!(plain.device_id.is_empty());
+        assert!(plain.device_credential.is_empty());
+        let plain_claims = kim_protocol::parse("test-secret", &plain.token).unwrap();
+        assert!(plain_claims.did.is_none());
+
+        let out = http
+            .post(format!("http://{addr}/api/v1/auth/logout"))
+            .header("Authorization", format!("Bearer {}", plain.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(out.status(), StatusCode::NO_CONTENT);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            *kick_got.lock().unwrap_or_else(|e| e.into_inner()) >= 1,
+            "logout must still kick_account"
+        );
     }
 
     #[tokio::test]
@@ -1362,6 +1880,7 @@ mod tests {
             .await
             .unwrap();
         assert!(idx.iter().any(|r| r.message_id == inserted.message_id));
+        assert_eq!(req.online_targets[0].target_id, "j1");
     }
 
     #[tokio::test]

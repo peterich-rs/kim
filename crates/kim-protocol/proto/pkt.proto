@@ -50,6 +50,7 @@ message InnerHandshakeReq {
 message LoginReq {
   string token = 1;
   string device = 2; // "web"/"desktop"/"cli" = multi; "mobile"/"ios"/"android" = one
+  string deviceCredential = 3; // empty = today's path
 }
 
 message LoginResp {
@@ -67,6 +68,7 @@ message Session {
   string app = 8;
   repeated string tags = 9;
   string jti = 10; // P0 delivery target; empty = no receipts for this session
+  string deviceId = 11; // optional; unused by pending_delivery.target_id
 }
 
 message KickoutNotify {
@@ -236,12 +238,16 @@ message DeliveryBackfillReq {
 message AuthReq {
   string account = 1;
   string password = 2;
+  string deviceCredential = 3; // present to bind an issued credential
+  bool enrollDevice = 4;       // old clients default false
 }
 
 message AuthResp {
   string token = 1;
   int64 exp = 2;
   string account = 3;
+  string deviceId = 4;
+  string deviceCredential = 5; // issued once on enroll
 }
 
 // Chat ↔ Royal / Royal ↔ Chat. Not on the public Caddy /api/v1/auth surface.
@@ -264,6 +270,24 @@ message RevokeQuery {
 
 message RevokeStatus {
   bool revoked = 1;
+}
+
+message TokenEpochQuery {
+  string account = 1;
+}
+
+message TokenEpoch {
+  uint32 epoch = 1;
+}
+
+message DeviceCheckQuery {
+  string account = 1;
+  string deviceId = 2;
+  string deviceCredential = 3;
+}
+
+message DeviceCheckStatus {
+  bool ok = 1;
 }
 
 message UserProfile {
