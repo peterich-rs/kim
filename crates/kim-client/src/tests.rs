@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{
-    Acceptor, Agent, Conn, Error as CoreError, Frame, MessageListener, OpCode, Server,
+    Acceptor, ChannelHandle, Conn, Error as CoreError, Frame, MessageListener, OpCode, Server,
     StateListener,
 };
 use kim_protocol::pkt::{
@@ -433,10 +433,10 @@ impl Acceptor for FakeGw {
 
 #[async_trait]
 impl MessageListener for FakeGw {
-    async fn receive(&self, agent: &dyn Agent, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == CODE_PING => {
-                let _ = agent.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
+                let _ = handle.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
             }
             Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_USER_TALK => {
                 let mut resp = LogicPkt::new_from(&p.header);
@@ -446,7 +446,7 @@ impl MessageListener for FakeGw {
                     message_id: 10001,
                     send_time: 2_000,
                 });
-                let _ = agent.push(marshal(&Packet::Logic(resp))).await;
+                let _ = handle.push(marshal(&Packet::Logic(resp))).await;
                 let mut push = LogicPkt::new(CMD_CHAT_USER_TALK, 0, Bytes::new());
                 push.header.flag = Flag::Push as i32;
                 push.write_body(&MessagePush {
@@ -457,7 +457,7 @@ impl MessageListener for FakeGw {
                     sender: "bob".into(),
                     send_time: 3_000,
                 });
-                let _ = agent.push(marshal(&Packet::Logic(push))).await;
+                let _ = handle.push(marshal(&Packet::Logic(push))).await;
             }
             _ => {}
         }
@@ -878,7 +878,7 @@ impl Acceptor for DropGw {
 
 #[async_trait]
 impl MessageListener for DropGw {
-    async fn receive(&self, _agent: &dyn Agent, _payload: Bytes) {}
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {}
 }
 
 #[async_trait]

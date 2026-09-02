@@ -336,10 +336,10 @@ async fn non_whitelist_kim_account_hits_zone_local() {
     stack.shutdown().await;
 }
 
-struct NoopAgent;
+struct NoopHandle;
 
 #[async_trait::async_trait]
-impl kim_core::Agent for NoopAgent {
+impl kim_core::ChannelHandle for NoopHandle {
     fn id(&self) -> &str {
         "noop"
     }
@@ -391,7 +391,7 @@ async fn legacy_kim_gray_session_talk_is_unauthorized() {
         client_id: String::new(),
     });
     handler
-        .receive(&NoopAgent, marshal(&Packet::Logic(pkt)))
+        .receive(&NoopHandle, marshal(&Packet::Logic(pkt)))
         .await;
 
     let (idx, _) = store

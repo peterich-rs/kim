@@ -15,7 +15,9 @@ pub use channel::{
     Channel, ChannelOpts, ChannelReadLoop, LaneKeyFn, MailboxFullHook, WriteFullPolicy,
 };
 pub use channel_map::ChannelMap;
-pub use conn::{Acceptor, Agent, Conn, Dialer, DialerContext, MessageListener, StateListener};
+pub use conn::{
+    Acceptor, ChannelHandle, Conn, Dialer, DialerContext, MessageListener, StateListener,
+};
 pub use error::Error;
 pub use frame::Frame;
 pub use opcode::OpCode;

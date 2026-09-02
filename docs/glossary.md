@@ -47,7 +47,7 @@
 | **ChannelMap** | 当前进程里所有活着的连接。它的锁只护字典，不护插座 |
 | **Conn** | 通信层合同：能读一帧、写一帧。谁实现（TCP/WS/QUIC）业务不管 |
 | **Acceptor** | 新连接进来，业务决定「这是谁」，返回 channel_id |
-| **Agent** | 业务能对连接做的最小操作：我是谁、推一串字节。不能直接关掉连接 |
+| **ChannelHandle** | 业务能对连接做的最小操作：我是谁、推一串字节。不能直接关掉连接 |
 | **服务 / 实例** | 服务是角色（聊天服务）；实例是一次具体运行（某 IP:端口）。服务发现登记的是实例 |
 | **JWT** | 登录第一帧 `LoginReq.token`。本 Demo 只允许 HS256，claims 是 `acc` / `app` / `exp`。不放 Upgrade URL |
 | **Router** | `command` → Handler。Chat 用它处理 `login.signin` / `login.signout` / `chat.demo.echo` / `chat.user.talk` / `chat.group.talk` / `chat.group.create` |

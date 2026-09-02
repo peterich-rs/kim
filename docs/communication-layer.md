@@ -126,11 +126,11 @@ TcpServer::start
 | `Acceptor` | 业务（现在 EchoHandler） | TcpServer 接进来之后 | 这是谁 |
 | `MessageListener` | 业务 | 该 channel 的串行 lane（不在读专员上 await） | 收到业务字节 |
 | `StateListener` | 业务 | 连接结束时 | 清理 |
-| `Agent` | Channel 内部 | 业务在 receive 里 | 只能 id + push，不能 Close |
+| `ChannelHandle` | Channel 内部 | 业务在 receive 里 | 只能 id + push，不能 Close |
 | `Dialer` / `TcpDialer` | 业务或 IdentityDialer | Client::connect | 拨号 + 握手 |
 | `Server` / `Client` | `TcpServer` / `TcpClient` | example 的 main | 启动、推、收 |
 
-业务插槽故意瘦：`Agent` 不暴露关连接，避免 Handler 误把别人踢下线。关连接是通信层的事。
+业务插槽故意瘦：`ChannelHandle` 不暴露关连接，避免 Handler 误把别人踢下线。关连接是通信层的事。
 
 取 `ChannelMap` 时：**先 clone 出 Channel，再 await 写网络**，不要握着整张表的锁等 IO。
 
@@ -169,7 +169,7 @@ TcpServer::start
 3. `EchoHandler::accept` 读出名字，当作 channel_id。  
 4. 连接拆成读写两半，进入 ChannelMap。  
 5. Client `send("hello 0")` → 编码成帧 → 内核 TCP 送达。  
-6. 读循环拆出 Binary 帧 → `receive` → 拼上 ` from server` → `agent.push`。  
+6. 读循环拆出 Binary 帧 → `receive` → 拼上 ` from server` → `handle.push`。  
 7. 写协程出队、写帧；Client `read` 打印 `hello 0 from server`。  
 8. 断开则 `Disconnect("alice")`。
 

@@ -40,7 +40,7 @@ on_channel_ready → pending.remove；forward(SN_LOGIN)
 read_loop
 ```
 
-客户端 `LoginDialer` 等 LoginResp。服务端 **不等** Chat 处理完。`Agent` 没有 Close。
+客户端 `LoginDialer` 等 LoginResp。服务端 **不等** Chat 处理完。`ChannelHandle` 没有 Close。
 
 JWT：HS256，claims `{acc, app, exp, jti, ver, did?}`，拒绝 `alg=none`，并冻结 `app=kim`。`ver` 是账户 `token_epoch`（旧 token 缺省 0）。`did` 仅在 Royal enroll / 出示有效 device credential 时写入。密钥：非空 `KIM_JWT_SECRET` > 非空配置 `jwt_secret` > `DEMO_DEFAULT_SECRET`（demo-only，启动 warn）。Token **不进** Upgrade URL。灰度按 account 白名单，见 [gray.md](gray.md)。
 
@@ -71,7 +71,7 @@ JWT：HS256，claims `{acc, app, exp, jti, ver, did?}`，拒绝 `alg=none`，并
 
 已落地 0/1/2/3/99 **不改号**。`NoDestination=300` 见 [control-layer-chat.md](control-layer-chat.md)。
 
-Receive：Basic ping 仍在网关本地 pong，不到 Chat。Logic 的 `channel_id` 改成 `agent.id()`（已是 `wg-1_alice_N`）再 `forward(service_name())`。
+Receive：Basic ping 仍在网关本地 pong，不到 Chat。Logic 的 `channel_id` 改成 `handle.id()`（已是 `wg-1_alice_N`）再 `forward(service_name())`。
 
 Disconnect：网关发 `login.signout`。SDK **不发**登出包。
 
@@ -125,7 +125,7 @@ Royal logout / Chat `/internal/kick` 踢掉该账号**全部** location。kick �
 
 ## 非目标（不要写进这一层）
 
-Consul、VPS、TGateway TLS、假 TGateway、`Agent::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。Web SDK 见 [web-sdk.md](web-sdk.md)。
+Consul、VPS、TGateway TLS、假 TGateway、`ChannelHandle::close`、`if login` 进 `TcpServer` / `WsServer`、token 进 Upgrade URL。Web SDK 见 [web-sdk.md](web-sdk.md)。
 
 ---
 
