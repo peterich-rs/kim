@@ -21,6 +21,7 @@
 | 冻结单租户 `app=kim` | 原 G-05 / G-06：拒非 kim JWT；loc+session v2；Chat 拒非 kim session；account 灰度；loc cache opt-in | [gray.md](../gray.md)、[link-layer-login.md](../link-layer-login.md)、[deploy.md](../deploy.md) |
 | pending receipt | 代码已合入：ACK = id 集合；`acked_at` 不删行；`KIM_REQUIRE_JTI` 前置；Royal writer 先于 Chat reader。**G-03 / G-04 / G-10 仍开**，要等 [reliable-delivery.md](../reliable-delivery.md) rollout | [reliable-delivery.md](../reliable-delivery.md)、[web-sdk.md](../web-sdk.md)、[link-layer-login.md](../link-layer-login.md) |
 | SIGTERM + 先摘发现再 drain | G-07 / G-32：unix SIGTERM+SIGINT；Container 先 deregister 再 JoinSet drain；Royal/Router HTTP graceful | [deploy.md](../deploy.md) |
+| 心跳 Redis 有界宽限 | G-31：仅确认吊销立刻关；存储错误连续 3 次后断开；期内不续签 JWT；登录仍 fail-closed | [link-layer-login.md](../link-layer-login.md)、[observability.md](../observability.md) |
 
 漏 Push 补偿仍是 G-03 / G-14。`ctx.resp` 无超时是 G-30。
 
@@ -32,7 +33,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 
 | 序 | 覆盖 | 依赖 | 规格 |
 |---:|---|---|---|
-| 6 | 心跳 Redis 有界宽限（G-31） | 无 | 本阶段外 |
 | 7 | `TcpConn<S>` + TGateway TLS（G-34） | 形状已在 G-34 拍板 | 本阶段外 |
 | 8 | Mobile 成熟化 Phase 3–5：FFI supervisor、SQLite upsert/page、Dart link/outbox（本 PR）。Phase 6 ChatList / Phase 7 theme 仍待做 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
 

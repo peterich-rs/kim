@@ -25,7 +25,6 @@
 |---:|---|---|
 | 4 | kim-client / Flutter 登录后 sync；G-13 稳定 `device_id` 替换 jti | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md)；G-13 / G-14 仍在 gaps |
 | — | 读循环隔离 / 下行 try_send | G-29 / G-30 |
-| — | 心跳 Redis 有界宽限 | G-31 |
 | — | `TcpConn<S>` + TGateway TLS | G-34 |
 
 其余 G-15～G-18、G-20、G-33 仍按 [production-gaps.md](../production-gaps.md) 总表，不插到 G-03 rollout 前面。

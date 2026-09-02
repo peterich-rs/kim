@@ -85,12 +85,17 @@ async fn write_status(
         .await
 }
 
+/// Consecutive heartbeat revoke-store failures allowed before disconnect.
+/// Login/handshake revoke errors stay fail-closed (no grace).
+const HEARTBEAT_REVOKE_ERROR_GRACE: u32 = 3;
+
 struct ChannelMeta {
     app: String,
     account: String,
     jti: String,
     idle_exp: i64,
     jwt_exp: i64,
+    revoke_errors: u32,
 }
 
 fn now_ts() -> i64 {
@@ -297,6 +302,7 @@ impl GatewayHandler {
                 jti,
                 idle_exp,
                 jwt_exp: exp,
+                revoke_errors: 0,
             },
         );
     }
@@ -304,6 +310,24 @@ impl GatewayHandler {
     async fn close_now(&self, channel_id: &str) {
         if let Some(srv) = self.server.get() {
             let _ = srv.close_channel(channel_id).await;
+        }
+    }
+
+    fn note_revoke_error(&self, channel_id: &str) -> u32 {
+        let mut guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
+        match guard.get_mut(channel_id) {
+            Some(m) => {
+                m.revoke_errors = m.revoke_errors.saturating_add(1);
+                m.revoke_errors
+            }
+            None => HEARTBEAT_REVOKE_ERROR_GRACE,
+        }
+    }
+
+    fn clear_revoke_errors(&self, channel_id: &str) {
+        let mut guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(m) = guard.get_mut(channel_id) {
+            m.revoke_errors = 0;
         }
     }
 
@@ -323,15 +347,40 @@ impl GatewayHandler {
         let Some((app, account, jti, idle_exp, jwt_exp)) = meta else {
             return Ok(None);
         };
+        let mut skip_renew = false;
         if !jti.is_empty() {
             if let Some(store) = self.revoke.get() {
                 match store.is_revoked(&jti).await {
-                    Ok(true) | Err(_) => {
+                    Ok(true) => {
                         warn!(channel = channel_id, "heartbeat revoked");
                         self.close_now(channel_id).await;
                         return Err(());
                     }
-                    Ok(false) => {}
+                    Ok(false) => self.clear_revoke_errors(channel_id),
+                    Err(err) => {
+                        let consecutive = self.note_revoke_error(channel_id);
+                        if let Some(m) = self.metrics() {
+                            m.on_heartbeat_revoke_error();
+                        }
+                        if consecutive >= HEARTBEAT_REVOKE_ERROR_GRACE {
+                            warn!(
+                                channel = channel_id,
+                                consecutive,
+                                %err,
+                                "heartbeat revoke check failed past grace"
+                            );
+                            self.close_now(channel_id).await;
+                            return Err(());
+                        }
+                        warn!(
+                            channel = channel_id,
+                            consecutive,
+                            grace = HEARTBEAT_REVOKE_ERROR_GRACE,
+                            %err,
+                            "heartbeat revoke check failed; keeping connection"
+                        );
+                        skip_renew = true;
+                    }
                 }
             }
         }
@@ -344,7 +393,7 @@ impl GatewayHandler {
         let next_idle = now.saturating_add(self.token_ttl_secs);
         let remaining = jwt_exp.saturating_sub(now);
         let half = self.token_ttl_secs / 2;
-        let renew = remaining < half && !jti.is_empty();
+        let renew = remaining < half && !jti.is_empty() && !skip_renew;
         let next_jwt = if renew { next_idle } else { jwt_exp };
         {
             let mut guard = self.meta.lock().unwrap_or_else(|e| e.into_inner());
@@ -669,13 +718,16 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use kim_container::{Container, ContainerOpts, InnerTcpDialer};
-    use kim_core::{Acceptor, Conn, Error, Frame, OpCode};
+    use kim_core::{Acceptor, Conn, Error, Frame, MessageListener, OpCode, Server, StateListener};
     use kim_naming::{DefaultRegistration, StaticNaming};
     use kim_protocol::{
         generate_with_jti, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN, DEMO_DEFAULT_SECRET,
     };
 
-    use super::{strip_port, AllowAllRevoke, GatewayHandler, LoginReq, RevokeCheck};
+    use super::{
+        strip_port, AllowAllRevoke, GatewayHandler, LoginReq, RevokeCheck,
+        HEARTBEAT_REVOKE_ERROR_GRACE,
+    };
 
     #[test]
     fn strip_ipv4_port() {
@@ -832,5 +884,127 @@ mod tests {
             .await
             .expect("empty jti is compatible when require=0");
         assert!(id.starts_with("wg-1_alice_"));
+    }
+
+    struct RevokeBroken;
+
+    #[async_trait]
+    impl RevokeCheck for RevokeBroken {
+        async fn is_revoked(&self, _jti: &str) -> Result<bool, String> {
+            Err("redis down".into())
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingServer {
+        closed: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl Server for RecordingServer {
+        fn set_acceptor(&mut self, _acceptor: Arc<dyn Acceptor>) {}
+        fn set_message_listener(&mut self, _listener: Arc<dyn MessageListener>) {}
+        fn set_state_listener(&mut self, _listener: Arc<dyn StateListener>) {}
+        fn set_read_wait(&mut self, _wait: Duration) {}
+        async fn start(&self) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn push(&self, _channel_id: &str, _payload: Bytes) -> Result<(), Error> {
+            Ok(())
+        }
+        async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+            self.closed
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(channel_id.to_string());
+            Ok(())
+        }
+        async fn shutdown(&self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    fn live_channel(handler: &GatewayHandler, jti: &str) -> String {
+        let id = "wg-1_alice_hb".to_string();
+        let exp = super::now_ts().saturating_add(86_400);
+        handler.insert_meta(&id, "kim".into(), "alice".into(), jti.into(), exp);
+        id
+    }
+
+    fn closed_ids(server: &RecordingServer) -> Vec<String> {
+        server
+            .closed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    #[tokio::test]
+    async fn heartbeat_revoked_true_closes() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(AlwaysRevoked));
+        let server = Arc::new(RecordingServer::default());
+        handler.attach_server(server.clone());
+        let id = live_channel(&handler, "jti-revoked");
+        assert!(
+            handler.heartbeat(&id).await.is_err(),
+            "confirmed revoke must close",
+        );
+        assert_eq!(closed_ids(&server), vec![id]);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_revoke_error_twice_keeps_connection() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(RevokeBroken));
+        let server = Arc::new(RecordingServer::default());
+        handler.attach_server(server.clone());
+        let id = live_channel(&handler, "jti-ok");
+        for i in 1..=2 {
+            handler
+                .heartbeat(&id)
+                .await
+                .unwrap_or_else(|_| panic!("error {i} must stay within grace"));
+        }
+        assert!(
+            closed_ids(&server).is_empty(),
+            "two revoke-store errors must not kick"
+        );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_revoke_error_past_grace_closes() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(RevokeBroken));
+        let server = Arc::new(RecordingServer::default());
+        handler.attach_server(server.clone());
+        let id = live_channel(&handler, "jti-ok");
+        for i in 1..HEARTBEAT_REVOKE_ERROR_GRACE {
+            handler
+                .heartbeat(&id)
+                .await
+                .unwrap_or_else(|_| panic!("error {i} must stay within grace"));
+            assert!(
+                closed_ids(&server).is_empty(),
+                "error {i} must not close yet"
+            );
+        }
+        assert!(
+            handler.heartbeat(&id).await.is_err(),
+            "errors past grace must close",
+        );
+        assert_eq!(closed_ids(&server), vec![id]);
+    }
+
+    #[tokio::test]
+    async fn revoke_store_error_rejects_login() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(RevokeBroken));
+        let mut conn = login_conn("jti-ok");
+        let err = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect_err("login revoke errors stay fail-closed");
+        assert_eq!(handshake_err(err), "revoke check failed");
     }
 }

@@ -45,6 +45,21 @@ async fn scrape_includes_dispatch_fail_total() {
 }
 
 #[tokio::test]
+async fn scrape_includes_heartbeat_revoke_error_total() {
+    let m = KimMetrics::new("wg-1", "wgateway").expect("metrics");
+    m.on_heartbeat_revoke_error();
+    let mut buf = Vec::new();
+    prometheus::TextEncoder::new()
+        .encode(&m.registry().gather(), &mut buf)
+        .expect("encode");
+    let body = String::from_utf8(buf).expect("utf8");
+    assert!(
+        body.contains("kim_heartbeat_revoke_error_total"),
+        "metrics body: {body}"
+    );
+}
+
+#[tokio::test]
 async fn router_oneshot_health() {
     let m = KimMetrics::new("chat-1", "chat").expect("metrics");
     let app = kim_metrics::router(m.registry());
