@@ -86,6 +86,28 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     state = state.copyWith(items: prev);
   }
 
+  void captureUnreadAnchor({required int unread, required String self}) {
+    if (unread <= 0 || state.items.isEmpty) {
+      return;
+    }
+    var left = unread;
+    String? anchor;
+    for (var i = state.items.length - 1; i >= 0; i--) {
+      final m = state.items[i];
+      if (m.sys || m.sender == self) {
+        continue;
+      }
+      anchor = m.key;
+      left -= 1;
+      if (left <= 0) {
+        break;
+      }
+    }
+    if (anchor != null) {
+      state = state.copyWith(unreadAnchorId: anchor);
+    }
+  }
+
   Future<void> loadOlder() async {
     if (state.loadingOlder || !state.hasMore) {
       return;

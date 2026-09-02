@@ -118,7 +118,6 @@ class ChatsPage extends ConsumerWidget {
                 itemBuilder: (context, i) {
                   final thread = visible[i];
                   return ConversationTile(
-                    index: i,
                     thread: thread,
                     avatarUrl: avatarFor(me, social, thread.id),
                     onOpen: () {

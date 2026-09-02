@@ -1,22 +1,35 @@
-/// Material 3 theme via flex_color_scheme. Layered surfaces, not iMessage bubbles.
+/// Material 3 theme via flex_color_scheme, overlaid with KIM product tokens.
 library;
 
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_core/flutter_chat_core.dart';
 
 abstract final class KimTheme {
   static const Color seed = Color(0xFF0F766E);
   static const Color outgoing = Color(0xFF0D9488);
+  static const Color bubbleOwnStart = Color(0xFF14B8A6);
+  static const Color bubbleOwnEnd = Color(0xFF0D9488);
+
+  static const double fontTitle = 17;
+  static const double fontBody = 15.5;
+  static const double fontMeta = 12.5;
 
   static const double radiusControl = 8;
   static const double radiusField = 12;
+  static const double radiusBubble = 14;
+  static const double radiusBubbleTail = 6;
   static const double radiusCard = 16;
   static const double radiusSheet = 24;
 
-  static const Color _chatCanvasLight = Color(0xFFF4F5F7);
-  static const Color _chatCanvasDark = Color(0xFF121417);
+  static const double spaceUnit = 4;
+
+  static const Duration motionFast = Duration(milliseconds: 180);
+  static const Duration motionBase = Duration(milliseconds: 260);
+  static const Curve motionEmphasized = Curves.easeOutCubic;
+
+  static const Color _chatCanvasLight = Color(0xFFF2F5F8);
+  static const Color _chatCanvasDark = Color(0xFF0E1621);
 
   static Color canvasOf(BuildContext context) =>
       Theme.of(context).colorScheme.surfaceContainerLowest;
@@ -66,6 +79,7 @@ abstract final class KimTheme {
           );
     final scheme = base.colorScheme;
     final hairline = scheme.outlineVariant.withValues(alpha: 0.72);
+    final text = base.textTheme;
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surfaceContainerLowest,
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -75,6 +89,26 @@ abstract final class KimTheme {
           TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
         },
       ),
+      textTheme: text.copyWith(
+        titleMedium: (text.titleMedium ?? const TextStyle()).copyWith(
+          fontSize: fontTitle,
+          fontWeight: FontWeight.w600,
+          height: 1.25,
+          letterSpacing: -0.2,
+        ),
+        bodyMedium: (text.bodyMedium ?? const TextStyle()).copyWith(
+          fontSize: fontBody,
+          height: 1.35,
+        ),
+        bodySmall: (text.bodySmall ?? const TextStyle()).copyWith(
+          fontSize: fontMeta,
+          height: 1.3,
+        ),
+        labelSmall: (text.labelSmall ?? const TextStyle()).copyWith(
+          fontSize: fontMeta,
+          height: 1.2,
+        ),
+      ),
       appBarTheme: base.appBarTheme.copyWith(
         centerTitle: false,
         backgroundColor: scheme.surface,
@@ -83,6 +117,12 @@ abstract final class KimTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         shape: Border(bottom: BorderSide(color: hairline, width: 0.5)),
+        titleTextStyle: TextStyle(
+          fontSize: fontTitle,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+          height: 1.2,
+        ),
       ),
       navigationBarTheme: base.navigationBarTheme.copyWith(
         backgroundColor: scheme.surface,
@@ -145,35 +185,4 @@ abstract final class KimTheme {
     bottomSheetRadius: radiusSheet,
     alignedDropdown: true,
   );
-
-  static ChatTheme chat(ThemeData theme) {
-    final scheme = theme.colorScheme;
-    return ChatTheme.fromThemeData(theme).copyWith(
-      colors: ChatColors(
-        primary: scheme.primary,
-        onPrimary: scheme.onPrimary,
-        surface: chatCanvasColor(scheme),
-        onSurface: scheme.onSurface,
-        surfaceContainer: scheme.surfaceContainerLow,
-        surfaceContainerLow: scheme.surfaceContainerLow,
-        surfaceContainerHigh: scheme.surfaceContainerHigh,
-      ),
-      typography: ChatTypography.fromThemeData(theme).copyWith(
-        bodyMedium: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
-          fontSize: 15,
-          height: 1.375,
-        ),
-        labelSmall: (theme.textTheme.labelSmall ?? const TextStyle()).copyWith(
-          fontSize: 11,
-          height: 1.2,
-        ),
-      ),
-    );
-  }
-
-  static Color chatCanvasColor(ColorScheme scheme) {
-    return scheme.brightness == Brightness.dark
-        ? _chatCanvasDark
-        : _chatCanvasLight;
-  }
 }

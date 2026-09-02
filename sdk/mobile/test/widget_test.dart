@@ -244,7 +244,7 @@ void main() {
     expect(find.text(Copy.conversations), findsWidgets);
   });
 
-  testWidgets('chat thread uses Discord rows, not colored bubbles', (
+  testWidgets('chat thread groups peer rows and right-aligns own bubbles', (
     tester,
   ) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
@@ -263,9 +263,7 @@ void main() {
     expect(find.text('Bobby'), findsWidgets);
   });
 
-  testWidgets('chat app bar centers the title and has no avatar', (
-    tester,
-  ) async {
+  testWidgets('chat app bar is two-line title plus status', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
@@ -291,11 +289,11 @@ void main() {
       find.descendant(of: appBar, matching: find.text('Bobby')),
       findsOneWidget,
     );
-    final bar = tester.getRect(appBar);
-    final title = tester.getRect(
-      find.descendant(of: appBar, matching: find.text('Bobby')),
+    expect(
+      find.descendant(of: appBar, matching: find.text(Copy.online)),
+      findsOneWidget,
     );
-    expect(title.center.dx, closeTo(bar.center.dx, 1));
+    expect(find.byType(BackButton), findsOneWidget);
   });
 
   testWidgets('chat composer sits below the message list', (tester) async {
@@ -338,10 +336,13 @@ void main() {
     expect(find.byKey(const Key('chat-composer')), findsOneWidget);
 
     final gesture = await tester.startGesture(const Offset(40, 400));
-    await gesture.moveBy(const Offset(500, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(480, 0));
     await tester.pump();
     await gesture.up();
-    await pumpUi(tester);
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('chat-composer')), findsNothing);
     expect(find.text(Copy.conversations), findsWidgets);
@@ -362,6 +363,7 @@ void main() {
     await tester.longPress(find.text('hello from bob'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text(Copy.copy), findsOneWidget);
+    expect(find.text(Copy.quote), findsOneWidget);
   });
 
   testWidgets('auth toggle keeps typed account without swapping routes', (
@@ -392,7 +394,7 @@ void main() {
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).last, 'ping');
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('composer-send')));
     await pumpUi(tester);
 

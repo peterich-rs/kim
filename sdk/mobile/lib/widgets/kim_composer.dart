@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
+import '../core/haptics.dart';
 import '../theme/kim_theme.dart';
 import '../theme/motion.dart';
 import 'kim_hairline.dart';
 
-/// WeChat-style composer: input, plus / send, and a 相册 / 拍摄 panel.
+/// Telegram-style composer: capsule field, send/plus crossfade, media panel.
 class KimComposer extends StatefulWidget {
   const KimComposer({
     super.key,
@@ -24,14 +25,15 @@ class KimComposer extends StatefulWidget {
   final String? hintText;
 
   @override
-  State<KimComposer> createState() => _KimComposerState();
+  KimComposerState createState() => KimComposerState();
 }
 
-class _KimComposerState extends State<KimComposer> {
+class KimComposerState extends State<KimComposer> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   var _panel = false;
   var _hasText = false;
+  var _pressed = false;
 
   @override
   void initState() {
@@ -47,6 +49,21 @@ class _KimComposerState extends State<KimComposer> {
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void quote(String text) {
+    final clipped = text.trim();
+    if (clipped.isEmpty) {
+      return;
+    }
+    final prefix = '「$clipped」\n';
+    final next = _controller.text;
+    final already = next.startsWith(prefix) ? next : '$prefix$next';
+    _controller.value = TextEditingValue(
+      text: already,
+      selection: TextSelection.collapsed(offset: already.length),
+    );
+    _focus.requestFocus();
   }
 
   void _onText() {
@@ -73,6 +90,7 @@ class _KimComposerState extends State<KimComposer> {
     if (text.isEmpty) {
       return;
     }
+    KimHaptics.selection();
     widget.onSend(text);
     _controller.clear();
   }
@@ -82,6 +100,7 @@ class _KimComposerState extends State<KimComposer> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final raised = KimTheme.raisedOf(context);
+    final capsule = BorderRadius.circular(22);
     return Material(
       color: raised,
       child: Column(
@@ -99,6 +118,7 @@ class _KimComposerState extends State<KimComposer> {
                     focusNode: _focus,
                     minLines: 1,
                     maxLines: 4,
+                    style: const TextStyle(fontSize: KimTheme.fontBody),
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
@@ -106,61 +126,77 @@ class _KimComposerState extends State<KimComposer> {
                       filled: true,
                       fillColor: scheme.surface,
                       isDense: true,
-                      contentPadding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          KimTheme.radiusField,
-                        ),
+                        borderRadius: capsule,
                         borderSide: BorderSide(
                           color: KimTheme.hairlineOf(context),
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          KimTheme.radiusField,
-                        ),
+                        borderRadius: capsule,
                         borderSide: BorderSide(
                           color: KimTheme.hairlineOf(context),
                         ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: capsule,
+                        borderSide: BorderSide(color: scheme.primary),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 4),
-                if (_hasText)
-                  TextButton(
-                    key: const Key('composer-send'),
-                    onPressed: _submit,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: const Color(0xFF07C160),
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    child: const Text(Copy.send),
-                  )
-                else
-                  IconButton(
-                    key: const Key('composer-plus'),
-                    tooltip: Copy.plusPanel,
-                    onPressed: _togglePanel,
-                    icon: Icon(
-                      _panel ? LucideIcons.x : LucideIcons.plus,
-                      size: 22,
-                      color: scheme.onSurfaceVariant,
+                Listener(
+                  onPointerDown: (_) => setState(() => _pressed = true),
+                  onPointerUp: (_) => setState(() => _pressed = false),
+                  onPointerCancel: (_) => setState(() => _pressed = false),
+                  child: AnimatedScale(
+                    scale: _pressed ? 0.9 : 1,
+                    duration: KimTheme.motionFast,
+                    curve: KimTheme.motionEmphasized,
+                    child: AnimatedSwitcher(
+                      duration: KimTheme.motionFast,
+                      switchInCurve: KimTheme.motionEmphasized,
+                      switchOutCurve: KimTheme.motionEmphasized,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _hasText
+                          ? IconButton(
+                              key: const Key('composer-send'),
+                              tooltip: Copy.send,
+                              onPressed: _submit,
+                              style: IconButton.styleFrom(
+                                backgroundColor: scheme.primary,
+                                foregroundColor: scheme.onPrimary,
+                              ),
+                              icon: const Icon(LucideIcons.send, size: 18),
+                            )
+                          : IconButton(
+                              key: const Key('composer-plus'),
+                              tooltip: Copy.plusPanel,
+                              onPressed: _togglePanel,
+                              icon: Icon(
+                                _panel ? LucideIcons.x : LucideIcons.plus,
+                                size: 22,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
                     ),
                   ),
+                ),
               ],
             ),
           ),
           AnimatedSize(
-            duration: KimMotion.short,
+            duration: KimMotion.medium,
             curve: KimMotion.standard,
             alignment: Alignment.topCenter,
             child: _panel
@@ -241,7 +277,7 @@ class _ActionTile extends StatelessWidget {
             height: 56,
             decoration: BoxDecoration(
               color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(KimTheme.radiusField),
               border: Border.all(color: KimTheme.hairlineOf(context)),
             ),
             child: Icon(icon, size: 26, color: scheme.onSurface),
@@ -251,7 +287,7 @@ class _ActionTile extends StatelessWidget {
             label,
             style: theme.textTheme.labelSmall?.copyWith(
               color: scheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: KimTheme.fontMeta,
             ),
           ),
         ],

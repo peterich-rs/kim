@@ -94,6 +94,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               id: id,
               title: thread?.title ?? id,
               kind: thread?.kind ?? ThreadKind.user,
+              initialUnread: thread?.unread ?? 0,
             ),
           );
         },

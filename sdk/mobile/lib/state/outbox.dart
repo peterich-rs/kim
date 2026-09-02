@@ -180,13 +180,6 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   Future<void> _sendOne(KimChatMsg msg) async {
-    if (msg.isVideo && !isRemoteUrl(msg.body)) {
-      // Video upload is not on this slice; keep the local row as sent-looking.
-      final next = msg.copyWith(status: KimSendStatus.sent, failed: false);
-      await _persist(next, fromSelf: true);
-      await KimHaptics.light();
-      return;
-    }
     try {
       var content = _contentOf(msg);
       if (content is KimImageContent && !isRemoteUrl(content.url)) {
@@ -209,7 +202,11 @@ class OutboxNotifier extends Notifier<int> {
         return;
       }
       final sent = msg.copyWith(
-        body: content is KimImageContent ? content.url : msg.body,
+        body: switch (content) {
+          KimImageContent(:final url) => url,
+          KimVideoContent(:final url) => url,
+          _ => msg.body,
+        },
         status: KimSendStatus.sent,
         failed: false,
         messageId: result.messageId,
