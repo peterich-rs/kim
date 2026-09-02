@@ -22,7 +22,7 @@ await cli.talkToUser("bob", new Content("hello"))
 await cli.logout()
 ```
 
-Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。`LoginReq.device` 默认 `"web"`（多端可同时在线）；移动端应传 `"mobile"` / `"ios"` / `"android"`，同一账号只保留一个移动会话。产品页 `sdk/web/app`（React + React Router + Tailwind）：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。图片：`uploadImage(token, blob)` → `talkToUser(dest, new Content(url, MessageType.Image, extra))`，`extra` 为 `{"w","h"}`。产品页会话里渲染缩略图，点击全屏查看，见 [media.md](media.md)。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
+Token 由调用方提供（JWT HS256，claims `acc` / `app` / `exp` / 可选 `jti`）。SDK **不**签发 Token，只从 payload 读 `acc`（不验签；验签在网关）。`LoginReq.device` 默认 `"web"`（多端可同时在线）；移动端应传 `"mobile"` / `"ios"` / `"android"`，同一账号只保留一个移动会话。产品页 `sdk/web/app`（React + React Router + MUI）：`POST /api/v1/auth/register` 与 `/api/v1/auth/login`（protobuf `AuthReq`/`AuthResp`）拿 JWT，`POST /api/v1/auth/logout` 吊销。图片：`uploadImage(token, blob)` → `talkToUser(dest, new Content(url, MessageType.Image, extra))`，`extra` 为 `{"w","h"}`。产品页会话里渲染缩略图，点击全屏查看，见 [media.md](media.md)。小册 demo：Vite 本机仍用 `mint.ts` 本地密钥。`pkt-client` 默认本地 `generate`；`KIM_AUTH_URL` + `KIM_PASSWORD` 走 Royal `/api/v1/auth/login`。
 
 可选 `ClientOptions.routerUrl`：`login()` 先 `GET {routerUrl}/api/lookup`，`Authorization: Bearer <token>`，再用返回的 `ws`。构造函数 `wsurl` 不改。Token 永远不进 Upgrade URL，也不进 lookup path/query。
 
@@ -72,11 +72,11 @@ INIT → CONNECTING → CONNECTED → CLOSING → CLOSED
 
 `Map<sequence, Pending>`。客户端自增 sequence（登录固定 1，之后从 2）。`Flag=Response` 用同一 sequence 解开 Promise。超时 `KIMStatus.RequestTimeout=1001`；未连接 `SendFailed=1002`。这两个数不上线。
 
-`talkToUser` / `talkToGroup`：状态码 `[300, 400)` 重试（默认 3 次），**同一次发送复用 `MessageReq.clientId`**。`UserNotFound=108` 与 `ContentBlocked` / `NotGroupMember` 一样不重试。`>= 400` 关连接（可重连）。
+`talkToUser` / `talkToGroup`：状态码 `[300, 400)` 重试（默认 3 次），**同一次发送复用 `MessageReq.clientId`**。`UserNotFound=108`、`ContentBlocked`、`NotGroupMember`、`SystemException=99` 不重试。`>= 400` 关连接（可重连）。
 
 心跳若收到 `login.renew` Push（`AuthResp`），SDK 更新内存 token；产品页 `ontoken` 写回 `localStorage`。
 
-ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。在线循环大约每 `ackForceAfterMs`（默认 3s）对 `lastMessage` 发一次；到达不足 `ackDelayMs`（默认 500ms）则再等。未 ACK 超过 10 条不等待。离线页在 persist 后走 `messageIds` 批量 ACK。
+ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。在线循环大约每 `ackForceAfterMs`（默认 3s）把**本窗口实际收到的 id 集合** batch ACK（≤200，与离线页相同），不再只 ACK `lastMessage`。到达不足 `ackDelayMs`（默认 500ms）则再等。未 ACK 超过 10 条不等待。离线页在 persist 后走 `messageIds` 批量 ACK。
 
 ---
 
@@ -101,6 +101,19 @@ ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。在线循环大约�
 SDK **不发** `login.signout`；断开由网关 Disconnect 转发。
 
 ---
+
+
+## 产品页
+
+`sdk/web/app` 是给真人用的 IM，不是 SDK demo。React 19 + MUI（CssBaseline、light/dark color scheme、List / Dialog / TextField）+ `react-virtuoso` 消息列表。文案走 `copy.ts`（中文）。JWT 只由 Royal 签发，应用不 mint。
+
+- 外观：跟随系统，Me/资料里可切浅色、深色。浅色不是暗色的反相：会话画布是灰蓝底，自己气泡浅绿、对方白底。
+- 会话列表：约 60px 行高，头像、最后一条、时间、未读胶囊、静音、首次加载骨架、空状态 CTA；本地搜索会话。
+- 消息：同一发送者 5 分钟内合并头像/昵称；日期分隔；上翻加载 `chat.history`；不在底部时来新消息不抢滚动，右下角回到底部 / N 条新消息。
+- 输入：自适应高度，Enter 发送 / Shift+Enter 换行；`NotFriends=109` 时禁用并给出加好友；失败可点重试；支持拖放和粘贴图片。
+- 连接：重连用顶栏，不刷 toast。互踢进独立说明页。离线有指示和重试。
+
+服务端 pending receipt / G-03 默认门闩仍关，产品页不宣称已 rollout。
 
 ## 本机怎么跑
 

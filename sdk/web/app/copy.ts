@@ -60,6 +60,10 @@ export const COPY = {
   uploading: "上传中…",
   notConnected: "尚未连接",
   retry: "重试",
+  retrySend: "重新发送",
+  sending: "发送中",
+  composerHint: "Enter 发送，Shift+Enter 换行",
+  dropImage: "松开以发送图片",
 
   peerAccount: "对方账号",
   peerPlaceholder: "输入对方账号",
@@ -87,8 +91,14 @@ export const COPY = {
   reconnecting: "重连中",
   offline: "已断开",
   kicked: "账号已在其他设备登录",
+  kickedTitle: "已在其他设备登录",
+  kickedHint: "此账号刚在另一台设备登录，当前会话已断开。",
+  kickedAction: "返回登录",
+  reconnectHint: "正在重新连接…",
+  offlineHint: "当前处于离线状态",
   logout: "退出登录",
   yesterday: "昨天",
+  today: "今天",
 
   profile: "个人资料",
   nickname: "昵称",
@@ -99,6 +109,10 @@ export const COPY = {
   oldPassword: "当前密码",
   newPassword: "新密码",
   passwordChanged: "密码已更新",
+  theme: "外观",
+  themeSystem: "跟随系统",
+  themeLight: "浅色",
+  themeDark: "深色",
 
   contacts: "通讯录",
   addFriend: "添加好友",
@@ -122,8 +136,18 @@ export const COPY = {
   chatAction: "发消息",
   searchEmpty: "没有找到相关用户",
   pickFriends: "从通讯录选择成员",
+
+  jumpToBottom: "回到底部",
+  muteChat: "静音",
+  unmuteChat: "取消静音",
+  muted: "已静音",
+  loadOlder: "加载更早的消息",
 };
 
 export function memberCount(n: number): string {
   return `${n} 位成员`;
+}
+
+export function newCountLabel(n: number): string {
+  return `${n} 条新消息`;
 }

@@ -1,3 +1,4 @@
+import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -11,6 +12,7 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
+    <InitColorSchemeScript defaultMode="system" attribute="data" />
     <App />
   </StrictMode>,
 );

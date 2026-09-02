@@ -1,10 +1,25 @@
-import { Search, UserPlus, Users } from "lucide-react";
+import PersonAdd from "@mui/icons-material/PersonAdd";
+import Search from "@mui/icons-material/Search";
+import Group from "@mui/icons-material/Group";
+import Badge from "@mui/material/Badge";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import InputAdornment from "@mui/material/InputAdornment";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { COPY } from "../copy.ts";
 import { useChat, type Person } from "../state/ChatProvider.tsx";
-import { Avatar, Button, Modal } from "./ui.tsx";
+import { Modal, UserAvatar } from "./ui.tsx";
 
 export function ContactsDialog({
   open,
@@ -70,150 +85,135 @@ export function ContactsDialog({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={COPY.contacts} wide>
-      <div className="flex gap-1 rounded-xl bg-stage p-1 text-xs">
-        {(
-          [
-            ["friends", COPY.contacts, people.length],
-            ["add", COPY.addFriend, 0],
-            ["incoming", COPY.incoming, incomingCount],
-          ] as const
-        ).map(([id, label, count]) => (
-          <button
-            key={id}
-            type="button"
-            className={`relative flex-1 rounded-lg px-2 py-1.5 transition-colors ${
-              tab === id ? "bg-elev font-medium text-ink" : "text-muted hover:text-ink"
-            }`}
-            onClick={() => setTab(id)}
-          >
-            {label}
-            {count > 0 ? (
-              <span className="ml-1 rounded-full bg-brand px-1.5 text-[10px] font-semibold text-brand-ink">
-                {count > 99 ? "99+" : count}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={tab}
+        onChange={(_, v: "friends" | "add" | "incoming") => setTab(v)}
+        variant="fullWidth"
+        sx={{ mb: 1.5 }}
+      >
+        <Tab value="friends" label={COPY.contacts} />
+        <Tab value="add" label={COPY.addFriend} />
+        <Tab
+          value="incoming"
+          label={
+            <Badge color="primary" badgeContent={incomingCount} max={99}>
+              {COPY.incoming}
+            </Badge>
+          }
+        />
+      </Tabs>
 
       {tab === "friends" ? (
-        <ul className="msg-scroll mt-3 flex max-h-[min(52vh,420px)] flex-col gap-0.5 overflow-y-auto">
+        <List dense sx={{ maxHeight: "min(52vh, 420px)", overflowY: "auto" }}>
           {people.length === 0 ? (
-            <li className="flex flex-col items-center px-4 py-12 text-center">
-              <span className="grid size-12 place-items-center rounded-2xl bg-stage text-brand">
-                <Users className="size-5" />
-              </span>
-              <p className="mt-3 text-sm font-medium">{COPY.noFriends}</p>
-              <p className="mt-1 text-xs text-muted">{COPY.noFriendsHint}</p>
-              <Button className="mt-4 h-9 px-3 text-xs" onClick={() => setTab("add")}>
-                <UserPlus className="size-3.5" />
+            <Stack sx={{ py: 6, textAlign: "center", px: 2, alignItems: "center" }}>
+              <Group color="primary" />
+              <Typography variant="subtitle2" sx={{ mt: 1.5 }}>
+                {COPY.noFriends}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {COPY.noFriendsHint}
+              </Typography>
+              <Button sx={{ mt: 2 }} startIcon={<PersonAdd />} onClick={() => setTab("add")}>
                 {COPY.addFriend}
               </Button>
-            </li>
+            </Stack>
           ) : (
             people.map((p) => (
-              <li key={p.account}>
-                <button
-                  type="button"
-                  onClick={() => openChat(p)}
-                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-elev"
-                >
-                  <Avatar name={p.nickname} size="sm" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{p.nickname}</span>
-                    <span className="block truncate text-xs text-muted">@{p.account}</span>
-                  </span>
-                  <span className="text-xs text-brand">{COPY.chatAction}</span>
-                </button>
-              </li>
+              <ListItemButton key={p.account} onClick={() => openChat(p)}>
+                <Box sx={{ mr: 1.5 }}>
+                  <UserAvatar name={p.nickname} size={36} />
+                </Box>
+                <ListItemText primary={p.nickname} secondary={`@${p.account}`} />
+                <Typography variant="caption" color="primary">
+                  {COPY.chatAction}
+                </Typography>
+              </ListItemButton>
             ))
           )}
-        </ul>
+        </List>
       ) : null}
 
       {tab === "add" ? (
-        <form className="mt-3 flex flex-col gap-3" onSubmit={(e) => void onSearch(e)}>
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setSearched(false);
-              }}
-              placeholder={COPY.searchPeople}
-              autoFocus
-              className="h-11 w-full rounded-xl border border-line bg-elev pl-9 pr-3 text-sm placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-          </label>
-          <Button type="submit" className="h-10">
+        <Stack component="form" spacing={1.5} onSubmit={(e) => void onSearch(e)}>
+          <TextField
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSearched(false);
+            }}
+            placeholder={COPY.searchPeople}
+            autoFocus
+            fullWidth
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Button type="submit" variant="contained">
             {COPY.searchPeople}
           </Button>
-          <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto">
+          <List dense sx={{ maxHeight: 224, overflowY: "auto" }}>
             {searched && hits.length === 0 ? (
-              <li className="py-8 text-center text-sm text-muted">{COPY.searchEmpty}</li>
+              <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
+                {COPY.searchEmpty}
+              </Typography>
             ) : (
               hits.map((p) => {
                 const friend = isFriend(p.account);
                 const pending = outgoing.includes(p.account);
                 return (
-                  <li
-                    key={p.account}
-                    className="flex items-center gap-3 rounded-xl border border-line/70 bg-stage px-3 py-2.5"
-                  >
-                    <Avatar name={p.nickname} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{p.nickname}</span>
-                      <span className="block truncate text-xs text-muted">@{p.account}</span>
-                    </span>
+                  <ListItem key={p.account} disableGutters sx={{ px: 0.5 }}>
+                    <Box sx={{ mr: 1.5 }}>
+                      <UserAvatar name={p.nickname} size={36} />
+                    </Box>
+                    <ListItemText primary={p.nickname} secondary={`@${p.account}`} />
                     {friend ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-8 px-2 text-xs"
-                        onClick={() => openChat(p)}
-                      >
+                      <Button size="small" onClick={() => openChat(p)}>
                         {COPY.chatAction}
                       </Button>
                     ) : pending ? (
-                      <span className="text-xs text-muted">{COPY.requested}</span>
+                      <Typography variant="caption" color="text.secondary">
+                        {COPY.requested}
+                      </Typography>
                     ) : (
                       <Button
-                        type="button"
-                        className="h-8 px-3 text-xs"
+                        size="small"
+                        variant="contained"
                         disabled={busy === p.account}
                         onClick={() => void onRequest(p.account)}
                       >
                         {COPY.addFriend}
                       </Button>
                     )}
-                  </li>
+                  </ListItem>
                 );
               })
             )}
-          </ul>
-        </form>
+          </List>
+        </Stack>
       ) : null}
 
       {tab === "incoming" ? (
-        <ul className="mt-3 flex max-h-[min(52vh,420px)] flex-col gap-2 overflow-y-auto">
+        <List dense sx={{ maxHeight: "min(52vh, 420px)", overflowY: "auto" }}>
           {incomingPeople.length === 0 ? (
-            <li className="py-12 text-center text-sm text-muted">{COPY.noIncoming}</li>
+            <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: "center" }}>
+              {COPY.noIncoming}
+            </Typography>
           ) : (
             incomingPeople.map((p) => (
-              <li
-                key={p.account}
-                className="flex items-center gap-3 rounded-xl border border-line/70 bg-stage px-3 py-2.5"
-              >
-                <Avatar name={p.nickname} size="sm" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{p.nickname}</span>
-                  <span className="block truncate text-xs text-muted">@{p.account}</span>
-                </span>
+              <ListItem key={p.account} disableGutters sx={{ px: 0.5 }}>
+                <Box sx={{ mr: 1.5 }}>
+                  <UserAvatar name={p.nickname} size={36} />
+                </Box>
+                <ListItemText primary={p.nickname} secondary={`@${p.account}`} />
                 <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-8 px-2 text-xs"
+                  size="small"
                   onClick={() => {
                     void rejectFriend(p.account).catch((err) =>
                       toast.error(err instanceof Error ? err.message : COPY.sendFailed),
@@ -223,18 +223,18 @@ export function ContactsDialog({
                   {COPY.reject}
                 </Button>
                 <Button
-                  type="button"
-                  className="h-8 px-3 text-xs"
+                  size="small"
+                  variant="contained"
                   onClick={() => {
                     void acceptFriend(p.account).then(() => onOpenChange(false));
                   }}
                 >
                   {COPY.accept}
                 </Button>
-              </li>
+              </ListItem>
             ))
           )}
-        </ul>
+        </List>
       ) : null}
     </Modal>
   );

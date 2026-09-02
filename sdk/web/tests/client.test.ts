@@ -142,8 +142,13 @@ describe("KIMClient", () => {
     expect(gw.lastTalkDest).toBe("bob");
   });
 
-  it("does not retry talk on content blocked, not group member, or user not found", async () => {
-    for (const blocked of [Status.ContentBlocked, Status.NotGroupMember, Status.UserNotFound]) {
+  it("does not retry talk on content blocked, not group member, user not found, or 99", async () => {
+    for (const blocked of [
+      Status.ContentBlocked,
+      Status.NotGroupMember,
+      Status.UserNotFound,
+      Status.SystemException,
+    ]) {
       const gw = new LoopbackGw();
       let talks = 0;
       const orig = gw.reply.bind(gw);
@@ -258,6 +263,37 @@ describe("KIMClient", () => {
     gw.lastSocket().deliver(push.bytes());
     await new Promise((r) => setTimeout(r, 20));
     expect(seen).toEqual([99n]);
+  });
+
+
+  it("online messageAckLoop batches every id received in the window", async () => {
+    const gw = new LoopbackGw();
+    const cli = client(gw);
+    cli.onmessage(() => {
+      /* drain */
+    });
+    await cli.login();
+    const sock = gw.lastSocket();
+    for (const id of [11n, 12n, 13n]) {
+      const push = LogicPkt.build(
+        Command.ChatUserTalk,
+        "",
+        encodeMessagePush({
+          messageId: id,
+          type: 1,
+          body: "x",
+          extra: "",
+          sender: "bob",
+          sendTime: id,
+        }),
+        8,
+      );
+      push.flag = Flag.Push;
+      sock.deliver(push.bytes());
+    }
+    await new Promise((r) => setTimeout(r, 120));
+    const acked = [...gw.acked].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    expect(acked).toEqual([11n, 12n, 13n]);
   });
 
   it("offline sync pages 201 pending and batch-acks 200 then 1", async () => {

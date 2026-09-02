@@ -31,18 +31,25 @@
     "deploy:app": "npm run build:app && wrangler deploy"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-tooltip": "^1.2.16",
     "clsx": "^2.1.1",
     "long": "^5.3.2",
     "lucide-react": "^1.37.0",
+    "motion": "^13.1.1",
     "protobufjs": "^7.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
+    "react-virtuoso": "^4.18.12",
     "sonner": "^2.0.8",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "usehooks-ts": "^3.1.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

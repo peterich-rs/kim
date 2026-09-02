@@ -1,14 +1,30 @@
-import * as Tooltip from "@radix-ui/react-tooltip";
+import CssBaseline from "@mui/material/CssBaseline";
+import { ThemeProvider, useColorScheme } from "@mui/material/styles";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { ChatProvider } from "./state/ChatProvider.tsx";
+import { theme } from "./theme.ts";
+
+function ThemedToaster() {
+  const { mode, systemMode } = useColorScheme();
+  const resolved = mode === "system" ? systemMode : mode;
+  return (
+    <Toaster
+      theme={resolved === "dark" ? "dark" : "light"}
+      position="top-center"
+      richColors
+      closeButton
+    />
+  );
+}
 
 export function App() {
   return (
-    <Tooltip.Provider delayDuration={250}>
+    <ThemeProvider theme={theme} defaultMode="system">
+      <CssBaseline enableColorScheme />
       <ChatProvider>
         <BrowserRouter>
           <Routes>
@@ -18,14 +34,8 @@ export function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
-        <Toaster
-          theme="dark"
-          position="top-center"
-          toastOptions={{
-            className: "border border-line bg-panel text-ink",
-          }}
-        />
+        <ThemedToaster />
       </ChatProvider>
-    </Tooltip.Provider>
+    </ThemeProvider>
   );
 }

@@ -39,7 +39,7 @@ export function sendTimeMs(sendTime: bigint, fallback = Date.now()): number {
   return Number(sendTime) * 1000;
 }
 
-function startOfDay(d: Date): number {
+export function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
@@ -63,6 +63,19 @@ export function formatClock(ts: number): string {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+export function formatDateSep(ts: number): string {
+  const d = new Date(ts);
+  const today = startOfDay(new Date());
+  const point = startOfDay(d);
+  if (point === today) {
+    return COPY.today;
+  }
+  if (point === today - 86_400_000) {
+    return COPY.yesterday;
+  }
+  return d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
 }
 
 export function truncate(text: string, max = 36): string {

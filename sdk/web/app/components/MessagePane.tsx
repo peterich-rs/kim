@@ -1,20 +1,52 @@
-import { ArrowLeft, ImagePlus, Loader2, MessageSquare, Send, UserPlus, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
+import ArrowBack from "@mui/icons-material/ArrowBack";
+import ErrorIcon from "@mui/icons-material/Error";
+import ImageOutlined from "@mui/icons-material/ImageOutlined";
+import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
+import PersonAdd from "@mui/icons-material/PersonAdd";
+import Send from "@mui/icons-material/Send";
+import Chat from "@mui/icons-material/Chat";
+import People from "@mui/icons-material/People";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import Fab from "@mui/material/Fab";
+import IconButton from "@mui/material/IconButton";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { toast } from "sonner";
 
-import { COPY, memberCount } from "../copy.ts";
-import { cn } from "../lib/cn.ts";
-import { formatClock } from "../lib/format.ts";
+import { COPY, memberCount, newCountLabel } from "../copy.ts";
+import { formatClock, formatDateSep, startOfDay } from "../lib/format.ts";
 import { ACCEPT_IMAGE, isImageMessage } from "../lib/image.ts";
 import { useChat, type ChatMsg } from "../state/ChatProvider.tsx";
 import { ImageBubble } from "./ImageBubble.tsx";
 import { ImageViewer } from "./ImageViewer.tsx";
-import { Avatar, Button, IconTip } from "./ui.tsx";
+import { IconTip, UserAvatar } from "./ui.tsx";
 
 const GROUP_MS = 5 * 60 * 1000;
+const START_INDEX = 100_000;
 
 function sameGroup(prev: ChatMsg | undefined, cur: ChatMsg): boolean {
   if (!prev || prev.sys || cur.sys) {
+    return false;
+  }
+  if (startOfDay(new Date(prev.at)) !== startOfDay(new Date(cur.at))) {
     return false;
   }
   return prev.sender === cur.sender && cur.at - prev.at < GROUP_MS;
@@ -31,6 +63,8 @@ export function MessagePane() {
     status,
     send,
     sendImage,
+    retryMessage,
+    loadOlder,
     closeThread,
     toggleMembers,
     socialReady,
@@ -44,30 +78,77 @@ export function MessagePane() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [viewer, setViewer] = useState<string | null>(null);
-  const logRef = useRef<HTMLOListElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [newCount, setNewCount] = useState(0);
+  const [headerDate, setHeaderDate] = useState("");
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const loadingOlderRef = useRef(false);
+  const prevLenRef = useRef(0);
+  const atBottomRef = useRef(true);
+  atBottomRef.current = atBottom;
 
   const rows = activeId ? (messages[activeId] ?? []) : [];
 
   useEffect(() => {
-    const el = logRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [rows.length, activeId]);
+    setDraft("");
+    setNewCount(0);
+    setAtBottom(true);
+    setFirstItemIndex(START_INDEX);
+    prevLenRef.current = 0;
+    inputRef.current?.focus();
+  }, [activeId]);
 
   useEffect(() => {
-    inputRef.current?.focus();
-    setDraft("");
-  }, [activeId]);
+    if (!activeId) {
+      return;
+    }
+    const prev = prevLenRef.current;
+    if (rows.length > prev && prev > 0) {
+      const appended = rows.length - prev;
+      const last = rows[rows.length - 1];
+      if (last && last.sender !== account && !atBottomRef.current) {
+        setNewCount((n) => n + appended);
+      }
+    }
+    prevLenRef.current = rows.length;
+  }, [rows.length, activeId, account, rows]);
 
   const grouped = useMemo(() => {
     return rows.map((row, i) => ({
       row,
       cont: sameGroup(rows[i - 1], row),
+      showDate: i === 0 || startOfDay(new Date(rows[i - 1]!.at)) !== startOfDay(new Date(row.at)),
     }));
   }, [rows]);
+
+  const jumpBottom = useCallback(() => {
+    virtuosoRef.current?.scrollToIndex({
+      index: Math.max(0, grouped.length - 1),
+      align: "end",
+      behavior: "smooth",
+    });
+    setNewCount(0);
+    setAtBottom(true);
+  }, [grouped.length]);
+
+  async function onStartReached() {
+    if (!activeId || loadingOlderRef.current) {
+      return;
+    }
+    loadingOlderRef.current = true;
+    try {
+      const n = await loadOlder(activeId);
+      if (n > 0) {
+        setFirstItemIndex((v) => v - n);
+      }
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }
 
   async function onSend() {
     const text = draft.trim();
@@ -82,14 +163,12 @@ export function MessagePane() {
     try {
       await send(text);
       setDraft("");
-      const area = inputRef.current;
-      if (area) {
-        area.style.height = "auto";
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       const known = [COPY.notConnected, COPY.notFriends, COPY.blocked, COPY.userNotFound];
-      toast.error(known.includes(msg) ? msg : COPY.sendFailed);
+      if (known.includes(msg)) {
+        toast.error(msg);
+      }
     } finally {
       setSending(false);
     }
@@ -100,22 +179,15 @@ export function MessagePane() {
     void onSend();
   }
 
-  function onKey(ev: KeyboardEvent<HTMLTextAreaElement>) {
+  function onKey(ev: KeyboardEvent<HTMLDivElement>) {
     if (ev.key === "Enter" && !ev.shiftKey) {
       ev.preventDefault();
       void onSend();
     }
   }
 
-  function resize(el: HTMLTextAreaElement) {
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
-  }
-
-  async function onPickImage(ev: ChangeEvent<HTMLInputElement>) {
-    const file = ev.target.files?.[0];
-    ev.target.value = "";
-    if (!file || uploading || sending) {
+  async function deliverImage(file: File) {
+    if (uploading || sending) {
       return;
     }
     if (status !== "online") {
@@ -141,118 +213,310 @@ export function MessagePane() {
     }
   }
 
+  async function onPickImage(ev: ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (file) {
+      await deliverImage(file);
+    }
+  }
+
+  function onPaste(ev: ClipboardEvent) {
+    const files = ev.clipboardData?.files;
+    if (!files?.length) {
+      return;
+    }
+    const image = Array.from(files).find((f) => f.type.startsWith("image/"));
+    if (image) {
+      ev.preventDefault();
+      void deliverImage(image);
+    }
+  }
+
+  function onDrop(ev: DragEvent) {
+    ev.preventDefault();
+    setDragging(false);
+    const file = ev.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/")) {
+      void deliverImage(file);
+    }
+  }
+
   if (!active) {
     return (
-      <div className="hidden min-h-0 flex-1 flex-col items-center justify-center bg-stage text-center md:flex">
-        <div className="grid size-16 place-items-center rounded-2xl bg-panel text-brand">
-          <MessageSquare className="size-7" />
-        </div>
-        <h2 className="mt-4 text-lg font-semibold">{COPY.pickConversation}</h2>
-        <p className="mt-1 max-w-xs text-sm text-muted">{COPY.pickConversationHint}</p>
-      </div>
+      <Box
+        sx={{
+          display: { xs: "none", md: "flex" },
+          flex: 1,
+          minHeight: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          bgcolor: (theme) => theme.palette.canvas,
+          textAlign: "center",
+          px: 3,
+        }}
+      >
+        <Box
+          sx={{
+            width: 64,
+            height: 64,
+            borderRadius: 3,
+            bgcolor: "background.paper",
+            display: "grid",
+            placeItems: "center",
+            color: "primary.main",
+            mb: 2,
+          }}
+        >
+          <Chat />
+        </Box>
+        <Typography variant="h6">{COPY.pickConversation}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 280 }}>
+          {COPY.pickConversationHint}
+        </Typography>
+      </Box>
     );
   }
 
   const subtitle = active.kind === "group" ? COPY.groupChat : COPY.privateChat;
-  const gated =
-    active.kind === "user" && socialReady && !isFriend(active.id);
+  const gated = active.kind === "user" && socialReady && !isFriend(active.id);
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
-      <section className="flex min-w-0 flex-1 flex-col bg-stage">
-        <header className="flex items-center gap-3 border-b border-line px-3 py-3">
-          <Button variant="icon" className="md:hidden" aria-label={COPY.back} onClick={closeThread}>
-            <ArrowLeft className="size-4" />
-          </Button>
-          <Avatar name={active.title} size="sm" />
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold">{active.title}</h2>
-            <p className="text-xs text-muted">
+    <Box
+      sx={{ position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 }}
+      onDragOver={(ev) => {
+        ev.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+    >
+      <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, bgcolor: (theme) => theme.palette.canvas }}>
+        <Stack direction="row" spacing={1.25} sx={{ px: 1.25,
+            py: 1,
+            bgcolor: "background.paper",
+            borderBottom: 1,
+            borderColor: "divider",
+            minHeight: 56, alignItems: "center" }}>
+          <IconButton aria-label={COPY.back} onClick={closeThread} sx={{ display: { md: "none" } }}>
+            <ArrowBack />
+          </IconButton>
+          <UserAvatar name={active.title} size={36} />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography noWrap variant="subtitle2">
+              {active.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
               {active.kind === "group" && members.length > 0 ? memberCount(members.length) : subtitle}
-            </p>
-          </div>
+            </Typography>
+          </Box>
           {active.kind === "group" ? (
             <IconTip label={COPY.members}>
-              <Button variant="icon" aria-label={COPY.members} onClick={toggleMembers}>
-                <Users className="size-4" />
-              </Button>
+              <IconButton aria-label={COPY.members} onClick={toggleMembers}>
+                <People />
+              </IconButton>
             </IconTip>
           ) : null}
-        </header>
+        </Stack>
 
-        <ol ref={logRef} className="msg-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4 py-4">
-          {grouped.length === 0 ? (
-            <li className="m-auto text-sm text-muted">{COPY.noMessages}</li>
-          ) : (
-            grouped.map(({ row, cont }) => {
+        <Box sx={{ position: "relative", flex: 1, minHeight: 0 }}>
+          {headerDate ? (
+            <Chip
+              size="small"
+              label={headerDate}
+              sx={{
+                position: "absolute",
+                top: 8,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 2,
+                bgcolor: "background.paper",
+                boxShadow: 1,
+              }}
+            />
+          ) : null}
+          <Virtuoso
+            ref={virtuosoRef}
+            style={{ height: "100%" }}
+            data={grouped}
+            firstItemIndex={firstItemIndex}
+            initialTopMostItemIndex={Math.max(0, grouped.length - 1)}
+            followOutput={(bottom) => (bottom ? "smooth" : false)}
+            atBottomStateChange={(bottom) => {
+              setAtBottom(bottom);
+              if (bottom) {
+                setNewCount(0);
+              }
+            }}
+            startReached={() => {
+              void onStartReached();
+            }}
+            rangeChanged={(range) => {
+              const idx =
+                range.startIndex >= firstItemIndex
+                  ? range.startIndex - firstItemIndex
+                  : range.startIndex;
+              const item = grouped[idx] ?? grouped[0];
+              const row = item?.row;
+              if (row) {
+                setHeaderDate(formatDateSep(row.at));
+              }
+            }}
+            increaseViewportBy={200}
+            itemContent={(_index, item) => {
+              const { row, cont, showDate } = item;
               if (row.sys) {
                 return (
-                  <li key={row.key} className="self-center py-1 text-center text-xs text-muted">
-                    {row.body}
-                  </li>
+                  <Box sx={{ py: 1, textAlign: "center" }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {row.body}
+                    </Typography>
+                  </Box>
                 );
               }
               const mine = row.sender === account;
               return (
-                <li
-                  key={row.key}
-                  className={cn(
-                    "flex max-w-[min(72%,36rem)] gap-2",
-                    mine ? "self-end flex-row-reverse" : "self-start",
-                    cont && "mt-0",
-                  )}
-                >
-                  {cont ? <span className="size-8 shrink-0" /> : <Avatar name={row.sender} size="sm" />}
-                  <div className={cn("min-w-0", mine && "items-end")}>
-                    {cont ? null : (
-                      <div className={cn("mb-1 flex items-baseline gap-2", mine && "flex-row-reverse")}>
-                        <span className="text-xs font-medium text-muted">
-                          {mine ? COPY.you : row.sender}
-                        </span>
-                        <time className="text-[11px] text-muted/70">{formatClock(row.at)}</time>
-                      </div>
-                    )}
-                    {isImageMessage(row.type, row.body, row.extra) ? (
-                      <ImageBubble
-                        src={row.body}
-                        size={row.width > 0 && row.height > 0 ? { w: row.width, h: row.height } : undefined}
-                        mine={mine}
-                        onOpen={setViewer}
-                      />
+                <Box sx={{ px: 2, pt: showDate ? 1.5 : cont ? 0.25 : 1.25 }}>
+                  {showDate ? (
+                    <Box sx={{ display: "flex", justifyContent: "center", mb: 1.25 }}>
+                      <Chip size="small" label={formatDateSep(row.at)} />
+                    </Box>
+                  ) : null}
+                  <Stack
+                    direction={mine ? "row-reverse" : "row"}
+                    spacing={1}
+                    sx={{ maxWidth: "min(72%, 36rem)", ml: mine ? "auto" : 0, mr: mine ? 0 : "auto" }}
+                  >
+                    {cont ? (
+                      <Box sx={{ width: 32, flexShrink: 0 }} />
                     ) : (
-                      <div
-                        className={cn(
-                          "whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                          mine ? "rounded-tr-md bg-me" : "rounded-tl-md bg-them",
-                        )}
-                      >
-                        {row.body}
-                      </div>
+                      <UserAvatar name={row.sender} size={32} />
                     )}
-                  </div>
-                </li>
+                    <Box sx={{ minWidth: 0 }}>
+                      {cont ? null : (
+                        <Stack direction={mine ? "row-reverse" : "row"} spacing={1} sx={{ mb: 0.4, alignItems: "baseline" }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            {mine ? COPY.you : row.sender}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatClock(row.at)}
+                          </Typography>
+                        </Stack>
+                      )}
+                      {isImageMessage(row.type, row.body, row.extra) ? (
+                        <ImageBubble
+                          src={row.body}
+                          size={row.width > 0 && row.height > 0 ? { w: row.width, h: row.height } : undefined}
+                          mine={mine}
+                          onOpen={setViewer}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            px: 1.5,
+                            py: 1,
+                            borderRadius: 2,
+                            borderTopRightRadius: mine ? 4 : 16,
+                            borderTopLeftRadius: mine ? 16 : 4,
+                            bgcolor: (theme) => (mine ? theme.palette.bubbleMe : theme.palette.bubbleThem),
+                            color: "text.primary",
+                            boxShadow: mine ? "none" : 1,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            fontSize: 14,
+                            lineHeight: 1.5,
+                            opacity: row.status === "failed" ? 0.85 : 1,
+                          }}
+                        >
+                          {row.body}
+                        </Box>
+                      )}
+                      {row.status === "sending" ? (
+                        <Typography variant="caption" color="text.secondary">
+                          {COPY.sending}
+                        </Typography>
+                      ) : null}
+                      {row.status === "failed" ? (
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<ErrorIcon fontSize="small" />}
+                          onClick={() => {
+                            void retryMessage(row.key).catch((err) =>
+                              toast.error(err instanceof Error ? err.message : COPY.sendFailed),
+                            );
+                          }}
+                          sx={{ mt: 0.25, minHeight: 28 }}
+                        >
+                          {COPY.retrySend}
+                        </Button>
+                      ) : null}
+                    </Box>
+                  </Stack>
+                </Box>
               );
-            })
-          )}
-        </ol>
+            }}
+            components={{
+              EmptyPlaceholder: () => (
+                <Box sx={{ height: "100%", display: "grid", placeItems: "center" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {COPY.noMessages}
+                  </Typography>
+                </Box>
+              ),
+            }}
+          />
+
+          <AnimatePresence>
+            {!atBottom ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                style={{ position: "absolute", right: 16, bottom: 16 }}
+              >
+                <Fab
+                  size="small"
+                  color="primary"
+                  aria-label={COPY.jumpToBottom}
+                  onClick={jumpBottom}
+                >
+                  <KeyboardArrowDown />
+                </Fab>
+                {newCount > 0 ? (
+                  <Chip
+                    size="small"
+                    color="primary"
+                    label={newCountLabel(newCount)}
+                    onClick={jumpBottom}
+                    sx={{ position: "absolute", right: 48, top: 6, cursor: "pointer" }}
+                  />
+                ) : null}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </Box>
 
         {gated ? (
-          <div className="border-t border-line bg-panel px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto flex max-w-md flex-col items-center rounded-2xl border border-line bg-stage px-5 py-5 text-center">
-              <Avatar name={active.title} />
-              <p className="mt-3 text-sm font-medium">{COPY.notFriends}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted">
+          <Box sx={{ bgcolor: "background.paper", borderTop: 1, borderColor: "divider", px: 2, py: 2.5 }}>
+            <Stack spacing={1} sx={{ maxWidth: 360, mx: "auto", textAlign: "center", alignItems: "center" }}>
+              <UserAvatar name={active.title} size={48} />
+              <Typography variant="subtitle2">{COPY.notFriends}</Typography>
+              <Typography variant="caption" color="text.secondary">
                 {isOutgoing(active.id)
                   ? COPY.waitingAccept
                   : isIncoming(active.id)
                     ? COPY.friendRequestToast
                     : COPY.addFriendToChat}
-              </p>
+              </Typography>
               {isOutgoing(active.id) ? (
-                <span className="mt-4 text-xs text-muted">{COPY.requested}</span>
+                <Typography variant="caption" color="text.secondary">
+                  {COPY.requested}
+                </Typography>
               ) : isIncoming(active.id) ? (
                 <Button
-                  className="mt-4 h-9 px-4 text-xs"
+                  variant="contained"
                   onClick={() => {
                     void acceptFriend(active.id).catch((err) =>
                       toast.error(err instanceof Error ? err.message : COPY.sendFailed),
@@ -263,94 +527,147 @@ export function MessagePane() {
                 </Button>
               ) : (
                 <Button
-                  className="mt-4 h-9 px-4 text-xs"
+                  variant="contained"
+                  startIcon={<PersonAdd />}
                   onClick={() => {
                     void requestFriend(active.id).catch((err) =>
                       toast.error(err instanceof Error ? err.message : COPY.sendFailed),
                     );
                   }}
                 >
-                  <UserPlus className="size-3.5" />
                   {COPY.addFriend}
                 </Button>
               )}
-            </div>
-          </div>
+            </Stack>
+          </Box>
         ) : (
-          <form
-            className="flex items-end gap-2 border-t border-line bg-panel px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          <Box
+            component="form"
             onSubmit={onSubmit}
+            onPaste={onPaste}
+            sx={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 1,
+              px: 1.25,
+              py: 1.25,
+              pb: "max(12px, env(safe-area-inset-bottom))",
+              bgcolor: "background.paper",
+              borderTop: 1,
+              borderColor: "divider",
+            }}
           >
             <input
               ref={fileRef}
               type="file"
               accept={ACCEPT_IMAGE}
-              className="hidden"
+              hidden
               onChange={(ev) => {
                 void onPickImage(ev);
               }}
             />
             <IconTip label={COPY.pickImage}>
-              <Button
-                type="button"
-                variant="icon"
-                className="h-11 w-11"
-                disabled={uploading || sending || status !== "online"}
-                aria-label={COPY.pickImage}
-                onClick={() => fileRef.current?.click()}
-              >
-                {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
-              </Button>
+              <span>
+                <IconButton
+                  aria-label={COPY.pickImage}
+                  disabled={uploading || sending || status !== "online"}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploading ? <CircularProgress size={18} /> : <ImageOutlined />}
+                </IconButton>
+              </span>
             </IconTip>
-            <textarea
-              ref={inputRef}
-              rows={1}
+            <TextField
+              inputRef={inputRef}
+              fullWidth
+              multiline
+              minRows={1}
+              maxRows={6}
               value={draft}
-              maxLength={4000}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                resize(e.target);
-              }}
+              onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKey}
               placeholder={COPY.messagePlaceholder}
-              className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-line bg-elev px-3 py-2.5 text-sm placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+              slotProps={{ htmlInput: { maxLength: 4000, "aria-label": COPY.messagePlaceholder } }}
             />
-            <Button
-              type="submit"
-              className="h-11 px-4"
-              disabled={!draft.trim() || sending || status !== "online"}
-              aria-label={COPY.send}
-            >
-              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              <span className="hidden sm:inline">{COPY.send}</span>
-            </Button>
-          </form>
+            <motion.div whileTap={{ scale: 0.94 }}>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={!draft.trim() || sending || status !== "online"}
+                aria-label={COPY.send}
+                sx={{ minWidth: 64, height: 40 }}
+                endIcon={sending ? <CircularProgress size={14} color="inherit" /> : <Send />}
+              >
+                {COPY.send}
+              </Button>
+            </motion.div>
+          </Box>
         )}
-      </section>
+      </Box>
 
       {active.kind === "group" && membersOpen ? (
-        <aside className="absolute inset-y-0 right-0 z-20 flex w-[min(240px,80vw)] flex-col border-l border-line bg-panel md:relative md:z-0">
-          <header className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h3 className="text-sm font-semibold">{COPY.members}</h3>
-            <Button variant="icon" className="md:hidden" aria-label={COPY.close} onClick={toggleMembers}>
-              <ArrowLeft className="size-4" />
-            </Button>
-          </header>
-          <ul className="msg-scroll flex-1 overflow-y-auto p-2">
+        <Box
+          sx={{
+            width: { xs: "min(240px, 80vw)", md: 240 },
+            position: { xs: "absolute", md: "relative" },
+            right: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 2,
+            bgcolor: "background.paper",
+            borderLeft: 1,
+            borderColor: "divider",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Stack direction="row" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", alignItems: "center", justifyContent: "space-between" }}>
+            <Typography variant="subtitle2">{COPY.members}</Typography>
+            <IconButton aria-label={COPY.close} onClick={toggleMembers} sx={{ display: { md: "none" } }}>
+              <ArrowBack fontSize="small" />
+            </IconButton>
+          </Stack>
+          <Box sx={{ flex: 1, overflowY: "auto", p: 1 }}>
             {members.map((name) => (
-              <li key={name} className="flex items-center gap-2 rounded-lg px-2 py-2">
-                <Avatar name={name} size="sm" />
-                <span className="truncate text-sm">
+              <Stack key={name} direction="row" spacing={1} sx={{ px: 1, py: 0.75, alignItems: "center" }}>
+                <UserAvatar name={name} size={32} />
+                <Typography noWrap variant="body2">
                   {name}
-                  {name === account ? <span className="ml-1 text-xs text-muted">{COPY.you}</span> : null}
-                </span>
-              </li>
+                  {name === account ? (
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
+                      {COPY.you}
+                    </Typography>
+                  ) : null}
+                </Typography>
+              </Stack>
             ))}
-          </ul>
-        </aside>
+          </Box>
+        </Box>
       ) : null}
 
       <ImageViewer src={viewer} open={Boolean(viewer)} onClose={() => setViewer(null)} />
-    </div>
+
+      <AnimatePresence>
+        {dragging ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 5,
+              display: "grid",
+              placeItems: "center",
+              background: "rgba(15,23,42,0.45)",
+              color: "#fff",
+              fontWeight: 600,
+            }}
+          >
+            {COPY.dropImage}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </Box>
   );
 }

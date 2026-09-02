@@ -1,14 +1,16 @@
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import { useState } from "react";
+import { useMediaQuery } from "usehooks-ts";
 
 import { COPY } from "../copy.ts";
-import { cn } from "../lib/cn.ts";
 import { useChat } from "../state/ChatProvider.tsx";
 import { ContactsDialog } from "./ContactsDialog.tsx";
 import { ConversationList } from "./ConversationList.tsx";
 import { MessagePane } from "./MessagePane.tsx";
 import { NewGroupDialog } from "./NewGroupDialog.tsx";
 import { ProfileDialog } from "./ProfileDialog.tsx";
-import { Button } from "./ui.tsx";
 
 export function ChatScreen() {
   const { activeId, status, connectError, connect } = useChat();
@@ -16,6 +18,7 @@ export function ChatScreen() {
   const [contactsTab, setContactsTab] = useState<"friends" | "add" | "incoming">("friends");
   const [newGroup, setNewGroup] = useState(false);
   const [profile, setProfile] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 899px)");
 
   function openContacts(tab: "friends" | "add" | "incoming") {
     setContactsTab(tab);
@@ -27,43 +30,47 @@ export function ChatScreen() {
     (status === "connecting"
       ? COPY.connecting
       : status === "reconnecting"
-        ? COPY.reconnecting
+        ? COPY.reconnectHint
         : status === "offline"
-          ? COPY.offline
+          ? COPY.offlineHint
           : null);
 
+  const showList = !isMobile || !activeId;
+  const showPane = !isMobile || Boolean(activeId);
+
   return (
-    <div className="relative flex h-dvh min-h-0 bg-stage">
-      <div className={cn("flex h-full min-h-0 w-full md:w-auto", activeId && "hidden md:flex")}>
-        <ConversationList
-          onNewChat={() => openContacts("friends")}
-          onAddFriend={() => openContacts("add")}
-          onNewGroup={() => setNewGroup(true)}
-          onProfile={() => setProfile(true)}
-        />
-      </div>
-      <div className={cn("relative min-h-0 min-w-0 flex-1", !activeId && "hidden md:flex")}>
-        <div className="flex h-full min-h-0 w-full flex-col">
-          {banner && status !== "online" ? (
-            <div className="flex items-center justify-center gap-3 border-b border-line bg-elev px-3 py-1.5 text-xs text-muted">
-              <span>{banner}</span>
-              {status === "offline" ? (
-                <Button variant="ghost" className="h-7 px-2 py-0 text-xs" onClick={() => void connect()}>
-                  {COPY.retry}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100dvh", minHeight: 0, bgcolor: (theme) => theme.palette.canvas }}>
+      {banner && status !== "online" ? (
+        <Alert
+          severity={status === "offline" ? "warning" : "info"}
+          action={
+            status === "offline" ? (
+              <Button color="inherit" size="small" onClick={() => void connect()}>
+                {COPY.retry}
+              </Button>
+            ) : null
+          }
+          sx={{ borderRadius: 0, py: 0 }}
+        >
+          {banner}
+        </Alert>
+      ) : null}
+      <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <Box sx={{ display: showList ? "flex" : "none", height: "100%", minHeight: 0 }}>
+          <ConversationList
+            onNewChat={() => openContacts("friends")}
+            onAddFriend={() => openContacts("add")}
+            onNewGroup={() => setNewGroup(true)}
+            onProfile={() => setProfile(true)}
+          />
+        </Box>
+        <Box sx={{ display: showPane ? "flex" : "none", flex: 1, minWidth: 0, minHeight: 0 }}>
           <MessagePane />
-        </div>
-      </div>
-      <ContactsDialog
-        open={contacts}
-        onOpenChange={setContacts}
-        initialTab={contactsTab}
-      />
+        </Box>
+      </Box>
+      <ContactsDialog open={contacts} onOpenChange={setContacts} initialTab={contactsTab} />
       <NewGroupDialog open={newGroup} onOpenChange={setNewGroup} />
       <ProfileDialog open={profile} onOpenChange={setProfile} />
-    </div>
+    </Box>
   );
 }

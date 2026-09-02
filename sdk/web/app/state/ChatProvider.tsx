@@ -38,6 +38,7 @@ import {
 } from "../lib/threads.ts";
 
 export type ConnStatus = "connecting" | "online" | "reconnecting" | "offline";
+export type MsgStatus = "sending" | "sent" | "failed";
 
 export interface Person {
   account: string;
@@ -55,9 +56,11 @@ export interface ChatMsg {
   extra: string;
   width: number;
   height: number;
+  status: MsgStatus;
 }
 
-const MAX_MESSAGES = 400;
+const MAX_MESSAGES = 800;
+const HISTORY_PAGE = 50;
 
 interface ChatState {
   status: ConnStatus;
@@ -67,6 +70,8 @@ interface ChatState {
   members: string[];
   membersOpen: boolean;
   connectError: string | null;
+  hasMore: Record<string, boolean>;
+  loadingOlder: Record<string, boolean>;
 }
 
 type Action =
@@ -90,7 +95,14 @@ type Action =
       msgs: ChatMsg[];
       lastBody: string;
       lastAt: number;
-    };
+      hasMore: boolean;
+    }
+  | { type: "prepend"; dest: string; msgs: ChatMsg[]; hasMore: boolean }
+  | { type: "replaceMessage"; dest: string; key: string; msg: ChatMsg }
+  | { type: "patchMessage"; dest: string; key: string; patch: Partial<ChatMsg> }
+  | { type: "mute"; id: string; muted: boolean }
+  | { type: "loadingOlder"; dest: string; loading: boolean }
+  | { type: "deleteMessage"; dest: string; key: string };
 
 const empty: ChatState = {
   status: "offline",
@@ -100,6 +112,8 @@ const empty: ChatState = {
   members: [],
   membersOpen: false,
   connectError: null,
+  hasMore: {},
+  loadingOlder: {},
 };
 
 function upsertThread(list: Thread[], patch: Partial<Thread> & { id: string; kind: Kind }): Thread[] {
@@ -114,6 +128,7 @@ function upsertThread(list: Thread[], patch: Partial<Thread> & { id: string; kin
           lastBody: "",
           lastAt: 0,
           unread: 0,
+          muted: false,
         };
   const next: Thread = {
     ...prev,
@@ -122,9 +137,25 @@ function upsertThread(list: Thread[], patch: Partial<Thread> & { id: string; kin
     lastBody: patch.lastBody ?? prev.lastBody,
     lastAt: patch.lastAt ?? prev.lastAt,
     unread: patch.unread ?? prev.unread,
+    muted: patch.muted ?? prev.muted,
   };
   const rest = idx >= 0 ? list.filter((_, i) => i !== idx) : list;
   return [next, ...rest].sort((a, b) => b.lastAt - a.lastAt || a.title.localeCompare(b.title, "zh-CN"));
+}
+
+function mergeByKey(prev: ChatMsg[], extra: ChatMsg[]): ChatMsg[] {
+  const map = new Map<string, ChatMsg>();
+  for (const m of extra) {
+    map.set(m.key, m);
+  }
+  for (const m of prev) {
+    if (!map.has(m.key)) {
+      map.set(m.key, m);
+    }
+  }
+  return [...map.values()]
+    .sort((a, b) => a.at - b.at || a.key.localeCompare(b.key))
+    .slice(-MAX_MESSAGES);
 }
 
 function reducer(state: ChatState, action: Action): ChatState {
@@ -179,17 +210,82 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, membersOpen: action.open };
     case "hydrateThread": {
       const existing = state.threads.find((t) => t.id === action.dest);
+      const prev = state.messages[action.dest] ?? [];
+      const merged = mergeByKey(prev, action.msgs);
+      const last = merged[merged.length - 1];
       return {
         ...state,
-        messages: { ...state.messages, [action.dest]: action.msgs.slice(-MAX_MESSAGES) },
+        messages: { ...state.messages, [action.dest]: merged },
+        hasMore: { ...state.hasMore, [action.dest]: action.hasMore },
         threads: upsertThread(state.threads, {
           id: action.dest,
           kind: action.kind,
           title: action.title ?? existing?.title,
-          lastBody: action.lastBody,
-          lastAt: action.lastAt,
+          lastBody:
+            action.lastBody ||
+            (last && !last.sys ? previewBody(last.type, last.body, last.extra) : existing?.lastBody),
+          lastAt: Math.max(action.lastAt, last?.at ?? 0, existing?.lastAt ?? 0),
           unread: 0,
         }),
+      };
+    }
+    case "prepend": {
+      const prev = state.messages[action.dest] ?? [];
+      const seen = new Set(prev.map((m) => m.key));
+      const extra = action.msgs.filter((m) => !seen.has(m.key));
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.dest]: [...extra, ...prev].slice(0, MAX_MESSAGES),
+        },
+        hasMore: { ...state.hasMore, [action.dest]: action.hasMore },
+      };
+    }
+    case "replaceMessage": {
+      const prev = state.messages[action.dest] ?? [];
+      if (!prev.some((m) => m.key === action.key)) {
+        return {
+          ...state,
+          messages: { ...state.messages, [action.dest]: [...prev, action.msg].slice(-MAX_MESSAGES) },
+        };
+      }
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.dest]: prev.map((m) => (m.key === action.key ? action.msg : m)),
+        },
+      };
+    }
+    case "patchMessage": {
+      const prev = state.messages[action.dest] ?? [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.dest]: prev.map((m) => (m.key === action.key ? { ...m, ...action.patch } : m)),
+        },
+      };
+    }
+    case "mute":
+      return {
+        ...state,
+        threads: state.threads.map((t) => (t.id === action.id ? { ...t, muted: action.muted } : t)),
+      };
+    case "loadingOlder":
+      return {
+        ...state,
+        loadingOlder: { ...state.loadingOlder, [action.dest]: action.loading },
+      };
+    case "deleteMessage": {
+      const prev = state.messages[action.dest] ?? [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.dest]: prev.filter((m) => m.key !== action.key),
+        },
       };
     }
     default:
@@ -212,6 +308,7 @@ function toChatMsg(msg: Message, dest: string, me: string): ChatMsg {
     extra,
     width: size?.w ?? 0,
     height: size?.h ?? 0,
+    status: "sent",
   };
 }
 
@@ -225,13 +322,21 @@ interface ChatContextValue {
   members: string[];
   membersOpen: boolean;
   connectError: string | null;
+  inboxReady: boolean;
+  kicked: boolean;
+  hasMore: Record<string, boolean>;
+  loadingOlder: Record<string, boolean>;
   signIn: (mode: "login" | "register", account: string, password: string) => Promise<void>;
   signOut: (notice?: string) => Promise<void>;
+  dismissKick: () => void;
   connect: () => Promise<void>;
   openThread: (id: string, kind: Kind, title?: string) => void;
   closeThread: () => void;
   send: (text: string) => Promise<void>;
   sendImage: (file: File) => Promise<void>;
+  retryMessage: (key: string) => Promise<void>;
+  loadOlder: (dest: string) => Promise<number>;
+  muteThread: (id: string, muted: boolean) => void;
   createGroup: (name: string, members: string[]) => Promise<void>;
   toggleMembers: () => void;
   nickname: string;
@@ -256,6 +361,8 @@ interface ChatContextValue {
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
 
+type PendingPayload = { kind: "text"; text: string } | { kind: "image"; file: File };
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const initial = loadSession();
   const [auth, setAuth] = useReducer(
@@ -266,21 +373,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const sessionRef = useRef<ChatSession | undefined>(undefined);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const pendingRef = useRef(new Map<string, PendingPayload>());
   const [nickname, setNickname] = useState(initial?.account ?? "");
   const [incomingCount, setIncomingCount] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
   const [incomingPeople, setIncomingPeople] = useState<Person[]>([]);
   const [outgoing, setOutgoing] = useState<string[]>([]);
   const [socialReady, setSocialReady] = useState(false);
+  const [inboxReady, setInboxReady] = useState(false);
+  const [kicked, setKicked] = useState(false);
 
   const persistAccount = auth?.account;
 
   useEffect(() => {
     if (!persistAccount) {
       dispatch({ type: "reset" });
+      setInboxReady(false);
       return;
     }
     dispatch({ type: "hydrate", threads: loadThreads(persistAccount) });
+    setInboxReady(false);
   }, [persistAccount]);
 
   useEffect(() => {
@@ -332,8 +444,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIncomingPeople([]);
     setOutgoing([]);
     setSocialReady(false);
+    setInboxReady(false);
     dispatch({ type: "reset" });
-    if (notice) {
+    if (notice && notice !== COPY.kicked) {
       toast.error(notice);
     }
   }, []);
@@ -350,6 +463,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           }
         },
         onKick: () => {
+          setKicked(true);
           void signOut(COPY.kicked);
         },
         onToken: (token, exp) => {
@@ -387,6 +501,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           }
           dispatch({ type: "status", status: "offline" });
           dispatch({ type: "connectError", error: mapUserError(err) });
+          setInboxReady(true);
           return;
         }
         if (!session.alive) {
@@ -430,6 +545,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         } finally {
           if (session.alive) {
             setSocialReady(true);
+            setInboxReady(true);
           }
         }
       })();
@@ -463,6 +579,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const body = mode === "register" ? await register(account, password) : await login(account, password);
     const stored: StoredSession = { ...body, ws: gatewayUrl() };
     saveSession(stored);
+    setKicked(false);
     setAuth(stored);
   }, []);
 
@@ -473,6 +590,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "connectError", error: null });
     attach(auth.account, gatewayUrl(), auth.token);
   }, [auth, attach]);
+
+  const dismissKick = useCallback(() => {
+    setKicked(false);
+  }, []);
 
   const openThread = useCallback((id: string, kind: Kind, title?: string) => {
     dispatch({ type: "upsertThread", thread: { id, kind, title: title ?? id } });
@@ -510,6 +631,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           msgs,
           lastBody: last && !last.sys ? previewBody(last.type, last.body, last.extra) : "",
           lastAt: last?.at ?? 0,
+          hasMore: rows.length >= HISTORY_PAGE,
         });
         const newest = rows[0];
         if (newest) {
@@ -522,6 +644,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const closeThread = useCallback(() => {
     dispatch({ type: "active", id: null });
   }, []);
+
+  const localKey = () => `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   const send = useCallback(async (text: string) => {
     const session = sessionRef.current;
@@ -536,9 +660,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     ) {
       throw new Error(COPY.notFriends);
     }
-    const msg = await session.send(active.id, active.kind, text);
-    pushMessage(msg, active.id, session.account);
-  }, [people, pushMessage, socialReady]);
+    const key = localKey();
+    const optimistic: ChatMsg = {
+      key,
+      dest: active.id,
+      sender: session.account,
+      body: text,
+      at: Date.now(),
+      sys: false,
+      type: MessageType.Text,
+      extra: "",
+      width: 0,
+      height: 0,
+      status: "sending",
+    };
+    pendingRef.current.set(key, { kind: "text", text });
+    dispatch({ type: "message", dest: active.id, msg: optimistic, kind: active.kind, fromSelf: true });
+    try {
+      const msg = await session.send(active.id, active.kind, text);
+      const real = toChatMsg(msg, active.id, session.account);
+      dispatch({ type: "replaceMessage", dest: active.id, key, msg: real });
+      pendingRef.current.delete(key);
+    } catch (err) {
+      dispatch({ type: "patchMessage", dest: active.id, key, patch: { status: "failed" } });
+      throw err;
+    }
+  }, [people, socialReady]);
 
   const sendImage = useCallback(async (file: File) => {
     const session = sessionRef.current;
@@ -561,18 +708,118 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (file.size > MAX_IMAGE_BYTES) {
       throw new Error(COPY.imageTooLarge);
     }
-    const [uploaded, size] = await Promise.all([
-      uploadImage(token, file, { contentType: file.type || "image/jpeg" }),
-      readImageSize(file).catch(() => ({ w: 0, h: 0 })),
-    ]);
-    const extra = encodeImageExtra(size.w, size.h);
-    const msg = await session.sendContent(
-      active.id,
-      active.kind,
-      new Content(uploaded.url, MessageType.Image, extra),
-    );
-    pushMessage(msg, active.id, session.account);
-  }, [people, pushMessage, socialReady]);
+    const key = localKey();
+    const preview = URL.createObjectURL(file);
+    const optimistic: ChatMsg = {
+      key,
+      dest: active.id,
+      sender: session.account,
+      body: preview,
+      at: Date.now(),
+      sys: false,
+      type: MessageType.Image,
+      extra: "",
+      width: 0,
+      height: 0,
+      status: "sending",
+    };
+    pendingRef.current.set(key, { kind: "image", file });
+    dispatch({ type: "message", dest: active.id, msg: optimistic, kind: active.kind, fromSelf: true });
+    try {
+      const [uploaded, size] = await Promise.all([
+        uploadImage(token, file, { contentType: file.type || "image/jpeg" }),
+        readImageSize(file).catch(() => ({ w: 0, h: 0 })),
+      ]);
+      const extra = encodeImageExtra(size.w, size.h);
+      const msg = await session.sendContent(
+        active.id,
+        active.kind,
+        new Content(uploaded.url, MessageType.Image, extra),
+      );
+      const real = toChatMsg(msg, active.id, session.account);
+      dispatch({ type: "replaceMessage", dest: active.id, key, msg: real });
+      pendingRef.current.delete(key);
+      URL.revokeObjectURL(preview);
+    } catch (err) {
+      dispatch({ type: "patchMessage", dest: active.id, key, patch: { status: "failed" } });
+      throw err;
+    }
+  }, [people, socialReady]);
+
+  const retryMessage = useCallback(async (key: string) => {
+    const dest = stateRef.current.activeId;
+    if (!dest) {
+      return;
+    }
+    const pending = pendingRef.current.get(key);
+    if (!pending) {
+      return;
+    }
+    dispatch({ type: "patchMessage", dest, key, patch: { status: "sending" } });
+    try {
+      if (pending.kind === "text") {
+        const session = sessionRef.current;
+        const active = stateRef.current.threads.find((t) => t.id === dest);
+        if (!session || !active) {
+          throw new Error(COPY.notConnected);
+        }
+        const msg = await session.send(active.id, active.kind, pending.text);
+        const real = toChatMsg(msg, active.id, session.account);
+        dispatch({ type: "replaceMessage", dest, key, msg: real });
+        pendingRef.current.delete(key);
+      } else {
+        dispatch({ type: "deleteMessage", dest, key });
+        pendingRef.current.delete(key);
+        await sendImage(pending.file);
+      }
+    } catch (err) {
+      dispatch({ type: "patchMessage", dest, key, patch: { status: "failed" } });
+      throw err;
+    }
+  }, [sendImage]);
+
+  const loadOlder = useCallback(async (dest: string): Promise<number> => {
+    const session = sessionRef.current;
+    const thread = stateRef.current.threads.find((t) => t.id === dest);
+    if (!session || !thread) {
+      return 0;
+    }
+    if (stateRef.current.hasMore[dest] === false) {
+      return 0;
+    }
+    if (stateRef.current.loadingOlder[dest]) {
+      return 0;
+    }
+    dispatch({ type: "loadingOlder", dest, loading: true });
+    const msgs = stateRef.current.messages[dest] ?? [];
+    const oldest = msgs.find((m) => /^\d+$/.test(m.key));
+    const beforeId = oldest ? BigInt(oldest.key) : 0n;
+    try {
+      const rows = await session.history(dest, thread.kind, beforeId);
+      if (!session.alive) {
+        return 0;
+      }
+      const mapped = rows
+        .slice()
+        .reverse()
+        .map((msg) => toChatMsg(msg, dest, session.account));
+      const seen = new Set(msgs.map((m) => m.key));
+      const fresh = mapped.filter((m) => !seen.has(m.key));
+      dispatch({
+        type: "prepend",
+        dest,
+        msgs: mapped,
+        hasMore: rows.length >= HISTORY_PAGE,
+      });
+      return fresh.length;
+    } finally {
+      dispatch({ type: "loadingOlder", dest, loading: false });
+    }
+  }, []);
+
+  const muteThread = useCallback((id: string, muted: boolean) => {
+    dispatch({ type: "mute", id, muted });
+  }, []);
 
   const createGroup = useCallback(async (name: string, members: string[]) => {
     const session = sessionRef.current;
@@ -730,13 +977,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       members: state.members,
       membersOpen: state.membersOpen,
       connectError: state.connectError,
+      inboxReady,
+      kicked,
+      hasMore: state.hasMore,
+      loadingOlder: state.loadingOlder,
       signIn,
       signOut,
+      dismissKick,
       connect,
       openThread,
       closeThread,
       send,
       sendImage,
+      retryMessage,
+      loadOlder,
+      muteThread,
       createGroup,
       toggleMembers,
       nickname: nickname || auth?.account || "",
@@ -767,14 +1022,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       state.members,
       state.membersOpen,
       state.connectError,
+      state.hasMore,
+      state.loadingOlder,
+      inboxReady,
+      kicked,
       active,
       signIn,
       signOut,
+      dismissKick,
       connect,
       openThread,
       closeThread,
       send,
       sendImage,
+      retryMessage,
+      loadOlder,
+      muteThread,
       createGroup,
       toggleMembers,
       nickname,
