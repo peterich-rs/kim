@@ -720,6 +720,25 @@ impl UserDirectory for HttpUserDirectory {
     ) -> Result<(), UserError> {
         Err(UserError::Backend("set_password is royal-only".into()))
     }
+
+    async fn token_epoch(&self, _app: &str, _account: &str) -> Result<u32, UserError> {
+        Err(UserError::Backend("token_epoch is royal-only".into()))
+    }
+
+    async fn bump_token_epoch(&self, _app: &str, _account: &str) -> Result<u32, UserError> {
+        Err(UserError::Backend("bump_token_epoch is royal-only".into()))
+    }
+
+    async fn set_password_and_bump_epoch(
+        &self,
+        _app: &str,
+        _account: &str,
+        _password_hash: &str,
+    ) -> Result<u32, UserError> {
+        Err(UserError::Backend(
+            "set_password_and_bump_epoch is royal-only".into(),
+        ))
+    }
 }
 
 fn from_pb_profile(p: PbProfile) -> UserProfile {

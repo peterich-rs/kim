@@ -168,6 +168,7 @@ impl AuthClient {
         let body = AuthReq {
             account: account.to_string(),
             password: password.to_string(),
+            ..Default::default()
         }
         .encode_to_vec();
         let resp = self
@@ -310,6 +311,7 @@ mod tests {
             token: "tok.jwt".into(),
             exp: 99,
             account: "alice".into(),
+            ..Default::default()
         };
         (StatusCode::OK, Bytes::from(resp.encode_to_vec()))
     }

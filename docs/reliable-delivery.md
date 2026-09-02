@@ -4,7 +4,7 @@
 
 投递语义是 **at-least-once + SDK 按 messageId 去重**。没有 `delivered` 列。
 
-`KIM_PENDING_RECEIPT` **按进程解读**：Royal 是写权威，Chat 是读/ACK。compose 默认 0。先 Royal=1 再 Chat=1；禁止 Chat=1 且 Royal=0。关上 G-03 还要 Gateway `KIM_REQUIRE_JTI=1` 持续生效，以及 SCAN `login:loc:v2:*` 空 jti = 0。未走完 rollout **不要**从 [production-gaps.md](production-gaps.md) 删 G-03 / G-04 / G-10。
+`KIM_PENDING_RECEIPT` **按进程解读**：Royal 是写权威，Chat 是读/ACK。compose 默认 0。先 Royal=1 再 Chat=1；禁止 Chat=1 且 Royal=0。关上 G-03 还要 Gateway `KIM_REQUIRE_JTI=1` 持续生效，以及 `deploy/scan-empty-jti.sh` 报 `empty_jti=0`。未走完 rollout **不要**从 [production-gaps.md](production-gaps.md) 删 G-03 / G-04 / G-10。可执行步骤见 [deploy.md](deploy.md)、[impl/b0-pending-receipt-rollout.md](impl/b0-pending-receipt-rollout.md)。
 
 ---
 

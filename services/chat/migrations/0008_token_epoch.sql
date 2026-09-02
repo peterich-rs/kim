@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN token_epoch INT NOT NULL DEFAULT 0;

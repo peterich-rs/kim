@@ -39,7 +39,7 @@
 | 序 | 项 | 条目 |
 |---:|---|---|
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
-| 2 | 稳定 device credential（不是绑一次性 jti）；改密吊销旧会话 | G-13, G-20 |
+| 2 | device credential 客户端持久化 + `target_id` 迁 device_id；验证/找回/注销 | G-13, G-20 |
 | 3 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
 | 4 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
 | 5 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
@@ -185,26 +185,25 @@ G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条
 
 ---
 
-### G-13 设备类型客户端自报；`jti` 不是稳定设备身份
+### G-13 服务端已能签发可选 device credential；客户端未持久化；`target_id` 仍是 `jti`
 
 **文件**
 
-- `crates/kim-protocol/proto/pkt.proto` — `LoginReq.device`
-- `crates/kim-session/src/lib.rs` — `exclusive_device`
-- `crates/kim-client/src/config.rs` — `DEFAULT_DEVICE = "mobile"`
-- `crates/kim-protocol/src/token.rs` — 每次 `generate` 新 UUID `jti`
+- `crates/kim-protocol/proto/pkt.proto` — `AuthReq` / `AuthResp` / `LoginReq` 可选凭证字段
+- `services/royal/src/device.rs` / `auth.rs` — enroll / 出示；仅成功时 JWT 写 `did`
+- `services/gateway/src/lib.rs` — 有 `did` 或 `deviceCredential` 才校验 `kim:device:{did}`
+- `crates/kim-session/src/lib.rs` — `exclusive_device` 仍只看 `LoginReq.device`
 
-**问题**
+**已落地（B2 服务端半边）**
 
-互踢和未来的 per-device 游标都建立在可伪造字段上。手机填 `web` 就不被踢；填 `ios` 可踢别人的真手机。
+可选凭证独立于会话 `jti`。旧客户端只编 field 1–2 → JWT 无 `did` → 今日互踢与今日全端登出。`kim:device:{did}` 热 key 写入失败则 login/register 失败，不签发带 `did` 的 token。吊销该 `did` 后带 `did` 的 Accept 失败；**无 `did` 的会话仍能登**。
 
-登出吊销当前 `jti` 后 `kick_account` 踢光该账号**全部** channel。web 登出会把手机踢掉。
+**仍开**
 
-登录时签发一个绑在 `jti` 上的 `device_id` **不够**：每次新登录都是新 `jti`，游标无法在重装/重登后接上。那只是「这一次连接」的标签，不是设备。
-
-**建议**
-
-签发可持久保存在客户端、可轮换/撤销的 **device credential**（独立于会话 `jti`）。JWT 里带该 id 的引用；吊销设备凭证则该设备所有会话失效。`LoginReq.device` 在没有平台证明（Attestation 等）时只当策略提示（互踢分类），不能当安全身份。登出默认只踢本会话/本设备凭证对应的连接。
+- 客户端未持久化 credential（重装后接不上同一设备）
+- `pending_delivery.target_id` 仍是 `jti`，不迁 `device_id`
+- logout 仍 `kick_account` 全端踢（避免未出示凭证的 web 登出不再踢手机）
+- `LoginReq.device` 仍是可伪造的互踢提示，无 Attestation
 
 ---
 
@@ -312,17 +311,13 @@ VOICE/VIDEO 以及任意 `type=99` 不审。无 message type 白名单。talk �
 
 ---
 
-### G-20 账号能力不完整；改密不吊销旧会话
+### G-20 账号能力不完整（无验证 / 找回 / 注销）
 
-Royal 有 register / login / logout / `POST /api/v1/auth/password`（Argon2）。无邮箱/手机验证、无找回、无 2FA、无注销。原报告「无账号体系」过重，写成「无验证与找回」即可。
+Royal 有 register / login / logout / `POST /api/v1/auth/password`（Argon2）。**改密吊销旧会话已落地（B1）**：`live_claims`（签名 + `app` + jti revoke + `ver >= token_epoch`）供 `/me` 与改密共用；改密一条语句写新哈希并 `users.token_epoch += 1`，再写 Redis `kim:token_epoch:{account}`、revoke 当前 jti、`kick_account`。`/me` 与 `/internal/token-epoch` 读 `max(缓存, 用户表)`，缓存 miss 不以 0 放行。改密 **不发新 token**，调用方必须重新 login。`users.upsert` 仍可创建无密码用户（epoch 保持 0）；无密码账号改密 401。
 
-`users.upsert` 在登录路径可创建无密码用户（网关 JWT 通过即 upsert）。
+**仍开**
 
-改密路径（`services/royal/src/auth.rs` `change_password`，约 201–234 行）只走 `bearer_account` → `bearer_claims`：验签 + `app` 匹配，**不查 JTI 是否已吊销**。`/api/v1/auth/me` 会查 revoke（约 183–193 行），改密不会。改密成功后既不 `revoke` 旧 token，也不 `kick_account`。被盗的在线 JWT 可继续用，网关 `login.renew` 还按同一 `jti` 续期。
-
-**建议**
-
-抽出统一的「有效 claims」：签名、`app`、revoke。改密必须走它。改密后让既有会话失效：账户级 `token_version` / `session_epoch` 写入 JWT，改密时递增；并踢该 account 的连接（租户已冻结为 kim）。仅吊销当前 jti 不够，因为其它设备各有 jti。
+无邮箱/手机验证、无找回、无 2FA、无注销。原报告「无账号体系」过重。
 
 ---
 
@@ -716,7 +711,7 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - 无 Consul token 时生产配置拒绝 register（或测试替身）
 - SIGTERM：**先摘发现**，drain 窗口内 lookup 不得再返回该实例（单元测试已覆盖顺序；未做 K8s 杀进程）
 - 同一 channel 上 join 未完成时并发 talk 的顺序（H1 lane）
-- 改密后旧 JWT 不可调 `/auth/me` 与发消息；kick 只打对应 account（G-20）
+- 改密后旧 JWT 不可调 `/auth/me`；第二台预先签发的 JWT 同样 401；kick 仍打对应 account（B1 已覆盖）
 - 未签名的 Chat `/internal/kick` 被拒
 
 命令（仓库惯例）：

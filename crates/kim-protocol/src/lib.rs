@@ -23,7 +23,8 @@ pub use internal_hmac::{
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
 pub use token::{
-    generate, generate_with_jti, parse, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,
+    device_hot_key, generate, generate_with_device, generate_with_jti, generate_with_session,
+    parse, token_epoch_key, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,
 };
 pub use wire::{
     service_name, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,

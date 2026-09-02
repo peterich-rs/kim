@@ -22,18 +22,24 @@
 | pending receipt | 代码已合入：ACK = id 集合；`acked_at` 不删行；`KIM_REQUIRE_JTI` 前置；Royal writer 先于 Chat reader。**G-03 / G-04 / G-10 仍开**，要等 [reliable-delivery.md](../reliable-delivery.md) rollout | [reliable-delivery.md](../reliable-delivery.md)、[web-sdk.md](../web-sdk.md)、[link-layer-login.md](../link-layer-login.md) |
 | SIGTERM + 先摘发现再 drain | G-07 / G-32：unix SIGTERM+SIGINT；Container 先 deregister 再 JoinSet drain；Royal/Router HTTP graceful | [deploy.md](../deploy.md) |
 | 心跳 Redis 有界宽限 | G-31：仅确认吊销立刻关；存储错误连续 3 次后断开；期内不续签 JWT；登录仍 fail-closed | [link-layer-login.md](../link-layer-login.md)、[observability.md](../observability.md) |
+| 串行 lane + 下行 try_send | G-29 / G-30：per-`channel_id` 串行 lane；网关 Disconnect + `kim_mailbox_full_total`。#66 合入后本行生效 | [communication-layer.md](../communication-layer.md) |
+| B1 改密吊销旧会话 | G-20 会话半边：`token_epoch` + `live_claims` + kick；改密不发新 token | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
+| B2 device credential 服务端半边 | 可选 proto 字段；仅 enroll/出示写 `did`；logout 仍全端踢；`target_id` 仍 jti | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
 
-漏 Push 补偿仍是 G-03 / G-14。`ctx.resp` 无超时是 G-30。
+漏 Push 补偿仍是 G-03 / G-14。G-03 要等 rollout，不是再写一套 ACK。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
 
 Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 + 私有 CA HTTPS/mTLS + ACL deny。
 
-剩余阶段合同：[next-stage.md](./next-stage.md)。
+剩余阶段合同：[next-stage.md](./next-stage.md)（后台轨与客户端轨分开，web / mobile 不挡后台）。
 
 ## 待写 / 待执行
 
-| 序 | 覆盖 | 依赖 | 规格 |
-|---:|---|---|---|
-| 7 | `TcpConn<S>` + TGateway TLS（G-34） | 形状已在 G-34 拍板 | 本阶段外 |
-| 8 | Mobile 成熟化 Phase 3–5：FFI supervisor、SQLite upsert/page、Dart link/outbox（本 PR）。Phase 6 ChatList / Phase 7 theme 仍待做 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
+后台轨顺序与边界见 [next-stage.md](./next-stage.md)。不要把客户端优化写进后台 PR。
 
-未列入的 G-29 / 限流等仍按 gaps 总表。G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。
+| 序 | 轨 | 覆盖 | 依赖 | 规格 |
+|---:|---|---|---|---|
+| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | 代码与 SCAN/runbook 已在；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
+| B3 | 后台 | `TcpConn<S>` + TGateway TLS（G-34） | 形状已在 G-34 拍板 | [production-gaps.md](../production-gaps.md) |
+| — | 客户端 | Web `isRetryable`；Flutter ChatList / theme | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md)、G-14 |
+
+G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。B4 起（G-33 / G-16 / G-15 / G-17）不插到 B0 前面。

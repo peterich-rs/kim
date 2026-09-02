@@ -35,9 +35,9 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | GET | `/health` | text |
 | POST | `/api/v1/auth/register` | protobuf `AuthReq` → `AuthResp` |
 | POST | `/api/v1/auth/login` | protobuf `AuthReq` → `AuthResp` |
-| POST | `/api/v1/auth/logout` | `Authorization: Bearer` → 204；吊销 `jti` |
-| POST | `/api/v1/auth/password` | `Authorization: Bearer` + protobuf `PasswordChangeReq` → 204 |
-| GET | `/api/v1/auth/me` | `Authorization: Bearer` → JSON `{account,app}`；吊销后 401 |
+| POST | `/api/v1/auth/logout` | `Authorization: Bearer` → 204；吊销当前 `jti` 并 `kick_account`（仍全端踢） |
+| POST | `/api/v1/auth/password` | `Authorization: Bearer` + protobuf `PasswordChangeReq` → 204；一条语句改哈希并 bump `token_epoch`、revoke 当前 jti、`kick_account`；不发新 token |
+| GET | `/api/v1/auth/me` | `Authorization: Bearer` → JSON `{account,app}`；jti 吊销或 `ver < epoch` 则 401 |
 | POST | `/api/v1/message/user` | protobuf |
 | POST | `/api/v1/message/group` | protobuf |
 | POST | `/api/v1/message/ack` | protobuf |
@@ -49,7 +49,7 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/api/v1/group/members` | protobuf `InternalGroupQuery` → `GroupMembersResp` |
 | POST | `/api/v1/group/detail` | protobuf `InternalGroupQuery` → `GroupDetail` |
 
-`app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti`，密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
+`app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti` / `ver`（`token_epoch`，旧 token 缺省 0）/ 可选 `did`（仅 enroll 或出示有效 device credential 时写入），密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
 
 内部（loopback / compose 内网）：
 
@@ -58,9 +58,11 @@ Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `Gro
 | POST | `/internal/user/lookup` | Chat：dest 是否存在 |
 | POST | `/internal/user/upsert` | Chat：长连登录写入用户表 |
 | POST | `/internal/revoke/check` | 网关无 Redis 时查 `jti` |
-| POST | `{CHAT_URL}/internal/kick` | Royal logout：Kickout 当前长连接 |
+| POST | `/internal/token-epoch` | 网关无 Redis 时读账户 `token_epoch`（`max(缓存, users.token_epoch)`） |
+| POST | `/internal/device/check` | 网关无 Redis 时校验 `did` / credential |
+| POST | `{CHAT_URL}/internal/kick` | Royal logout / 改密：Kickout 该账号全部长连接 |
 
-`REDIS_URL` 时 logout 把 `jti` 写入 `kim:revoke:{jti}`；网关 Accept 与心跳都查，失败则拒绝。Chat 生产路径必须 `ROYAL_URL`，否则 dest 查的是空 Memory。
+`REDIS_URL` 时 logout 把 `jti` 写入 `kim:revoke:{jti}`；改密另写 `kim:token_epoch:{account}`。网关 Accept 与心跳查 jti 吊销 **或** `ver < epoch`，失败则拒绝。`/me` 与 `/internal/token-epoch` 以 `users.token_epoch` 为权威，缓存 miss 或 Royal 重启不以 0 放行旧 JWT。enroll / 出示成功才写 JWT `did`；`kim:device:{did}` 热 key 写入失败则 login/register 失败，不签发带 `did` 的 token。Chat 生产路径必须 `ROYAL_URL`，否则 dest 查的是空 Memory。
 
 本机：先 `cargo run -p royal`，再 Chat 带 `ROYAL_URL=http://127.0.0.1:8080`。
 

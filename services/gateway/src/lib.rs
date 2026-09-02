@@ -19,13 +19,14 @@ use kim_container::{Container, DownlinkHook};
 use kim_core::{Acceptor, Agent, Conn, Error, MessageListener, OpCode, Server, StateListener};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
-    AuthResp, Flag, KickoutNotify, LoginReq, RevokeQuery, RevokeStatus, Session, Status,
+    AuthResp, DeviceCheckQuery, DeviceCheckStatus, Flag, KickoutNotify, LoginReq, RevokeQuery,
+    RevokeStatus, Session, Status, TokenEpoch, TokenEpochQuery,
 };
 use kim_protocol::{
-    generate_with_jti, marshal, parse, read, read_logic, resolve_internal_hmac_secret,
-    sign_internal_hmac, token_revoke_key, BasicPkt, LogicPkt, Packet, ALLOWED_APP, CMD_LOGIN_RENEW,
-    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG, DEMO_DEFAULT_SECRET, META_ACCOUNT,
-    META_APP, SN_LOGIN,
+    generate_with_device, marshal, parse, read, read_logic, resolve_internal_hmac_secret,
+    sign_internal_hmac, token_epoch_key, token_revoke_key, BasicPkt, LogicPkt, Packet, ALLOWED_APP,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CODE_PING, CODE_PONG,
+    DEMO_DEFAULT_SECRET, META_ACCOUNT, META_APP, SN_LOGIN,
 };
 use kim_session::{key_location, key_session, SESSION_TTL};
 use prost::Message;
@@ -93,6 +94,8 @@ struct ChannelMeta {
     app: String,
     account: String,
     jti: String,
+    ver: u32,
+    did: String,
     idle_exp: i64,
     jwt_exp: i64,
     revoke_errors: u32,
@@ -108,6 +111,12 @@ fn now_ts() -> i64 {
 #[async_trait]
 pub trait RevokeCheck: Send + Sync {
     async fn is_revoked(&self, jti: &str) -> Result<bool, String>;
+    async fn token_epoch(&self, _account: &str) -> Result<u32, String> {
+        Ok(0)
+    }
+    async fn device_ok(&self, _account: &str, _did: &str) -> Result<bool, String> {
+        Ok(true)
+    }
 }
 
 /// Always `false`. Local / e2e stacks without Redis still accept JWT `jti`.
@@ -143,6 +152,26 @@ impl RevokeStore {
         Ok(found.is_some())
     }
 
+    async fn token_epoch(&self, account: &str) -> Result<u32, String> {
+        let mut conn = self.conn.clone();
+        let found: Option<String> = redis::cmd("GET")
+            .arg(token_epoch_key(account))
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(found.and_then(|s| s.parse().ok()).unwrap_or(0))
+    }
+
+    async fn device_ok(&self, account: &str, did: &str) -> Result<bool, String> {
+        let mut conn = self.conn.clone();
+        let found: Option<String> = redis::cmd("GET")
+            .arg(kim_protocol::device_hot_key(did))
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(found.is_some_and(|a| a == account))
+    }
+
     async fn touch_session(&self, account: &str, channel_id: &str) -> Result<(), String> {
         let mut conn = self.conn.clone();
         let ttl = i64::try_from(SESSION_TTL.as_secs()).unwrap_or(i64::MAX);
@@ -163,6 +192,14 @@ impl RevokeStore {
 impl RevokeCheck for RevokeStore {
     async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
         RevokeStore::is_revoked(self, jti).await
+    }
+
+    async fn token_epoch(&self, account: &str) -> Result<u32, String> {
+        RevokeStore::token_epoch(self, account).await
+    }
+
+    async fn device_ok(&self, account: &str, did: &str) -> Result<bool, String> {
+        RevokeStore::device_ok(self, account, did).await
     }
 }
 
@@ -188,17 +225,14 @@ impl HttpRevoke {
             hmac_secret: hmac_secret.to_string(),
         })
     }
-}
 
-#[async_trait]
-impl RevokeCheck for HttpRevoke {
-    async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
-        let path = "/internal/revoke/check";
-        let body = RevokeQuery {
-            jti: jti.to_string(),
-        }
-        .encode_to_vec();
-        let headers = sign_internal_hmac(self.hmac_secret.as_bytes(), "POST", path, &body)
+    async fn post_pb<Q: Message, R: Message + Default>(
+        &self,
+        path: &str,
+        body: Q,
+    ) -> Result<R, String> {
+        let buf = body.encode_to_vec();
+        let headers = sign_internal_hmac(self.hmac_secret.as_bytes(), "POST", path, &buf)
             .map_err(|e| e.to_string())?;
         let mut req = self
             .http
@@ -207,13 +241,53 @@ impl RevokeCheck for HttpRevoke {
         for (k, v) in headers.pairs() {
             req = req.header(k, v);
         }
-        let resp = req.body(body).send().await.map_err(|e| e.to_string())?;
+        let resp = req.body(buf).send().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             return Err(format!("royal http {}", resp.status()));
         }
-        let buf = resp.bytes().await.map_err(|e| e.to_string())?;
-        let status = RevokeStatus::decode(buf.as_ref()).map_err(|e| e.to_string())?;
+        let raw = resp.bytes().await.map_err(|e| e.to_string())?;
+        R::decode(raw.as_ref()).map_err(|e| e.to_string())
+    }
+}
+
+#[async_trait]
+impl RevokeCheck for HttpRevoke {
+    async fn is_revoked(&self, jti: &str) -> Result<bool, String> {
+        let status: RevokeStatus = self
+            .post_pb(
+                "/internal/revoke/check",
+                RevokeQuery {
+                    jti: jti.to_string(),
+                },
+            )
+            .await?;
         Ok(status.revoked)
+    }
+
+    async fn token_epoch(&self, account: &str) -> Result<u32, String> {
+        let status: TokenEpoch = self
+            .post_pb(
+                "/internal/token-epoch",
+                TokenEpochQuery {
+                    account: account.to_string(),
+                },
+            )
+            .await?;
+        Ok(status.epoch)
+    }
+
+    async fn device_ok(&self, account: &str, did: &str) -> Result<bool, String> {
+        let status: DeviceCheckStatus = self
+            .post_pb(
+                "/internal/device/check",
+                DeviceCheckQuery {
+                    account: account.to_string(),
+                    device_id: did.to_string(),
+                    device_credential: String::new(),
+                },
+            )
+            .await?;
+        Ok(status.ok)
     }
 }
 
@@ -292,7 +366,16 @@ impl GatewayHandler {
         format!("{}_{account}_{n}", self.gateway_id)
     }
 
-    fn insert_meta(&self, channel_id: &str, app: String, account: String, jti: String, exp: i64) {
+    fn insert_meta(
+        &self,
+        channel_id: &str,
+        app: String,
+        account: String,
+        jti: String,
+        ver: u32,
+        did: String,
+        exp: i64,
+    ) {
         let idle_exp = now_ts().saturating_add(self.token_ttl_secs);
         self.meta.lock().unwrap_or_else(|e| e.into_inner()).insert(
             channel_id.to_string(),
@@ -300,6 +383,8 @@ impl GatewayHandler {
                 app,
                 account,
                 jti,
+                ver,
+                did,
                 idle_exp,
                 jwt_exp: exp,
                 revoke_errors: 0,
@@ -339,17 +424,19 @@ impl GatewayHandler {
                     m.app.clone(),
                     m.account.clone(),
                     m.jti.clone(),
+                    m.ver,
+                    m.did.clone(),
                     m.idle_exp,
                     m.jwt_exp,
                 )
             })
         };
-        let Some((app, account, jti, idle_exp, jwt_exp)) = meta else {
+        let Some((app, account, jti, ver, did, idle_exp, jwt_exp)) = meta else {
             return Ok(None);
         };
         let mut skip_renew = false;
-        if !jti.is_empty() {
-            if let Some(store) = self.revoke.get() {
+        if let Some(store) = self.revoke.get() {
+            if !jti.is_empty() {
                 match store.is_revoked(&jti).await {
                     Ok(true) => {
                         warn!(channel = channel_id, "heartbeat revoked");
@@ -383,6 +470,72 @@ impl GatewayHandler {
                     }
                 }
             }
+            match store.token_epoch(&account).await {
+                Ok(epoch) if ver < epoch => {
+                    warn!(channel = channel_id, "heartbeat stale epoch");
+                    self.close_now(channel_id).await;
+                    return Err(());
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    let consecutive = self.note_revoke_error(channel_id);
+                    if let Some(m) = self.metrics() {
+                        m.on_heartbeat_revoke_error();
+                    }
+                    if consecutive >= HEARTBEAT_REVOKE_ERROR_GRACE {
+                        warn!(
+                            channel = channel_id,
+                            consecutive,
+                            %err,
+                            "heartbeat epoch check failed past grace"
+                        );
+                        self.close_now(channel_id).await;
+                        return Err(());
+                    }
+                    warn!(
+                        channel = channel_id,
+                        consecutive,
+                        grace = HEARTBEAT_REVOKE_ERROR_GRACE,
+                        %err,
+                        "heartbeat epoch check failed; keeping connection"
+                    );
+                    skip_renew = true;
+                }
+            }
+            if !did.is_empty() {
+                match store.device_ok(&account, &did).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        warn!(channel = channel_id, "heartbeat device revoked");
+                        self.close_now(channel_id).await;
+                        return Err(());
+                    }
+                    Err(err) => {
+                        let consecutive = self.note_revoke_error(channel_id);
+                        if let Some(m) = self.metrics() {
+                            m.on_heartbeat_revoke_error();
+                        }
+                        if consecutive >= HEARTBEAT_REVOKE_ERROR_GRACE {
+                            warn!(
+                                channel = channel_id,
+                                consecutive,
+                                %err,
+                                "heartbeat device check failed past grace"
+                            );
+                            self.close_now(channel_id).await;
+                            return Err(());
+                        }
+                        warn!(
+                            channel = channel_id,
+                            consecutive,
+                            grace = HEARTBEAT_REVOKE_ERROR_GRACE,
+                            %err,
+                            "heartbeat device check failed; keeping connection"
+                        );
+                        skip_renew = true;
+                    }
+                }
+            }
         }
         let now = now_ts();
         if idle_exp > 0 && now >= idle_exp {
@@ -410,7 +563,20 @@ impl GatewayHandler {
         if !renew {
             return Ok(None);
         }
-        match generate_with_jti(&self.jwt_secret, &account, &app, next_jwt, &jti) {
+        let did_ref = if did.is_empty() {
+            None
+        } else {
+            Some(did.as_str())
+        };
+        match generate_with_device(
+            &self.jwt_secret,
+            &account,
+            &app,
+            next_jwt,
+            &jti,
+            ver,
+            did_ref,
+        ) {
             Ok(token) => {
                 let mut pkt = LogicPkt::new(CMD_LOGIN_RENEW, 0, Bytes::new());
                 pkt.header.flag = Flag::Push as i32;
@@ -419,6 +585,8 @@ impl GatewayHandler {
                     token,
                     exp: next_jwt,
                     account,
+                    device_id: did,
+                    device_credential: String::new(),
                 });
                 Ok(Some(pkt))
             }
@@ -524,27 +692,82 @@ impl Acceptor for GatewayHandler {
             write_status(conn, &pkt.header, Status::Unauthorized).await?;
             return Err(Error::Handshake("unauthorized".into()));
         }
-        if let Some(jti) = jti {
+        let did = claims
+            .did
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let cred = req.device_credential.trim();
+        if jti.is_some() || did.is_some() || !cred.is_empty() {
             let Some(store) = self.revoke.get() else {
                 warn!("revoke store missing; refusing login");
                 write_status(conn, &pkt.header, Status::Unauthorized).await?;
                 return Err(Error::Handshake("revoke store required".into()));
             };
-            match store.is_revoked(jti).await {
-                Ok(true) => {
-                    warn!(account = %claims.account, "revoked token");
+            if let Some(jti) = jti {
+                match store.is_revoked(jti).await {
+                    Ok(true) => {
+                        warn!(account = %claims.account, "revoked token");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("revoked".into()));
+                    }
+                    Ok(false) => {}
+                    Err(err) => {
+                        warn!(%err, "revoke check failed");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("revoke check failed".into()));
+                    }
+                }
+            }
+            match store.token_epoch(&claims.account).await {
+                Ok(epoch) if claims.ver < epoch => {
+                    warn!(account = %claims.account, "stale token epoch");
                     write_status(conn, &pkt.header, Status::Unauthorized).await?;
                     return Err(Error::Handshake("revoked".into()));
                 }
-                Ok(false) => {}
+                Ok(_) => {}
                 Err(err) => {
-                    warn!(%err, "revoke check failed");
+                    warn!(%err, "epoch check failed");
+                    write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                    return Err(Error::Handshake("revoke check failed".into()));
+                }
+            }
+            if did.is_some() || !cred.is_empty() {
+                let Some(did) = did else {
+                    write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                    return Err(Error::Handshake("unauthorized".into()));
+                };
+                match store.device_ok(&claims.account, did).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        warn!(account = %claims.account, "device not allowed");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("unauthorized".into()));
+                    }
+                    Err(err) => {
+                        warn!(%err, "device check failed");
+                        write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                        return Err(Error::Handshake("revoke check failed".into()));
+                    }
+                }
+            }
+        } else if let Some(store) = self.revoke.get() {
+            match store.token_epoch(&claims.account).await {
+                Ok(epoch) if claims.ver < epoch => {
+                    warn!(account = %claims.account, "stale token epoch");
+                    write_status(conn, &pkt.header, Status::Unauthorized).await?;
+                    return Err(Error::Handshake("revoked".into()));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    warn!(%err, "epoch check failed");
                     write_status(conn, &pkt.header, Status::Unauthorized).await?;
                     return Err(Error::Handshake("revoke check failed".into()));
                 }
             }
         }
         let jti = jti.unwrap_or("").to_string();
+        let did = did.unwrap_or("").to_string();
         let id = self.generate_channel_id(&claims.account);
         pkt.header.channel_id = id.clone();
         pkt.write_body(&Session {
@@ -555,9 +778,18 @@ impl Acceptor for GatewayHandler {
             remote_ip: remote_ip(conn),
             device: req.device,
             jti: jti.clone(),
+            device_id: did.clone(),
             ..Session::default()
         });
-        self.insert_meta(&id, claims.app, claims.account.clone(), jti, claims.exp);
+        self.insert_meta(
+            &id,
+            claims.app,
+            claims.account.clone(),
+            jti,
+            claims.ver,
+            did,
+            claims.exp,
+        );
         {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             pending.insert(id.clone(), pkt);
@@ -721,7 +953,8 @@ mod tests {
     use kim_core::{Acceptor, Conn, Error, Frame, MessageListener, OpCode, Server, StateListener};
     use kim_naming::{DefaultRegistration, StaticNaming};
     use kim_protocol::{
-        generate_with_jti, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN, DEMO_DEFAULT_SECRET,
+        generate_with_device, generate_with_session, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN,
+        DEMO_DEFAULT_SECRET,
     };
 
     use super::{
@@ -792,16 +1025,22 @@ mod tests {
     }
 
     fn login_conn(jti: &str) -> ScriptedConn {
+        login_conn_session(jti, 0, None)
+    }
+
+    fn login_conn_session(jti: &str, ver: u32, did: Option<&str>) -> ScriptedConn {
         let exp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0)
             .saturating_add(3600);
-        let token = generate_with_jti(DEMO_DEFAULT_SECRET, "alice", "kim", exp, jti).unwrap();
+        let token =
+            generate_with_device(DEMO_DEFAULT_SECRET, "alice", "kim", exp, jti, ver, did).unwrap();
         let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
         pkt.write_body(&LoginReq {
             token,
             device: "web".into(),
+            ..Default::default()
         });
         ScriptedConn {
             incoming: Some(Frame::binary(marshal(&Packet::Logic(pkt)))),
@@ -927,7 +1166,15 @@ mod tests {
     fn live_channel(handler: &GatewayHandler, jti: &str) -> String {
         let id = "wg-1_alice_hb".to_string();
         let exp = super::now_ts().saturating_add(86_400);
-        handler.insert_meta(&id, "kim".into(), "alice".into(), jti.into(), exp);
+        handler.insert_meta(
+            &id,
+            "kim".into(),
+            "alice".into(),
+            jti.into(),
+            0,
+            String::new(),
+            exp,
+        );
         id
     }
 
@@ -1006,5 +1253,110 @@ mod tests {
             .await
             .expect_err("login revoke errors stay fail-closed");
         assert_eq!(handshake_err(err), "revoke check failed");
+    }
+
+    struct LiveRevoke {
+        epoch: std::sync::atomic::AtomicU32,
+        denied: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl LiveRevoke {
+        fn with_epoch(epoch: u32) -> Self {
+            Self {
+                epoch: std::sync::atomic::AtomicU32::new(epoch),
+                denied: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RevokeCheck for LiveRevoke {
+        async fn is_revoked(&self, _jti: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+
+        async fn token_epoch(&self, _account: &str) -> Result<u32, String> {
+            Ok(self.epoch.load(std::sync::atomic::Ordering::Relaxed))
+        }
+
+        async fn device_ok(&self, _account: &str, did: &str) -> Result<bool, String> {
+            let denied = self.denied.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(!denied.iter().any(|d| d == did))
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_ver_passes_when_epoch_is_zero() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(NeverRevoked));
+        let mut conn = login_conn_session("jti-ok", 0, None);
+        let id = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect("ver=0 epoch=0 must login");
+        assert!(id.starts_with("wg-1_alice_"));
+    }
+
+    #[tokio::test]
+    async fn stale_epoch_rejects_login() {
+        let handler = test_handler();
+        handler.set_revoke(Arc::new(LiveRevoke::with_epoch(2)));
+        let mut conn = login_conn_session("jti-old", 0, None);
+        let err = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect_err("ver < epoch must not login");
+        assert_eq!(handshake_err(err), "revoked");
+    }
+
+    #[tokio::test]
+    async fn heartbeat_fails_after_epoch_bump() {
+        let handler = test_handler();
+        let store = Arc::new(LiveRevoke::with_epoch(0));
+        handler.set_revoke(store.clone());
+        let mut conn = login_conn_session("jti-live", 0, None);
+        let id = handler
+            .accept(&mut conn, Duration::from_secs(1))
+            .await
+            .expect("login before bump");
+        store.epoch.store(1, std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            handler.heartbeat(&id).await.is_err(),
+            "same jti heartbeat must fail after epoch bump"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoked_did_rejects_only_that_device() {
+        let handler = test_handler();
+        let store = Arc::new(LiveRevoke::with_epoch(0));
+        store
+            .denied
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push("dev-1".into());
+        handler.set_revoke(store);
+        let mut denied = login_conn_session("jti-d1", 0, Some("dev-1"));
+        let err = handler
+            .accept(&mut denied, Duration::from_secs(1))
+            .await
+            .expect_err("revoked did must not login");
+        assert_eq!(handshake_err(err), "unauthorized");
+        let mut other = login_conn_session("jti-web", 0, None);
+        let id = handler
+            .accept(&mut other, Duration::from_secs(1))
+            .await
+            .expect("session without did must still login");
+        assert!(id.starts_with("wg-1_alice_"));
+    }
+
+    #[test]
+    fn session_token_keeps_ver_for_renew() {
+        let token =
+            generate_with_session(DEMO_DEFAULT_SECRET, "alice", "kim", 9_999_999_999, "j", 4)
+                .unwrap();
+        let claims = kim_protocol::parse(DEMO_DEFAULT_SECRET, &token).unwrap();
+        assert_eq!(claims.ver, 4);
+        assert_eq!(claims.jti.as_deref(), Some("j"));
     }
 }

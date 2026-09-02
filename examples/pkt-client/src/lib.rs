@@ -33,6 +33,7 @@ pub async fn perform_login_with_device(
     pkt.write_body(&LoginReq {
         token,
         device: device.into(),
+        ..Default::default()
     });
     conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(pkt)))
         .await?;
@@ -107,6 +108,7 @@ async fn fetch_login(base: &str, account: &str, password: &str) -> Result<String
     let body = AuthReq {
         account: account.to_string(),
         password: password.to_string(),
+        ..Default::default()
     }
     .encode_to_vec();
     let resp = reqwest::Client::new()

@@ -27,6 +27,7 @@ pub fn encode_login(token: &str) -> Bytes {
     pkt.write_body(&LoginReq {
         token: token.to_string(),
         device: DEFAULT_DEVICE.to_string(),
+        ..Default::default()
     });
     marshal(&Packet::Logic(pkt))
 }

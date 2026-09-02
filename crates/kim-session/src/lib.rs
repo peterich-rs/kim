@@ -34,6 +34,12 @@ pub fn exclusive_device(device: &str) -> bool {
 /// Session and location key TTL used on the Redis path (`SET EX`).
 pub const SESSION_TTL: Duration = Duration::from_secs(48 * 3600);
 
+/// Rollout gate for pending receipt: 0 iff every `login:loc:v2:*` blob has a jti.
+#[must_use]
+pub fn empty_jti_gate_code(empty: u64) -> i32 {
+    i32::from(empty != 0)
+}
+
 /// Open a session store.
 ///
 /// * `None` / `Some("")` → [`MemorySessionStore`].
@@ -128,6 +134,13 @@ mod tests {
     #[test]
     fn session_ttl_is_48h() {
         assert_eq!(SESSION_TTL, Duration::from_secs(48 * 3600));
+    }
+
+    #[test]
+    fn empty_jti_gate_is_zero_only_when_empty() {
+        assert_eq!(empty_jti_gate_code(0), 0);
+        assert_eq!(empty_jti_gate_code(1), 1);
+        assert_eq!(empty_jti_gate_code(12), 1);
     }
 
     #[test]

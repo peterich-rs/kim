@@ -10,7 +10,10 @@ use kim_protocol::{
     check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
     ALLOWED_APP,
 };
-use royal::{router, JwtConfig, MemoryRevocation, RoyalState, TokenRevocation};
+use royal::{
+    router, DeviceDirectory, DeviceHot, JwtConfig, MemoryDeviceDirectory, MemoryDeviceHot,
+    MemoryRevocation, RoyalState, TokenRevocation,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -76,11 +79,55 @@ fn port_from_listen(listen: &str) -> Option<u16> {
     listen.rsplit_once(':')?.1.parse().ok()
 }
 
+async fn scan_empty_jti() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "redis")]
+    {
+        let url = env_nonempty("REDIS_URL").ok_or("REDIS_URL is required for --scan-empty-jti")?;
+        let scanner = kim_session::RedisSessionStore::open(&url).await?;
+        let n = scanner.count_empty_jti_locations().await?;
+        println!("empty_jti={n}");
+        if n != 0 {
+            std::process::exit(kim_session::empty_jti_gate_code(n));
+        }
+        return Ok(());
+    }
+    #[cfg(not(feature = "redis"))]
+    Err("rebuild royal with --features redis".into())
+}
+
 fn jwt_secret(cfg: &str) -> String {
     env_or_cfg("KIM_JWT_SECRET", cfg).unwrap_or_else(|| {
         tracing::warn!(secret = "demo-default", "do not use in production");
         kim_protocol::DEMO_DEFAULT_SECRET.to_string()
     })
+}
+
+async fn open_devices(url: &str) -> Result<Arc<dyn DeviceDirectory>, Box<dyn std::error::Error>> {
+    #[cfg(feature = "postgres")]
+    {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(url)
+            .await?;
+        Ok(Arc::new(royal::PostgresDeviceDirectory::from_pool(pool)))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = url;
+        Err("rebuild royal with --features postgres".into())
+    }
+}
+
+async fn open_device_hot(url: &str) -> Result<Arc<dyn DeviceHot>, Box<dyn std::error::Error>> {
+    #[cfg(feature = "redis")]
+    {
+        Ok(Arc::new(royal::RedisDeviceHot::open(url).await?))
+    }
+    #[cfg(not(feature = "redis"))]
+    {
+        let _ = url;
+        Err("rebuild royal with --features redis".into())
+    }
 }
 
 async fn open_revoke(url: &str) -> Result<Arc<dyn TokenRevocation>, Box<dyn std::error::Error>> {
@@ -117,8 +164,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let path = std::env::args()
-        .nth(1)
+    let mut args = std::env::args().skip(1);
+    let first = args.next();
+    if first.as_deref() == Some("--scan-empty-jti") {
+        return scan_empty_jti().await;
+    }
+
+    let path = first
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.toml"));
     let cfg: File = toml::from_str(&std::fs::read_to_string(&path)?)?;
@@ -198,11 +250,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("production KIM_APP must be {ALLOWED_APP}").into());
     }
     let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
+    let devices: Arc<dyn DeviceDirectory> = match env_or_cfg("DATABASE_URL", &cfg.this.database_url)
+    {
+        Some(db) => open_devices(&db).await?,
+        None => Arc::new(MemoryDeviceDirectory::new()),
+    };
+    let device_hot: Arc<dyn DeviceHot> = match redis.as_deref() {
+        Some(url) => open_device_hot(url).await?,
+        None => Arc::new(MemoryDeviceHot::new()),
+    };
     let state = state
         .with_app(app)
         .with_chat_url(chat_url)
         .with_hmac_secret(hmac)
-        .with_nonce(nonce);
+        .with_nonce(nonce)
+        .with_devices(devices)
+        .with_device_hot(device_hot);
     state.start_maintenance();
     #[cfg(feature = "redis")]
     if let Some(url) = redis.as_deref() {

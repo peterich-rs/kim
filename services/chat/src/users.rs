@@ -84,6 +84,14 @@ pub trait UserDirectory: Send + Sync {
         account: &str,
         password_hash: &str,
     ) -> Result<(), UserError>;
+    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError>;
+    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError>;
+    async fn set_password_and_bump_epoch(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<u32, UserError>;
 }
 
 #[derive(Clone)]
@@ -92,6 +100,7 @@ struct UserRecord {
     nickname: String,
     avatar: String,
     bio: String,
+    token_epoch: u32,
 }
 
 pub struct MemoryUserDirectory {
@@ -161,6 +170,7 @@ impl UserDirectory for MemoryUserDirectory {
                 nickname: account.to_string(),
                 avatar: String::new(),
                 bio: String::new(),
+                token_epoch: 0,
             });
         Ok(())
     }
@@ -178,6 +188,7 @@ impl UserDirectory for MemoryUserDirectory {
                 nickname: account.to_string(),
                 avatar: String::new(),
                 bio: String::new(),
+                token_epoch: 0,
             },
         );
         Ok(())
@@ -285,6 +296,38 @@ impl UserDirectory for MemoryUserDirectory {
             .ok_or(UserError::NotFound)?;
         rec.password_hash = Some(password_hash.to_string());
         Ok(())
+    }
+
+    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        Ok(self
+            .read()
+            .get(&(app.to_string(), account.to_string()))
+            .map(|r| r.token_epoch)
+            .unwrap_or(0))
+    }
+
+    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        let mut inner = self.write();
+        let rec = inner
+            .get_mut(&(app.to_string(), account.to_string()))
+            .ok_or(UserError::NotFound)?;
+        rec.token_epoch = rec.token_epoch.saturating_add(1);
+        Ok(rec.token_epoch)
+    }
+
+    async fn set_password_and_bump_epoch(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<u32, UserError> {
+        let mut inner = self.write();
+        let rec = inner
+            .get_mut(&(app.to_string(), account.to_string()))
+            .ok_or(UserError::NotFound)?;
+        rec.password_hash = Some(password_hash.to_string());
+        rec.token_epoch = rec.token_epoch.saturating_add(1);
+        Ok(rec.token_epoch)
     }
 }
 
@@ -490,6 +533,53 @@ impl UserDirectory for PostgresUserDirectory {
         }
         Ok(())
     }
+
+    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        let row: Option<i32> =
+            sqlx::query_scalar("SELECT token_epoch FROM users WHERE app = $1 AND account = $2")
+                .bind(app)
+                .bind(account)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        Ok(row.and_then(|n| u32::try_from(n).ok()).unwrap_or(0))
+    }
+
+    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        let row: Option<i32> = sqlx::query_scalar(
+            "UPDATE users SET token_epoch = token_epoch + 1
+             WHERE app = $1 AND account = $2
+             RETURNING token_epoch",
+        )
+        .bind(app)
+        .bind(account)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        let n = row.ok_or(UserError::NotFound)?;
+        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
+    }
+
+    async fn set_password_and_bump_epoch(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<u32, UserError> {
+        let row: Option<i32> = sqlx::query_scalar(
+            "UPDATE users SET password_hash = $3, token_epoch = token_epoch + 1
+             WHERE app = $1 AND account = $2
+             RETURNING token_epoch",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(password_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        let n = row.ok_or(UserError::NotFound)?;
+        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
+    }
 }
 
 #[cfg(test)]
@@ -503,6 +593,7 @@ mod tests {
         dir.upsert("kim", "alice").await.unwrap();
         assert_eq!(dir.write().len(), 1);
         assert_eq!(dir.password_hash("kim", "alice").await.unwrap(), None);
+        assert_eq!(dir.token_epoch("kim", "alice").await.unwrap(), 0);
         let p = dir.profile("kim", "alice").await.unwrap().unwrap();
         assert_eq!(p.nickname, "alice");
     }
@@ -585,5 +676,28 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, UserError::InvalidProfile));
+    }
+
+    #[tokio::test]
+    async fn memory_set_password_and_bump_epoch_updates_both() {
+        let dir = MemoryUserDirectory::new();
+        dir.create("kim", "alice", "old-hash").await.unwrap();
+        dir.set_password("kim", "alice", "mid-hash").await.unwrap();
+        assert_eq!(dir.token_epoch("kim", "alice").await.unwrap(), 0);
+        let ver = dir
+            .set_password_and_bump_epoch("kim", "alice", "new-hash")
+            .await
+            .unwrap();
+        assert_eq!(ver, 1);
+        assert_eq!(
+            dir.password_hash("kim", "alice").await.unwrap().as_deref(),
+            Some("new-hash")
+        );
+        assert_eq!(dir.token_epoch("kim", "alice").await.unwrap(), 1);
+        let missing = dir
+            .set_password_and_bump_epoch("kim", "bob", "x")
+            .await
+            .unwrap_err();
+        assert!(matches!(missing, UserError::NotFound));
     }
 }
