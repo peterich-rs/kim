@@ -1,6 +1,5 @@
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
 const PROD_API = "https://kim.ainexc.com";
@@ -36,7 +35,7 @@ export default defineConfig(({ mode }) => {
   return {
     root: "app",
     envDir,
-    plugins: [react(), tailwindcss()],
+    plugins: [react()],
     define: {
       "import.meta.env.VITE_KIM_ORIGIN": JSON.stringify(apiOrigin),
       "import.meta.env.VITE_KIM_WS": JSON.stringify(wsUrl),
@@ -61,7 +60,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     optimizeDeps: {
-      include: ["protobufjs", "long"],
+      include: ["protobufjs", "long", "@mui/material", "@emotion/react", "@emotion/styled"],
     },
   };
 });

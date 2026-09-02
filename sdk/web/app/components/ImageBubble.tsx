@@ -1,5 +1,7 @@
-import { bubbleSize, type ImageSize } from "../lib/image.ts";
+import Box from "@mui/material/Box";
+
 import { COPY } from "../copy.ts";
+import { bubbleSize, type ImageSize } from "../lib/image.ts";
 
 export function ImageBubble({
   src,
@@ -14,22 +16,35 @@ export function ImageBubble({
 }) {
   const dim = bubbleSize(size);
   return (
-    <button
+    <Box
+      component="button"
       type="button"
-      className={`overflow-hidden rounded-2xl bg-elev ${mine ? "rounded-tr-md" : "rounded-tl-md"}`}
-      style={{ width: dim.width, height: dim.height }}
       onClick={() => onOpen(src)}
       aria-label={COPY.viewImage}
+      sx={{
+        display: "block",
+        p: 0,
+        border: 0,
+        overflow: "hidden",
+        borderRadius: 2,
+        borderTopRightRadius: mine ? "4px" : 16,
+        borderTopLeftRadius: mine ? 16 : "4px",
+        bgcolor: "background.paper",
+        width: dim.width,
+        height: dim.height,
+        cursor: "pointer",
+      }}
     >
-      <img
+      <Box
+        component="img"
         src={src}
         alt=""
         width={dim.width}
         height={dim.height}
         loading="lazy"
         decoding="async"
-        className="h-full w-full object-cover"
+        sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
       />
-    </button>
+    </Box>
   );
 }

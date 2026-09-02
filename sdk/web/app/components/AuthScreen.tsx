@@ -1,13 +1,23 @@
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 
 import { COPY } from "../copy.ts";
 import { mapUserError } from "../lib/errors.ts";
 import { validateAccount, validateConfirm, validatePassword } from "../lib/validation.ts";
 import { useChat } from "../state/ChatProvider.tsx";
 import { Logo } from "./Logo.tsx";
-import { Button, Field, TextInput } from "./ui.tsx";
 
 export function AuthScreen({ mode }: { mode: "login" | "register" }) {
   const { signIn } = useChat();
@@ -58,75 +68,98 @@ export function AuthScreen({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <div className="auth-bg grid min-h-dvh lg:grid-cols-[1fr_440px]">
-      <aside className="hidden flex-col p-12 lg:flex">
+    <Box
+      sx={{
+        minHeight: "100dvh",
+        display: "grid",
+        gridTemplateColumns: { xs: "1fr", lg: "1fr 440px" },
+        bgcolor: (theme) => theme.palette.canvas,
+      }}
+    >
+      <Box sx={{ display: { xs: "none", lg: "flex" }, flexDirection: "column", p: 6 }}>
         <Logo />
-        <div className="mt-auto pb-8">
-          <h1 className="text-5xl font-semibold tracking-tight">{COPY.brand}</h1>
-          <p className="mt-3 text-lg text-muted">{COPY.brandSub}</p>
-        </div>
-      </aside>
+        <Box sx={{ mt: "auto", pb: 4 }}>
+          <Typography variant="h2" sx={{ fontWeight: 700, letterSpacing: "-0.03em" }}>
+            {COPY.brand}
+          </Typography>
+          <Typography variant="h6" color="text.secondary" sx={{ mt: 1.5 }}>
+            {COPY.brandSub}
+          </Typography>
+        </Box>
+      </Box>
 
-      <section className="flex items-center justify-center px-5 py-10">
-        <div className="w-full max-w-[400px] rounded-2xl border border-line bg-panel p-7 shadow-[0_24px_80px_rgb(0_0_0/0.35)]">
-          <div className="mb-6 lg:hidden">
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", px: 2.5, py: 6 }}>
+        <Paper sx={{ width: "100%", maxWidth: 400, p: 3.5 }}>
+          <Box sx={{ mb: 2, display: { lg: "none" } }}>
             <Logo />
-          </div>
-          <h2 className="text-xl font-semibold">{isRegister ? COPY.registerTitle : COPY.loginTitle}</h2>
-          <form className="mt-6 flex flex-col gap-4" onSubmit={(ev) => void onSubmit(ev)} noValidate>
-            <Field label={COPY.account} hint={COPY.accountHint} error={fieldErr.account}>
-              <TextInput
-                name="username"
-                autoComplete="username"
-                spellCheck={false}
-                maxLength={32}
-                value={account}
-                onChange={(e) => setAccount(e.target.value)}
-                placeholder={COPY.accountPlaceholder}
-                autoFocus
-              />
-            </Field>
-            <Field label={COPY.password} hint={isRegister ? COPY.passwordHint : undefined} error={fieldErr.password}>
-              <div className="relative">
-                <TextInput
-                  name="password"
-                  type={showPw ? "text" : "password"}
-                  autoComplete={isRegister ? "new-password" : "current-password"}
-                  maxLength={128}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={COPY.passwordPlaceholder}
-                  className="pr-11"
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted hover:text-ink"
-                  aria-label={showPw ? COPY.hidePassword : COPY.showPassword}
-                  onClick={() => setShowPw((v) => !v)}
-                >
-                  {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-            </Field>
+          </Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            {isRegister ? COPY.registerTitle : COPY.loginTitle}
+          </Typography>
+          <Stack component="form" spacing={2.25} sx={{ mt: 3 }} onSubmit={(ev) => void onSubmit(ev)} noValidate>
+            <TextField
+              label={COPY.account}
+              name="username"
+              autoComplete="username"
+              spellCheck={false}
+              slotProps={{ htmlInput: { maxLength: 32 } }}
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              placeholder={COPY.accountPlaceholder}
+              autoFocus
+              error={Boolean(fieldErr.account)}
+              helperText={fieldErr.account ?? COPY.accountHint}
+              fullWidth
+            />
+            <TextField
+              label={COPY.password}
+              name="password"
+              type={showPw ? "text" : "password"}
+              autoComplete={isRegister ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={COPY.passwordPlaceholder}
+              error={Boolean(fieldErr.password)}
+              helperText={fieldErr.password ?? (isRegister ? COPY.passwordHint : undefined)}
+              fullWidth
+              slotProps={{
+                htmlInput: { maxLength: 128 },
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showPw ? COPY.hidePassword : COPY.showPassword}
+                        onClick={() => setShowPw((v) => !v)}
+                        edge="end"
+                      >
+                        {showPw ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
             {isRegister ? (
-              <Field label={COPY.confirmPassword} error={fieldErr.confirm}>
-                <TextInput
-                  type={showPw ? "text" : "password"}
-                  autoComplete="new-password"
-                  maxLength={128}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  placeholder={COPY.confirmPlaceholder}
-                />
-              </Field>
+              <TextField
+                label={COPY.confirmPassword}
+                type={showPw ? "text" : "password"}
+                autoComplete="new-password"
+                slotProps={{ htmlInput: { maxLength: 128 } }}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder={COPY.confirmPlaceholder}
+                error={Boolean(fieldErr.confirm)}
+                helperText={fieldErr.confirm}
+                fullWidth
+              />
             ) : null}
             {error ? (
-              <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
+              <Alert severity="error" role="alert">
                 {error}
-              </p>
+              </Alert>
             ) : null}
-            <Button type="submit" disabled={pending} className="mt-1 h-11 w-full">
-              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+            <Button type="submit" variant="contained" disabled={pending} size="large" fullWidth>
+              {pending ? <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} /> : null}
               {pending
                 ? isRegister
                   ? COPY.submittingRegister
@@ -135,18 +168,19 @@ export function AuthScreen({ mode }: { mode: "login" | "register" }) {
                   ? COPY.registerAction
                   : COPY.loginAction}
             </Button>
-          </form>
-          <p className="mt-5 text-center text-sm text-muted">
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2.5, textAlign: "center" }}>
             {isRegister ? COPY.hasAccount : COPY.noAccount}{" "}
-            <Link
+            <Box
+              component={RouterLink}
               to={isRegister ? "/login" : "/register"}
-              className="font-medium text-brand hover:underline"
+              sx={{ color: "primary.main", fontWeight: 600, textDecoration: "none" }}
             >
               {isRegister ? COPY.goLogin : COPY.goRegister}
-            </Link>
-          </p>
-        </div>
-      </section>
-    </div>
+            </Box>
+          </Typography>
+        </Paper>
+      </Box>
+    </Box>
   );
 }

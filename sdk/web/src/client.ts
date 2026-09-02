@@ -157,7 +157,8 @@ export class KIMClient implements ContentLoader {
   private groupCreateCallback: ((groupId: string, members: string[]) => void) | undefined;
   private friendRequestCallback: ((from: string, nickname: string) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
-  private lastMessage: Message | undefined;
+  private pendingAckIds: bigint[] = [];
+  private lastAckArrival = 0;
   private unack = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private watchTimer: ReturnType<typeof setInterval> | undefined;
@@ -713,8 +714,11 @@ export class KIMClient implements ContentLoader {
           message.group = pkt.dest;
         }
         if (this.state === State.CONNECTED) {
-          this.lastMessage = message;
-          this.unack += 1;
+          if (message.messageId !== 0n) {
+            this.pendingAckIds.push(message.messageId);
+            this.lastAckArrival = message.arrivalTime;
+            this.unack += 1;
+          }
           try {
             this.messageCallback(message);
           } catch (err) {
@@ -835,28 +839,37 @@ export class KIMClient implements ContentLoader {
     }
   }
 
+  private flushAckIds(ids: bigint[]): void {
+    if (ids.length === 0) {
+      return;
+    }
+    for (let i = 0; i < ids.length; i += 200) {
+      const batch = ids.slice(i, i + 200);
+      const pkt = LogicPkt.build(
+        Command.ChatTalkAck,
+        "",
+        encodeAckReq(batch),
+        this.allocSeq(),
+      );
+      this.send(pkt.bytes());
+    }
+    void this.opts.store.setAck(ids[ids.length - 1]!);
+  }
+
   private messageAckLoop(): void {
     let start = Date.now();
     const loop = (): void => {
       if (this.state !== State.CONNECTED) {
         return;
       }
-      const msg = this.lastMessage;
-      if (msg && Date.now() - start > this.opts.ackForceAfterMs) {
+      if (this.pendingAckIds.length > 0 && Date.now() - start > this.opts.ackForceAfterMs) {
         const overflow = this.unack > this.opts.unackOverflow;
+        const ids = this.pendingAckIds.splice(0, this.pendingAckIds.length);
         this.unack = 0;
-        this.lastMessage = undefined;
-        const diff = Date.now() - msg.arrivalTime;
+        const diff = Date.now() - this.lastAckArrival;
         const sendAck = (): void => {
-          const pkt = LogicPkt.build(
-            Command.ChatTalkAck,
-            "",
-            encodeAckReq(msg.messageId),
-            this.allocSeq(),
-          );
           start = Date.now();
-          this.send(pkt.bytes());
-          void this.opts.store.setAck(msg.messageId);
+          this.flushAckIds(ids);
         };
         if (!overflow && diff < this.opts.ackDelayMs) {
           setTimeout(sendAck, this.opts.ackDelayMs - diff);

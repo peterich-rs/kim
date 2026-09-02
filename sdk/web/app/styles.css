@@ -1,22 +1,3 @@
-@import "tailwindcss";
-
-@theme {
-  --font-sans: ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB",
-    "Noto Sans SC", "Segoe UI", sans-serif;
-  --color-ink: #e8eef8;
-  --color-muted: #8b9bb4;
-  --color-line: #27324a;
-  --color-panel: #121a2b;
-  --color-stage: #0b1220;
-  --color-elev: #1a2438;
-  --color-brand: #3ee0c5;
-  --color-brand-ink: #04241c;
-  --color-danger: #f07178;
-  --color-me: #164a55;
-  --color-them: #1c2436;
-  --color-online: #3dd68c;
-}
-
 html,
 body,
 #root {
@@ -25,22 +6,6 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-stage);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
-
-#root {
-  min-height: 100dvh;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
 }
 
 .sr-only {
@@ -53,25 +18,4 @@ button:disabled {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.auth-bg {
-  background:
-    radial-gradient(920px 520px at 8% -10%, rgb(62 224 197 / 18%), transparent 58%),
-    radial-gradient(720px 420px at 100% 110%, rgb(84 160 255 / 12%), transparent 52%),
-    var(--color-stage);
-}
-
-.msg-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #2a3a55 transparent;
-}
-
-.msg-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.msg-scroll::-webkit-scrollbar-thumb {
-  background: #2a3a55;
-  border-radius: 8px;
 }

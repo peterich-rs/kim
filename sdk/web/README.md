@@ -23,7 +23,7 @@ await cli.talkToUser("bob", new Content("hello"));
 await cli.logout();
 ```
 
-产品页（`sdk/web/app`）用 React + React Router + Tailwind 做登录 / 注册 / 聊天，走 Royal 拿 JWT。小册 demo 仍用 `DEMO_DEFAULT_SECRET` 本机签发，见 `examples/pkt-client`。
+产品页（`sdk/web/app`）用 React + React Router + MUI 做登录 / 注册 / 聊天，走 Royal 拿 JWT。小册 demo 仍用 `DEMO_DEFAULT_SECRET` 本机签发，见 `examples/pkt-client`。
 
 ## 浏览器里点
 

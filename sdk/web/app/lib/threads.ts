@@ -9,6 +9,7 @@ export interface Thread {
   lastBody: string;
   lastAt: number;
   unread: number;
+  muted: boolean;
 }
 
 function keyOf(account: string): string {
@@ -45,6 +46,7 @@ export function loadThreads(account: string): Thread[] {
         lastBody: previewBody(0, typeof rec.lastBody === "string" ? rec.lastBody : ""),
         lastAt: typeof rec.lastAt === "number" ? rec.lastAt : 0,
         unread: 0,
+        muted: rec.muted === true,
       });
     }
     return out.sort((a, b) => b.lastAt - a.lastAt);
@@ -60,6 +62,7 @@ export function saveThreads(account: string, threads: Thread[]): void {
     title: t.title,
     lastBody: t.lastBody,
     lastAt: t.lastAt,
+    muted: t.muted || undefined,
   }));
   localStorage.setItem(keyOf(account), JSON.stringify(slim));
 }

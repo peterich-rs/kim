@@ -1,5 +1,7 @@
-import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import Close from "@mui/icons-material/Close";
+import Dialog from "@mui/material/Dialog";
+import IconButton from "@mui/material/IconButton";
+import Box from "@mui/material/Box";
 
 import { COPY } from "../copy.ts";
 
@@ -13,39 +15,34 @@ export function ImageViewer({
   onClose: () => void;
 }) {
   return (
-    <Dialog.Root
+    <Dialog
       open={open && Boolean(src)}
-      onOpenChange={(next) => {
-        if (!next) {
-          onClose();
-        }
+      onClose={onClose}
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: { bgcolor: "transparent", boxShadow: "none", overflow: "visible" },
+        },
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/80" />
-        <Dialog.Content
-          className="fixed inset-0 z-50 grid place-items-center p-4 outline-none"
+      <Box onClick={onClose} sx={{ position: "relative", outline: "none" }} aria-label={COPY.viewImage}>
+        {src ? (
+          <Box
+            component="img"
+            src={src}
+            alt=""
+            onClick={(ev) => ev.stopPropagation()}
+            sx={{ maxHeight: "92dvh", maxWidth: "92vw", objectFit: "contain", display: "block" }}
+          />
+        ) : null}
+        <IconButton
+          aria-label={COPY.closeViewer}
           onClick={onClose}
-          aria-label={COPY.viewImage}
+          sx={{ position: "absolute", top: 8, right: 8, bgcolor: "rgba(0,0,0,0.5)", color: "#fff", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}
         >
-          <Dialog.Title className="sr-only">{COPY.viewImage}</Dialog.Title>
-          {src ? (
-            <img
-              src={src}
-              alt=""
-              className="max-h-[92dvh] max-w-[92vw] object-contain shadow-2xl"
-              onClick={(ev) => ev.stopPropagation()}
-            />
-          ) : null}
-          <Dialog.Close
-            className="absolute right-4 top-4 grid size-10 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
-            aria-label={COPY.closeViewer}
-            onClick={onClose}
-          >
-            <X className="size-5" />
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <Close />
+        </IconButton>
+      </Box>
+    </Dialog>
   );
 }

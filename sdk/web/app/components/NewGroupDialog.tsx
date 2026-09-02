@@ -1,10 +1,19 @@
-import { Loader2, X } from "lucide-react";
+import Check from "@mui/icons-material/Check";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useState, type FormEvent } from "react";
 
 import { COPY } from "../copy.ts";
 import { mapUserError } from "../lib/errors.ts";
 import { useChat } from "../state/ChatProvider.tsx";
-import { Avatar, Button, Field, Modal, TextInput } from "./ui.tsx";
+import { Modal, UserAvatar } from "./ui.tsx";
 
 export function NewGroupDialog({
   open,
@@ -47,57 +56,59 @@ export function NewGroupDialog({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={COPY.newGroup}>
-      <form className="flex flex-col gap-4" onSubmit={(ev) => void onSubmit(ev)}>
-        <Field label={COPY.groupName}>
-          <TextInput
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={COPY.groupNamePlaceholder}
-            maxLength={32}
-            autoFocus
-          />
-        </Field>
-        <Field label={COPY.groupMembers} error={error} hint={COPY.pickFriends}>
-          <ul className="msg-scroll flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-xl border border-line bg-stage p-1">
+      <Stack component="form" spacing={2} onSubmit={(ev) => void onSubmit(ev)}>
+        <TextField
+          label={COPY.groupName}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={COPY.groupNamePlaceholder}
+          slotProps={{ htmlInput: { maxLength: 32 } }}
+          autoFocus
+          fullWidth
+        />
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            {COPY.pickFriends}
+          </Typography>
+          <List dense sx={{ maxHeight: 192, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 2, mt: 0.75 }}>
             {people.length === 0 ? (
-              <li className="px-3 py-8 text-center text-xs text-muted">{COPY.noFriendsHint}</li>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 2, py: 3, textAlign: "center" }}>
+                {COPY.noFriendsHint}
+              </Typography>
             ) : (
               people.map((p) => {
                 const on = members.includes(p.account);
                 return (
-                  <li key={p.account}>
-                    <button
-                      type="button"
-                      onClick={() => toggleMember(p.account)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
-                        on ? "bg-elev" : "hover:bg-elev/70"
-                      }`}
-                    >
-                      <Avatar name={p.nickname} size="sm" />
-                      <span className="min-w-0 flex-1 truncate">{p.nickname}</span>
-                      {on ? <X className="size-3 text-muted" /> : null}
-                    </button>
-                  </li>
+                  <ListItemButton key={p.account} selected={on} onClick={() => toggleMember(p.account)}>
+                    <Box sx={{ mr: 1.25 }}>
+                      <UserAvatar name={p.nickname} size={32} />
+                    </Box>
+                    <ListItemText primary={p.nickname} />
+                    {on ? <Check fontSize="small" color="primary" /> : null}
+                  </ListItemButton>
                 );
               })
             )}
-          </ul>
+          </List>
           {account ? (
-            <p className="mt-1 text-xs text-muted">
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: "block" }}>
               {account} · {COPY.you}
-            </p>
+            </Typography>
           ) : null}
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            {COPY.cancel}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+          {error ? (
+            <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+              {error}
+            </Typography>
+          ) : null}
+        </Box>
+        <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
+          <Button onClick={() => onOpenChange(false)}>{COPY.cancel}</Button>
+          <Button type="submit" variant="contained" disabled={pending}>
+            {pending ? <CircularProgress size={16} color="inherit" sx={{ mr: 1 }} /> : null}
             {pending ? COPY.creating : COPY.createGroup}
           </Button>
-        </div>
-      </form>
+        </Stack>
+      </Stack>
     </Modal>
   );
 }
