@@ -101,6 +101,28 @@ struct ChannelMeta {
     revoke_errors: u32,
 }
 
+impl ChannelMeta {
+    fn new(
+        app: impl Into<String>,
+        account: impl Into<String>,
+        jti: impl Into<String>,
+        ver: u32,
+        did: impl Into<String>,
+        jwt_exp: i64,
+    ) -> Self {
+        Self {
+            app: app.into(),
+            account: account.into(),
+            jti: jti.into(),
+            ver,
+            did: did.into(),
+            idle_exp: 0,
+            jwt_exp,
+            revoke_errors: 0,
+        }
+    }
+}
+
 fn now_ts() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -366,30 +388,12 @@ impl GatewayHandler {
         format!("{}_{account}_{n}", self.gateway_id)
     }
 
-    fn insert_meta(
-        &self,
-        channel_id: &str,
-        app: String,
-        account: String,
-        jti: String,
-        ver: u32,
-        did: String,
-        exp: i64,
-    ) {
-        let idle_exp = now_ts().saturating_add(self.token_ttl_secs);
-        self.meta.lock().unwrap_or_else(|e| e.into_inner()).insert(
-            channel_id.to_string(),
-            ChannelMeta {
-                app,
-                account,
-                jti,
-                ver,
-                did,
-                idle_exp,
-                jwt_exp: exp,
-                revoke_errors: 0,
-            },
-        );
+    fn insert_meta(&self, channel_id: &str, mut meta: ChannelMeta) {
+        meta.idle_exp = now_ts().saturating_add(self.token_ttl_secs);
+        self.meta
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(channel_id.to_string(), meta);
     }
 
     async fn close_now(&self, channel_id: &str) {
@@ -783,12 +787,14 @@ impl Acceptor for GatewayHandler {
         });
         self.insert_meta(
             &id,
-            claims.app,
-            claims.account.clone(),
-            jti,
-            claims.ver,
-            did,
-            claims.exp,
+            ChannelMeta::new(
+                claims.app,
+                claims.account.clone(),
+                jti,
+                claims.ver,
+                did,
+                claims.exp,
+            ),
         );
         {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
@@ -958,7 +964,7 @@ mod tests {
     };
 
     use super::{
-        strip_port, AllowAllRevoke, GatewayHandler, LoginReq, RevokeCheck,
+        strip_port, AllowAllRevoke, ChannelMeta, GatewayHandler, LoginReq, RevokeCheck,
         HEARTBEAT_REVOKE_ERROR_GRACE,
     };
 
@@ -1166,15 +1172,7 @@ mod tests {
     fn live_channel(handler: &GatewayHandler, jti: &str) -> String {
         let id = "wg-1_alice_hb".to_string();
         let exp = super::now_ts().saturating_add(86_400);
-        handler.insert_meta(
-            &id,
-            "kim".into(),
-            "alice".into(),
-            jti.into(),
-            0,
-            String::new(),
-            exp,
-        );
+        handler.insert_meta(&id, ChannelMeta::new("kim", "alice", jti, 0, "", exp));
         id
     }
 

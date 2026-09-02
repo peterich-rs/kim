@@ -89,7 +89,7 @@ async fn scan_empty_jti() -> Result<(), Box<dyn std::error::Error>> {
         if n != 0 {
             std::process::exit(kim_session::empty_jti_gate_code(n));
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(feature = "redis"))]
     Err("rebuild royal with --features redis".into())

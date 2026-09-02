@@ -1371,11 +1371,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl DeviceHot for FailDeviceHot {
-        async fn put(
-            &self,
-            _device_id: &str,
-            _account: &str,
-        ) -> Result<(), device::DeviceError> {
+        async fn put(&self, _device_id: &str, _account: &str) -> Result<(), device::DeviceError> {
             Err(device::DeviceError::Backend("hot unavailable".into()))
         }
 
@@ -1383,11 +1379,7 @@ mod tests {
             Ok(())
         }
 
-        async fn ok(
-            &self,
-            _device_id: &str,
-            _account: &str,
-        ) -> Result<bool, device::DeviceError> {
+        async fn ok(&self, _device_id: &str, _account: &str) -> Result<bool, device::DeviceError> {
             Ok(false)
         }
     }
