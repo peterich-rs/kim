@@ -1,60 +1,56 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/gateway.dart';
+import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/session.dart';
 
 import '../support/harness.dart';
 
+Future<void> _tick() => Future<void>.delayed(Duration.zero);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('signed-in session connects the gateway', () async {
+  test('signed-in session starts the supervisor', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    await env.container.read(gatewayProvider.future);
+    env.container.read(linkProvider);
+    await _tick();
     expect(env.fake.connects, greaterThan(0));
     expect(env.container.read(sessionProvider).status, ConnStatus.online);
   });
 
-  test('radio down returns offline without calling connect', () async {
+  test('radio down shows offline', () async {
     final env = await kimHarness(
       token: 'tok.jwt',
       account: 'alice',
       online: false,
     );
-    expect(
-      await env.container.read(gatewayProvider.future),
-      ConnStatus.offline,
-    );
-    expect(env.fake.connects, 0);
+    env.container.read(linkProvider);
+    await _tick();
     expect(env.container.read(sessionProvider).status, ConnStatus.offline);
   });
 
-  test('transient connect failure is retried', () async {
+  test('connect failure surfaces offline', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.fake.connectError = Exception('Connection refused');
-    env.container.read(gatewayProvider);
-    await Future<void>.delayed(Duration.zero);
-    final failed = env.container.read(gatewayProvider);
-    expect(failed.hasError, isTrue);
-    expect(failed.retrying, isTrue);
-    expect(env.container.read(sessionProvider).status, ConnStatus.reconnecting);
+    env.container.read(linkProvider);
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.offline);
+    expect(env.container.read(sessionProvider).status, ConnStatus.offline);
 
     env.fake.connectError = null;
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    expect(await env.container.read(gatewayProvider.future), ConnStatus.online);
+    await env.container.read(linkProvider.notifier).retry();
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
     expect(env.fake.connects, greaterThan(1));
   });
 
-  test('401 connect failure is not retried', () async {
+  test('401 connect failure stays offline', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.fake.connectError = Exception('http 401: 账号或密码错误');
-    env.container.read(gatewayProvider);
-    await Future<void>.delayed(Duration.zero);
-    final failed = env.container.read(gatewayProvider);
-    expect(failed.hasError, isTrue);
-    expect(failed.retrying, isFalse);
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    env.container.read(linkProvider);
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.offline);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(env.fake.connects, 1);
   });
 }

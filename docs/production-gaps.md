@@ -75,7 +75,7 @@
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
 | Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`；无端到端/Royal RPC；无告警规则 |
-| Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter 登录后不拉离线 |
+| Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
 
@@ -215,15 +215,15 @@ G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条
 
 - `sdk/web/src/status.ts` — `isRetryable`：仅 300–399
 - `sdk/web/src/client.ts` — 登录后 `loadOfflineMessage`；`talk()` 复用 `clientId`
-- `crates/kim-client/src/client.rs` — 每次 `talk_to_user` 新 UUID；无离线拉
-- `sdk/mobile/rust/src/api/client.rs` — 壳在 `kim-client` 上，无 sync
+- `crates/kim-client/src/client.rs` — `send_message` 的 `client_id` 由调用方持有；`talk_to_user` 仍是一次性 UUID 薄包装
+- `sdk/mobile` — FFI supervisor + Dart outbox 已接线；聊天页仍用 flutter_chat_ui，未自研 ChatList
 
 **问题**
 
 | 能力 | Web | kim-client / Flutter |
 |---|---|---|
-| 登录后 offline.index 循环 | 有 | 无 |
-| clientId 跨重试稳定 | 同一次 `talk()` 内稳定 | 每次新 UUID |
+| 登录后 offline.index 循环 | 有 | Flutter：supervisor SyncEngine + persist-then-ack；Web：有 |
+| clientId 跨重试稳定 | 同一次 `talk()` 内稳定 | Flutter outbox 持稳定 id（文本发送）；Web `talk()` 内稳定。聊天页 flutter_chat_ui 仍在，G-14 不算关 |
 | 99 / 3 当可重试 | 否 | 否 |
 | 默认 device | 调用方传 | `mobile`（互踢） |
 
@@ -586,7 +586,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | Phase 0：`inserted.duplicate` 保持不二次 dispatch | 已否。identical 重试从落库再 Push |
 | Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿 |
 | PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与控制面 HMAC 已落地；try_send 仍排在游标之后 |
-| SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter 不拉离线（G-14），「靠 Pull 补洞」对移动端不成立 |
+| SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter supervisor 已拉离线；G-14 仍开因为 Web `isRetryable` 与 chat_ui leftover |
 | 引入 `tokio-util` 为了 JoinSet | `tokio::task::JoinSet` 已在 tokio。tokio-util 只为 `CancellationToken` 才值得加 |
 | `write_all_vectored` 示例 | 稳定 tokio 上该 API 常要 `tokio_unstable`。未验证前不要写进热路径 |
 | ChannelMap 立刻分片 | `get` 已 clone `Channel` 再放锁，登录写锁才会挡全表。先做 G-29，profile 后再分片。拒绝 DashMap 作为第一刀是对的 |

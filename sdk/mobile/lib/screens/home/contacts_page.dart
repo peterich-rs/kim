@@ -105,7 +105,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
   void _open(String id, String title) {
     final thread = ref
-        .read(inboxProvider.notifier)
+        .read(threadsProvider.notifier)
         .ensureThread(id: id, kind: ThreadKind.user, title: title);
     KimHaptics.selection();
     context.push('/chat/${thread.id}', extra: thread);

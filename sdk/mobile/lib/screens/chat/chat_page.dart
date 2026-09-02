@@ -18,8 +18,9 @@ import '../../core/format.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
-import '../../state/gateway.dart';
-import '../../state/inbox.dart';
+import '../../state/link.dart';
+import '../../state/messages.dart';
+import '../../state/outbox.dart';
 import '../../state/mutations.dart';
 import '../../state/profile.dart';
 import '../../state/session.dart';
@@ -53,7 +54,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
-    final rows = ref.read(inboxProvider.notifier).messagesFor(widget.id);
+    final rows = ref.read(threadMessagesProvider(widget.id)).items;
     _controller = InMemoryChatController(
       messages: [for (final m in rows) _toFlyer(m)],
     );
@@ -96,7 +97,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         source: m.body,
         width: m.width > 0 ? m.width.toDouble() : null,
         height: m.height > 0 ? m.height.toDouble() : null,
-        status: m.failed ? MessageStatus.error : MessageStatus.sent,
+        status: m.isFailed
+            ? MessageStatus.error
+            : m.isSending
+            ? MessageStatus.sending
+            : MessageStatus.sent,
       );
     }
     if (m.isImage) {
@@ -107,7 +112,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         source: m.body,
         width: m.width > 0 ? m.width.toDouble() : null,
         height: m.height > 0 ? m.height.toDouble() : null,
-        status: m.failed ? MessageStatus.error : MessageStatus.sent,
+        status: m.isFailed
+            ? MessageStatus.error
+            : m.isSending
+            ? MessageStatus.sending
+            : MessageStatus.sent,
       );
     }
     return Message.text(
@@ -123,7 +132,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final send = sendMessageMutation(widget.id);
     try {
       await send.run(ref, (tsx) {
-        return tsx.get(inboxProvider.notifier).send(widget.id, text);
+        return tsx.get(outboxProvider.notifier).sendText(widget.id, text);
       });
     } on StateError catch (err) {
       if (mounted) {
@@ -142,7 +151,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (!mounted) {
       return;
     }
-    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
   Future<void> _pickAlbum() async {
@@ -176,7 +185,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _sendImages(List<KimMediaAsset> assets) async {
     try {
       await sendImagesMutation(widget.id).run(ref, (tsx) {
-        return tsx.get(inboxProvider.notifier).sendImages(widget.id, assets);
+        return tsx.get(outboxProvider.notifier).sendImages(widget.id, assets);
       });
     } on StateError catch (err) {
       if (mounted) {
@@ -204,7 +213,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (!mounted) {
       return;
     }
-    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
   void _toastMedia(KimMediaPickerException err) {
@@ -227,7 +236,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<void> _retry(String key) async {
     try {
-      await ref.read(inboxProvider.notifier).retry(widget.id, key);
+      await ref.read(outboxProvider.notifier).retry(widget.id, key);
     } on StateError catch (err) {
       if (!mounted) {
         return;
@@ -246,7 +255,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (!mounted) {
       return;
     }
-    await _sync(ref.read(inboxProvider).messages[widget.id] ?? const []);
+    await _sync(ref.read(threadMessagesProvider(widget.id)).items);
   }
 
   Future<void> _onLongPress(
@@ -330,7 +339,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         !social.isFriend(widget.id);
 
     ref.listen<List<KimChatMsg>>(
-      inboxProvider.select((s) => s.messages[widget.id] ?? const []),
+      threadMessagesProvider(widget.id).select((s) => s.items),
       (prev, next) => unawaited(_sync(next)),
     );
 
@@ -345,7 +354,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ConnectionBanner(
             status: session.status,
             error: session.connectError,
-            onRetry: () => ref.invalidate(gatewayProvider),
+            onRetry: () => ref.read(linkProvider.notifier).retry(),
           ),
           Expanded(
             child: Chat(

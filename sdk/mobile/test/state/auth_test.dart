@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/auth.dart';
-import 'package:kim_mobile/state/gateway.dart';
+import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/mutations.dart';
 import 'package:kim_mobile/state/session.dart';
 
@@ -14,10 +14,9 @@ void main() {
   test('signed-out auth does not open a gateway session', () async {
     final env = await kimHarness();
     expect(env.container.read(authProvider).signedIn, isFalse);
-    expect(
-      await env.container.read(gatewayProvider.future),
-      ConnStatus.offline,
-    );
+    env.container.read(linkProvider);
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(linkProvider).status, ConnStatus.offline);
     expect(env.container.read(sessionProvider).status, ConnStatus.offline);
     expect(env.fake.connects, 0);
   });

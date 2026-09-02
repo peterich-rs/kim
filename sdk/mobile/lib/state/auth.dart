@@ -67,7 +67,7 @@ class AuthNotifier extends Notifier<AuthState> {
     final auth = ref.read(authPortProvider);
     final client = ref.read(clientPortProvider);
     try {
-      await client.disconnect();
+      await client.stopSession();
     } catch (_) {}
     if (!ref.mounted) {
       return;

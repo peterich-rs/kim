@@ -1,35 +1,22 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:kim_media_picker/kim_media_picker.dart';
-import 'package:uuid/uuid.dart';
 
-import '../copy.dart';
-import '../core/format.dart';
-import '../core/haptics.dart';
 import '../core/image_extra.dart';
-import '../core/media.dart';
-import '../core/validation.dart';
 import '../models/models.dart';
 import 'contacts.dart';
 import 'location.dart';
 import 'providers.dart';
-import 'session.dart';
+import 'auth.dart';
 
-class InboxState {
-  const InboxState({
-    required this.threads,
-    required this.messages,
-    this.query = '',
-  });
+class ThreadsState {
+  const ThreadsState({required this.threads, this.query = ''});
 
-  factory InboxState.empty() => const InboxState(threads: [], messages: {});
+  factory ThreadsState.empty() => const ThreadsState(threads: []);
 
   final List<KimThread> threads;
-  final Map<String, List<KimChatMsg>> messages;
   final String query;
 
   List<KimThread> get visible {
@@ -46,79 +33,80 @@ class InboxState {
         .toList();
   }
 
-  InboxState copyWith({
-    List<KimThread>? threads,
-    Map<String, List<KimChatMsg>>? messages,
-    String? query,
-  }) {
-    return InboxState(
+  KimThread? thread(String id) {
+    for (final t in threads) {
+      if (t.id == id) {
+        return t;
+      }
+    }
+    return null;
+  }
+
+  ThreadsState copyWith({List<KimThread>? threads, String? query}) {
+    return ThreadsState(
       threads: threads ?? this.threads,
-      messages: messages ?? this.messages,
       query: query ?? this.query,
     );
   }
 }
 
-class InboxNotifier extends Notifier<InboxState> {
-  static const _uuid = Uuid();
-
+class ThreadsNotifier extends Notifier<ThreadsState> {
   @override
-  InboxState build() {
-    final account = ref.watch(sessionProvider.select((s) => s.account));
+  ThreadsState build() {
+    final account = ref.watch(authProvider.select((s) => s.account));
     if (account.isEmpty) {
-      return InboxState.empty();
+      return ThreadsState.empty();
     }
     final store = ref.watch(conversationStoreProvider);
-    return InboxState(threads: store.loadThreads(account), messages: {});
+    return ThreadsState(threads: store.loadThreads(account));
   }
 
   void setQuery(String value) {
     state = state.copyWith(query: value);
   }
 
-  void receive(KimEvent event) {
-    final dest = event.dest.isNotEmpty ? event.dest : event.sender;
-    if (dest.isEmpty || event.body.isEmpty) {
+  void mergeInbox(List<KimThread> incoming) {
+    if (incoming.isEmpty) {
       return;
     }
-    final account = ref.read(sessionProvider).account;
-    final existing = _thread(dest);
-    if (existing == null) {
-      _upsert(
-        KimThread(
-          id: dest,
-          kind: ThreadKind.user,
-          title: ref.read(contactsProvider).person(dest)?.title ?? dest,
-        ),
+    final byId = {for (final t in state.threads) t.id: t};
+    for (final t in incoming) {
+      final prev = byId[t.id];
+      byId[t.id] = KimThread(
+        id: t.id,
+        kind: t.kind,
+        title: t.title.isEmpty ? (prev?.title ?? t.id) : t.title,
+        lastBody: t.lastBody.isEmpty ? (prev?.lastBody ?? '') : t.lastBody,
+        lastAt: t.lastAt == 0 ? (prev?.lastAt ?? 0) : t.lastAt,
+        unread: t.unread,
+        avatar: t.avatar.isEmpty ? (prev?.avatar ?? '') : t.avatar,
       );
     }
-    final extra = parseImageExtra(event.extra);
-    final msg = KimChatMsg(
-      key: event.messageId == 0 ? _uuid.v4() : '${event.messageId}',
-      dest: dest,
-      sender: event.sender.isEmpty ? dest : event.sender,
-      body: event.body,
-      at: sendTimeMs(event.sendTime),
-      kind: kindFromWire(body: event.body, extra: event.extra),
-      width: extra?.width ?? 0,
-      height: extra?.height ?? 0,
-    );
-    _append(msg, fromSelf: event.sender == account);
-    unawaited(_persistMessages(dest));
-    _persistThreads();
+    final next = byId.values.toList()
+      ..sort((a, b) => b.lastAt.compareTo(a.lastAt));
+    state = state.copyWith(threads: next);
+    _persist();
   }
 
-  List<KimChatMsg> messagesFor(String dest) {
-    final cached = state.messages[dest];
-    if (cached != null) {
-      return cached;
-    }
-    final account = ref.read(sessionProvider).account;
-    final loaded = ref
-        .read(conversationStoreProvider)
-        .loadMessages(account, dest);
-    state = state.copyWith(messages: {...state.messages, dest: loaded});
-    return loaded;
+  void applyTalk(KimChatMsg msg, {required bool fromSelf}) {
+    final existing = state.thread(msg.dest);
+    final viewing = chatIdFromPath(ref.read(locationProvider));
+    final unread = fromSelf || msg.sys || viewing == msg.dest
+        ? (existing?.unread ?? 0)
+        : (existing?.unread ?? 0) + 1;
+    _upsert(
+      KimThread(
+        id: msg.dest,
+        kind: existing?.kind ?? ThreadKind.user,
+        title:
+            existing?.title ??
+            (ref.read(contactsProvider).person(msg.dest)?.title ?? msg.dest),
+        lastBody: msg.sys ? (existing?.lastBody ?? '') : previewBody(msg),
+        lastAt: msg.at,
+        unread: unread,
+        avatar: existing?.avatar ?? '',
+      ),
+    );
   }
 
   KimThread ensureThread({
@@ -126,13 +114,18 @@ class InboxNotifier extends Notifier<InboxState> {
     ThreadKind kind = ThreadKind.user,
     String? title,
   }) {
-    final existing = _thread(id);
+    final existing = state.thread(id);
     if (existing != null) {
       if (existing.unread == 0) {
         return existing;
       }
       final next = _upsert(existing.copyWith(unread: 0));
-      _persistThreads();
+      _persist();
+      unawaited(
+        ref
+            .read(conversationStoreProvider)
+            .markThreadRead(ref.read(authProvider).account, id),
+      );
       return next;
     }
     final created = KimThread(
@@ -141,138 +134,16 @@ class InboxNotifier extends Notifier<InboxState> {
       title: (title == null || title.isEmpty) ? id : title,
     );
     _upsert(created);
-    _persistThreads();
+    _persist();
     return created;
   }
 
   Future<void> deleteThread(String id) async {
-    final account = ref.read(sessionProvider).account;
+    final account = ref.read(authProvider).account;
     await ref.read(conversationStoreProvider).deleteThread(account, id);
-    final nextMsgs = Map<String, List<KimChatMsg>>.from(state.messages)
-      ..remove(id);
     state = state.copyWith(
       threads: state.threads.where((t) => t.id != id).toList(),
-      messages: nextMsgs,
     );
-  }
-
-  Future<KimChatMsg> send(String dest, String text) async {
-    final body = text.trim();
-    if (body.isEmpty) {
-      throw StateError(Copy.required);
-    }
-    _assertCanTalk(dest);
-    final session = ref.read(sessionProvider);
-    ensureThread(id: dest);
-    final msg = KimChatMsg(
-      key: _uuid.v4(),
-      dest: dest,
-      sender: session.account,
-      body: body,
-      at: DateTime.now().millisecondsSinceEpoch,
-    );
-    _append(msg, fromSelf: true);
-    await _persistMessages(dest);
-    if (!ref.mounted) {
-      return msg;
-    }
-    _persistThreads();
-    try {
-      await ref.read(clientPortProvider).talk(dest, body);
-      if (!ref.mounted) {
-        return msg;
-      }
-      await KimHaptics.light();
-      return msg;
-    } catch (_) {
-      if (ref.mounted) {
-        _markFailed(dest, msg.key);
-      }
-      await _persistMessages(dest);
-      await KimHaptics.error();
-      rethrow;
-    }
-  }
-
-  Future<List<KimChatMsg>> sendImages(
-    String dest,
-    List<KimMediaAsset> assets,
-  ) async {
-    if (assets.isEmpty) {
-      throw StateError(Copy.required);
-    }
-    _assertCanTalk(dest);
-    ensureThread(id: dest);
-    final session = ref.read(sessionProvider);
-    final out = <KimChatMsg>[];
-    for (final asset in assets) {
-      if (asset.path.isEmpty) {
-        continue;
-      }
-      final msg = KimChatMsg(
-        key: _uuid.v4(),
-        dest: dest,
-        sender: session.account,
-        body: asset.path,
-        at: DateTime.now().millisecondsSinceEpoch,
-        kind: asset.isVideo ? KimMsgKind.video : KimMsgKind.image,
-        width: asset.width,
-        height: asset.height,
-      );
-      _append(msg, fromSelf: true);
-      out.add(msg);
-    }
-    if (out.isEmpty) {
-      throw StateError(Copy.required);
-    }
-    await _persistMessages(dest);
-    if (ref.mounted) {
-      _persistThreads();
-    }
-    Object? firstError;
-    for (final msg in out) {
-      if (msg.isVideo) {
-        continue;
-      }
-      try {
-        await _uploadAndTalkImage(dest, msg);
-        if (ref.mounted) {
-          await KimHaptics.light();
-        }
-      } catch (err) {
-        firstError ??= err;
-        if (ref.mounted) {
-          _markFailed(dest, msg.key);
-        }
-        await _persistMessages(dest);
-        await KimHaptics.error();
-      }
-    }
-    if (firstError != null) {
-      throw firstError;
-    }
-    return out;
-  }
-
-  void _assertCanTalk(String dest) {
-    final accountErr = validateAccount(dest);
-    if (accountErr != null) {
-      throw StateError(accountErr);
-    }
-    final session = ref.read(sessionProvider);
-    if (dest == session.account) {
-      throw StateError(Copy.cannotChatSelf);
-    }
-    if (session.status != ConnStatus.online) {
-      throw StateError(Copy.notConnected);
-    }
-    final existing = _thread(dest);
-    final social = ref.read(contactsProvider);
-    if (existing?.kind != ThreadKind.group &&
-        social.ready &&
-        !social.isFriend(dest)) {
-      throw StateError(Copy.notFriends);
-    }
   }
 
   KimThread _upsert(KimThread thread) {
@@ -283,175 +154,20 @@ class InboxNotifier extends Notifier<InboxState> {
     return thread;
   }
 
-  KimThread? _thread(String id) {
-    for (final t in state.threads) {
-      if (t.id == id) {
-        return t;
+  void _persist() {
+    final account = ref.read(authProvider).account;
+    unawaited(() async {
+      final store = ref.read(conversationStoreProvider);
+      for (final t in state.threads) {
+        await store.upsertThread(account, t);
       }
-    }
-    return null;
-  }
-
-  List<KimChatMsg> _loaded(String dest) {
-    final cached = state.messages[dest];
-    if (cached != null) {
-      return cached;
-    }
-    final account = ref.read(sessionProvider).account;
-    return ref.read(conversationStoreProvider).loadMessages(account, dest);
-  }
-
-  void _append(KimChatMsg msg, {required bool fromSelf}) {
-    final prev = List<KimChatMsg>.from(_loaded(msg.dest));
-    if (prev.any((m) => m.key == msg.key)) {
-      return;
-    }
-    prev.add(msg);
-    final clipped = prev.length > 400 ? prev.sublist(prev.length - 400) : prev;
-    final existing = _thread(msg.dest);
-    final viewing = chatIdFromPath(ref.read(locationProvider));
-    final unread = fromSelf || msg.sys || viewing == msg.dest
-        ? (existing?.unread ?? 0)
-        : (existing?.unread ?? 0) + 1;
-    _upsert(
-      KimThread(
-        id: msg.dest,
-        kind: existing?.kind ?? ThreadKind.user,
-        title: existing?.title ?? msg.dest,
-        lastBody: msg.sys ? (existing?.lastBody ?? '') : previewBody(msg),
-        lastAt: msg.at,
-        unread: unread,
-      ),
-    );
-    state = state.copyWith(messages: {...state.messages, msg.dest: clipped});
-  }
-
-  Future<void> retry(String dest, String key) async {
-    KimChatMsg? target;
-    for (final m in _loaded(dest)) {
-      if (m.key == key) {
-        target = m;
-        break;
-      }
-    }
-    if (target == null || !target.failed) {
-      return;
-    }
-    if (ref.read(sessionProvider).status != ConnStatus.online) {
-      throw StateError(Copy.notConnected);
-    }
-    _setFailed(dest, key, false);
-    await _persistMessages(dest);
-    if (!ref.mounted) {
-      return;
-    }
-    try {
-      if (target.isVideo) {
-        await KimHaptics.light();
-        return;
-      }
-      if (target.isImage) {
-        await _uploadAndTalkImage(dest, target);
-      } else {
-        await ref.read(clientPortProvider).talk(dest, target.body);
-      }
-      if (!ref.mounted) {
-        return;
-      }
-      await KimHaptics.light();
-    } catch (_) {
-      if (ref.mounted) {
-        _setFailed(dest, key, true);
-      }
-      await _persistMessages(dest);
-      await KimHaptics.error();
-      rethrow;
-    }
-  }
-
-  Future<void> _uploadAndTalkImage(String dest, KimChatMsg msg) async {
-    var url = msg.body;
-    if (!isRemoteUrl(url)) {
-      final file = File(url);
-      if (!file.existsSync()) {
-        throw StateError(Copy.imageFailed);
-      }
-      final bytes = await file.readAsBytes();
-      if (bytes.length > KimMediaClient.maxBytes) {
-        throw StateError(Copy.imageTooLarge);
-      }
-      final token = ref.read(runtimeProvider).settings.token;
-      final uploaded = await ref
-          .read(mediaPortProvider)
-          .uploadImage(
-            token: token,
-            bytes: bytes,
-            contentType: KimImageTypes.sniff(bytes) ?? KimImageTypes.jpeg,
-          );
-      url = uploaded.url;
-      if (ref.mounted) {
-        _patch(dest, msg.key, body: url, failed: false);
-      }
-      await _persistMessages(dest);
-    }
-    if (!ref.mounted) {
-      return;
-    }
-    final extra = encodeImageExtra(width: msg.width, height: msg.height);
-    await ref.read(clientPortProvider).talkImage(dest, url, extra: extra);
-  }
-
-  void _patch(String dest, String key, {String? body, bool? failed}) {
-    final prev = state.messages[dest];
-    if (prev == null) {
-      return;
-    }
-    state = state.copyWith(
-      messages: {
-        ...state.messages,
-        dest: [
-          for (final m in prev)
-            if (m.key == key) m.copyWith(body: body, failed: failed) else m,
-        ],
-      },
-    );
-  }
-
-  void _markFailed(String dest, String key) {
-    _setFailed(dest, key, true);
-  }
-
-  void _setFailed(String dest, String key, bool failed) {
-    final prev = state.messages[dest];
-    if (prev == null) {
-      return;
-    }
-    state = state.copyWith(
-      messages: {
-        ...state.messages,
-        dest: [
-          for (final m in prev)
-            if (m.key == key) m.copyWith(failed: failed) else m,
-        ],
-      },
-    );
-  }
-
-  void _persistThreads() {
-    final account = ref.read(sessionProvider).account;
-    unawaited(
-      ref.read(conversationStoreProvider).saveThreads(account, state.threads),
-    );
-  }
-
-  Future<void> _persistMessages(String dest) async {
-    final account = ref.read(sessionProvider).account;
-    await ref
-        .read(conversationStoreProvider)
-        .saveMessages(account, dest, state.messages[dest] ?? const []);
+    }());
   }
 }
 
-final inboxProvider = NotifierProvider<InboxNotifier, InboxState>(
-  InboxNotifier.new,
+final threadsProvider = NotifierProvider<ThreadsNotifier, ThreadsState>(
+  ThreadsNotifier.new,
 );
+
+/// Alias kept so call sites / tests can migrate off [inboxProvider].
+final inboxProvider = threadsProvider;

@@ -16,7 +16,7 @@ import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/auth.dart';
-import '../../state/gateway.dart';
+import '../../state/link.dart';
 import '../../state/mutations.dart';
 import '../../state/profile.dart';
 import '../../state/providers.dart';
@@ -159,7 +159,7 @@ class MePage extends ConsumerWidget {
                           } else {
                             await settings.useProd();
                           }
-                          ref.invalidate(gatewayProvider);
+                          ref.read(linkProvider.notifier).retry();
                         },
                       ),
                     ),
@@ -174,7 +174,7 @@ class MePage extends ConsumerWidget {
                         leading: const Icon(LucideIcons.refreshCw),
                         title: const Text(Copy.retry),
                         subtitle: Text(session.connectError ?? Copy.offline),
-                        onTap: () => ref.invalidate(gatewayProvider),
+                        onTap: () => ref.read(linkProvider.notifier).retry(),
                       ),
                   ],
                 ),

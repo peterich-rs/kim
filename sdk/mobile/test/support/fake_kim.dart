@@ -18,7 +18,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int talks = 0;
   int imageTalks = 0;
   int acks = 0;
+  int confirms = 0;
+  int radioUps = 0;
   int friendRequests = 0;
+  int lastConfirm = 0;
   final eventsController = StreamController<KimEvent>.broadcast();
   List<KimPerson> friends = const [];
   List<KimPerson> incoming = const [];
@@ -28,6 +31,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastTalkBody = '';
   String lastImageUrl = '';
   String lastImageExtra = '';
+  String lastClientId = '';
+  final List<String> clientIds = [];
+  KimLinkState _link = const KimLinkState();
 
   KimAuthSession _ok() {
     return session ??
@@ -90,45 +96,85 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String httpOriginFromWs(String wsUrl) => 'http://127.0.0.1:8080';
 
   @override
-  Future<String> connect(
+  Future<void> startSession(
     String url,
     String token, {
     required String userAgent,
   }) async {
     connects += 1;
+    lastUserAgent = userAgent;
     if (connectError != null) {
       throw connectError!;
     }
-    return 'connected $url';
+    _link = const KimLinkState(status: ConnStatus.online);
+    eventsController.add(
+      const KimEvent(kind: KimEventKind.link, state: 'Online'),
+    );
   }
 
   @override
-  Future<String> loginWs() async => 'channel_id=1 account=alice';
-
-  @override
-  Future<String> ping() async => 'pong';
-
-  @override
-  Future<String> talk(String dest, String body) async {
-    talks += 1;
-    lastTalkDest = dest;
-    lastTalkBody = body;
-    if (talkError != null) {
-      throw talkError!;
-    }
-    return 'message_id=1 send_time=1';
+  Future<void> stopSession() async {
+    _link = const KimLinkState();
   }
 
   @override
-  Future<String> talkImage(String dest, String url, {String extra = ''}) async {
-    imageTalks += 1;
+  KimLinkState linkState() => _link;
+
+  @override
+  Stream<KimEvent> sessionEvents() => eventsController.stream;
+
+  @override
+  Future<void> syncConfirm(int cursor) async {
+    confirms += 1;
+    lastConfirm = cursor;
+  }
+
+  @override
+  Future<void> notifyRadioUp() async {
+    radioUps += 1;
+  }
+
+  @override
+  Future<KimTalkResult> sendMessage(
+    String dest,
+    ThreadKind kind,
+    KimOutgoingContent content, {
+    required String clientId,
+  }) async {
+    lastClientId = clientId;
+    clientIds.add(clientId);
     lastTalkDest = dest;
-    lastImageUrl = url;
-    lastImageExtra = extra;
+    switch (content) {
+      case KimTextContent(:final text):
+        talks += 1;
+        lastTalkBody = text;
+      case KimImageContent(:final url, :final width, :final height):
+        imageTalks += 1;
+        lastImageUrl = url;
+        lastImageExtra = '{"w":$width,"h":$height}';
+      case KimVideoContent(:final url):
+        talks += 1;
+        lastTalkBody = url;
+    }
     if (talkError != null) {
       throw talkError!;
     }
-    return 'message_id=1 send_time=1';
+    return const KimTalkResult(messageId: 1, sendTime: 1);
+  }
+
+  @override
+  Future<List<KimHistoryMsg>> history(
+    String dest,
+    ThreadKind kind, {
+    int beforeId = 0,
+    int limit = 50,
+  }) async {
+    return const [];
+  }
+
+  @override
+  Future<List<KimThread>> inboxList({int limit = 200}) async {
+    return const [];
   }
 
   @override
@@ -136,15 +182,13 @@ class FakeKim implements KimAuthPort, KimClientPort {
     acks += 1;
   }
 
-  @override
-  Stream<KimEvent> events() => eventsController.stream;
-
   void emitTalk({
     required String dest,
     required String sender,
     required String body,
     String extra = '',
     int sendTime = 0,
+    int messageId = 0,
   }) {
     eventsController.add(
       KimEvent(
@@ -153,7 +197,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
         sender: sender,
         body: body,
         extra: extra,
-        messageId: DateTime.now().microsecondsSinceEpoch,
+        messageId: messageId == 0
+            ? DateTime.now().microsecondsSinceEpoch
+            : messageId,
         sendTime: sendTime == 0
             ? DateTime.now().millisecondsSinceEpoch
             : sendTime,
@@ -203,9 +249,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     me = KimPerson(account: me.account, nickname: nickname, avatar: avatar);
     return me;
   }
-
-  @override
-  Future<String> disconnect() async => 'disconnected';
 }
 
 class FakeKimMedia implements KimMediaPort {
