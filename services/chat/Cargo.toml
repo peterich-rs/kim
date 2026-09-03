@@ -32,7 +32,7 @@ serde = { version = "1", features = ["derive"] }
 snowflake_me.workspace = true
 sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
 thiserror.workspace = true
-toml = "0.8"
+toml = "1.1"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
