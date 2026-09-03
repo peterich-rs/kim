@@ -63,10 +63,15 @@ impl IdGenerator for SnowflakeGen {
     }
 }
 
-/// Test-only id generator. Default start is 10_001.
+/// Test-only id generator. Each `Default` instance owns a disjoint range so
+/// parallel Postgres tests do not collide on `message_content.id`.
 pub struct SequenceIdGen {
     n: AtomicI64,
 }
+
+const DEFAULT_START: i64 = 10_001;
+const DEFAULT_RANGE: i64 = 100_000;
+static NEXT_DEFAULT_START: AtomicI64 = AtomicI64::new(DEFAULT_START);
 
 impl SequenceIdGen {
     pub fn new(start: i64) -> Self {
@@ -78,7 +83,8 @@ impl SequenceIdGen {
 
 impl Default for SequenceIdGen {
     fn default() -> Self {
-        Self::new(10_001)
+        let start = NEXT_DEFAULT_START.fetch_add(DEFAULT_RANGE, Ordering::Relaxed);
+        Self::new(start)
     }
 }
 
