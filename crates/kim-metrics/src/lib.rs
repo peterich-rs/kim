@@ -16,6 +16,7 @@ use thiserror::Error;
 const COMMANDS: &[&str] = &[
     "login.signin",
     "login.signout",
+    "login.renew",
     "chat.demo.echo",
     "chat.user.talk",
     "chat.group.talk",
@@ -27,6 +28,21 @@ const COMMANDS: &[&str] = &[
     "chat.talk.ack",
     "chat.offline.index",
     "chat.offline.content",
+    "chat.user.profile",
+    "chat.user.update",
+    "chat.user.search",
+    "chat.friend.request",
+    "chat.friend.accept",
+    "chat.friend.reject",
+    "chat.friend.remove",
+    "chat.friend.list",
+    "chat.friend.incoming",
+    "chat.block.add",
+    "chat.block.remove",
+    "chat.block.list",
+    "chat.inbox.list",
+    "chat.inbox.read",
+    "chat.history",
 ];
 
 #[derive(Debug, Error)]
@@ -51,6 +67,7 @@ pub struct KimMetrics {
     dispatch_fail_total: IntCounterVec,
     heartbeat_revoke_error_total: IntCounterVec,
     mailbox_full_total: IntCounterVec,
+    send_to_ack: HistogramVec,
 }
 
 impl KimMetrics {
@@ -125,6 +142,15 @@ impl KimMetrics {
             labels,
         )
         .map_err(|e| Error::Other(e.to_string()))?;
+        let send_to_ack = HistogramVec::new(
+            HistogramOpts::new(
+                "kim_send_to_ack_seconds",
+                "pending_delivery created_at to acked_at",
+            )
+            .buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
 
         registry
             .register(Box::new(channel_total.clone()))
@@ -162,6 +188,9 @@ impl KimMetrics {
         registry
             .register(Box::new(mailbox_full_total.clone()))
             .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(send_to_ack.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Arc::new(Self {
             registry,
@@ -179,6 +208,7 @@ impl KimMetrics {
             dispatch_fail_total,
             heartbeat_revoke_error_total,
             mailbox_full_total,
+            send_to_ack,
         }))
     }
 
@@ -223,6 +253,12 @@ impl KimMetrics {
                 &status.to_string(),
             ])
             .inc();
+    }
+
+    pub fn observe_send_to_ack(&self, dt: Duration) {
+        self.send_to_ack
+            .with_label_values(&self.svc())
+            .observe(dt.as_secs_f64());
     }
 
     pub fn observe_handler(&self, command: &str, dt: Duration) {

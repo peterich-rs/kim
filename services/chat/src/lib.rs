@@ -120,7 +120,7 @@ impl ChatHandler {
         cache: Arc<dyn SessionStorage>,
         cfg_node: Option<u16>,
     ) -> Self {
-        let node = resolve_snowflake_node(cfg_node);
+        let node = resolve_snowflake_node(cfg_node).unwrap_or(1);
         let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
             Ok(g) => Arc::new(g),
             Err(err) => {

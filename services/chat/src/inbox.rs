@@ -43,16 +43,28 @@ pub async fn do_inbox_list(
             return;
         }
     };
+    let user_dests: Vec<String> = rows
+        .iter()
+        .filter(|r| r.kind == MessageKind::User)
+        .map(|r| r.dest.clone())
+        .collect();
+    let profiles = match users.profiles(&ctx.session().app, &user_dests).await {
+        Ok(v) => v,
+        Err(err) => {
+            warn!(%err, "inbox profiles failed");
+            Vec::new()
+        }
+    };
+    let mut by_account = std::collections::HashMap::new();
+    for p in profiles {
+        by_account.insert(p.account.clone(), p);
+    }
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
         let (title, avatar) = match row.kind {
-            MessageKind::User => match users.profile(&ctx.session().app, &row.dest).await {
-                Ok(Some(p)) => (p.display_name().to_string(), p.avatar),
-                Ok(None) => (row.dest.clone(), String::new()),
-                Err(err) => {
-                    warn!(%err, dest = %row.dest, "inbox profile failed");
-                    (row.dest.clone(), String::new())
-                }
+            MessageKind::User => match by_account.get(&row.dest) {
+                Some(p) => (p.display_name().to_string(), p.avatar.clone()),
+                None => (row.dest.clone(), String::new()),
             },
             MessageKind::Group => match groups.detail(&ctx.session().app, &row.dest).await {
                 Ok(g) => (g.name, g.avatar),

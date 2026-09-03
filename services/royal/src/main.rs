@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::open_uncached_session_store;
 use chat::store::{open_pg_backends, pending_receipt_enabled, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
@@ -84,10 +84,13 @@ async fn scan_empty_jti() -> Result<(), Box<dyn std::error::Error>> {
     {
         let url = env_nonempty("REDIS_URL").ok_or("REDIS_URL is required for --scan-empty-jti")?;
         let scanner = kim_session::RedisSessionStore::open(&url).await?;
-        let n = scanner.count_empty_jti_locations().await?;
-        println!("empty_jti={n}");
-        if n != 0 {
-            std::process::exit(kim_session::empty_jti_gate_code(n));
+        let scan = scanner.count_empty_jti_locations().await?;
+        println!(
+            "empty_jti={} invalid={} wrong_type={} scanned={}",
+            scan.empty_jti, scan.invalid, scan.wrong_type, scan.scanned
+        );
+        if !scan.is_clean() {
+            std::process::exit(kim_session::empty_jti_gate_code(scan));
         }
         Ok(())
     }
@@ -174,14 +177,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.toml"));
     let cfg: File = toml::from_str(&std::fs::read_to_string(&path)?)?;
-    let node = resolve_snowflake_node(Some(cfg.this.snowflake_node));
-    let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
-        Ok(g) => Arc::new(g),
-        Err(err) => {
-            tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
-            Arc::new(SequenceIdGen::new(10_001))
-        }
-    };
+    let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
+    let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
 
     let jwt = JwtConfig {
         secret: jwt_secret(&cfg.this.jwt_secret),
@@ -276,7 +273,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 interval.tick().await;
                 match scanner.count_empty_jti_locations().await {
-                    Ok(n) => tracing::info!(kim_location_without_jti = n, "location jti scan"),
+                    Ok(scan) => tracing::info!(
+                        kim_location_without_jti = scan.empty_jti,
+                        invalid = scan.invalid,
+                        wrong_type = scan.wrong_type,
+                        scanned = scan.scanned,
+                        "location jti scan"
+                    ),
                     Err(err) => tracing::warn!(%err, "location jti scan failed"),
                 }
             }
