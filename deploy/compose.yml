@@ -155,8 +155,11 @@ services:
       KIM_APP: kim
       KIM_LOC_CACHE: "0"
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
+      KIM_INBOX_MATERIALIZED: ${KIM_INBOX_MATERIALIZED:-0}
       RUST_LOG: ${RUST_LOG:-info}
     volumes: *kim-tls
+    expose:
+      - "9003"
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
@@ -201,8 +204,11 @@ services:
       KIM_APP: kim
       KIM_LOC_CACHE: "0"
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
+      KIM_INBOX_MATERIALIZED: ${KIM_INBOX_MATERIALIZED:-0}
       RUST_LOG: ${RUST_LOG:-info}
     volumes: *kim-tls
+    expose:
+      - "9003"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 15s
@@ -406,6 +412,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
 
 volumes:
   postgres_data:

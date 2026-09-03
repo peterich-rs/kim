@@ -43,6 +43,21 @@ pub fn pending_receipt_enabled() -> bool {
     env_flag("KIM_PENDING_RECEIPT")
 }
 
+/// Observes send→ack latency for receipts acked by this process.
+/// Royal holds the histogram; Chat's HTTP adapter passes `None`.
+pub trait AckObserver: Send + Sync {
+    fn observe_send_to_ack(&self, seconds: f64);
+}
+
+impl AckObserver for kim_metrics::KimMetrics {
+    fn observe_send_to_ack(&self, seconds: f64) {
+        kim_metrics::KimMetrics::observe_send_to_ack(
+            self,
+            Duration::from_secs_f64(seconds.max(0.0)),
+        );
+    }
+}
+
 pub fn collect_ack_ids(message_id: i64, extra: &[i64]) -> Vec<i64> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -428,17 +443,41 @@ pub struct MemoryMessageStore {
     idgen: Arc<dyn IdGenerator>,
     ack: Arc<dyn AckIndex>,
     pending_receipt: bool,
+    ack_observer: Option<Arc<dyn AckObserver>>,
     inner: RwLock<Inner>,
 }
 
 #[derive(Default)]
 struct Inner {
     contents: HashMap<i64, StoredMessage>,
-    indexes: Vec<InboxRow>,
+    indexes_by_account: HashMap<String, HashMap<String, Vec<InboxRow>>>,
+    indexes_by_message: HashMap<i64, Vec<InboxRow>>,
     idempotency: HashMap<(String, String, String), (i64, i64)>,
     /// (app, account, peer, group_id) -> last_read_id
     reads: HashMap<(String, String, String, String), i64>,
     pending: HashMap<(String, String, String, i64), PendingEntry>,
+}
+
+impl Inner {
+    fn push_index(&mut self, row: InboxRow) {
+        self.indexes_by_message
+            .entry(row.message_id)
+            .or_default()
+            .push(row.clone());
+        self.indexes_by_account
+            .entry(row.app.clone())
+            .or_default()
+            .entry(row.account_a.clone())
+            .or_default()
+            .push(row);
+    }
+
+    fn account_rows(&self, app: &str, account: &str) -> &[InboxRow] {
+        self.indexes_by_account
+            .get(app)
+            .and_then(|m| m.get(account))
+            .map_or(&[], Vec::as_slice)
+    }
 }
 
 struct PendingEntry {
@@ -460,22 +499,37 @@ struct InboxRow {
 
 impl MemoryMessageStore {
     pub fn new(idgen: Arc<dyn IdGenerator>) -> Self {
-        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), false)
+        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), false, None)
     }
 
     pub fn with_pending_receipt(idgen: Arc<dyn IdGenerator>) -> Self {
-        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), true)
+        Self::with_ack(idgen, Arc::new(MemoryAckIndex::new()), true, None)
+    }
+
+    pub fn with_ack_observer(
+        idgen: Arc<dyn IdGenerator>,
+        pending_receipt: bool,
+        observer: Arc<dyn AckObserver>,
+    ) -> Self {
+        Self::with_ack(
+            idgen,
+            Arc::new(MemoryAckIndex::new()),
+            pending_receipt,
+            Some(observer),
+        )
     }
 
     fn with_ack(
         idgen: Arc<dyn IdGenerator>,
         ack: Arc<dyn AckIndex>,
         pending_receipt: bool,
+        ack_observer: Option<Arc<dyn AckObserver>>,
     ) -> Self {
         Self {
             idgen,
             ack,
             pending_receipt,
+            ack_observer,
             inner: RwLock::new(Inner::default()),
         }
     }
@@ -502,9 +556,10 @@ impl MemoryMessageStore {
             .get(&message_id)
             .ok_or_else(|| StoreError::Backend("fanout missing".into()))?;
         let rows: Vec<(String, String, i32, String)> = inner
-            .indexes
-            .iter()
-            .filter(|r| r.message_id == message_id)
+            .indexes_by_message
+            .get(&message_id)
+            .into_iter()
+            .flatten()
             .map(|r| {
                 (
                     r.account_a.clone(),
@@ -653,7 +708,9 @@ impl MemoryMessageStore {
             inner.idempotency.insert(key, (message_id, req.send_time));
         }
         inner.contents.insert(message_id, content);
-        inner.indexes.extend(indexes);
+        for row in indexes {
+            inner.push_index(row);
+        }
         if self.pending_receipt {
             Self::upsert_receipts(&mut inner, app, message_id, req, members_opt);
         }
@@ -684,7 +741,19 @@ impl MemoryMessageStore {
 
     #[cfg(test)]
     fn recorded_indexes(&self) -> Vec<InboxRow> {
-        self.read().indexes.clone()
+        let inner = self.read();
+        let mut rows: Vec<InboxRow> = inner
+            .indexes_by_message
+            .values()
+            .flatten()
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| {
+            a.message_id
+                .cmp(&b.message_id)
+                .then(a.account_a.cmp(&b.account_a))
+        });
+        rows
     }
 
     async fn sent_time(&self, account: &str, message_id: i64) -> Result<i64, StoreError> {
@@ -745,6 +814,7 @@ impl MessageStore for MemoryMessageStore {
         }
         let now = Instant::now();
         let mut inner = self.write();
+        let mut observed = Vec::new();
         for id in message_ids {
             if let Some(row) = inner.pending.get_mut(&(
                 app.to_string(),
@@ -754,7 +824,14 @@ impl MessageStore for MemoryMessageStore {
             )) {
                 if row.acked_at.is_none() {
                     row.acked_at = Some(now);
+                    observed.push((now - row.created_at).as_secs_f64());
                 }
+            }
+        }
+        drop(inner);
+        if let Some(sink) = &self.ack_observer {
+            for secs in observed {
+                sink.observe_send_to_ack(secs);
             }
         }
         Ok(())
@@ -773,14 +850,9 @@ impl MessageStore for MemoryMessageStore {
             let mut rows: Vec<MessageIndexRow> = {
                 let inner = self.read();
                 inner
-                    .indexes
+                    .account_rows(app, account)
                     .iter()
-                    .filter(|r| {
-                        r.app == app
-                            && r.account_a == account
-                            && r.direction == DIRECTION_RECV
-                            && r.send_time > start
-                    })
+                    .filter(|r| r.direction == DIRECTION_RECV && r.send_time > start)
                     .map(|r| MessageIndexRow {
                         message_id: r.message_id,
                         direction: r.direction,
@@ -832,14 +904,9 @@ impl MessageStore for MemoryMessageStore {
             .into_iter()
             .filter_map(|(_, id)| {
                 inner
-                    .indexes
+                    .account_rows(app, account)
                     .iter()
-                    .find(|r| {
-                        r.app == app
-                            && r.account_a == account
-                            && r.message_id == id
-                            && r.direction == DIRECTION_RECV
-                    })
+                    .find(|r| r.message_id == id && r.direction == DIRECTION_RECV)
                     .map(|r| MessageIndexRow {
                         message_id: r.message_id,
                         direction: r.direction,
@@ -866,14 +933,9 @@ impl MessageStore for MemoryMessageStore {
         let expires = now + Duration::from_secs(15 * 24 * 3600);
         let mut inner = self.write();
         let ids: Vec<i64> = inner
-            .indexes
+            .account_rows(app, account)
             .iter()
-            .filter(|r| {
-                r.app == app
-                    && r.account_a == account
-                    && r.direction == DIRECTION_RECV
-                    && r.send_time >= cutoff
-            })
+            .filter(|r| r.direction == DIRECTION_RECV && r.send_time >= cutoff)
             .map(|r| r.message_id)
             .collect();
         if ids.len() > 10_000 {
@@ -950,9 +1012,9 @@ impl MessageStore for MemoryMessageStore {
                     return None;
                 }
                 let visible = inner
-                    .indexes
+                    .account_rows(app, account)
                     .iter()
-                    .any(|r| r.message_id == *id && r.app == app && r.account_a == account);
+                    .any(|r| r.message_id == *id);
                 if !visible {
                     return None;
                 }
@@ -975,11 +1037,7 @@ impl MessageStore for MemoryMessageStore {
         let cap = clamp_page(limit, INBOX_PAGE, INBOX_MAX);
         let inner = self.read();
         let mut latest: HashMap<(MessageKind, String), InboxEntry> = HashMap::new();
-        for row in inner
-            .indexes
-            .iter()
-            .filter(|r| r.app == app && r.account_a == account)
-        {
+        for row in inner.account_rows(app, account) {
             let (kind, dest) = if row.group_id.is_empty() {
                 (MessageKind::User, row.account_b.clone())
             } else {
@@ -1055,16 +1113,14 @@ impl MessageStore for MemoryMessageStore {
         let cap = clamp_page(limit, HISTORY_PAGE, HISTORY_MAX);
         let inner = self.read();
         let mut rows: Vec<HistoryEntry> = inner
-            .indexes
+            .account_rows(app, account)
             .iter()
             .filter(|r| {
-                r.app == app
-                    && r.account_a == account
-                    && match kind {
-                        MessageKind::User => r.group_id.is_empty() && r.account_b == dest,
-                        MessageKind::Group => r.group_id == dest,
-                    }
-                    && (before_id <= 0 || r.message_id < before_id)
+                let dest_ok = match kind {
+                    MessageKind::User => r.group_id.is_empty() && r.account_b == dest,
+                    MessageKind::Group => r.group_id == dest,
+                };
+                dest_ok && (before_id <= 0 || r.message_id < before_id)
             })
             .filter_map(|r| {
                 inner.contents.get(&r.message_id).map(|c| HistoryEntry {
@@ -1140,6 +1196,7 @@ pub async fn open_message_store(
             idgen,
             ack,
             pending_receipt_enabled(),
+            None,
         ))),
         Some(url) => open_postgres_store(url, idgen, ack, pool).await,
     }
@@ -1152,6 +1209,7 @@ pub async fn open_pg_backends(
     pool: PoolConfig,
     sessions: Option<Arc<dyn kim_router::SessionStorage>>,
     pending_receipt: bool,
+    ack_observer: Option<Arc<dyn AckObserver>>,
 ) -> Result<PgBackends, StoreError> {
     open_pg_backends_inner(
         database_url,
@@ -1160,6 +1218,7 @@ pub async fn open_pg_backends(
         pool,
         sessions,
         pending_receipt,
+        ack_observer,
     )
     .await
 }
@@ -1226,6 +1285,7 @@ async fn open_pg_backends_inner(
     pool: PoolConfig,
     sessions: Option<Arc<dyn kim_router::SessionStorage>>,
     pending_receipt: bool,
+    ack_observer: Option<Arc<dyn AckObserver>>,
 ) -> Result<PgBackends, StoreError> {
     let pg = connect_pool(database_url, PoolOpts::from(pool)).await?;
     let ack = open_ack_index(redis_url).await?;
@@ -1235,6 +1295,7 @@ async fn open_pg_backends_inner(
         ack,
         sessions,
         pending_receipt,
+        ack_observer,
     ));
     let groups: Arc<dyn GroupDirectory> = Arc::new(
         crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen),
@@ -1259,6 +1320,7 @@ async fn open_pg_backends_inner(
     _pool: PoolConfig,
     _sessions: Option<Arc<dyn kim_router::SessionStorage>>,
     _pending_receipt: bool,
+    _ack_observer: Option<Arc<dyn AckObserver>>,
 ) -> Result<PgBackends, StoreError> {
     Err(StoreError::Backend(
         "rebuild with --features postgres".into(),
@@ -1293,6 +1355,35 @@ mod tests {
             client_id: String::new(),
             online_targets: Vec::new(),
         }
+    }
+
+    struct CountAck(std::sync::atomic::AtomicUsize);
+    impl AckObserver for CountAck {
+        fn observe_send_to_ack(&self, _: f64) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_ack_observes_only_new_rows() {
+        let sink = Arc::new(CountAck(std::sync::atomic::AtomicUsize::new(0)));
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::with_ack_observer(idgen, true, sink.clone());
+        let mut req = sample("alice", "bob", 50, "hi");
+        req.online_targets = vec![DeliveryTarget {
+            account: "bob".into(),
+            target_id: "j1".into(),
+        }];
+        let got = store.insert_user("kim", &req).await.unwrap();
+        store
+            .ack("kim", "bob", "j1", &[got.message_id])
+            .await
+            .unwrap();
+        store
+            .ack("kim", "bob", "j1", &[got.message_id])
+            .await
+            .unwrap();
+        assert_eq!(sink.0.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -1343,6 +1434,31 @@ mod tests {
             second.fanout.recipients,
             vec!["alice".to_string(), "bob".into(), "carol".into()]
         );
+    }
+
+    #[tokio::test]
+    async fn inbox_is_isolated_by_account() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        store
+            .insert_user("kim", &sample("alice", "bob", 10, "ab"))
+            .await
+            .unwrap();
+        store
+            .insert_user("kim", &sample("carol", "dave", 11, "cd"))
+            .await
+            .unwrap();
+        let alice = store.inbox("kim", "alice", 50).await.unwrap();
+        let carol = store.inbox("kim", "carol", 50).await.unwrap();
+        assert!(alice.iter().any(|r| r.dest == "bob"));
+        assert!(alice.iter().all(|r| r.dest != "dave"));
+        assert!(carol.iter().any(|r| r.dest == "dave"));
+        assert!(carol.iter().all(|r| r.dest != "bob"));
+        let hist = store
+            .history("kim", "alice", "bob", MessageKind::User, 0, 50)
+            .await
+            .unwrap();
+        assert!(hist.iter().all(|r| r.body != "cd"));
     }
 
     #[tokio::test]

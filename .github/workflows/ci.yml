@@ -46,6 +46,55 @@ jobs:
       - name: test
         run: cargo test --workspace --all-features
 
+  postgres:
+    name: postgres integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kim
+          POSTGRES_PASSWORD: kim
+          POSTGRES_DB: kim
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kim -d kim"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://kim:kim@127.0.0.1:5432/kim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install protobuf-src build deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make postgresql-client
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: chat postgres tests
+        run: cargo test -p chat --features postgres,redis --all-targets
+
+      - name: backfill and tuple diff (empty and after tests)
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
+          leftover=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -tA -f deploy/diff-inbox.sql)
+          if [[ -n "${leftover}" ]]; then
+            echo "diff-inbox.sql was not empty:" >&2
+            printf '%s\n' "$leftover" >&2
+            exit 1
+          fi
+
   sdk-web:
     name: web sdk
     runs-on: ubuntu-latest

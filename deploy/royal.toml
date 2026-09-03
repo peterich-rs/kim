@@ -13,3 +13,4 @@ jwt_secret = ""
 token_ttl_secs = 86400
 chat_url = "http://chat:9002"
 hmac_secret = ""
+metrics_listen = "0.0.0.0:9003"

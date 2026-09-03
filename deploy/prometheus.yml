@@ -1,3 +1,6 @@
+rule_files:
+  - /etc/prometheus/rules/kim.yml
+
 scrape_configs:
   - job_name: gateway
     scrape_interval: 5s
@@ -7,6 +10,10 @@ scrape_configs:
     scrape_interval: 5s
     static_configs:
       - targets: ["chat:9002", "chat-gray:9002"]
+  - job_name: royal
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["royal:9003", "royal-2:9003"]
   - job_name: router
     scrape_interval: 5s
     static_configs:

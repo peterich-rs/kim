@@ -5,22 +5,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, ConversationRead,
     DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail,
-    GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertFanout,
-    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
-    InternalGroupQuery, MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq,
-    OfflineIndexReq, ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery,
-    UserSearchResp,
+    GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery,
+    InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
+    InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
+    MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
+    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
 use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
-use prost::Message;
 use reqwest::StatusCode;
 use tracing::warn;
 
-use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
+use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo, GroupSummary};
 use crate::inbox::parse_kind;
 use crate::royal_pool::RoyalPool;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
@@ -51,13 +49,13 @@ where
     }
 }
 
-fn attempt_timeout() -> Duration {
+pub(crate) fn attempt_timeout() -> Duration {
     RPC_DEADLINE
         .try_with(|d| d.saturating_duration_since(Instant::now()).min(PER_ATTEMPT))
         .unwrap_or(DEFAULT_ATTEMPT)
 }
 
-async fn backoff(attempt: usize) {
+pub(crate) async fn backoff(attempt: usize) {
     let shift = u32::try_from(attempt.min(2)).unwrap_or(2);
     let base = 100u64.saturating_mul(1u64 << shift);
     let jitter = std::time::SystemTime::now()
@@ -108,7 +106,7 @@ fn fanout_from_resp(fanout: Option<InsertFanout>) -> Fanout {
     }
 }
 
-fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
+pub(crate) fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
     StoreError::Http {
         status: status.as_u16(),
         msg: String::from_utf8_lossy(body).into_owned(),
@@ -218,107 +216,6 @@ impl RoyalClient {
             req = req.body(body.to_vec());
         }
         Ok(req)
-    }
-}
-
-impl RoyalPool {
-    pub(crate) async fn send_pb<T: Message + Default, B: Message>(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        body: Option<&B>,
-    ) -> Result<T, StoreError> {
-        let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
-        let payload = bytes.as_deref().unwrap_or(&[]);
-        let mut last = StoreError::Backend("royal request failed".into());
-        for attempt in 0..RETRIES {
-            if attempt_timeout().is_zero() {
-                break;
-            }
-            let client = self.pick()?;
-            let req = client
-                .signed(method.clone(), path, payload)?
-                .timeout(attempt_timeout());
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    let buf = resp
-                        .bytes()
-                        .await
-                        .map_err(|e| StoreError::Backend(e.to_string()))?;
-                    if status.is_success() {
-                        self.report_success(&client);
-                        return T::decode(buf.as_ref())
-                            .map_err(|e| StoreError::Backend(e.to_string()));
-                    }
-                    last = http_status_err(status, &buf);
-                    if circuit_failure_status(status) {
-                        self.report_failure(&client);
-                    } else {
-                        self.report_success(&client);
-                    }
-                    if !retry_http(status) {
-                        return Err(last);
-                    }
-                }
-                Err(err) => {
-                    self.report_failure(&client);
-                    last = StoreError::Backend(err.to_string());
-                }
-            }
-            if attempt + 1 < RETRIES {
-                backoff(attempt).await;
-            }
-        }
-        Err(last)
-    }
-
-    /// Decode-empty-tolerant POST for ack/join/quit.
-    pub(crate) async fn post_maybe_empty(
-        &self,
-        path: &str,
-        body: &impl Message,
-    ) -> Result<(), StoreError> {
-        let bytes = Bytes::from(body.encode_to_vec());
-        let mut last = StoreError::Backend("royal request failed".into());
-        for attempt in 0..RETRIES {
-            if attempt_timeout().is_zero() {
-                break;
-            }
-            let client = self.pick()?;
-            match client
-                .signed(reqwest::Method::POST, path, &bytes)?
-                .timeout(attempt_timeout())
-                .send()
-                .await
-            {
-                Ok(resp) => {
-                    let status = resp.status();
-                    let buf = resp.bytes().await.unwrap_or_default();
-                    if status.is_success() {
-                        self.report_success(&client);
-                        return Ok(());
-                    }
-                    last = http_status_err(status, &buf);
-                    if circuit_failure_status(status) {
-                        self.report_failure(&client);
-                    } else {
-                        self.report_success(&client);
-                    }
-                    if !retry_http(status) {
-                        return Err(last);
-                    }
-                }
-                Err(err) => {
-                    self.report_failure(&client);
-                    last = StoreError::Backend(err.to_string());
-                }
-            }
-            if attempt + 1 < RETRIES {
-                backoff(attempt).await;
-            }
-        }
-        Err(last)
     }
 }
 
@@ -736,6 +633,38 @@ impl GroupDirectory for HttpGroupDirectory {
             members: resp.members,
         })
     }
+
+    async fn summaries(
+        &self,
+        app: &str,
+        group_ids: &[String],
+    ) -> Result<Vec<GroupSummary>, GroupError> {
+        if group_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let body = GroupListReq {
+            app: app.to_string(),
+            group_ids: group_ids.to_vec(),
+        };
+        let resp: GroupListResp = self
+            .pool
+            .send_pb(
+                reqwest::Method::POST,
+                "/api/v1/group/summaries",
+                Some(&body),
+            )
+            .await
+            .map_err(group_err)?;
+        Ok(resp
+            .groups
+            .into_iter()
+            .map(|g| GroupSummary {
+                id: g.group_id,
+                name: g.name,
+                avatar: g.avatar,
+            })
+            .collect())
+    }
 }
 
 pub struct HttpUserDirectory {
@@ -835,6 +764,9 @@ impl UserDirectory for HttpUserDirectory {
         _app: &str,
         accounts: &[String],
     ) -> Result<Vec<UserProfile>, UserError> {
+        if accounts.is_empty() {
+            return Ok(Vec::new());
+        }
         let body = AccountList {
             accounts: accounts.to_vec(),
         };
@@ -1177,6 +1109,8 @@ mod tests {
             Err(GroupError::Backend(_)) => {}
             other => panic!("expected Backend, got {other:?}"),
         }
+        let empty = closed.summaries("kim", &[]).await.unwrap();
+        assert!(empty.is_empty());
     }
 
     #[test]

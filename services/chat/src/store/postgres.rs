@@ -100,6 +100,7 @@ pub struct PostgresMessageStore {
     sessions: Option<Arc<dyn SessionStorage>>,
     pending_receipt: bool,
     inbox_materialized: bool,
+    ack_observer: Option<Arc<dyn super::AckObserver>>,
 }
 
 impl PostgresMessageStore {
@@ -109,6 +110,7 @@ impl PostgresMessageStore {
         ack: Arc<dyn AckIndex>,
         sessions: Option<Arc<dyn SessionStorage>>,
         pending_receipt: bool,
+        ack_observer: Option<Arc<dyn super::AckObserver>>,
     ) -> Self {
         Self {
             pool,
@@ -117,6 +119,7 @@ impl PostgresMessageStore {
             sessions,
             pending_receipt,
             inbox_materialized: inbox_materialized_enabled(),
+            ack_observer,
         }
     }
 
@@ -133,6 +136,7 @@ impl PostgresMessageStore {
             ack,
             None,
             super::pending_receipt_enabled(),
+            None,
         ))
     }
 
@@ -184,6 +188,11 @@ impl PostgresMessageStore {
         let msg_type = i16::try_from(req.msg_type)
             .map_err(|_| StoreError::Backend("msg_type does not fit smallint".into()))?;
         let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
+        let lock_accounts: Vec<String> = match members {
+            None => vec![req.sender.clone(), req.dest.clone()],
+            Some(list) => list.to_vec(),
+        };
+        lock_inbox_accounts(&mut tx, app, &lock_accounts).await?;
         sqlx::query(
             "INSERT INTO message_content (id, app, msg_type, body, extra, send_time)
              VALUES ($1, $2, $3, $4, $5, $6)",
@@ -319,7 +328,9 @@ impl PostgresMessageStore {
             .map_err(|_| StoreError::Backend("msg_type does not fit smallint".into()))?;
         let recv = recv_accounts(req, members);
         let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
-        lock_recv_accounts(&mut tx, app, &recv).await?;
+        let mut locked = recv.clone();
+        locked.push(req.sender.clone());
+        lock_inbox_accounts(&mut tx, app, &locked).await?;
 
         let existing = if req.client_id.is_empty() {
             None
@@ -679,12 +690,12 @@ enum FanoutAttempt {
     Retry,
 }
 
-async fn lock_recv_accounts(
+async fn lock_inbox_accounts(
     tx: &mut Transaction<'_, Postgres>,
     app: &str,
-    recv: &[String],
+    accounts: &[String],
 ) -> Result<(), StoreError> {
-    let mut accounts = recv.to_vec();
+    let mut accounts = accounts.to_vec();
     accounts.sort();
     accounts.dedup();
     for account in accounts {
@@ -801,20 +812,26 @@ impl MessageStore for PostgresMessageStore {
         if target_id.is_empty() || message_ids.is_empty() {
             return Ok(());
         }
-        sqlx::query(
+        let rows: Vec<(f64,)> = sqlx::query_as(
             "UPDATE pending_delivery
                 SET acked_at = now()
               WHERE app = $1 AND account = $2 AND target_id = $3
                 AND message_id = ANY($4::bigint[])
-                AND acked_at IS NULL",
+                AND acked_at IS NULL
+           RETURNING EXTRACT(EPOCH FROM (acked_at - created_at))::double precision",
         )
         .bind(app)
         .bind(account)
         .bind(target_id)
         .bind(message_ids)
-        .execute(&self.pool)
+        .fetch_all(&self.pool)
         .await
         .map_err(pg_err)?;
+        if let Some(sink) = &self.ack_observer {
+            for (secs,) in &rows {
+                sink.observe_send_to_ack(*secs);
+            }
+        }
         Ok(())
     }
 
@@ -972,7 +989,7 @@ impl MessageStore for PostgresMessageStore {
     async fn pending_delivery_stats(&self) -> Result<(i64, i64), StoreError> {
         let row: (i64, Option<f64>) = sqlx::query_as(
             "SELECT COUNT(*)::bigint,
-                    EXTRACT(EPOCH FROM (now() - MIN(created_at)))
+                    EXTRACT(EPOCH FROM (now() - MIN(created_at)))::double precision
                FROM pending_delivery
               WHERE acked_at IS NULL",
         )
@@ -1197,6 +1214,7 @@ impl MessageStore for PostgresMessageStore {
             MessageKind::Group => ("", dest),
         };
         let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
+        lock_inbox_accounts(&mut tx, app, &[account.to_string()]).await?;
         let kind_i = match kind {
             MessageKind::User => 0i16,
             MessageKind::Group => 1i16,
@@ -1451,7 +1469,7 @@ mod tests {
             }
         };
         Some((
-            PostgresMessageStore::from_pool(pool.clone(), idgen, ack, sessions, true),
+            PostgresMessageStore::from_pool(pool.clone(), idgen, ack, sessions, true, None),
             pool,
         ))
     }

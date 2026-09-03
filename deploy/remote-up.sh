@@ -35,12 +35,12 @@ if [[ -n "${GHCR_TOKEN:-}" ]]; then
   printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 fi
 
-docker compose --env-file kim.env pull
-docker compose --env-file kim.env up -d --remove-orphans
+docker compose --env-file kim.env --profile metrics pull
+docker compose --env-file kim.env --profile metrics up -d --remove-orphans
 
 if [[ -n "${GHCR_TOKEN:-}" ]]; then
   docker logout ghcr.io >/dev/null 2>&1 || true
 fi
 
-docker compose --env-file kim.env ps
+docker compose --env-file kim.env --profile metrics ps
 echo "deploy ok (env values not printed)"

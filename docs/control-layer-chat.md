@@ -36,6 +36,7 @@ pkt-client  --ws://127.0.0.1:8001-->  gateway (WsServer)
 | `chat.talk.ack` | Request | Chat `do_talk_ack`（见 [reliable-delivery.md](reliable-delivery.md)） |
 | `chat.offline.index` | Request | Chat `do_offline_index` |
 | `chat.offline.content` | Request | Chat `do_offline_content` |
+| `chat.inbox.list` / `read` / `chat.history` | Request | Chat；inbox 读在写库进程（生产=Royal）。`KIM_INBOX_MATERIALIZED=1` 走 `conversation_inbox` |
 
 Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`sender` 只在 `MessagePush` body 里。建群会发 `GroupCreateNotify`。
 

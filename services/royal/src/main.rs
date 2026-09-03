@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::open_uncached_session_store;
-use chat::store::{open_pg_backends, pending_receipt_enabled, PoolConfig};
+use chat::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
 use kim_protocol::{
     check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
@@ -51,6 +51,8 @@ struct SelfSection {
     chat_url: String,
     #[serde(default)]
     hmac_secret: String,
+    #[serde(default)]
+    metrics_listen: String,
 }
 
 fn default_node() -> u16 {
@@ -216,7 +218,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let pending_receipt = pending_receipt_enabled();
-    let state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
+    let service_id =
+        env_or_cfg("KIM_SERVICE_ID", &cfg.this.service_id).unwrap_or_else(|| "royal-1".into());
+    let service_name = if cfg.this.service_name.is_empty() {
+        "royal".into()
+    } else {
+        cfg.this.service_name.clone()
+    };
+    let metrics = kim_metrics::KimMetrics::new(&service_id, &service_name)?;
+    let ack_observer: Option<Arc<dyn AckObserver>> = Some(metrics.clone() as Arc<dyn AckObserver>);
+    let mut state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
         let sessions = match redis.as_deref() {
             None | Some("") => None,
             Some(url) => Some(open_uncached_session_store(url).await?),
@@ -228,6 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             PoolConfig::default(),
             sessions,
             pending_receipt,
+            ack_observer,
         )
         .await?;
         RoyalState::with_backends(
@@ -242,6 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         RoyalState::memory_with_jwt_receipt(idgen, jwt, pending_receipt).with_revoke(revoke)
     };
+    state = state.with_metrics(metrics.clone());
     let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| ALLOWED_APP.into());
     if kim_protocol::strict_runtime() && app != ALLOWED_APP {
         return Err(format!("production KIM_APP must be {ALLOWED_APP}").into());
@@ -289,13 +302,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);
     let naming = open_naming(consul.as_deref(), vec![])?;
-    let service_id =
-        env_or_cfg("KIM_SERVICE_ID", &cfg.this.service_id).unwrap_or_else(|| "royal-1".into());
-    let service_name = if cfg.this.service_name.is_empty() {
-        "royal".into()
-    } else {
-        cfg.this.service_name.clone()
-    };
+    if !cfg.this.metrics_listen.trim().is_empty() {
+        let addr: std::net::SocketAddr = cfg
+            .this
+            .metrics_listen
+            .parse()
+            .map_err(|e| format!("invalid metrics_listen {}: {e}", cfg.this.metrics_listen))?;
+        let metrics_listener = tokio::net::TcpListener::bind(addr).await?;
+        tracing::info!(%addr, "royal metrics listening");
+        let registry = metrics.registry();
+        tokio::spawn(async move {
+            if let Err(err) = kim_metrics::serve_listener(metrics_listener, registry).await {
+                tracing::error!(%err, %addr, "royal metrics listener exited");
+            }
+        });
+    }
     let public_port = env_nonempty("KIM_PUBLIC_PORT")
         .and_then(|s| s.parse().ok())
         .or(if cfg.this.public_port == 0 {
