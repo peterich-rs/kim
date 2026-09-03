@@ -163,6 +163,15 @@ redis_password_from_url() {
   return 1
 }
 
+postgres_password_from_url() {
+  local url=${1:-}
+  if [[ "$url" =~ ^postgres(ql)?://[^:/@]+:([^@/]+)@ ]]; then
+    printf '%s' "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
 # redis://host:6379/0 → redis://:PASS@host:6379/0
 redis_url_with_password() {
   local url=${1:-}
@@ -223,6 +232,26 @@ fill_missing_kim_env() {
     append_env REDIS_URL "redis://:${REDIS_PASSWORD}@redis:6379/0"
     added+=(REDIS_URL)
   fi
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    if v="$(postgres_password_from_url "${DATABASE_URL:-}")"; then
+      append_env POSTGRES_PASSWORD "$v"
+      added+=(POSTGRES_PASSWORD)
+    else
+      echo "error: POSTGRES_PASSWORD is empty and DATABASE_URL has no password to copy" >&2
+      echo "error: set POSTGRES_PASSWORD to the running Postgres password; will not mint a new one" >&2
+      exit 1
+    fi
+  fi
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    local user=${POSTGRES_USER:-kim}
+    local db=${POSTGRES_DB:-kim}
+    append_env DATABASE_URL "postgres://${user}:${POSTGRES_PASSWORD}@postgres:5432/${db}"
+    added+=(DATABASE_URL)
+  fi
+  if [[ -z "${KIM_IMAGE:-}" ]]; then
+    append_env KIM_IMAGE "$IMAGE_DEFAULT"
+    added+=(KIM_IMAGE)
+  fi
   if [[ -z "${KIM_JWT_SECRET:-}" ]]; then
     require_openssl
     append_env KIM_JWT_SECRET "$(openssl rand -hex 32)"
@@ -262,6 +291,8 @@ preflight_kim_env() {
     KIM_INTERNAL_HMAC_SECRET \
     REDIS_PASSWORD \
     REDIS_URL \
+    POSTGRES_PASSWORD \
+    DATABASE_URL \
     CONSUL_HTTP_ADDR \
     CONSUL_MANAGEMENT_TOKEN \
     CONSUL_TOKEN_CHAT \
