@@ -1,0 +1,65 @@
+groups:
+  - name: kim
+    rules:
+      - alert: KimServiceDown
+        expr: up{job=~"gateway|chat|royal|router"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Kim 服务实例 down"
+          description: "job={{ $labels.job }} instance={{ $labels.instance }} 持续 1m 不可用。"
+          runbook: "docs/observability.md"
+      - alert: KimDispatchFailHigh
+        expr: sum(rate(kim_dispatch_fail_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "在线 Push 失败率偏高"
+          description: "kim_dispatch_fail_total 5m 速率 > 0.1/s。"
+          runbook: "docs/observability.md"
+      - alert: KimHeartbeatRevokeErrors
+        expr: sum(rate(kim_heartbeat_revoke_error_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "心跳吊销查询错误偏高"
+          description: "kim_heartbeat_revoke_error_total 5m 速率 > 1/s。"
+          runbook: "docs/observability.md"
+      - alert: KimMailboxFull
+        expr: sum(rate(kim_mailbox_full_total[5m])) > 0.05
+        labels:
+          severity: warning
+        annotations:
+          summary: "网关下行信箱满"
+          description: "kim_mailbox_full_total 5m 速率 > 0.05/s。"
+          runbook: "docs/observability.md"
+      - alert: KimPendingBacklogGrowing
+        expr: kim_pending_delivery_backlog > 100000 and deriv(kim_pending_delivery_backlog[30m]) > 0
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: "pending_delivery 积压增长"
+          description: "未确认行 > 10 万且 30m 导数为正。"
+          runbook: "docs/observability.md"
+      - alert: KimPendingOldestAge
+        expr: kim_pending_delivery_oldest_age_seconds > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pending_delivery 最老未确认行过期"
+          description: "最老未确认 receipt 已超过 15 分钟。"
+          runbook: "docs/observability.md"
+      - alert: KimRoyalRPCErrors
+        expr: sum by (path_group) (rate(kim_royal_rpc_errors_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Royal RPC 错误偏高"
+          description: "path_group={{ $labels.path_group }} 5m 速率 > 0.5/s。"
+          runbook: "docs/observability.md"

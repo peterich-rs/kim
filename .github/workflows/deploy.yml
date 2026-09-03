@@ -81,10 +81,23 @@ jobs:
             deploy/royal.toml \
             deploy/router.toml \
             deploy/prometheus.yml \
+            deploy/prometheus \
             deploy/bootstrap.sh \
             deploy/remote-up.sh \
+            deploy/psql-compose.sh \
+            deploy/backfill-inbox.sh \
+            deploy/backfill-inbox.sql \
+            deploy/diff-inbox.sql \
+            deploy/scan-empty-jti.sh \
             "$HOST:/opt/kim/deploy/"
-          "${ssh_cmd[@]}" "$HOST" "chown -R root:root /opt/kim/deploy && chmod 755 /opt/kim/deploy/bootstrap.sh /opt/kim/deploy/remote-up.sh && bash /opt/kim/deploy/bootstrap.sh"
+          "${ssh_cmd[@]}" "$HOST" 'set -euo pipefail
+            cd /opt/kim/deploy
+            chown -R root:root .
+            chmod 755 bootstrap.sh remote-up.sh psql-compose.sh backfill-inbox.sh scan-empty-jti.sh
+            for f in compose.yml prometheus.yml prometheus/rules/kim.yml backfill-inbox.sql diff-inbox.sql scan-empty-jti.sh psql-compose.sh; do
+              test -e "$f" || { echo "error: missing /opt/kim/deploy/$f" >&2; exit 1; }
+            done
+            bash bootstrap.sh'
           if [[ -z "$IMAGE" || "$IMAGE" == *: ]]; then
             echo "error: IMAGE is empty on the runner" >&2
             exit 1

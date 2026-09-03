@@ -41,11 +41,10 @@
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
 | 2 | device credential 客户端持久化 + `target_id` 迁 device_id；验证/找回/注销 | G-13, G-20 |
 | 3 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 4 | Royal RPC 延迟/错误、pending backlog gauge、告警规则 | G-15 |
-| 5 | 群 inbox N+1；物化读开关默认开 | G-17 |
-| 6 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 4 | inbox 物化读：生产回填后 `KIM_INBOX_MATERIALIZED=1` | G-17 |
+| 5 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-读循环隔离、下行 try_send、心跳 Redis 有界宽限、TGateway TLS / keepalive / 连接上限已关（G-29 / G-30 / G-31 / G-34）。Royal 发现 + 熔断 + 好友短缓存已关（G-16）。Redis/sqlx/Royal 热路径超时已关（G-33 剩余 tower-http / tokio Builder）。vectored write、reuseport、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+读循环隔离、下行 try_send、心跳 Redis 有界宽限、TGateway TLS / keepalive / 连接上限已关（G-29 / G-30 / G-31 / G-34）。Royal 发现 + 熔断 + 好友短缓存已关（G-16）。可观测性后台半边已关（G-15）。Redis/sqlx/Royal 热路径超时已关（G-33 剩余 tower-http / tokio Builder）。vectored write、reuseport、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
@@ -69,7 +68,7 @@
 | 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
-| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`、`kim_send_to_ack_seconds`；handler 白名单 29 条。无 Royal RPC 直方图；无告警规则 |
+| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`、`kim_send_to_ack_seconds`、`kim_royal_rpc_seconds` / `kim_royal_rpc_errors_total`、pending backlog/oldest-age；handler 白名单 29 条。告警在 `deploy/prometheus/rules/kim.yml`，部署 `--profile metrics` |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
@@ -92,6 +91,7 @@
 | G-30 下行 try_send / 满信箱 Disconnect | [communication-layer.md](communication-layer.md)。`ChannelOpts.write_full`：网关 Disconnect + `kim_mailbox_full_total`；内部链路默认 Block |
 | G-34 keepalive / 连接上限 / TGateway TLS | [communication-layer.md](communication-layer.md)、[architecture.md](architecture.md)。`TcpConn<S>` + `FrontendState`；`try_acquire_owned`；进程内 rustls（`tls_cert` 空则明文）。reuseport / vectored write 仍延后 |
 | G-16 Royal 发现 + 熔断 + 好友短缓存 | [group-royal.md](group-royal.md)。`RoyalPool`：半开先探测再 RR 健康实例；Consul `find`；5xx 计熔断；Chat 侧 30s 社交缓存；compose `royal-2` |
+| G-15 可观测性后台半边 | [observability.md](observability.md)。send→ack、Royal RPC、backlog/oldest-age、royal `/metrics`、告警规则已关。otel / 跨进程 trace 延后 |
 
 ---
 
@@ -236,37 +236,19 @@ Flutter 登录后走与 Web 相同的 sync。服务端已落库不再回 99；`i
 
 ---
 
-### G-15 可观测性不够定位「偶发延迟」
-
-**已落地**
-
-- `COMMANDS` 29 条（含 friend / inbox / history / user / block）
-- `kim_send_to_ack_seconds`：ACK 路径直方图，不是 pending 表 AVG
-
-**仍开**
-
-- `deploy/prometheus.yml` 只有 scrape，无 `rule_files`
-- 无 Royal RPC 延迟/错误率（path_group）
-- `pending_delivery` backlog / oldest-age 只打日志，未接 gauge
-- 无 OpenTelemetry，无跨进程 trace id
-
-e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径偏 happy path。故障注入（Royal 5xx、Redis 断、网关 kill 后消息不丢）缺。
-
----
-
 ### G-17 inbox 全量聚合 + N+1
 
 **已落地**
 
-- `do_inbox_list` 对私聊 dest 一次 `users.profiles`（不再逐行 `profile`）
+- `do_inbox_list` 对私聊 dest 一次 `users.profiles`；群 dest 一次 `groups.summaries`（不含成员）
 - `conversation_inbox` 双写（unread 累加；last 按 `(send_time, id)`）
-- 读路径可切 `KIM_INBOX_MATERIALIZED`（compose / Royal 进程读取；**默认 0**，仍走 `message_index` GROUP BY）
+- 在线写与 `mark_read` 共用账号 advisory lock（含 sender）；回填脚本同一把 key
+- 读路径可切 `KIM_INBOX_MATERIALIZED`（compose 已传给 royal / royal-2；**默认 0**）
+- Memory 双索引：按账号读 + 按 message 保 replay 成员顺序
 
 **仍开**
 
-- 群会话仍逐行 `groups.detail`
-- 默认读仍是全量 GROUP BY；物化回填终态与默认开关于 Royal
-- Memory：`indexes: Vec<InboxRow>` 全表扫，一把 `RwLock<Inner>`
+- 生产尚未跑回填 / 尚未把 `KIM_INBOX_MATERIALIZED` 置 1（观察期后才关本条）
 
 inbox 最多 100、无游标。历史已有 `before_id`。
 
@@ -380,7 +362,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 | tokio | 仍 `#[tokio::main]` 默认；无显式 worker / blocking 池 |
 | redis-rs | Cluster 作 feature，不必换 fred |
 | sqlx | 无 pool 指标；`.sqlx` 离线数据是子任务 |
-| prometheus | command 白名单已 29 条；Royal RPC / 告警见 G-15 |
+| prometheus | command 白名单 29 条；Royal RPC / backlog / 告警已关，见 [observability.md](observability.md) |
 
 Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`。
 
@@ -510,7 +492,7 @@ OS 能力：`TCP_NODELAY` 与 keepalive 已开。BufWriter 8KiB。reuseport / ve
 
 下面替代库报告原文的 Phase 0–6 顺序。语义条目仍以本文 G-xx 为准。
 
-**H0 — 语义（无新库，叠 G-15/G-30）**
+**H0 — 语义（无新库，叠 G-30）**
 
 - persist-first **已做**，形状见 [control-layer-chat.md](control-layer-chat.md)。
 - 网关下行 `try_send` **已做**（G-30）：`WriteFullPolicy::Disconnect` + `kim_mailbox_full_total`；内部链路默认 Block。
@@ -549,19 +531,19 @@ OS 能力：`TCP_NODELAY` 与 keepalive 已开。BufWriter 8KiB。reuseport / ve
 
 **H5 — 存储规模（G-17, G-22, G-25）**
 
-- additive `conversation_inbox`：双写 → 切读 → 再考虑删 GROUP BY。
+- additive `conversation_inbox`：双写与切读开关已在代码里；生产默认 0，回填后置 1 才关 G-17。GROUP BY 退役另 PR。
 - 大群：阈值可配（默认 200）；content 先提交，index 分批；失败进 outbox。
 - outbox **必须**在与 content 同一事务里写入目标成员快照（或待 fanout 的 recipient 行）。重试只消费该快照，禁止再读当前 `group_members`——否则后加入者收到旧消息，已退出者漏收或重收。
 - 雪花：`data_center_id` 可配；init 失败进程退出，测试仍显式 SequenceIdGen。雪花只做 content 主键，**不做** ACK 游标。
 - 分区用运维脚本 + `CREATE INDEX CONCURRENTLY`，不进事务迁移。RANGE(时间) 优于错误的 HASH(account)。
 
-**H6 — 限流、熔断、追踪（G-18, G-15）**
+**H6 — 限流、熔断、追踪（G-18）**
 
 - Royal 发现 / 实例熔断 / 好友短缓存 **已做**（原 G-16）。
 - gateway `governor`：每账号 talk QPS、每 IP 握手。
 - Container `forward`：连续失败摘 Adult，半开探测；重连指数退避 + jitter，上限约 5s。
 - `#[instrument]` 盖 accept/forward/talk。command 白名单 29 条 **已做**。
-- `otel` feature 默认关。
+- Royal RPC / backlog / 告警 **已做**（原 G-15）。`otel` feature 默认关。
 
 **延后（有 flamegraph / 运维需求再做）**
 

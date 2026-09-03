@@ -39,11 +39,23 @@ pending receipt（默认关）顺序不可颠倒。compose 默认保持 0。切�
 3. 部署兼容代码：`KIM_REQUIRE_JTI=0`；Royal/Chat `KIM_PENDING_RECEIPT=0`。Gateway 已写 `Session.jti`。
 4. 改 VPS `kim.env`：`KIM_REQUIRE_JTI=1`，`docker compose up -d gateway`。此后保持开。无 jti JWT 必须重新登录。
 5. `deploy/scan-empty-jti.sh` 必须 exit 0（`empty_jti=0 invalid=0 wrong_type=0`）。不要用 talk 路径抽样 gauge。Royal 日志每 60s 打 `kim_location_without_jti` 以及 invalid/wrong_type/scanned。
-6. `KIM_PENDING_RECEIPT_ROYAL=1`，Chat 仍 0，`docker compose up -d royal`。确认 `pending_delivery` 有新行。
+6. `KIM_PENDING_RECEIPT_ROYAL=1`，Chat 仍 0，**两个 Royal 一起翻**：
+   `docker compose -f deploy/compose.yml --env-file deploy/kim.env up -d royal royal-2`。
+   分别 `exec -T royal printenv KIM_PENDING_RECEIPT` 与 `exec -T royal-2 printenv KIM_PENDING_RECEIPT`，都必须是 `1`。
+   只重启 `royal` 会留下 `royal-2` writer=0，Chat 轮询仍可能打到旧实例。
+   两实例都是 1 之后，用已知账号/设备发 canary，确认 `pending_delivery` 有对应新行。
 7. `KIM_PENDING_RECEIPT_CHAT=1`，`docker compose up -d chat chat-gray`。
-8. 回滚：Chat 先 0，再 Royal 0。禁止 Chat=1 且 Royal=0。
+8. 回滚：Chat 先 0，再 Royal 0（同样 `up -d royal royal-2`）。禁止 Chat=1 且 Royal=0。
 
 未走完 4–7 **不要**从 [production-gaps.md](production-gaps.md) 删 G-03 / G-04 / G-10。语义见 [reliable-delivery.md](reliable-delivery.md)。
+
+inbox 物化读（`KIM_INBOX_MATERIALIZED`，royal / royal-2 only）：
+
+1. 确认目标栈已含 inbox advisory lock 覆盖（legacy + pending + mark_read，含 sender）。
+2. `deploy/backfill-inbox.sh`（经 Compose postgres 容器执行，可重跑；不要在宿主机对 `postgres:5432` 跑 psql）。
+3. `deploy/psql-compose.sh deploy/diff-inbox.sql` 必须空结果（元组 oracle，不是旧 GROUP BY）。
+4. kim.env 置 `KIM_INBOX_MATERIALIZED=1`，`up -d royal royal-2`。Chat 进程不读此键。
+5. 回滚：置 0，同样两实例一起重启。物化表留存、双写继续。
 
 | 路径 | 用途 |
 |---|---|
@@ -54,7 +66,9 @@ pending receipt（默认关）顺序不可颠倒。compose 默认保持 0。切�
 | `deploy/Caddyfile` | `--profile edge` 时栈自己占 80/443（docker DNS：`royal:8080`） |
 | `deploy/host.Caddyfile` | 宿主机 Caddy 的 `kim.ainexc.com` 块（loopback 端口） |
 | `deploy/bootstrap.sh` | 生成 `kim.env`（一次）、Consul 私有 CA/mTLS、gossip encrypt、每服务 ACL token；已有 `kim.env` 做 TLS/`secrets.hcl`/必填键 preflight（不打印密钥，永不写 `change-me`） |
-| `deploy/remote-up.sh` | CI 调用：login GHCR → pull → up |
+| `deploy/remote-up.sh` | CI 调用：login GHCR → pull → `up --profile metrics` |
+| `deploy/psql-compose.sh` | 在 postgres 容器内跑 SQL（回填 / diff） |
+| `deploy/backfill-inbox.sh` / `diff-inbox.sql` / `scan-empty-jti.sh` | inbox 回填与 pending-receipt SCAN 门闩 |
 
 ```bash
 # 有 Docker 的机器上本地试跑镜像（先 build）

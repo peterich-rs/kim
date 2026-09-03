@@ -48,16 +48,40 @@ pub async fn do_inbox_list(
         .filter(|r| r.kind == MessageKind::User)
         .map(|r| r.dest.clone())
         .collect();
-    let profiles = match users.profiles(&ctx.session().app, &user_dests).await {
-        Ok(v) => v,
-        Err(err) => {
-            warn!(%err, "inbox profiles failed");
-            Vec::new()
+    let profiles = if user_dests.is_empty() {
+        Vec::new()
+    } else {
+        match users.profiles(&ctx.session().app, &user_dests).await {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(%err, "inbox profiles failed");
+                Vec::new()
+            }
         }
     };
     let mut by_account = std::collections::HashMap::new();
     for p in profiles {
         by_account.insert(p.account.clone(), p);
+    }
+    let group_dests: Vec<String> = rows
+        .iter()
+        .filter(|r| r.kind == MessageKind::Group)
+        .map(|r| r.dest.clone())
+        .collect();
+    let details = if group_dests.is_empty() {
+        Vec::new()
+    } else {
+        match groups.summaries(&ctx.session().app, &group_dests).await {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(%err, "inbox group summaries failed");
+                Vec::new()
+            }
+        }
+    };
+    let mut by_group = std::collections::HashMap::new();
+    for g in details {
+        by_group.insert(g.id.clone(), (g.name, g.avatar));
     }
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
@@ -66,12 +90,9 @@ pub async fn do_inbox_list(
                 Some(p) => (p.display_name().to_string(), p.avatar.clone()),
                 None => (row.dest.clone(), String::new()),
             },
-            MessageKind::Group => match groups.detail(&ctx.session().app, &row.dest).await {
-                Ok(g) => (g.name, g.avatar),
-                Err(err) => {
-                    warn!(%err, dest = %row.dest, "inbox group failed");
-                    (row.dest.clone(), String::new())
-                }
+            MessageKind::Group => match by_group.get(&row.dest) {
+                Some((name, avatar)) => (name.clone(), avatar.clone()),
+                None => (row.dest.clone(), String::new()),
             },
         };
         items.push(InboxItem {

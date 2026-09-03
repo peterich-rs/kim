@@ -43,6 +43,8 @@
 
 `message_index` 已按账号写下 inbox。新增 `conversation_reads`（每会话 `last_read_id`）。ACK 仍只管离线窗口，不要混。
 
+写路径同时 UPSERT `conversation_inbox`（last 按 `(send_time, message_id)` 元组；unread 累加）。读路径由 Royal 进程的 `KIM_INBOX_MATERIALIZED` 切换：默认 0 走 GROUP BY，置 1 走物化表。群标题走 `groups.summaries`（不含成员）。回填用绝对值 SET + 与在线写同一把账号 advisory lock；验收对元组 oracle 做双向 EXCEPT，不是旧双 MAX。
+
 | command | dest | 行为 |
 |---|---|---|
 | `chat.inbox.list` | 空 | body `InboxReq.limit`（默认 50，最大 100）。每项含对方/群、最后一条、未读 |

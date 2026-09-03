@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |---|---|
-| 状态 | 通信层 G-29 / G-30 / G-31 / G-34 与 Royal G-16、G-33 热路径已关。本文件只留**后台轨**剩余合同；web / mobile 另轨，不插队 |
+| 状态 | 通信层 G-29 / G-30 / G-31 / G-34 与 Royal G-16、G-33 热路径、G-15 后台半边已关。本文件只留**后台轨**剩余合同；web / mobile 另轨，不插队 |
 | 日期 | 2026-09-02 |
 | 父规格 | [production-gaps.md](../production-gaps.md)。已落地形状在专题文档 |
 
@@ -32,6 +32,8 @@
 | B3 `TcpConn<S>` + TGateway TLS | [communication-layer.md](../communication-layer.md)、[architecture.md](../architecture.md) | G-34 已关 |
 | B4 redis / sqlx / Royal deadline | [perf.md](../perf.md) | G-33 热路径已关；tower-http / tokio Builder 仍开 |
 | B5 Royal 发现 + 熔断 + 短缓存 | [group-royal.md](../group-royal.md) | G-16 已关；G-22 生产 Snowflake 失败退出已关 |
+| B6 可观测性剩余 | [observability.md](../observability.md) | G-15 后台半边已关；otel / 跨进程 trace 延后 |
+| B7 inbox 物化 **代码** | [user-social-inbox.md](../user-social-inbox.md)、[deploy.md](../deploy.md) | **代码在，G-17 仍开**（默认 0；生产回填后置 1） |
 
 ## 客户端轨（独立，不挡后台）
 
@@ -59,33 +61,13 @@ G-13 的**客户端持久化**（重装后仍出示同一 device credential）�
 2. SCAN `login:loc:v2:*` fail-closed：`empty_jti=0` 且 `invalid=0` 且 `wrong_type=0`，命令 exit 0
 3. **先** Royal `KIM_PENDING_RECEIPT=1`，**再** Chat `=1`。禁止 Chat=1 且 Royal=0
 
-步骤与回滚见 [reliable-delivery.md](../reliable-delivery.md)、[deploy.md](../deploy.md)。未走完 **不得**从 gaps 删这三条。
+步骤与回滚见 [reliable-delivery.md](../reliable-delivery.md)、[deploy.md](../deploy.md)、[b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md)。未走完 **不得**从 gaps 删这三条。
 
 SCAN 必须 fail-closed：输出 `empty_jti` / `invalid` / `wrong_type` / `scanned`，任一项问题或 Redis 错误非零退出。不改 ACK 热路径。可附 compose/env、脚本、回滚 Chat 先 0。
 
 不改：`sdk/*`、游标改 `device_id`、Snowflake 当 ACK。
 
-### B6 — 可观测性剩余（G-15）
-
-已落地：`COMMANDS` 29 条；`kim_send_to_ack_seconds`（ACK 路径直方图）。
-
-仍开：
-
-- Royal RPC 延迟/错误（path_group 含 block/offline/delivery/inbox/history）
-- `pending_delivery` backlog / oldest-age gauge
-- `deploy/prometheus.yml` 告警规则（dispatch fail、revoke error、mailbox full、pending backlog）
-- `otel` feature 默认关，本切片不做跨进程 trace
-
-不改：客户端埋点、ChatList。
-
-### B7 — inbox 物化剩余（G-17）
-
-1. 先消灭 `do_inbox_list` 每行 profile **和** detail（批量 profiles 已落地；群 `detail` 仍逐行）
-2. additive `conversation_inbox` 双写已落地。仍开：回填终态 UPSERT（禁止 DO NOTHING）→ 切读开关在 Royal（`KIM_INBOX_MATERIALIZED`，默认 0）→ 才考虑删 GROUP BY
-3. `mark_read` 与 inbox 同一事务，按 last_read_id 重算 unread
-4. Memory 按账号分组，inbox 不阻塞 insert
-
-不改：客户端 inbox 命令形状（仍 `chat.inbox.list`）。
+G-17 关 gaps 只看生产回填 + Royal `KIM_INBOX_MATERIALIZED=1`，步骤见 [deploy.md](../deploy.md)。不插到 B0 前面。
 
 ### B8 及以后（后台，不插到 B0 前面）
 

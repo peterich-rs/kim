@@ -24,6 +24,7 @@ bytes.workspace = true
 chat = { path = "../chat" }
 http-body-util = "0.1"
 kim-core.workspace = true
+kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
 kim-session.workspace = true

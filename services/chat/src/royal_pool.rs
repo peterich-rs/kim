@@ -2,14 +2,39 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use bytes::Bytes;
+use kim_metrics::KimMetrics;
 use kim_naming::{DefaultRegistration, Naming};
+use prost::Message;
 
-use crate::royal::RoyalClient;
+use crate::royal::{
+    attempt_timeout, backoff, circuit_failure_status, http_status_err, retry_http, RoyalClient,
+    RETRIES,
+};
 use crate::store::StoreError;
 
 const REFRESH: Duration = Duration::from_secs(10);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RpcCause {
+    NoClient,
+    Http,
+    Transport,
+    Decode,
+}
+
+impl RpcCause {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NoClient => "no_client",
+            Self::Http => "http",
+            Self::Transport => "transport",
+            Self::Decode => "decode",
+        }
+    }
+}
 
 pub struct RoyalPool {
     clients: RwLock<Vec<Arc<RoyalClient>>>,
@@ -18,6 +43,7 @@ pub struct RoyalPool {
     naming: Option<Arc<dyn Naming>>,
     hmac: String,
     refresh: Duration,
+    metrics: Option<Arc<KimMetrics>>,
 }
 
 fn lock_read<T>(m: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
@@ -35,6 +61,15 @@ impl RoyalPool {
         royal_url: Option<&str>,
         naming: Option<Arc<dyn Naming>>,
         hmac: &str,
+    ) -> Result<Self, StoreError> {
+        Self::with_metrics(royal_url, naming, hmac, None)
+    }
+
+    pub fn with_metrics(
+        royal_url: Option<&str>,
+        naming: Option<Arc<dyn Naming>>,
+        hmac: &str,
+        metrics: Option<Arc<KimMetrics>>,
     ) -> Result<Self, StoreError> {
         let bootstrap = match royal_url {
             Some(url) if !url.trim().is_empty() => {
@@ -56,6 +91,7 @@ impl RoyalPool {
             naming,
             hmac: hmac.to_string(),
             refresh: REFRESH,
+            metrics,
         })
     }
 
@@ -135,6 +171,195 @@ impl RoyalPool {
     pub(crate) fn report_failure(&self, c: &RoyalClient) {
         c.report_failure();
     }
+
+    pub(crate) async fn send_pb<T: Message + Default, B: Message>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T, StoreError> {
+        let started = Instant::now();
+        let group = classify(path);
+        let out = self.send_pb_inner(method, path, body).await;
+        self.observe_rpc(group, started, &out);
+        out.map_err(|(_, e)| e)
+    }
+
+    /// Decode-empty-tolerant POST for ack/join/quit.
+    pub(crate) async fn post_maybe_empty(
+        &self,
+        path: &str,
+        body: &impl Message,
+    ) -> Result<(), StoreError> {
+        let started = Instant::now();
+        let group = classify(path);
+        let out = self.post_maybe_empty_inner(path, body).await;
+        self.observe_rpc(group, started, &out);
+        out.map_err(|(_, e)| e)
+    }
+
+    fn observe_rpc<T>(
+        &self,
+        group: &'static str,
+        started: Instant,
+        out: &Result<T, (RpcCause, StoreError)>,
+    ) {
+        let Some(m) = &self.metrics else {
+            return;
+        };
+        match out {
+            Ok(_) => m.observe_royal_rpc(group, started.elapsed()),
+            Err((cause, _)) => m.on_royal_rpc_error(group, cause.as_str()),
+        }
+    }
+
+    async fn send_pb_inner<T: Message + Default, B: Message>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T, (RpcCause, StoreError)> {
+        let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
+        let payload = bytes.as_deref().unwrap_or(&[]);
+        let mut last = (
+            RpcCause::Transport,
+            StoreError::Backend("royal request failed".into()),
+        );
+        for attempt in 0..RETRIES {
+            if attempt_timeout().is_zero() {
+                break;
+            }
+            let client = match self.pick() {
+                Ok(c) => c,
+                Err(e) => return Err((RpcCause::NoClient, e)),
+            };
+            let req = match client.signed(method.clone(), path, payload) {
+                Ok(r) => r.timeout(attempt_timeout()),
+                Err(e) => return Err((RpcCause::Transport, e)),
+            };
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let buf = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            self.report_failure(&client);
+                            last = (RpcCause::Transport, StoreError::Backend(e.to_string()));
+                            if attempt + 1 < RETRIES {
+                                backoff(attempt).await;
+                            }
+                            continue;
+                        }
+                    };
+                    if status.is_success() {
+                        self.report_success(&client);
+                        return T::decode(buf.as_ref())
+                            .map_err(|e| (RpcCause::Decode, StoreError::Backend(e.to_string())));
+                    }
+                    last = (RpcCause::Http, http_status_err(status, &buf));
+                    if circuit_failure_status(status) {
+                        self.report_failure(&client);
+                    } else {
+                        self.report_success(&client);
+                    }
+                    if !retry_http(status) {
+                        return Err(last);
+                    }
+                }
+                Err(err) => {
+                    self.report_failure(&client);
+                    last = (RpcCause::Transport, StoreError::Backend(err.to_string()));
+                }
+            }
+            if attempt + 1 < RETRIES {
+                backoff(attempt).await;
+            }
+        }
+        Err(last)
+    }
+
+    async fn post_maybe_empty_inner(
+        &self,
+        path: &str,
+        body: &impl Message,
+    ) -> Result<(), (RpcCause, StoreError)> {
+        let bytes = Bytes::from(body.encode_to_vec());
+        let mut last = (
+            RpcCause::Transport,
+            StoreError::Backend("royal request failed".into()),
+        );
+        for attempt in 0..RETRIES {
+            if attempt_timeout().is_zero() {
+                break;
+            }
+            let client = match self.pick() {
+                Ok(c) => c,
+                Err(e) => return Err((RpcCause::NoClient, e)),
+            };
+            let req = match client.signed(reqwest::Method::POST, path, &bytes) {
+                Ok(r) => r.timeout(attempt_timeout()),
+                Err(e) => return Err((RpcCause::Transport, e)),
+            };
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let buf = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            self.report_failure(&client);
+                            last = (RpcCause::Transport, StoreError::Backend(e.to_string()));
+                            if attempt + 1 < RETRIES {
+                                backoff(attempt).await;
+                            }
+                            continue;
+                        }
+                    };
+                    if status.is_success() {
+                        self.report_success(&client);
+                        return Ok(());
+                    }
+                    last = (RpcCause::Http, http_status_err(status, &buf));
+                    if circuit_failure_status(status) {
+                        self.report_failure(&client);
+                    } else {
+                        self.report_success(&client);
+                    }
+                    if !retry_http(status) {
+                        return Err(last);
+                    }
+                }
+                Err(err) => {
+                    self.report_failure(&client);
+                    last = (RpcCause::Transport, StoreError::Backend(err.to_string()));
+                }
+            }
+            if attempt + 1 < RETRIES {
+                backoff(attempt).await;
+            }
+        }
+        Err(last)
+    }
+}
+
+fn classify(path: &str) -> &'static str {
+    const PREFIXES: &[(&str, &str)] = &[
+        ("/api/v1/message", "message"),
+        ("/api/v1/group", "group"),
+        ("/api/v1/friend", "friend"),
+        ("/api/v1/user", "user"),
+        ("/api/v1/block", "block"),
+        ("/api/v1/offline", "offline"),
+        ("/api/v1/delivery", "delivery"),
+        ("/api/v1/inbox", "inbox"),
+        ("/api/v1/history", "history"),
+        ("/internal", "internal"),
+    ];
+    for (prefix, group) in PREFIXES {
+        if path.starts_with(prefix) {
+            return group;
+        }
+    }
+    "other"
 }
 
 fn royal_base(reg: DefaultRegistration) -> Option<String> {
@@ -181,6 +406,7 @@ mod tests {
 
     use super::*;
     use crate::royal::{circuit_failure_status, retry_http};
+    use kim_metrics::KimMetrics;
     use kim_protocol::pkt::AccountExists;
 
     async fn spawn_status(status: StatusCode) -> String {
@@ -294,6 +520,7 @@ mod tests {
             naming: None,
             hmac: String::new(),
             refresh: REFRESH,
+            metrics: None,
         };
         match pool.pick() {
             Err(StoreError::Backend(s)) => assert!(s.contains("no royal available"), "{s}"),
@@ -312,6 +539,171 @@ mod tests {
             .unwrap();
         let again = pool.pick().unwrap();
         assert_eq!(again.fails_for_test(), 1);
+    }
+
+    fn scrape(m: &KimMetrics) -> String {
+        m.scrape_text().expect("encode")
+    }
+
+    #[test]
+    fn classify_covers_router_hmac_paths() {
+        const HMAC_PATHS: &[&str] = &[
+            "/internal/user/lookup",
+            "/internal/user/upsert",
+            "/internal/revoke/check",
+            "/internal/token-epoch",
+            "/internal/device/check",
+            "/api/v1/message/user",
+            "/api/v1/message/group",
+            "/api/v1/message/ack",
+            "/api/v1/offline/index",
+            "/api/v1/delivery/backfill",
+            "/api/v1/offline/content",
+            "/api/v1/group",
+            "/api/v1/group/member",
+            "/api/v1/group/quit",
+            "/api/v1/group/members",
+            "/api/v1/group/detail",
+            "/api/v1/user/profile",
+            "/api/v1/user/update",
+            "/api/v1/user/profiles",
+            "/api/v1/user/search",
+            "/api/v1/friend/request",
+            "/api/v1/friend/accept",
+            "/api/v1/friend/reject",
+            "/api/v1/friend/remove",
+            "/api/v1/friend/list",
+            "/api/v1/friend/incoming",
+            "/api/v1/friend/check",
+            "/api/v1/block/add",
+            "/api/v1/block/remove",
+            "/api/v1/block/list",
+            "/api/v1/block/check",
+            "/api/v1/inbox",
+            "/api/v1/history",
+            "/api/v1/inbox/read",
+        ];
+        for path in HMAC_PATHS {
+            assert_ne!(classify(path), "other", "{path}");
+        }
+        assert_eq!(classify("/health"), "other");
+        assert_eq!(classify("/api/v1/auth/login"), "other");
+        assert_eq!(classify("/api/v1/group/summaries"), "group");
+    }
+
+    #[tokio::test]
+    async fn rpc_success_observes_once() {
+        let good = spawn_status(StatusCode::OK).await;
+        let metrics = KimMetrics::new("t", "chat").unwrap();
+        let pool =
+            RoyalPool::with_metrics(Some(&good), None, "test-hmac", Some(metrics.clone())).unwrap();
+        let body = kim_protocol::pkt::AccountPair {
+            account: "a".into(),
+            peer: "b".into(),
+        };
+        pool.send_pb::<AccountExists, _>(
+            reqwest::Method::POST,
+            "/api/v1/friend/check",
+            Some(&body),
+        )
+        .await
+        .unwrap();
+        let body = scrape(&metrics);
+        assert!(
+            body.contains("kim_royal_rpc_seconds_count{path_group=\"friend\"} 1"),
+            "{body}"
+        );
+        assert!(
+            !body.contains("kim_royal_rpc_errors_total{path_group=\"friend\""),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rpc_503_records_http() {
+        let bad = spawn_status(StatusCode::SERVICE_UNAVAILABLE).await;
+        let metrics = KimMetrics::new("t", "chat").unwrap();
+        let pool =
+            RoyalPool::with_metrics(Some(&bad), None, "test-hmac", Some(metrics.clone())).unwrap();
+        let body = kim_protocol::pkt::AccountPair {
+            account: "a".into(),
+            peer: "b".into(),
+        };
+        let err = pool
+            .send_pb::<AccountExists, _>(reqwest::Method::POST, "/api/v1/friend/check", Some(&body))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, StoreError::Http { status: 503, .. }));
+        let body = scrape(&metrics);
+        assert!(
+            body.contains("kim_royal_rpc_errors_total{cause=\"http\",path_group=\"friend\"} 1")
+                || body
+                    .contains("kim_royal_rpc_errors_total{path_group=\"friend\",cause=\"http\"} 1"),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rpc_no_instance_records_no_client() {
+        let metrics = KimMetrics::new("t", "chat").unwrap();
+        let pool = RoyalPool {
+            clients: RwLock::new(Vec::new()),
+            rr: AtomicUsize::new(0),
+            bootstrap: None,
+            naming: None,
+            hmac: String::new(),
+            refresh: REFRESH,
+            metrics: Some(metrics.clone()),
+        };
+        let body = kim_protocol::pkt::AccountPair {
+            account: "a".into(),
+            peer: "b".into(),
+        };
+        let err = pool
+            .send_pb::<AccountExists, _>(reqwest::Method::POST, "/api/v1/friend/check", Some(&body))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("no royal available"));
+        let body = scrape(&metrics);
+        assert!(
+            body.contains("cause=\"no_client\"") && body.contains("path_group=\"friend\""),
+            "{body}"
+        );
+        assert!(!body.contains("cause=\"transport\""), "{body}");
+    }
+
+    #[tokio::test]
+    async fn rpc_bad_protobuf_records_decode() {
+        async fn junk() -> (StatusCode, Vec<u8>) {
+            (StatusCode::OK, b"not-protobuf".to_vec())
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route("/api/v1/friend/check", post(junk));
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let url = format!("http://{addr}");
+        let metrics = KimMetrics::new("t", "chat").unwrap();
+        let pool =
+            RoyalPool::with_metrics(Some(&url), None, "test-hmac", Some(metrics.clone())).unwrap();
+        let body = kim_protocol::pkt::AccountPair {
+            account: "a".into(),
+            peer: "b".into(),
+        };
+        pool.send_pb::<AccountExists, _>(
+            reqwest::Method::POST,
+            "/api/v1/friend/check",
+            Some(&body),
+        )
+        .await
+        .unwrap_err();
+        let body = scrape(&metrics);
+        assert!(
+            body.contains("cause=\"decode\"") && body.contains("path_group=\"friend\""),
+            "{body}"
+        );
     }
 
     fn reg(id: &str, addr: &str, port: u16) -> DefaultRegistration {

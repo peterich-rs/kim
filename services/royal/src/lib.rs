@@ -26,12 +26,14 @@ use chat::store::{
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
 use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use http_body_util::BodyExt;
+use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
     AccountExists, AccountQuery, AckMessageReq, DeliveryBackfillReq, DeviceCheckQuery,
-    DeviceCheckStatus, GroupCreateResp, GroupDetail, GroupMembersResp, InsertFanout,
-    InsertMessageReq, InsertMessageResp, InternalGroupCreate, InternalGroupMember,
-    InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp, MessageIndex,
-    MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus, TokenEpoch, TokenEpochQuery,
+    DeviceCheckStatus, GroupCreateResp, GroupDetail, GroupListReq, GroupListResp, GroupMembersResp,
+    GroupSummary, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
+    InternalGroupMember, InternalGroupQuery, KickAccount, MessageContentReq, MessageContentResp,
+    MessageIndex, MessageIndexResp, OfflineIndexReq, RevokeQuery, RevokeStatus, TokenEpoch,
+    TokenEpochQuery,
 };
 use kim_protocol::{
     hmac_headers_from, resolve_internal_hmac_secret, sign_internal_hmac, verify_internal_hmac,
@@ -77,6 +79,7 @@ pub struct RoyalState {
     hmac_secret: String,
     nonce: Arc<dyn HmacNonceGuard>,
     pending_receipt: bool,
+    metrics: Option<Arc<KimMetrics>>,
 }
 
 impl RoyalState {
@@ -112,6 +115,7 @@ impl RoyalState {
             hmac_secret: resolve_internal_hmac_secret(""),
             nonce: Arc::new(MemoryHmacNonceGuard::new()),
             pending_receipt,
+            metrics: None,
         }
     }
 
@@ -179,6 +183,7 @@ impl RoyalState {
             hmac_secret: resolve_internal_hmac_secret(""),
             nonce: Arc::new(MemoryHmacNonceGuard::new()),
             pending_receipt: false,
+            metrics: None,
         }
     }
 
@@ -200,8 +205,14 @@ impl RoyalState {
         self
     }
 
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<KimMetrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
+    }
+
     pub fn start_maintenance(&self) {
-        spawn_maintenance(self.store.clone());
+        spawn_maintenance(self.store.clone(), self.metrics.clone());
     }
 }
 
@@ -223,6 +234,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/group/quit", post(group_quit))
         .route("/api/v1/group/members", post(group_members))
         .route("/api/v1/group/detail", post(group_detail))
+        .route("/api/v1/group/summaries", post(group_summaries))
         .route("/api/v1/user/profile", post(product::user_profile))
         .route("/api/v1/user/update", post(product::user_update))
         .route("/api/v1/user/profiles", post(product::user_profiles))
@@ -333,7 +345,7 @@ pub(crate) fn now_ts() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn spawn_maintenance(store: Arc<dyn MessageStore>) {
+pub fn spawn_maintenance(store: Arc<dyn MessageStore>, metrics: Option<Arc<KimMetrics>>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -346,6 +358,9 @@ pub fn spawn_maintenance(store: Arc<dyn MessageStore>) {
             }
             match store.pending_delivery_stats().await {
                 Ok((pending_rows, oldest_receipt_age_seconds)) => {
+                    if let Some(m) = &metrics {
+                        m.set_pending_backlog(pending_rows, oldest_receipt_age_seconds);
+                    }
                     if pending_rows > 10_000_000 {
                         tracing::error!(pending_rows, "pending_delivery backlog");
                     } else {
@@ -640,6 +655,34 @@ async fn group_members(
     Ok(encode(&GroupMembersResp { members }))
 }
 
+const GROUP_SUMMARIES_CAP: usize = 256;
+
+async fn group_summaries(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<GroupListReq>(&body)?;
+    require_app(&req.app)?;
+    if req.group_ids.len() > GROUP_SUMMARIES_CAP {
+        return Err((StatusCode::BAD_REQUEST, "too many group ids".into()));
+    }
+    let rows = st
+        .groups
+        .summaries(&req.app, &req.group_ids)
+        .await
+        .map_err(group_http)?;
+    Ok(encode(&GroupListResp {
+        groups: rows
+            .into_iter()
+            .map(|g| GroupSummary {
+                group_id: g.id,
+                name: g.name,
+                avatar: g.avatar,
+            })
+            .collect(),
+    }))
+}
+
 async fn group_detail(
     State(st): State<RoyalState>,
     body: Bytes,
@@ -886,6 +929,44 @@ mod tests {
         assert_eq!(inserted.fanout.body, "hi");
         assert!(inserted.fanout.recipients.contains(&"alice".into()));
         assert!(inserted.fanout.recipients.contains(&"bob".into()));
+        let summaries = groups
+            .summaries("kim", std::slice::from_ref(&gid))
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, gid);
+        assert!(summaries[0].name == "g");
+    }
+
+    #[tokio::test]
+    async fn group_summaries_requires_hmac() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let url = format!("http://{addr}/api/v1/group/summaries");
+        let unsigned = reqwest::Client::new()
+            .post(&url)
+            .header("Content-Type", "application/x-protobuf")
+            .body(Vec::<u8>::new())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unsigned.status(), StatusCode::UNAUTHORIZED);
+
+        let body = GroupListReq {
+            app: "kim".into(),
+            group_ids: vec!["missing".into()],
+        }
+        .encode_to_vec();
+        let signed = signed_post(&url, "/api/v1/group/summaries", body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(signed.status(), StatusCode::OK);
     }
 
     #[tokio::test]

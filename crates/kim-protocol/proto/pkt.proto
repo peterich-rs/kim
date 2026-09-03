@@ -427,6 +427,20 @@ message InternalGroupQuery {
   string app = 1;
   string groupId = 2;
 }
+
+// Chat→Royal only. Inbox batch lookup; no members payload.
+message GroupSummary {
+  string groupId = 1;
+  string name = 2;
+  string avatar = 3;
+}
+message GroupListReq {
+  string app = 1;
+  repeated string groupIds = 2;
+}
+message GroupListResp {
+  repeated GroupSummary groups = 1;
+}
 message InternalGroupMember {
   string app = 1;
   string groupId = 2;

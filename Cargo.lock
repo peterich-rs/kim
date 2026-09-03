@@ -2250,6 +2250,7 @@ dependencies = [
  "chat",
  "http-body-util",
  "kim-core",
+ "kim-metrics",
  "kim-naming",
  "kim-protocol",
  "kim-session",

@@ -38,6 +38,13 @@ pub struct GroupInfo {
     pub members: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupSummary {
+    pub id: String,
+    pub name: String,
+    pub avatar: String,
+}
+
 #[async_trait]
 pub trait GroupDirectory: Send + Sync {
     async fn create(&self, app: &str, req: &CreateGroup) -> Result<String, GroupError>;
@@ -45,6 +52,25 @@ pub trait GroupDirectory: Send + Sync {
     async fn join(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError>;
     async fn quit(&self, app: &str, group_id: &str, account: &str) -> Result<(), GroupError>;
     async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError>;
+    async fn summaries(
+        &self,
+        app: &str,
+        group_ids: &[String],
+    ) -> Result<Vec<GroupSummary>, GroupError> {
+        let mut out = Vec::with_capacity(group_ids.len());
+        for id in group_ids {
+            match self.detail(app, id).await {
+                Ok(g) => out.push(GroupSummary {
+                    id: g.id,
+                    name: g.name,
+                    avatar: g.avatar,
+                }),
+                Err(GroupError::NotFound) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
 }
 
 struct Group {

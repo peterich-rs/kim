@@ -225,12 +225,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
     let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
+    let metrics = kim_metrics::KimMetrics::new(&service_id, &service_name).ok();
     let (store, groups, users, social) =
         if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
-            let pool = Arc::new(RoyalPool::new(
+            let pool = Arc::new(RoyalPool::with_metrics(
                 Some(&royal),
                 consul.as_ref().map(|_| naming.clone()),
                 &hmac,
+                metrics.clone(),
             )?);
             pool.spawn_refresh();
             http_backends_with_pool(pool)?
@@ -281,11 +283,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         social,
         chat::store::pending_receipt_enabled(),
     ));
+    if let Some(m) = metrics.clone() {
+        handler.with_metrics(m);
+    }
     if !cfg.this.metrics_listen.is_empty() {
         if let Ok(addr) = cfg.this.metrics_listen.parse::<std::net::SocketAddr>() {
             let mut http = chat::admin_router(handler.admin(hmac.clone(), nonce.clone()));
-            if let Ok(m) = kim_metrics::KimMetrics::new(&service_id, &service_name) {
-                handler.with_metrics(m.clone());
+            if let Some(m) = metrics {
                 http = http.merge(kim_metrics::router(m.registry()));
             }
             tokio::spawn(async move {

@@ -9,7 +9,8 @@ use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
 use prometheus::{
-    Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
+    Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry,
+    TextEncoder,
 };
 use thiserror::Error;
 
@@ -68,6 +69,10 @@ pub struct KimMetrics {
     heartbeat_revoke_error_total: IntCounterVec,
     mailbox_full_total: IntCounterVec,
     send_to_ack: HistogramVec,
+    royal_rpc: HistogramVec,
+    royal_rpc_errors: IntCounterVec,
+    pending_backlog: IntGaugeVec,
+    pending_oldest_age: IntGaugeVec,
 }
 
 impl KimMetrics {
@@ -145,9 +150,44 @@ impl KimMetrics {
         let send_to_ack = HistogramVec::new(
             HistogramOpts::new(
                 "kim_send_to_ack_seconds",
-                "pending_delivery created_at to acked_at",
+                "pending_delivery created_at to acked_at (held by the process that writes pending_delivery; Chat HTTP adapter must not observe)",
             )
             .buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let royal_rpc = HistogramVec::new(
+            HistogramOpts::new(
+                "kim_royal_rpc_seconds",
+                "Royal RPC end-to-end latency including retries",
+            )
+            .buckets(vec![
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+            ]),
+            &["path_group"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let royal_rpc_errors = IntCounterVec::new(
+            Opts::new(
+                "kim_royal_rpc_errors_total",
+                "Royal RPC final errors by path_group and cause",
+            ),
+            &["path_group", "cause"],
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let pending_backlog = IntGaugeVec::new(
+            Opts::new(
+                "kim_pending_delivery_backlog",
+                "unacked pending_delivery rows",
+            ),
+            labels,
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        let pending_oldest_age = IntGaugeVec::new(
+            Opts::new(
+                "kim_pending_delivery_oldest_age_seconds",
+                "age of oldest unacked pending_delivery row",
+            ),
             labels,
         )
         .map_err(|e| Error::Other(e.to_string()))?;
@@ -191,6 +231,18 @@ impl KimMetrics {
         registry
             .register(Box::new(send_to_ack.clone()))
             .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(royal_rpc.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(royal_rpc_errors.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(pending_backlog.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        registry
+            .register(Box::new(pending_oldest_age.clone()))
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Arc::new(Self {
             registry,
@@ -209,11 +261,25 @@ impl KimMetrics {
             heartbeat_revoke_error_total,
             mailbox_full_total,
             send_to_ack,
+            royal_rpc,
+            royal_rpc_errors,
+            pending_backlog,
+            pending_oldest_age,
         }))
     }
 
     pub fn registry(&self) -> Registry {
         self.registry.clone()
+    }
+
+    pub fn scrape_text(&self) -> Result<String, Error> {
+        let encoder = TextEncoder::new();
+        let families = self.registry.gather();
+        let mut buf = Vec::new();
+        encoder
+            .encode(&families, &mut buf)
+            .map_err(|e| Error::Other(e.to_string()))?;
+        String::from_utf8(buf).map_err(|e| Error::Other(e.to_string()))
     }
 
     fn svc(&self) -> [&str; 2] {
@@ -255,10 +321,33 @@ impl KimMetrics {
             .inc();
     }
 
+    /// Held by the process that writes `pending_delivery` (production: Royal).
+    /// Chat's HTTP adapter must not call this.
     pub fn observe_send_to_ack(&self, dt: Duration) {
         self.send_to_ack
             .with_label_values(&self.svc())
             .observe(dt.as_secs_f64());
+    }
+
+    pub fn observe_royal_rpc(&self, path_group: &str, dt: Duration) {
+        self.royal_rpc
+            .with_label_values(&[path_group])
+            .observe(dt.as_secs_f64());
+    }
+
+    pub fn on_royal_rpc_error(&self, path_group: &str, cause: &str) {
+        self.royal_rpc_errors
+            .with_label_values(&[path_group, cause])
+            .inc();
+    }
+
+    pub fn set_pending_backlog(&self, count: i64, oldest_age: i64) {
+        self.pending_backlog
+            .with_label_values(&self.svc())
+            .set(count);
+        self.pending_oldest_age
+            .with_label_values(&self.svc())
+            .set(oldest_age);
     }
 
     pub fn observe_handler(&self, command: &str, dt: Duration) {
@@ -322,7 +411,14 @@ async fn metrics_handler(State(reg): State<Registry>) -> Result<String, StatusCo
 }
 
 pub async fn serve(listen: SocketAddr, registry: Registry) -> Result<(), std::io::Error> {
-    let app = router(registry);
     let listener = tokio::net::TcpListener::bind(listen).await?;
+    serve_listener(listener, registry).await
+}
+
+pub async fn serve_listener(
+    listener: tokio::net::TcpListener,
+    registry: Registry,
+) -> Result<(), std::io::Error> {
+    let app = router(registry);
     axum::serve(listener, app).await
 }

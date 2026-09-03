@@ -5,7 +5,10 @@ use sqlx::PgPool;
 
 use crate::idgen::IdGenerator;
 
-use super::{base36_upper, normalize_members, CreateGroup, GroupDirectory, GroupError, GroupInfo};
+use super::{
+    base36_upper, normalize_members, CreateGroup, GroupDirectory, GroupError, GroupInfo,
+    GroupSummary,
+};
 
 pub struct PostgresGroupDirectory {
     pool: PgPool,
@@ -142,6 +145,38 @@ impl GroupDirectory for PostgresGroupDirectory {
         Ok(())
     }
 
+    async fn summaries(
+        &self,
+        app: &str,
+        group_ids: &[String],
+    ) -> Result<Vec<GroupSummary>, GroupError> {
+        if group_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows: Vec<(String, String, String)> =
+            sqlx::query_as("SELECT id, name, avatar FROM groups WHERE app = $1 AND id = ANY($2)")
+                .bind(app)
+                .bind(group_ids)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        let mut by_id = std::collections::HashMap::with_capacity(rows.len());
+        for (id, name, avatar) in rows {
+            by_id.insert(id, (name, avatar));
+        }
+        let mut out = Vec::with_capacity(group_ids.len());
+        for id in group_ids {
+            if let Some((name, avatar)) = by_id.get(id) {
+                out.push(GroupSummary {
+                    id: id.clone(),
+                    name: name.clone(),
+                    avatar: avatar.clone(),
+                });
+            }
+        }
+        Ok(out)
+    }
+
     async fn detail(&self, app: &str, group_id: &str) -> Result<GroupInfo, GroupError> {
         let row: Option<(String, String, String, String)> = sqlx::query_as(
             "SELECT name, avatar, introduction, owner FROM groups WHERE app = $1 AND id = $2",
@@ -213,6 +248,14 @@ mod tests {
         let d = dir.detail(&app, &id).await.unwrap();
         assert_eq!(d.name, "g");
         assert!(d.members.contains(&"carol".to_string()));
+        let sums = dir
+            .summaries(&app, &[id.clone(), "missing".into()])
+            .await
+            .unwrap();
+        assert_eq!(sums.len(), 1);
+        assert_eq!(sums[0].id, id);
+        assert_eq!(sums[0].name, "g");
+        assert_eq!(sums[0].avatar, "a");
         dir.quit(&app, &id, "bob").await.unwrap();
         let after = dir.members(&app, &id).await.unwrap();
         assert!(!after.contains(&"bob".to_string()));
