@@ -72,7 +72,7 @@ INIT → CONNECTING → CONNECTED → CLOSING → CLOSED
 
 `Map<sequence, Pending>`。客户端自增 sequence（登录固定 1，之后从 2）。`Flag=Response` 用同一 sequence 解开 Promise。超时 `KIMStatus.RequestTimeout=1001`；未连接 `SendFailed=1002`。这两个数不上线。
 
-`talkToUser` / `talkToGroup`：状态码 `[300, 400)` 重试（默认 3 次），**同一次发送复用 `MessageReq.clientId`**。`UserNotFound=108`、`ContentBlocked`、`NotGroupMember`、`SystemException=99` 不重试。`>= 400` 关连接（可重连）。
+`talkToUser` / `talkToGroup`：`ServiceUnavailable=3` 与 `[300, 400)` 重试（默认 3 次），**同一次发送复用 `MessageReq.clientId`**。`UserNotFound=108`、`ContentBlocked`、`NotGroupMember`、`NotFriends`、`Blocked`、`IdempotencyConflict=111`、`SystemException=99` 不重试。`>= 400` 关连接（可重连）。
 
 心跳若收到 `login.renew` Push（`AuthResp`），SDK 更新内存 token；产品页 `ontoken` 写回 `localStorage`。
 

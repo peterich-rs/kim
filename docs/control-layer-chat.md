@@ -45,7 +45,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | Success | 0 | talk / create 走完（离线接收方也是 Success） |
 | InvalidPacket | 1 | 不变 |
 | CommandNotFound | 2 | 不变 |
-| ServiceUnavailable | 3 | 不变 |
+| ServiceUnavailable | 3 | 网关 Forward 失败（Chat Young / 未起）。Web SDK 与 3xx 一样重试 |
 | SystemException | 99 | insert / members / exists·friend·block **存储**失败 |
 | InvalidPacketBody | 101 | MessageReq / GroupCreateReq 解不开 |
 | ContentBlocked | 106 | talk `ContentFilter` 拒绝（文本词表 / 图片 URL 等）。不 insert、不 Push。不在 SDK 重试区间 |
@@ -74,7 +74,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 
 对自己发（dest = 本 session.account）：insert + Success，`dispatch` 跳过本 session `channel_id`；同一账号其它设备仍会收到 Push。
 
-`MessageReq.clientId` 非空时按 `(app, sender, client_id)` 去重。字段完全一致则返回第一次的 `messageId` / `sendTime`，从落库 `message_content` + `message_index` 重建 Push，并在 `TALK_PUSH_BUDGET` 内尽力 dispatch；dest / body / type / extra / kind 不一致 → `IdempotencyConflict=111`，不 Push。空 clientId 不去重。SDK 一次 `talkToUser` 生成 UUID，3xx 重试复用。鉴权仍在 insert 前：退群 / 删好友后 identical 重试仍是 107 / 109，不会补投。99 不再表示「已落库」。
+`MessageReq.clientId` 非空时按 `(app, sender, client_id)` 去重。字段完全一致则返回第一次的 `messageId` / `sendTime`，从落库 `message_content` + `message_index` 重建 Push，并在 `TALK_PUSH_BUDGET` 内尽力 dispatch；dest / body / type / extra / kind 不一致 → `IdempotencyConflict=111`，不 Push。空 clientId 不去重。SDK 一次 `talkToUser` 生成 UUID，`ServiceUnavailable=3` 与 3xx 重试复用。鉴权仍在 insert 前：退群 / 删好友后 identical 重试仍是 107 / 109，不会补投。99 不再表示「已落库」。
 
 ---
 
@@ -97,7 +97,7 @@ Push **同 command**、`Flag=Push`。接收方 Header 没有发送者账号；`s
 | 离线 | 无 Push；发送方仍 Success + messageId。接收方重连后可 `chat.offline.index` |
 | 发送方未收到 Resp | 客户端用 **identical** `clientId` 重发 → 从落库再 Push（按 `message_id` 去重） |
 
-ACK 在 Chat reader=1 时是 message id 集合（见 [reliable-delivery.md](reliable-delivery.md)）；Flutter / `kim-client` 登录后仍不拉离线（G-14）。漏 Push 由 pending receipt 补偿。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
+ACK 在 Chat reader=1 时是 message id 集合（见 [reliable-delivery.md](reliable-delivery.md)）。Flutter / `kim-client` 登录后走 supervisor 分页补拉。漏 Push 由 pending receipt 补偿（G-03）。未知群：`members` 返回空列表，发送方不在其中 → `NotGroupMember`，不 insert。
 
 Talk 在 insert 之前跑 `ContentFilter` 链（默认 ChatHandler 是 `NoopFilter`；进程用 `builtin_talk_filter`：文本拦截 + 图片拦截，词表来自 `config.toml` 的 `sensitive_words` / `blocked_image`）。只拦对应 `MessageReq.type`；语音 / 视频以后加新 impl。命中 → `ContentBlocked`。
 

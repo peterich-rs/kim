@@ -142,11 +142,14 @@ describe("KIMClient", () => {
     expect(gw.lastTalkDest).toBe("bob");
   });
 
-  it("does not retry talk on content blocked, not group member, user not found, or 99", async () => {
+  it("does not retry talk on 99, 1xx, or idempotency conflict", async () => {
     for (const blocked of [
       Status.ContentBlocked,
       Status.NotGroupMember,
       Status.UserNotFound,
+      Status.NotFriends,
+      Status.Blocked,
+      Status.IdempotencyConflict,
       Status.SystemException,
     ]) {
       const gw = new LoopbackGw();
@@ -166,6 +169,29 @@ describe("KIMClient", () => {
       expect(status).toBe(blocked);
       expect(talks).toBe(1);
     }
+  });
+
+  it("retries talk on ServiceUnavailable and reuses clientId", async () => {
+    const gw = new LoopbackGw();
+    const orig = gw.reply.bind(gw);
+    let talks = 0;
+    const bodies: string[] = [];
+    gw.reply = (sock, data) => {
+      const wire = readPacket(data);
+      if (wire.kind === "logic" && wire.pkt.command === Command.ChatUserTalk) {
+        talks += 1;
+        bodies.push(Buffer.from(wire.pkt.payload).toString("hex"));
+        gw.talkStatus = talks === 1 ? Status.ServiceUnavailable : Status.Success;
+      }
+      orig(sock, data);
+    };
+    const cli = client(gw);
+    await cli.login();
+    const { status, resp } = await cli.talkToUser("bob", new Content("hello"), 1);
+    expect(status).toBe(Status.Success);
+    expect(resp?.messageId).toBe(20001n);
+    expect(talks).toBe(2);
+    expect(bodies[0]).toBe(bodies[1]);
   });
 
   it("retries talk on status 300", async () => {
