@@ -13,6 +13,7 @@ export const Status = {
   UserNotFound: 108,
   NotFriends: 109,
   Blocked: 110,
+  IdempotencyConflict: 111,
   NoDestination: 300,
   SessionNotFound: 404,
 } as const;
@@ -33,9 +34,9 @@ export const Flag = {
 
 export type FlagCode = (typeof Flag)[keyof typeof Flag];
 
-/** Server asked the SDK to retry this request. */
+/** Transient wire status: retry with the same `clientId`. 99 and 1xx are not. */
 export function isRetryable(status: number): boolean {
-  return status >= 300 && status < 400;
+  return status === Status.ServiceUnavailable || (status >= 300 && status < 400);
 }
 
 /** Session is gone; close and (if enabled) log in again. */

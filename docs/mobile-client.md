@@ -4,7 +4,7 @@
 
 `kim-client` 是 TDLib 形：session / login / talk / ack 在 Rust。Flutter 只是壳。
 
-`kim-client` 有 `inbox_list` / `history` / `offline_index` / `offline_content`、统一 `send_message(dest, kind, content, client_id)`，以及 `SessionSupervisor`（重连退避 + `SyncEngine` 分页补拉，persist-then-ack）。Flutter FFI `KimApi` 持 supervisor：`start/stop/link_state/session_events/sync_confirm/notify_radio_up/send_message/history/inbox`。Dart `outbox` 入队即落库并用稳定 `client_id` 上行；文本 / 图片 / 视频失败重试都走 outbox。聊天页是自研 reverse `ChatList`（已去掉 `flutter_chat_ui` / `flutter_chat_core`）。G-14 仍开：Web `isRetryable` 未对齐；Flutter 侧 outbox + ChatList 已落地。
+`kim-client` 有 `inbox_list` / `history` / `offline_index` / `offline_content`、统一 `send_message(dest, kind, content, client_id)`，以及 `SessionSupervisor`（重连退避 + `SyncEngine` 分页补拉，persist-then-ack）。Flutter FFI `KimApi` 持 supervisor：`start/stop/link_state/session_events/sync_confirm/notify_radio_up/send_message/history/inbox`。Dart `outbox` 入队即落库并用稳定 `client_id` 上行；文本 / 图片 / 视频失败重试都走 outbox。聊天页是自研 reverse `ChatList`（已去掉 `flutter_chat_ui` / `flutter_chat_core`）。Web `isRetryable` 对 `ServiceUnavailable=3` 与 3xx 重试，99 / 1xx / 111 不重试。Flutter outbox 持稳定 `client_id`。漏 Push 补偿见 G-03。
 
 ## Crate
 

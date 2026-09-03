@@ -30,9 +30,10 @@
 | B5 Royal 发现 + 熔断 + 短缓存 | G-16：`RoyalPool` RR + 5xx 熔断 + Consul `find`；好友/block/`exists` 30s 缓存；royal-2；生产 Snowflake 失败退出 | [group-royal.md](../group-royal.md) |
 | B6 可观测性剩余 | G-15：send→ack、Royal RPC、backlog gauge、royal `/metrics`、告警规则。跨进程 trace 仍延后 | [observability.md](../observability.md) |
 | B7 inbox 物化 | 群 `summaries` 批量、advisory lock、回填脚本、Memory 双索引。**G-17 仍开**：生产回填后 `KIM_INBOX_MATERIALIZED=1` | [user-social-inbox.md](../user-social-inbox.md)、[deploy.md](../deploy.md) |
-| Mobile 成熟化 Phase 3–7 | FFI supervisor / SQLite upsert / Dart outbox；自研 ChatList（去 flutter_chat_ui）；KimTheme v2。G-14 仍开（Web `isRetryable`） | [mobile-client.md](../mobile-client.md)、[06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
+| Mobile 成熟化 Phase 3–7 | FFI supervisor / SQLite upsert / Dart outbox；自研 ChatList（去 flutter_chat_ui）；KimTheme v2 | [mobile-client.md](../mobile-client.md)、[06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
+| Web `isRetryable` | G-14：`ServiceUnavailable=3` 与 3xx 重试；99 / 1xx / 111 不重试。漏 Push 见 G-03 | [web-sdk.md](../web-sdk.md) |
 
-漏 Push 补偿仍是 G-03 / G-14。G-03 要等 rollout，不是再写一套 ACK。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
+漏 Push 补偿仍是 G-03。G-03 要等 rollout，不是再写一套 ACK。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
 
 Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 + 私有 CA HTTPS/mTLS + ACL deny。
 
@@ -45,6 +46,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 | 序 | 轨 | 覆盖 | 依赖 | 规格 |
 |---:|---|---|---|---|
 | B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | SCAN fail-closed 已合入；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
-| — | 客户端 | Web `isRetryable`；Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md)、G-14 |
+| — | 客户端 | Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
 
 G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。

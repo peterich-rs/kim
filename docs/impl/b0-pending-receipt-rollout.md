@@ -71,7 +71,7 @@
 
 ### Phase 2: 验收后文档 PR（三条走完，单独提交）
 
-- **File: `docs/production-gaps.md`** — 删 G-03 / G-04 / G-10 三节；删顶部列表第 1 条与「建议修复顺序」表第 1 行的相关引用（漏 Push 仍是 G-14，保留）；「现状」表 pending receipt 行改为已 rollout
+- **File: `docs/production-gaps.md`** — 删 G-03 / G-04 / G-10 三节；删顶部列表第 1 条与「建议修复顺序」表第 1 行的相关引用（漏 Push 仍是 G-03）；「现状」表 pending receipt 行改为已 rollout
 - **File: `docs/reliable-delivery.md`** — 状态改为生产已开（Royal=1、Chat=1、`KIM_REQUIRE_JTI=1`），回滚顺序保留
 - **File: `docs/deploy.md`** — 步骤 1–8 标注「已执行」，保留作为回滚 runbook
 - **File: `docs/impl/README.md`** — B0 行移入「已合入」表，注明关闭日期与验收输出；「待写 / 待执行」表删 B0 行
@@ -84,7 +84,7 @@
 - **持续生效的定义**：gateway 启动读 env（非运行时开关），「持续」= kim.env 不再改回 0；bootstrap.sh preflight 不管理该键，靠 review
 - **royal-2 同批**：`KIM_PENDING_RECEIPT_ROYAL` 同时作用于 royal 与 royal-2（同一 env 变量）。步骤 6 **必须** `up -d royal royal-2` 并分别 `printenv`，禁止只重启一个实例
 - **SCAN 在 royal 容器内跑**：与 `count_empty_jti_locations` 同一 decode 逻辑；fallback cargo example 仅本地调试用
-- **G-14 不在本切片**：漏 Push 补偿（Web `isRetryable`）属客户端轨
+- **G-14 不在本切片**：Web `isRetryable` 已在客户端轨关上；漏 Push 补偿仍等本切片的三条运维条件（G-03）
 
 ## File Change Summary
 

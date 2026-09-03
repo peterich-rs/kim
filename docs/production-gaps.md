@@ -23,7 +23,7 @@
 不能当生产 IM 用的原因不是「缺撤回」，也不是「没用 io_uring」，而是：
 
 1. **读索引代码已换成 pending receipt，默认门闩仍关**（G-03 / G-04 / G-10）。compose `KIM_PENDING_RECEIPT=0` 时仍走 Redis 高水位。关上这三条要走完 [reliable-delivery.md](reliable-delivery.md) rollout，不是镜像合入。
-2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
+2. **漏 Push 仍无可靠补偿**（G-03）。发送方 Success 不保证对端收到；已落库不再回 99。Web 对 `ServiceUnavailable=3` 与 3xx 重试，不重试 99。
 3. **内部控制面已关**：Chat `/internal/kick` 与 Royal 同 HMAC；nonce Redis NX EX 121；生产 Redis `requirepass` + `noeviction`；Consul 关明文 8500、HTTPS/mTLS 8501、ACL deny、每服务最小权限 token。demo/`change-me` JWT/HMAC 在 strict 下拒启动。
 4. **租户已冻结为 `app=kim`**（[gray.md](gray.md)）。G-05 / G-06 已关。
 5. **通信层骨架对**：读循环按 channel 串行 lane、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。TGateway 进程内 TLS、keepalive、连接上限已关（G-34）。停机顺序已关（G-07 / G-32）。reuseport / vectored write 仍延后。
@@ -40,9 +40,8 @@
 |---:|---|---|
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
 | 2 | device credential 客户端持久化 + `target_id` 迁 device_id；验证/找回/注销 | G-13, G-20 |
-| 3 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 4 | inbox 物化读：生产回填后 `KIM_INBOX_MATERIALIZED=1` | G-17 |
-| 5 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 3 | inbox 物化读：生产回填后 `KIM_INBOX_MATERIALIZED=1` | G-17 |
+| 4 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
 读循环隔离、下行 try_send、心跳 Redis 有界宽限、TGateway TLS / keepalive / 连接上限已关（G-29 / G-30 / G-31 / G-34）。Royal 发现 + 熔断 + 好友短缓存已关（G-16）。可观测性后台半边已关（G-15）。Redis/sqlx/Royal 热路径超时已关（G-33 剩余 tower-http / tokio Builder）。vectored write、reuseport、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
@@ -50,7 +49,7 @@
 
 1. 本文件只做盘点与优先级，不写逐步补丁。
 2. 高优先级按 [impl/](impl/README.md) **一份一切片** 写细化设计（文件、SQL、测试、明确不改什么）。
-3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。租户已冻结为 `app=kim`（见 [gray.md](gray.md)）。漏 Push 补偿见 G-03 / G-14。
+3. 按该切片执行；合入后从本文件删对应 G-xx，形状写回专题文档。租户已冻结为 `app=kim`（见 [gray.md](gray.md)）。漏 Push 补偿见 G-03。
 
 ---
 
@@ -69,7 +68,7 @@
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
 | Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`、`kim_send_to_ack_seconds`、`kim_royal_rpc_seconds` / `kim_royal_rpc_errors_total`、pending backlog/oldest-age；handler 白名单 29 条。告警在 `deploy/prometheus/rules/kim.yml`，部署 `--profile metrics` |
-| Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
+| Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；Web `isRetryable` 对 3 与 3xx 重试 |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
 
@@ -81,7 +80,7 @@
 |---|---|
 | G-02 Chat `offline.content` 越权 | [reliable-delivery.md](reliable-delivery.md)。越权 id 跳过。直打 Royal 要 HMAC |
 | G-08 Chat 群指令鉴权 | [group-royal.md](group-royal.md) |
-| G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 / G-14 |
+| G-09 insert 成功仍回 99 | [control-layer-chat.md](control-layer-chat.md)。漏 Push 补偿见 G-03 |
 | G-01 控制面 HMAC / Redis 密码 / Consul mTLS+ACL | [group-royal.md](group-royal.md)、[deploy.md](deploy.md) |
 | G-12 生产拒 demo JWT/HMAC | 并入控制面 strict 启动 |
 | G-11 Router JWT 进 URL / 哈希 raw token | [routing.md](routing.md)。`GET /api/lookup` 只接受 Authorization；哈希 `acc`/`jti`，renew 复用 jti 不换桶 |
@@ -92,6 +91,7 @@
 | G-34 keepalive / 连接上限 / TGateway TLS | [communication-layer.md](communication-layer.md)、[architecture.md](architecture.md)。`TcpConn<S>` + `FrontendState`；`try_acquire_owned`；进程内 rustls（`tls_cert` 空则明文）。reuseport / vectored write 仍延后 |
 | G-16 Royal 发现 + 熔断 + 好友短缓存 | [group-royal.md](group-royal.md)。`RoyalPool`：半开先探测再 RR 健康实例；Consul `find`；5xx 计熔断；Chat 侧 30s 社交缓存；compose `royal-2` |
 | G-15 可观测性后台半边 | [observability.md](observability.md)。send→ack、Royal RPC、backlog/oldest-age、royal `/metrics`、告警规则已关。otel / 跨进程 trace 延后 |
+| G-14 客户端补偿对不上服务端语义 | [web-sdk.md](web-sdk.md)、[mobile-client.md](mobile-client.md)。`isRetryable`：`ServiceUnavailable=3` 与 3xx 重试；99 / 1xx / 111 不重试。Flutter supervisor + outbox + 自研 ChatList 已落地。漏 Push 见 G-03 |
 
 ---
 
@@ -207,34 +207,6 @@ G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条
 ---
 
 ## P1 —— 常见路径错误或扩大爆炸半径
-
-### G-14 客户端补偿对不上服务端语义
-
-**文件**
-
-- `sdk/web/src/status.ts` — `isRetryable`：仅 300–399
-- `sdk/web/src/client.ts` — 登录后 `loadOfflineMessage`；`talk()` 复用 `clientId`
-- `crates/kim-client/src/client.rs` — `send_message` 的 `client_id` 由调用方持有；`talk_to_user` 仍是一次性 UUID 薄包装
-- `sdk/mobile` — FFI supervisor + Dart outbox 已接线；聊天页仍用 flutter_chat_ui，未自研 ChatList
-
-**问题**
-
-| 能力 | Web | kim-client / Flutter |
-|---|---|---|
-| 登录后 offline.index 循环 | 有 | Flutter：supervisor SyncEngine + persist-then-ack；Web：有 |
-| clientId 跨重试稳定 | 同一次 `talk()` 内稳定 | Flutter outbox 持稳定 id（文本发送）；Web `talk()` 内稳定。聊天页 flutter_chat_ui 仍在，G-14 不算关 |
-| 99 / 3 当可重试 | 否 | 否 |
-| 默认 device | 调用方传 | `mobile`（互踢） |
-
-没有系统推送时，移动端 = 在线 Push 或什么都没有。叠 G-03 / G-14。
-
-本地 `KeyValueStore.lastId` 与服务器 ACK 是两套。清 localStorage 会从 0 再拉；另一台设备的服务器 ACK 会让这台的本地游标显得落后。
-
-**建议**
-
-Flutter 登录后走与 Web 相同的 sync。服务端已落库不再回 99；`isRetryable` 仍可不覆盖 99。权威游标只放服务端。
-
----
 
 ### G-17 inbox 全量聚合 + N+1
 
@@ -428,7 +400,7 @@ Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`
 | Phase 0：`inserted.duplicate` 保持不二次 dispatch | 已否。identical 重试从落库再 Push |
 | Phase 0：dispatch 失败靠离线 Pull 补洞 | 补洞被 G-03 全局 ACK 高水位打穿 |
 | PR 顺序把 persist-first / try_send 放第 1 步 | persist-first 与控制面 HMAC 已落地；try_send/lanes 已关（G-29/G-30），仍排在游标 rollout 之后作为通信层 |
-| SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter supervisor 已拉离线；G-14 仍开因为 Web `isRetryable` 与 chat_ui leftover |
+| SDK / Flutter 不在规划范围 | persist-first 依赖客户端重连 sync。Flutter supervisor 已拉离线；Web `isRetryable` 已对齐 3 / 3xx |
 | 引入 `tokio-util` 为了 JoinSet | `tokio::task::JoinSet` 已在 tokio。tokio-util 只为 `CancellationToken` 才值得加 |
 | `write_all_vectored` 示例 | 稳定 tokio 上该 API 常要 `tokio_unstable`。未验证前不要写进热路径 |
 | ChannelMap 立刻分片 | `get` 已 clone `Channel` 再放锁，登录写锁才会挡全表。先做 G-29，profile 后再分片。拒绝 DashMap 作为第一刀是对的 |
@@ -442,7 +414,7 @@ Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`
 | `panic = "abort"` 不第一期切 | 对 |
 | 明确不引入 tungstenite / diesel / monoio / 自研 Raft | 对 |
 
-**原则里成立、应保留的：** 合同不动；落库是真相、在线推是尽力（须补 G-03 / G-14）；TGateway rustls 不靠把 App 改成 WSS；redis-rs 用尽再评估 fred；trait 对象继续 `async_trait`。
+**原则里成立、应保留的：** 合同不动；落库是真相、在线推是尽力（须补 G-03）；TGateway rustls 不靠把 App 改成 WSS；redis-rs 用尽再评估 fred；trait 对象继续 `async_trait`。
 
 ---
 
@@ -579,13 +551,13 @@ OS 能力：`TCP_NODELAY` 与 keepalive 已开。BufWriter 8KiB。reuseport / ve
 - 不上自研 Raft / 2PC；可靠性靠 PG 事务 + 幂等 + at-least-once
 - 不改内核、不用 DPDK
 - 不承诺 exactly-once，不引入 `delivered` 列
-- 协议指令名与 JWT HS256 默认保持；persist-first 是客户端可观察行为变化（已落库不再回 99）。Web `isRetryable` **不改**
+- 协议指令名与 JWT HS256 默认保持；persist-first 是客户端可观察行为变化（已落库不再回 99）。Web `isRetryable` 属客户端轨，不混进后台 PR
 
 ---
 
 ## 客户端如何放大服务端问题
 
-服务端 persist-first 之后已落库回 Success；剩下的 99 是 insert / 目录故障。Web 仍不重试 99。漏 Push 仍可能静默（G-03 / G-14）。
+服务端 persist-first 之后已落库回 Success；剩下的 99 是 insert / 目录故障。Web 不重试 99，重试 `ServiceUnavailable=3` 与 3xx。漏 Push 仍可能静默（G-03）。
 
 服务端无主动 sync + Flutter 不拉离线 + 无 APNs → 杀进程后消息静默，直到用户碰巧再打开且将来补了 sync。
 

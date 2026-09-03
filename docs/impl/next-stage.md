@@ -13,7 +13,7 @@
 1. **后台切片**不改 `sdk/web`、`sdk/mobile`、聊天页 UI。协议若加字段必须缺省兼容：旧客户端不传则走现路径。
 2. **客户端切片**不改 gateway / chat / royal / kim-tcp 热路径，不改 ACK 模型与开关语义。
 3. 一份一切片。鉴权、ACK rollout、device credential、`TcpConn<S>` **分属不同 PR**。
-4. 客户端优化（Web `isRetryable`、Flutter ChatList / theme）**可以与后台并行**，不作为后台合入门槛。
+4. 客户端优化（Flutter ChatList / theme、Web `isRetryable`）**可以与后台并行**，不作为后台合入门槛。前两项已合入。
 
 `pending_delivery.target_id` 现在是 JWT `jti`。G-03 rollout **不**等待 G-13。Web 只 ACK `lastMessage` 在 receipt 模式下会留下未确认行，离线仍能拉到；比高水位安全，因此 **不**挡 B0。
 
@@ -42,8 +42,8 @@
 | 轨 | 覆盖 | 规格 | 与后台的关系 |
 |---|---|---|---|
 | mobile | Phase 6 自研 ChatList；Phase 7 theme | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) | 不改服务端。Phase 3–5（supervisor / outbox）已在 #67 |
-| web | `isRetryable` 对齐真实错误码；ACK 改为 id 集合（可选加强） | G-14；[web-sdk.md](../web-sdk.md) | 服务端已落库不回 99。ACK 集合只改善 receipt 堆积，不改 B0 开关顺序 |
-| kim-client | `talk_to_user` 薄包装仍发一次性 UUID；调用方持 `client_id` | G-14 | Flutter outbox 已持稳定 id；其它调用方自行跟 |
+| web | `isRetryable`：`ServiceUnavailable=3` 与 3xx 重试；ACK 为 id 集合 | [web-sdk.md](../web-sdk.md) | G-14 已关。ACK 集合只改善 receipt 堆积，不改 B0 开关顺序 |
+| kim-client | `talk_to_user` 薄包装仍发一次性 UUID；调用方持 `client_id` | [mobile-client.md](../mobile-client.md) | Flutter outbox 已持稳定 id；其它调用方自行跟 |
 
 G-13 的**客户端持久化**（重装后仍出示同一 device credential）挂在客户端轨，跟在后台 B2 的兼容字段之后，不进 B2 同一 PR。
 
