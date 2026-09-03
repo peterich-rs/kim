@@ -1,43 +1,43 @@
-import Avatar from "@mui/material/Avatar";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
-import Close from "@mui/icons-material/Close";
 import type { ReactNode } from "react";
 
-import { COPY } from "../copy.ts";
 import { avatarColor, initial } from "../lib/format.ts";
+import { cn } from "../lib/utils.ts";
+import { Avatar, AvatarFallback } from "./ui/avatar.tsx";
+import { Button } from "./ui/button.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx";
 
 export function UserAvatar({
   name,
-  size = 40,
+  size = "default",
+  className,
 }: {
   name: string;
-  size?: number;
+  size?: "sm" | "default" | "lg";
+  className?: string;
 }) {
   return (
-    <Avatar
-      alt=""
-      sx={{
-        width: size,
-        height: size,
-        bgcolor: avatarColor(name),
-        fontSize: Math.max(12, Math.round(size * 0.38)),
-        fontWeight: 700,
-        color: "#fff",
-      }}
-    >
-      {initial(name)}
+    <Avatar size={size} className={className} aria-hidden>
+      <AvatarFallback
+        className="font-semibold text-white"
+        style={{ backgroundColor: avatarColor(name) }}
+      >
+        {initial(name)}
+      </AvatarFallback>
     </Avatar>
   );
 }
 
 export function IconTip({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Tooltip title={label} enterDelay={300}>
-      <span>{children}</span>
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex" />}>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -56,23 +56,46 @@ export function Modal({
   children: ReactNode;
 }) {
   return (
-    <Dialog
-      open={open}
-      onClose={() => onOpenChange(false)}
-      fullWidth
-      maxWidth={wide ? "sm" : "xs"}
-    >
-      <DialogTitle sx={{ pr: 6 }}>
-        {title}
-        <IconButton
-          aria-label={COPY.close}
-          onClick={() => onOpenChange(false)}
-          sx={{ position: "absolute", right: 8, top: 8 }}
-        >
-          <Close fontSize="small" />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent>{children}</DialogContent>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn("sm:max-w-sm", wide && "sm:max-w-md")}
+        showCloseButton
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {children}
+      </DialogContent>
     </Dialog>
+  );
+}
+
+export function GhostIconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+  className,
+}: {
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <IconTip label={label}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className={className}
+      >
+        {children}
+      </Button>
+    </IconTip>
   );
 }

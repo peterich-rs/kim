@@ -1,20 +1,13 @@
-import ArrowBack from "@mui/icons-material/ArrowBack";
-import ErrorIcon from "@mui/icons-material/Error";
-import ImageOutlined from "@mui/icons-material/ImageOutlined";
-import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
-import PersonAdd from "@mui/icons-material/PersonAdd";
-import Send from "@mui/icons-material/Send";
-import Chat from "@mui/icons-material/Chat";
-import People from "@mui/icons-material/People";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
-import CircularProgress from "@mui/material/CircularProgress";
-import Fab from "@mui/material/Fab";
-import IconButton from "@mui/material/IconButton";
-import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
+import {
+  ArrowLeft,
+  ChevronDown,
+  CircleAlert,
+  ImageIcon,
+  MessageCircle,
+  Send,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   useCallback,
@@ -34,22 +27,125 @@ import { toast } from "sonner";
 import { COPY, memberCount, newCountLabel } from "../copy.ts";
 import { formatClock, formatDateSep, startOfDay } from "../lib/format.ts";
 import { ACCEPT_IMAGE, isImageMessage } from "../lib/image.ts";
+import { cn } from "../lib/utils.ts";
 import { useChat, type ChatMsg } from "../state/ChatProvider.tsx";
 import { ImageBubble } from "./ImageBubble.tsx";
 import { ImageViewer } from "./ImageViewer.tsx";
-import { IconTip, UserAvatar } from "./ui.tsx";
+import { GhostIconButton, UserAvatar } from "./ui.tsx";
+import { Badge } from "./ui/badge.tsx";
+import { Bubble, BubbleContent } from "./ui/bubble.tsx";
+import { Button } from "./ui/button.tsx";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./ui/empty.tsx";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "./ui/input-group.tsx";
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+} from "./ui/message.tsx";
+import { ScrollArea } from "./ui/scroll-area.tsx";
+import { Spinner } from "./ui/spinner.tsx";
 
 const GROUP_MS = 5 * 60 * 1000;
 const START_INDEX = 100_000;
 
-function sameGroup(prev: ChatMsg | undefined, cur: ChatMsg): boolean {
-  if (!prev || prev.sys || cur.sys) {
+function sameGroup(prev: ChatMsg | undefined, cur: ChatMsg | undefined): boolean {
+  if (!prev || !cur || prev.sys || cur.sys) {
     return false;
   }
   if (startOfDay(new Date(prev.at)) !== startOfDay(new Date(cur.at))) {
     return false;
   }
   return prev.sender === cur.sender && cur.at - prev.at < GROUP_MS;
+}
+
+function DatePill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+function MessageRow({
+  item,
+  mine,
+  isGroup,
+  meLabel,
+  onRetry,
+  onOpenImage,
+}: {
+  item: { row: ChatMsg; cont: boolean; last: boolean; showDate: boolean };
+  mine: boolean;
+  isGroup: boolean;
+  meLabel: string;
+  onRetry: (key: string) => void;
+  onOpenImage: (src: string) => void;
+}) {
+  const { row, cont, last, showDate } = item;
+  const align = mine ? "end" : "start";
+  const variant = row.status === "failed" ? "destructive" : mine ? "default" : "secondary";
+  return (
+    <div className={cn("mx-auto max-w-3xl px-4", showDate ? "pt-4" : cont ? "pt-1" : "pt-3", last && "pb-1")}>
+      {showDate ? (
+        <div className="mb-3 flex justify-center">
+          <DatePill label={formatDateSep(row.at)} />
+        </div>
+      ) : null}
+      <Message align={align}>
+        {mine ? null : (
+          <MessageAvatar>{last ? <UserAvatar name={row.sender} /> : <span className="size-8" />}</MessageAvatar>
+        )}
+        <MessageContent>
+          {!cont && isGroup ? <MessageHeader>{mine ? meLabel : row.sender}</MessageHeader> : null}
+          {isImageMessage(row.type, row.body, row.extra) ? (
+            <Bubble variant={variant} align={align}>
+              <BubbleContent className="p-0">
+                <ImageBubble
+                  src={row.body}
+                  size={row.width > 0 && row.height > 0 ? { w: row.width, h: row.height } : undefined}
+                  mine={mine}
+                  last={last}
+                  onOpen={onOpenImage}
+                />
+              </BubbleContent>
+            </Bubble>
+          ) : (
+            <Bubble variant={variant} align={align}>
+              <BubbleContent className="whitespace-pre-wrap">{row.body}</BubbleContent>
+            </Bubble>
+          )}
+          {last || row.status === "sending" || row.status === "failed" ? (
+            <MessageFooter>
+              {row.status === "sending"
+                ? COPY.sending
+                : row.status === "failed"
+                  ? null
+                  : formatClock(row.at)}
+              {row.status === "failed" ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="xs"
+                  onClick={() => onRetry(row.key)}
+                >
+                  <CircleAlert />
+                  {COPY.retrySend}
+                </Button>
+              ) : null}
+            </MessageFooter>
+          ) : null}
+        </MessageContent>
+      </Message>
+    </div>
+  );
 }
 
 export function MessagePane() {
@@ -81,7 +177,6 @@ export function MessagePane() {
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
-  const [headerDate, setHeaderDate] = useState("");
   const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -121,6 +216,7 @@ export function MessagePane() {
     return rows.map((row, i) => ({
       row,
       cont: sameGroup(rows[i - 1], row),
+      last: !sameGroup(row, rows[i + 1]),
       showDate: i === 0 || startOfDay(new Date(rows[i - 1]!.at)) !== startOfDay(new Date(row.at)),
     }));
   }, [rows]);
@@ -179,7 +275,7 @@ export function MessagePane() {
     void onSend();
   }
 
-  function onKey(ev: KeyboardEvent<HTMLDivElement>) {
+  function onKey(ev: KeyboardEvent<HTMLTextAreaElement>) {
     if (ev.key === "Enter" && !ev.shiftKey) {
       ev.preventDefault();
       void onSend();
@@ -244,38 +340,17 @@ export function MessagePane() {
 
   if (!active) {
     return (
-      <Box
-        sx={{
-          display: { xs: "none", md: "flex" },
-          flex: 1,
-          minHeight: 0,
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          bgcolor: (theme) => theme.palette.canvas,
-          textAlign: "center",
-          px: 3,
-        }}
-      >
-        <Box
-          sx={{
-            width: 64,
-            height: 64,
-            borderRadius: 3,
-            bgcolor: "background.paper",
-            display: "grid",
-            placeItems: "center",
-            color: "primary.main",
-            mb: 2,
-          }}
-        >
-          <Chat />
-        </Box>
-        <Typography variant="h6">{COPY.pickConversation}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 280 }}>
-          {COPY.pickConversationHint}
-        </Typography>
-      </Box>
+      <div className="hidden min-h-0 flex-1 items-center justify-center bg-canvas px-6 md:flex">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageCircle />
+            </EmptyMedia>
+            <EmptyTitle>{COPY.pickConversation}</EmptyTitle>
+            <EmptyDescription>{COPY.pickConversationHint}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
     );
   }
 
@@ -283,8 +358,8 @@ export function MessagePane() {
   const gated = active.kind === "user" && socialReady && !isFriend(active.id);
 
   return (
-    <Box
-      sx={{ position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 }}
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1"
       onDragOver={(ev) => {
         ev.preventDefault();
         setDragging(true);
@@ -292,50 +367,26 @@ export function MessagePane() {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
     >
-      <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, bgcolor: (theme) => theme.palette.canvas }}>
-        <Stack direction="row" spacing={1.25} sx={{ px: 1.25,
-            py: 1,
-            bgcolor: "background.paper",
-            borderBottom: 1,
-            borderColor: "divider",
-            minHeight: 56, alignItems: "center" }}>
-          <IconButton aria-label={COPY.back} onClick={closeThread} sx={{ display: { md: "none" } }}>
-            <ArrowBack />
-          </IconButton>
-          <UserAvatar name={active.title} size={36} />
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap variant="subtitle2">
-              {active.title}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
+      <div className="flex min-w-0 flex-1 flex-col bg-canvas">
+        <header className="flex min-h-14 items-center gap-3 border-b border-border bg-background px-3 py-2">
+          <GhostIconButton label={COPY.back} onClick={closeThread} className="md:hidden">
+            <ArrowLeft />
+          </GhostIconButton>
+          <UserAvatar name={active.title} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{active.title}</p>
+            <p className="text-xs text-muted-foreground">
               {active.kind === "group" && members.length > 0 ? memberCount(members.length) : subtitle}
-            </Typography>
-          </Box>
+            </p>
+          </div>
           {active.kind === "group" ? (
-            <IconTip label={COPY.members}>
-              <IconButton aria-label={COPY.members} onClick={toggleMembers}>
-                <People />
-              </IconButton>
-            </IconTip>
+            <GhostIconButton label={COPY.members} onClick={toggleMembers}>
+              <Users />
+            </GhostIconButton>
           ) : null}
-        </Stack>
+        </header>
 
-        <Box sx={{ position: "relative", flex: 1, minHeight: 0 }}>
-          {headerDate ? (
-            <Chip
-              size="small"
-              label={headerDate}
-              sx={{
-                position: "absolute",
-                top: 8,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 2,
-                bgcolor: "background.paper",
-                boxShadow: 1,
-              }}
-            />
-          ) : null}
+        <div className="relative min-h-0 flex-1">
           <Virtuoso
             ref={virtuosoRef}
             style={{ height: "100%" }}
@@ -352,118 +403,38 @@ export function MessagePane() {
             startReached={() => {
               void onStartReached();
             }}
-            rangeChanged={(range) => {
-              const idx =
-                range.startIndex >= firstItemIndex
-                  ? range.startIndex - firstItemIndex
-                  : range.startIndex;
-              const item = grouped[idx] ?? grouped[0];
-              const row = item?.row;
-              if (row) {
-                setHeaderDate(formatDateSep(row.at));
-              }
-            }}
             increaseViewportBy={200}
             itemContent={(_index, item) => {
-              const { row, cont, showDate } = item;
+              const { row } = item;
               if (row.sys) {
                 return (
-                  <Box sx={{ py: 1, textAlign: "center" }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {row.body}
-                    </Typography>
-                  </Box>
+                  <div className="mx-auto max-w-3xl px-4 py-3 text-center text-xs text-muted-foreground">
+                    {row.body}
+                  </div>
                 );
               }
-              const mine = row.sender === account;
               return (
-                <Box sx={{ px: 2, pt: showDate ? 1.5 : cont ? 0.25 : 1.25 }}>
-                  {showDate ? (
-                    <Box sx={{ display: "flex", justifyContent: "center", mb: 1.25 }}>
-                      <Chip size="small" label={formatDateSep(row.at)} />
-                    </Box>
-                  ) : null}
-                  <Stack
-                    direction={mine ? "row-reverse" : "row"}
-                    spacing={1}
-                    sx={{ maxWidth: "min(72%, 36rem)", ml: mine ? "auto" : 0, mr: mine ? 0 : "auto" }}
-                  >
-                    {cont ? (
-                      <Box sx={{ width: 32, flexShrink: 0 }} />
-                    ) : (
-                      <UserAvatar name={row.sender} size={32} />
-                    )}
-                    <Box sx={{ minWidth: 0 }}>
-                      {cont ? null : (
-                        <Stack direction={mine ? "row-reverse" : "row"} spacing={1} sx={{ mb: 0.4, alignItems: "baseline" }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            {mine ? COPY.you : row.sender}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatClock(row.at)}
-                          </Typography>
-                        </Stack>
-                      )}
-                      {isImageMessage(row.type, row.body, row.extra) ? (
-                        <ImageBubble
-                          src={row.body}
-                          size={row.width > 0 && row.height > 0 ? { w: row.width, h: row.height } : undefined}
-                          mine={mine}
-                          onOpen={setViewer}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            px: 1.5,
-                            py: 1,
-                            borderRadius: 2,
-                            borderTopRightRadius: mine ? 4 : 16,
-                            borderTopLeftRadius: mine ? 16 : 4,
-                            bgcolor: (theme) => (mine ? theme.palette.bubbleMe : theme.palette.bubbleThem),
-                            color: "text.primary",
-                            boxShadow: mine ? "none" : 1,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            fontSize: 14,
-                            lineHeight: 1.5,
-                            opacity: row.status === "failed" ? 0.85 : 1,
-                          }}
-                        >
-                          {row.body}
-                        </Box>
-                      )}
-                      {row.status === "sending" ? (
-                        <Typography variant="caption" color="text.secondary">
-                          {COPY.sending}
-                        </Typography>
-                      ) : null}
-                      {row.status === "failed" ? (
-                        <Button
-                          size="small"
-                          color="error"
-                          startIcon={<ErrorIcon fontSize="small" />}
-                          onClick={() => {
-                            void retryMessage(row.key).catch((err) =>
-                              toast.error(err instanceof Error ? err.message : COPY.sendFailed),
-                            );
-                          }}
-                          sx={{ mt: 0.25, minHeight: 28 }}
-                        >
-                          {COPY.retrySend}
-                        </Button>
-                      ) : null}
-                    </Box>
-                  </Stack>
-                </Box>
+                <MessageRow
+                  item={item}
+                  mine={row.sender === account}
+                  isGroup={active.kind === "group"}
+                  meLabel={COPY.you}
+                  onRetry={(key) => {
+                    void retryMessage(key).catch((err) =>
+                      toast.error(err instanceof Error ? err.message : COPY.sendFailed),
+                    );
+                  }}
+                  onOpenImage={setViewer}
+                />
               );
             }}
             components={{
+              Header: () => <div className="h-2" />,
+              Footer: () => <div className="h-3" />,
               EmptyPlaceholder: () => (
-                <Box sx={{ height: "100%", display: "grid", placeItems: "center" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {COPY.noMessages}
-                  </Typography>
-                </Box>
+                <div className="grid h-full place-items-center text-sm text-muted-foreground">
+                  {COPY.noMessages}
+                </div>
               ),
             }}
           />
@@ -474,49 +445,46 @@ export function MessagePane() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
-                style={{ position: "absolute", right: 16, bottom: 16 }}
+                className="absolute right-4 bottom-4"
               >
-                <Fab
-                  size="small"
-                  color="primary"
+                <Button
+                  type="button"
+                  size="icon"
+                  className="rounded-full shadow-md"
                   aria-label={COPY.jumpToBottom}
                   onClick={jumpBottom}
                 >
-                  <KeyboardArrowDown />
-                </Fab>
+                  <ChevronDown />
+                </Button>
                 {newCount > 0 ? (
-                  <Chip
-                    size="small"
-                    color="primary"
-                    label={newCountLabel(newCount)}
+                  <Badge
+                    className="absolute top-1.5 right-12 cursor-pointer"
                     onClick={jumpBottom}
-                    sx={{ position: "absolute", right: 48, top: 6, cursor: "pointer" }}
-                  />
+                  >
+                    {newCountLabel(newCount)}
+                  </Badge>
                 ) : null}
               </motion.div>
             ) : null}
           </AnimatePresence>
-        </Box>
+        </div>
 
         {gated ? (
-          <Box sx={{ bgcolor: "background.paper", borderTop: 1, borderColor: "divider", px: 2, py: 2.5 }}>
-            <Stack spacing={1} sx={{ maxWidth: 360, mx: "auto", textAlign: "center", alignItems: "center" }}>
-              <UserAvatar name={active.title} size={48} />
-              <Typography variant="subtitle2">{COPY.notFriends}</Typography>
-              <Typography variant="caption" color="text.secondary">
+          <div className="border-t border-border bg-background px-4 py-6">
+            <div className="mx-auto flex max-w-sm flex-col items-center gap-2 text-center">
+              <UserAvatar name={active.title} size="lg" />
+              <p className="text-sm font-medium">{COPY.notFriends}</p>
+              <p className="text-xs text-muted-foreground">
                 {isOutgoing(active.id)
                   ? COPY.waitingAccept
                   : isIncoming(active.id)
                     ? COPY.friendRequestToast
                     : COPY.addFriendToChat}
-              </Typography>
+              </p>
               {isOutgoing(active.id) ? (
-                <Typography variant="caption" color="text.secondary">
-                  {COPY.requested}
-                </Typography>
+                <p className="text-xs text-muted-foreground">{COPY.requested}</p>
               ) : isIncoming(active.id) ? (
                 <Button
-                  variant="contained"
                   onClick={() => {
                     void acceptFriend(active.id).catch((err) =>
                       toast.error(err instanceof Error ? err.message : COPY.sendFailed),
@@ -527,35 +495,23 @@ export function MessagePane() {
                 </Button>
               ) : (
                 <Button
-                  variant="contained"
-                  startIcon={<PersonAdd />}
                   onClick={() => {
                     void requestFriend(active.id).catch((err) =>
                       toast.error(err instanceof Error ? err.message : COPY.sendFailed),
                     );
                   }}
                 >
+                  <UserPlus />
                   {COPY.addFriend}
                 </Button>
               )}
-            </Stack>
-          </Box>
+            </div>
+          </div>
         ) : (
-          <Box
-            component="form"
+          <form
             onSubmit={onSubmit}
             onPaste={onPaste}
-            sx={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 1,
-              px: 1.25,
-              py: 1.25,
-              pb: "max(12px, env(safe-area-inset-bottom))",
-              bgcolor: "background.paper",
-              borderTop: 1,
-              borderColor: "divider",
-            }}
+            className="flex items-end gap-2 border-t border-border bg-background px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]"
           >
             <input
               ref={fileRef}
@@ -566,83 +522,68 @@ export function MessagePane() {
                 void onPickImage(ev);
               }}
             />
-            <IconTip label={COPY.pickImage}>
-              <span>
-                <IconButton
+            <InputGroup className="h-auto min-h-10 flex-1 items-end">
+              <InputGroupAddon align="inline-start" className="self-end pb-1">
+                <InputGroupButton
+                  size="icon-sm"
                   aria-label={COPY.pickImage}
                   disabled={uploading || sending || status !== "online"}
                   onClick={() => fileRef.current?.click()}
                 >
-                  {uploading ? <CircularProgress size={18} /> : <ImageOutlined />}
-                </IconButton>
-              </span>
-            </IconTip>
-            <TextField
-              inputRef={inputRef}
-              fullWidth
-              multiline
-              minRows={1}
-              maxRows={6}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={COPY.messagePlaceholder}
-              slotProps={{ htmlInput: { maxLength: 4000, "aria-label": COPY.messagePlaceholder } }}
-            />
-            <motion.div whileTap={{ scale: 0.94 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={!draft.trim() || sending || status !== "online"}
-                aria-label={COPY.send}
-                sx={{ minWidth: 64, height: 40 }}
-                endIcon={sending ? <CircularProgress size={14} color="inherit" /> : <Send />}
-              >
-                {COPY.send}
-              </Button>
-            </motion.div>
-          </Box>
+                  {uploading ? <Spinner /> : <ImageIcon />}
+                </InputGroupButton>
+              </InputGroupAddon>
+              <InputGroupTextarea
+                ref={inputRef}
+                rows={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={onKey}
+                placeholder={COPY.messagePlaceholder}
+                maxLength={4000}
+                aria-label={COPY.messagePlaceholder}
+                className="max-h-40 min-h-10 py-2.5"
+              />
+              <InputGroupAddon align="inline-end" className="self-end pb-1">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!draft.trim() || sending || status !== "online"}
+                  aria-label={COPY.send}
+                >
+                  {sending ? <Spinner /> : <Send />}
+                  {COPY.send}
+                </Button>
+              </InputGroupAddon>
+            </InputGroup>
+          </form>
         )}
-      </Box>
+      </div>
 
       {active.kind === "group" && membersOpen ? (
-        <Box
-          sx={{
-            width: { xs: "min(240px, 80vw)", md: 240 },
-            position: { xs: "absolute", md: "relative" },
-            right: 0,
-            top: 0,
-            bottom: 0,
-            zIndex: 2,
-            bgcolor: "background.paper",
-            borderLeft: 1,
-            borderColor: "divider",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <Stack direction="row" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", alignItems: "center", justifyContent: "space-between" }}>
-            <Typography variant="subtitle2">{COPY.members}</Typography>
-            <IconButton aria-label={COPY.close} onClick={toggleMembers} sx={{ display: { md: "none" } }}>
-              <ArrowBack fontSize="small" />
-            </IconButton>
-          </Stack>
-          <Box sx={{ flex: 1, overflowY: "auto", p: 1 }}>
-            {members.map((name) => (
-              <Stack key={name} direction="row" spacing={1} sx={{ px: 1, py: 0.75, alignItems: "center" }}>
-                <UserAvatar name={name} size={32} />
-                <Typography noWrap variant="body2">
-                  {name}
-                  {name === account ? (
-                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
-                      {COPY.you}
-                    </Typography>
-                  ) : null}
-                </Typography>
-              </Stack>
-            ))}
-          </Box>
-        </Box>
+        <aside className="absolute top-0 right-0 bottom-0 z-2 flex w-[min(240px,80vw)] flex-col border-l border-border bg-background md:relative md:w-60">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-sm font-medium">{COPY.members}</p>
+            <GhostIconButton label={COPY.close} onClick={toggleMembers} className="md:hidden">
+              <ArrowLeft />
+            </GhostIconButton>
+          </div>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-2">
+              {members.map((name) => (
+                <div key={name} className="flex items-center gap-2 px-2 py-1.5">
+                  <UserAvatar name={name} />
+                  <p className="truncate text-sm">
+                    {name}
+                    {name === account ? (
+                      <span className="ml-1.5 text-xs text-muted-foreground">{COPY.you}</span>
+                    ) : null}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </aside>
       ) : null}
 
       <ImageViewer src={viewer} open={Boolean(viewer)} onClose={() => setViewer(null)} />
@@ -653,21 +594,12 @@ export function MessagePane() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 5,
-              display: "grid",
-              placeItems: "center",
-              background: "rgba(15,23,42,0.45)",
-              color: "#fff",
-              fontWeight: 600,
-            }}
+            className="absolute inset-0 z-5 grid place-items-center bg-foreground/45 font-semibold text-background"
           >
             {COPY.dropImage}
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </Box>
+    </div>
   );
 }

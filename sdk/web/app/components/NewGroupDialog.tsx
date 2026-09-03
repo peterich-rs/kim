@@ -1,19 +1,18 @@
-import Check from "@mui/icons-material/Check";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemText from "@mui/material/ListItemText";
-import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
+import { Check } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { COPY } from "../copy.ts";
 import { mapUserError } from "../lib/errors.ts";
+import { cn } from "../lib/utils.ts";
 import { useChat } from "../state/ChatProvider.tsx";
 import { Modal, UserAvatar } from "./ui.tsx";
+import { Button } from "./ui/button.tsx";
+import { DialogFooter } from "./ui/dialog.tsx";
+import { Field, FieldError, FieldLabel } from "./ui/field.tsx";
+import { Input } from "./ui/input.tsx";
+import { Item, ItemContent, ItemMedia, ItemTitle } from "./ui/item.tsx";
+import { ScrollArea } from "./ui/scroll-area.tsx";
+import { Spinner } from "./ui/spinner.tsx";
 
 export function NewGroupDialog({
   open,
@@ -56,59 +55,63 @@ export function NewGroupDialog({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={COPY.newGroup}>
-      <Stack component="form" spacing={2} onSubmit={(ev) => void onSubmit(ev)}>
-        <TextField
-          label={COPY.groupName}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={COPY.groupNamePlaceholder}
-          slotProps={{ htmlInput: { maxLength: 32 } }}
-          autoFocus
-          fullWidth
-        />
-        <Box>
-          <Typography variant="caption" color="text.secondary">
-            {COPY.pickFriends}
-          </Typography>
-          <List dense sx={{ maxHeight: 192, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 2, mt: 0.75 }}>
+      <form className="flex flex-col gap-4" onSubmit={(ev) => void onSubmit(ev)}>
+        <Field>
+          <FieldLabel htmlFor="group-name">{COPY.groupName}</FieldLabel>
+          <Input
+            id="group-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={COPY.groupNamePlaceholder}
+            maxLength={32}
+            autoFocus
+          />
+        </Field>
+        <div>
+          <p className="mb-2 text-xs text-muted-foreground">{COPY.pickFriends}</p>
+          <ScrollArea className="h-48 rounded-lg border border-border">
             {people.length === 0 ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 2, py: 3, textAlign: "center" }}>
-                {COPY.noFriendsHint}
-              </Typography>
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">{COPY.noFriendsHint}</p>
             ) : (
               people.map((p) => {
                 const on = members.includes(p.account);
                 return (
-                  <ListItemButton key={p.account} selected={on} onClick={() => toggleMember(p.account)}>
-                    <Box sx={{ mr: 1.25 }}>
-                      <UserAvatar name={p.nickname} size={32} />
-                    </Box>
-                    <ListItemText primary={p.nickname} />
-                    {on ? <Check fontSize="small" color="primary" /> : null}
-                  </ListItemButton>
+                  <Item
+                    key={p.account}
+                    render={<button type="button" />}
+                    size="sm"
+                    className={cn("w-full", on && "bg-accent")}
+                    onClick={() => toggleMember(p.account)}
+                  >
+                    <ItemMedia>
+                      <UserAvatar name={p.nickname} />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>{p.nickname}</ItemTitle>
+                    </ItemContent>
+                    {on ? <Check className="size-4 text-primary" /> : null}
+                  </Item>
                 );
               })
             )}
-          </List>
+          </ScrollArea>
           {account ? (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: "block" }}>
+            <p className="mt-2 text-xs text-muted-foreground">
               {account} · {COPY.you}
-            </Typography>
+            </p>
           ) : null}
-          {error ? (
-            <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
-              {error}
-            </Typography>
-          ) : null}
-        </Box>
-        <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
-          <Button onClick={() => onOpenChange(false)}>{COPY.cancel}</Button>
-          <Button type="submit" variant="contained" disabled={pending}>
-            {pending ? <CircularProgress size={16} color="inherit" sx={{ mr: 1 }} /> : null}
+          {error ? <FieldError className="mt-2">{error}</FieldError> : null}
+        </div>
+        <DialogFooter className="mx-0 mb-0 rounded-none border-0 bg-transparent p-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {COPY.cancel}
+          </Button>
+          <Button type="submit" disabled={pending}>
+            {pending ? <Spinner /> : null}
             {pending ? COPY.creating : COPY.createGroup}
           </Button>
-        </Stack>
-      </Stack>
+        </DialogFooter>
+      </form>
     </Modal>
   );
 }

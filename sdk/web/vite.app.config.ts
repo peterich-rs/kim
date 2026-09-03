@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
@@ -35,13 +36,14 @@ export default defineConfig(({ mode }) => {
   return {
     root: "app",
     envDir,
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     define: {
       "import.meta.env.VITE_KIM_ORIGIN": JSON.stringify(apiOrigin),
       "import.meta.env.VITE_KIM_WS": JSON.stringify(wsUrl),
     },
     resolve: {
       alias: {
+        "@": fileURLToPath(new URL("./app", import.meta.url)),
         "@kim/web-sdk": fileURLToPath(new URL("./src/index.ts", import.meta.url)),
       },
     },
@@ -60,7 +62,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     optimizeDeps: {
-      include: ["protobufjs", "long", "@mui/material", "@emotion/react", "@emotion/styled"],
+      include: ["protobufjs", "long"],
     },
   };
 });
