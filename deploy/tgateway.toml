@@ -1,0 +1,44 @@
+# tgateway-only keys. Must stay at the file root: TlsSection reads them there,
+# and [route.whitelist] is HashMap<String, String> (integers fail load_config).
+tls_cert = "/etc/kim/tls/tgateway.pem"
+tls_key = "/etc/kim/tls/tgateway-key.pem"
+max_connections = 10000
+
+[self]
+service_id = "tgw-1"
+service_name = "tgateway"
+listen = "0.0.0.0:8003"
+protocol = "tcp"
+# empty = KIM_JWT_SECRET env, else demo secret (do not use in production)
+jwt_secret = ""
+metrics_listen = "0.0.0.0:9003"
+idc = "local"
+domain = "127.0.0.1:8003"
+public_address = "tgateway"
+public_port = 8003
+consul_url = ""
+adult_delay_ms = 2000
+
+# Used only when CONSUL_HTTP_ADDR is empty (local docker without Consul).
+[[services]]
+service_id = "chat-1"
+service_name = "chat"
+protocol = "tcp"
+public_address = "chat"
+public_port = 8002
+tags = ["zone:zone_local"]
+
+[route]
+route_by = "account"
+
+[[route.zones]]
+id = "zone_local"
+weight = 100
+
+[[route.zones]]
+id = "zone_gray"
+weight = 0
+
+[route.whitelist]
+# account -> zone. Do not use JWT app keys such as "kim-gray".
+# "alice" = "zone_gray"

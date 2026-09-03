@@ -1,6 +1,6 @@
 # 架构
 
-当前进度：**通信层 TCP + WebSocket、业务包、Naming（本机静态 / 生产 Consul）、容器、JWT 登录 / 会话 / 互踢、控制层在线 talk / ACK / 离线 / 群、Royal HTTP、Router lookup、双分区 Chat、Web SDK、kimbench、TGateway、Prometheus 已落地**。公网 TGateway TLS / 双活还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)；在线单聊 / 群聊见 [control-layer-chat.md](control-layer-chat.md)；SDK 见 [web-sdk.md](web-sdk.md)。
+当前进度：**通信层 TCP + WebSocket、业务包、Naming（本机静态 / 生产 Consul）、容器、JWT 登录 / 会话 / 互踢、控制层在线 talk / ACK / 离线 / 群、Royal HTTP、Router lookup、双分区 Chat、Web SDK、kimbench、TGateway（进程内 rustls，`tls_cert` 空则明文）、Prometheus 已落地**。公网双活还没有。帧与容器见 [protocol-container.md](protocol-container.md)；登录见 [link-layer-login.md](link-layer-login.md)；在线单聊 / 群聊见 [control-layer-chat.md](control-layer-chat.md)；SDK 见 [web-sdk.md](web-sdk.md)。
 
 ## 一句话
 
@@ -102,7 +102,7 @@ im/
 - **Consul**：本机 Demo 仍 StaticNaming；VPS 用 HTTP catalog（`CONSUL_HTTP_ADDR`）。不要改 `TcpServer`、不要占 53 端口
 - **JWT**：只在 examples / `kim-protocol::token`。不要写进 `kim-ws` / `kim-tcp`。签发在 Royal `POST /api/v1/auth/login` 与 `/api/v1/auth/register`
 - **控制层**：在线 talk、ACK、离线、群 join/quit/detail 已在 chat；生产群/消息经 Royal。Web SDK 见 [web-sdk.md](web-sdk.md)
-- **部署**：VPS 用 `deploy/compose.yml`（gateway / chat / chat-gray / royal / router / Consul / Redis / Postgres）。本机 Demo 仍是 Memory。见 [deploy.md](deploy.md)。公网 TGateway TLS / 双活仍是文档
+- **部署**：VPS 用 `deploy/compose.yml`（gateway / chat / chat-gray / royal / royal-2 / router / Consul / Redis / Postgres）。本机 Demo 仍是 Memory。见 [deploy.md](deploy.md)。公网 TGateway 进程内 TLS 已落地（证书只在 tgateway 配置）；双活仍是文档
 
 服务发现登记的是**实例**（可拨号的 IP:端口），不是「只发现进程」或「只发现机器」。本机多进程和多台 VPS，对网关是同一件事。
 

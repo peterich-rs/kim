@@ -70,7 +70,7 @@ TLS：
 - 不用 Worker、compose 自己占 80/443：`docker compose --env-file kim.env --profile edge up -d`，DNS 可灰云做 Caddy HTTP-01。
 - 宿主机已经有反代：不要开 `edge`。把 `deploy/host.Caddyfile` 的 `kim.ainexc.com` 块合进 `/etc/caddy/Caddyfile`：`/api/v1/auth/*` → `127.0.0.1:8080`（Royal），`/api/lookup` → `:8088`，Upgrade → `:8001`（关读超时）。**不要**把整站 `reverse_proxy` 到网关，否则注册 POST 会 404。
 
-公网 TGateway（裸 TCP+TLS）和同城双活：**以后**。UFW 默认只放 22/80/443。
+公网 TGateway 进程内 rustls 已落地。`tls_cert` / `tls_key` / `max_connections` 写在 `deploy/tgateway.toml` **文件根**（不要放进 `[self]` 或 `[route.whitelist]`：后者是 `HashMap<String, String>`，整数会让 `load_config` 启动失败）。证书路径空则同一二进制走明文。默认 compose **不**起 tgateway。怎么暴露（灰云或独立 IP:port）和同城双活仍是以后。UFW 默认只放 22/80/443。
 
 ## 产品 H5（Cloudflare Worker）
 

@@ -13,12 +13,12 @@ use kim_core::{
     DEFAULT_WRITE_WAIT,
 };
 
-use crate::conn::{TcpConn, TcpReadHalf, TcpWriteHalf};
+use crate::conn::{PlainTcpConn, PlainTcpReadHalf, PlainTcpWriteHalf, TcpConn};
 
-/// TCP 客户端专用拨号器：必须返回可拆分的 [`TcpConn`]。
+/// TCP 客户端专用拨号器：必须返回可拆分的明文 [`TcpConn`]。
 #[async_trait]
 pub trait TcpDialer: Send + Sync {
-    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<TcpConn, Error>;
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<PlainTcpConn, Error>;
 }
 
 #[derive(Clone, Debug)]
@@ -42,8 +42,8 @@ pub struct TcpClient {
     id: String,
     name: String,
     dialer: Option<Arc<dyn TcpDialer>>,
-    reader: Option<Mutex<TcpReadHalf>>,
-    writer: Option<Arc<Mutex<TcpWriteHalf>>>,
+    reader: Option<Mutex<PlainTcpReadHalf>>,
+    writer: Option<Arc<Mutex<PlainTcpWriteHalf>>>,
     connected: Arc<AtomicBool>,
     options: ClientOptions,
     heartbeat: Mutex<Option<JoinHandle<()>>>,
@@ -204,7 +204,7 @@ pub struct IdentityDialer;
 
 #[async_trait]
 impl TcpDialer for IdentityDialer {
-    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<TcpConn, Error> {
+    async fn dial_and_handshake(&self, ctx: DialerContext) -> Result<PlainTcpConn, Error> {
         let stream = tokio::net::TcpStream::connect(&ctx.address).await?;
         let mut conn = TcpConn::new(stream);
         conn.write_frame(OpCode::Binary, Bytes::from(ctx.id.into_bytes()))

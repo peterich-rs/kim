@@ -1,0 +1,38 @@
+# tgateway-only keys. Must stay at the file root (see tgateway.toml).
+# Empty cert/key keeps the same binary on plaintext.
+tls_cert = ""
+tls_key = ""
+max_connections = 10000
+
+[self]
+service_id = "tgw-1"
+service_name = "tgateway"
+listen = "127.0.0.1:8003"
+protocol = "tcp"
+jwt_secret = ""
+metrics_listen = "127.0.0.1:9003"
+idc = "local"
+domain = "127.0.0.1:8003"
+public_address = ""
+public_port = 8003
+consul_url = ""
+adult_delay_ms = 2000
+
+[[services]]
+service_id = "chat-1"
+service_name = "chat"
+protocol = "tcp"
+public_address = "127.0.0.1"
+public_port = 8002
+tags = ["zone:zone_local"]
+
+[route]
+route_by = "account"
+
+[[route.zones]]
+id = "zone_local"
+weight = 100
+
+[route.whitelist]
+# account -> zone. Do not use JWT app keys such as "kim-gray".
+# "alice" = "zone_gray"
