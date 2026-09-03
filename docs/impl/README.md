@@ -39,8 +39,12 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 
 | 序 | 轨 | 覆盖 | 依赖 | 规格 |
 |---:|---|---|---|---|
-| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | 代码与 SCAN/runbook 已在；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
-| B3 | 后台 | `TcpConn<S>` + TGateway TLS（G-34） | 形状已在 G-34 拍板 | [production-gaps.md](../production-gaps.md) |
+| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | SCAN 须先改 fail-closed；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
+| B3 | 后台 | `TcpConn<S>` + TGateway TLS + keepalive + 连接上限（G-34） | `try_acquire` + TLS 握手超时 + `FrontendState`；明文 `new(stream)` 保留 | [b3-tcp-conn-tls.md](./b3-tcp-conn-tls.md) |
+| B4 | 后台 | 六个 ConnectionManager 超时、sqlx 池/迁移分离、Royal deadline（G-33） | `get_locations` 已是 pipeline；目录 RPC 要总预算 | [b4-deepen-libs.md](./b4-deepen-libs.md) |
+| B5 | 后台 | Royal 发现 + 熔断 + 好友短缓存（G-16） | 缓存键分 kind；5xx 计熔断；royal-2 前置 Snowflake 失败退出 | [b5-royal-resilience.md](./b5-royal-resilience.md) |
+| B6 | 后台 | command 白名单、send→ack 直方图、告警规则（G-15） | ACK RETURNING 直方图；Phase 3 依赖 B5 RoyalPool | [b6-observability.md](./b6-observability.md) |
+| B7 | 后台 | inbox 去 N+1 → `conversation_inbox` 物化（G-17） | unread 方向、PK 锁序、mark_read 事务、回填终态、开关在 Royal | [b7-inbox-materialization.md](./b7-inbox-materialization.md) |
 | — | 客户端 | Web `isRetryable`；Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md)、G-14 |
 
-G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。B4 起（G-33 / G-16 / G-15 / G-17）不插到 B0 前面。
+G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。B4–B7 切片稿已按审查修订（上表），执行仍按 B0 → B3 → B4 → B5 → B6 → B7，不插到 B0 前面。B0 的 SCAN fail-closed 可先于开开关合入。B7 Phase 1（批量 profiles + group details）与 B0 无耦合，允许先行。
