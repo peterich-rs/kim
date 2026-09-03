@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # First-time VPS layout, and preflight for an existing one.
 # Generates kim.env (once), Consul TLS, gossip encrypt key, and ACL secrets.
-# Does not print secrets. Existing kim.env secret values are never rewritten.
+# Does not print secrets. Existing kim.env secret values are never rewritten;
+# missing required keys are appended (names only in logs).
 # Usage (on the VPS as root):
 #   bash bootstrap.sh
 set -euo pipefail
@@ -123,6 +124,105 @@ ensure_secrets_hcl() {
   echo "wrote $SECRETS (gossip encrypt + ACL; values not printed)"
 }
 
+require_openssl() {
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "error: openssl is required to generate secrets" >&2
+    exit 1
+  fi
+}
+
+append_env() {
+  local k=$1
+  local v=$2
+  umask 077
+  printf '%s=%s\n' "$k" "$v" >>"$ENV_FILE"
+  chmod 640 "$ENV_FILE"
+  printf -v "$k" '%s' "$v"
+}
+
+redis_password_from_url() {
+  local url=${1:-}
+  if [[ "$url" =~ ^rediss?://:([^@/]+)@ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+mgmt_from_secrets_hcl() {
+  if [[ ! -f "$SECRETS" ]]; then
+    return 1
+  fi
+  local val
+  val="$(sed -n 's/^[[:space:]]*initial_management[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$SECRETS" | tail -n1)"
+  if [[ -z "$val" ]]; then
+    return 1
+  fi
+  printf '%s' "$val"
+}
+
+# Append only empty required keys. Never overwrite a non-empty value.
+fill_missing_kim_env() {
+  local added=()
+  local k v
+
+  if [[ -z "${KIM_ENV:-}" ]]; then
+    append_env KIM_ENV production
+    added+=(KIM_ENV)
+  fi
+  if [[ -z "${CONSUL_HTTP_ADDR:-}" ]]; then
+    append_env CONSUL_HTTP_ADDR "https://consul:8501"
+    added+=(CONSUL_HTTP_ADDR)
+  fi
+  if [[ -z "${REDIS_PASSWORD:-}" ]]; then
+    if v="$(redis_password_from_url "${REDIS_URL:-}")"; then
+      append_env REDIS_PASSWORD "$v"
+      added+=(REDIS_PASSWORD)
+    else
+      echo "error: REDIS_PASSWORD is empty and REDIS_URL has no password to copy" >&2
+      echo "error: set REDIS_PASSWORD to the running Redis password; will not mint a new one" >&2
+      exit 1
+    fi
+  fi
+  if [[ -z "${REDIS_URL:-}" ]]; then
+    if [[ -n "${REDIS_PASSWORD:-}" ]]; then
+      append_env REDIS_URL "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      added+=(REDIS_URL)
+    else
+      echo "error: REDIS_URL is empty" >&2
+      exit 1
+    fi
+  fi
+  if [[ -z "${KIM_JWT_SECRET:-}" ]]; then
+    require_openssl
+    append_env KIM_JWT_SECRET "$(openssl rand -hex 32)"
+    added+=(KIM_JWT_SECRET)
+  fi
+  if [[ -z "${KIM_INTERNAL_HMAC_SECRET:-}" ]]; then
+    require_openssl
+    append_env KIM_INTERNAL_HMAC_SECRET "$(openssl rand -hex 32)"
+    added+=(KIM_INTERNAL_HMAC_SECRET)
+  fi
+  if [[ -z "${CONSUL_MANAGEMENT_TOKEN:-}" ]]; then
+    if v="$(mgmt_from_secrets_hcl)"; then
+      append_env CONSUL_MANAGEMENT_TOKEN "$v"
+    else
+      append_env CONSUL_MANAGEMENT_TOKEN "$(uuid)"
+    fi
+    added+=(CONSUL_MANAGEMENT_TOKEN)
+  fi
+  for k in CONSUL_TOKEN_CHAT CONSUL_TOKEN_ROYAL CONSUL_TOKEN_GATEWAY CONSUL_TOKEN_ROUTER; do
+    if [[ -z "${!k:-}" ]]; then
+      append_env "$k" "$(uuid)"
+      added+=("$k")
+    fi
+  done
+
+  if (( ${#added[@]} > 0 )); then
+    echo "appended missing kim.env keys (values not printed): ${added[*]}"
+  fi
+}
+
 preflight_kim_env() {
   local missing=()
   local k
@@ -159,6 +259,7 @@ if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
+  fill_missing_kim_env
   preflight_kim_env
   ensure_secrets_hcl
   if ! tls_complete || ! secrets_have_encrypt; then
@@ -169,10 +270,7 @@ if [[ -f "$ENV_FILE" ]]; then
   exit 0
 fi
 
-if ! command -v openssl >/dev/null 2>&1; then
-  echo "error: openssl is required to generate secrets" >&2
-  exit 1
-fi
+require_openssl
 
 jwt="$(openssl rand -hex 32)"
 hmac="$(openssl rand -hex 32)"
