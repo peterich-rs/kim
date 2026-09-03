@@ -140,10 +140,35 @@ append_env() {
   printf -v "$k" '%s' "$v"
 }
 
+# Replace or append KEY=value. Used when REDIS_URL exists but has no password.
+set_env_key() {
+  local k=$1
+  local v=$2
+  local tmp
+  umask 077
+  tmp="$(mktemp)"
+  grep -vE "^${k}=" "$ENV_FILE" >"$tmp" || true
+  printf '%s=%s\n' "$k" "$v" >>"$tmp"
+  mv "$tmp" "$ENV_FILE"
+  chmod 640 "$ENV_FILE"
+  printf -v "$k" '%s' "$v"
+}
+
 redis_password_from_url() {
   local url=${1:-}
   if [[ "$url" =~ ^rediss?://:([^@/]+)@ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+# redis://host:6379/0 → redis://:PASS@host:6379/0
+redis_url_with_password() {
+  local url=${1:-}
+  local pass=$2
+  if [[ "$url" =~ ^(rediss?://)([^@]+)$ ]]; then
+    printf '%s:%s@%s' "${BASH_REMATCH[1]}" "$pass" "${BASH_REMATCH[2]}"
     return 0
   fi
   return 1
@@ -179,19 +204,24 @@ fill_missing_kim_env() {
       append_env REDIS_PASSWORD "$v"
       added+=(REDIS_PASSWORD)
     else
-      echo "error: REDIS_PASSWORD is empty and REDIS_URL has no password to copy" >&2
-      echo "error: set REDIS_PASSWORD to the running Redis password; will not mint a new one" >&2
-      exit 1
+      require_openssl
+      v="$(openssl rand -hex 24)"
+      append_env REDIS_PASSWORD "$v"
+      added+=(REDIS_PASSWORD)
+      if [[ -n "${REDIS_URL:-}" ]]; then
+        local new_url
+        if ! new_url="$(redis_url_with_password "$REDIS_URL" "$v")"; then
+          echo "error: REDIS_URL has no password and cannot be rewritten" >&2
+          exit 1
+        fi
+        set_env_key REDIS_URL "$new_url"
+        added+=(REDIS_URL)
+      fi
     fi
   fi
   if [[ -z "${REDIS_URL:-}" ]]; then
-    if [[ -n "${REDIS_PASSWORD:-}" ]]; then
-      append_env REDIS_URL "redis://:${REDIS_PASSWORD}@redis:6379/0"
-      added+=(REDIS_URL)
-    else
-      echo "error: REDIS_URL is empty" >&2
-      exit 1
-    fi
+    append_env REDIS_URL "redis://:${REDIS_PASSWORD}@redis:6379/0"
+    added+=(REDIS_URL)
   fi
   if [[ -z "${KIM_JWT_SECRET:-}" ]]; then
     require_openssl
