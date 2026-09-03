@@ -1,9 +1,8 @@
-import Close from "@mui/icons-material/Close";
-import Dialog from "@mui/material/Dialog";
-import IconButton from "@mui/material/IconButton";
-import Box from "@mui/material/Box";
+import { X } from "lucide-react";
 
 import { COPY } from "../copy.ts";
+import { Button } from "./ui/button.tsx";
+import { Dialog, DialogContent } from "./ui/dialog.tsx";
 
 export function ImageViewer({
   src,
@@ -15,34 +14,32 @@ export function ImageViewer({
   onClose: () => void;
 }) {
   return (
-    <Dialog
-      open={open && Boolean(src)}
-      onClose={onClose}
-      maxWidth={false}
-      slotProps={{
-        paper: {
-          sx: { bgcolor: "transparent", boxShadow: "none", overflow: "visible" },
-        },
-      }}
-    >
-      <Box onClick={onClose} sx={{ position: "relative", outline: "none" }} aria-label={COPY.viewImage}>
-        {src ? (
-          <Box
-            component="img"
-            src={src}
-            alt=""
-            onClick={(ev) => ev.stopPropagation()}
-            sx={{ maxHeight: "92dvh", maxWidth: "92vw", objectFit: "contain", display: "block" }}
-          />
-        ) : null}
-        <IconButton
-          aria-label={COPY.closeViewer}
-          onClick={onClose}
-          sx={{ position: "absolute", top: 8, right: 8, bgcolor: "rgba(0,0,0,0.5)", color: "#fff", "&:hover": { bgcolor: "rgba(0,0,0,0.7)" } }}
-        >
-          <Close />
-        </IconButton>
-      </Box>
+    <Dialog open={open && Boolean(src)} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[92vw] border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-[92vw]"
+      >
+        <div className="relative" onClick={onClose}>
+          {src ? (
+            <img
+              src={src}
+              alt=""
+              onClick={(ev) => ev.stopPropagation()}
+              className="block max-h-[92dvh] max-w-[92vw] object-contain"
+            />
+          ) : null}
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={COPY.closeViewer}
+            onClick={onClose}
+            className="absolute top-2 right-2 bg-black/50 text-white hover:bg-black/70 hover:text-white"
+          >
+            <X />
+          </Button>
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }
