@@ -30,12 +30,12 @@ require_docker() {
   fi
 }
 
-# Official hashicorp/consul image USER is consul (uid 100). tls ca/cert create
-# writes $name-<uuid>.tmp then renames; that fails on a root:root 755 bind
-# mount (CI chown -R root:root before this script). Run as the host user.
+# docker-entrypoint.sh su-execs to USER consul (uid 100) even when docker
+# --user is root, so --user cannot write $name-<uuid>.tmp into a root:root
+# 755 bind mount. Skip the entrypoint; open the dir for the generate window.
 consul_tls() {
-  docker run --rm --user "$(id -u):$(id -g)" \
-    -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" consul tls "$@"
+  docker run --rm --user consul --entrypoint /bin/consul \
+    -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" tls "$@"
 }
 
 tls_complete() {
@@ -51,6 +51,7 @@ ensure_tls() {
     return 0
   fi
   require_docker
+  chmod 0777 "$TLS_DIR"
   if [[ ! -f "$TLS_DIR/consul-agent-ca.pem" ]]; then
     consul_tls ca create
   fi
@@ -67,6 +68,7 @@ ensure_tls() {
     mv "$TLS_DIR/dc1-client-consul-0.pem" "$TLS_DIR/consul-client.pem"
     mv "$TLS_DIR/dc1-client-consul-0-key.pem" "$TLS_DIR/consul-client-key.pem"
   fi
+  chmod 0755 "$TLS_DIR"
   chmod 640 "$TLS_DIR/"*.pem
   if ! tls_complete; then
     echo "error: Consul TLS material incomplete under $TLS_DIR" >&2
