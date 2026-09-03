@@ -21,23 +21,76 @@ use super::{
 #[derive(Clone, Copy)]
 pub struct PoolOpts {
     pub max_connections: u32,
+    pub min_connections: u32,
     pub acquire_timeout: Duration,
     pub idle_timeout: Duration,
+    pub max_lifetime: Duration,
+    pub statement_timeout: Duration,
+    pub idle_in_tx_timeout: Duration,
+}
+
+impl Default for PoolOpts {
+    fn default() -> Self {
+        Self {
+            max_connections: 5,
+            min_connections: 0,
+            acquire_timeout: Duration::from_secs(3),
+            idle_timeout: Duration::from_secs(60),
+            max_lifetime: Duration::from_secs(30 * 60),
+            statement_timeout: Duration::from_secs(5),
+            idle_in_tx_timeout: Duration::from_secs(15),
+        }
+    }
+}
+
+impl From<super::PoolConfig> for PoolOpts {
+    fn from(c: super::PoolConfig) -> Self {
+        Self {
+            max_connections: c.max_connections,
+            min_connections: c.min_connections,
+            acquire_timeout: c.acquire_timeout,
+            idle_timeout: c.idle_timeout,
+            max_lifetime: c.max_lifetime,
+            statement_timeout: c.statement_timeout,
+            idle_in_tx_timeout: c.idle_in_tx_timeout,
+        }
+    }
 }
 
 pub async fn connect_pool(url: &str, opts: PoolOpts) -> Result<PgPool, StoreError> {
-    let pool = PgPoolOptions::new()
-        .max_connections(opts.max_connections)
+    let migrate = PgPoolOptions::new()
+        .max_connections(1)
         .acquire_timeout(opts.acquire_timeout)
-        .idle_timeout(opts.idle_timeout)
         .connect(url)
         .await
         .map_err(pg_err)?;
     sqlx::migrate!("./migrations")
-        .run(&pool)
+        .run(&migrate)
         .await
         .map_err(|e| StoreError::Backend(e.to_string()))?;
-    Ok(pool)
+    migrate.close().await;
+
+    let stmt_ms = u64::try_from(opts.statement_timeout.as_millis()).unwrap_or(u64::MAX);
+    let idle_tx_ms = u64::try_from(opts.idle_in_tx_timeout.as_millis()).unwrap_or(u64::MAX);
+    let connect = url
+        .parse::<sqlx::postgres::PgConnectOptions>()
+        .map_err(pg_err)?
+        .options([
+            ("statement_timeout", stmt_ms.to_string()),
+            (
+                "idle_in_transaction_session_timeout",
+                idle_tx_ms.to_string(),
+            ),
+        ]);
+    PgPoolOptions::new()
+        .max_connections(opts.max_connections)
+        .min_connections(opts.min_connections)
+        .acquire_timeout(opts.acquire_timeout)
+        .idle_timeout(opts.idle_timeout)
+        .max_lifetime(opts.max_lifetime)
+        .connect_with(connect)
+        .await
+        .map_err(pg_err)
 }
 
 pub struct PostgresMessageStore {
@@ -46,6 +99,7 @@ pub struct PostgresMessageStore {
     ack: Arc<dyn AckIndex>,
     sessions: Option<Arc<dyn SessionStorage>>,
     pending_receipt: bool,
+    inbox_materialized: bool,
 }
 
 impl PostgresMessageStore {
@@ -62,6 +116,7 @@ impl PostgresMessageStore {
             ack,
             sessions,
             pending_receipt,
+            inbox_materialized: inbox_materialized_enabled(),
         }
     }
 
@@ -170,7 +225,7 @@ impl PostgresMessageStore {
                 })
                 .collect(),
         };
-        for (account_a, account_b, direction, group_id) in rows {
+        for (account_a, account_b, direction, group_id) in &rows {
             let idx_id = self.idgen.next_id()?;
             sqlx::query(
                 "INSERT INTO message_index
@@ -179,16 +234,27 @@ impl PostgresMessageStore {
             )
             .bind(idx_id)
             .bind(app)
-            .bind(&account_a)
-            .bind(&account_b)
+            .bind(account_a)
+            .bind(account_b)
             .bind(direction)
             .bind(message_id)
-            .bind(&group_id)
+            .bind(group_id)
             .bind(req.send_time)
             .execute(&mut *tx)
             .await
             .map_err(pg_err)?;
         }
+        upsert_inbox_rows(
+            &mut tx,
+            app,
+            message_id,
+            req.send_time,
+            &req.sender,
+            &req.body,
+            msg_type,
+            &rows,
+        )
+        .await?;
         if !req.client_id.is_empty() {
             let claimed = sqlx::query(
                 "INSERT INTO message_idempotency (app, sender, client_id, message_id, send_time)
@@ -330,7 +396,7 @@ impl PostgresMessageStore {
                 })
                 .collect(),
         };
-        for (account_a, account_b, direction, group_id) in rows {
+        for (account_a, account_b, direction, group_id) in &rows {
             let idx_id = self.idgen.next_id()?;
             sqlx::query(
                 "INSERT INTO message_index
@@ -339,16 +405,27 @@ impl PostgresMessageStore {
             )
             .bind(idx_id)
             .bind(app)
-            .bind(&account_a)
-            .bind(&account_b)
+            .bind(account_a)
+            .bind(account_b)
             .bind(direction)
             .bind(message_id)
-            .bind(&group_id)
+            .bind(group_id)
             .bind(req.send_time)
             .execute(&mut *tx)
             .await
             .map_err(pg_err)?;
         }
+        upsert_inbox_rows(
+            &mut tx,
+            app,
+            message_id,
+            req.send_time,
+            &req.sender,
+            &req.body,
+            msg_type,
+            &rows,
+        )
+        .await?;
 
         if !req.client_id.is_empty() {
             let claimed = sqlx::query(
@@ -463,6 +540,138 @@ impl PostgresMessageStore {
 
 fn pg_err(e: sqlx::Error) -> StoreError {
     StoreError::Backend(e.to_string())
+}
+
+fn inbox_materialized_enabled() -> bool {
+    matches!(
+        std::env::var("KIM_INBOX_MATERIALIZED")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upsert_inbox_rows(
+    tx: &mut Transaction<'_, Postgres>,
+    app: &str,
+    message_id: i64,
+    send_time: i64,
+    sender: &str,
+    body: &str,
+    msg_type: i16,
+    rows: &[(String, String, i16, String)],
+) -> Result<(), StoreError> {
+    let mut keyed: Vec<(String, String, i16, i32)> = rows
+        .iter()
+        .map(|(account_a, account_b, direction, group_id)| {
+            let (dest, kind) = if group_id.is_empty() {
+                (account_b.clone(), 0i16)
+            } else {
+                (group_id.clone(), 1i16)
+            };
+            let unread = if *direction == DIRECTION_RECV as i16 {
+                1
+            } else {
+                0
+            };
+            (account_a.clone(), dest, kind, unread)
+        })
+        .collect();
+    keyed.sort_by(|a, b| (a.0.as_str(), a.1.as_str(), a.2).cmp(&(b.0.as_str(), b.1.as_str(), b.2)));
+    for (account, dest, kind, unread) in keyed {
+        sqlx::query(
+            "INSERT INTO conversation_inbox
+                (app, account, dest, kind, last_message_id, last_send_time,
+                 last_sender, last_body, last_msg_type, unread)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (app, account, dest, kind) DO UPDATE SET
+                last_message_id = CASE WHEN (EXCLUDED.last_send_time, EXCLUDED.last_message_id)
+                                          > (conversation_inbox.last_send_time, conversation_inbox.last_message_id)
+                                     THEN EXCLUDED.last_message_id ELSE conversation_inbox.last_message_id END,
+                last_send_time  = CASE WHEN (EXCLUDED.last_send_time, EXCLUDED.last_message_id)
+                                          > (conversation_inbox.last_send_time, conversation_inbox.last_message_id)
+                                     THEN EXCLUDED.last_send_time ELSE conversation_inbox.last_send_time END,
+                last_sender     = CASE WHEN (EXCLUDED.last_send_time, EXCLUDED.last_message_id)
+                                          > (conversation_inbox.last_send_time, conversation_inbox.last_message_id)
+                                     THEN EXCLUDED.last_sender ELSE conversation_inbox.last_sender END,
+                last_body       = CASE WHEN (EXCLUDED.last_send_time, EXCLUDED.last_message_id)
+                                          > (conversation_inbox.last_send_time, conversation_inbox.last_message_id)
+                                     THEN EXCLUDED.last_body ELSE conversation_inbox.last_body END,
+                last_msg_type   = CASE WHEN (EXCLUDED.last_send_time, EXCLUDED.last_message_id)
+                                          > (conversation_inbox.last_send_time, conversation_inbox.last_message_id)
+                                     THEN EXCLUDED.last_msg_type ELSE conversation_inbox.last_msg_type END,
+                unread = conversation_inbox.unread + EXCLUDED.unread",
+        )
+        .bind(app)
+        .bind(&account)
+        .bind(&dest)
+        .bind(kind)
+        .bind(message_id)
+        .bind(send_time)
+        .bind(sender)
+        .bind(body)
+        .bind(msg_type)
+        .bind(unread)
+        .execute(&mut **tx)
+        .await
+        .map_err(pg_err)?;
+    }
+    Ok(())
+}
+
+async fn inbox_materialized(
+    pool: &PgPool,
+    app: &str,
+    account: &str,
+    cap: i64,
+) -> Result<Vec<InboxEntry>, StoreError> {
+    type InboxMatRow = (String, i16, i64, i64, String, String, i32, i16);
+    let rows: Vec<InboxMatRow> = sqlx::query_as(
+        "SELECT dest, kind, last_message_id, last_send_time, last_sender,
+                last_body, unread, last_msg_type
+           FROM conversation_inbox
+          WHERE app = $1 AND account = $2
+          ORDER BY last_send_time DESC, last_message_id DESC
+          LIMIT $3",
+    )
+    .bind(app)
+    .bind(account)
+    .bind(cap)
+    .fetch_all(pool)
+    .await
+    .map_err(pg_err)?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(
+                dest,
+                kind,
+                last_message_id,
+                last_send_time,
+                last_sender,
+                last_body,
+                unread,
+                last_msg_type,
+            )| {
+                InboxEntry {
+                    dest,
+                    kind: if kind == 1 {
+                        MessageKind::Group
+                    } else {
+                        MessageKind::User
+                    },
+                    last_message_id,
+                    last_send_time,
+                    last_sender,
+                    last_body,
+                    unread,
+                    last_msg_type: i32::from(last_msg_type),
+                }
+            },
+        )
+        .collect())
 }
 
 enum FanoutAttempt {
@@ -825,6 +1034,9 @@ impl MessageStore for PostgresMessageStore {
         limit: i32,
     ) -> Result<Vec<InboxEntry>, StoreError> {
         let cap = i64::try_from(clamp_page(limit, INBOX_PAGE, INBOX_MAX)).unwrap_or(50);
+        if self.inbox_materialized {
+            return inbox_materialized(&self.pool, app, account, cap).await;
+        }
         let rows: Vec<(String, i32, i64, i64, i32)> = sqlx::query_as(
             "SELECT
                 CASE WHEN i.group_id = '' THEN i.account_b ELSE i.group_id END AS dest,
@@ -984,22 +1196,83 @@ impl MessageStore for PostgresMessageStore {
             MessageKind::User => (dest, ""),
             MessageKind::Group => ("", dest),
         };
+        let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
+        let kind_i = match kind {
+            MessageKind::User => 0i16,
+            MessageKind::Group => 1i16,
+        };
         sqlx::query(
+            "SELECT 1 FROM conversation_inbox
+              WHERE app = $1 AND account = $2 AND dest = $3 AND kind = $4
+              FOR UPDATE",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(dest)
+        .bind(kind_i)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        let row: (i64,) = sqlx::query_as(
             "INSERT INTO conversation_reads (app, account, peer, group_id, last_read_id, updated_at)
              VALUES ($1, $2, $3, $4, $5, now())
              ON CONFLICT (app, account, peer, group_id)
              DO UPDATE SET
                 last_read_id = GREATEST(conversation_reads.last_read_id, EXCLUDED.last_read_id),
-                updated_at = now()",
+                updated_at = now()
+             RETURNING last_read_id",
         )
         .bind(app)
         .bind(account)
         .bind(peer)
         .bind(group_id)
         .bind(message_id)
-        .execute(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(pg_err)?;
+        let last_read = row.0;
+        let unread: (i64,) = if kind == MessageKind::User {
+            sqlx::query_as(
+                "SELECT COUNT(*)::bigint FROM message_index
+                  WHERE app = $1 AND account_a = $2 AND account_b = $3
+                    AND direction = $4 AND message_id > $5",
+            )
+            .bind(app)
+            .bind(account)
+            .bind(dest)
+            .bind(DIRECTION_RECV)
+            .bind(last_read)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(pg_err)?
+        } else {
+            sqlx::query_as(
+                "SELECT COUNT(*)::bigint FROM message_index
+                  WHERE app = $1 AND account_a = $2 AND group_id = $3
+                    AND direction = $4 AND message_id > $5",
+            )
+            .bind(app)
+            .bind(account)
+            .bind(dest)
+            .bind(DIRECTION_RECV)
+            .bind(last_read)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(pg_err)?
+        };
+        sqlx::query(
+            "UPDATE conversation_inbox SET unread = $5
+              WHERE app = $1 AND account = $2 AND dest = $3 AND kind = $4",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(dest)
+        .bind(kind_i)
+        .bind(i32::try_from(unread.0).unwrap_or(i32::MAX))
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        tx.commit().await.map_err(pg_err)?;
         Ok(())
     }
 }
@@ -1037,8 +1310,7 @@ mod tests {
             ack,
             PoolOpts {
                 max_connections: 2,
-                acquire_timeout: Duration::from_secs(3),
-                idle_timeout: Duration::from_secs(60),
+                ..PoolOpts::default()
             },
         )
         .await
@@ -1167,8 +1439,7 @@ mod tests {
             &url,
             PoolOpts {
                 max_connections: 2,
-                acquire_timeout: Duration::from_secs(3),
-                idle_timeout: Duration::from_secs(60),
+                ..PoolOpts::default()
             },
         )
         .await

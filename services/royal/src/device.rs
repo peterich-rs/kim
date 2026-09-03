@@ -304,8 +304,7 @@ pub struct RedisDeviceHot {
 #[cfg(feature = "redis")]
 impl RedisDeviceHot {
     pub async fn open(url: &str) -> Result<Self, DeviceError> {
-        let client = redis::Client::open(url).map_err(|e| DeviceError::Backend(e.to_string()))?;
-        let conn = redis::aio::ConnectionManager::new(client)
+        let conn = kim_session::open_connection_manager(url)
             .await
             .map_err(|e| DeviceError::Backend(e.to_string()))?;
         Ok(Self { conn })

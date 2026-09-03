@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chat::directory::MemoryGroupDirectory;
-use chat::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::royal::http_backends_with_hmac;
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
@@ -220,14 +220,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => Arc::new(MemoryHmacNonceGuard::new()),
     };
 
-    let node = resolve_snowflake_node(Some(cfg.this.snowflake_node));
-    let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
-        Ok(g) => Arc::new(g),
-        Err(err) => {
-            tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
-            Arc::new(SequenceIdGen::new(10_001))
-        }
-    };
+    let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
+    let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
     let (store, groups, users, social) =
         if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
             http_backends_with_hmac(&royal, &hmac)?
@@ -240,6 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     max_connections: cfg.this.db_max_connections.max(1),
                     acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
                     idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
+                    ..PoolConfig::default()
                 },
             )
             .await?;

@@ -1167,16 +1167,24 @@ pub async fn open_pg_backends(
 #[derive(Clone, Copy)]
 pub struct PoolConfig {
     pub max_connections: u32,
+    pub min_connections: u32,
     pub acquire_timeout: Duration,
     pub idle_timeout: Duration,
+    pub max_lifetime: Duration,
+    pub statement_timeout: Duration,
+    pub idle_in_tx_timeout: Duration,
 }
 
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
             max_connections: 5,
+            min_connections: 0,
             acquire_timeout: Duration::from_secs(3),
             idle_timeout: Duration::from_secs(60),
+            max_lifetime: Duration::from_secs(30 * 60),
+            statement_timeout: Duration::from_secs(5),
+            idle_in_tx_timeout: Duration::from_secs(15),
         }
     }
 }
@@ -1206,17 +1214,7 @@ async fn open_postgres_store(
     ack: Arc<dyn AckIndex>,
     pool: PoolConfig,
 ) -> Result<Arc<dyn MessageStore>, StoreError> {
-    let store = PostgresMessageStore::connect(
-        url,
-        idgen,
-        ack,
-        PoolOpts {
-            max_connections: pool.max_connections,
-            acquire_timeout: pool.acquire_timeout,
-            idle_timeout: pool.idle_timeout,
-        },
-    )
-    .await?;
+    let store = PostgresMessageStore::connect(url, idgen, ack, PoolOpts::from(pool)).await?;
     Ok(Arc::new(store))
 }
 
@@ -1229,15 +1227,7 @@ async fn open_pg_backends_inner(
     sessions: Option<Arc<dyn kim_router::SessionStorage>>,
     pending_receipt: bool,
 ) -> Result<PgBackends, StoreError> {
-    let pg = connect_pool(
-        database_url,
-        PoolOpts {
-            max_connections: pool.max_connections,
-            acquire_timeout: pool.acquire_timeout,
-            idle_timeout: pool.idle_timeout,
-        },
-    )
-    .await?;
+    let pg = connect_pool(database_url, PoolOpts::from(pool)).await?;
     let ack = open_ack_index(redis_url).await?;
     let store: Arc<dyn MessageStore> = Arc::new(PostgresMessageStore::from_pool(
         pg.clone(),

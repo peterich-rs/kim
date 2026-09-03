@@ -90,8 +90,7 @@ pub struct RedisRevocation {
 #[cfg(feature = "redis")]
 impl RedisRevocation {
     pub async fn open(url: &str) -> Result<Self, RevokeError> {
-        let client = redis::Client::open(url).map_err(|e| RevokeError::Backend(e.to_string()))?;
-        let conn = redis::aio::ConnectionManager::new(client)
+        let conn = kim_session::open_connection_manager(url)
             .await
             .map_err(|e| RevokeError::Backend(e.to_string()))?;
         Ok(Self { conn })

@@ -29,6 +29,8 @@ pub enum TalkError {
     NotFriends,
     #[error("blocked")]
     Blocked,
+    #[error("directory timeout")]
+    DirectoryTimeout,
 }
 
 fn unix_nano() -> i64 {
@@ -79,54 +81,70 @@ pub async fn do_user_talk(
         return;
     }
     let receiver = ctx.header().dest.as_str();
-    match users.exists(&ctx.session().app, receiver).await {
-        Ok(true) => {}
-        Ok(false) => {
-            let _ = ctx
-                .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
-                .await;
-            return;
-        }
-        Err(err) => {
-            warn!(%err, account = %receiver, "user exists failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
-        }
-    }
-    if receiver != ctx.session().account {
-        match social
-            .is_blocked_either(&ctx.session().app, &ctx.session().account, receiver)
-            .await
-        {
-            Ok(true) => {
-                let _ = ctx
-                    .resp_with_error(Status::Blocked, &TalkError::Blocked)
-                    .await;
-                return;
-            }
-            Ok(false) => {}
-            Err(err) => {
-                warn!(%err, "block check failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return;
-            }
-        }
-        match social
-            .is_friend(&ctx.session().app, &ctx.session().account, receiver)
-            .await
-        {
+    const DIRECTORY_BUDGET: Duration = Duration::from_millis(800);
+    let directory = crate::royal::with_rpc_deadline(DIRECTORY_BUDGET, async {
+        match users.exists(&ctx.session().app, receiver).await {
             Ok(true) => {}
             Ok(false) => {
                 let _ = ctx
-                    .resp_with_error(Status::NotFriends, &TalkError::NotFriends)
+                    .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
                     .await;
-                return;
+                return Err(());
             }
             Err(err) => {
-                warn!(%err, "friend check failed");
+                warn!(%err, account = %receiver, "user exists failed");
                 let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return;
+                return Err(());
             }
+        }
+        if receiver != ctx.session().account {
+            match social
+                .is_blocked_either(&ctx.session().app, &ctx.session().account, receiver)
+                .await
+            {
+                Ok(true) => {
+                    let _ = ctx
+                        .resp_with_error(Status::Blocked, &TalkError::Blocked)
+                        .await;
+                    return Err(());
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    warn!(%err, "block check failed");
+                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                    return Err(());
+                }
+            }
+            match social
+                .is_friend(&ctx.session().app, &ctx.session().account, receiver)
+                .await
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    let _ = ctx
+                        .resp_with_error(Status::NotFriends, &TalkError::NotFriends)
+                        .await;
+                    return Err(());
+                }
+                Err(err) => {
+                    warn!(%err, "friend check failed");
+                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                    return Err(());
+                }
+            }
+        }
+        Ok(())
+    })
+    .await;
+    match directory {
+        Ok(Ok(())) => {}
+        Ok(Err(())) => return,
+        Err(()) => {
+            warn!("directory check timed out");
+            let _ = ctx
+                .resp_with_error(Status::SystemException, &TalkError::DirectoryTimeout)
+                .await;
+            return;
         }
     }
 

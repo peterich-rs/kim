@@ -1,7 +1,7 @@
 //! HTTP adapters that send Chat store/directory calls to royal.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -29,6 +29,45 @@ use crate::store::{
 use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
 
 const RETRIES: usize = 3;
+const PER_ATTEMPT: Duration = Duration::from_millis(400);
+const DEFAULT_ATTEMPT: Duration = Duration::from_secs(4);
+
+tokio::task_local! {
+    static RPC_DEADLINE: Instant;
+}
+
+pub(crate) async fn with_rpc_deadline<F, T>(budget: Duration, fut: F) -> Result<T, ()>
+where
+    F: std::future::Future<Output = T>,
+{
+    let deadline = Instant::now() + budget;
+    match tokio::time::timeout(budget, RPC_DEADLINE.scope(deadline, fut)).await {
+        Ok(v) => Ok(v),
+        Err(_) => Err(()),
+    }
+}
+
+fn attempt_timeout() -> Duration {
+    RPC_DEADLINE
+        .try_with(|d| d.saturating_duration_since(Instant::now()).min(PER_ATTEMPT))
+        .unwrap_or(DEFAULT_ATTEMPT)
+}
+
+async fn backoff(attempt: usize) {
+    let shift = u32::try_from(attempt.min(2)).unwrap_or(2);
+    let base = 100u64.saturating_mul(1u64 << shift);
+    let jitter = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::from(d.subsec_millis() % 50))
+        .unwrap_or(0);
+    let sleep = Duration::from_millis(base.saturating_add(jitter));
+    let still = RPC_DEADLINE
+        .try_with(|d| Instant::now() + sleep < *d)
+        .unwrap_or(true);
+    if still {
+        tokio::time::sleep(sleep).await;
+    }
+}
 
 fn fanout_from_resp(fanout: Option<InsertFanout>) -> Fanout {
     match fanout {
@@ -90,7 +129,7 @@ impl RoyalClient {
 
     pub fn with_hmac(base: &str, hmac_secret: &str) -> Result<Self, StoreError> {
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(DEFAULT_ATTEMPT)
             .build()
             .map_err(|e| StoreError::Backend(e.to_string()))?;
         Ok(Self {
@@ -132,8 +171,13 @@ impl RoyalClient {
         let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
         let payload = bytes.as_deref().unwrap_or(&[]);
         let mut last = StoreError::Backend("royal request failed".into());
-        for _ in 0..RETRIES {
-            let req = self.signed(method.clone(), path, payload)?;
+        for attempt in 0..RETRIES {
+            if attempt_timeout().is_zero() {
+                break;
+            }
+            let req = self
+                .signed(method.clone(), path, payload)?
+                .timeout(attempt_timeout());
             match req.send().await {
                 Ok(resp) => {
                     let status = resp.status();
@@ -152,6 +196,9 @@ impl RoyalClient {
                 }
                 Err(err) => last = StoreError::Backend(err.to_string()),
             }
+            if attempt + 1 < RETRIES {
+                backoff(attempt).await;
+            }
         }
         Err(last)
     }
@@ -165,9 +212,13 @@ async fn post_maybe_empty(
 ) -> Result<(), StoreError> {
     let bytes = Bytes::from(body.encode_to_vec());
     let mut last = StoreError::Backend("royal request failed".into());
-    for _ in 0..RETRIES {
+    for attempt in 0..RETRIES {
+        if attempt_timeout().is_zero() {
+            break;
+        }
         match client
             .signed(reqwest::Method::POST, path, &bytes)?
+            .timeout(attempt_timeout())
             .send()
             .await
         {
@@ -183,6 +234,9 @@ async fn post_maybe_empty(
                 }
             }
             Err(err) => last = StoreError::Backend(err.to_string()),
+        }
+        if attempt + 1 < RETRIES {
+            backoff(attempt).await;
         }
     }
     Err(last)

@@ -159,8 +159,7 @@ pub struct RevokeStore {
 
 impl RevokeStore {
     pub async fn open(url: &str) -> Result<Self, String> {
-        let client = redis::Client::open(url).map_err(|e| e.to_string())?;
-        let conn = redis::aio::ConnectionManager::new(client)
+        let conn = kim_session::open_connection_manager(url)
             .await
             .map_err(|e| e.to_string())?;
         Ok(Self { conn })

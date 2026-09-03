@@ -169,7 +169,6 @@ mod tests {
     use super::*;
     use crate::idgen::SequenceIdGen;
     use crate::store::connect_pool;
-    use std::time::Duration;
 
     async fn dir() -> Option<PostgresGroupDirectory> {
         let url = std::env::var("DATABASE_URL")
@@ -179,8 +178,7 @@ mod tests {
             &url,
             crate::store::PoolOpts {
                 max_connections: 2,
-                acquire_timeout: Duration::from_secs(3),
-                idle_timeout: Duration::from_secs(60),
+                ..crate::store::PoolOpts::default()
             },
         )
         .await
