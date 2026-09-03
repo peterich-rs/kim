@@ -409,7 +409,8 @@ mod tests {
     use crate::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
     use crate::filter::{ContentFilter, ImageFilter, NoopFilter, TextWordFilter};
     use crate::idgen::{IdGenerator, SequenceIdGen};
-    use crate::social::{MemorySocialDirectory, SocialDirectory};
+    use crate::social::{MemorySocialDirectory, SocialDirectory, SocialError};
+    use crate::social_cache::CachedSocial;
     use crate::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
     };
@@ -460,6 +461,60 @@ mod tests {
             dir.accept("kim", b, a).await.unwrap();
         }
         dir
+    }
+
+    struct CountingSocial {
+        inner: Arc<MemorySocialDirectory>,
+        friend_hits: std::sync::atomic::AtomicU32,
+    }
+
+    #[async_trait]
+    impl SocialDirectory for CountingSocial {
+        async fn request(
+            &self,
+            app: &str,
+            from: &str,
+            to: &str,
+        ) -> Result<crate::social::FriendRequestOutcome, SocialError> {
+            self.inner.request(app, from, to).await
+        }
+        async fn accept(&self, app: &str, account: &str, from: &str) -> Result<(), SocialError> {
+            self.inner.accept(app, account, from).await
+        }
+        async fn reject(&self, app: &str, account: &str, from: &str) -> Result<(), SocialError> {
+            self.inner.reject(app, account, from).await
+        }
+        async fn remove(&self, app: &str, account: &str, peer: &str) -> Result<(), SocialError> {
+            self.inner.remove(app, account, peer).await
+        }
+        async fn list_friends(&self, app: &str, account: &str) -> Result<Vec<String>, SocialError> {
+            self.inner.list_friends(app, account).await
+        }
+        async fn incoming(&self, app: &str, account: &str) -> Result<Vec<String>, SocialError> {
+            self.inner.incoming(app, account).await
+        }
+        async fn is_friend(&self, app: &str, a: &str, b: &str) -> Result<bool, SocialError> {
+            self.friend_hits
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.is_friend(app, a, b).await
+        }
+        async fn block(&self, app: &str, account: &str, peer: &str) -> Result<(), SocialError> {
+            self.inner.block(app, account, peer).await
+        }
+        async fn unblock(&self, app: &str, account: &str, peer: &str) -> Result<(), SocialError> {
+            self.inner.unblock(app, account, peer).await
+        }
+        async fn list_blocked(&self, app: &str, account: &str) -> Result<Vec<String>, SocialError> {
+            self.inner.list_blocked(app, account).await
+        }
+        async fn is_blocked_either(
+            &self,
+            app: &str,
+            a: &str,
+            b: &str,
+        ) -> Result<bool, SocialError> {
+            self.inner.is_blocked_either(app, a, b).await
+        }
     }
 
     fn talk_pkt(dest: &str, body: Bytes) -> LogicPkt {
@@ -1449,6 +1504,50 @@ mod tests {
             .iter()
             .any(|p| p.pkt.header.flag == Flag::Push as i32));
         assert_eq!(dispatch_fail_count(&metrics, "user"), 0);
+    }
+
+    #[tokio::test]
+    async fn second_talk_hits_friend_cache() {
+        let store = memory_store();
+        let cache = Arc::new(MemorySessionStore::new());
+        cache.add(&receiver_session()).await.unwrap();
+        let inner = seed_friends(&[("alice", "bob")]).await;
+        let counting = Arc::new(CountingSocial {
+            inner,
+            friend_hits: std::sync::atomic::AtomicU32::new(0),
+        });
+        let social = CachedSocial::wrap(counting.clone());
+        let users = seed_users(&["alice", "bob"]).await;
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve_user_talk_users(
+            store.clone(),
+            cache.clone(),
+            dispatcher.clone(),
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users.clone(),
+            social.clone(),
+        )
+        .await;
+        serve_user_talk_users(
+            store,
+            cache,
+            dispatcher,
+            talk_req_pkt("bob", &sample_req()),
+            sender_session(),
+            Arc::new(NoopFilter),
+            users,
+            social,
+        )
+        .await;
+        assert_eq!(
+            counting
+                .friend_hits
+                .load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "second talk must reuse CachedSocial is_friend"
+        );
     }
 
     #[tokio::test]

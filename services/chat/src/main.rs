@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use chat::directory::MemoryGroupDirectory;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
-use chat::royal::http_backends_with_hmac;
+use chat::royal::http_backends_with_pool;
+use chat::royal_pool::RoyalPool;
+use chat::social_cache::{CachedSocial, CachedUserDirectory};
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
@@ -17,7 +19,7 @@ use kim_protocol::{
     check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
 };
 use kim_session::open_session_store;
-use kim_tcp::TcpServer;
+use kim_tcp::{SocketOpts, TcpServer};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -100,6 +102,7 @@ fn database_url_from_env_or_cfg(cfg: &str) -> Option<String> {
     }
 }
 
+/// Bootstrap / unique address when Consul discovery is off.
 fn royal_url_from_env_or_cfg(cfg: &str) -> Option<String> {
     match std::env::var("ROYAL_URL") {
         Ok(s) if !s.trim().is_empty() => Some(s),
@@ -224,7 +227,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
     let (store, groups, users, social) =
         if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
-            http_backends_with_hmac(&royal, &hmac)?
+            let pool = Arc::new(RoyalPool::new(
+                Some(&royal),
+                consul.as_ref().map(|_| naming.clone()),
+                &hmac,
+            )?);
+            pool.spawn_refresh();
+            http_backends_with_pool(pool)?
         } else {
             let store = open_message_store(
                 database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
@@ -245,8 +254,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Arc::new(chat::social::MemorySocialDirectory::new());
             (store, groups, users, social)
         };
+    let users = CachedUserDirectory::wrap(users);
+    let social = CachedSocial::wrap(social);
 
     let mut server = TcpServer::bind(&cfg.this.listen).await?;
+    server.set_socket_opts(SocketOpts::default());
     let container = Container::new(ContainerOpts {
         naming,
         identity,

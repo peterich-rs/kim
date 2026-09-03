@@ -63,7 +63,7 @@ impl IdGenerator for SnowflakeGen {
     }
 }
 
-/// Test + snowflake init fallback. Default start is 10_001.
+/// Test-only id generator. Default start is 10_001.
 pub struct SequenceIdGen {
     n: AtomicI64,
 }
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_cfg_above_31_falls_back_to_one() {
+    fn resolve_cfg_above_31_is_err() {
         let env = EnvGuard::lock();
         env.unset();
         assert!(resolve_snowflake_node(Some(99)).is_err());
