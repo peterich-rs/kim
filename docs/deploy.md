@@ -38,7 +38,7 @@ pending receipt（默认关）顺序不可颠倒。compose 默认保持 0。切�
 2. migrate `0007`（空表；可与 1 并行）。GC 随 Royal。
 3. 部署兼容代码：`KIM_REQUIRE_JTI=0`；Royal/Chat `KIM_PENDING_RECEIPT=0`。Gateway 已写 `Session.jti`。
 4. 改 VPS `kim.env`：`KIM_REQUIRE_JTI=1`，`docker compose up -d gateway`。此后保持开。无 jti JWT 必须重新登录。
-5. `deploy/scan-empty-jti.sh` 必须 exit 0（`empty_jti=0`）。不要用 talk 路径抽样 gauge。Royal 日志每 60s 打 `kim_location_without_jti`。
+5. `deploy/scan-empty-jti.sh` 必须 exit 0（`empty_jti=0 invalid=0 wrong_type=0`）。不要用 talk 路径抽样 gauge。Royal 日志每 60s 打 `kim_location_without_jti` 以及 invalid/wrong_type/scanned。
 6. `KIM_PENDING_RECEIPT_ROYAL=1`，Chat 仍 0，`docker compose up -d royal`。确认 `pending_delivery` 有新行。
 7. `KIM_PENDING_RECEIPT_CHAT=1`，`docker compose up -d chat chat-gray`。
 8. 回滚：Chat 先 0，再 Royal 0。禁止 Chat=1 且 Royal=0。

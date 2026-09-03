@@ -1,7 +1,7 @@
 //! Count `login:loc:v2:*` locations whose `jti` is empty.
 //!
-//! Exit 0 iff the count is 0. Requires `--features redis` and `REDIS_URL`
-//! (or a single argv URL). Do not decode Location blobs in shell.
+//! Exit 0 iff empty_jti, invalid, and wrong_type are all 0. Requires
+//! `--features redis` and `REDIS_URL` (or a single argv URL).
 
 #[tokio::main]
 async fn main() {
@@ -22,9 +22,12 @@ async fn main() {
         }
     };
     match store.count_empty_jti_locations().await {
-        Ok(n) => {
-            println!("empty_jti={n}");
-            std::process::exit(kim_session::empty_jti_gate_code(n));
+        Ok(scan) => {
+            println!(
+                "empty_jti={} invalid={} wrong_type={} scanned={}",
+                scan.empty_jti, scan.invalid, scan.wrong_type, scan.scanned
+            );
+            std::process::exit(kim_session::empty_jti_gate_code(scan));
         }
         Err(err) => {
             eprintln!("scan: {err}");
