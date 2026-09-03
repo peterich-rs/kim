@@ -6,7 +6,7 @@
 
 - 说明书：`crates/kim-core/src/`
 - TCP：`crates/kim-tcp/src/`
-- 验收：`crates/kim-tcp/tests/echo.rs`（TCP）、`crates/kim-ws/tests/echo.rs`（WS）。没有独立 echo 二进制。
+- 验收：`crates/kim-tcp/tests/echo.rs`（TCP）、`crates/kim-tcp/tests/tls.rs`（TGateway 形状：TLS / keepalive / 连接上限）、`crates/kim-ws/tests/echo.rs`（WS）。没有独立 echo 二进制。
 
 ## 这一层解决什么问题
 
@@ -141,7 +141,7 @@ TcpServer::start
 - **两个写**交错：帧头和内容搅在一起
 - **两个读**互偷字节
 
-服务端 `Channel` **已经**按「专员」模型实现，不是还没做到。图见上文第 2 张。源码：`crates/kim-core/src/channel.rs`、`channel_map.rs`，握手后 `TcpConn::into_split`。
+服务端 `Channel` **已经**按「专员」模型实现，不是还没做到。图见上文第 2 张。源码：`crates/kim-core/src/channel.rs`、`channel_map.rs`，握手后 `TcpConn::into_split`。`TcpConn<S>` 对齐 `WsConn<S>`：明文仍是 `TcpConn::new(TcpStream)`（内设 `TCP_NODELAY`），TGateway 用 `with_peer` 包 `TlsStream`，accept 后、rustls 握手前同样 `set_nodelay(true)`。`TcpServer` 不泛型化。明文与 TLS 前端共用 `FrontendState`：`socket2` keepalive（默认 idle 30s / interval 10s / retries 3）、`Option<Semaphore>` 连接上限（`try_acquire_owned`，满了立刻关流）。reuseport / vectored write 不做。
 
 - **写**：N 对 1。谁都可以 `push`，顺序 = **入队顺序**。真正碰插座的只有写协程。
 - **读**：1 对 1。读专员自己守网线，有数据再喊业务。别人不持有「读信箱」去使唤他。

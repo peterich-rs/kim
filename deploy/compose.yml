@@ -172,6 +172,50 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  royal-2:
+    image: ${KIM_IMAGE:?set KIM_IMAGE}
+    restart: unless-stopped
+    command: ["royal", "/etc/kim/royal.toml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      consul-acl:
+        condition: service_completed_successfully
+    environment:
+      KIM_ENV: production
+      KIM_SERVICE_ID: royal-2
+      KIM_SNOWFLAKE_NODE: "11"
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
+      KIM_INTERNAL_HMAC_SECRET: ${KIM_INTERNAL_HMAC_SECRET:?set KIM_INTERNAL_HMAC_SECRET}
+      CHAT_URL: http://chat:9002
+      CONSUL_HTTP_ADDR: https://consul:8501
+      CONSUL_HTTP_TOKEN: ${CONSUL_TOKEN_ROYAL:?set CONSUL_TOKEN_ROYAL}
+      CONSUL_CACERT: /etc/kim/consul-ca.pem
+      CONSUL_CLIENT_CERT: /etc/kim/consul-client.pem
+      CONSUL_CLIENT_KEY: /etc/kim/consul-client-key.pem
+      KIM_PUBLIC_ADDRESS: royal-2
+      KIM_APP: kim
+      KIM_LOC_CACHE: "0"
+      KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes: *kim-tls
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   chat:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: unless-stopped

@@ -21,7 +21,7 @@ pub use dual::DualWriteStore;
 pub use keys::{key_location, key_session};
 pub use memory::MemorySessionStore;
 #[cfg(feature = "redis")]
-pub use redis::RedisSessionStore;
+pub use redis::{open_connection_manager, RedisSessionStore};
 
 /// Mobile-class devices keep a single live session. Web/desktop/cli may overlap.
 pub fn exclusive_device(device: &str) -> bool {
@@ -34,10 +34,27 @@ pub fn exclusive_device(device: &str) -> bool {
 /// Session and location key TTL used on the Redis path (`SET EX`).
 pub const SESSION_TTL: Duration = Duration::from_secs(48 * 3600);
 
-/// Rollout gate for pending receipt: 0 iff every `login:loc:v2:*` blob has a jti.
+/// SCAN `login:loc:v2:*` gate counters. Fail-closed: any non-zero problem field
+/// or a Redis error means the pending-receipt door stays shut.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LocationScan {
+    pub scanned: u64,
+    pub empty_jti: u64,
+    pub invalid: u64,
+    pub wrong_type: u64,
+}
+
+impl LocationScan {
+    #[must_use]
+    pub fn is_clean(self) -> bool {
+        self.empty_jti == 0 && self.invalid == 0 && self.wrong_type == 0
+    }
+}
+
+/// Rollout gate: 0 iff the scan found no empty jti, no decode errors, no WRONGTYPE.
 #[must_use]
-pub fn empty_jti_gate_code(empty: u64) -> i32 {
-    i32::from(empty != 0)
+pub fn empty_jti_gate_code(scan: LocationScan) -> i32 {
+    i32::from(!scan.is_clean())
 }
 
 /// Open a session store.
@@ -137,10 +154,38 @@ mod tests {
     }
 
     #[test]
-    fn empty_jti_gate_is_zero_only_when_empty() {
-        assert_eq!(empty_jti_gate_code(0), 0);
-        assert_eq!(empty_jti_gate_code(1), 1);
-        assert_eq!(empty_jti_gate_code(12), 1);
+    fn empty_jti_gate_is_zero_only_when_clean() {
+        assert_eq!(empty_jti_gate_code(LocationScan::default()), 0);
+        assert_eq!(
+            empty_jti_gate_code(LocationScan {
+                scanned: 3,
+                empty_jti: 0,
+                invalid: 0,
+                wrong_type: 0
+            }),
+            0
+        );
+        assert_eq!(
+            empty_jti_gate_code(LocationScan {
+                empty_jti: 1,
+                ..LocationScan::default()
+            }),
+            1
+        );
+        assert_eq!(
+            empty_jti_gate_code(LocationScan {
+                invalid: 1,
+                ..LocationScan::default()
+            }),
+            1
+        );
+        assert_eq!(
+            empty_jti_gate_code(LocationScan {
+                wrong_type: 2,
+                ..LocationScan::default()
+            }),
+            1
+        );
     }
 
     #[test]

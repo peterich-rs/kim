@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |---|---|
-| 状态 | 通信层 G-29 / G-30 / G-31 随 #65 / #66 关闭。本文件只留**后台轨**合同；web / mobile 另轨，不插队 |
+| 状态 | 通信层 G-29 / G-30 / G-31 / G-34 与 Royal G-16、G-33 热路径已关。本文件只留**后台轨**剩余合同；web / mobile 另轨，不插队 |
 | 日期 | 2026-09-02 |
 | 父规格 | [production-gaps.md](../production-gaps.md)。已落地形状在专题文档 |
 
@@ -29,6 +29,9 @@
 | 串行 lane + 下行 try_send | [communication-layer.md](../communication-layer.md) | G-29 / G-30 随 #66 关 |
 | B1 改密吊销 | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) | G-20 会话半边已关；验证/找回/注销仍开 |
 | B2 device credential 服务端 | 同上 | G-13 改为客户端未持久化；`target_id` 仍 jti；登出仍全端踢 |
+| B3 `TcpConn<S>` + TGateway TLS | [communication-layer.md](../communication-layer.md)、[architecture.md](../architecture.md) | G-34 已关 |
+| B4 redis / sqlx / Royal deadline | [perf.md](../perf.md) | G-33 热路径已关；tower-http / tokio Builder 仍开 |
+| B5 Royal 发现 + 熔断 + 短缓存 | [group-royal.md](../group-royal.md) | G-16 已关；G-22 生产 Snowflake 失败退出已关 |
 
 ## 客户端轨（独立，不挡后台）
 
@@ -53,59 +56,34 @@ G-13 的**客户端持久化**（重装后仍出示同一 device credential）�
 关闭条件（同时满足，缺一不可）：
 
 1. Gateway **持续** `KIM_REQUIRE_JTI=1`
-2. SCAN `login:loc:v2:*`，空 `jti` = 0
+2. SCAN `login:loc:v2:*` fail-closed：`empty_jti=0` 且 `invalid=0` 且 `wrong_type=0`，命令 exit 0
 3. **先** Royal `KIM_PENDING_RECEIPT=1`，**再** Chat `=1`。禁止 Chat=1 且 Royal=0
 
 步骤与回滚见 [reliable-delivery.md](../reliable-delivery.md)、[deploy.md](../deploy.md)。未走完 **不得**从 gaps 删这三条。
 
-本切片不写 Rust 行为变更。可附：compose/env 示例、SCAN 脚本、回滚把 Chat 先置 0。
+SCAN 必须 fail-closed：输出 `empty_jti` / `invalid` / `wrong_type` / `scanned`，任一项问题或 Redis 错误非零退出。不改 ACK 热路径。可附 compose/env、脚本、回滚 Chat 先 0。
 
 不改：`sdk/*`、游标改 `device_id`、Snowflake 当 ACK。
 
-### B3 — `TcpConn<S>` + TGateway TLS（G-34）
+### B6 — 可观测性剩余（G-15）
 
-形状已在 gaps G-34 拍板，本切片执行。
+已落地：`COMMANDS` 29 条；`kim_send_to_ack_seconds`（ACK 路径直方图）。
 
-- `TcpConn<S>` 对齐 `WsConn<S>`：bound 写在 impl 上；`Conn` 再加 `Send + 'static`。不要 `trait Io` / `Box<dyn Io>`，不要把 `TcpServer` 做成 `TcpServer<S>`
-- 抽出 `handle_conn<S>`。`TcpServer::start` 仍明文 `TcpStream`。TGateway：`TlsAcceptor::accept` 后同一 `handle_conn`
-- `socket2` keepalive（idle 30s / interval 10s / retries 3）；Linux reuseport 可配；进程连接 `Semaphore`
-- 证书只放 tgateway 配置，不进 `kim-tcp`。e2e 仿 `crates/kim-ws/tests/wss.rs`
-- kim-ws 保持明文 + Caddy。不要 native-tls / OpenSSL / stunnel
-- vectored write **不做**（稳定 API 常要 `tokio_unstable`）
+仍开：
 
-不改：Chat 业务 handler、ACK、sdk。
-
-### B4 — 用尽 redis / sqlx（G-33 热路径）
-
-- `get_locations` pipeline 一次往返；ConnectionManager timeout
-- sqlx `statement_timeout` / pool `min_connections` `max_lifetime` 可配
-- Royal HTTP 重试加退避（现 5xx 空转三次）
-- 不换 fred、不换 `prometheus-client`、不做 sqlx 离线 `.sqlx` 数据（子任务）
-
-不改：协议、客户端、TGateway。
-
-### B5 — Royal 发现 + 熔断 + 好友短缓存（G-16）
-
-- Royal 进 Consul，多实例（PG 后接近无状态）
-- Chat `RoyalClient`：连续失败摘实例、半开探测；重试指数退避 + jitter
-- 好友 / block 短 TTL 缓存（有界）。不把 Royal 目录 RPC 合成一个自定义网关协议
-
-不改：写扩散语义、sdk。
-
-### B6 — 可观测性（G-15 后台半边）
-
-- handler command 白名单补 inbox/history/friend
-- send→ack 直方图、Royal RPC 延迟/错误、`pending_delivery` 堆积已有 stats 接 Prometheus
-- `deploy/prometheus.yml` 加告警规则（dispatch fail、revoke error、mailbox full、pending backlog）
+- Royal RPC 延迟/错误（path_group 含 block/offline/delivery/inbox/history）
+- `pending_delivery` backlog / oldest-age gauge
+- `deploy/prometheus.yml` 告警规则（dispatch fail、revoke error、mailbox full、pending backlog）
 - `otel` feature 默认关，本切片不做跨进程 trace
 
 不改：客户端埋点、ChatList。
 
-### B7 — inbox 去 N+1，再物化（G-17）
+### B7 — inbox 物化剩余（G-17）
 
-1. 先消灭 `do_inbox_list` 每行 profile/detail
-2. 再 additive `conversation_inbox`：双写 → 切读 → 才考虑删 GROUP BY
-3. Memory 按账号分组，inbox 不阻塞 insert
+1. 先消灭 `do_inbox_list` 每行 profile **和** detail（批量 profiles 已落地；群 `detail` 仍逐行）
+2. additive `conversation_inbox` 双写已落地。仍开：回填终态 UPSERT（禁止 DO NOTHING）→ 切读开关在 Royal（`KIM_INBOX_MATERIALIZED`，默认 0）→ 才考虑删 GROUP BY
+3. `mark_read` 与 inbox 同一事务，按 last_read_id 重算 unread
+4. Memory 按账号分组，inbox 不阻塞 insert
 
 不改：客户端 inbox 命令形状（仍 `chat.inbox.list`）。
 
@@ -117,8 +95,8 @@ G-13 的**客户端持久化**（重装后仍出示同一 device credential）�
 | 消息类型白名单；审核不挡 P99 | G-19 | |
 | 邮箱验证 / 找回 / 2FA / 注销 | G-20 后半 | 与 B1 拆开 |
 | R2 签名 URL + 生命周期 | G-21 | 撤回若做了却不改 R2，只是客户端隐藏 |
-| 雪花 init 失败退出；幂等 TTL | G-22 / G-23 | |
-| Redis 超时 / 读路径降级 | G-24 | 心跳宽限已在 G-31 |
+| 雪花 `data_center_id`；幂等 TTL | G-22 / G-23 | 生产 init 失败退出已关；机器位仍 5 bit、dc 写死 0 |
+| Redis 主挂读路径降级 | G-24 | ConnectionManager 超时已关；主挂仍 SessionNotFound |
 | 大群分批 + outbox 成员快照 | G-25 | |
 | Header version / trace-id | G-26 | |
 

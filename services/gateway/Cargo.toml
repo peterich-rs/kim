@@ -19,7 +19,7 @@ kim-core.workspace = true
 kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
-kim-session.workspace = true
+kim-session = { workspace = true, features = ["redis"] }
 prost.workspace = true
 kim-ws.workspace = true
 redis.workspace = true

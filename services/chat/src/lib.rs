@@ -14,7 +14,9 @@ mod login;
 mod offline;
 mod profile;
 pub mod royal;
+pub mod royal_pool;
 pub mod social;
+pub mod social_cache;
 pub mod store;
 mod talk;
 pub mod users;
@@ -43,7 +45,7 @@ use std::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
-use crate::idgen::{resolve_snowflake_node, IdGenerator, SequenceIdGen, SnowflakeGen};
+use crate::idgen::{IdGenerator, SequenceIdGen};
 use crate::social::{MemorySocialDirectory, SocialDirectory};
 use crate::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
 use crate::users::{MemoryUserDirectory, UserDirectory};
@@ -67,7 +69,12 @@ pub use kim_session::open_uncached_session_store;
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
 pub use profile::{do_user_profile, do_user_search, do_user_update};
-pub use royal::{http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt};
+pub use royal::{
+    http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt,
+    http_backends_with_pool,
+};
+pub use royal_pool::RoyalPool;
+pub use social_cache::{CachedSocial, CachedUserDirectory};
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -109,25 +116,20 @@ pub struct ChatHandler {
 }
 
 impl ChatHandler {
-    /// Two-arg signature unchanged for `e2e_login.rs`: `resolve_snowflake_node(None)`.
+    /// Two-arg signature unchanged for `e2e_login.rs`. Test path uses SequenceIdGen.
     pub fn new(container: Arc<Container>, cache: Arc<dyn SessionStorage>) -> Self {
         Self::new_with_node(container, cache, None)
     }
 
-    /// `services/chat/src/main.rs` must pass `Some(cfg.this.snowflake_node)`.
+    /// Test constructor. Production `main` fails closed on Snowflake init.
     pub fn new_with_node(
         container: Arc<Container>,
         cache: Arc<dyn SessionStorage>,
         cfg_node: Option<u16>,
     ) -> Self {
-        let node = resolve_snowflake_node(cfg_node);
-        let idgen: Arc<dyn IdGenerator> = match SnowflakeGen::try_new(node) {
-            Ok(g) => Arc::new(g),
-            Err(err) => {
-                tracing::error!(%err, node, "snowflake init failed; using SequenceIdGen");
-                Arc::new(SequenceIdGen::new(10_001))
-            }
-        };
+        let _ = cfg_node;
+        // Test constructor: SequenceIdGen. Production `main` fails on Snowflake init.
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::new(10_001));
         Self::with_seams_and_zone(
             container,
             cache,

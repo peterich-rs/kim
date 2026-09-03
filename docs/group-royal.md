@@ -26,7 +26,11 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 
 进程：`services/royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
 
-Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`；Postgres 只由 Royal 写。
+Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`（bootstrap / 无 Consul 时的唯一地址）；Postgres 只由 Royal 写。
+
+Chat 对 Royal 走 `RoyalPool`：无 Consul 时池退化为 `ROYAL_URL` 单地址。有 Consul 时每 10s `find("royal")` 全量替换实例列表（按 base 合并熔断状态）。连接错误 / 超时 / 500/502/503/504 计连续失败，满 5 次熔断摘除；4xx 与 2xx 重置。`pick` 先对已熔断实例做半开探测（30s 窗，`compare_exchange` 每实例只放行一个），再轮询健康实例——有健康 peer 时仍探测，恢复后才能回池。池空回 `StoreError::Backend("no royal available")`（chat 99）。
+
+好友 / 黑名单 / `exists` 在 Chat 侧短 TTL 缓存（默认 30s ±20% jitter，容量 10_000，超限删最旧 10%）。键带 `SocialQueryKind`，账号对称排序；friend 与 block 不共用键。miss 同键 single-flight。写（request/accept/reject/remove/block/unblock）成功后 evict 双向键。过期不 stale-if-error。`KIM_SOCIAL_CACHE_TTL_MS=0` 关闭缓存。跨 Chat 最多 30s 见旧 friend/block，不是 fail-open。
 
 除 `/health` 与 `/api/v1/auth/*` 外，Royal HTTP 都要 HMAC-SHA256：`x-kim-timestamp`、`x-kim-nonce`、`x-kim-signature`。密钥是 `KIM_INTERNAL_HMAC_SECRET`（空则 demo 默认值；生产 `strict_runtime` 拒 demo/`change-me`）。canonical 串是 `METHOD`、`PATH`、timestamp、nonce、body 各占一行。允许 ±60s 时钟差。验签成功后 Redis `SET kim:hmac-nonce:{nonce} NX EX 121` 占 nonce；重放 401，Redis 故障 503。缺签或错签返回 401，body 是 `unauthorized`，不含 Fanout。Chat `RoyalClient` 与网关 `HttpRevoke` 自动带签。Chat `POST /internal/kick` 走同一合同；Royal `kick_account` 签名后 2s 超时 POST，失败只打日志，logout 仍 204。
 

@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 /// Resolve snowflake node: env `KIM_SNOWFLAKE_NODE` (trim, parse u16) > `cfg` > `1`.
 ///
 /// Missing or empty env does not warn. Non-numeric env warns and falls through
-/// to `cfg`. A selected value `> 31` warns and returns 1.
-pub fn resolve_snowflake_node(cfg: Option<u16>) -> u16 {
+/// to `cfg`. A selected value `> 31` is an error (no silent fallback to 1).
+pub fn resolve_snowflake_node(cfg: Option<u16>) -> Result<u16, IdError> {
     let from_env = match std::env::var("KIM_SNOWFLAKE_NODE") {
         Ok(s) if !s.trim().is_empty() => match s.trim().parse::<u16>() {
             Ok(n) => Some(n),
@@ -17,10 +17,9 @@ pub fn resolve_snowflake_node(cfg: Option<u16>) -> u16 {
     };
     let n = from_env.or(cfg).unwrap_or(1);
     if n > 31 {
-        tracing::warn!(requested = n, used = 1, "snowflake node out of 0..=31");
-        1
+        Err(IdError::Init(format!("snowflake node {n} out of 0..=31")))
     } else {
-        n
+        Ok(n)
     }
 }
 
@@ -44,7 +43,7 @@ pub struct SnowflakeGen {
 
 impl SnowflakeGen {
     pub fn try_new(machine_id: u16) -> Result<Self, IdError> {
-        let mid = machine_id; // u16, 已由 resolve_snowflake_node 夹到 0..=31
+        let mid = machine_id;
         let sf = snowflake_me::Snowflake::builder()
             .machine_id(&|| Ok::<u16, Box<dyn std::error::Error + Send + Sync>>(mid))
             .data_center_id(&|| Ok::<u16, Box<dyn std::error::Error + Send + Sync>>(0))
@@ -64,7 +63,7 @@ impl IdGenerator for SnowflakeGen {
     }
 }
 
-/// Test + snowflake init fallback. Default start is 10_001.
+/// Test-only id generator. Default start is 10_001.
 pub struct SequenceIdGen {
     n: AtomicI64,
 }
@@ -160,27 +159,27 @@ mod tests {
     fn resolve_missing_env_and_none_is_one() {
         let env = EnvGuard::lock();
         env.unset();
-        assert_eq!(resolve_snowflake_node(None), 1);
+        assert_eq!(resolve_snowflake_node(None).unwrap(), 1);
     }
 
     #[test]
     fn resolve_missing_env_uses_cfg() {
         let env = EnvGuard::lock();
         env.unset();
-        assert_eq!(resolve_snowflake_node(Some(7)), 7);
+        assert_eq!(resolve_snowflake_node(Some(7)).unwrap(), 7);
     }
 
     #[test]
-    fn resolve_cfg_above_31_falls_back_to_one() {
+    fn resolve_cfg_above_31_is_err() {
         let env = EnvGuard::lock();
         env.unset();
-        assert_eq!(resolve_snowflake_node(Some(99)), 1);
+        assert!(resolve_snowflake_node(Some(99)).is_err());
     }
 
     #[test]
     fn resolve_non_numeric_env_falls_through_to_cfg() {
         let env = EnvGuard::lock();
         env.set("not-a-number");
-        assert_eq!(resolve_snowflake_node(Some(4)), 4);
+        assert_eq!(resolve_snowflake_node(Some(4)).unwrap(), 4);
     }
 }

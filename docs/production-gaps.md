@@ -26,7 +26,7 @@
 2. **漏 Push 仍无可靠补偿**（G-03 / G-14）。发送方 Success 不保证对端收到；已落库不再回 99。
 3. **内部控制面已关**：Chat `/internal/kick` 与 Royal 同 HMAC；nonce Redis NX EX 121；生产 Redis `requirepass` + `noeviction`；Consul 关明文 8500、HTTPS/mTLS 8501、ACL deny、每服务最小权限 token。demo/`change-me` JWT/HMAC 在 strict 下拒启动。
 4. **租户已冻结为 `app=kim`**（[gray.md](gray.md)）。G-05 / G-06 已关。
-5. **通信层骨架对、运维合同不够**：读循环按 channel 串行 lane、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。仍缺 TGateway TLS（G-34）。停机顺序已关（G-07 / G-32）。
+5. **通信层骨架对**：读循环按 channel 串行 lane、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。TGateway 进程内 TLS、keepalive、连接上限已关（G-34）。停机顺序已关（G-07 / G-32）。reuseport / vectored write 仍延后。
 
 两份外部报告的大方向都对。产品报告若干事实写错；库报告把硬化排在鉴权/读索引前面，且 Phase 0 的 duplicate 语义不能照抄。订正见下文两张表。
 
@@ -41,14 +41,11 @@
 | 1 | pending receipt rollout：`KIM_REQUIRE_JTI=1` + SCAN 空 jti=0 + Royal writer 先于 Chat reader | G-03, G-04, G-10 |
 | 2 | device credential 客户端持久化 + `target_id` 迁 device_id；验证/找回/注销 | G-13, G-20 |
 | 3 | Flutter 登录后 sync；Web `isRetryable` 对齐真实错误码 | G-14 |
-| 4 | Redis pipeline `get_locations` + timeout；sqlx pool/statement_timeout | G-33 |
-| 5 | 连接上限、keepalive、TGateway rustls（先改 TcpStream 硬编码） | G-34 |
-| 6 | send→ack 延迟、Royal RPC、告警规则 | G-15 |
-| 7 | Royal 发现 + 熔断 + 好友短缓存 | G-16 |
-| 8 | inbox 去掉 N+1，再物化 `conversation_inbox` | G-17 |
-| 9 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
+| 4 | Royal RPC 延迟/错误、pending backlog gauge、告警规则 | G-15 |
+| 5 | 群 inbox N+1；物化读开关默认开 | G-17 |
+| 6 | 限流 governor、R2 签名 URL、撤回/已读、系统推送 | G-18 起 |
 
-读循环隔离、下行 try_send、心跳 Redis 有界宽限已关（G-29 / G-30 / G-31）。剩余通信层硬化（TLS）仍排在 G-03 rollout 之后。vectored write、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
+读循环隔离、下行 try_send、心跳 Redis 有界宽限、TGateway TLS / keepalive / 连接上限已关（G-29 / G-30 / G-31 / G-34）。Royal 发现 + 熔断 + 好友短缓存已关（G-16）。Redis/sqlx/Royal 热路径超时已关（G-33 剩余 tower-http / tokio Builder）。vectored write、reuseport、ChannelMap 分片、jemalloc、一致哈希、io_uring 再往后。撤回若做了却不改 R2 生命周期，只是客户端隐藏。
 
 ## 实施节奏
 
@@ -72,7 +69,7 @@
 | 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
-| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`；无端到端/Royal RPC；无告警规则 |
+| Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`、`kim_send_to_ack_seconds`；handler 白名单 29 条。无 Royal RPC 直方图；无告警规则 |
 | Web / Flutter 客户端 | `sdk/web`、`sdk/mobile` + `kim-client` | Flutter supervisor 登录后 sync；G-14 仍开（Web isRetryable + chat_ui leftover） |
 
 协议消息类型常量已有 TEXT=1、IMAGE=2、VOICE=3、VIDEO=4。SDK 与过滤器只用前两个。无 FILE，无类型白名单。
@@ -93,6 +90,8 @@
 | G-31 心跳 Redis 错误踢全员 | [link-layer-login.md](link-layer-login.md)、[observability.md](observability.md)。仅 `Ok(true)` 立刻关；存储错误连续 3 次（`HEARTBEAT_REVOKE_ERROR_GRACE`）后断开；期内 warn + `kim_heartbeat_revoke_error_total`、不续签 JWT。登录 revoke 仍 fail-closed |
 | G-29 读循环与 handler 按 channel 串行隔离 | [communication-layer.md](communication-layer.md)。Binary 入 per `header.channel_id` 串行 lane；Ping/Pong/Close 留读专员；满 in-flight 停读。MessageListener 不再假设与读同任务，同一 channel 仍 FIFO |
 | G-30 下行 try_send / 满信箱 Disconnect | [communication-layer.md](communication-layer.md)。`ChannelOpts.write_full`：网关 Disconnect + `kim_mailbox_full_total`；内部链路默认 Block |
+| G-34 keepalive / 连接上限 / TGateway TLS | [communication-layer.md](communication-layer.md)、[architecture.md](architecture.md)。`TcpConn<S>` + `FrontendState`；`try_acquire_owned`；进程内 rustls（`tls_cert` 空则明文）。reuseport / vectored write 仍延后 |
+| G-16 Royal 发现 + 熔断 + 好友短缓存 | [group-royal.md](group-royal.md)。`RoyalPool`：半开先探测再 RR 健康实例；Consul `find`；5xx 计熔断；Chat 侧 30s 社交缓存；compose `royal-2` |
 
 ---
 
@@ -239,59 +238,37 @@ Flutter 登录后走与 Web 相同的 sync。服务端已落库不再回 99；`i
 
 ### G-15 可观测性不够定位「偶发延迟」
 
-**文件**
+**已落地**
 
-- `crates/kim-metrics/src/lib.rs` — 已有 channel / bytes / `no_server_found` / login / handler RT / talk / `kim_dispatch_fail_total` / session_not_found
-- `COMMANDS` 白名单停在 offline/group，好友/inbox/history 进 `other`
-- `deploy/prometheus.yml` — 只有 scrape，无 rule
+- `COMMANDS` 29 条（含 friend / inbox / history / user / block）
+- `kim_send_to_ack_seconds`：ACK 路径直方图，不是 pending 表 AVG
+
+**仍开**
+
+- `deploy/prometheus.yml` 只有 scrape，无 `rule_files`
+- 无 Royal RPC 延迟/错误率（path_group）
+- `pending_delivery` backlog / oldest-age 只打日志，未接 gauge
 - 无 OpenTelemetry，无跨进程 trace id
 
-**缺口**
-
-dispatch 失败率、send→ack 延迟、离线拉取量、Royal RPC 延迟/错误率、补投队列深度。handler span 只在进程内。
-
-e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径偏 happy path。故障注入（Royal 5xx、Redis 断、网关 kill 后消息不丢）缺。`kim_dispatch_fail_total` 已有；缺口是 send→ack 延迟、Royal RPC、告警规则。
-
----
-
-### G-16 Royal 是写路径隐形单点
-
-**文件**
-
-- `services/chat/src/royal.rs` — `RoyalClient`：`RETRIES = 3`，无退避，无熔断，timeout 5s；4xx 立即失败，5xx 空转三次
-- `services/chat/src/talk.rs` — 私聊：exists → blocked → friend，再 insert，再本进程 `get_locations`
-- `deploy/compose.yml` — 单实例 Royal；未注册进 Chat 的 naming 依赖
-
-**问题**
-
-原报告「一次 talk 串 5 次 HTTP」不准确。私聊是 3 次 Royal HTTP（exists / blocked / friend）+ Redis locations + 1 次 insert。群聊是 members HTTP + insert HTTP。数量级仍不可接受。
-
-`royal.rs` 的 insert_group 在 Chat 侧会带 members。Royal handler 在 `req.members` 为空时再查群。正常 talk 不双查；有 HMAC 的直接 HTTP 仍会打到这条 fallback。members 为空时 Memory store 会写下无 index 的幽灵 content（`empty_members_writes_content_without_index`）。
-
-好友关系无短 TTL 缓存。Royal 重启数秒内全部发消息变 99。
-
-compose 里 Consul / Redis / PG 也是单节点。Royal 不是唯一 SPOF。
-
-**建议**
-
-Royal 进 Consul，多实例（Memory 换 PG 后接近无状态）。Chat 侧熔断 + 好友短缓存。
+e2e 覆盖面不小（`services/chat/tests/` 12 个文件量级），主路径偏 happy path。故障注入（Royal 5xx、Redis 断、网关 kill 后消息不丢）缺。
 
 ---
 
 ### G-17 inbox 全量聚合 + N+1
 
-**文件**
+**已落地**
 
-- `services/chat/src/store/postgres.rs` — `inbox`（约 325–351 行）：对 `(app, account_a)` 全部 `message_index` GROUP BY
-- `services/chat/src/inbox.rs` — `do_inbox_list`：每行再 `users.profile` 或 `groups.detail`
-- `services/chat/migrations/0001_messages.sql` — 索引 `(app, account_a, direction, send_time)`，对不上这条不滤 direction 的查询
+- `do_inbox_list` 对私聊 dest 一次 `users.profiles`（不再逐行 `profile`）
+- `conversation_inbox` 双写（unread 累加；last 按 `(send_time, id)`）
+- 读路径可切 `KIM_INBOX_MATERIALIZED`（compose / Royal 进程读取；**默认 0**，仍走 `message_index` GROUP BY）
+
+**仍开**
+
+- 群会话仍逐行 `groups.detail`
+- 默认读仍是全量 GROUP BY；物化回填终态与默认开关于 Royal
 - Memory：`indexes: Vec<InboxRow>` 全表扫，一把 `RwLock<Inner>`
 
 inbox 最多 100、无游标。历史已有 `before_id`。
-
-**建议**
-
-先消灭 N+1（JOIN 资料或行内冗余 title/avatar）。再物化 conversation 汇总，写扩散同事务更新 last_message/unread。Memory 按账号分组，避免 inbox 阻塞 insert。
 
 ---
 
@@ -334,16 +311,13 @@ Royal 有 register / login / logout / `POST /api/v1/auth/password`（Argon2）�
 
 ### G-22 Snowflake 碰撞面
 
-**文件**
+**已落地（B5 半边）**
 
-- `services/chat/src/idgen.rs` — `resolve_snowflake_node`：非法或 `>31` 回退到 **1**；init 失败降 `SequenceIdGen(10001)`
-- `deploy/compose.yml` — chat node=1，chat-gray node=2；生产写路径在 Royal，compose 未给 Royal 单独 node
+生产 Chat / Royal `SnowflakeGen::try_new` 失败即退出，不再降 `SequenceIdGen`。`resolve_snowflake_node` 对 `>31` 返回 `Err`（不回退 1）。compose：royal node=10，`royal-2` `KIM_SNOWFLAKE_NODE=11`。测试仍显式 `SequenceIdGen`。
 
-机器位 5 bit（32 节点）。Chat 走 Royal 时本进程仍创建 idgen（未用于 insert，但容易误配）。
+**仍开**
 
-**建议**
-
-未配置或冲突拒绝启动。发号只在一处。
+机器位 5 bit（32 节点）。`data_center_id` 仍写死 0。Chat 走 Royal 时本进程仍创建 idgen（未用于 insert）。发号仍分散在 Chat Memory 路径与 Royal。
 
 ---
 
@@ -392,74 +366,23 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 
 ### G-33 已接入库用得浅：Redis / SQLx / Axum / Tokio
 
-**文件与缺口**
+**热路径已落地（B4）**
 
-| 库 | 现状 | 生产缺口 |
-|---|---|---|
-| redis-rs | `ConnectionManager` 单连接；`get_locations` 逐账号 `HVALS` | pipeline 一次往返；打开时设 timeout/退避；Cluster 作 feature，不必换 fred |
-| sqlx | 运行时 `query_as` + migrate；pool 默认 max=5 | `statement_timeout` / `idle_in_transaction_session_timeout`；`min_connections`/`max_lifetime`；pool 指标 |
-| axum | Royal/Router/metrics 裸路由 | `tower-http`：Trace / Timeout / BodyLimit（只 REST，不进 kim-tcp） |
-| tokio | `#[tokio::main]` 默认 | 显式 `Builder`（worker / blocking 池）；runtime metrics 可后置 |
-| reqwest | Consul + Royal | 重试要有退避（现 Royal 3 次空转）；连接池调参暴露 |
-| prometheus | 进程 Registry | 补 command 白名单与 dispatch 计数；不换 `prometheus-client` |
+- redis-rs：六个 `ConnectionManager` 共用 `open_connection_manager`（连接/响应 3s）；多账号 `get_locations` 是 pipeline `HVALS`，失败逐个回退
+- sqlx：业务池 `statement_timeout=5s`；migrate 走独立连接；`min_connections` / `max_lifetime` 可配
+- reqwest：Royal 重试带退避；私聊目录 RPC 总预算 800ms
 
-**建议**
+**仍开**
 
-先用尽现有 crate。`sqlx::query!` + `.sqlx` 离线数据作子任务，不阻塞语义修复。Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`。
+| 库 | 缺口 |
+|---|---|
+| axum | Royal/Router 仍裸路由；无 `tower-http` Trace / Timeout / BodyLimit |
+| tokio | 仍 `#[tokio::main]` 默认；无显式 worker / blocking 池 |
+| redis-rs | Cluster 作 feature，不必换 fred |
+| sqlx | 无 pool 指标；`.sqlx` 离线数据是子任务 |
+| prometheus | command 白名单已 29 条；Royal RPC / 告警见 G-15 |
 
----
-
-### G-34 套接字选项、连接上限、TGateway 无 TLS
-
-**文件**
-
-- `crates/kim-tcp/src/conn.rs` — 仅 `set_nodelay(true)`；`write_all` 两次；`BufWriter` 1KiB
-- `crates/kim-tcp/src/server.rs` — 单 listener accept，每连接 `spawn`，无连接上限
-- `crates/kim-ws/src/server.rs` — 明文，TLS 指望反代
-- `services/tgateway/src/main.rs` — `TcpServer::bind`，无 TLS（[architecture.md](architecture.md) 写明公网 TGateway TLS 未做）
-
-**建议**
-
-`socket2` 做 `SO_KEEPALIVE`（idle 30s / interval 10s / retries 3）和 Linux `SO_REUSEPORT` 多 accept。进程 `Semaphore` 限连接。WsServer 保持明文 + Caddy。不要 `native-tls` / OpenSSL / stunnel。
-
-TGateway TLS **不能**写成「在现成 `TcpStream` 外包一层再交给当前分帧」而不改 server。`TcpServer::handle_conn`（`server.rs` 约 164–169 行）和 `TcpConn`（`conn.rs` 约 11–28 行）**硬编码 `tokio::net::TcpStream`**。
-
-**选定：泛型 `TcpConn<S>`，对齐已有 `WsConn<S>`。不要 `Box<dyn Io>`。**
-
-理由：握手后 `Channel::pair` 已经用 `dyn Conn` 擦掉传输；热路径不必再在字节流上 vtable。TGateway 是独立二进制，只会对 `TlsStream<TcpStream>` 单态一次。`TcpDialer` / `TcpClient` / Chat 内部链路继续明文 `TcpStream`。`Box<dyn Io>` 只在「同一 listener 混明文和 TLS」时才有用，本仓库没有这个需求。
-
-落地拆法（不要把 `TcpServer` 本身做成 `TcpServer<S>`，以免炸 `Server` trait）：
-
-1. 结构体不写死 bound，**约束写在 impl 上**，对齐 `WsConn<S>`（`crates/kim-ws/src/conn.rs`）。**不要**另建 `trait Io`——那只给 `Box<dyn Io>` 用，泛型路径直接 `where`。
-
-```rust
-pub struct TcpConn<S> { /* stream, buf, peer */ }
-
-impl<S> TcpConn<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin,
-{
-    pub fn into_split(self) -> (TcpReadHalf<S>, TcpWriteHalf<S>) { /* tokio::io::split */ }
-}
-
-#[async_trait]
-impl<S> Conn for TcpConn<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{ /* 分帧 */ }
-```
-
-`into_split` 要 `Unpin`（`split` / `AsyncReadExt`）。`Conn` impl 再加 `Send + 'static`：`async_trait` 的 Future 是 `Send`，`Channel::pair` 要求 `'static` 并 `spawn` 写半边。不必 `Sync`。`set_nodelay` 留在拿到 `TcpStream` 的调用方（server/dialer），不要放进泛型 `new`。
-
-明文别名：`type PlainTcp = TcpConn<TcpStream>`。`TcpDialer` 继续返回 `TcpConn<TcpStream>`。TGateway 传入 `tokio_rustls::server::TlsStream<TcpStream>`，满足上述 bound。
-
-2. 抽出泛型 `handle_conn<S>(stream: S, ...)`（现 `server.rs` 164 行那段），`S` 与 `Conn for TcpConn<S>` 同一组 bound。
-3. `TcpServer::start` 仍 `TcpListener` → `TcpStream` → `handle_conn`。
-4. TGateway 自己 accept：`TcpListener` → `tokio_rustls::TlsAcceptor::accept` → `handle_conn(tls_stream, ...)`。证书只放 tgateway 配置。
-
-证书路径只放 tgateway 配置，不进 `kim-tcp`。e2e 仿 `crates/kim-ws/tests/wss.rs`。
-
-Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable`。先测平台；不行就维持两次 `write_all`。BufWriter 提到 8–16KiB 合理。
+Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`。
 
 ---
 
@@ -483,7 +406,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 - 自聊跳过好友/黑名单，index 插 SEND+RECV 两行（同一 account），inbox 可能重复。
 - 好友申请 Push 失败只打日志；离线方靠 `incoming` 主动拉。
 - `kim-ws` Upgrade 不查 Origin。
-- 网关无全局连接数上限（G-34）。
+- 网关连接上限已落地（G-34）；默认不限，tgateway 可配 `max_connections`。
 - inbox/history 的 Royal HTTP 要 HMAC；Chat `/internal/kick` 同样要 HMAC。
 - `do_user_profile` 可查任意账号资料（文档按搜索产品写的，叠加无限流）。
 - Chat `db_max_connections` 默认 5，inbox 重查询容易把池打满。
@@ -510,7 +433,7 @@ Vectored write：稳定 tokio 的 `write_all_vectored` 往往要 `tokio_unstable
 | 会话漫游靠 history 补 | history 按账号限定；Chat `offline.content` 按 session 过滤。直打 Royal 要 HMAC |
 | 会话 key 不含 app 只会导致互踢 / ACK 串 | 已用冻结 `app=kim` + loc/session v2 + Chat 拒非 kim session 关闭（见 [gray.md](gray.md)） |
 
-原报告成立、且仍应保留的判断：多设备读索引、Royal 单点、inbox 全量聚合、无系统推送、无撤回/已读回执、无限流、DEMO secret、无分布式追踪、无告警规则、Memory 一把大锁。群长连接已鉴权；无角色/邀请仍是功能缺口。
+原报告成立、且仍应保留的判断：多设备读索引、inbox 全量聚合、无系统推送、无撤回/已读回执、无限流、DEMO secret、无分布式追踪、无告警规则、Memory 一把大锁。Royal 多实例 + Chat 熔断已落地；Consul / Redis / PG 仍是单节点运维。群长连接已鉴权；无角色/邀请仍是功能缺口。
 
 ---
 
@@ -581,7 +504,7 @@ accept
   monoio/glommio 作默认 runtime, 自研 Raft, clickhouse（无分析需求前）
 ```
 
-OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在网关热路径加。io_uring、QUIC、一致哈希等 flamegraph 证明后再做（Phase 延后表）。
+OS 能力：`TCP_NODELAY` 与 keepalive 已开。BufWriter 8KiB。reuseport / vectored write / io_uring、QUIC、一致哈希等 flamegraph 证明后再做（Phase 延后表）。
 
 ### 与条目对应的施工期
 
@@ -597,25 +520,23 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 
 - 读帧与业务解耦；**同一 `header.channel_id` 一条串行 lane**，只允许不同逻辑 channel 并发。join 未完成不得 talk 乱序；Ping 留读专员。
 - 每 lane / 每进程 Semaphore；满则停读。
-- 全进程连接上限仍属 G-34。
+- 全进程连接上限已落地（`set_max_connections`，默认不限）。
 - 保持 `kim-ws` `read_frame` 超时即拆连接（非 cancel-safe，禁止半帧 `select!` 再读）。
 
-**H2 — 套接字与 TGateway TLS（G-34）**
+**H2 — 套接字与 TGateway TLS（G-34，已关）**
 
-- socket2 keepalive；Linux reuseport 多 accept（可配 `accept_loops`）。
-- BufWriter 8–16KiB；vectored write 仅在稳定 API 可用时。
-- 先把 `TcpConn` / `handle_conn` 收成泛型 `S`（对齐 `WsConn<S>`：bound 写在 impl 上，`Conn` 再加 `Send + 'static`），再接 `tokio-rustls`。不要 `trait Io` / `Box<dyn Io>`，也不要把整个 `TcpServer` 泛型化。TGateway 自管 TLS accept 后调用同一个 `handle_conn`。
-- TGateway：`tls_cert`/`tls_key` 空则明文；e2e 仿 `crates/kim-ws/tests/wss.rs`。
-- TLS 终止放 tgateway，不把证书逻辑放进 kim-tcp。
+- socket2 keepalive、连接上限、`TcpConn<S>`、TGateway 进程内 rustls **已做**。形状见 [communication-layer.md](communication-layer.md)。
+- Linux reuseport 多 accept、vectored write 仍延后（稳定 `write_all_vectored` 常要 `tokio_unstable`）。
+- kim-ws 保持明文 + Caddy。证书只放 tgateway 配置。
 
 **H3 — 用尽 redis / sqlx / axum / jwt（G-33）**
 
-- `get_locations` pipeline；ConnectionManager timeout。
+- `get_locations` pipeline + ConnectionManager 3s timeout **已做**。
 - 心跳 Redis 错误有界宽限已落地（G-31）：连续 3 次失败后断开；登录 revoke 仍 fail-closed。
-- sqlx `statement_timeout`；pool 可配，默认不要停在 5 不说明。
-- Royal/Router `tower-http`。
+- sqlx `statement_timeout` / 池可配 **已做**；migrate 不用业务 5s timeout。
+- Royal 重试退避 + 目录 800ms 预算 **已做**。
+- Royal/Router `tower-http`、显式 Tokio runtime Builder **仍开**。
 - 空 secret / DEMO secret：**生产启动失败**。
-- 显式 Tokio runtime Builder。
 
 **H4 — 内存与 lint**
 
@@ -634,17 +555,20 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 - 雪花：`data_center_id` 可配；init 失败进程退出，测试仍显式 SequenceIdGen。雪花只做 content 主键，**不做** ACK 游标。
 - 分区用运维脚本 + `CREATE INDEX CONCURRENTLY`，不进事务迁移。RANGE(时间) 优于错误的 HASH(account)。
 
-**H6 — 限流、熔断、追踪（G-16, G-18, G-15）**
+**H6 — 限流、熔断、追踪（G-18, G-15）**
 
+- Royal 发现 / 实例熔断 / 好友短缓存 **已做**（原 G-16）。
 - gateway `governor`：每账号 talk QPS、每 IP 握手。
 - Container `forward`：连续失败摘 Adult，半开探测；重连指数退避 + jitter，上限约 5s。
-- `#[instrument]` 盖 accept/forward/talk；command 白名单补齐。
+- `#[instrument]` 盖 accept/forward/talk。command 白名单 29 条 **已做**。
 - `otel` feature 默认关。
 
 **延后（有 flamegraph / 运维需求再做）**
 
 | 项 | 库 | 何时 |
 |---|---|---|
+| Linux `SO_REUSEPORT` 多 accept | socket2 | accept 成为瓶颈且 flamegraph 证明 |
+| vectored write | tokio `write_all_vectored` | 稳定 API 可用且 write syscall 占 CPU |
 | 一致哈希 | rendezvous / jump hash | Chat 扩容导致会话打散成为问题 |
 | QUIC `Conn` | quinn，新 crate `kim-quic` | 移动网抗丢包有产品需求 |
 | io_uring 写路径 | tokio-uring 仅网关写出 | samply 显示 write syscall 占 CPU |
@@ -657,12 +581,12 @@ OS 能力：`TCP_NODELAY` 已开。keepalive / reuseport / 更大 BufWriter 在�
 一期不必全改。语义修复仍以 G-xx 的文件为准。
 
 - `crates/kim-core` — 读循环隔离、`try_push`、可选 ChannelMap 分片
-- `crates/kim-tcp` / `kim-ws` — keepalive、连接上限、JoinSet drain；ws 仍明文
+- `crates/kim-tcp` / `kim-ws` — keepalive / 连接上限 / TLS 前端已落地；ws 仍明文；reuseport / vectored 延后
 - `crates/kim-container` — token、退避、forward 熔断
 - `crates/kim-session` — pipeline、有界 cache、mirror 指标
 - `crates/kim-metrics` — dispatch/mailbox/push_drop；command 白名单
 - `crates/kim-protocol` — secret 校验；非 HS256 只留注入点
-- `services/chat`（talk / idgen / postgres pool）、tgateway TLS、各 `main` 的 runtime 与 SIGTERM
+- `services/chat`（talk / idgen / RoyalPool / 社交缓存 / postgres pool）、各 `main` 的 runtime 与 SIGTERM
 - `deploy/compose.yml` 与 docs：PgBouncer / Redis 容量写进 [deploy.md](deploy.md)，不要把 64MB 当成生产默认不说明
 
 ### 明确不改

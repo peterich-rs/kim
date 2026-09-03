@@ -25,6 +25,9 @@
 | 串行 lane + 下行 try_send | G-29 / G-30：per-`channel_id` 串行 lane；网关 Disconnect + `kim_mailbox_full_total`。#66 合入后本行生效 | [communication-layer.md](../communication-layer.md) |
 | B1 改密吊销旧会话 | G-20 会话半边：`token_epoch` + `live_claims` + kick；改密不发新 token | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
 | B2 device credential 服务端半边 | 可选 proto 字段；仅 enroll/出示写 `did`；logout 仍全端踢；`target_id` 仍 jti | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
+| B3 `TcpConn<S>` + TGateway TLS | G-34：`FrontendState`、`try_acquire`、keepalive、进程内 rustls；明文 `new(stream)` 保留。reuseport / vectored 仍延后 | [communication-layer.md](../communication-layer.md)、[architecture.md](../architecture.md) |
+| B4 redis / sqlx / Royal deadline | G-33 热路径：ConnectionManager 3s 超时、sqlx `statement_timeout`、migrate 独立连接、目录 RPC 800ms。tower-http / tokio Builder 仍开 | [perf.md](../perf.md) |
+| B5 Royal 发现 + 熔断 + 短缓存 | G-16：`RoyalPool` RR + 5xx 熔断 + Consul `find`；好友/block/`exists` 30s 缓存；royal-2；生产 Snowflake 失败退出 | [group-royal.md](../group-royal.md) |
 | Mobile 成熟化 Phase 3–7 | FFI supervisor / SQLite upsert / Dart outbox；自研 ChatList（去 flutter_chat_ui）；KimTheme v2。G-14 仍开（Web `isRetryable`） | [mobile-client.md](../mobile-client.md)、[06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
 
 漏 Push 补偿仍是 G-03 / G-14。G-03 要等 rollout，不是再写一套 ACK。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
@@ -39,8 +42,9 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 
 | 序 | 轨 | 覆盖 | 依赖 | 规格 |
 |---:|---|---|---|---|
-| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | 代码与 SCAN/runbook 已在；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
-| B3 | 后台 | `TcpConn<S>` + TGateway TLS（G-34） | 形状已在 G-34 拍板 | [production-gaps.md](../production-gaps.md) |
+| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | SCAN fail-closed 已合入；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
+| B6 | 后台 | Royal RPC 指标、pending backlog gauge、告警规则（G-15 剩余） | command 白名单与 send→ack 直方图已落地 | [b6-observability.md](./b6-observability.md) |
+| B7 | 后台 | 群 inbox N+1、物化读开关默认开、回填终态（G-17 剩余） | profiles 已批量；`conversation_inbox` 双写已落地；`KIM_INBOX_MATERIALIZED` 默认 0 | [b7-inbox-materialization.md](./b7-inbox-materialization.md) |
 | — | 客户端 | Web `isRetryable`；Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md)、G-14 |
 
-G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。B4 起（G-33 / G-16 / G-15 / G-17）不插到 B0 前面。
+G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。B3 / B4 热路径 / B5 已落地。剩余后台按 B0 → B6 → B7，不插到 B0 前面。

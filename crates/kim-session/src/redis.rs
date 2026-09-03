@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
+use std::time::Duration;
 
-use ::redis::aio::ConnectionManager;
+use ::redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use ::redis::Client;
 use async_trait::async_trait;
 use kim_protocol::pkt::Session;
@@ -39,10 +40,20 @@ pub struct RedisSessionStore {
     conn: ConnectionManager,
 }
 
+pub async fn open_connection_manager(url: &str) -> Result<ConnectionManager, SessionError> {
+    let client = Client::open(url).map_err(redis_err)?;
+    let config = ConnectionManagerConfig::new()
+        .set_connection_timeout(Duration::from_secs(3))
+        .set_response_timeout(Duration::from_secs(3));
+    client
+        .get_connection_manager_with_config(config)
+        .await
+        .map_err(redis_err)
+}
+
 impl RedisSessionStore {
     pub async fn open(url: &str) -> Result<Self, SessionError> {
-        let client = Client::open(url).map_err(redis_err)?;
-        let conn = ConnectionManager::new(client).await.map_err(redis_err)?;
+        let conn = open_connection_manager(url).await?;
         Ok(Self { conn })
     }
 
@@ -111,10 +122,10 @@ impl RedisSessionStore {
             .await
     }
 
-    pub async fn count_empty_jti_locations(&self) -> Result<u64, SessionError> {
+    pub async fn count_empty_jti_locations(&self) -> Result<crate::LocationScan, SessionError> {
         let mut conn = self.conn.clone();
         let mut cursor: u64 = 0;
-        let mut empty = 0u64;
+        let mut scan = crate::LocationScan::default();
         loop {
             let (next, keys): (u64, Vec<String>) = ::redis::cmd("SCAN")
                 .arg(cursor)
@@ -126,18 +137,19 @@ impl RedisSessionStore {
                 .await
                 .map_err(redis_err)?;
             for key in keys {
+                scan.scanned = scan.scanned.saturating_add(1);
                 let values: Result<Vec<Vec<u8>>, ::redis::RedisError> =
                     ::redis::cmd("HVALS").arg(&key).query_async(&mut conn).await;
                 let values = match values {
                     Ok(v) => v,
-                    Err(err) if is_wrong_type(&err) => continue,
+                    Err(err) if is_wrong_type(&err) => {
+                        scan.wrong_type = scan.wrong_type.saturating_add(1);
+                        continue;
+                    }
                     Err(err) => return Err(redis_err(err)),
                 };
                 for bytes in values {
-                    match Location::decode(&bytes) {
-                        Ok(loc) if loc.jti.is_empty() => empty += 1,
-                        _ => {}
-                    }
+                    note_location_blob(&mut scan, &bytes);
                 }
             }
             cursor = next;
@@ -145,7 +157,15 @@ impl RedisSessionStore {
                 break;
             }
         }
-        Ok(empty)
+        Ok(scan)
+    }
+}
+
+pub(crate) fn note_location_blob(scan: &mut crate::LocationScan, bytes: &[u8]) {
+    match Location::decode(bytes) {
+        Ok(loc) if loc.jti.is_empty() => scan.empty_jti = scan.empty_jti.saturating_add(1),
+        Ok(_) => {}
+        Err(_) => scan.invalid = scan.invalid.saturating_add(1),
     }
 }
 
@@ -321,6 +341,30 @@ mod tests {
     fn type_error_counts_as_wrong_type() {
         let err = ::redis::RedisError::from((::redis::ErrorKind::TypeError, "WRONGTYPE"));
         assert!(is_wrong_type(&err));
+    }
+
+    #[test]
+    fn note_blob_counts_empty_jti_invalid_and_ok() {
+        let mut scan = crate::LocationScan::default();
+        let with_jti = Location {
+            channel_id: "c".into(),
+            gate_id: "g".into(),
+            device: String::new(),
+            jti: "j".into(),
+        };
+        let empty = Location {
+            channel_id: "c".into(),
+            gate_id: "g".into(),
+            device: String::new(),
+            jti: String::new(),
+        };
+        note_location_blob(&mut scan, &with_jti.encode());
+        note_location_blob(&mut scan, &empty.encode());
+        note_location_blob(&mut scan, &[1, 0, 0xff, 0, 0]);
+        assert_eq!(scan.empty_jti, 1);
+        assert_eq!(scan.invalid, 1);
+        assert!(scan.wrong_type == 0);
+        assert!(!scan.is_clean());
     }
 
     #[tokio::test]

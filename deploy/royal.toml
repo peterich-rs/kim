@@ -1,5 +1,6 @@
 [self]
 listen = "0.0.0.0:8080"
+# Multi-instance node allocation: royal-1 = 10, royal-2 = 11 (KIM_SNOWFLAKE_NODE overrides).
 snowflake_node = 10
 service_id = "royal-1"
 service_name = "royal"

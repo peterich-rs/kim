@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
+use tokio::io::{
+    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
+};
 use tokio::net::TcpStream;
 
 use kim_core::{Conn, Error, Frame, OpCode};
@@ -8,25 +10,31 @@ use kim_core::{Conn, Error, Frame, OpCode};
 use crate::codec::{decode_frame, header_bytes};
 
 /// 一条 TCP 连接。握手阶段读写都走它；握手后拆成读半边 / 写半边。
-pub struct TcpConn {
-    stream: TcpStream,
+pub struct TcpConn<S = TcpStream> {
+    stream: S,
     read_buf: BytesMut,
     peer: Option<String>,
 }
 
-pub struct TcpReadHalf {
-    stream: ReadHalf<TcpStream>,
+pub struct TcpReadHalf<S = TcpStream> {
+    stream: ReadHalf<S>,
     read_buf: BytesMut,
 }
 
-pub struct TcpWriteHalf {
-    stream: BufWriter<WriteHalf<TcpStream>>,
+pub struct TcpWriteHalf<S = TcpStream> {
+    stream: BufWriter<WriteHalf<S>>,
 }
 
-impl TcpConn {
-    pub fn new(stream: TcpStream) -> Self {
-        let _ = stream.set_nodelay(true);
-        let peer = stream.peer_addr().ok().map(|a| a.to_string());
+/// 明文别名：内部链路（Chat、TcpClient、InnerTcpDialer）继续用它。
+pub type PlainTcpConn = TcpConn<TcpStream>;
+pub type PlainTcpReadHalf = TcpReadHalf<TcpStream>;
+pub type PlainTcpWriteHalf = TcpWriteHalf<TcpStream>;
+
+impl<S> TcpConn<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    pub fn with_peer(stream: S, peer: Option<String>) -> Self {
         Self {
             stream,
             read_buf: BytesMut::with_capacity(4096),
@@ -34,7 +42,7 @@ impl TcpConn {
         }
     }
 
-    pub fn into_split(self) -> (TcpReadHalf, TcpWriteHalf) {
+    pub fn into_split(self) -> (TcpReadHalf<S>, TcpWriteHalf<S>) {
         let (read, write) = tokio::io::split(self.stream);
         (
             TcpReadHalf {
@@ -42,9 +50,18 @@ impl TcpConn {
                 read_buf: self.read_buf,
             },
             TcpWriteHalf {
-                stream: BufWriter::with_capacity(1024, write),
+                stream: BufWriter::with_capacity(8192, write),
             },
         )
+    }
+}
+
+impl TcpConn<TcpStream> {
+    /// 明文构造：`set_nodelay` + `peer_addr`。签名保持不变。
+    pub fn new(stream: TcpStream) -> Self {
+        let _ = stream.set_nodelay(true);
+        let peer = stream.peer_addr().ok().map(|a| a.to_string());
+        Self::with_peer(stream, peer)
     }
 }
 
@@ -75,7 +92,10 @@ async fn write_frame_parts<W: AsyncWriteExt + Unpin>(
 }
 
 #[async_trait]
-impl Conn for TcpConn {
+impl<S> Conn for TcpConn<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     async fn read_frame(&mut self) -> Result<Frame, Error> {
         fill_and_decode(&mut self.stream, &mut self.read_buf).await
     }
@@ -100,7 +120,10 @@ impl Conn for TcpConn {
 }
 
 #[async_trait]
-impl Conn for TcpReadHalf {
+impl<S> Conn for TcpReadHalf<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     async fn read_frame(&mut self) -> Result<Frame, Error> {
         fill_and_decode(&mut self.stream, &mut self.read_buf).await
     }
@@ -119,7 +142,10 @@ impl Conn for TcpReadHalf {
 }
 
 #[async_trait]
-impl Conn for TcpWriteHalf {
+impl<S> Conn for TcpWriteHalf<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     async fn read_frame(&mut self) -> Result<Frame, Error> {
         Err(Error::other("write half cannot read"))
     }

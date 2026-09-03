@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use redis::aio::ConnectionManager;
-use redis::Client;
 
 use super::{AckIndex, StoreError, ACK_TTL};
 
@@ -10,8 +9,9 @@ pub(crate) struct RedisAckIndex {
 
 impl RedisAckIndex {
     pub(crate) async fn open(url: &str) -> Result<Self, StoreError> {
-        let client = Client::open(url).map_err(redis_err)?;
-        let conn = ConnectionManager::new(client).await.map_err(redis_err)?;
+        let conn = kim_session::open_connection_manager(url)
+            .await
+            .map_err(|e| StoreError::Backend(e.to_string()))?;
         Ok(Self { conn })
     }
 }

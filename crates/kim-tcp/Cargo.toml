@@ -10,11 +10,15 @@ description = "KIM 通信层的 TCP 实现：粘包拆包、TcpServer、TcpClien
 async-trait.workspace = true
 bytes.workspace = true
 kim-core.workspace = true
+socket2 = { version = "0.6", features = ["all"] }
 tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
 tokio = { workspace = true, features = ["test-util"] }
+tokio-rustls = "0.26"
 tracing-subscriber.workspace = true
 
 [lints]

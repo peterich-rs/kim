@@ -1,7 +1,8 @@
 //! HTTP adapters that send Chat store/directory calls to royal.
 
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -21,6 +22,7 @@ use tracing::warn;
 
 use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
 use crate::inbox::parse_kind;
+use crate::royal_pool::RoyalPool;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
 use crate::store::{
     Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult, MessageContentRow,
@@ -28,7 +30,48 @@ use crate::store::{
 };
 use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
 
-const RETRIES: usize = 3;
+pub(crate) const RETRIES: usize = 3;
+const PER_ATTEMPT: Duration = Duration::from_millis(400);
+pub(crate) const DEFAULT_ATTEMPT: Duration = Duration::from_secs(4);
+const CIRCUIT_FAILS: u32 = 5;
+const HALF_OPEN_MS: u64 = 30_000;
+
+tokio::task_local! {
+    static RPC_DEADLINE: Instant;
+}
+
+pub(crate) async fn with_rpc_deadline<F, T>(budget: Duration, fut: F) -> Result<T, ()>
+where
+    F: std::future::Future<Output = T>,
+{
+    let deadline = Instant::now() + budget;
+    match tokio::time::timeout(budget, RPC_DEADLINE.scope(deadline, fut)).await {
+        Ok(v) => Ok(v),
+        Err(_) => Err(()),
+    }
+}
+
+fn attempt_timeout() -> Duration {
+    RPC_DEADLINE
+        .try_with(|d| d.saturating_duration_since(Instant::now()).min(PER_ATTEMPT))
+        .unwrap_or(DEFAULT_ATTEMPT)
+}
+
+async fn backoff(attempt: usize) {
+    let shift = u32::try_from(attempt.min(2)).unwrap_or(2);
+    let base = 100u64.saturating_mul(1u64 << shift);
+    let jitter = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::from(d.subsec_millis() % 50))
+        .unwrap_or(0);
+    let sleep = Duration::from_millis(base.saturating_add(jitter));
+    let still = RPC_DEADLINE
+        .try_with(|d| Instant::now() + sleep < *d)
+        .unwrap_or(true);
+    if still {
+        tokio::time::sleep(sleep).await;
+    }
+}
 
 fn fanout_from_resp(fanout: Option<InsertFanout>) -> Fanout {
     match fanout {
@@ -72,15 +115,29 @@ fn http_status_err(status: StatusCode, body: &[u8]) -> StoreError {
     }
 }
 
-fn retry_http(status: StatusCode) -> bool {
+pub(crate) fn retry_http(status: StatusCode) -> bool {
     status.is_server_error() && status != StatusCode::SERVICE_UNAVAILABLE
+}
+
+pub(crate) fn circuit_failure_status(status: StatusCode) -> bool {
+    matches!(status.as_u16(), 500 | 502 | 503 | 504)
+}
+
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 #[derive(Clone)]
 pub struct RoyalClient {
-    base: String,
+    pub(crate) base: String,
     http: reqwest::Client,
     hmac_secret: String,
+    pub(crate) fails: Arc<AtomicU32>,
+    pub(crate) opened: Arc<AtomicBool>,
+    pub(crate) half_open_at: Arc<AtomicU64>,
 }
 
 impl RoyalClient {
@@ -90,17 +147,57 @@ impl RoyalClient {
 
     pub fn with_hmac(base: &str, hmac_secret: &str) -> Result<Self, StoreError> {
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(DEFAULT_ATTEMPT)
             .build()
             .map_err(|e| StoreError::Backend(e.to_string()))?;
         Ok(Self {
             base: base.trim_end_matches('/').to_string(),
             http,
             hmac_secret: hmac_secret.to_string(),
+            fails: Arc::new(AtomicU32::new(0)),
+            opened: Arc::new(AtomicBool::new(false)),
+            half_open_at: Arc::new(AtomicU64::new(0)),
         })
     }
 
-    fn signed(
+    pub(crate) fn is_open(&self) -> bool {
+        self.opened.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn try_probe(&self) -> bool {
+        if !self.opened.load(Ordering::SeqCst) {
+            return true;
+        }
+        let now = unix_ms();
+        let gate = self.half_open_at.load(Ordering::SeqCst);
+        if now < gate {
+            return false;
+        }
+        self.half_open_at
+            .compare_exchange(
+                gate,
+                now.saturating_add(HALF_OPEN_MS),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn report_success(&self) {
+        self.fails.store(0, Ordering::SeqCst);
+        self.opened.store(false, Ordering::SeqCst);
+    }
+
+    pub(crate) fn report_failure(&self) {
+        let n = self.fails.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+        if n >= CIRCUIT_FAILS {
+            self.opened.store(true, Ordering::SeqCst);
+            self.half_open_at
+                .store(unix_ms().saturating_add(HALF_OPEN_MS), Ordering::SeqCst);
+        }
+    }
+
+    pub(crate) fn signed(
         &self,
         method: reqwest::Method,
         path: &str,
@@ -122,8 +219,10 @@ impl RoyalClient {
         }
         Ok(req)
     }
+}
 
-    async fn send_pb<T: Message + Default, B: Message>(
+impl RoyalPool {
+    pub(crate) async fn send_pb<T: Message + Default, B: Message>(
         &self,
         method: reqwest::Method,
         path: &str,
@@ -132,8 +231,14 @@ impl RoyalClient {
         let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
         let payload = bytes.as_deref().unwrap_or(&[]);
         let mut last = StoreError::Backend("royal request failed".into());
-        for _ in 0..RETRIES {
-            let req = self.signed(method.clone(), path, payload)?;
+        for attempt in 0..RETRIES {
+            if attempt_timeout().is_zero() {
+                break;
+            }
+            let client = self.pick()?;
+            let req = client
+                .signed(method.clone(), path, payload)?
+                .timeout(attempt_timeout());
             match req.send().await {
                 Ok(resp) => {
                     let status = resp.status();
@@ -142,61 +247,94 @@ impl RoyalClient {
                         .await
                         .map_err(|e| StoreError::Backend(e.to_string()))?;
                     if status.is_success() {
+                        self.report_success(&client);
                         return T::decode(buf.as_ref())
                             .map_err(|e| StoreError::Backend(e.to_string()));
                     }
                     last = http_status_err(status, &buf);
+                    if circuit_failure_status(status) {
+                        self.report_failure(&client);
+                    } else {
+                        self.report_success(&client);
+                    }
                     if !retry_http(status) {
                         return Err(last);
                     }
                 }
-                Err(err) => last = StoreError::Backend(err.to_string()),
+                Err(err) => {
+                    self.report_failure(&client);
+                    last = StoreError::Backend(err.to_string());
+                }
+            }
+            if attempt + 1 < RETRIES {
+                backoff(attempt).await;
+            }
+        }
+        Err(last)
+    }
+
+    /// Decode-empty-tolerant POST for ack/join/quit.
+    pub(crate) async fn post_maybe_empty(
+        &self,
+        path: &str,
+        body: &impl Message,
+    ) -> Result<(), StoreError> {
+        let bytes = Bytes::from(body.encode_to_vec());
+        let mut last = StoreError::Backend("royal request failed".into());
+        for attempt in 0..RETRIES {
+            if attempt_timeout().is_zero() {
+                break;
+            }
+            let client = self.pick()?;
+            match client
+                .signed(reqwest::Method::POST, path, &bytes)?
+                .timeout(attempt_timeout())
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let buf = resp.bytes().await.unwrap_or_default();
+                    if status.is_success() {
+                        self.report_success(&client);
+                        return Ok(());
+                    }
+                    last = http_status_err(status, &buf);
+                    if circuit_failure_status(status) {
+                        self.report_failure(&client);
+                    } else {
+                        self.report_success(&client);
+                    }
+                    if !retry_http(status) {
+                        return Err(last);
+                    }
+                }
+                Err(err) => {
+                    self.report_failure(&client);
+                    last = StoreError::Backend(err.to_string());
+                }
+            }
+            if attempt + 1 < RETRIES {
+                backoff(attempt).await;
             }
         }
         Err(last)
     }
 }
 
-/// Decode-empty-tolerant POST for ack/join/quit.
-async fn post_maybe_empty(
-    client: &RoyalClient,
-    path: &str,
-    body: &impl Message,
-) -> Result<(), StoreError> {
-    let bytes = Bytes::from(body.encode_to_vec());
-    let mut last = StoreError::Backend("royal request failed".into());
-    for _ in 0..RETRIES {
-        match client
-            .signed(reqwest::Method::POST, path, &bytes)?
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                let buf = resp.bytes().await.unwrap_or_default();
-                if status.is_success() {
-                    return Ok(());
-                }
-                last = http_status_err(status, &buf);
-                if !retry_http(status) {
-                    return Err(last);
-                }
-            }
-            Err(err) => last = StoreError::Backend(err.to_string()),
-        }
-    }
-    Err(last)
-}
-
 pub struct HttpMessageStore {
-    client: RoyalClient,
+    pool: Arc<RoyalPool>,
     pending_receipt: bool,
 }
 
 impl HttpMessageStore {
     pub fn new(base: &str) -> Result<Self, StoreError> {
         Ok(Self {
-            client: RoyalClient::new(base)?,
+            pool: Arc::new(RoyalPool::new(
+                Some(base),
+                None,
+                &resolve_internal_hmac_secret(""),
+            )?),
             pending_receipt: crate::store::pending_receipt_enabled(),
         })
     }
@@ -233,7 +371,7 @@ impl MessageStore for HttpMessageStore {
         let _ = app;
         let path = "/api/v1/message/user";
         let resp: InsertMessageResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(InsertResult {
@@ -274,7 +412,7 @@ impl MessageStore for HttpMessageStore {
         let _ = app;
         let path = "/api/v1/message/group";
         let resp: InsertMessageResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(InsertResult {
@@ -307,7 +445,9 @@ impl MessageStore for HttpMessageStore {
                 ..Default::default()
             }
         };
-        post_maybe_empty(&self.client, "/api/v1/message/ack", &body).await
+        self.pool
+            .post_maybe_empty("/api/v1/message/ack", &body)
+            .await
     }
 
     async fn offline_index(
@@ -335,7 +475,7 @@ impl MessageStore for HttpMessageStore {
         };
         let path = "/api/v1/offline/index";
         let resp: MessageIndexResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok((
@@ -367,7 +507,9 @@ impl MessageStore for HttpMessageStore {
             account: account.to_string(),
             target_id: target_id.to_string(),
         };
-        post_maybe_empty(&self.client, "/api/v1/delivery/backfill", &body).await
+        self.pool
+            .post_maybe_empty("/api/v1/delivery/backfill", &body)
+            .await
     }
 
     async fn offline_content(
@@ -383,7 +525,7 @@ impl MessageStore for HttpMessageStore {
         };
         let path = "/api/v1/offline/content";
         let resp: MessageContentResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await?;
         Ok(resp
@@ -409,7 +551,7 @@ impl MessageStore for HttpMessageStore {
             limit,
         };
         let resp: InboxResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/inbox", Some(&body))
             .await?;
         Ok(resp
@@ -451,7 +593,7 @@ impl MessageStore for HttpMessageStore {
             limit,
         };
         let resp: HistoryResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/history", Some(&body))
             .await?;
         Ok(resp
@@ -486,18 +628,23 @@ impl MessageStore for HttpMessageStore {
             },
             message_id,
         };
-        post_maybe_empty(&self.client, "/api/v1/inbox/read", &body).await
+        self.pool
+            .post_maybe_empty("/api/v1/inbox/read", &body)
+            .await
     }
 }
 
 pub struct HttpGroupDirectory {
-    client: RoyalClient,
+    pool: Arc<RoyalPool>,
 }
 
 impl HttpGroupDirectory {
     pub fn new(base: &str) -> Result<Self, GroupError> {
         Ok(Self {
-            client: RoyalClient::new(base).map_err(|e| GroupError::Backend(e.to_string()))?,
+            pool: Arc::new(
+                RoyalPool::new(Some(base), None, &resolve_internal_hmac_secret(""))
+                    .map_err(|e| GroupError::Backend(e.to_string()))?,
+            ),
         })
     }
 }
@@ -526,7 +673,7 @@ impl GroupDirectory for HttpGroupDirectory {
         };
         let path = "/api/v1/group";
         let resp: GroupCreateResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, path, Some(&body))
             .await
             .map_err(group_err)?;
@@ -539,7 +686,7 @@ impl GroupDirectory for HttpGroupDirectory {
             group_id: group_id.to_string(),
         };
         let resp: GroupMembersResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/group/members", Some(&body))
             .await
             .map_err(group_err)?;
@@ -552,7 +699,8 @@ impl GroupDirectory for HttpGroupDirectory {
             group_id: group_id.to_string(),
             account: account.to_string(),
         };
-        post_maybe_empty(&self.client, "/api/v1/group/member", &body)
+        self.pool
+            .post_maybe_empty("/api/v1/group/member", &body)
             .await
             .map_err(group_err)
     }
@@ -563,7 +711,8 @@ impl GroupDirectory for HttpGroupDirectory {
             group_id: group_id.to_string(),
             account: account.to_string(),
         };
-        post_maybe_empty(&self.client, "/api/v1/group/quit", &body)
+        self.pool
+            .post_maybe_empty("/api/v1/group/quit", &body)
             .await
             .map_err(group_err)
     }
@@ -574,7 +723,7 @@ impl GroupDirectory for HttpGroupDirectory {
             group_id: group_id.to_string(),
         };
         let resp: GroupDetail = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/group/detail", Some(&body))
             .await
             .map_err(group_err)?;
@@ -590,13 +739,17 @@ impl GroupDirectory for HttpGroupDirectory {
 }
 
 pub struct HttpUserDirectory {
-    client: RoyalClient,
+    pool: Arc<RoyalPool>,
 }
 
 impl HttpUserDirectory {
     pub fn new(base: &str) -> Result<Self, StoreError> {
         Ok(Self {
-            client: RoyalClient::new(base)?,
+            pool: Arc::new(RoyalPool::new(
+                Some(base),
+                None,
+                &resolve_internal_hmac_secret(""),
+            )?),
         })
     }
 }
@@ -611,7 +764,8 @@ impl UserDirectory for HttpUserDirectory {
         let body = AccountQuery {
             account: account.to_string(),
         };
-        post_maybe_empty(&self.client, "/internal/user/upsert", &body)
+        self.pool
+            .post_maybe_empty("/internal/user/upsert", &body)
             .await
             .map_err(user_err)
     }
@@ -634,7 +788,7 @@ impl UserDirectory for HttpUserDirectory {
             account: account.to_string(),
         };
         let resp: AccountExists = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/internal/user/lookup", Some(&body))
             .await
             .map_err(user_err)?;
@@ -646,7 +800,7 @@ impl UserDirectory for HttpUserDirectory {
             account: account.to_string(),
         };
         match self
-            .client
+            .pool
             .send_pb::<PbProfile, _>(reqwest::Method::POST, "/api/v1/user/profile", Some(&body))
             .await
         {
@@ -669,7 +823,7 @@ impl UserDirectory for HttpUserDirectory {
             bio: patch.bio.clone(),
         };
         let p: PbProfile = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/user/update", Some(&body))
             .await
             .map_err(user_err)?;
@@ -685,7 +839,7 @@ impl UserDirectory for HttpUserDirectory {
             accounts: accounts.to_vec(),
         };
         let resp: UserListResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/user/profiles", Some(&body))
             .await
             .map_err(user_err)?;
@@ -705,7 +859,7 @@ impl UserDirectory for HttpUserDirectory {
             limit: i32::try_from(limit).unwrap_or(20),
         };
         let resp: UserSearchResp = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/user/search", Some(&body))
             .await
             .map_err(user_err)?;
@@ -751,13 +905,17 @@ fn from_pb_profile(p: PbProfile) -> UserProfile {
 }
 
 pub struct HttpSocialDirectory {
-    client: RoyalClient,
+    pool: Arc<RoyalPool>,
 }
 
 impl HttpSocialDirectory {
     pub fn new(base: &str) -> Result<Self, StoreError> {
         Ok(Self {
-            client: RoyalClient::new(base)?,
+            pool: Arc::new(RoyalPool::new(
+                Some(base),
+                None,
+                &resolve_internal_hmac_secret(""),
+            )?),
         })
     }
 
@@ -766,7 +924,10 @@ impl HttpSocialDirectory {
             account: account.to_string(),
             peer: peer.to_string(),
         };
-        post_social(&self.client, path, &body).await
+        self.pool
+            .post_maybe_empty(path, &body)
+            .await
+            .map_err(social_err)
     }
 }
 
@@ -782,16 +943,6 @@ fn social_err(e: StoreError) -> SocialError {
     }
 }
 
-async fn post_social(
-    client: &RoyalClient,
-    path: &str,
-    body: &impl Message,
-) -> Result<(), SocialError> {
-    post_maybe_empty(client, path, body)
-        .await
-        .map_err(social_err)
-}
-
 #[async_trait]
 impl SocialDirectory for HttpSocialDirectory {
     async fn request(
@@ -805,7 +956,7 @@ impl SocialDirectory for HttpSocialDirectory {
             peer: to.to_string(),
         };
         let resp: AccountExists = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/friend/request", Some(&body))
             .await
             .map_err(social_err)?;
@@ -833,7 +984,7 @@ impl SocialDirectory for HttpSocialDirectory {
             account: account.to_string(),
         };
         let resp: AccountList = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/friend/list", Some(&body))
             .await
             .map_err(social_err)?;
@@ -845,7 +996,7 @@ impl SocialDirectory for HttpSocialDirectory {
             account: account.to_string(),
         };
         let resp: AccountList = self
-            .client
+            .pool
             .send_pb(
                 reqwest::Method::POST,
                 "/api/v1/friend/incoming",
@@ -862,7 +1013,7 @@ impl SocialDirectory for HttpSocialDirectory {
             peer: b.to_string(),
         };
         let resp: AccountExists = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/friend/check", Some(&body))
             .await
             .map_err(social_err)?;
@@ -882,7 +1033,7 @@ impl SocialDirectory for HttpSocialDirectory {
             account: account.to_string(),
         };
         let resp: AccountList = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/block/list", Some(&body))
             .await
             .map_err(social_err)?;
@@ -895,7 +1046,7 @@ impl SocialDirectory for HttpSocialDirectory {
             peer: b.to_string(),
         };
         let resp: AccountExists = self
-            .client
+            .pool
             .send_pb(reqwest::Method::POST, "/api/v1/block/check", Some(&body))
             .await
             .map_err(social_err)?;
@@ -930,19 +1081,26 @@ pub fn http_backends_with_hmac_receipt(
     hmac_secret: &str,
     pending_receipt: bool,
 ) -> Result<HttpBackends, StoreError> {
-    let client = RoyalClient::with_hmac(royal_url, hmac_secret)?;
+    let pool = Arc::new(RoyalPool::new(Some(royal_url), None, hmac_secret)?);
+    http_backends_with_pool_receipt(pool, pending_receipt)
+}
+
+pub fn http_backends_with_pool(pool: Arc<RoyalPool>) -> Result<HttpBackends, StoreError> {
+    http_backends_with_pool_receipt(pool, crate::store::pending_receipt_enabled())
+}
+
+pub fn http_backends_with_pool_receipt(
+    pool: Arc<RoyalPool>,
+    pending_receipt: bool,
+) -> Result<HttpBackends, StoreError> {
     Ok((
         Arc::new(HttpMessageStore {
-            client: client.clone(),
+            pool: pool.clone(),
             pending_receipt,
         }),
-        Arc::new(HttpGroupDirectory {
-            client: client.clone(),
-        }),
-        Arc::new(HttpUserDirectory {
-            client: client.clone(),
-        }),
-        Arc::new(HttpSocialDirectory { client }),
+        Arc::new(HttpGroupDirectory { pool: pool.clone() }),
+        Arc::new(HttpUserDirectory { pool: pool.clone() }),
+        Arc::new(HttpSocialDirectory { pool }),
     ))
 }
 

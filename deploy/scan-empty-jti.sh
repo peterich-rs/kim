@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Gate: SCAN login:loc:v2:* empty jti = 0.
+# Gate: SCAN login:loc:v2:* fail-closed.
+# Exit 0 only when empty_jti=0 invalid=0 wrong_type=0.
 # Prefers the running royal container (same decode as count_empty_jti_locations).
 # Fallback: cargo example when REDIS_URL is set and rustc is available.
 set -euo pipefail
