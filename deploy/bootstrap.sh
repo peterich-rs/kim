@@ -30,6 +30,14 @@ require_docker() {
   fi
 }
 
+# Official hashicorp/consul image USER is consul (uid 100). tls ca/cert create
+# writes $name-<uuid>.tmp then renames; that fails on a root:root 755 bind
+# mount (CI chown -R root:root before this script). Run as the host user.
+consul_tls() {
+  docker run --rm --user "$(id -u):$(id -g)" \
+    -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" consul tls "$@"
+}
+
 tls_complete() {
   [[ -f "$TLS_DIR/consul-agent-ca.pem" \
     && -f "$TLS_DIR/consul-server.pem" \
@@ -44,20 +52,18 @@ ensure_tls() {
   fi
   require_docker
   if [[ ! -f "$TLS_DIR/consul-agent-ca.pem" ]]; then
-    docker run --rm -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" consul tls ca create
+    consul_tls ca create
   fi
   if [[ ! -f "$TLS_DIR/consul-server.pem" || ! -f "$TLS_DIR/consul-server-key.pem" ]]; then
-    docker run --rm -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" \
-      consul tls cert create -server -dc dc1 \
-        -additional-dnsname=consul \
-        -additional-dnsname=localhost \
-        -additional-ipaddress=127.0.0.1
+    consul_tls cert create -server -dc dc1 \
+      -additional-dnsname=consul \
+      -additional-dnsname=localhost \
+      -additional-ipaddress=127.0.0.1
     mv "$TLS_DIR/dc1-server-consul-0.pem" "$TLS_DIR/consul-server.pem"
     mv "$TLS_DIR/dc1-server-consul-0-key.pem" "$TLS_DIR/consul-server-key.pem"
   fi
   if [[ ! -f "$TLS_DIR/consul-client.pem" || ! -f "$TLS_DIR/consul-client-key.pem" ]]; then
-    docker run --rm -v "$TLS_DIR:/out" -w /out "$CONSUL_IMAGE" \
-      consul tls cert create -client
+    consul_tls cert create -client
     mv "$TLS_DIR/dc1-client-consul-0.pem" "$TLS_DIR/consul-client.pem"
     mv "$TLS_DIR/dc1-client-consul-0-key.pem" "$TLS_DIR/consul-client-key.pem"
   fi
