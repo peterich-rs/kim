@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |---|---|
-| 状态 | Draft（审查修订：send→ack 走 ACK RETURNING 直方图；path_group 补齐；offline 计成功） |
+| 状态 | Draft（白名单 29 条 + `kim_send_to_ack_seconds` 已落地；Royal RPC / backlog gauge / 告警仍开） |
 | 日期 | 2026-09-02 |
 | 覆盖 | G-15 后台半边（command 白名单补齐、send→ack 延迟、Royal RPC 指标、pending backlog 指标化、告警规则） |
 | 父规格 | [next-stage.md](./next-stage.md) B6、[production-gaps.md](../production-gaps.md) G-15 |

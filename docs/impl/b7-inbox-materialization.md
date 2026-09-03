@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |---|---|
-| 状态 | Draft（审查修订：unread 方向、乱序增量、mark_read 事务、锁序、回填、开关在 Royal） |
+| 状态 | Draft（profiles 批量 + `conversation_inbox` 双写已落地；群 detail 仍 N+1；`KIM_INBOX_MATERIALIZED` 默认 0） |
 | 日期 | 2026-09-02 |
 | 覆盖 | G-17（inbox 全量聚合 + do_inbox_list N+1 → additive `conversation_inbox` 物化双写切读） |
 | 父规格 | [next-stage.md](./next-stage.md) B7、[production-gaps.md](../production-gaps.md) G-17 |
