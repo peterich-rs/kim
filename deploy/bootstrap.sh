@@ -47,35 +47,47 @@ tls_complete() {
     && -f "$TLS_DIR/consul-client-key.pem" ]]
 }
 
+# Official consul image USER is uid 100. CI `chown -R root:root` plus chmod 640
+# would make secrets.hcl / TLS keys unreadable and the agent never healthy.
+ensure_consul_readable() {
+  local uid=100
+  chmod 755 "$TLS_DIR"
+  chown -R "$uid:$uid" "$TLS_DIR" || true
+  chmod 644 "$TLS_DIR"/*.pem 2>/dev/null || true
+  chmod 640 "$TLS_DIR"/*-key.pem 2>/dev/null || true
+  if [[ -f "$SECRETS" ]]; then
+    chown "$uid:$uid" "$SECRETS" || true
+    chmod 640 "$SECRETS"
+  fi
+}
+
 ensure_tls() {
-  if tls_complete; then
-    return 0
+  if ! tls_complete; then
+    require_docker
+    chmod 0777 "$TLS_DIR"
+    if [[ ! -f "$TLS_DIR/consul-agent-ca.pem" ]]; then
+      consul_tls ca create
+    fi
+    if [[ ! -f "$TLS_DIR/consul-server.pem" || ! -f "$TLS_DIR/consul-server-key.pem" ]]; then
+      consul_tls cert create -server -dc dc1 \
+        -additional-dnsname=consul \
+        -additional-dnsname=localhost \
+        -additional-ipaddress=127.0.0.1
+      mv "$TLS_DIR/dc1-server-consul-0.pem" "$TLS_DIR/consul-server.pem"
+      mv "$TLS_DIR/dc1-server-consul-0-key.pem" "$TLS_DIR/consul-server-key.pem"
+    fi
+    if [[ ! -f "$TLS_DIR/consul-client.pem" || ! -f "$TLS_DIR/consul-client-key.pem" ]]; then
+      consul_tls cert create -client
+      mv "$TLS_DIR/dc1-client-consul-0.pem" "$TLS_DIR/consul-client.pem"
+      mv "$TLS_DIR/dc1-client-consul-0-key.pem" "$TLS_DIR/consul-client-key.pem"
+    fi
+    echo "wrote Consul TLS under $TLS_DIR (values not printed)"
   fi
-  require_docker
-  chmod 0777 "$TLS_DIR"
-  if [[ ! -f "$TLS_DIR/consul-agent-ca.pem" ]]; then
-    consul_tls ca create
-  fi
-  if [[ ! -f "$TLS_DIR/consul-server.pem" || ! -f "$TLS_DIR/consul-server-key.pem" ]]; then
-    consul_tls cert create -server -dc dc1 \
-      -additional-dnsname=consul \
-      -additional-dnsname=localhost \
-      -additional-ipaddress=127.0.0.1
-    mv "$TLS_DIR/dc1-server-consul-0.pem" "$TLS_DIR/consul-server.pem"
-    mv "$TLS_DIR/dc1-server-consul-0-key.pem" "$TLS_DIR/consul-server-key.pem"
-  fi
-  if [[ ! -f "$TLS_DIR/consul-client.pem" || ! -f "$TLS_DIR/consul-client-key.pem" ]]; then
-    consul_tls cert create -client
-    mv "$TLS_DIR/dc1-client-consul-0.pem" "$TLS_DIR/consul-client.pem"
-    mv "$TLS_DIR/dc1-client-consul-0-key.pem" "$TLS_DIR/consul-client-key.pem"
-  fi
-  chmod 0755 "$TLS_DIR"
-  chmod 640 "$TLS_DIR/"*.pem
   if ! tls_complete; then
     echo "error: Consul TLS material incomplete under $TLS_DIR" >&2
     exit 1
   fi
-  echo "wrote Consul TLS under $TLS_DIR (values not printed)"
+  ensure_consul_readable
 }
 
 gossip_keygen() {
@@ -111,7 +123,7 @@ ensure_secrets_hcl() {
     exit 1
   fi
   if secrets_have_encrypt; then
-    chmod 640 "$SECRETS"
+    ensure_consul_readable
     return 0
   fi
   local gossip
@@ -121,6 +133,7 @@ ensure_secrets_hcl() {
     exit 1
   fi
   write_secrets_hcl "$gossip" "$mgmt"
+  ensure_consul_readable
   echo "wrote $SECRETS (gossip encrypt + ACL; values not printed)"
 }
 
