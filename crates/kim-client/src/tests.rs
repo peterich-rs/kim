@@ -1067,9 +1067,10 @@ async fn supervisor_stops_on_unauthorized_login() {
         if matches!(sup.state(), LinkState::Reconnecting { .. }) {
             panic!("unauthorized login must not reconnect");
         }
-        match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
-            Ok(Ok(SessionEvent::AuthFailed { .. })) => saw_auth = true,
-            _ => {}
+        if let Ok(Ok(SessionEvent::AuthFailed { .. })) =
+            tokio::time::timeout(Duration::from_millis(50), rx.recv()).await
+        {
+            saw_auth = true;
         }
         if saw_auth
             && matches!(sup.state(), LinkState::Offline)
