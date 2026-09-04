@@ -51,25 +51,11 @@ trap cleanup EXIT
 
 "${compose[@]}" pull
 
-case "${RESET_CONSUL_DATA:-false}" in
-  true)
-    echo "resetting legacy Consul data volume (Postgres and Redis are untouched)"
-    "${compose[@]}" rm -sf consul consul-acl
-    if docker volume inspect kim_consul_data >/dev/null 2>&1; then
-      docker volume rm kim_consul_data
-    fi
-    ;;
-  false | "") ;;
-  *)
-    echo "error: RESET_CONSUL_DATA must be true or false" >&2
-    exit 1
-    ;;
-esac
-
 if ! "${compose[@]}" up -d --remove-orphans; then
-  echo "error: compose up failed; Consul diagnostics follow" >&2
+  echo "error: compose up failed; stack diagnostics follow" >&2
   "${compose[@]}" ps || true
-  "${compose[@]}" logs --no-color --tail=200 consul consul-acl || true
+  "${compose[@]}" logs --no-color --tail=200 \
+    consul consul-acl royal royal-2 chat chat-gray gateway router || true
   exit 1
 fi
 

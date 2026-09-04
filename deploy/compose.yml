@@ -37,6 +37,11 @@ x-kim-tls: &kim-tls
     bind:
       create_host_path: false
 
+x-kim-consul-client-groups: &kim-consul-client-groups
+  # Matches the group owner assigned by bootstrap.sh. The image's primary gid
+  # is intentionally irrelevant; every Consul client joins this dedicated gid.
+  - "10001"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -198,6 +203,7 @@ services:
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
       KIM_INBOX_MATERIALIZED: ${KIM_INBOX_MATERIALIZED:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     expose:
       - "9003"
@@ -247,6 +253,7 @@ services:
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_ROYAL:-0}
       KIM_INBOX_MATERIALIZED: ${KIM_INBOX_MATERIALIZED:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     expose:
       - "9003"
@@ -289,6 +296,7 @@ services:
       KIM_LOC_CACHE: "0"
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_CHAT:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
@@ -331,6 +339,7 @@ services:
       KIM_LOC_CACHE: "0"
       KIM_PENDING_RECEIPT: ${KIM_PENDING_RECEIPT_CHAT:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9002/health"]
@@ -373,6 +382,7 @@ services:
       KIM_LOC_CACHE: "0"
       KIM_REQUIRE_JTI: ${KIM_REQUIRE_JTI:-0}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     ports:
       - "127.0.0.1:8001:8001"
@@ -406,6 +416,7 @@ services:
       KIM_PUBLIC_ADDRESS: router
       KIM_JWT_SECRET: ${KIM_JWT_SECRET:?set KIM_JWT_SECRET}
       RUST_LOG: ${RUST_LOG:-info}
+    group_add: *kim-consul-client-groups
     volumes: *kim-tls
     ports:
       - "127.0.0.1:8088:8088"
