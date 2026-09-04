@@ -9,12 +9,22 @@ on:
         description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
         required: true
         type: string
+      reset_consul_data:
+        description: "One-time reset of the legacy plaintext Consul volume"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       image_tag:
         description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
         required: false
         default: "latest"
+      reset_consul_data:
+        description: "Delete only kim_consul_data before deploying"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-vps
@@ -61,6 +71,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           IMAGE: ghcr.io/${{ github.repository }}:${{ steps.img.outputs.tag }}
+          RESET_CONSUL_DATA: ${{ inputs.reset_consul_data }}
         run: |
           set -euo pipefail
           umask 077
@@ -70,7 +81,22 @@ jobs:
           host_name="${HOST##*@}"
           ssh-keyscan -t ed25519,ecdsa,rsa "$host_name" >> "$HOME/.ssh/known_hosts"
           ssh_cmd=(ssh -i "$HOME/.ssh/kim_deploy" -o IdentitiesOnly=yes -o BatchMode=yes)
-          "${ssh_cmd[@]}" "$HOST" "mkdir -p /opt/kim/deploy && chmod 755 /opt/kim /opt/kim/deploy"
+          "${ssh_cmd[@]}" "$HOST" 'set -euo pipefail
+            mkdir -p /opt/kim/deploy/consul
+            chmod 755 /opt/kim /opt/kim/deploy /opt/kim/deploy/consul
+            if [[ -d /opt/kim/deploy/consul/agent.hcl || -d /opt/kim/deploy/consul/acl-init.sh ]]; then
+              docker rm -f kim-consul-1 kim-consul-acl-1 >/dev/null 2>&1 || true
+            fi
+            for name in agent.hcl acl-init.sh; do
+              path="/opt/kim/deploy/consul/$name"
+              if [[ -d "$path" ]]; then
+                rmdir "$path" || {
+                  echo "error: $path is a non-empty directory; refusing to replace it" >&2
+                  exit 1
+                }
+                echo "removed invalid bind-mount directory $path"
+              fi
+            done'
           export RSYNC_RSH="${ssh_cmd[*]}"
           rsync -avz \
             deploy/compose.yml \
@@ -90,12 +116,17 @@ jobs:
             deploy/diff-inbox.sql \
             deploy/scan-empty-jti.sh \
             "$HOST:/opt/kim/deploy/"
+          rsync -avz \
+            deploy/consul/agent.hcl \
+            deploy/consul/acl-init.sh \
+            "$HOST:/opt/kim/deploy/consul/"
           "${ssh_cmd[@]}" "$HOST" 'set -euo pipefail
             cd /opt/kim/deploy
             chown -R root:root .
-            chmod 755 bootstrap.sh remote-up.sh psql-compose.sh backfill-inbox.sh scan-empty-jti.sh
-            for f in compose.yml prometheus.yml prometheus/rules/kim.yml backfill-inbox.sql diff-inbox.sql scan-empty-jti.sh psql-compose.sh; do
-              test -e "$f" || { echo "error: missing /opt/kim/deploy/$f" >&2; exit 1; }
+            chmod 755 bootstrap.sh remote-up.sh psql-compose.sh backfill-inbox.sh scan-empty-jti.sh consul/acl-init.sh
+            chmod 644 consul/agent.hcl
+            for f in compose.yml prometheus.yml prometheus/rules/kim.yml backfill-inbox.sql diff-inbox.sql scan-empty-jti.sh psql-compose.sh consul/agent.hcl consul/acl-init.sh; do
+              test -f "$f" || { echo "error: missing regular file /opt/kim/deploy/$f" >&2; exit 1; }
             done
             bash bootstrap.sh'
           if [[ -z "$IMAGE" || "$IMAGE" == *: ]]; then
@@ -107,5 +138,5 @@ jobs:
           # on the ssh command line (it would show up in ps). A YAML heredoc here
           # would un-indent and break the workflow file.
           printf '%s\n' "$GHCR_TOKEN" | "${ssh_cmd[@]}" "$HOST" \
-            "IMAGE=$(printf %q "$IMAGE") GHCR_USER=$(printf %q "$GHCR_USER") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER IMAGE; exec bash /opt/kim/deploy/remote-up.sh'"
+            "IMAGE=$(printf %q "$IMAGE") GHCR_USER=$(printf %q "$GHCR_USER") RESET_CONSUL_DATA=$(printf %q "$RESET_CONSUL_DATA") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER IMAGE RESET_CONSUL_DATA; exec bash /opt/kim/deploy/remote-up.sh'"
           rm -f "$HOME/.ssh/kim_deploy"
