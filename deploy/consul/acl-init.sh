@@ -94,6 +94,9 @@ agent_prefix "" {
 '
 
 create_policy router '
+service "router" {
+  policy = "write"
+}
 service "wgateway" {
   policy = "read"
 }

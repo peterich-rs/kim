@@ -1,29 +1,44 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../copy.dart';
 import '../core/haptics.dart';
+import '../core/jwt.dart';
 import '../core/user_agent.dart';
 import 'providers.dart';
 
 class AuthState {
-  const AuthState({required this.signedIn, required this.account});
+  const AuthState({required this.signedIn, required this.account, this.notice});
 
-  factory AuthState.signedOut() =>
-      const AuthState(signedIn: false, account: '');
+  factory AuthState.signedOut({String? notice}) =>
+      AuthState(signedIn: false, account: '', notice: notice);
 
   final bool signedIn;
   final String account;
+  final String? notice;
 }
 
 class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
     final settings = ref.watch(runtimeProvider).settings;
-    return AuthState(
-      signedIn: settings.token.isNotEmpty,
-      account: settings.account,
-    );
+    final expired =
+        settings.token.isNotEmpty && JwtPeek.isExpired(settings.token);
+    if (expired) {
+      settings.discardedExpiredToken = true;
+      unawaited(settings.saveToken(''));
+    }
+    if (settings.token.isEmpty || expired) {
+      return AuthState.signedOut(
+        notice: (expired || settings.discardedExpiredToken)
+            ? Copy.sessionExpired
+            : null,
+      );
+    }
+    return AuthState(signedIn: true, account: settings.account);
   }
 
   Future<void> signIn({
@@ -62,7 +77,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = AuthState(signedIn: true, account: session.account);
   }
 
-  Future<void> signOut() async {
+  Future<void> signOut({bool expired = false}) async {
     final runtime = ref.read(runtimeProvider);
     final auth = ref.read(authPortProvider);
     final client = ref.read(clientPortProvider);
@@ -84,6 +99,11 @@ class AuthNotifier extends Notifier<AuthState> {
     }
     await runtime.settings.clearSession();
     if (!ref.mounted) {
+      return;
+    }
+    if (expired) {
+      await KimHaptics.error();
+      state = AuthState.signedOut(notice: Copy.sessionExpired);
       return;
     }
     await KimHaptics.success();

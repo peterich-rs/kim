@@ -98,9 +98,10 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final isRegister = _register;
     final mut = ref.watch(_mutation);
     final busy = mut is MutationPending;
+    final notice = ref.watch(authProvider).notice ?? '';
     final error = switch (mut) {
       MutationError(:final error) => mapUserError(error),
-      _ => '',
+      _ => notice,
     };
 
     return Scaffold(

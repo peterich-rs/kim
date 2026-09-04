@@ -20,6 +20,8 @@ pub enum ClientError {
     Status(i32),
     #[error("protocol: {0}")]
     Protocol(#[from] ProtocolError),
+    #[error("unauthorized")]
+    Unauthorized,
     #[error("invalid token")]
     InvalidToken,
     #[error("invalid account")]
@@ -37,5 +39,10 @@ pub enum ClientError {
 impl ClientError {
     pub fn other(msg: impl Into<String>) -> Self {
         Self::Other(msg.into())
+    }
+
+    /// Login will not succeed with this token; do not reconnect.
+    pub fn is_fatal_auth(&self) -> bool {
+        matches!(self, Self::Unauthorized | Self::InvalidToken)
     }
 }

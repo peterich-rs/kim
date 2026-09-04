@@ -177,6 +177,8 @@ class LinkNotifier extends Notifier<KimLinkState> {
         );
       case KimEventKind.kick:
         unawaited(ref.read(authProvider.notifier).signOut());
+      case KimEventKind.authExpired:
+        unawaited(ref.read(authProvider.notifier).signOut(expired: true));
       case KimEventKind.friend:
         ref
             .read(contactsProvider.notifier)

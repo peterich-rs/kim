@@ -11,6 +11,7 @@ use tracing::{info, warn};
 use crate::config::ClientConfig;
 use crate::events::{Event, InboxItem, IncomingTalk};
 use crate::sync::{next_backoff, ConfirmGate, SyncEngine};
+use crate::token::token_unusable;
 use crate::ClientError;
 use crate::KimClient;
 
@@ -51,6 +52,9 @@ pub enum SessionEvent {
     GroupCreate {
         group_id: String,
         members: Vec<String>,
+    },
+    AuthFailed {
+        reason: String,
     },
 }
 
@@ -174,6 +178,14 @@ async fn run_loop(inner: Arc<Inner>) {
                 set_state(&inner, LinkState::Offline);
                 return;
             }
+            SessionEnd::AuthFailed(err) => {
+                warn!(error = %err, "session auth failed");
+                let _ = inner.events.send(SessionEvent::AuthFailed {
+                    reason: err.to_string(),
+                });
+                set_state(&inner, LinkState::Offline);
+                return;
+            }
             SessionEnd::Drop(err) => {
                 warn!(error = %err, "session dropped");
             }
@@ -203,6 +215,7 @@ async fn run_loop(inner: Arc<Inner>) {
 enum SessionEnd {
     Stop,
     Drop(ClientError),
+    AuthFailed(ClientError),
 }
 
 async fn run_session(inner: &Inner) -> SessionEnd {
@@ -210,6 +223,9 @@ async fn run_session(inner: &Inner) -> SessionEnd {
     let _ = client.disconnect().await;
     if stopped(inner) {
         return SessionEnd::Stop;
+    }
+    if let Some(err) = token_unusable(&client.login_token()) {
+        return SessionEnd::AuthFailed(err);
     }
     tokio::select! {
         result = client.connect() => {
@@ -229,6 +245,9 @@ async fn run_session(inner: &Inner) -> SessionEnd {
     }
     if let Err(err) = client.login().await {
         let _ = client.disconnect().await;
+        if err.is_fatal_auth() {
+            return SessionEnd::AuthFailed(err);
+        }
         return SessionEnd::Drop(err);
     }
     inner.attempt.store(0, Ordering::SeqCst);

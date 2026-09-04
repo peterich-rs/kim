@@ -353,6 +353,12 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
             ev.members = members;
             ev
         }
+        SessionEvent::AuthFailed { reason } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "auth".into();
+            ev.error = reason;
+            ev
+        }
     }
 }
 

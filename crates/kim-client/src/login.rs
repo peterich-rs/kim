@@ -52,7 +52,11 @@ async fn wait_login_resp(conn: &mut dyn Conn) -> Result<String, ClientError> {
                     }
                     let st = p.header.status;
                     if st != Status::Success as i32 {
-                        return Err(ClientError::Handshake(format!("status={st}")));
+                        return Err(if st == Status::Unauthorized as i32 {
+                            ClientError::Unauthorized
+                        } else {
+                            ClientError::Handshake(format!("status={st}"))
+                        });
                     }
                     let resp: LoginResp = p.read_body()?;
                     if resp.channel_id.is_empty() || resp.channel_id == "alice" {

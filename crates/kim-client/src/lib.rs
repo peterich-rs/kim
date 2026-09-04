@@ -31,7 +31,7 @@ pub use events::{
 pub use login::{login_on_conn, send_ping, wait_pong};
 pub use session::MemorySession;
 pub use supervisor::{LinkState, SessionEvent, SessionSupervisor};
-pub use token::account_from_token;
+pub use token::{account_from_token, token_unusable, unverified_claims, UnverifiedClaims};
 pub use wire::{
     encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
     encode_inbox_list, encode_login, encode_offline_content, encode_offline_index, encode_outgoing,
