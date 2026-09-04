@@ -11,7 +11,10 @@ bool isPermanentClientError(Object err) {
       msg.contains('账号已存在') ||
       msg.contains('invalid account') ||
       msg.contains('invalid password') ||
+      msg.contains('unauthorized') ||
+      msg.contains('invalid token') ||
       msg.contains('status 101') ||
+      msg.contains('status 105') ||
       msg.contains('status 108') ||
       msg.contains('status 109') ||
       msg.contains('status 110');

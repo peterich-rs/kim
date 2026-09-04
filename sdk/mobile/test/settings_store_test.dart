@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/jwt.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -58,6 +60,27 @@ void main() {
     final second = await SettingsStore.load(useSecureStorage: false);
     expect(second.account, 'alice');
     expect(second.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
+  });
+
+  test('reload discards an expired JWT', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    await store.saveSession(
+      token: testJwt(acc: 'alice', exp: 1),
+      account: 'alice',
+    );
+    expect(store.token, isNotEmpty);
+    await store.reload();
+    expect(store.token, isEmpty);
+    expect(store.discardedExpiredToken, isTrue);
+  });
+
+  test('reload recovers account from JWT when prefs are empty', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    await store.saveToken(testJwt(acc: 'alice', exp: 4_000_000_000));
+    await store.saveAccount('');
+    await store.reload();
+    expect(store.token, isNotEmpty);
+    expect(store.account, 'alice');
   });
 
   test('clearSession drops token and account', () async {

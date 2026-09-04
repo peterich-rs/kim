@@ -6,6 +6,8 @@ library;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'jwt.dart';
+
 class SettingsStore {
   SettingsStore({required this._prefs, this._secure});
 
@@ -34,6 +36,7 @@ class SettingsStore {
   String token = '';
   String avatar = '';
   bool notificationsAsked = false;
+  bool discardedExpiredToken = false;
 
   static FlutterSecureStorage productionSecureStorage() {
     // iOS Keychain. Android: RSA-OAEP + AES-GCM (EncryptedSharedPreferences
@@ -73,6 +76,12 @@ class SettingsStore {
     avatar = avatarOf(account);
     notificationsAsked = _prefs.getBool(_kNotifAsked) ?? false;
     token = await _readToken();
+    if (account.isEmpty && token.isNotEmpty) {
+      final acc = JwtPeek.account(token);
+      if (acc != null && acc.isNotEmpty) {
+        await saveAccount(acc);
+      }
+    }
   }
 
   String avatarOf(String account) {
@@ -131,6 +140,7 @@ class SettingsStore {
   }
 
   Future<void> clearSession() async {
+    discardedExpiredToken = false;
     await saveToken('');
     await saveAccount('');
     avatar = '';
@@ -170,10 +180,19 @@ class SettingsStore {
 
   Future<String> _readToken() async {
     try {
-      if (_secure != null) {
-        return (await _secure.read(key: _kToken))?.trim() ?? '';
+      final secure = _secure;
+      final raw = secure != null
+          ? (await secure.read(key: _kToken))?.trim() ?? ''
+          : _memorySecure[_kToken] ?? '';
+      if (raw.isEmpty) {
+        return '';
       }
-      return _memorySecure[_kToken] ?? '';
+      if (JwtPeek.isExpired(raw)) {
+        discardedExpiredToken = true;
+        await saveToken('');
+        return '';
+      }
+      return raw;
     } catch (_) {
       // Missing plugin / Keystore errors: treat as empty, never mint.
       return '';

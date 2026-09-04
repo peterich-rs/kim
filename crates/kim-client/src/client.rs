@@ -475,7 +475,7 @@ impl KimClient {
         lock_session_mut(&self.session).token = token;
     }
 
-    fn login_token(&self) -> String {
+    pub(crate) fn login_token(&self) -> String {
         let session = lock_session(&self.session);
         if session.token.is_empty() {
             self.config.token.clone()

@@ -55,6 +55,7 @@ enum KimEventKind {
   syncProgress,
   syncDone,
   syncFailed,
+  authExpired,
 }
 
 class KimEvent {

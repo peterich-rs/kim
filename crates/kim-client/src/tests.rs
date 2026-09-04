@@ -36,6 +36,7 @@ use crate::wire::{
     encode_offline_content, encode_offline_index, encode_outgoing, encode_ping, encode_user_image,
     encode_user_talk, is_kickout,
 };
+use crate::ClientError;
 
 struct MockConn {
     incoming: VecDeque<Frame>,
@@ -115,7 +116,7 @@ async fn login_rejects_unauthorized_and_plain_alice_id() {
     let err = login_on_conn(&mut bad, &token, Duration::from_secs(1))
         .await
         .unwrap_err();
-    assert!(err.to_string().contains("105") || err.to_string().contains("status"));
+    assert!(matches!(err, ClientError::Unauthorized));
 
     let mut alice = MockConn::with_incoming(vec![login_resp("alice", Status::Success)]);
     assert!(login_on_conn(&mut alice, &token, Duration::from_secs(1))
@@ -311,7 +312,7 @@ async fn talk_not_friends_is_status_109() {
         vec![Frame::binary(marshal(&Packet::Logic(pkt)))],
     );
     let err = client.talk_to_user("bob", "hello").await.unwrap_err();
-    assert!(matches!(err, crate::ClientError::Status(109)));
+    assert!(matches!(err, ClientError::Status(109)));
 }
 
 #[test]
@@ -960,4 +961,130 @@ async fn supervisor_radio_up_retries_immediately() {
         "radio up should not wait out backoff"
     );
     sup.stop();
+}
+
+#[tokio::test]
+async fn supervisor_stops_on_expired_token() {
+    let token = generate(DEMO_DEFAULT_SECRET, "alice", "kim", 1).unwrap();
+    let mut cfg = ClientConfig::new("ws://127.0.0.1:1/", token);
+    cfg.handshake_timeout = Duration::from_millis(200);
+    let sup = SessionSupervisor::start(cfg);
+    let mut rx = sup.events();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    let mut saw_auth = false;
+    loop {
+        if matches!(sup.state(), LinkState::Reconnecting { .. }) {
+            panic!("expired token must not reconnect");
+        }
+        if matches!(sup.state(), LinkState::Online) {
+            panic!("expired token must not go online");
+        }
+        match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            Ok(Ok(SessionEvent::AuthFailed { .. })) => saw_auth = true,
+            Ok(Ok(SessionEvent::Link(LinkState::Reconnecting { .. }))) => {
+                panic!("expired token must not reconnect");
+            }
+            _ => {}
+        }
+        if saw_auth && matches!(sup.state(), LinkState::Offline) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!(
+                "expired token did not stop, state={:?} auth={saw_auth}",
+                sup.state()
+            );
+        }
+    }
+    sup.stop();
+}
+
+struct RejectGw {
+    accepts: AtomicU32,
+}
+
+#[async_trait]
+impl Acceptor for RejectGw {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+        self.accepts.fetch_add(1, Ordering::SeqCst);
+        let frame = tokio::time::timeout(timeout, conn.read_frame())
+            .await
+            .map_err(|_| CoreError::HandshakeTimeout(timeout))??;
+        let pkt = match read(&frame.payload) {
+            Ok(Packet::Logic(p)) => p,
+            _ => return Err(CoreError::Handshake("expected login.signin".into())),
+        };
+        let mut resp = LogicPkt::new(CMD_LOGIN_SIGN_IN, pkt.header.sequence, Bytes::new());
+        resp.header.flag = Flag::Response as i32;
+        resp.header.status = Status::Unauthorized as i32;
+        conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
+            .await?;
+        Err(CoreError::Handshake("unauthorized".into()))
+    }
+}
+
+#[async_trait]
+impl MessageListener for RejectGw {
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {}
+}
+
+#[async_trait]
+impl StateListener for RejectGw {
+    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn supervisor_stops_on_unauthorized_login() {
+    let handler = Arc::new(RejectGw {
+        accepts: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let token = mint("alice");
+    let url = format!("ws://{addr}/");
+    let mut cfg = ClientConfig::new(url, token);
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    let mut rx = sup.events();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let mut saw_auth = false;
+    loop {
+        if handler.accepts.load(Ordering::SeqCst) > 1 {
+            panic!("unauthorized login must not reconnect");
+        }
+        if matches!(sup.state(), LinkState::Reconnecting { .. }) {
+            panic!("unauthorized login must not reconnect");
+        }
+        match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            Ok(Ok(SessionEvent::AuthFailed { .. })) => saw_auth = true,
+            _ => {}
+        }
+        if saw_auth
+            && matches!(sup.state(), LinkState::Offline)
+            && handler.accepts.load(Ordering::SeqCst) == 1
+        {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!(
+                "unauthorized login did not stop, state={:?} accepts={} auth={saw_auth}",
+                sup.state(),
+                handler.accepts.load(Ordering::SeqCst)
+            );
+        }
+    }
+    sup.stop();
+    let _ = server.shutdown().await;
 }

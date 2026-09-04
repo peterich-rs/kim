@@ -381,6 +381,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'sync_progress' => KimEventKind.syncProgress,
       'sync_done' => KimEventKind.syncDone,
       'sync_failed' => KimEventKind.syncFailed,
+      'auth' => KimEventKind.authExpired,
       _ => KimEventKind.closed,
     };
     return KimEvent(

@@ -182,6 +182,12 @@ class FakeKim implements KimAuthPort, KimClientPort {
     acks += 1;
   }
 
+  void emitAuthExpired({String error = 'unauthorized'}) {
+    eventsController.add(
+      KimEvent(kind: KimEventKind.authExpired, error: error),
+    );
+  }
+
   void emitTalk({
     required String dest,
     required String sender,
