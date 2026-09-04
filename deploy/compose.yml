@@ -18,9 +18,24 @@
 name: kim
 
 x-kim-tls: &kim-tls
-  - ./consul/tls/consul-agent-ca.pem:/etc/kim/consul-ca.pem:ro
-  - ./consul/tls/consul-client.pem:/etc/kim/consul-client.pem:ro
-  - ./consul/tls/consul-client-key.pem:/etc/kim/consul-client-key.pem:ro
+  - type: bind
+    source: ./consul/tls/consul-agent-ca.pem
+    target: /etc/kim/consul-ca.pem
+    read_only: true
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ./consul/tls/consul-client.pem
+    target: /etc/kim/consul-client.pem
+    read_only: true
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ./consul/tls/consul-client-key.pem
+    target: /etc/kim/consul-client-key.pem
+    read_only: true
+    bind:
+      create_host_path: false
 
 services:
   postgres:
@@ -83,9 +98,24 @@ services:
       - "127.0.0.1:8501:8501"
     volumes:
       - consul_data:/consul/data
-      - ./consul/agent.hcl:/consul/config/agent.hcl:ro
-      - ./consul/secrets.hcl:/consul/config/secrets.hcl:ro
-      - ./consul/tls:/consul/tls:ro
+      - type: bind
+        source: ./consul/agent.hcl
+        target: /consul/config/agent.hcl
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./consul/secrets.hcl
+        target: /consul/config/secrets.hcl
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./consul/tls
+        target: /consul/tls
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test:
         [
@@ -125,8 +155,18 @@ services:
       CONSUL_TOKEN_GATEWAY: ${CONSUL_TOKEN_GATEWAY:?set CONSUL_TOKEN_GATEWAY}
       CONSUL_TOKEN_ROUTER: ${CONSUL_TOKEN_ROUTER:?set CONSUL_TOKEN_ROUTER}
     volumes:
-      - ./consul/tls:/consul/tls:ro
-      - ./consul/acl-init.sh:/acl-init.sh:ro
+      - type: bind
+        source: ./consul/tls
+        target: /consul/tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./consul/acl-init.sh
+        target: /acl-init.sh
+        read_only: true
+        bind:
+          create_host_path: false
     entrypoint: ["/bin/sh", "/acl-init.sh"]
 
   royal:

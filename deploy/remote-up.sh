@@ -33,14 +33,45 @@ chmod 640 kim.env
 
 if [[ -n "${GHCR_TOKEN:-}" ]]; then
   printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+  logged_in=1
 fi
 
-docker compose --env-file kim.env --profile metrics pull
-docker compose --env-file kim.env --profile metrics up -d --remove-orphans
+compose=(docker compose --env-file kim.env --profile metrics)
+logged_in=${logged_in:-0}
 
-if [[ -n "${GHCR_TOKEN:-}" ]]; then
-  docker logout ghcr.io >/dev/null 2>&1 || true
+cleanup() {
+  local exit_status="$?"
+  trap - EXIT
+  if (( logged_in == 1 )); then
+    docker logout ghcr.io >/dev/null 2>&1 || true
+  fi
+  exit "$exit_status"
+}
+trap cleanup EXIT
+
+"${compose[@]}" pull
+
+case "${RESET_CONSUL_DATA:-false}" in
+  true)
+    echo "resetting legacy Consul data volume (Postgres and Redis are untouched)"
+    "${compose[@]}" rm -sf consul consul-acl
+    if docker volume inspect kim_consul_data >/dev/null 2>&1; then
+      docker volume rm kim_consul_data
+    fi
+    ;;
+  false | "") ;;
+  *)
+    echo "error: RESET_CONSUL_DATA must be true or false" >&2
+    exit 1
+    ;;
+esac
+
+if ! "${compose[@]}" up -d --remove-orphans; then
+  echo "error: compose up failed; Consul diagnostics follow" >&2
+  "${compose[@]}" ps || true
+  "${compose[@]}" logs --no-color --tail=200 consul consul-acl || true
+  exit 1
 fi
 
-docker compose --env-file kim.env --profile metrics ps
+"${compose[@]}" ps
 echo "deploy ok (env values not printed)"

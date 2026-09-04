@@ -24,7 +24,7 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 `deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul HTTPS API `127.0.0.1:8501`（明文 8500 已关）。
 
-从旧明文 Consul 切到 HTTPS + gossip `encrypt` + ACL 时，**不能**复用 `kim_consul_data`：旧 raft 没有这把 encrypt key，agent 起不来，健康检查失败，后面 `consul-acl` / Royal / Chat 全停。一次性：
+从旧明文 Consul 切到 HTTPS + gossip `encrypt` + ACL 时，**不能**复用 `kim_consul_data`：旧 raft 没有这把 encrypt key，agent 起不来，健康检查失败，后面 `consul-acl` / Royal / Chat 全停。GitHub Actions 手动运行 `Deploy` 时，把 `reset_consul_data` 设为 `true`；它只删 Consul 卷，不碰 Postgres / Redis。也可以在 VPS 一次性执行：
 
 ```bash
 cd /opt/kim/deploy
@@ -34,7 +34,7 @@ docker volume rm kim_consul_data
 docker compose --env-file kim.env --profile metrics up -d
 ```
 
-先看 `docker logs kim-consul-1`：`permission denied` 是 TLS/secrets 文件 uid 100 读不到（bootstrap 会 chown）；`encryption key` / `invalid config` 是旧数据卷。
+自动部署会同步并校验 `consul/agent.hcl`、`consul/acl-init.sh` 为普通文件；旧版短挂载误建的同名空目录也会在上传前清理。Compose 的 Consul 文件挂载禁止自动建目录，缺文件会立即报错。部署失败会自动打印 Consul / ACL 日志；手工排障也可看 `docker logs kim-consul-1`：`permission denied` 是 TLS/secrets 文件 uid 100 读不到（bootstrap 会 chown）；`encryption key` / `invalid config` 是旧数据卷。
 
 已有 VPS 的 `kim.env` **已有密钥不会**被 `bootstrap.sh` 改写。脚本会 **preflight**：补齐缺失的 Consul TLS leaf、`secrets.hcl`（含 gossip `encrypt`），并对空的必填键 **只追加**（`KIM_ENV`、`CONSUL_HTTP_ADDR`、`KIM_IMAGE`、从 URL 抄出的 `REDIS_PASSWORD` / `POSTGRES_PASSWORD`、新 HMAC / Consul token；`CONSUL_MANAGEMENT_TOKEN` 若 `secrets.hcl` 已有则复用）。`REDIS_URL` 没有密码时会写入新密码并改 URL（下次 `compose up` Redis 带 `--requirepass`）。Postgres 数据卷只在首次初始化读密码，因此 **不会**给已有库另造 `POSTGRES_PASSWORD`。不会只因 CA 文件存在就跳过。Gossip 共享密钥只进 Consul agent 的 `secrets.hcl`，不进业务容器。`consul-acl` 创建 token 失败必须非 0（compose 不得放行业务）。Gateway 在 `REDIS_URL` 已配置但 revoke store 打不开时 **拒绝启动**，不得跳过吊销检查。部署新栈前确认：`KIM_ENV=production`、`REDIS_PASSWORD` / 带密码的 `REDIS_URL`、每服务 `CONSUL_TOKEN_*`、Consul 私有 CA 与 client cert、非 demo 的 `KIM_JWT_SECRET` / `KIM_INTERNAL_HMAC_SECRET`。缺任一项，生产进程拒绝启动。Chat **不再**直连 `DATABASE_URL`。
 
@@ -116,7 +116,7 @@ npm run deploy:app
 |---|---|---|
 | `ci.yml` | push / PR | fmt、clippy、test |
 | `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim`。`v*` 成功后再部署 |
-| `deploy.yml` | Image 在 `v*` 成功后，或手动 | SSH 到 VPS，rsync compose，`remote-up.sh` |
+| `deploy.yml` | Image 在 `v*` 成功后，或手动 | SSH 到 VPS，同步并校验部署文件，执行 `remote-up.sh`；旧明文 Consul 迁移时手动勾选 `reset_consul_data` |
 | `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
 | `media.yml` | `main` 上 `sdk/media/**` 或手动 | `npm test` 后 `wrangler deploy` 到 `upload.kim.ainexc.com` |
 

@@ -31,6 +31,20 @@ require_docker() {
   fi
 }
 
+require_deploy_files() {
+  local path
+  for path in \
+    "$DEPLOY_DIR/consul/agent.hcl" \
+    "$DEPLOY_DIR/consul/acl-init.sh"
+  do
+    if [[ ! -f "$path" ]]; then
+      echo "error: expected regular deployment file $path" >&2
+      echo "error: upload deploy/consul before running bootstrap" >&2
+      exit 1
+    fi
+  done
+}
+
 # docker-entrypoint.sh su-execs to USER consul (uid 100) even when docker
 # --user is root, so --user cannot write $name-<uuid>.tmp into a root:root
 # 755 bind mount. Skip the entrypoint; open the dir for the generate window.
@@ -324,6 +338,7 @@ preflight_kim_env() {
   fi
 }
 
+require_deploy_files
 ensure_tls
 
 ENV_FILE="$DEPLOY_DIR/kim.env"
