@@ -61,17 +61,23 @@ tls_complete() {
     && -f "$TLS_DIR/consul-client-key.pem" ]]
 }
 
-# Official consul image USER is uid 100. CI `chown -R root:root` plus chmod 640
-# would make secrets.hcl / TLS keys unreadable and the agent never healthy.
+# Official consul image runs the agent as uid 100. KIM containers run with a
+# different uid and join supplemental gid 10001 to read only the shared client
+# key. Server / CA keys and secrets remain readable only by the Consul uid.
 ensure_consul_readable() {
-  local uid=100
+  local consul_uid=100
+  local kim_client_gid=10001
   chmod 755 "$TLS_DIR"
-  chown -R "$uid:$uid" "$TLS_DIR" || true
-  chmod 644 "$TLS_DIR"/*.pem 2>/dev/null || true
-  chmod 640 "$TLS_DIR"/*-key.pem 2>/dev/null || true
+  chown -R "$consul_uid:$consul_uid" "$TLS_DIR"
+  chmod 644 "$TLS_DIR"/*.pem
+  chmod 600 "$TLS_DIR"/*-key.pem
+  if [[ -f "$TLS_DIR/consul-client-key.pem" ]]; then
+    chown "$consul_uid:$kim_client_gid" "$TLS_DIR/consul-client-key.pem"
+    chmod 640 "$TLS_DIR/consul-client-key.pem"
+  fi
   if [[ -f "$SECRETS" ]]; then
-    chown "$uid:$uid" "$SECRETS" || true
-    chmod 640 "$SECRETS"
+    chown "$consul_uid:$consul_uid" "$SECRETS"
+    chmod 600 "$SECRETS"
   fi
 }
 

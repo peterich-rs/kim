@@ -9,22 +9,12 @@ on:
         description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
         required: true
         type: string
-      reset_consul_data:
-        description: "One-time reset of the legacy plaintext Consul volume"
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       image_tag:
         description: "Image tag to deploy (sha-…, 1.2.3, v1.2.3, or latest)"
         required: false
         default: "latest"
-      reset_consul_data:
-        description: "Delete only kim_consul_data before deploying"
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: deploy-vps
@@ -71,7 +61,6 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           IMAGE: ghcr.io/${{ github.repository }}:${{ steps.img.outputs.tag }}
-          RESET_CONSUL_DATA: ${{ inputs.reset_consul_data }}
         run: |
           set -euo pipefail
           umask 077
@@ -138,5 +127,5 @@ jobs:
           # on the ssh command line (it would show up in ps). A YAML heredoc here
           # would un-indent and break the workflow file.
           printf '%s\n' "$GHCR_TOKEN" | "${ssh_cmd[@]}" "$HOST" \
-            "IMAGE=$(printf %q "$IMAGE") GHCR_USER=$(printf %q "$GHCR_USER") RESET_CONSUL_DATA=$(printf %q "$RESET_CONSUL_DATA") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER IMAGE RESET_CONSUL_DATA; exec bash /opt/kim/deploy/remote-up.sh'"
+            "IMAGE=$(printf %q "$IMAGE") GHCR_USER=$(printf %q "$GHCR_USER") bash -c 'read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER IMAGE; exec bash /opt/kim/deploy/remote-up.sh'"
           rm -f "$HOME/.ssh/kim_deploy"
