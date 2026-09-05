@@ -43,7 +43,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 prost = "0.13"
-jsonwebtoken = "9"
+jsonwebtoken = "11"
 serde = { version = "1", features = ["derive"] }
 crc32fast = "1"
 redis = { version = "0.32", default-features = false, features = ["tokio-comp", "connection-manager", "script"] }
