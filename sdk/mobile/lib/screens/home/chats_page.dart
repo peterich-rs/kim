@@ -175,30 +175,27 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
             SliverPadding(
               padding: const EdgeInsets.only(bottom: 24),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    final thread = visible[i];
-                    return ConversationTile(
-                      thread: thread,
-                      avatarUrl: avatarFor(me, social, thread.id),
-                      onOpen: () {
-                        KimHaptics.selection();
-                        ref
-                            .read(threadsProvider.notifier)
-                            .ensureThread(
-                              id: thread.id,
-                              kind: thread.kind,
-                              title: thread.title,
-                            );
-                        context.push('/chat/${thread.id}', extra: thread);
-                      },
-                      onDelete: () => ref
+                delegate: SliverChildBuilderDelegate((context, i) {
+                  final thread = visible[i];
+                  return ConversationTile(
+                    thread: thread,
+                    avatarUrl: avatarFor(me, social, thread.id),
+                    onOpen: () {
+                      KimHaptics.selection();
+                      ref
                           .read(threadsProvider.notifier)
-                          .deleteThread(thread.id),
-                    );
-                  },
-                  childCount: visible.length,
-                ),
+                          .ensureThread(
+                            id: thread.id,
+                            kind: thread.kind,
+                            title: thread.title,
+                          );
+                      context.push('/chat/${thread.id}', extra: thread);
+                    },
+                    onDelete: () => ref
+                        .read(threadsProvider.notifier)
+                        .deleteThread(thread.id),
+                  );
+                }, childCount: visible.length),
               ),
             ),
         ],

@@ -7,8 +7,8 @@ import 'kim_network_image.dart';
 
 enum KimAvatarSize { sm, md, lg }
 
-/// Avatar silhouette. Default [circle] keeps chat bubble rows unchanged;
-/// conversation list uses [squircle].
+/// Avatar silhouette. Default [circle] for contacts and profile;
+/// conversation list and chat-thread peer rows use [squircle].
 enum KimAvatarShape { circle, squircle }
 
 class KimAvatar extends StatelessWidget {
