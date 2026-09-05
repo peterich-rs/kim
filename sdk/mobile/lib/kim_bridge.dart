@@ -3,8 +3,14 @@
 library;
 
 import 'dart:convert';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show ExternalLibrary;
 
 import 'core/format.dart';
+import 'core/ota_info.dart';
 import 'core/image_extra.dart';
 import 'core/jwt.dart';
 import 'models/models.dart';
@@ -137,8 +143,24 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (_inited) {
       return;
     }
-    await RustLib.init();
+    // Android logic SO OTA: if KimApplication already System.load'd the OTA
+    // libkim_client_ffi.so, open that absolute path so FRB does not pick the
+    // APK/native-assets copy (stem: kim_client_ffi).
+    if (!kIsWeb && Platform.isAndroid) {
+      final ota = await OtaBridge.status();
+      final path = ota.ffiPath;
+      if (ota.ffiLoadedFromOta && path != null && path.isNotEmpty) {
+        await RustLib.init(externalLibrary: ExternalLibrary.open(path));
+      } else {
+        await RustLib.init();
+      }
+    } else {
+      await RustLib.init();
+    }
     _inited = true;
+    if (!kIsWeb && Platform.isAndroid) {
+      await OtaBridge.markHealthy();
+    }
   }
 
   rust_auth.KimAuth _auth(String origin, String userAgent) {

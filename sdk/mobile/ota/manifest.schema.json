@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kim.local/schemas/logic-ota-manifest.json",
+  "title": "Kim Android Logic SO OTA Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "host_line",
+    "engine_build_id",
+    "logic_version",
+    "abi",
+    "channel",
+    "artifacts",
+    "zip_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "host_line": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "MAJOR.MINOR only (x.y), derived from logic_version / store APK versionName. Never a separate product knob."
+    },
+    "engine_build_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Flutter/engine id the AOT was built against (from .fvmrc / flutter --version at pack time)."
+    },
+    "logic_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Full semver x.y.z; same as release tag suffix. Patch-only OTA within a fixed x.y."
+    },
+    "abi": {
+      "type": "string",
+      "const": "arm64-v8a"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "beta", "dev"]
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp."
+    },
+    "zip_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256", "size"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["libapp.so", "libkim_client_ffi.so"]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

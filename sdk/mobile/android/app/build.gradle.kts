@@ -1,11 +1,30 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+
+// Flutter version used to compile this APK — also the OTA engine_build_id.
+// Sourced from sdk/mobile/.fvmrc (same file CI flutter-action consumes).
+val otaEngineBuildId: String =
+    run {
+        val fvmrc = file("../../.fvmrc")
+        require(fvmrc.isFile) { "Missing ${fvmrc.path}; cannot set OTA_ENGINE_BUILD_ID" }
+        @Suppress("UNCHECKED_CAST")
+        val map = JsonSlurper().parse(fvmrc) as Map<String, Any?>
+        val v = map["flutter"] as? String
+        require(!v.isNullOrBlank()) { "Could not parse flutter version from ${fvmrc.path}" }
+        v!!
+    }
+
 android {
     namespace = "com.kim.kim_mobile"
+    buildFeatures {
+        buildConfig = true
+    }
     // Flutter 3.47 still defaults compileSdk to 36. flutter_secure_storage 11
     // and permission_handler 13 compile against 37; Flutter's Android build
     // guide says bump compileSdk when a plugin needs a newer API:
@@ -37,6 +56,13 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // Logic SO OTA: host_line is derived at runtime from VERSION_NAME (x.y).
+        // engine_build_id matches the Flutter version that compiled this APK.
+        buildConfigField("String", "OTA_ENGINE_BUILD_ID", "\"${otaEngineBuildId}\"")
+        buildConfigField("String", "OTA_CHANNEL", "\"dev\"")
+        buildConfigField("String", "OTA_GITHUB_OWNER", "\"peterich-rs\"")
+        buildConfigField("String", "OTA_GITHUB_REPO", "\"kim\"")
+        buildConfigField("String", "OTA_TAG_PREFIX", "\"logic-ota-v\"")
     }
 
     buildTypes {
@@ -62,4 +88,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+
+dependencies {
+    // Ed25519 verify for logic SO OTA manifests (OpenSSL pkeyutl compatible).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 }

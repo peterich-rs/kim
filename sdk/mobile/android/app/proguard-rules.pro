@@ -18,3 +18,7 @@
 -dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
 -dontwarn com.google.android.play.core.splitinstall.**
 -dontwarn com.google.android.play.core.tasks.**
+
+# BouncyCastle Ed25519 verify (logic SO OTA)
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**

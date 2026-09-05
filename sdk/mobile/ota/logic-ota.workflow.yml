@@ -1,0 +1,263 @@
+# Build arm64 logic SOs, pack+sign, publish a GitHub Release (assets = catalog).
+# Client catalogs via GET /repos/{owner}/{repo}/releases — no Royal check API.
+# Patch-only dynamic semver: logic_version=x.y.z → host_line=x.y; engine from .fvmrc.
+name: Logic SO OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      logic_version:
+        description: "Semver x.y.z (default: version from sdk/mobile/pubspec.yaml before +build)"
+        required: false
+        default: ""
+      channel:
+        description: "stable | beta | dev"
+        required: false
+        default: "dev"
+  push:
+    tags:
+      - "logic-ota-v*"
+
+concurrency:
+  group: logic-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTUP_TOOLCHAIN: "1.95.0"
+
+jobs:
+  guard:
+    name: Fail on platform path diffs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Reject platform / iOS / plugins changes
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            echo "tag build: skip path-diff guard."
+            exit 0
+          fi
+          # workflow_dispatch: refuse if HEAD diverged from main with platform paths.
+          git fetch origin main || true
+          RANGE="origin/main...HEAD"
+          echo "Checking diff range: ${RANGE}"
+          blocked=0
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            case "$f" in
+              sdk/mobile/android/*|sdk/mobile/ios/*|sdk/mobile/plugins/*)
+                echo "BLOCKED path: $f"
+                blocked=1
+                ;;
+            esac
+          done < <(git diff --name-only ${RANGE} || true)
+          if [[ "$blocked" -ne 0 ]]; then
+            echo "::error::logic-ota refuses platform/iOS/plugin diffs vs main. Bump minor/major in pubspec and ship a full APK (new x.y baseline)."
+            exit 1
+          fi
+          echo "Path guard OK."
+
+  build-pack-release:
+    name: Build arm64 SOs, pack, publish Release
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve logic_version + metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            LV="${{ inputs.logic_version }}"
+            CHANNEL="${{ inputs.channel }}"
+            if [[ -z "$LV" ]]; then
+              LV=$(python3 -c "import re; t=open('sdk/mobile/pubspec.yaml').read(); m=re.search(r'(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)', t); assert m, 'pubspec version'; print(m.group(1))")
+              echo "logic_version defaulted from pubspec: ${LV}"
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+            PREFIX="logic-ota-v"
+            if [[ "$TAG" != ${PREFIX}* ]]; then
+              echo "::error::tag $TAG does not start with $PREFIX"
+              exit 1
+            fi
+            LV="${TAG#"$PREFIX"}"
+            CHANNEL="dev"
+          fi
+          if [[ -z "$LV" ]]; then
+            echo "::error::empty logic_version"
+            exit 1
+          fi
+          if [[ ! "$LV" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::logic_version must be x.y.z, got: $LV"
+            exit 1
+          fi
+          HOST_LINE="${LV%.*}"
+          ENGINE=$(python3 -c "import json; print(json.load(open('sdk/mobile/.fvmrc'))['flutter'])")
+          if [[ -z "$ENGINE" ]]; then
+            echo "::error::empty engine_build_id from sdk/mobile/.fvmrc"
+            exit 1
+          fi
+          TAG_NAME="logic-ota-v${LV}"
+          {
+            echo "logic_version=${LV}"
+            echo "tag_name=${TAG_NAME}"
+            echo "host_line=${HOST_LINE}"
+            echo "channel=${CHANNEL}"
+            echo "engine_build_id=${ENGINE}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing ${TAG_NAME} host_line=${HOST_LINE} channel=${CHANNEL} engine=${ENGINE}"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Install Android platform / build-tools
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" || \
+            sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version-file: sdk/mobile/.fvmrc
+          cache: true
+
+      - name: Install protobuf-src build deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make zip unzip openssl
+
+      - name: Install Rust + Android target
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-linux-android
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: sdk/mobile/rust -> sdk/mobile/rust/target
+
+      - name: Flutter pub get + release APK (arm64)
+        working-directory: sdk/mobile
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build apk --release --target-platform android-arm64
+
+      - name: Extract arm64 SOs from APK
+        id: sos
+        run: |
+          set -euo pipefail
+          APK="sdk/mobile/build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$APK"
+          EXTRACT=$(mktemp -d)
+          unzip -q -o "$APK" "lib/arm64-v8a/*" -d "$EXTRACT"
+          LIBAPP="$EXTRACT/lib/arm64-v8a/libapp.so"
+          LIBFFI="$EXTRACT/lib/arm64-v8a/libkim_client_ffi.so"
+          if [[ ! -f "$LIBAPP" ]]; then
+            echo "::error::APK missing lib/arm64-v8a/libapp.so"
+            unzip -l "$APK" | head -100
+            exit 1
+          fi
+          if [[ ! -f "$LIBFFI" ]]; then
+            echo "::error::APK missing lib/arm64-v8a/libkim_client_ffi.so (both SOs required)"
+            unzip -l "$APK" | grep -E 'lib/arm64|\.so' || unzip -l "$APK" | head -200
+            exit 1
+          fi
+          mkdir -p /tmp/ota-sos
+          cp "$LIBAPP" /tmp/ota-sos/libapp.so
+          cp "$LIBFFI" /tmp/ota-sos/libkim_client_ffi.so
+          ls -la /tmp/ota-sos
+          echo "libapp=/tmp/ota-sos/libapp.so" >> "$GITHUB_OUTPUT"
+          echo "libffi=/tmp/ota-sos/libkim_client_ffi.so" >> "$GITHUB_OUTPUT"
+
+      - name: Require signing secret
+        env:
+          OTA_ED25519_PRIVATE_PEM: ${{ secrets.OTA_ED25519_PRIVATE_PEM }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${OTA_ED25519_PRIVATE_PEM:-}" ]]; then
+            echo "::error::secrets.OTA_ED25519_PRIVATE_PEM is required to publish a signed logic OTA release"
+            exit 1
+          fi
+
+      - name: Pack + sign (both SOs always)
+        env:
+          OTA_ED25519_PRIVATE_PEM: ${{ secrets.OTA_ED25519_PRIVATE_PEM }}
+        run: |
+          set -euo pipefail
+          KEY_FILE=$(mktemp)
+          printf '%s\n' "$OTA_ED25519_PRIVATE_PEM" > "$KEY_FILE"
+          OTA_SIGNING_KEY="$KEY_FILE" ./sdk/mobile/ota/pack_logic_ota.sh \
+            --libapp /tmp/ota-sos/libapp.so \
+            --libffi /tmp/ota-sos/libkim_client_ffi.so \
+            --out-dir ./ota-dist \
+            --logic-version "${{ steps.meta.outputs.logic_version }}" \
+            --engine-build-id "${{ steps.meta.outputs.engine_build_id }}" \
+            --channel "${{ steps.meta.outputs.channel }}"
+          rm -f "$KEY_FILE"
+          test -f ./ota-dist/manifest.json
+          test -f ./ota-dist/manifest.json.sig
+          test -f "./ota-dist/logic-ota-${{ steps.meta.outputs.logic_version }}-arm64-v8a.zip"
+
+      - name: Verify package
+        run: |
+          set -euo pipefail
+          ./sdk/mobile/ota/verify_logic_ota.sh \
+            --manifest ./ota-dist/manifest.json \
+            --zip "./ota-dist/logic-ota-${{ steps.meta.outputs.logic_version }}-arm64-v8a.zip" \
+            --public-key ./sdk/mobile/android/app/src/main/assets/ota/ed25519_public.pem
+
+      - name: Create GitHub Release + upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag_name }}"
+          LV="${{ steps.meta.outputs.logic_version }}"
+          ZIP="./ota-dist/logic-ota-${LV}-arm64-v8a.zip"
+          TITLE="Logic SO OTA ${LV}"
+          NOTES_FILE=$(mktemp)
+          {
+            echo "Android logic SO hotfix (GitHub Releases catalog)."
+            echo
+            echo "- **tag:** \`${TAG}\`"
+            echo "- **logic_version:** \`${LV}\`"
+            echo "- **host_line:** \`${{ steps.meta.outputs.host_line }}\` (MAJOR.MINOR)"
+            echo "- **channel:** \`${{ steps.meta.outputs.channel }}\`"
+            echo "- **engine_build_id:** \`${{ steps.meta.outputs.engine_build_id }}\`"
+            echo "- **abi:** arm64-v8a"
+            echo "- **artifacts:** \`libapp.so\` + \`libkim_client_ffi.so\` (always shipped together)"
+            echo
+            echo "Clients list \`GET /repos/${{ github.repository }}/releases\` and install the newest compatible signed package (same x.y, newer patch)."
+          } > "$NOTES_FILE"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — uploading/clobbering assets"
+            gh release upload "$TAG" "$ZIP" ./ota-dist/manifest.json ./ota-dist/manifest.json.sig --clobber
+          else
+            gh release create "$TAG" "$ZIP" ./ota-dist/manifest.json ./ota-dist/manifest.json.sig \
+              --title "$TITLE" \
+              --notes-file "$NOTES_FILE"
+          fi
