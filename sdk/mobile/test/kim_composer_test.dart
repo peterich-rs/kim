@@ -41,7 +41,9 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('composer-plus')), findsNothing);
+    // Floating chrome keeps + and send as separate controls.
+    expect(find.byKey(const Key('composer-plus')), findsOneWidget);
+    expect(find.byKey(const Key('composer-send')), findsOneWidget);
     await tester.tap(find.byKey(const Key('composer-send')));
     await tester.pumpAndSettle();
     expect(sent, 'hello');

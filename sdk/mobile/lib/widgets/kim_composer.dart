@@ -7,9 +7,8 @@ import '../copy.dart';
 import '../core/haptics.dart';
 import '../theme/kim_theme.dart';
 import '../theme/motion.dart';
-import 'kim_hairline.dart';
 
-/// Telegram-style composer: capsule field, send/plus crossfade, media panel.
+/// Floating composer chrome: circular +, stadium field, circular send (↑).
 class KimComposer extends StatefulWidget {
   const KimComposer({
     super.key,
@@ -33,7 +32,11 @@ class KimComposerState extends State<KimComposer> {
   final _focus = FocusNode();
   var _panel = false;
   var _hasText = false;
-  var _pressed = false;
+  var _sendPressed = false;
+  var _plusPressed = false;
+
+  static const double _btn = 40;
+  static const double _fieldRadius = 22;
 
   @override
   void initState() {
@@ -99,19 +102,37 @@ class KimComposerState extends State<KimComposer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final raised = KimTheme.raisedOf(context);
-    final capsule = BorderRadius.circular(22);
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final fieldFill = scheme.surfaceContainerLowest;
+    final chrome = scheme.surfaceContainerHigh;
+    final hairline = KimTheme.hairlineOf(context);
+    final stadium = BorderRadius.circular(_fieldRadius);
+
     return Material(
-      color: raised,
+      color: Colors.transparent,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KimHairline(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            padding: EdgeInsets.fromLTRB(12, 6, 12, _panel ? 4 : 8 + bottom),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                _ChromeCircle(
+                  key: const Key('composer-plus'),
+                  size: _btn,
+                  color: chrome,
+                  pressed: _plusPressed,
+                  onPressedChanged: (v) => setState(() => _plusPressed = v),
+                  onTap: _togglePanel,
+                  tooltip: Copy.plusPanel,
+                  child: Icon(
+                    _panel ? LucideIcons.x : LucideIcons.plus,
+                    size: 22,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -124,72 +145,40 @@ class KimComposerState extends State<KimComposer> {
                     decoration: InputDecoration(
                       hintText: widget.hintText ?? Copy.messagePlaceholder,
                       filled: true,
-                      fillColor: scheme.surface,
+                      fillColor: fieldFill,
                       isDense: true,
                       contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                       border: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(
-                          color: KimTheme.hairlineOf(context),
-                        ),
+                        borderRadius: stadium,
+                        borderSide: BorderSide(color: hairline),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(
-                          color: KimTheme.hairlineOf(context),
-                        ),
+                        borderRadius: stadium,
+                        borderSide: BorderSide(color: hairline),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(color: scheme.primary),
+                        borderRadius: stadium,
+                        borderSide: BorderSide(
+                          color: scheme.outline.withValues(alpha: 0.55),
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                Listener(
-                  onPointerDown: (_) => setState(() => _pressed = true),
-                  onPointerUp: (_) => setState(() => _pressed = false),
-                  onPointerCancel: (_) => setState(() => _pressed = false),
-                  child: AnimatedScale(
-                    scale: _pressed ? 0.9 : 1,
-                    duration: KimTheme.motionFast,
-                    curve: KimTheme.motionEmphasized,
-                    child: AnimatedSwitcher(
-                      duration: KimTheme.motionFast,
-                      switchInCurve: KimTheme.motionEmphasized,
-                      switchOutCurve: KimTheme.motionEmphasized,
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(
-                            scale: animation,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _hasText
-                          ? IconButton(
-                              key: const Key('composer-send'),
-                              tooltip: Copy.send,
-                              onPressed: _submit,
-                              style: IconButton.styleFrom(
-                                backgroundColor: scheme.primary,
-                                foregroundColor: scheme.onPrimary,
-                              ),
-                              icon: const Icon(LucideIcons.send, size: 18),
-                            )
-                          : IconButton(
-                              key: const Key('composer-plus'),
-                              tooltip: Copy.plusPanel,
-                              onPressed: _togglePanel,
-                              icon: Icon(
-                                _panel ? LucideIcons.x : LucideIcons.plus,
-                                size: 22,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                    ),
+                const SizedBox(width: 8),
+                _ChromeCircle(
+                  key: const Key('composer-send'),
+                  size: _btn,
+                  color: scheme.onSurface,
+                  pressed: _sendPressed,
+                  enabled: _hasText,
+                  onPressedChanged: (v) => setState(() => _sendPressed = v),
+                  onTap: _submit,
+                  tooltip: Copy.send,
+                  child: Icon(
+                    LucideIcons.arrowUp,
+                    size: 20,
+                    color: scheme.surface,
                   ),
                 ),
               ],
@@ -200,22 +189,83 @@ class KimComposerState extends State<KimComposer> {
             curve: KimMotion.standard,
             alignment: Alignment.topCenter,
             child: _panel
-                ? _MediaPanel(
-                    onPickAlbum: () {
-                      setState(() => _panel = false);
-                      widget.onPickAlbum();
-                    },
-                    onTakePhoto: () {
-                      setState(() => _panel = false);
-                      widget.onTakePhoto();
-                    },
+                ? Padding(
+                    padding: EdgeInsets.only(bottom: 8 + bottom),
+                    child: _MediaPanel(
+                      onPickAlbum: () {
+                        setState(() => _panel = false);
+                        widget.onPickAlbum();
+                      },
+                      onTakePhoto: () {
+                        setState(() => _panel = false);
+                        widget.onTakePhoto();
+                      },
+                    ),
                   )
                 : const SizedBox(width: double.infinity, height: 0),
           ),
-          SizedBox(height: MediaQuery.paddingOf(context).bottom),
         ],
       ),
     );
+  }
+}
+
+class _ChromeCircle extends StatelessWidget {
+  const _ChromeCircle({
+    super.key,
+    required this.size,
+    required this.color,
+    required this.child,
+    required this.onTap,
+    required this.pressed,
+    required this.onPressedChanged,
+    this.enabled = true,
+    this.tooltip,
+  });
+
+  final double size;
+  final Color color;
+  final Widget child;
+  final VoidCallback onTap;
+  final bool pressed;
+  final ValueChanged<bool> onPressedChanged;
+  final bool enabled;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Listener(
+      onPointerDown: enabled ? (_) => onPressedChanged(true) : null,
+      onPointerUp: (_) => onPressedChanged(false),
+      onPointerCancel: (_) => onPressedChanged(false),
+      child: AnimatedScale(
+        scale: pressed ? 0.9 : 1,
+        duration: KimTheme.motionFast,
+        curve: KimTheme.motionEmphasized,
+        child: AnimatedOpacity(
+          opacity: enabled ? 1 : 0.38,
+          duration: KimTheme.motionFast,
+          child: Material(
+            color: color,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: enabled ? onTap : null,
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: Center(child: child),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -228,7 +278,7 @@ class _MediaPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Row(
         children: [
           _ActionTile(
@@ -276,7 +326,7 @@ class _ActionTile extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: scheme.surface,
+              color: scheme.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(KimTheme.radiusField),
               border: Border.all(color: KimTheme.hairlineOf(context)),
             ),

@@ -250,32 +250,24 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       resizeToAvoidBottomInset: true,
       backgroundColor: KimTheme.chatCanvasOf(context),
       appBar: AppBar(
-        centerTitle: false,
+        centerTitle: true,
         leadingWidth: 52,
-        leading: const _FrostedBack(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontSize: KimTheme.fontTitle,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              session.statusLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                fontSize: KimTheme.fontMeta,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+        leading: _FrostedCircleButton(
+          onTap: () => Navigator.of(context).maybePop(),
+          child: const Icon(LucideIcons.chevronLeft, size: 22),
         ),
+        title: _ChatTitleChrome(
+          title: widget.title,
+          avatarUrl: avatarFor(me, social, widget.id),
+          status: session.status,
+        ),
+        actions: const [
+          _FrostedCircleButton(
+            tooltip: Copy.me,
+            child: Icon(LucideIcons.monitor, size: 18),
+          ),
+          SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -346,22 +338,113 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 }
 
-class _FrostedBack extends StatelessWidget {
-  const _FrostedBack();
+class _FrostedCircleButton extends StatelessWidget {
+  const _FrostedCircleButton({
+    required this.child,
+    this.tooltip,
+    this.onTap,
+  });
+
+  final Widget child;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, top: 6, bottom: 6),
+    final button = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       child: Material(
-        color: scheme.surface.withValues(alpha: 0.55),
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.92),
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: const BackButton(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: IconTheme.merge(
+                data: IconThemeData(color: scheme.onSurface, size: 20),
+                child: Center(child: child),
+              ),
+            ),
+          ),
         ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _ChatTitleChrome extends StatelessWidget {
+  const _ChatTitleChrome({
+    required this.title,
+    required this.avatarUrl,
+    required this.status,
+  });
+
+  final String title;
+  final String avatarUrl;
+  final ConnStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 4, 12, 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              KimAvatar(
+                name: title,
+                url: avatarUrl,
+                size: KimAvatarSize.sm,
+                shape: KimAvatarShape.squircle,
+              ),
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: KimTheme.chatCanvasOf(context),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: StatusDot(status: status, size: 8),
+                ),
+              ),
+            ],
+          ),
+          const Gap(8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontSize: KimTheme.fontTitle,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -7,17 +7,23 @@ import 'kim_network_image.dart';
 
 enum KimAvatarSize { sm, md, lg }
 
+/// Avatar silhouette. Default [circle] keeps chat bubble rows unchanged;
+/// conversation list uses [squircle].
+enum KimAvatarShape { circle, squircle }
+
 class KimAvatar extends StatelessWidget {
   const KimAvatar({
     super.key,
     required this.name,
     this.url = '',
     this.size = KimAvatarSize.md,
+    this.shape = KimAvatarShape.circle,
   });
 
   final String name;
   final String url;
   final KimAvatarSize size;
+  final KimAvatarShape shape;
 
   double get _px => switch (size) {
     KimAvatarSize.sm => 36,
@@ -43,12 +49,17 @@ class KimAvatar extends StatelessWidget {
         height: 1,
       ),
     );
+    final shapeDecoration = switch (shape) {
+      KimAvatarShape.circle => const BoxDecoration(shape: BoxShape.circle),
+      KimAvatarShape.squircle => BoxDecoration(
+        borderRadius: BorderRadius.circular(_px * 0.32),
+      ),
+    };
     final fallback = Container(
       width: _px,
       height: _px,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
+      decoration: shapeDecoration.copyWith(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -62,16 +73,21 @@ class KimAvatar extends StatelessWidget {
       avatar = fallback;
     } else {
       final dpr = MediaQuery.devicePixelRatioOf(context);
-      avatar = ClipOval(
-        child: KimNetworkImage(
-          src: url,
-          width: _px,
-          height: _px,
-          fit: BoxFit.cover,
-          memCacheWidth: (_px * dpr).round(),
-          placeholder: fallback,
-        ),
+      final image = KimNetworkImage(
+        src: url,
+        width: _px,
+        height: _px,
+        fit: BoxFit.cover,
+        memCacheWidth: (_px * dpr).round(),
+        placeholder: fallback,
       );
+      avatar = switch (shape) {
+        KimAvatarShape.circle => ClipOval(child: image),
+        KimAvatarShape.squircle => ClipRRect(
+          borderRadius: BorderRadius.circular(_px * 0.32),
+          child: image,
+        ),
+      };
     }
     return avatar;
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,9 +14,21 @@ import 'state/providers.dart';
 import 'state/retry.dart';
 import 'theme/kim_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _enableMaxRefreshRate();
   runApp(const KimBoot());
+}
+
+Future<void> _enableMaxRefreshRate() async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    return;
+  }
+  try {
+    await FlutterDisplayMode.setHighRefreshRate();
+  } catch (_) {
+    // Unsupported devices / emulators: keep OS default.
+  }
 }
 
 class KimBoot extends StatefulWidget {
