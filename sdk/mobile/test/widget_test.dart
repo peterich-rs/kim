@@ -11,7 +11,7 @@ import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/widgets/kim_avatar.dart';
+import 'package:kim_mobile/widgets/status_chip.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -237,9 +237,9 @@ void main() {
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
-    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.byKey(const Key('chat-back')), findsOneWidget);
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byKey(const Key('chat-back')));
     await pumpUi(tester);
     expect(find.text(Copy.conversations), findsWidgets);
   });
@@ -263,7 +263,7 @@ void main() {
     expect(find.text('Bobby'), findsWidgets);
   });
 
-  testWidgets('chat app bar is two-line title plus status', (tester) async {
+  testWidgets('chat floating chrome overlays the thread', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
@@ -275,25 +275,11 @@ void main() {
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
 
-    final appBar = find.byType(AppBar);
-    expect(appBar, findsOneWidget);
-    expect(
-      find.descendant(of: appBar, matching: find.byType(KimAvatar)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: appBar, matching: find.byType(Hero)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: appBar, matching: find.text('Bobby')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: appBar, matching: find.text(Copy.online)),
-      findsOneWidget,
-    );
-    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byKey(const Key('chat-back')), findsOneWidget);
+    expect(find.byKey(const Key('chat-composer')), findsOneWidget);
+    expect(find.text('Bobby'), findsWidgets);
+    expect(find.byType(StatusDot), findsWidgets);
   });
 
   testWidgets('chat composer sits below the message list', (tester) async {

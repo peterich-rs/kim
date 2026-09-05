@@ -1,5 +1,7 @@
 library;
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -103,9 +105,7 @@ class KimComposerState extends State<KimComposer> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final fieldFill = scheme.surfaceContainerLowest;
-    final chrome = scheme.surfaceContainerHigh;
-    final hairline = KimTheme.hairlineOf(context);
+    final frost = KimTheme.frostFillOf(context);
     final stadium = BorderRadius.circular(_fieldRadius);
 
     return Material(
@@ -118,10 +118,9 @@ class KimComposerState extends State<KimComposer> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _ChromeCircle(
+                _FrostCircle(
                   key: const Key('composer-plus'),
                   size: _btn,
-                  color: chrome,
                   pressed: _plusPressed,
                   onPressedChanged: (v) => setState(() => _plusPressed = v),
                   onTap: _togglePanel,
@@ -134,39 +133,50 @@ class KimComposerState extends State<KimComposer> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focus,
-                    minLines: 1,
-                    maxLines: 4,
-                    style: const TextStyle(fontSize: KimTheme.fontBody),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submit(),
-                    decoration: InputDecoration(
-                      hintText: widget.hintText ?? Copy.messagePlaceholder,
-                      filled: true,
-                      fillColor: fieldFill,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      border: OutlineInputBorder(
-                        borderRadius: stadium,
-                        borderSide: BorderSide(color: hairline),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: stadium,
-                        borderSide: BorderSide(color: hairline),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: stadium,
-                        borderSide: BorderSide(
-                          color: scheme.outline.withValues(alpha: 0.55),
+                  child: ClipRRect(
+                    borderRadius: stadium,
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        minLines: 1,
+                        maxLines: 4,
+                        style: const TextStyle(fontSize: KimTheme.fontBody),
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          hintText: widget.hintText ?? Copy.messagePlaceholder,
+                          filled: true,
+                          fillColor: frost,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            10,
+                            16,
+                            10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide(
+                              color: scheme.outline.withValues(alpha: 0.35),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                _ChromeCircle(
+                _SolidCircle(
                   key: const Key('composer-send'),
                   size: _btn,
                   color: scheme.onSurface,
@@ -210,8 +220,63 @@ class KimComposerState extends State<KimComposer> {
   }
 }
 
-class _ChromeCircle extends StatelessWidget {
-  const _ChromeCircle({
+class _FrostCircle extends StatelessWidget {
+  const _FrostCircle({
+    super.key,
+    required this.size,
+    required this.child,
+    required this.onTap,
+    required this.pressed,
+    required this.onPressedChanged,
+    this.tooltip,
+  });
+
+  final double size;
+  final Widget child;
+  final VoidCallback onTap;
+  final bool pressed;
+  final ValueChanged<bool> onPressedChanged;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Listener(
+      onPointerDown: (_) => onPressedChanged(true),
+      onPointerUp: (_) => onPressedChanged(false),
+      onPointerCancel: (_) => onPressedChanged(false),
+      child: AnimatedScale(
+        scale: pressed ? 0.9 : 1,
+        duration: KimTheme.motionFast,
+        curve: KimTheme.motionEmphasized,
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Material(
+              color: KimTheme.frostFillOf(context),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onTap,
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Center(child: child),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _SolidCircle extends StatelessWidget {
+  const _SolidCircle({
     super.key,
     required this.size,
     required this.color,

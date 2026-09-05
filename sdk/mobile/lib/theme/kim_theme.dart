@@ -48,6 +48,13 @@ abstract final class KimTheme {
   static Color hairlineOf(BuildContext context) =>
       Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.72);
 
+  /// Semi-transparent frosted chip fill (floating chrome over chat).
+  static Color frostFillOf(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return (dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF))
+        .withValues(alpha: dark ? 0.45 : 0.65);
+  }
+
   static ThemeData light() => _from(Brightness.light);
 
   static ThemeData dark() => _from(Brightness.dark);
