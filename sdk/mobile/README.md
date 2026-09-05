@@ -31,9 +31,9 @@ Android: packaging is **arm64-v8a only** (`ndk.abiFilters` in `android/app/build
 
 ## Android Logic SO OTA
 
-App-store APK is primary. A small Android-only hotfix channel can swap `libapp.so` + `libkim_client_ffi.so` (arm64-v8a) after SHA-256 + Ed25519 verify. Never OTAs Flutter engine, plugins, Java/Kotlin, resources, or sqlite3 (phase 1). Platform changes require a full release and a new `host_line`.
+App-store APK is primary. A small Android-only hotfix channel can swap `libapp.so` + `libkim_client_ffi.so` (arm64-v8a) after SHA-256 + Ed25519 verify. **Catalog = GitHub Releases** (`logic-ota-v*` tags + assets); no Royal check API. Never OTAs Flutter engine, plugins, Java/Kotlin, resources, or sqlite3 (phase 1). Platform changes require a full release and a new `host_line`. Both SOs always ship together.
 
-Design: [docs/mobile-android-so-ota.md](../../docs/mobile-android-so-ota.md). Pack/verify: [ota/README.md](ota/README.md).
+Design: [docs/mobile-android-so-ota.md](../../docs/mobile-android-so-ota.md). Pack/verify/publish: [ota/README.md](ota/README.md).
 
 
 FFI is flutter_rust_bridge **2.13 Native Assets** (`hook/build.dart` → `rust/` `kim_client_ffi` → `KimApi`). Flutter invokes the hook via `flutter_rust_bridge_hooks` (wrapping native_toolchain_rust); there is no `rust_builder` / Cargokit / ffiPlugin. Xcode does not inherit `~/.zshrc`, so `ios/Scripts/run_xcode_backend.sh` prepends `~/.cargo/bin` (see `ios/.xcode.env`). Without a device toolchain, use:

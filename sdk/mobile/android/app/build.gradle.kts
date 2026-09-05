@@ -44,7 +44,9 @@ android {
         buildConfigField("String", "OTA_HOST_LINE", "\"kim-android-1\"")
         buildConfigField("String", "OTA_ENGINE_BUILD_ID", "\"3.47.2\"")
         buildConfigField("String", "OTA_CHANNEL", "\"dev\"")
-        buildConfigField("String", "OTA_CHECK_BASE_URL", "\"https://kim.ainexc.com/api\"")
+        buildConfigField("String", "OTA_GITHUB_OWNER", "\"peterich-rs\"")
+        buildConfigField("String", "OTA_GITHUB_REPO", "\"kim\"")
+        buildConfigField("String", "OTA_TAG_PREFIX", "\"logic-ota-v\"")
     }
 
     buildTypes {

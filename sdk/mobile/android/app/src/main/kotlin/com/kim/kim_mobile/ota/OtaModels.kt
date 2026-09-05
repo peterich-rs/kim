@@ -60,52 +60,6 @@ data class OtaArtifact(
     }
 }
 
-/** Response from GET check API. */
-data class OtaCheckResponse(
-    val update: OtaUpdateOffer?,
-) {
-    companion object {
-        fun parse(json: String): OtaCheckResponse {
-            val o = JSONObject(json)
-            if (o.isNull("update")) {
-                return OtaCheckResponse(null)
-            }
-            return OtaCheckResponse(OtaUpdateOffer.parse(o.getJSONObject("update")))
-        }
-    }
-}
-
-data class OtaUpdateOffer(
-    val hostLine: String,
-    val minHostVersionCode: Int,
-    val maxHostVersionCode: Int,
-    val engineBuildId: String,
-    val logicVersion: String,
-    val abi: String,
-    val channel: String,
-    val zipUrl: String,
-    val zipSha256: String,
-    val manifestUrl: String,
-    val signatureUrl: String,
-) {
-    companion object {
-        fun parse(o: JSONObject): OtaUpdateOffer =
-            OtaUpdateOffer(
-                hostLine = o.getString("host_line"),
-                minHostVersionCode = o.getInt("min_host_version_code"),
-                maxHostVersionCode = o.getInt("max_host_version_code"),
-                engineBuildId = o.getString("engine_build_id"),
-                logicVersion = o.getString("logic_version"),
-                abi = o.getString("abi"),
-                channel = o.getString("channel"),
-                zipUrl = o.getString("zip_url"),
-                zipSha256 = o.getString("zip_sha256"),
-                manifestUrl = o.getString("manifest_url"),
-                signatureUrl = o.getString("signature_url"),
-            )
-    }
-}
-
 /** Snapshot exposed to Dart via MethodChannel. */
 data class OtaStatus(
     val active: Boolean,

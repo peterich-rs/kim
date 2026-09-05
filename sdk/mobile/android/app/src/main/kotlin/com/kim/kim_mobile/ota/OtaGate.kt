@@ -2,6 +2,7 @@ package com.kim.kim_mobile.ota
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONArray
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -12,16 +13,16 @@ import java.util.zip.ZipInputStream
 import kotlin.concurrent.thread
 
 /**
- * Logic SO OTA gate: crash-loop protection, early FFI [System.load], check /
- * download / verify / atomic install. Libapp path is consumed by
- * [OtaLibAppHook] via Flutter shell args on the next cold start after promote.
+ * Logic SO OTA gate: crash-loop protection, early FFI [System.load], GitHub
+ * Releases catalog / download / verify / atomic install. Libapp path is
+ * consumed by [OtaLibAppHook] via Flutter shell args on the next cold start
+ * after promote.
  */
 class OtaGate(
     context: Context,
     private val config: OtaConfig = OtaConfig.from(context),
     private val store: OtaStore = OtaStore(context),
 ) {
-    private val appContext = context.applicationContext
 
     @Volatile
     var ffiLoadedFromOta: Boolean = false
@@ -45,7 +46,6 @@ class OtaGate(
             store.otaActive = false
             return false
         }
-        // Host identity is fixed at APK build time; clear if abi policy ever expands.
         val ffi = store.currentLibFfi()
         return try {
             System.load(ffi.absolutePath)
@@ -98,56 +98,158 @@ class OtaGate(
         }
     }
 
+    /**
+     * Catalog updates via GitHub Releases API (newest first). Soft-fails on
+     * network / 403 / rate-limit. Installs the first compatible newer offer.
+     */
     fun checkAndMaybeInstall() {
-        val url = config.checkUrl(store.logicVersion)
-        Log.i(TAG, "OTA check $url")
-        val body = httpGetString(url) ?: return
-        val offer = OtaCheckResponse.parse(body).update ?: run {
-            Log.i(TAG, "OTA: no update")
+        val url = config.releasesUrl()
+        Log.i(TAG, "OTA catalog $url")
+        val body = httpGetString(url, githubApi = true) ?: return
+        val releases =
+            try {
+                JSONArray(body)
+            } catch (e: Exception) {
+                Log.w(TAG, "OTA: invalid releases JSON", e)
+                return
+            }
+        val installed = store.logicVersion
+        for (i in 0 until releases.length()) {
+            val rel = releases.getJSONObject(i)
+            if (rel.optBoolean("draft", false)) continue
+            val tag = rel.optString("tag_name", "")
+            if (!tag.startsWith(config.tagPrefix)) continue
+            val assets = assetUrlByName(rel.optJSONArray("assets") ?: JSONArray())
+            val manifestUrl = assets["manifest.json"] ?: continue
+            val sigUrl = assets["manifest.json.sig"] ?: continue
+            val zipUrl = selectZipUrl(assets) ?: continue
+
+            store.clearStaging()
+            val manifestFile = File(store.staging, "manifest.json")
+            val sigFile = File(store.staging, "manifest.json.sig")
+            try {
+                httpGetToFile(manifestUrl, manifestFile, githubApi = true)
+                httpGetToFile(sigUrl, sigFile, githubApi = true)
+            } catch (t: Throwable) {
+                Log.w(TAG, "OTA: skip release $tag (manifest/sig download)", t)
+                continue
+            }
+            val manifestBytes = manifestFile.readBytes()
+            val sigBytes = sigFile.readBytes()
+            if (!OtaCrypto.verifyEd25519(config.publicKeyRaw, manifestBytes, sigBytes)) {
+                Log.w(TAG, "OTA: skip $tag — Ed25519 signature invalid")
+                continue
+            }
+            val manifest =
+                try {
+                    OtaManifest.parse(String(manifestBytes, Charsets.UTF_8))
+                } catch (t: Throwable) {
+                    Log.w(TAG, "OTA: skip $tag — bad manifest", t)
+                    continue
+                }
+            if (!manifestCompatible(manifest)) {
+                Log.i(TAG, "OTA: skip $tag — host policy (logic=${manifest.logicVersion})")
+                continue
+            }
+            if (!isNewerLogic(manifest.logicVersion, installed)) {
+                Log.i(
+                    TAG,
+                    "OTA: skip $tag — not newer than installed=${installed ?: "null"} " +
+                        "logic=${manifest.logicVersion}",
+                )
+                continue
+            }
+            Log.i(TAG, "OTA: installing $tag logic=${manifest.logicVersion}")
+            downloadVerifyPromote(zipUrl, manifestFile, sigFile, manifest)
             return
         }
-        if (!offerCompatible(offer)) {
-            Log.w(TAG, "OTA offer rejected by host policy")
-            return
-        }
-        if (offer.logicVersion == store.logicVersion && store.otaActive) {
-            Log.i(TAG, "OTA already at ${offer.logicVersion}")
-            return
-        }
-        downloadVerifyPromote(offer)
+        Log.i(TAG, "OTA: no compatible newer release")
     }
 
+    private fun assetUrlByName(assets: JSONArray): Map<String, String> {
+        val map = LinkedHashMap<String, String>()
+        for (i in 0 until assets.length()) {
+            val a = assets.getJSONObject(i)
+            val name = a.optString("name", "")
+            val url = a.optString("browser_download_url", "")
+            if (name.isNotEmpty() && url.isNotEmpty()) {
+                map[name] = url
+            }
+        }
+        return map
+    }
 
-    private fun offerCompatible(offer: OtaUpdateOffer): Boolean {
-        if (offer.hostLine != config.hostLine) return false
-        if (offer.engineBuildId != config.engineBuildId) return false
-        if (offer.abi != "arm64-v8a") return false
-        if (offer.channel != config.channel) return false
+    /** Prefer `logic-ota-*-arm64-v8a.zip`; else a single allowlisted `.zip`. */
+    private fun selectZipUrl(assets: Map<String, String>): String? {
+        val preferred =
+            assets.entries.firstOrNull { (name, _) ->
+                name.startsWith("logic-ota-") && name.endsWith("-arm64-v8a.zip")
+            }
+        if (preferred != null) return preferred.value
+        val zips = assets.filterKeys { it.endsWith(".zip", ignoreCase = true) }
+        return if (zips.size == 1) zips.values.first() else null
+    }
+
+    private fun manifestCompatible(m: OtaManifest): Boolean {
+        if (m.schemaVersion != 1) return false
+        if (m.hostLine != config.hostLine) return false
+        if (m.engineBuildId != config.engineBuildId) return false
+        if (m.abi != "arm64-v8a") return false
+        if (m.channel != config.channel) return false
         val vc = config.hostVersionCode
-        if (vc < offer.minHostVersionCode || vc > offer.maxHostVersionCode) return false
+        if (vc < m.minHostVersionCode || vc > m.maxHostVersionCode) return false
         return true
     }
 
-    private fun downloadVerifyPromote(offer: OtaUpdateOffer) {
-        store.clearStaging()
-        val zipFile = File(store.staging, "pkg.zip")
-        val manifestFile = File(store.staging, "manifest.json")
-        val sigFile = File(store.staging, "manifest.json.sig")
-        httpGetToFile(offer.zipUrl, zipFile)
-        httpGetToFile(offer.manifestUrl, manifestFile)
-        httpGetToFile(offer.signatureUrl, sigFile)
+    /**
+     * Prefer dotted-numeric compare (`42`, `1.0.42`); else lexicographic after trim.
+     * Equal → not newer; installed null/empty → accept.
+     */
+    internal fun isNewerLogic(candidate: String, installed: String?): Boolean {
+        if (installed.isNullOrEmpty()) return true
+        if (candidate == installed) return false
+        val cp = parseDottedNumeric(candidate)
+        val ip = parseDottedNumeric(installed)
+        if (cp != null && ip != null) {
+            val len = maxOf(cp.size, ip.size)
+            for (i in 0 until len) {
+                val a = cp.getOrElse(i) { 0L }
+                val b = ip.getOrElse(i) { 0L }
+                if (a != b) return a > b
+            }
+            return false
+        }
+        return candidate.trim() > installed.trim()
+    }
 
+    private fun parseDottedNumeric(v: String): List<Long>? {
+        val parts = v.trim().split('.')
+        if (parts.isEmpty()) return null
+        val out = ArrayList<Long>(parts.size)
+        for (p in parts) {
+            if (p.isEmpty() || !p.all { it.isDigit() }) return null
+            out.add(p.toLongOrNull() ?: return null)
+        }
+        return out
+    }
+
+    private fun downloadVerifyPromote(
+        zipUrl: String,
+        manifestFile: File,
+        sigFile: File,
+        manifest: OtaManifest,
+    ) {
+        val zipFile = File(store.staging, "pkg.zip")
+        httpGetToFile(zipUrl, zipFile, githubApi = true)
+
+        // Re-verify sig (already checked) and hashes against this zip.
         val manifestBytes = manifestFile.readBytes()
         val sigBytes = sigFile.readBytes()
         if (!OtaCrypto.verifyEd25519(config.publicKeyRaw, manifestBytes, sigBytes)) {
             throw SecurityException("manifest Ed25519 signature invalid")
         }
-        val manifest = OtaManifest.parse(String(manifestBytes, Charsets.UTF_8))
         if (manifest.schemaVersion != 1) {
             throw IllegalStateException("unsupported schema_version")
-        }
-        if (manifest.logicVersion != offer.logicVersion) {
-            throw IllegalStateException("logic_version mismatch offer vs manifest")
         }
         if (manifest.hostLine != config.hostLine ||
             manifest.engineBuildId != config.engineBuildId ||
@@ -162,7 +264,7 @@ class OtaGate(
         }
         val zipBytes = zipFile.readBytes()
         val zipSha = OtaCrypto.sha256Hex(zipBytes)
-        if (zipSha != manifest.zipSha256 || zipSha != offer.zipSha256) {
+        if (zipSha != manifest.zipSha256) {
             throw SecurityException("zip sha256 mismatch")
         }
         unzipAllowlisted(zipFile, store.staging)
@@ -179,7 +281,6 @@ class OtaGate(
                 throw SecurityException("$name sha256 mismatch")
             }
         }
-        // Remove non-SO staging junk before promote.
         zipFile.delete()
         manifestFile.delete()
         sigFile.delete()
@@ -195,7 +296,6 @@ class OtaGate(
                     if (entry.isDirectory) {
                         continue
                     }
-                    // Flat allowlist only: reject nested paths / traversal.
                     val raw = entry.name.removePrefix("./")
                     if (raw.contains('/') || raw.contains('\\') || raw.contains("..")) {
                         throw SecurityException("zip path not allowlisted: ${entry.name}")
@@ -217,35 +317,35 @@ class OtaGate(
         }
     }
 
-    private fun httpGetString(url: String): String? {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-        }
+    private fun httpGetString(url: String, githubApi: Boolean = false): String? {
+        val conn = openGet(url, githubApi, readTimeoutMs = 30_000)
         return try {
             val code = conn.responseCode
+            if (code == 403 || code == 429) {
+                Log.w(TAG, "OTA GitHub forbidden/rate-limit HTTP $code")
+                return null
+            }
             if (code !in 200..299) {
                 Log.w(TAG, "OTA check HTTP $code")
                 null
             } else {
                 conn.inputStream.bufferedReader().use { it.readText() }
             }
+        } catch (t: Throwable) {
+            Log.w(TAG, "OTA network error (ignored)", t)
+            null
         } finally {
             conn.disconnect()
         }
     }
 
-    private fun httpGetToFile(url: String, dest: File) {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 120_000
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-        }
+    private fun httpGetToFile(url: String, dest: File, githubApi: Boolean = false) {
+        val conn = openGet(url, githubApi, readTimeoutMs = 120_000)
         try {
             val code = conn.responseCode
+            if (code == 403 || code == 429) {
+                throw IllegalStateException("download forbidden/rate-limit HTTP $code for $url")
+            }
             if (code !in 200..299) {
                 throw IllegalStateException("download HTTP $code for $url")
             }
@@ -255,6 +355,20 @@ class OtaGate(
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun openGet(url: String, githubApi: Boolean, readTimeoutMs: Int): HttpURLConnection {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = readTimeoutMs
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", OtaConfig.USER_AGENT)
+            if (githubApi) {
+                setRequestProperty("Accept", "application/vnd.github+json")
+            }
+        }
+        return conn
     }
 
     companion object {
@@ -274,4 +388,3 @@ class OtaGate(
         }
     }
 }
-
