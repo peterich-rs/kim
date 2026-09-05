@@ -7,8 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/format.dart';
 import '../core/image_extra.dart';
 import '../models/models.dart';
-import 'providers.dart';
 import 'auth.dart';
+import 'inbox.dart';
+import 'providers.dart';
 
 class ThreadMessagesState {
   const ThreadMessagesState({
@@ -184,7 +185,23 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
 
   Future<void> markRead() async {
     final account = ref.read(authProvider).account;
+    if (account.isEmpty) {
+      return;
+    }
+    ref.read(threadsProvider.notifier).markRead(dest);
     await ref.read(conversationStoreProvider).markThreadRead(account, dest);
+    var messageId = 0;
+    for (final m in state.items.reversed) {
+      if (m.messageId != 0) {
+        messageId = m.messageId;
+        break;
+      }
+    }
+    final kind =
+        ref.read(threadsProvider).thread(dest)?.kind ?? ThreadKind.user;
+    try {
+      await ref.read(clientPortProvider).markRead(dest, kind, messageId);
+    } catch (_) {}
   }
 
   int _indexOf(List<KimChatMsg> rows, KimChatMsg msg) {

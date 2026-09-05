@@ -4,7 +4,7 @@ import { KIMClient, KIMEvent, State } from "../src/client.ts";
 import { Command } from "../src/command.ts";
 import { Content } from "../src/message.ts";
 import { LogicPkt, readPacket } from "../src/packet.ts";
-import { encodeKickout, encodeMessagePush } from "../src/proto.ts";
+import { encodeFriendRequestNotify, encodeKickout, encodeMessagePush } from "../src/proto.ts";
 import { Flag, KIMStatus, Status } from "../src/status.ts";
 import { MemoryStore } from "../src/store.ts";
 import { accountFromToken } from "../src/token.ts";
@@ -263,6 +263,26 @@ describe("KIMClient", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(cli.state).toBe(State.CONNECTED);
     expect(cli.channelId).toBe("wg-1_alice_1");
+  });
+
+  it("friend accept push invokes onfriendaccepted", async () => {
+    const gw = new LoopbackGw();
+    const cli = client(gw);
+    const got: string[] = [];
+    cli.onfriendaccepted((from, nick) => {
+      got.push(`${from}:${nick}`);
+    });
+    await cli.login();
+    const pkt = LogicPkt.build(
+      Command.FriendAccept,
+      "",
+      encodeFriendRequestNotify("bob", "Bobby"),
+      9,
+    );
+    pkt.flag = Flag.Push;
+    gw.lastSocket().deliver(pkt.bytes());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(got).toEqual(["bob:Bobby"]);
   });
 
   it("delivers online push only after CONNECTED and dedups messageId", async () => {

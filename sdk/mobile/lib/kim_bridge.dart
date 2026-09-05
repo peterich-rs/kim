@@ -59,6 +59,8 @@ abstract class KimClientPort {
 
   Future<void> ack(int messageId);
 
+  Future<void> markRead(String dest, ThreadKind kind, int messageId);
+
   Future<List<KimPerson>> friendList();
 
   Future<List<KimPerson>> friendIncoming();
@@ -295,7 +297,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     );
     return KimTalkResult(
       messageId: result.messageId.toInt(),
-      sendTime: result.sendTime.toInt(),
+      sendTime: sendTimeMs(result.sendTime.toInt()),
     );
   }
 
@@ -369,11 +371,21 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _require().ack(messageId: messageId);
   }
 
+  @override
+  Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
+    await _require().markRead(
+      dest: dest,
+      kind: kind == ThreadKind.group ? 1 : 0,
+      messageId: messageId,
+    );
+  }
+
   KimEvent _event(rust.KimSessionEvent push) {
     final kind = switch (push.kind) {
       'talk' => KimEventKind.talk,
       'kick' => KimEventKind.kick,
       'friend' => KimEventKind.friend,
+      'friend_accepted' => KimEventKind.friendAccepted,
       'group' => KimEventKind.group,
       'token' => KimEventKind.token,
       'link' => KimEventKind.link,

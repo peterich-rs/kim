@@ -112,6 +112,7 @@ abstract final class Copy {
   static const yesterday = '昨天';
   static const today = '今天';
   static const offlineBanner = '当前无网络，消息将在恢复后发送';
+  static const loopbackUnreachable = '真机连不上 127.0.0.1，请切到「生产」或改成电脑的局域网 IP';
 
   static const profile = '个人资料';
   static const changeAvatar = '更换头像';

@@ -18,6 +18,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int talks = 0;
   int imageTalks = 0;
   int acks = 0;
+  int reads = 0;
+  String lastReadDest = '';
+  int lastReadMessageId = 0;
+  int talkSendTime = 1;
   int confirms = 0;
   int radioUps = 0;
   int friendRequests = 0;
@@ -159,7 +163,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     if (talkError != null) {
       throw talkError!;
     }
-    return const KimTalkResult(messageId: 1, sendTime: 1);
+    return KimTalkResult(messageId: 1, sendTime: talkSendTime);
   }
 
   @override
@@ -180,6 +184,28 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> ack(int messageId) async {
     acks += 1;
+  }
+
+  @override
+  Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
+    reads += 1;
+    lastReadDest = dest;
+    lastReadMessageId = messageId;
+  }
+
+  void emitFriend({
+    required String from,
+    String nickname = '',
+    bool accepted = false,
+  }) {
+    eventsController.add(
+      KimEvent(
+        kind: accepted ? KimEventKind.friendAccepted : KimEventKind.friend,
+        dest: from,
+        sender: from,
+        nickname: nickname,
+      ),
+    );
   }
 
   void emitAuthExpired({String error = 'unauthorized'}) {

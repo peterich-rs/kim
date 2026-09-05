@@ -47,6 +47,7 @@ enum KimEventKind {
   talk,
   kick,
   friend,
+  friendAccepted,
   group,
   token,
   closed,

@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/format.dart';
 import '../core/image_extra.dart';
 import '../models/models.dart';
 import 'contacts.dart';
@@ -69,6 +70,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     if (incoming.isEmpty) {
       return;
     }
+    final viewing = chatIdFromPath(ref.read(locationProvider));
     final byId = {for (final t in state.threads) t.id: t};
     for (final t in incoming) {
       final prev = byId[t.id];
@@ -78,7 +80,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
         title: t.title.isEmpty ? (prev?.title ?? t.id) : t.title,
         lastBody: t.lastBody.isEmpty ? (prev?.lastBody ?? '') : t.lastBody,
         lastAt: t.lastAt == 0 ? (prev?.lastAt ?? 0) : t.lastAt,
-        unread: t.unread,
+        unread: _mergedUnread(prev, t, viewing),
         avatar: t.avatar.isEmpty ? (prev?.avatar ?? '') : t.avatar,
       );
     }
@@ -91,7 +93,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   void applyTalk(KimChatMsg msg, {required bool fromSelf}) {
     final existing = state.thread(msg.dest);
     final viewing = chatIdFromPath(ref.read(locationProvider));
-    final unread = fromSelf || msg.sys || viewing == msg.dest
+    final unread = viewing == msg.dest
+        ? 0
+        : fromSelf || msg.sys
         ? (existing?.unread ?? 0)
         : (existing?.unread ?? 0) + 1;
     _upsert(
@@ -106,6 +110,20 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
         unread: unread,
         avatar: existing?.avatar ?? '',
       ),
+    );
+  }
+
+  void markRead(String id) {
+    final existing = state.thread(id);
+    if (existing == null || existing.unread == 0) {
+      return;
+    }
+    _upsert(existing.copyWith(unread: 0));
+    _persist();
+    unawaited(
+      ref
+          .read(conversationStoreProvider)
+          .markThreadRead(ref.read(authProvider).account, id),
     );
   }
 
@@ -144,6 +162,18 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     state = state.copyWith(
       threads: state.threads.where((t) => t.id != id).toList(),
     );
+  }
+
+  int _mergedUnread(KimThread? prev, KimThread incoming, String? viewing) {
+    if (viewing == incoming.id) {
+      return 0;
+    }
+    if (prev != null &&
+        prev.unread == 0 &&
+        sendTimeMs(prev.lastAt) >= sendTimeMs(incoming.lastAt)) {
+      return 0;
+    }
+    return incoming.unread;
   }
 
   KimThread _upsert(KimThread thread) {

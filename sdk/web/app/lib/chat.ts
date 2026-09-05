@@ -19,6 +19,7 @@ export interface ChatHandlers {
   onKick: () => void;
   onGroup: (groupId: string, members: string[]) => void;
   onFriend?: (from: string, nickname: string) => void;
+  onFriendAccepted?: (from: string, nickname: string) => void;
   onToken?: (token: string, exp: number) => void;
 }
 
@@ -135,6 +136,12 @@ export class ChatSession {
         return;
       }
       this.handlers.onFriend?.(from, nickname);
+    });
+    cli.onfriendaccepted((from, nickname) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onFriendAccepted?.(from, nickname);
     });
   }
 

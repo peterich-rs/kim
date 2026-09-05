@@ -100,8 +100,12 @@ function MessageRow({
         </div>
       ) : null}
       <Message align={align}>
-        {mine ? null : (
-          <MessageAvatar>{last ? <UserAvatar name={row.sender} /> : <span className="size-8" />}</MessageAvatar>
+        {mine ? null : !cont ? (
+          <MessageAvatar>
+            <UserAvatar name={row.sender} />
+          </MessageAvatar>
+        ) : (
+          <span className="size-8 shrink-0" aria-hidden />
         )}
         <MessageContent>
           {!cont && isGroup ? <MessageHeader>{mine ? meLabel : row.sender}</MessageHeader> : null}

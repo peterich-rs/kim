@@ -113,6 +113,10 @@ pub enum Event {
         from: String,
         nickname: String,
     },
+    FriendAccepted {
+        from: String,
+        nickname: String,
+    },
     UserList {
         command: String,
         sequence: u32,

@@ -501,6 +501,10 @@ export function decodeFriendRequestNotify(buf: Uint8Array): {
   };
 }
 
+export function encodeFriendRequestNotify(fromAccount: string, fromNickname: string): Uint8Array {
+  return encode(FriendRequestNotifyType, { fromAccount, fromNickname });
+}
+
 export function encodeInboxReq(limit: number): Uint8Array {
   return encode(InboxReqType, { limit });
 }
