@@ -277,6 +277,9 @@ void main() {
 
     expect(find.byType(AppBar), findsNothing);
     expect(find.byKey(const Key('chat-back')), findsOneWidget);
+    expect(find.byKey(const Key('chat-more')), findsOneWidget);
+    expect(find.byIcon(LucideIcons.ellipsis), findsOneWidget);
+    expect(find.byIcon(LucideIcons.monitor), findsNothing);
     expect(find.byKey(const Key('chat-composer')), findsOneWidget);
     expect(find.text('Bobby'), findsWidgets);
     expect(find.byType(StatusDot), findsWidgets);

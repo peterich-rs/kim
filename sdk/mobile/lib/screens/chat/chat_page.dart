@@ -320,18 +320,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                 size: 22,
                               ),
                             ),
-                            Expanded(
-                              child: Center(
-                                child: _ChatTitleChrome(
-                                  title: widget.title,
-                                  avatarUrl: avatarFor(me, social, widget.id),
-                                  status: session.status,
-                                ),
-                              ),
+                            const Gap(8),
+                            _ChatTitleChrome(
+                              title: widget.title,
+                              avatarUrl: avatarFor(me, social, widget.id),
+                              status: session.status,
                             ),
+                            const Spacer(),
                             const _FrostedCircleButton(
-                              tooltip: Copy.me,
-                              child: Icon(LucideIcons.monitor, size: 18),
+                              key: Key('chat-more'),
+                              tooltip: Copy.more,
+                              child: Icon(LucideIcons.ellipsis, size: 20),
                             ),
                           ],
                         ),

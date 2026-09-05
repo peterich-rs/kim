@@ -199,18 +199,15 @@ class KimComposerState extends State<KimComposer> {
             curve: KimMotion.standard,
             alignment: Alignment.topCenter,
             child: _panel
-                ? Padding(
-                    padding: EdgeInsets.only(bottom: 8 + bottom),
-                    child: _MediaPanel(
-                      onPickAlbum: () {
-                        setState(() => _panel = false);
-                        widget.onPickAlbum();
-                      },
-                      onTakePhoto: () {
-                        setState(() => _panel = false);
-                        widget.onTakePhoto();
-                      },
-                    ),
+                ? _MediaPanel(
+                    onPickAlbum: () {
+                      setState(() => _panel = false);
+                      widget.onPickAlbum();
+                    },
+                    onTakePhoto: () {
+                      setState(() => _panel = false);
+                      widget.onTakePhoto();
+                    },
                   )
                 : const SizedBox(width: double.infinity, height: 0),
           ),
@@ -342,24 +339,30 @@ class _MediaPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-      child: Row(
-        children: [
-          _ActionTile(
-            key: const Key('composer-album'),
-            icon: LucideIcons.image,
-            label: Copy.album,
-            onTap: onPickAlbum,
-          ),
-          const SizedBox(width: 24),
-          _ActionTile(
-            key: const Key('composer-camera'),
-            icon: LucideIcons.camera,
-            label: Copy.camera,
-            onTap: onTakePhoto,
-          ),
-        ],
+    final scheme = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    // Opaque WeChat-style pull-up sheet (no frost / BackdropFilter).
+    return Material(
+      color: scheme.surface,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        child: Row(
+          children: [
+            _ActionTile(
+              key: const Key('composer-album'),
+              icon: LucideIcons.image,
+              label: Copy.album,
+              onTap: onPickAlbum,
+            ),
+            const SizedBox(width: 24),
+            _ActionTile(
+              key: const Key('composer-camera'),
+              icon: LucideIcons.camera,
+              label: Copy.camera,
+              onTap: onTakePhoto,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -391,9 +394,8 @@ class _ActionTile extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHigh,
+              color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(KimTheme.radiusField),
-              border: Border.all(color: KimTheme.hairlineOf(context)),
             ),
             child: Icon(icon, size: 26, color: scheme.onSurface),
           ),
