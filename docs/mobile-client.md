@@ -75,7 +75,7 @@ FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Nati
 ### Flutter 壳现在有什么
 
 - `path_provider` → `KimPaths`（documents / support / cache / temp）。`support/kim-cache.db` 是会话 + 消息 SQLite（`package:sqlite3` 3.x 自带 native lib）。第一次打开会把旧的 `shared_preferences` JSON 导进去。**没有**把 data-dir 传进 FFI。
-- 登录后 `KimApi.start` 拉起 `SessionSupervisor`（connect → login → sync → recv，断线退避）。Dart `linkProvider` 订阅 `sessionEvents`：Inbox 合并线程、Talk 落 SQLite 后 `sync_confirm`，不再 8s ping。Flutter 不自己开 WebSocket。
+- 登录后 `KimApi.start` 拉起 `SessionSupervisor`（connect → login → sync ∥ recv，断线退避）。`Live` 每 30s fire-and-forget `CODE_PING`；90s 读空闲看门狗；`notify_radio_up` / `notify_foreground` 探测活连接。`connect_ws*` 设 `TCP_NODELAY` + TCP keepalive。Dart `linkProvider` 镜像 `LinkState`，电台只做横幅。见 [impl/07-mobile-link-control.md](impl/07-mobile-link-control.md)。
 - 登录 / 注册 / 退出 / 改密：Rust `kim_client::AuthClient` 发 uncompressed protobuf，`User-Agent` / `Accept` / `Content-Type` / `Accept-Language` 由客户端设置。reqwest `gzip` 只解压响应（`Accept-Encoding: gzip`）；**不**给请求体加 `Content-Encoding`。Caddy `encode gzip zstd` 压的是响应；Royal/axum 没有 `CompressionLayer`，也不解压请求 gzip。
 - `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 存 WGateway URL、Royal HTTP origin、account、dest；token 不进 prefs。
 - `connectivity_plus`：离线横幅。不是 Dart socket。

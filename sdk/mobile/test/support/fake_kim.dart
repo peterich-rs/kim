@@ -24,6 +24,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int talkSendTime = 1;
   int confirms = 0;
   int radioUps = 0;
+  int foregrounds = 0;
   int friendRequests = 0;
   int lastConfirm = 0;
   final eventsController = StreamController<KimEvent>.broadcast();
@@ -136,6 +137,11 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> notifyRadioUp() async {
     radioUps += 1;
+  }
+
+  @override
+  Future<void> notifyForeground() async {
+    foregrounds += 1;
   }
 
   @override

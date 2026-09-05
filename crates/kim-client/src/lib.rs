@@ -9,6 +9,7 @@ mod client;
 mod config;
 mod error;
 mod events;
+mod link;
 mod login;
 mod pump;
 mod session;
@@ -28,6 +29,7 @@ pub use events::{
     Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex, OutgoingContent, Profile,
     TalkResult,
 };
+pub use link::DropReason;
 pub use login::{login_on_conn, send_ping, wait_pong};
 pub use session::MemorySession;
 pub use supervisor::{LinkState, SessionEvent, SessionSupervisor};

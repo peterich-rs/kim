@@ -2,6 +2,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../copy.dart';
@@ -22,7 +23,7 @@ final linkProvider = NotifierProvider<LinkNotifier, KimLinkState>(
   LinkNotifier.new,
 );
 
-class LinkNotifier extends Notifier<KimLinkState> {
+class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   var _sessionGen = 0;
   var _startedFor = '';
   var _syncing = false;
@@ -30,10 +31,19 @@ class LinkNotifier extends Notifier<KimLinkState> {
   var _radioWasUp = false;
   StreamSubscription<KimEvent>? _events;
   var _disposeBound = false;
+  var _lifecycleBound = false;
   KimLinkState _snapshot = const KimLinkState();
 
   @override
   KimLinkState build() {
+    if (!_lifecycleBound) {
+      _lifecycleBound = true;
+      WidgetsBinding.instance.addObserver(this);
+      ref.onDispose(() {
+        WidgetsBinding.instance.removeObserver(this);
+        _lifecycleBound = false;
+      });
+    }
     final signedIn = ref.watch(authProvider.select((s) => s.signedIn));
     final account = ref.watch(authProvider.select((s) => s.account));
     final radio = ref.watch(radioOnlineProvider);
@@ -52,27 +62,24 @@ class LinkNotifier extends Notifier<KimLinkState> {
       unawaited(_radioUp());
     }
     _radioWasUp = radio;
-    if (!radio) {
-      return KimLinkState(
-        status: ConnStatus.offline,
-        attempt: _snapshot.attempt,
-        error: _snapshot.error,
-      );
-    }
     return _snapshot;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_foreground());
+    }
+  }
+
   Future<void> retry() async {
-    if (_snapshot.status == ConnStatus.offline ||
-        _snapshot.status == ConnStatus.connecting) {
-      await _start();
-      return;
+    if (_events != null && _startedFor.isNotEmpty) {
+      try {
+        await ref.read(clientPortProvider).notifyRadioUp();
+        return;
+      } catch (_) {}
     }
-    try {
-      await ref.read(clientPortProvider).notifyRadioUp();
-    } catch (_) {
-      await _start();
-    }
+    await _start();
   }
 
   Future<void> _radioUp() async {
@@ -85,6 +92,15 @@ class LinkNotifier extends Notifier<KimLinkState> {
     } catch (_) {
       await _start();
     }
+  }
+
+  Future<void> _foreground() async {
+    if (_events == null) {
+      return;
+    }
+    try {
+      await ref.read(clientPortProvider).notifyForeground();
+    } catch (_) {}
   }
 
   Future<void> _stop() async {
@@ -144,14 +160,6 @@ class LinkNotifier extends Notifier<KimLinkState> {
       error: error,
     );
     _snapshot = next;
-    if (!ref.read(radioOnlineProvider) && next.status != ConnStatus.offline) {
-      state = KimLinkState(
-        status: ConnStatus.offline,
-        attempt: next.attempt,
-        error: next.error,
-      );
-      return;
-    }
     state = next;
   }
 
@@ -240,9 +248,7 @@ class LinkNotifier extends Notifier<KimLinkState> {
       case KimEventKind.token:
         unawaited(ref.read(authProvider.notifier).savePushedToken(event.token));
       case KimEventKind.closed:
-        if (ref.mounted && gen == _sessionGen) {
-          _set(const KimLinkState(status: ConnStatus.reconnecting));
-        }
+        return;
     }
   }
 

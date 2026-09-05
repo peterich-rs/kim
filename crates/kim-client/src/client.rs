@@ -12,7 +12,7 @@ use crate::events::{
     Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
 };
 use crate::login::{login_on_conn, send_ping};
-use crate::pump::{start_split_pump, Live};
+use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
@@ -41,7 +41,7 @@ enum Io {
 /// together. Tests that inject a `Conn` stay sequential.
 pub struct KimClient {
     config: ClientConfig,
-    session: StdMutex<MemorySession>,
+    session: Arc<StdMutex<MemorySession>>,
     io: Mutex<Io>,
     buffered: Mutex<VecDeque<Frame>>,
     next_seq: AtomicU32,
@@ -51,7 +51,7 @@ impl KimClient {
     pub fn new(config: ClientConfig) -> Self {
         Self {
             config,
-            session: StdMutex::new(MemorySession::default()),
+            session: Arc::new(StdMutex::new(MemorySession::default())),
             io: Mutex::new(Io::Off),
             buffered: Mutex::new(VecDeque::new()),
             next_seq: AtomicU32::new(2),
@@ -59,19 +59,23 @@ impl KimClient {
     }
 
     pub fn session(&self) -> MemorySession {
-        lock_session(&self.session)
+        lock_session(self.session.as_ref())
     }
 
     pub fn url(&self) -> &str {
         &self.config.url
     }
 
+    pub(crate) fn config(&self) -> &ClientConfig {
+        &self.config
+    }
+
     fn logged_in(&self) -> bool {
-        lock_session(&self.session).is_logged_in()
+        lock_session(self.session.as_ref()).is_logged_in()
     }
 
     fn store_session(&self, session: MemorySession) {
-        *lock_session_mut(&self.session) = session;
+        *lock_session_mut(self.session.as_ref()) = session;
     }
 
     /// HTTP Upgrade only. Does **not** send `login.signin`. Token stays off the URL.
@@ -104,7 +108,7 @@ impl KimClient {
                 {
                     Ok(session) => {
                         let (read, write) = ws.split_conn();
-                        *io = Io::Live(start_split_pump(read, write));
+                        *io = Io::Live(start_split_pump(read, write, self.pump_opts()));
                         self.store_session(session.clone());
                         Ok(session)
                     }
@@ -504,11 +508,11 @@ impl KimClient {
     }
 
     pub(crate) fn store_token(&self, token: String) {
-        lock_session_mut(&self.session).token = token;
+        lock_session_mut(self.session.as_ref()).token = token;
     }
 
     pub(crate) fn login_token(&self) -> String {
-        let session = lock_session(&self.session);
+        let session = lock_session(self.session.as_ref());
         if session.token.is_empty() {
             self.config.token.clone()
         } else {
@@ -538,10 +542,23 @@ impl KimClient {
         decode_event(&frame)
     }
 
-    async fn live(&self) -> Option<Arc<Live>> {
+    pub(crate) async fn live(&self) -> Option<Arc<Live>> {
         match &*self.io.lock().await {
             Io::Live(live) => Some(live.clone()),
             _ => None,
+        }
+    }
+
+    fn pump_opts(&self) -> PumpOpts {
+        let session = self.session.clone();
+        let token_sink: TokenSink = Arc::new(move |token: String, _exp: i64| {
+            session.lock().unwrap_or_else(|e| e.into_inner()).token = token;
+        });
+        PumpOpts {
+            heartbeat: self.config.heartbeat,
+            read_idle: self.config.read_idle,
+            probe_timeout: self.config.probe_timeout,
+            token_sink,
         }
     }
 
@@ -616,8 +633,39 @@ impl KimClient {
     pub(crate) fn with_conn(config: ClientConfig, conn: Box<dyn Conn + Send>) -> Self {
         Self {
             config,
-            session: StdMutex::new(MemorySession::default()),
+            session: Arc::new(StdMutex::new(MemorySession::default())),
             io: Mutex::new(Io::Conn(conn)),
+            buffered: Mutex::new(VecDeque::new()),
+            next_seq: AtomicU32::new(2),
+        }
+    }
+
+    pub(crate) fn with_live(
+        config: ClientConfig,
+        read: Box<dyn Conn + Send>,
+        write: Box<dyn Conn + Send>,
+    ) -> Self {
+        let session = Arc::new(StdMutex::new(MemorySession::default()));
+        let token_sink: TokenSink = {
+            let session = session.clone();
+            Arc::new(move |token: String, _exp: i64| {
+                session.lock().unwrap_or_else(|e| e.into_inner()).token = token;
+            })
+        };
+        let live = start_split_pump(
+            read,
+            write,
+            PumpOpts {
+                heartbeat: config.heartbeat,
+                read_idle: config.read_idle,
+                probe_timeout: config.probe_timeout,
+                token_sink,
+            },
+        );
+        Self {
+            config,
+            session,
+            io: Mutex::new(Io::Live(live)),
             buffered: Mutex::new(VecDeque::new()),
             next_seq: AtomicU32::new(2),
         }

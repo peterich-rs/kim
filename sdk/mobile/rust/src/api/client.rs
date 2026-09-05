@@ -128,22 +128,22 @@ impl KimApi {
         let _guard = rt().enter();
         let mut rx = self.supervisor.events();
         self.supervisor.ensure_running();
-        let _ = sink.add(map_link(self.supervisor.state()));
+        let _ = sink.add(map_link(&self.supervisor));
+        let supervisor = self.supervisor.clone();
         rt().spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(ev) => {
-                        if sink.add(map_event(ev)).is_err() {
+                        let mapped = match ev {
+                            SessionEvent::Link(_) => map_link(&supervisor),
+                            other => map_event(other),
+                        };
+                        if sink.add(mapped).is_err() {
                             break;
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        let mut ev = KimSessionEvent::empty();
-                        ev.kind = "sync_failed".into();
-                        ev.error = format!("event lag {skipped}");
-                        if sink.add(ev).is_err() {
-                            break;
-                        }
+                        tracing::warn!(skipped, "session event lag");
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
@@ -159,6 +159,11 @@ impl KimApi {
 
     pub fn notify_radio_up(&self) -> Result<(), String> {
         self.supervisor.notify_radio_up();
+        Ok(())
+    }
+
+    pub fn notify_foreground(&self) -> Result<(), String> {
+        self.supervisor.notify_foreground();
         Ok(())
     }
 
@@ -292,15 +297,18 @@ impl KimApi {
     }
 }
 
-fn map_link(state: LinkState) -> KimSessionEvent {
+fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {
     let mut ev = KimSessionEvent::empty();
     ev.kind = "link".into();
-    match state {
+    match supervisor.state() {
         LinkState::Connecting => ev.state = "Connecting".into(),
         LinkState::Online => ev.state = "Online".into(),
         LinkState::Reconnecting { attempt } => {
             ev.state = "Reconnecting".into();
             ev.attempt = attempt;
+            if let Some(reason) = supervisor.last_drop_reason() {
+                ev.error = reason.as_str().into();
+            }
         }
         LinkState::Offline => ev.state = "Offline".into(),
     }
@@ -309,7 +317,12 @@ fn map_link(state: LinkState) -> KimSessionEvent {
 
 fn map_event(event: SessionEvent) -> KimSessionEvent {
     match event {
-        SessionEvent::Link(state) => map_link(state),
+        SessionEvent::Link(_) => {
+            // Link events are mapped via `map_link(&supervisor)` in session_events.
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "link".into();
+            ev
+        }
         SessionEvent::Inbox(items) => {
             let mut ev = KimSessionEvent::empty();
             ev.kind = "inbox".into();

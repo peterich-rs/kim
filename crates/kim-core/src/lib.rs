@@ -10,6 +10,7 @@ mod frame;
 mod opcode;
 mod server;
 mod signal;
+mod socket;
 
 pub use channel::{
     Channel, ChannelOpts, ChannelReadLoop, LaneKeyFn, MailboxFullHook, WriteFullPolicy,
@@ -23,6 +24,7 @@ pub use frame::Frame;
 pub use opcode::OpCode;
 pub use server::{Client, Server};
 pub use signal::wait_shutdown_signal;
+pub use socket::{apply_socket_opts, Keepalive, SocketOpts};
 
 use std::time::Duration;
 
