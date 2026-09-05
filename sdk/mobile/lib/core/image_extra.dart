@@ -14,6 +14,11 @@ final _imageExt = RegExp(
   caseSensitive: false,
 );
 
+final _videoExt = RegExp(
+  r'\.(?:mp4|mov|webm|m4v)(?:\?|$)',
+  caseSensitive: false,
+);
+
 class ImageSize {
   const ImageSize({required this.width, required this.height});
 
@@ -93,5 +98,23 @@ String previewBody(KimChatMsg msg) {
   if (msg.isImage) {
     return Copy.imageMessage;
   }
-  return truncate(msg.body);
+  return previewSnippet(msg.body);
+}
+
+/// List preview for a stored last_body / inbox lastBody. Never show a media URL.
+String previewSnippet(String body) {
+  final text = body.trim();
+  if (text.isEmpty) {
+    return '';
+  }
+  if (text == Copy.imageMessage || text == Copy.videoMessage) {
+    return text;
+  }
+  if (_videoExt.hasMatch(text)) {
+    return Copy.videoMessage;
+  }
+  if (isMediaUrl(text) || _imageExt.hasMatch(text)) {
+    return Copy.imageMessage;
+  }
+  return truncate(text);
 }

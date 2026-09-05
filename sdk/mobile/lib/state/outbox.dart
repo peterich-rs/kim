@@ -17,6 +17,7 @@ import '../models/models.dart';
 import 'contacts.dart';
 import 'inbox.dart';
 import 'link.dart';
+import 'location.dart';
 import 'messages.dart';
 import 'providers.dart';
 import 'session.dart';
@@ -45,7 +46,7 @@ class OutboxNotifier extends Notifier<int> {
     final session = ref.read(sessionProvider);
     ref.read(threadsProvider.notifier).ensureThread(id: dest, kind: kind);
     final msg = _draft(dest, session.account, content, batchId: batchId);
-    await _persist(msg, fromSelf: true);
+    await _persist(msg);
     unawaited(_pump());
     return msg;
   }
@@ -118,7 +119,7 @@ class OutboxNotifier extends Notifier<int> {
       return;
     }
     final next = target.copyWith(failed: false, status: KimSendStatus.sending);
-    await _persist(next, fromSelf: true);
+    await _persist(next);
     unawaited(_pump());
   }
 
@@ -126,14 +127,13 @@ class OutboxNotifier extends Notifier<int> {
     final account = ref.read(sessionProvider).account;
     final store = ref.read(conversationStoreProvider);
     final pending = [
-      ...store.loadPending(account),
-      ...store.loadFailed(account),
+      ...await store.loadPendingAsync(account),
+      ...await store.loadFailedAsync(account),
     ];
     for (final msg in pending) {
       if (msg.isFailed) {
         await _persist(
           msg.copyWith(status: KimSendStatus.sending, failed: false),
-          fromSelf: true,
         );
       }
     }
@@ -151,9 +151,9 @@ class OutboxNotifier extends Notifier<int> {
           return;
         }
         final account = ref.read(sessionProvider).account;
-        final pending = ref
+        final pending = await ref
             .read(conversationStoreProvider)
-            .loadPending(account);
+            .loadPendingAsync(account);
         if (pending.isEmpty) {
           return;
         }
@@ -167,9 +167,9 @@ class OutboxNotifier extends Notifier<int> {
           }
           await _sendOne(msg);
         }
-        final leftover = ref
-            .read(conversationStoreProvider)
-            .loadPending(account)
+        final leftover = (await ref
+                .read(conversationStoreProvider)
+                .loadPendingAsync(account))
             .any((m) => keys.contains(m.key));
         if (leftover) {
           return;
@@ -181,8 +181,9 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   Future<void> _sendOne(KimChatMsg msg) async {
+    var working = msg;
     try {
-      var content = _contentOf(msg);
+      var content = _contentOf(working);
       if (content is KimImageContent && !isRemoteUrl(content.url)) {
         final url = await _upload(content.url);
         if (!ref.mounted) {
@@ -190,11 +191,15 @@ class OutboxNotifier extends Notifier<int> {
         }
         content = KimImageContent(
           url: url,
-          width: msg.width,
-          height: msg.height,
+          width: working.width,
+          height: working.height,
         );
-        final patched = msg.copyWith(body: url, status: KimSendStatus.sending);
-        await _persist(patched, fromSelf: true);
+        working = working.copyWith(
+          body: url,
+          status: KimSendStatus.sending,
+          localPath: working.localPath ?? msg.body,
+        );
+        await _persist(working);
       }
       final result = await ref
           .read(clientPortProvider)
@@ -202,24 +207,23 @@ class OutboxNotifier extends Notifier<int> {
       if (!ref.mounted) {
         return;
       }
-      final sent = msg.copyWith(
+      final sent = working.copyWith(
         body: switch (content) {
           KimImageContent(:final url) => url,
           KimVideoContent(:final url) => url,
-          _ => msg.body,
+          _ => working.body,
         },
         status: KimSendStatus.sent,
         failed: false,
         messageId: result.messageId,
-        at: result.sendTime == 0 ? msg.at : sendTimeMs(result.sendTime),
+        at: result.sendTime == 0 ? working.at : sendTimeMs(result.sendTime),
       );
-      await _persist(sent, fromSelf: true);
+      await _persist(sent);
       await KimHaptics.light();
     } catch (_) {
       if (ref.mounted) {
         await _persist(
-          msg.copyWith(status: KimSendStatus.failed, failed: true),
-          fromSelf: true,
+          working.copyWith(status: KimSendStatus.failed, failed: true),
         );
       }
       await KimHaptics.error();
@@ -288,6 +292,7 @@ class OutboxNotifier extends Notifier<int> {
         height: height,
         status: KimSendStatus.sending,
         batchId: batchId,
+        localPath: isRemoteUrl(url) ? null : url,
       ),
       KimVideoContent(:final url) => KimChatMsg(
         key: _uuid.v4(),
@@ -302,19 +307,19 @@ class OutboxNotifier extends Notifier<int> {
     };
   }
 
-  Future<void> _persist(KimChatMsg msg, {required bool fromSelf}) async {
+  Future<void> _persist(KimChatMsg msg) async {
     final account = ref.read(sessionProvider).account;
-    ref.read(threadsProvider.notifier).applyTalk(msg, fromSelf: fromSelf);
-    ref.read(threadMessagesProvider(msg.dest).notifier).receive(msg);
-    await ref.read(conversationStoreProvider).upsertMessages(
-      account,
-      msg.dest,
-      [msg],
-    );
-    final thread = ref.read(threadsProvider).thread(msg.dest);
-    if (thread != null) {
-      await ref.read(conversationStoreProvider).upsertThread(account, thread);
+    final viewing = chatIdFromPath(ref.read(locationProvider));
+    final results = await ref
+        .read(messageRepositoryProvider)
+        .applyOwn(account, [msg], viewingDest: viewing);
+    if (!ref.mounted) {
+      return;
     }
+    ref.read(threadsProvider.notifier).ingestAll(results);
+    ref.read(threadMessagesProvider(msg.dest).notifier).receiveAll([
+      for (final r in results) r.message,
+    ]);
   }
 
   void _assertCanQueue(String dest, ThreadKind kind) {

@@ -30,6 +30,10 @@ pub enum SessionEvent {
     Link(LinkState),
     Inbox(Vec<InboxItem>),
     Talk(IncomingTalk),
+    SyncPage {
+        page_id: i64,
+        talks: Vec<IncomingTalk>,
+    },
     SyncProgress {
         pulled: usize,
         page_pending: bool,
@@ -79,26 +83,44 @@ pub struct SessionSupervisor {
 }
 
 impl SessionSupervisor {
+    /// Build a supervisor without starting the reconnect loop.
+    pub fn new(config: ClientConfig) -> Self {
+        let (events, _) = broadcast::channel(EVENTS_CAP);
+        Self {
+            inner: Arc::new(Inner {
+                client: Arc::new(KimClient::new(config)),
+                state: StdMutex::new(LinkState::Connecting),
+                events,
+                confirm: ConfirmGate::new(),
+                radio: Notify::new(),
+                stop: Notify::new(),
+                stopped: AtomicBool::new(false),
+                attempt: AtomicU32::new(0),
+                task: StdMutex::new(None),
+            }),
+        }
+    }
+
     /// start = loop { connect → login → sync → recv }, reconnect with backoff.
     pub fn start(config: ClientConfig) -> Self {
-        let (events, _) = broadcast::channel(EVENTS_CAP);
-        let inner = Arc::new(Inner {
-            client: Arc::new(KimClient::new(config)),
-            state: StdMutex::new(LinkState::Connecting),
-            events,
-            confirm: ConfirmGate::new(),
-            radio: Notify::new(),
-            stop: Notify::new(),
-            stopped: AtomicBool::new(false),
-            attempt: AtomicU32::new(0),
-            task: StdMutex::new(None),
-        });
-        let running = inner.clone();
-        let handle = tokio::spawn(async move {
+        let supervisor = Self::new(config);
+        supervisor.ensure_running();
+        supervisor
+    }
+
+    /// Subscribe first, then start the loop so the first events are not missed.
+    pub fn ensure_running(&self) {
+        if self.inner.stopped.load(Ordering::SeqCst) {
+            return;
+        }
+        let mut task = self.inner.task.lock().unwrap_or_else(|e| e.into_inner());
+        if task.is_some() {
+            return;
+        }
+        let running = self.inner.clone();
+        *task = Some(tokio::spawn(async move {
             run_loop(running).await;
-        });
-        *inner.task.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
-        Self { inner }
+        }));
     }
 
     pub fn stop(&self) {

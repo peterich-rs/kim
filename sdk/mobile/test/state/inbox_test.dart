@@ -11,7 +11,9 @@ import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/location.dart';
 import 'package:kim_mobile/state/messages.dart';
 import 'package:kim_mobile/state/outbox.dart';
+import 'package:kim_mobile/state/providers.dart';
 
+import '../support/fake_kim.dart';
 import '../support/harness.dart';
 
 Future<void> _online(dynamic env) async {
@@ -95,6 +97,28 @@ void main() {
     );
     expect(
       env.container.read(threadsProvider).threads.single.lastBody,
+      Copy.imageMessage,
+    );
+  });
+
+  test('inbox lastBody that is a media URL shows as [图片]', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(threadsProvider.notifier).mergeInbox(const [
+      KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        lastBody: 'https://media.kim.ainexc.com/alice/a.jpg',
+        lastAt: 9,
+      ),
+    ]);
+    expect(
+      env.container.read(threadsProvider).threads.single.lastBody,
+      Copy.imageMessage,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      env.store.loadThreads('alice').single.lastBody,
       Copy.imageMessage,
     );
   });
@@ -237,5 +261,129 @@ void main() {
     expect(env.fake.reads, 1);
     expect(env.fake.lastReadDest, 'bob');
     expect(env.fake.lastReadMessageId, 11);
+  });
+
+  test('replaying the same messageId does not increase unread', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.fake.emitTalk(
+      dest: 'bob',
+      sender: 'bob',
+      body: 'hello',
+      sendTime: 1_700_000_000_000,
+      messageId: 9,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(env.container.read(threadsProvider).threads.single.unread, 1);
+    env.fake.emitTalk(
+      dest: 'bob',
+      sender: 'bob',
+      body: 'hello',
+      sendTime: 1_700_000_000_000,
+      messageId: 9,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(env.container.read(threadsProvider).threads.single.unread, 1);
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items,
+      hasLength(1),
+    );
+  });
+
+  test('failed image send after upload retries without uploading again', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    env.fake.talkError = Exception('offline');
+    await _online(env);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final file = File(
+      '${Directory.systemTemp.path}/kim-img-${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes(const [0xFF, 0xD8, 0xFF, 0xD9]);
+    addTearDown(() {
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    });
+    final media = env.container.read(mediaPortProvider) as FakeKimMedia;
+    final rows = await env.container.read(outboxProvider.notifier).sendImages(
+      'bob',
+      [
+        KimMediaAsset(
+          id: 'a',
+          path: file.path,
+          width: 100,
+          height: 80,
+          size: 4,
+          mimeType: 'image/jpeg',
+        ),
+      ],
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(media.uploads, 1);
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items.single.body,
+      media.url,
+    );
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items.single.isFailed,
+      isTrue,
+    );
+    env.fake.talkError = null;
+    await env.container
+        .read(outboxProvider.notifier)
+        .retry('bob', rows.single.key);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(media.uploads, 1);
+    expect(env.fake.imageTalks, 2);
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items.single.status,
+      KimSendStatus.sent,
+    );
+  });
+
+  test('reconcile of a full remote page keeps hasMore true', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.historyRows = [
+      for (var i = 50; i >= 1; i--)
+        KimHistoryMsg(
+          messageId: i,
+          msgType: 1,
+          body: '$i',
+          extra: '',
+          sender: 'bob',
+          sendTime: 1_700_000_000 + i,
+          direction: 0,
+        ),
+    ];
+    await env.container.read(threadMessagesProvider('bob').notifier).reconcile();
+    expect(env.container.read(threadMessagesProvider('bob')).hasMore, isTrue);
+    expect(env.container.read(threadMessagesProvider('bob')).items, hasLength(50));
+  });
+
+  test('sync page persists then confirms the page id', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.fake.emitSyncPage(
+      pageId: 42,
+      talks: const [
+        KimEvent(
+          kind: KimEventKind.talk,
+          dest: 'bob',
+          sender: 'bob',
+          body: 'later',
+          messageId: 42,
+          sendTime: 1_700_000_000_000,
+        ),
+      ],
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(env.fake.confirms, 1);
+    expect(env.fake.lastConfirm, 42);
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items.single.messageId,
+      42,
+    );
+    expect(env.store.loadMessages('alice', 'bob'), hasLength(1));
   });
 }

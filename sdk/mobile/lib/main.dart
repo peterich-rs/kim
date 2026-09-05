@@ -41,6 +41,10 @@ class _KimBootState extends State<KimBoot> {
       support: runtime.paths.support,
       prefs: await SharedPreferences.getInstance(),
     );
+    final account = runtime.settings.account;
+    if (account.isNotEmpty) {
+      await store.warmThreads(account);
+    }
     if (!mounted) {
       return;
     }
