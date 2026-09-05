@@ -50,9 +50,15 @@ data class OtaConfig(
             )
         }
 
-        /** Same placeholder as assets; used if asset missing in tests. */
+        /** Fallback if asset missing; must match assets/ota/ed25519_public.pem. */
         const val PLACEHOLDER_PUBLIC_PEM =
-            "-----BEGIN PUBLIC KEY-----\n" +
+            "-----BEGIN PUBLIC KEY-----
+" +
+            "MCowBQYDK2VwAyEAU4tV2GY9rXlAHW+PpARhKqg15czMmmcnrCnD5mBfRYc=
+" +
+            "-----END PUBLIC KEY-----
+"
+ +
                 "MCowBQYDK2VwAyEAL67ZGkJiDtNpJPXKnzIqtxLmB70lpqoH7oAyEQV/4rE=\n" +
                 "-----END PUBLIC KEY-----\n"
     }
