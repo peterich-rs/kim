@@ -1,10 +1,15 @@
 //! Offline catch-up: inbox.list then offline.index/content pages, persist-then-ack.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
+
 use tokio::sync::{broadcast, watch, Notify};
 use tracing::{debug, warn};
 
 use crate::events::{IncomingTalk, Message, MessageIndex};
+use crate::link::DropReason;
+use crate::pump::wait_dead;
 use crate::supervisor::SessionEvent;
 use crate::ClientError;
 use crate::KimClient;
@@ -46,24 +51,61 @@ pub(crate) async fn wait_confirm(
     rx: &mut watch::Receiver<i64>,
     needed: i64,
     stop: &Notify,
+    death: &mut watch::Receiver<Option<DropReason>>,
+    confirm_timeout: Duration,
+    retry: Option<&broadcast::Sender<SessionEvent>>,
+    retry_page: Option<(i64, Vec<IncomingTalk>)>,
 ) -> Result<(), ClientError> {
     if needed <= 0 {
         return Ok(());
     }
+    if let Some(reason) = *death.borrow() {
+        return Err(ClientError::other(reason.as_str()));
+    }
+    let first = wait_confirm_once(rx, needed, stop, death, confirm_timeout).await;
+    if first.is_ok() {
+        return first;
+    }
+    if first
+        .as_ref()
+        .err()
+        .is_some_and(|e| e.to_string() != "confirm-timeout")
+    {
+        return first;
+    }
+    if let (Some(events), Some((page_id, talks))) = (retry, retry_page) {
+        let _ = events.send(SessionEvent::SyncPage { page_id, talks });
+        wait_confirm_once(rx, needed, stop, death, confirm_timeout).await?;
+        return Ok(());
+    }
+    Err(ClientError::other(DropReason::ConfirmTimeout.as_str()))
+}
+
+async fn wait_confirm_once(
+    rx: &mut watch::Receiver<i64>,
+    needed: i64,
+    stop: &Notify,
+    death: &mut watch::Receiver<Option<DropReason>>,
+    confirm_timeout: Duration,
+) -> Result<(), ClientError> {
     tokio::select! {
         result = rx.wait_for(|v| *v >= needed) => {
             result.map(|_| ()).map_err(|_| ClientError::other("confirm closed"))
         }
         _ = stop.notified() => Err(ClientError::other("stopped")),
+        reason = wait_dead(death) => Err(ClientError::other(reason.as_str())),
+        _ = tokio::time::sleep(confirm_timeout) => {
+            Err(ClientError::other("confirm-timeout"))
+        }
     }
 }
 
-pub(crate) struct SyncEngine {
+pub(crate) struct SeenSet {
     seen: HashSet<i64>,
     seen_order: VecDeque<i64>,
 }
 
-impl SyncEngine {
+impl SeenSet {
     pub(crate) fn new() -> Self {
         Self {
             seen: HashSet::new(),
@@ -71,7 +113,6 @@ impl SyncEngine {
         }
     }
 
-    /// Returns true if this `message_id` was not seen before (should emit).
     pub(crate) fn observe(&mut self, message_id: i64) -> bool {
         if message_id == 0 {
             return true;
@@ -87,13 +128,31 @@ impl SyncEngine {
         }
         true
     }
+}
+
+pub(crate) struct SyncEngine {
+    seen: Arc<StdMutex<SeenSet>>,
+}
+
+impl SyncEngine {
+    pub(crate) fn new() -> Self {
+        Self {
+            seen: Arc::new(StdMutex::new(SeenSet::new())),
+        }
+    }
+
+    pub(crate) fn seen(&self) -> Arc<StdMutex<SeenSet>> {
+        self.seen.clone()
+    }
 
     pub(crate) async fn run(
-        &mut self,
+        &self,
         client: &KimClient,
         events: &broadcast::Sender<SessionEvent>,
         confirm: &ConfirmGate,
         stop: &Notify,
+        death: &mut watch::Receiver<Option<DropReason>>,
+        confirm_timeout: Duration,
     ) -> Result<usize, ClientError> {
         let account = client.session().account;
         let items = client.inbox_list(INBOX_LIMIT).await?;
@@ -113,7 +172,10 @@ impl SyncEngine {
                 .take(SYNC_PAGE)
                 .collect();
             let msgs = client.offline_content(&ids).await?;
-            let talks = merge_offline(&account, &indexes, &msgs, |id| self.observe(id));
+            let talks = {
+                let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+                merge_offline(&account, &indexes, &msgs, |id| seen.observe(id))
+            };
             let new_count = talks.len();
             pulled += new_count;
             let max_id = ids.iter().copied().max().unwrap_or(0);
@@ -121,14 +183,23 @@ impl SyncEngine {
                 if events
                     .send(SessionEvent::SyncPage {
                         page_id: max_id,
-                        talks,
+                        talks: talks.clone(),
                     })
                     .is_err()
                 {
                     warn!(page_id = max_id, "offline page not delivered");
                     return Err(ClientError::other("offline page not delivered"));
                 }
-                wait_confirm(&mut confirm_rx, max_id, stop).await?;
+                wait_confirm(
+                    &mut confirm_rx,
+                    max_id,
+                    stop,
+                    death,
+                    confirm_timeout,
+                    Some(events),
+                    Some((max_id, talks)),
+                )
+                .await?;
             }
             client.ack_batch(&ids).await?;
             let _ = events.send(SessionEvent::SyncProgress {
@@ -195,25 +266,9 @@ fn talk_from_offline(account: &str, idx: &MessageIndex, msg: &Message) -> Incomi
     }
 }
 
-pub(crate) fn next_backoff(current: std::time::Duration) -> std::time::Duration {
-    current
-        .saturating_mul(2)
-        .min(std::time::Duration::from_secs(60))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn backoff_caps_at_60s() {
-        let mut d = std::time::Duration::from_secs(1);
-        for _ in 0..20 {
-            d = next_backoff(d);
-            assert!(d <= std::time::Duration::from_secs(60));
-        }
-        assert_eq!(d, std::time::Duration::from_secs(60));
-    }
 
     #[test]
     fn duplicate_message_id_emitted_once() {
@@ -230,17 +285,17 @@ mod tests {
             body: "hi".into(),
             extra: String::new(),
         };
-        let mut seen = HashSet::new();
+        let mut seen = SeenSet::new();
         let first = merge_offline(
             "alice",
             &[idx.clone(), idx.clone()],
             std::slice::from_ref(&msg),
-            |id| seen.insert(id),
+            |id| seen.observe(id),
         );
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].message_id, 5);
         assert_eq!(first[0].dest, "bob");
-        let second = merge_offline("alice", &[idx], &[msg], |id| seen.insert(id));
+        let second = merge_offline("alice", &[idx], &[msg], |id| seen.observe(id));
         assert!(second.is_empty());
     }
 }

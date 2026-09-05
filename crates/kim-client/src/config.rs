@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use kim_core::DEFAULT_LOGIN_WAIT;
+use kim_core::{DEFAULT_HEARTBEAT, DEFAULT_LOGIN_WAIT};
 
 /// Local WGateway (plaintext WS). Used by `pkt-client` and the web app:local.
 pub const DEFAULT_LOCAL_URL: &str = "ws://127.0.0.1:8001/";
@@ -22,6 +22,14 @@ pub struct ClientConfig {
     pub token: String,
     pub handshake_timeout: Duration,
     pub user_agent: String,
+    /// Periodic CODE_PING interval (fire-and-forget).
+    pub heartbeat: Duration,
+    /// Client watchdog: last_read older than this is IdleTimeout.
+    pub read_idle: Duration,
+    /// Online probe wait-for-Pong budget.
+    pub probe_timeout: Duration,
+    /// Dart persist-then-ack gate timeout.
+    pub confirm_timeout: Duration,
 }
 
 impl ClientConfig {
@@ -31,6 +39,10 @@ impl ClientConfig {
             token: token.into(),
             handshake_timeout: DEFAULT_LOGIN_WAIT,
             user_agent: DEFAULT_CLIENT_USER_AGENT.to_string(),
+            heartbeat: DEFAULT_HEARTBEAT,
+            read_idle: DEFAULT_HEARTBEAT * 3,
+            probe_timeout: Duration::from_secs(5),
+            confirm_timeout: Duration::from_secs(15),
         }
     }
 

@@ -414,6 +414,7 @@ fn default_urls_and_session() {
 
 struct FakeGw {
     seq: StdMutex<u64>,
+    pings: AtomicU32,
 }
 
 #[async_trait]
@@ -457,7 +458,25 @@ impl MessageListener for FakeGw {
     async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == CODE_PING => {
+                self.pings.fetch_add(1, Ordering::SeqCst);
                 let _ = handle.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
+            }
+            Ok(Packet::Logic(p)) if p.header.command == CMD_INBOX_LIST => {
+                let mut resp = LogicPkt::new_from(&p.header);
+                resp.header.flag = Flag::Response as i32;
+                resp.header.status = Status::Success as i32;
+                resp.write_body(&InboxResp { items: vec![] });
+                let _ = handle.push(marshal(&Packet::Logic(resp))).await;
+            }
+            Ok(Packet::Logic(p)) if p.header.command == CMD_OFFLINE_INDEX => {
+                let mut resp = LogicPkt::new_from(&p.header);
+                resp.header.flag = Flag::Response as i32;
+                resp.header.status = Status::Success as i32;
+                resp.write_body(&MessageIndexResp {
+                    indexes: vec![],
+                    has_more: false,
+                });
+                let _ = handle.push(marshal(&Packet::Logic(resp))).await;
             }
             Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_USER_TALK => {
                 let mut resp = LogicPkt::new_from(&p.header);
@@ -496,6 +515,7 @@ impl StateListener for FakeGw {
 async fn loopback_ws_login_ping_talk() {
     let handler = Arc::new(FakeGw {
         seq: StdMutex::new(0),
+        pings: AtomicU32::new(0),
     });
     let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
     server.set_drain_wait(Duration::from_millis(50));
@@ -849,8 +869,18 @@ async fn sync_confirm_gate_blocks_ack() {
     let run = tokio::spawn({
         let gate = gate.clone();
         async move {
-            let mut engine = SyncEngine::new();
-            engine.run(&client, &tx, &gate, &stop).await
+            let engine = SyncEngine::new();
+            let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+            engine
+                .run(
+                    &client,
+                    &tx,
+                    &gate,
+                    &stop,
+                    &mut death_rx,
+                    Duration::from_secs(15),
+                )
+                .await
         }
     });
     let mut talks = 0usize;
@@ -933,8 +963,18 @@ async fn undelivered_sync_page_does_not_ack() {
     let gate = ConfirmGate::new();
     let stop = tokio::sync::Notify::new();
     let result = tokio::time::timeout(Duration::from_secs(2), async {
-        let mut engine = SyncEngine::new();
-        engine.run(&client, &tx, &gate, &stop).await
+        let engine = SyncEngine::new();
+        let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+        engine
+            .run(
+                &client,
+                &tx,
+                &gate,
+                &stop,
+                &mut death_rx,
+                Duration::from_secs(15),
+            )
+            .await
     })
     .await
     .expect("join");
@@ -1227,4 +1267,442 @@ async fn supervisor_stops_on_unauthorized_login() {
     }
     sup.stop();
     let _ = server.shutdown().await;
+}
+
+struct HangRead;
+
+#[async_trait]
+impl Conn for HangRead {
+    async fn read_frame(&mut self) -> Result<Frame, CoreError> {
+        std::future::pending().await
+    }
+
+    async fn write_frame(&mut self, _opcode: OpCode, _payload: Bytes) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn flush(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+struct RecordWrite {
+    outgoing: Arc<StdMutex<Vec<Frame>>>,
+}
+
+#[async_trait]
+impl Conn for RecordWrite {
+    async fn read_frame(&mut self) -> Result<Frame, CoreError> {
+        std::future::pending().await
+    }
+
+    async fn write_frame(&mut self, opcode: OpCode, payload: Bytes) -> Result<(), CoreError> {
+        self.outgoing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Frame { opcode, payload });
+        Ok(())
+    }
+
+    async fn flush(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+fn live_cfg() -> ClientConfig {
+    let mut cfg = ClientConfig::local("tok");
+    cfg.heartbeat = Duration::from_millis(50);
+    cfg.read_idle = Duration::from_millis(200);
+    cfg.probe_timeout = Duration::from_millis(30);
+    cfg.confirm_timeout = Duration::from_millis(40);
+    cfg
+}
+
+#[tokio::test(start_paused = true)]
+async fn live_sends_code_ping_on_interval() {
+    let outgoing = Arc::new(StdMutex::new(Vec::new()));
+    let cfg = live_cfg();
+    let client = KimClient::with_live(
+        cfg.clone(),
+        Box::new(HangRead),
+        Box::new(RecordWrite {
+            outgoing: outgoing.clone(),
+        }),
+    );
+    tokio::task::yield_now().await;
+    tokio::time::advance(cfg.heartbeat + Duration::from_millis(5)).await;
+    tokio::task::yield_now().await;
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    assert!(
+        frames
+            .iter()
+            .any(|f| f.opcode == OpCode::Binary && f.payload == encode_ping()),
+        "expected CODE_PING, got {frames:?}"
+    );
+    drop(client);
+}
+
+#[tokio::test(start_paused = true)]
+async fn watchdog_drops_after_three_missed_heartbeats() {
+    let mut cfg = live_cfg();
+    cfg.heartbeat = Duration::from_secs(3600);
+    cfg.read_idle = Duration::from_millis(90);
+    let client = KimClient::with_live(cfg.clone(), Box::new(HangRead), Box::new(HangRead));
+    let live = client.live().await.expect("live");
+    tokio::task::yield_now().await;
+    tokio::time::advance(cfg.read_idle + Duration::from_millis(40)).await;
+    tokio::task::yield_now().await;
+    let reason = live.wait_dead().await;
+    assert_eq!(reason, crate::DropReason::IdleTimeout);
+}
+
+#[tokio::test(start_paused = true)]
+async fn probe_times_out_as_probe_fail() {
+    let mut cfg = live_cfg();
+    cfg.heartbeat = Duration::from_secs(3600);
+    cfg.read_idle = Duration::from_secs(3600);
+    cfg.probe_timeout = Duration::from_millis(20);
+    let client = KimClient::with_live(cfg.clone(), Box::new(HangRead), Box::new(HangRead));
+    let live = client.live().await.expect("live");
+    live.request_probe();
+    tokio::task::yield_now().await;
+    tokio::time::advance(cfg.probe_timeout + Duration::from_millis(5)).await;
+    tokio::task::yield_now().await;
+    let reason = live.wait_dead().await;
+    assert_eq!(reason, crate::DropReason::ProbeFail);
+}
+
+#[tokio::test]
+async fn supervisor_stays_online_across_idle_read_wait() {
+    let handler = Arc::new(FakeGw {
+        seq: StdMutex::new(0),
+        pings: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_read_wait(Duration::from_millis(30));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let mut cfg = ClientConfig::new(format!("ws://{addr}/"), mint("alice"));
+    cfg.heartbeat = Duration::from_millis(10);
+    cfg.read_idle = Duration::from_millis(200);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if matches!(sup.state(), LinkState::Online) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("never online, state={:?}", sup.state());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    assert!(
+        matches!(sup.state(), LinkState::Online),
+        "idle read_wait must not drop a pinging client, state={:?}",
+        sup.state()
+    );
+    assert!(
+        handler.pings.load(Ordering::SeqCst) >= 1,
+        "server must see CODE_PING"
+    );
+    sup.stop();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn supervisor_resets_delay_after_successful_login() {
+    let handler = Arc::new(DropGw {
+        accepts: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let mut cfg = ClientConfig::new(format!("ws://{addr}/"), mint("alice"));
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    async fn wait_reconnecting(sup: &SessionSupervisor) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            if matches!(sup.state(), LinkState::Reconnecting { .. }) {
+                return;
+            }
+            if tokio::time::Instant::now() > deadline {
+                panic!("never reconnecting, state={:?}", sup.state());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+    async fn wait_accepts(handler: &DropGw, n: u32) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if handler.accepts.load(Ordering::SeqCst) >= n {
+                return;
+            }
+            if tokio::time::Instant::now() > deadline {
+                panic!(
+                    "accepts stuck at {}",
+                    handler.accepts.load(Ordering::SeqCst)
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+    wait_accepts(handler.as_ref(), 1).await;
+    wait_reconnecting(&sup).await;
+    let t0 = tokio::time::Instant::now();
+    wait_accepts(handler.as_ref(), 2).await;
+    let first = t0.elapsed();
+    wait_reconnecting(&sup).await;
+    let t1 = tokio::time::Instant::now();
+    wait_accepts(handler.as_ref(), 3).await;
+    let second = t1.elapsed();
+    assert!(
+        first < Duration::from_millis(1500),
+        "first backoff {first:?}"
+    );
+    assert!(
+        second < Duration::from_millis(1500),
+        "second backoff must reset to 1s, got {second:?}"
+    );
+    sup.stop();
+    let _ = server.shutdown().await;
+}
+
+struct KickGw {
+    accepts: AtomicU32,
+}
+
+#[async_trait]
+impl Acceptor for KickGw {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+        self.accepts.fetch_add(1, Ordering::SeqCst);
+        let frame = tokio::time::timeout(timeout, conn.read_frame())
+            .await
+            .map_err(|_| CoreError::HandshakeTimeout(timeout))??;
+        let pkt = match read(&frame.payload) {
+            Ok(Packet::Logic(p)) => p,
+            _ => return Err(CoreError::Handshake("expected login.signin".into())),
+        };
+        let req: LoginReq = pkt
+            .read_body()
+            .map_err(|e| CoreError::Handshake(e.to_string()))?;
+        let acc =
+            account_from_token(&req.token).map_err(|e| CoreError::Handshake(e.to_string()))?;
+        let id = format!("wg-kick_{acc}");
+        let mut resp = LogicPkt::new(CMD_LOGIN_SIGN_IN, pkt.header.sequence, Bytes::new());
+        resp.header.flag = Flag::Response as i32;
+        resp.header.status = Status::Success as i32;
+        resp.write_body(&LoginResp {
+            channel_id: id.clone(),
+        });
+        conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
+            .await?;
+        Ok(id)
+    }
+}
+
+#[async_trait]
+impl MessageListener for KickGw {
+    async fn receive(&self, handle: &dyn ChannelHandle, _payload: Bytes) {
+        let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 0, Bytes::new());
+        pkt.header.flag = Flag::Push as i32;
+        pkt.write_body(&KickoutNotify {
+            channel_id: handle.id().to_string(),
+        });
+        let _ = handle.push(marshal(&Packet::Logic(pkt))).await;
+    }
+}
+
+#[async_trait]
+impl StateListener for KickGw {
+    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn kickout_stops_supervisor_loop() {
+    let handler = Arc::new(KickGw {
+        accepts: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let mut cfg = ClientConfig::new(format!("ws://{addr}/"), mint("alice"));
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if matches!(sup.state(), LinkState::Offline) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("kickout did not stop, state={:?}", sup.state());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        handler.accepts.load(Ordering::SeqCst),
+        1,
+        "kicked session must not reconnect"
+    );
+    assert_eq!(sup.last_drop_reason(), Some(crate::DropReason::Kickout));
+    sup.stop();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn idle_or_io_drop_does_not_emit_sync_failed() {
+    let handler = Arc::new(DropGw {
+        accepts: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler.clone());
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let mut cfg = ClientConfig::new(format!("ws://{addr}/"), mint("alice"));
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    let mut rx = sup.events();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let mut saw_link = false;
+    loop {
+        match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            Ok(Ok(SessionEvent::SyncFailed(_))) => {
+                panic!("io drop must not emit SyncFailed");
+            }
+            Ok(Ok(SessionEvent::Link(LinkState::Reconnecting { .. }))) => saw_link = true,
+            _ => {}
+        }
+        if saw_link {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("never reconnecting, state={:?}", sup.state());
+        }
+    }
+    assert!(sup.last_drop_reason().is_some());
+    sup.stop();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn notify_foreground_interrupts_reconnect_sleep() {
+    let token = mint("alice");
+    let mut cfg = ClientConfig::new("ws://127.0.0.1:1/", token);
+    cfg.handshake_timeout = Duration::from_millis(200);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if matches!(sup.state(), LinkState::Reconnecting { attempt } if attempt >= 1) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("never entered reconnecting, state={:?}", sup.state());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut rx = sup.events();
+    let start = tokio::time::Instant::now();
+    sup.notify_foreground();
+    loop {
+        let ev = tokio::time::timeout(Duration::from_millis(400), rx.recv())
+            .await
+            .expect("foreground retry")
+            .expect("recv");
+        if matches!(ev, SessionEvent::Link(LinkState::Connecting)) {
+            break;
+        }
+    }
+    assert!(
+        start.elapsed() < Duration::from_millis(400),
+        "foreground must interrupt backoff"
+    );
+    sup.stop();
+}
+
+#[tokio::test]
+async fn wait_confirm_aborts_on_connection_death() {
+    let mut rx = {
+        let gate = ConfirmGate::new();
+        gate.subscribe()
+    };
+    let stop = tokio::sync::Notify::new();
+    let (death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+    death_tx.send(Some(crate::DropReason::Closed)).unwrap();
+    let err = crate::sync::wait_confirm(
+        &mut rx,
+        5,
+        &stop,
+        &mut death_rx,
+        Duration::from_secs(15),
+        None,
+        None,
+    )
+    .await
+    .expect_err("must abort");
+    assert!(err.to_string().contains("closed"), "{err}");
+}
+
+#[tokio::test]
+async fn wait_confirm_times_out() {
+    let gate = ConfirmGate::new();
+    let mut rx = gate.subscribe();
+    let stop = tokio::sync::Notify::new();
+    let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+    let err = crate::sync::wait_confirm(
+        &mut rx,
+        5,
+        &stop,
+        &mut death_rx,
+        Duration::from_millis(20),
+        None,
+        None,
+    )
+    .await
+    .expect_err("timeout");
+    assert!(err.to_string().contains("confirm-timeout"), "{err}");
 }
