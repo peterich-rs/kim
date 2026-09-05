@@ -166,7 +166,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return KimTalkResult(messageId: 1, sendTime: talkSendTime);
   }
 
-  @override
   List<KimHistoryMsg> historyRows = const [];
   int historyCalls = 0;
   int lastHistoryBeforeId = 0;
