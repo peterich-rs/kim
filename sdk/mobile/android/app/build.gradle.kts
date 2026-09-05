@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "com.kim.kim_mobile"
-    compileSdk = flutter.compileSdkVersion
+    // Flutter 3.47 still defaults compileSdk to 36. flutter_secure_storage 11
+    // and permission_handler 13 compile against 37; Flutter's Android build
+    // guide says bump compileSdk when a plugin needs a newer API:
+    // https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -34,8 +38,12 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
-            // Flutter 3.47 enables R8 minify for release. Extra JNI/FRB keeps
-            // live in android/app/proguard-rules.pro (auto-picked up if present).
+            // Flutter 3.47 enables R8 minify for release. Extra JNI/FRB and
+            // Play Core dontwarn rules live in proguard-rules.pro.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

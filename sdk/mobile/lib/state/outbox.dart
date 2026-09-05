@@ -167,10 +167,11 @@ class OutboxNotifier extends Notifier<int> {
           }
           await _sendOne(msg);
         }
-        final leftover = (await ref
-                .read(conversationStoreProvider)
-                .loadPendingAsync(account))
-            .any((m) => keys.contains(m.key));
+        final leftover =
+            (await ref
+                    .read(conversationStoreProvider)
+                    .loadPendingAsync(account))
+                .any((m) => keys.contains(m.key));
         if (leftover) {
           return;
         }
@@ -310,9 +311,11 @@ class OutboxNotifier extends Notifier<int> {
   Future<void> _persist(KimChatMsg msg) async {
     final account = ref.read(sessionProvider).account;
     final viewing = chatIdFromPath(ref.read(locationProvider));
-    final results = await ref
-        .read(messageRepositoryProvider)
-        .applyOwn(account, [msg], viewingDest: viewing);
+    final results = await ref.read(messageRepositoryProvider).applyOwn(
+      account,
+      [msg],
+      viewingDest: viewing,
+    );
     if (!ref.mounted) {
       return;
     }

@@ -55,10 +55,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     if (store.isolateBacked) {
       unawaited(_hydrate(account, store));
     }
-    return ThreadMessagesState(
-      items: page.reversed.toList(),
-      hasMore: true,
-    );
+    return ThreadMessagesState(items: page.reversed.toList(), hasMore: true);
   }
 
   Future<void> _hydrate(String account, ConversationStore store) async {
@@ -78,7 +75,10 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   }
 
   void receiveAll(Iterable<KimChatMsg> msgs) {
-    final incoming = [for (final m in msgs) if (m.dest == dest) m];
+    final incoming = [
+      for (final m in msgs)
+        if (m.dest == dest) m,
+    ];
     if (incoming.isEmpty) {
       return;
     }
@@ -161,12 +161,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
         try {
           final remote = await ref
               .read(clientPortProvider)
-              .history(
-                dest,
-                ThreadKind.user,
-                beforeId: beforeId,
-                limit: 50,
-              );
+              .history(dest, ThreadKind.user, beforeId: beforeId, limit: 50);
           remoteLen = remote.length;
           final repo = ref.read(messageRepositoryProvider);
           incoming = [

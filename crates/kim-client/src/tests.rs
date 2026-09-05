@@ -861,7 +861,10 @@ async fn sync_confirm_gate_blocks_ack() {
             .expect("recv");
         match ev {
             SessionEvent::Talk(_) => talks += 1,
-            SessionEvent::SyncPage { talks: page, page_id } => {
+            SessionEvent::SyncPage {
+                talks: page,
+                page_id,
+            } => {
                 talks += page.len();
                 assert_eq!(page_id, 11);
                 break;

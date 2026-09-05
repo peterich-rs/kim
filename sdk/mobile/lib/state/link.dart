@@ -278,11 +278,7 @@ class LinkNotifier extends Notifier<KimLinkState> {
         ),
     ].where((m) => m.dest.isNotEmpty && m.body.isNotEmpty).toList();
     if (msgs.isNotEmpty) {
-      final results = await repo.applySync(
-        account,
-        msgs,
-        viewingDest: viewing,
-      );
+      final results = await repo.applySync(account, msgs, viewingDest: viewing);
       if (!ref.mounted) {
         return;
       }
@@ -329,11 +325,7 @@ class LinkNotifier extends Notifier<KimLinkState> {
       sendTime: event.sendTime,
       msgType: event.msgType,
     );
-    final results = await repo.applyLive(
-      account,
-      [msg],
-      viewingDest: viewing,
-    );
+    final results = await repo.applyLive(account, [msg], viewingDest: viewing);
     if (!ref.mounted) {
       return;
     }

@@ -117,10 +117,7 @@ void main() {
       Copy.imageMessage,
     );
     await Future<void>.delayed(Duration.zero);
-    expect(
-      env.store.loadThreads('alice').single.lastBody,
-      Copy.imageMessage,
-    );
+    expect(env.store.loadThreads('alice').single.lastBody, Copy.imageMessage);
   });
 
   test('incoming media URL is stored as an image row', () async {
@@ -356,9 +353,14 @@ void main() {
           direction: 0,
         ),
     ];
-    await env.container.read(threadMessagesProvider('bob').notifier).reconcile();
+    await env.container
+        .read(threadMessagesProvider('bob').notifier)
+        .reconcile();
     expect(env.container.read(threadMessagesProvider('bob')).hasMore, isTrue);
-    expect(env.container.read(threadMessagesProvider('bob')).items, hasLength(50));
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items,
+      hasLength(50),
+    );
   });
 
   test('sync page persists then confirms the page id', () async {

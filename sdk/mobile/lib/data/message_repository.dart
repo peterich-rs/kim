@@ -41,7 +41,11 @@ class MessageRepository {
     );
   }
 
-  KimChatMsg fromHistory(KimHistoryMsg row, {required String dest, required String account}) {
+  KimChatMsg fromHistory(
+    KimHistoryMsg row, {
+    required String dest,
+    required String account,
+  }) {
     final extra = parseImageExtra(row.extra);
     final sender = row.sender.isEmpty
         ? (row.direction == 1 ? account : dest)

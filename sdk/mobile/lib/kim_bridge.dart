@@ -426,7 +426,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
       error: push.error,
       msgType: push.msgType,
       nickname: push.nickname,
-      talks: kind == KimEventKind.syncPage ? _talksFromJson(push.body) : const [],
+      talks: kind == KimEventKind.syncPage
+          ? _talksFromJson(push.body)
+          : const [],
       pageId: kind == KimEventKind.syncPage ? push.messageId.toInt() : 0,
     );
   }

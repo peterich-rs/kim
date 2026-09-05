@@ -314,45 +314,48 @@ void main() {
     expect(db.loadFailed('alice').single.key, 'f');
   });
 
-  test('own send and history with same messageId collapse to one row', () async {
-    final dir = Directory.systemTemp.createTempSync('kim-id-');
-    addTearDown(() {
-      if (dir.existsSync()) {
-        dir.deleteSync(recursive: true);
-      }
-    });
-    var db = await ConversationStore.open(support: dir, isolate: false);
-    const uuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-    await db.applyMessages('alice', const [
-      KimChatMsg(
-        key: uuid,
-        dest: 'bob',
-        sender: 'alice',
-        body: 'hi',
-        at: 1,
-        messageId: 123,
-        status: KimSendStatus.sent,
-      ),
-    ], policy: UnreadPolicy.keep);
-    await db.applyMessages('alice', const [
-      KimChatMsg(
-        key: 'm123',
-        dest: 'bob',
-        sender: 'alice',
-        body: 'hi',
-        at: 1,
-        messageId: 123,
-      ),
-    ], policy: UnreadPolicy.keep);
-    expect(db.loadMessages('alice', 'bob'), hasLength(1));
-    expect(db.loadMessages('alice', 'bob').single.key, uuid);
-    db.close();
-    db = await ConversationStore.open(support: dir, isolate: false);
-    addTearDown(db.close);
-    expect(db.loadMessages('alice', 'bob'), hasLength(1));
-    expect(db.loadMessages('alice', 'bob').single.key, uuid);
-    expect(db.loadMessages('alice', 'bob').single.messageId, 123);
-  });
+  test(
+    'own send and history with same messageId collapse to one row',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('kim-id-');
+      addTearDown(() {
+        if (dir.existsSync()) {
+          dir.deleteSync(recursive: true);
+        }
+      });
+      var db = await ConversationStore.open(support: dir, isolate: false);
+      const uuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+      await db.applyMessages('alice', const [
+        KimChatMsg(
+          key: uuid,
+          dest: 'bob',
+          sender: 'alice',
+          body: 'hi',
+          at: 1,
+          messageId: 123,
+          status: KimSendStatus.sent,
+        ),
+      ], policy: UnreadPolicy.keep);
+      await db.applyMessages('alice', const [
+        KimChatMsg(
+          key: 'm123',
+          dest: 'bob',
+          sender: 'alice',
+          body: 'hi',
+          at: 1,
+          messageId: 123,
+        ),
+      ], policy: UnreadPolicy.keep);
+      expect(db.loadMessages('alice', 'bob'), hasLength(1));
+      expect(db.loadMessages('alice', 'bob').single.key, uuid);
+      db.close();
+      db = await ConversationStore.open(support: dir, isolate: false);
+      addTearDown(db.close);
+      expect(db.loadMessages('alice', 'bob'), hasLength(1));
+      expect(db.loadMessages('alice', 'bob').single.key, uuid);
+      expect(db.loadMessages('alice', 'bob').single.messageId, 123);
+    },
+  );
 
   test('same timestamp page uses key as a second cursor', () async {
     final db = store();
@@ -377,7 +380,10 @@ void main() {
       limit: 50,
     );
     expect(older, hasLength(10));
-    expect({...first.map((m) => m.key), ...older.map((m) => m.key)}, hasLength(60));
+    expect({
+      ...first.map((m) => m.key),
+      ...older.map((m) => m.key),
+    }, hasLength(60));
   });
 
   test('replay of same messageId does not bump unread', () async {

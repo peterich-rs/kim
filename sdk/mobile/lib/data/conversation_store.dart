@@ -81,7 +81,9 @@ class ConversationStore {
     await support.create(recursive: true);
     final file = File(p.join(support.path, _dbName));
     if (!isolate) {
-      final store = ConversationStore._(_openAndMigrate(sqlite3.open(file.path)));
+      final store = ConversationStore._(
+        _openAndMigrate(sqlite3.open(file.path)),
+      );
       if (prefs != null) {
         await store._importPrefs(prefs);
       }
@@ -94,7 +96,9 @@ class ConversationStore {
       }
       return store;
     } catch (_) {
-      final store = ConversationStore._(_openAndMigrate(sqlite3.open(file.path)));
+      final store = ConversationStore._(
+        _openAndMigrate(sqlite3.open(file.path)),
+      );
       if (prefs != null) {
         await store._importPrefs(prefs);
       }
@@ -245,8 +249,7 @@ class ConversationStore {
     if (_port != null) {
       final raw = await _call({'op': 'threads', 'account': account});
       final threads = [
-        for (final row in raw as List<dynamic>)
-          KimThread.fromJson(row)!,
+        for (final row in raw as List<dynamic>) KimThread.fromJson(row)!,
       ];
       _threadCache[account] = threads;
       return threads;
@@ -574,11 +577,7 @@ class ConversationStore {
     _upsertMessagesDb(account, dest, list);
   }
 
-  void _upsertMessagesDb(
-    String account,
-    String dest,
-    List<KimChatMsg> list,
-  ) {
+  void _upsertMessagesDb(String account, String dest, List<KimChatMsg> list) {
     _engine.execute('BEGIN IMMEDIATE');
     try {
       final insert = _engine.prepare(
@@ -628,8 +627,7 @@ class ConversationStore {
       });
       final list = raw as List<dynamic>;
       final results = [
-        for (final row in list)
-          _applyResultFromJson(row as Map)
+        for (final row in list) _applyResultFromJson(row as Map),
       ];
       _rememberResults(account, results);
       return results;
@@ -835,9 +833,7 @@ class ConversationStore {
         : (existing == null || msg.at >= existing.lastAt
               ? previewBody(msg)
               : existing.lastBody);
-    final unread = viewing
-        ? 0
-        : (existing?.unread ?? 0) + unreadDelta;
+    final unread = viewing ? 0 : (existing?.unread ?? 0) + unreadDelta;
     final thread = KimThread(
       id: msg.dest,
       kind: existing?.kind ?? ThreadKind.user,
@@ -905,10 +901,10 @@ class ConversationStore {
       }
       return;
     }
-    _engine.execute('UPDATE threads SET unread = 0 WHERE account = ? AND id = ?', [
-      account,
-      dest,
-    ]);
+    _engine.execute(
+      'UPDATE threads SET unread = 0 WHERE account = ? AND id = ?',
+      [account, dest],
+    );
   }
 
   List<KimChatMsg> loadMessagesPage(
@@ -1062,10 +1058,8 @@ class ConversationStore {
   void _cacheThread(String account, KimThread thread) {
     final next = thread.copyWith(lastBody: previewSnippet(thread.lastBody));
     final prev = _threadCache[account] ?? const <KimThread>[];
-    _threadCache[account] = [
-      next,
-      ...prev.where((t) => t.id != next.id),
-    ]..sort((a, b) => b.lastAt.compareTo(a.lastAt));
+    _threadCache[account] = [next, ...prev.where((t) => t.id != next.id)]
+      ..sort((a, b) => b.lastAt.compareTo(a.lastAt));
   }
 
   void _rememberResults(String account, List<ApplyResult> results) {
@@ -1109,9 +1103,7 @@ class ConversationStore {
     String? beforeKey,
     int limit = 50,
   }) {
-    final rows = List<KimChatMsg>.from(
-      _msgCache['$account|$dest'] ?? const [],
-    );
+    final rows = List<KimChatMsg>.from(_msgCache['$account|$dest'] ?? const []);
     rows.sort((a, b) {
       final byAt = b.at.compareTo(a.at);
       if (byAt != 0) {
@@ -1230,9 +1222,15 @@ class ConversationStore {
             m.toJson(),
         ];
       case 'pending':
-        return [for (final m in loadPending(cmd['account'] as String? ?? '')) m.toJson()];
+        return [
+          for (final m in loadPending(cmd['account'] as String? ?? ''))
+            m.toJson(),
+        ];
       case 'failed':
-        return [for (final m in loadFailed(cmd['account'] as String? ?? '')) m.toJson()];
+        return [
+          for (final m in loadFailed(cmd['account'] as String? ?? ''))
+            m.toJson(),
+        ];
       case 'upsertThread':
         final account = cmd['account'] as String? ?? '';
         final thread = KimThread.fromJson(cmd['thread']);
@@ -1241,13 +1239,10 @@ class ConversationStore {
         }
         return 'ok';
       case 'saveThreads':
-        _saveThreadsDb(
-          cmd['account'] as String? ?? '',
-          [
-            for (final row in cmd['threads'] as List<dynamic>? ?? const [])
-              if (KimThread.fromJson(row) != null) KimThread.fromJson(row)!,
-          ],
-        );
+        _saveThreadsDb(cmd['account'] as String? ?? '', [
+          for (final row in cmd['threads'] as List<dynamic>? ?? const [])
+            if (KimThread.fromJson(row) != null) KimThread.fromJson(row)!,
+        ]);
         return 'ok';
       case 'saveMessages':
         _saveMessagesDb(

@@ -19,10 +19,7 @@ bool isClientKey(String key) {
   if (key.length != 36) {
     return false;
   }
-  return key[8] == '-' &&
-      key[13] == '-' &&
-      key[18] == '-' &&
-      key[23] == '-';
+  return key[8] == '-' && key[13] == '-' && key[18] == '-' && key[23] == '-';
 }
 
 /// Prefer the local UUID row when a history/push row shares a messageId.
