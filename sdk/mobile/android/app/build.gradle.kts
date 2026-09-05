@@ -31,6 +31,12 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Ship arm64-v8a only. Fat multi-ABI APKs multiply Flutter engine +
+        // Rust kim_client_ffi + sqlite3 native assets (~tens of MB). Modern
+        // Android devices are 64-bit; drop armeabi-v7a / x86 / x86_64.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
