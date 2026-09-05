@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/format.dart';
 import '../core/image_extra.dart';
+import '../data/conversation_store.dart';
 import '../models/models.dart';
 import 'contacts.dart';
 import 'location.dart';
@@ -78,7 +79,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
         id: t.id,
         kind: t.kind,
         title: t.title.isEmpty ? (prev?.title ?? t.id) : t.title,
-        lastBody: t.lastBody.isEmpty ? (prev?.lastBody ?? '') : t.lastBody,
+        lastBody: t.lastBody.isEmpty
+            ? (prev?.lastBody ?? '')
+            : previewSnippet(t.lastBody),
         lastAt: t.lastAt == 0 ? (prev?.lastAt ?? 0) : t.lastAt,
         unread: _mergedUnread(prev, t, viewing),
         avatar: t.avatar.isEmpty ? (prev?.avatar ?? '') : t.avatar,
@@ -111,6 +114,29 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
         avatar: existing?.avatar ?? '',
       ),
     );
+  }
+
+  void ingest(ApplyResult result) {
+    final existing = state.thread(result.thread.id);
+    final title =
+        existing?.title ??
+        (ref.read(contactsProvider).person(result.thread.id)?.title ??
+            result.thread.title);
+    _upsert(
+      result.thread.copyWith(
+        title: title,
+        kind: existing?.kind ?? result.thread.kind,
+        avatar: (existing?.avatar.isNotEmpty ?? false)
+            ? existing!.avatar
+            : result.thread.avatar,
+      ),
+    );
+  }
+
+  void ingestAll(List<ApplyResult> results) {
+    for (final result in results) {
+      ingest(result);
+    }
   }
 
   void markRead(String id) {

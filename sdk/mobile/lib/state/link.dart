@@ -6,9 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../copy.dart';
 import '../core/connectivity.dart';
-import '../core/format.dart';
 import '../core/haptics.dart';
-import '../core/image_extra.dart';
 import '../core/permissions.dart';
 import '../core/user_agent.dart';
 import '../models/models.dart';
@@ -28,9 +26,10 @@ class LinkNotifier extends Notifier<KimLinkState> {
   var _sessionGen = 0;
   var _startedFor = '';
   var _syncing = false;
-  var _maxTalkId = 0;
   var _askedNotes = false;
   var _radioWasUp = false;
+  StreamSubscription<KimEvent>? _events;
+  var _disposeBound = false;
   KimLinkState _snapshot = const KimLinkState();
 
   @override
@@ -77,15 +76,22 @@ class LinkNotifier extends Notifier<KimLinkState> {
   }
 
   Future<void> _radioUp() async {
+    if (_events == null) {
+      await _start();
+      return;
+    }
     try {
       await ref.read(clientPortProvider).notifyRadioUp();
-    } catch (_) {}
+    } catch (_) {
+      await _start();
+    }
   }
 
   Future<void> _stop() async {
     _sessionGen += 1;
     _syncing = false;
-    _maxTalkId = 0;
+    await _events?.cancel();
+    _events = null;
     try {
       await ref.read(clientPortProvider).stopSession();
     } catch (_) {}
@@ -150,16 +156,28 @@ class LinkNotifier extends Notifier<KimLinkState> {
   }
 
   void _listen(int gen) {
+    unawaited(_events?.cancel());
     final client = ref.read(clientPortProvider);
-    final sub = client.sessionEvents().listen(
+    _events = client.sessionEvents().listen(
       (event) => unawaited(_onEvent(event, gen)),
       onError: (_) {
         if (ref.mounted && gen == _sessionGen) {
           _set(const KimLinkState(status: ConnStatus.reconnecting));
         }
       },
+      onDone: () {
+        if (ref.mounted && gen == _sessionGen) {
+          _events = null;
+        }
+      },
     );
-    ref.onDispose(sub.cancel);
+    if (!_disposeBound) {
+      _disposeBound = true;
+      ref.onDispose(() {
+        unawaited(_events?.cancel());
+        _events = null;
+      });
+    }
   }
 
   Future<void> _onEvent(KimEvent event, int gen) async {
@@ -184,15 +202,13 @@ class LinkNotifier extends Notifier<KimLinkState> {
       case KimEventKind.inbox:
         ref.read(threadsProvider.notifier).mergeInbox(event.inbox);
       case KimEventKind.talk:
-        await _onTalk(event);
+        await _onTalk(event, ack: !_syncing);
+      case KimEventKind.syncPage:
+        await _onSyncPage(event);
       case KimEventKind.syncProgress:
         _syncing = event.pagePending;
-        if (event.pagePending) {
-          await _confirm();
-        }
       case KimEventKind.syncDone:
         _syncing = false;
-        _maxTalkId = 0;
       case KimEventKind.syncFailed:
         _set(
           KimLinkState(
@@ -244,66 +260,87 @@ class LinkNotifier extends Notifier<KimLinkState> {
     }
   }
 
-  Future<void> _onTalk(KimEvent event) async {
+  Future<void> _onSyncPage(KimEvent event) async {
+    _syncing = true;
+    final account = ref.read(authProvider).account;
+    final viewing = chatIdFromPath(ref.read(locationProvider));
+    final repo = ref.read(messageRepositoryProvider);
+    final msgs = [
+      for (final talk in event.talks)
+        repo.fromTalk(
+          dest: talk.dest.isNotEmpty ? talk.dest : talk.sender,
+          sender: talk.sender,
+          body: talk.body,
+          extra: talk.extra,
+          messageId: talk.messageId,
+          sendTime: talk.sendTime,
+          msgType: talk.msgType,
+        ),
+    ].where((m) => m.dest.isNotEmpty && m.body.isNotEmpty).toList();
+    if (msgs.isNotEmpty) {
+      final results = await repo.applySync(account, msgs, viewingDest: viewing);
+      if (!ref.mounted) {
+        return;
+      }
+      ref.read(threadsProvider.notifier).ingestAll(results);
+      final byDest = <String, List<KimChatMsg>>{};
+      for (final r in results) {
+        byDest.putIfAbsent(r.message.dest, () => []).add(r.message);
+      }
+      for (final entry in byDest.entries) {
+        ref
+            .read(threadMessagesProvider(entry.key).notifier)
+            .receiveAll(entry.value);
+        if (viewing == entry.key) {
+          unawaited(
+            ref.read(threadMessagesProvider(entry.key).notifier).markRead(),
+          );
+        }
+      }
+    }
+    if (!ref.mounted) {
+      return;
+    }
+    if (event.pageId != 0) {
+      try {
+        await ref.read(clientPortProvider).syncConfirm(event.pageId);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _onTalk(KimEvent event, {required bool ack}) async {
     final dest = event.dest.isNotEmpty ? event.dest : event.sender;
     if (dest.isEmpty || event.body.isEmpty) {
       return;
     }
     final account = ref.read(authProvider).account;
-    final extra = parseImageExtra(event.extra);
-    final msg = KimChatMsg(
-      key: event.messageId == 0
-          ? 'talk-${event.sendTime}-$dest'
-          : '${event.messageId}',
+    final viewing = chatIdFromPath(ref.read(locationProvider));
+    final repo = ref.read(messageRepositoryProvider);
+    final msg = repo.fromTalk(
       dest: dest,
-      sender: event.sender.isEmpty ? dest : event.sender,
+      sender: event.sender,
       body: event.body,
-      at: sendTimeMs(event.sendTime),
-      kind: kindFromWire(
-        body: event.body,
-        extra: event.extra,
-        type: event.msgType,
-      ),
-      width: extra?.width ?? 0,
-      height: extra?.height ?? 0,
+      extra: event.extra,
       messageId: event.messageId,
+      sendTime: event.sendTime,
+      msgType: event.msgType,
     );
-    if (event.messageId > _maxTalkId) {
-      _maxTalkId = event.messageId;
-    }
-    ref
-        .read(threadsProvider.notifier)
-        .applyTalk(msg, fromSelf: msg.sender == account);
-    ref.read(threadMessagesProvider(dest).notifier).receive(msg);
-    final store = ref.read(conversationStoreProvider);
-    await store.upsertMessages(account, dest, [msg]);
-    final thread = ref.read(threadsProvider).thread(dest);
-    if (thread != null) {
-      await store.upsertThread(account, thread);
-    }
-    if (chatIdFromPath(ref.read(locationProvider)) == dest) {
-      unawaited(ref.read(threadMessagesProvider(dest).notifier).markRead());
-    }
+    final results = await repo.applyLive(account, [msg], viewingDest: viewing);
     if (!ref.mounted) {
       return;
     }
-    if (_syncing) {
-      return;
+    ref.read(threadsProvider.notifier).ingestAll(results);
+    ref.read(threadMessagesProvider(dest).notifier).receiveAll([
+      for (final r in results) r.message,
+    ]);
+    if (viewing == dest) {
+      unawaited(ref.read(threadMessagesProvider(dest).notifier).markRead());
     }
-    if (event.messageId != 0) {
-      try {
-        await ref.read(clientPortProvider).ack(event.messageId);
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _confirm() async {
-    final cursor = _maxTalkId;
-    if (cursor <= 0) {
+    if (!ack || event.messageId == 0) {
       return;
     }
     try {
-      await ref.read(clientPortProvider).syncConfirm(cursor);
+      await ref.read(clientPortProvider).ack(event.messageId);
     } catch (_) {}
   }
 

@@ -4,8 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/format.dart';
-import '../core/image_extra.dart';
+import '../data/conversation_store.dart';
 import '../models/models.dart';
 import 'auth.dart';
 import 'inbox.dart';
@@ -43,6 +42,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   ThreadMessagesNotifier(this.dest);
 
   final String dest;
+  var _reconciled = false;
 
   @override
   ThreadMessagesState build() {
@@ -50,25 +50,47 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     if (account.isEmpty) {
       return const ThreadMessagesState(items: [], hasMore: false);
     }
-    final page = ref
-        .read(conversationStoreProvider)
-        .loadMessagesPage(account, dest, limit: 50);
-    final items = page.reversed.toList();
-    return ThreadMessagesState(items: items, hasMore: page.length >= 50);
+    final store = ref.read(conversationStoreProvider);
+    final page = store.loadMessagesPage(account, dest, limit: 50);
+    if (store.isolateBacked) {
+      unawaited(_hydrate(account, store));
+    }
+    return ThreadMessagesState(items: page.reversed.toList(), hasMore: true);
+  }
+
+  Future<void> _hydrate(String account, ConversationStore store) async {
+    await store.ensureMessages(account, dest);
+    if (!ref.mounted) {
+      return;
+    }
+    final page = store.loadMessagesPage(account, dest, limit: 50);
+    if (page.isEmpty) {
+      return;
+    }
+    receiveAll(page.reversed);
   }
 
   void receive(KimChatMsg msg) {
-    if (msg.dest != dest) {
+    receiveAll([msg]);
+  }
+
+  void receiveAll(Iterable<KimChatMsg> msgs) {
+    final incoming = [
+      for (final m in msgs)
+        if (m.dest == dest) m,
+    ];
+    if (incoming.isEmpty) {
       return;
     }
-    final prev = List<KimChatMsg>.from(state.items);
-    final idx = _indexOf(prev, msg);
-    if (idx >= 0) {
-      prev[idx] = _merge(prev[idx], msg);
-      state = state.copyWith(items: prev);
-      return;
+    var prev = List<KimChatMsg>.from(state.items);
+    for (final msg in incoming) {
+      final idx = _indexOf(prev, msg);
+      if (idx >= 0) {
+        prev[idx] = _merge(prev[idx], msg);
+      } else {
+        prev.add(msg);
+      }
     }
-    prev.add(msg);
     prev.sort((a, b) {
       final byAt = a.at.compareTo(b.at);
       if (byAt != 0) {
@@ -76,6 +98,9 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       }
       return a.key.compareTo(b.key);
     });
+    if (prev.length > ConversationStore.maxMessages) {
+      prev = prev.sublist(prev.length - ConversationStore.maxMessages);
+    }
     state = state.copyWith(items: prev);
   }
 
@@ -120,37 +145,46 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     state = state.copyWith(loadingOlder: true);
     final oldest = state.items.first;
     try {
-      final local = ref
-          .read(conversationStoreProvider)
-          .loadMessagesPage(account, dest, beforeAt: oldest.at, limit: 50);
+      final store = ref.read(conversationStoreProvider);
+      final local = store.loadMessagesPage(
+        account,
+        dest,
+        beforeAt: oldest.at,
+        beforeKey: oldest.key,
+        limit: 50,
+      );
       var incoming = local.reversed.toList();
-      try {
-        final remote = await ref
-            .read(clientPortProvider)
-            .history(
-              dest,
-              ThreadKind.user,
-              beforeId: oldest.messageId,
-              limit: 50,
-            );
-        incoming = [
-          ...incoming,
-          for (final row in remote) _fromHistory(row, account),
-        ];
-      } catch (_) {}
+      var remoteLen = 0;
+      final beforeId = _historyBeforeId(state.items);
+      final localHit = local.length >= 50;
+      if (!localHit && beforeId != 0) {
+        try {
+          final remote = await ref
+              .read(clientPortProvider)
+              .history(dest, ThreadKind.user, beforeId: beforeId, limit: 50);
+          remoteLen = remote.length;
+          final repo = ref.read(messageRepositoryProvider);
+          incoming = [
+            ...incoming,
+            for (final row in remote)
+              repo.fromHistory(row, dest: dest, account: account),
+          ];
+        } catch (_) {}
+      }
       if (!ref.mounted) {
         return;
       }
-      await ref
-          .read(conversationStoreProvider)
-          .upsertMessages(account, dest, incoming);
+      final results = await ref
+          .read(messageRepositoryProvider)
+          .applySync(account, incoming);
       if (!ref.mounted) {
         return;
       }
-      for (final msg in incoming) {
-        receive(msg);
-      }
-      state = state.copyWith(loadingOlder: false, hasMore: local.length >= 50);
+      receiveAll([for (final r in results) r.message]);
+      state = state.copyWith(
+        loadingOlder: false,
+        hasMore: local.length >= 50 || remoteLen >= 50,
+      );
     } catch (_) {
       if (ref.mounted) {
         state = state.copyWith(loadingOlder: false);
@@ -170,17 +204,23 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       if (!ref.mounted) {
         return;
       }
-      final msgs = [for (final row in remote) _fromHistory(row, account)];
-      await ref
-          .read(conversationStoreProvider)
-          .upsertMessages(account, dest, msgs);
+      final repo = ref.read(messageRepositoryProvider);
+      final msgs = [
+        for (final row in remote)
+          repo.fromHistory(row, dest: dest, account: account),
+      ];
+      final results = await repo.applySync(account, msgs);
       if (!ref.mounted) {
         return;
       }
-      for (final msg in msgs) {
-        receive(msg);
+      receiveAll([for (final r in results) r.message]);
+      _reconciled = true;
+      state = state.copyWith(hasMore: remote.length >= 50);
+    } catch (_) {
+      if (ref.mounted && !_reconciled) {
+        state = state.copyWith(hasMore: true);
       }
-    } catch (_) {}
+    }
   }
 
   Future<void> markRead() async {
@@ -202,6 +242,15 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     try {
       await ref.read(clientPortProvider).markRead(dest, kind, messageId);
     } catch (_) {}
+  }
+
+  int _historyBeforeId(List<KimChatMsg> items) {
+    for (final m in items) {
+      if (m.messageId != 0) {
+        return m.messageId;
+      }
+    }
+    return 0;
   }
 
   int _indexOf(List<KimChatMsg> rows, KimChatMsg msg) {
@@ -227,25 +276,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       messageId: next.messageId == 0 ? prev.messageId : next.messageId,
       status: next.status,
       at: next.at == 0 ? prev.at : next.at,
-    );
-  }
-
-  KimChatMsg _fromHistory(KimHistoryMsg row, String account) {
-    final extra = parseImageExtra(row.extra);
-    return KimChatMsg(
-      key: row.messageId == 0
-          ? 'hist-${row.sendTime}-${row.sender}'
-          : '${row.messageId}',
-      dest: dest,
-      sender: row.sender.isEmpty
-          ? (row.direction == 1 ? account : dest)
-          : row.sender,
-      body: row.body,
-      at: sendTimeMs(row.sendTime),
-      kind: kindFromWire(body: row.body, extra: row.extra, type: row.msgType),
-      width: extra?.width ?? 0,
-      height: extra?.height ?? 0,
-      messageId: row.messageId,
+      localPath: next.localPath,
     );
   }
 }

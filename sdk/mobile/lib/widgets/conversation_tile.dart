@@ -7,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
 import '../core/format.dart';
+import '../core/image_extra.dart';
 import '../models/models.dart';
 import '../theme/kim_theme.dart';
 import 'kim_avatar.dart';
@@ -29,7 +30,8 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final preview = thread.lastBody.isEmpty ? Copy.noMessages : thread.lastBody;
+    final snippet = previewSnippet(thread.lastBody);
+    final preview = snippet.isEmpty ? Copy.noMessages : snippet;
     final time = formatListTime(thread.lastAt);
 
     return Slidable(

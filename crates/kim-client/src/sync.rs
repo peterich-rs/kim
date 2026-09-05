@@ -1,8 +1,8 @@
 //! Offline catch-up: inbox.list then offline.index/content pages, persist-then-ack.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::{broadcast, watch, Notify};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::events::{IncomingTalk, Message, MessageIndex};
 use crate::supervisor::SessionEvent;
@@ -12,6 +12,7 @@ use kim_protocol::{CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK};
 
 pub(crate) const SYNC_PAGE: usize = 200;
 pub(crate) const INBOX_LIMIT: i32 = 200;
+const SEEN_CAP: usize = 4096;
 
 /// Dart persist-then-ack gate. `sync_confirm(cursor)` releases pages with max id ≤ cursor.
 #[derive(Clone)]
@@ -59,12 +60,14 @@ pub(crate) async fn wait_confirm(
 
 pub(crate) struct SyncEngine {
     seen: HashSet<i64>,
+    seen_order: VecDeque<i64>,
 }
 
 impl SyncEngine {
     pub(crate) fn new() -> Self {
         Self {
             seen: HashSet::new(),
+            seen_order: VecDeque::new(),
         }
     }
 
@@ -73,7 +76,16 @@ impl SyncEngine {
         if message_id == 0 {
             return true;
         }
-        self.seen.insert(message_id)
+        if !self.seen.insert(message_id) {
+            return false;
+        }
+        self.seen_order.push_back(message_id);
+        while self.seen_order.len() > SEEN_CAP {
+            if let Some(old) = self.seen_order.pop_front() {
+                self.seen.remove(&old);
+            }
+        }
+        true
     }
 
     pub(crate) async fn run(
@@ -101,18 +113,21 @@ impl SyncEngine {
                 .take(SYNC_PAGE)
                 .collect();
             let msgs = client.offline_content(&ids).await?;
-            let talks = merge_offline(&account, &indexes, &msgs, &mut self.seen);
+            let talks = merge_offline(&account, &indexes, &msgs, |id| self.observe(id));
             let new_count = talks.len();
-            for talk in talks {
-                let _ = events.send(SessionEvent::Talk(talk));
-            }
             pulled += new_count;
             let max_id = ids.iter().copied().max().unwrap_or(0);
             if new_count > 0 && max_id > 0 {
-                let _ = events.send(SessionEvent::SyncProgress {
-                    pulled,
-                    page_pending: true,
-                });
+                if events
+                    .send(SessionEvent::SyncPage {
+                        page_id: max_id,
+                        talks,
+                    })
+                    .is_err()
+                {
+                    warn!(page_id = max_id, "offline page not delivered");
+                    return Err(ClientError::other("offline page not delivered"));
+                }
                 wait_confirm(&mut confirm_rx, max_id, stop).await?;
             }
             client.ack_batch(&ids).await?;
@@ -134,7 +149,7 @@ fn merge_offline(
     account: &str,
     indexes: &[MessageIndex],
     msgs: &[Message],
-    seen: &mut HashSet<i64>,
+    mut unseen: impl FnMut(i64) -> bool,
 ) -> Vec<IncomingTalk> {
     let by_id: HashMap<i64, &Message> = msgs.iter().map(|m| (m.message_id, m)).collect();
     let mut talks = Vec::new();
@@ -142,7 +157,7 @@ fn merge_offline(
         let Some(msg) = by_id.get(&idx.message_id) else {
             continue;
         };
-        if idx.message_id != 0 && !seen.insert(idx.message_id) {
+        if idx.message_id != 0 && !unseen(idx.message_id) {
             continue;
         }
         talks.push(talk_from_offline(account, idx, msg));
@@ -220,12 +235,12 @@ mod tests {
             "alice",
             &[idx.clone(), idx.clone()],
             std::slice::from_ref(&msg),
-            &mut seen,
+            |id| seen.insert(id),
         );
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].message_id, 5);
         assert_eq!(first[0].dest, "bob");
-        let second = merge_offline("alice", &[idx], &[msg], &mut seen);
+        let second = merge_offline("alice", &[idx], &[msg], |id| seen.insert(id));
         assert!(second.is_empty());
     }
 }

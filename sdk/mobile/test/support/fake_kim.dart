@@ -166,6 +166,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return KimTalkResult(messageId: 1, sendTime: talkSendTime);
   }
 
+  List<KimHistoryMsg> historyRows = const [];
+  int historyCalls = 0;
+  int lastHistoryBeforeId = 0;
+
   @override
   Future<List<KimHistoryMsg>> history(
     String dest,
@@ -173,7 +177,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
     int beforeId = 0,
     int limit = 50,
   }) async {
-    return const [];
+    historyCalls += 1;
+    lastHistoryBeforeId = beforeId;
+    if (beforeId <= 0) {
+      return historyRows.take(limit).toList();
+    }
+    return historyRows
+        .where((m) => m.messageId < beforeId)
+        .take(limit)
+        .toList();
   }
 
   @override
@@ -211,6 +223,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
   void emitAuthExpired({String error = 'unauthorized'}) {
     eventsController.add(
       KimEvent(kind: KimEventKind.authExpired, error: error),
+    );
+  }
+
+  void emitSyncPage({required int pageId, required List<KimEvent> talks}) {
+    eventsController.add(
+      KimEvent(
+        kind: KimEventKind.syncPage,
+        pageId: pageId,
+        talks: talks,
+        pagePending: true,
+      ),
     );
   }
 

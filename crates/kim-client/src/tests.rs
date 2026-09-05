@@ -861,6 +861,14 @@ async fn sync_confirm_gate_blocks_ack() {
             .expect("recv");
         match ev {
             SessionEvent::Talk(_) => talks += 1,
+            SessionEvent::SyncPage {
+                talks: page,
+                page_id,
+            } => {
+                talks += page.len();
+                assert_eq!(page_id, 11);
+                break;
+            }
             SessionEvent::SyncProgress {
                 page_pending: true, ..
             } => break,
@@ -890,6 +898,55 @@ async fn sync_confirm_gate_blocks_ack() {
         .expect("ack after confirm");
     let req: MessageAckReq = ack.read_body().unwrap();
     assert_eq!(req.message_ids, vec![11]);
+}
+
+#[tokio::test]
+async fn undelivered_sync_page_does_not_ack() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp { items: vec![] });
+    });
+    let index = resp_logic(CMD_OFFLINE_INDEX, 3, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 11,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 4, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 11,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "later".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![inbox, index, content]);
+    let (tx, rx) = tokio::sync::broadcast::channel(16);
+    drop(rx);
+    let gate = ConfirmGate::new();
+    let stop = tokio::sync::Notify::new();
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut engine = SyncEngine::new();
+        engine.run(&client, &tx, &gate, &stop).await
+    })
+    .await
+    .expect("join");
+    assert!(result.is_err(), "undelivered page must fail the sync");
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let acks = frames
+        .iter()
+        .filter(|f| {
+            matches!(read(&f.payload), Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK)
+        })
+        .count();
+    assert_eq!(acks, 0, "must not ack a page Dart never received");
 }
 
 struct DropGw {

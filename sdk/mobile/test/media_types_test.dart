@@ -76,6 +76,14 @@ void main() {
       ),
       Copy.imageMessage,
     );
+    expect(
+      previewSnippet('https://media.kim.ainexc.com/alice/a.png'),
+      Copy.imageMessage,
+    );
+    expect(previewSnippet('/tmp/photo.jpg'), Copy.imageMessage);
+    expect(previewSnippet('/tmp/clip.mp4'), Copy.videoMessage);
+    expect(previewSnippet(Copy.imageMessage), Copy.imageMessage);
+    expect(previewSnippet('hello'), 'hello');
   });
 
   test('normalize rejects unknown types', () {

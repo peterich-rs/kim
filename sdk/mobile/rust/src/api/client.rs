@@ -101,9 +101,8 @@ pub struct KimApi {
 impl KimApi {
     #[flutter_rust_bridge::frb(sync)]
     pub fn start(url: String, token: String, user_agent: String) -> Self {
-        let _guard = rt().enter();
         Self {
-            supervisor: Arc::new(SessionSupervisor::start(
+            supervisor: Arc::new(SessionSupervisor::new(
                 ClientConfig::new(url, token).with_user_agent(user_agent),
             )),
         }
@@ -126,7 +125,9 @@ impl KimApi {
     /// Supervisor event stream. Replaces `listen` / `KimPush`.
     #[flutter_rust_bridge::frb(sync)]
     pub fn session_events(&self, sink: StreamSink<KimSessionEvent>) -> Result<(), String> {
+        let _guard = rt().enter();
         let mut rx = self.supervisor.events();
+        self.supervisor.ensure_running();
         let _ = sink.add(map_link(self.supervisor.state()));
         rt().spawn(async move {
             loop {
@@ -136,7 +137,14 @@ impl KimApi {
                             break;
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        let mut ev = KimSessionEvent::empty();
+                        ev.kind = "sync_failed".into();
+                        ev.error = format!("event lag {skipped}");
+                        if sink.add(ev).is_err() {
+                            break;
+                        }
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -309,6 +317,14 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
             ev
         }
         SessionEvent::Talk(t) => KimSessionEvent::from(t),
+        SessionEvent::SyncPage { page_id, talks } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "sync_page".into();
+            ev.message_id = page_id;
+            ev.page_pending = true;
+            ev.body = serde_json::to_string(&talks).unwrap_or_else(|_| "[]".into());
+            ev
+        }
         SessionEvent::SyncProgress {
             pulled,
             page_pending,

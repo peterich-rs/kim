@@ -11,6 +11,7 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 flutter_rust_bridge = "=2.13.0"
 kim-client = { path = "../../../crates/kim-client" }
+serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [lints.rust]

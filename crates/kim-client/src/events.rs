@@ -152,7 +152,7 @@ pub enum Event {
     Closed,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IncomingTalk {
     pub command: String,
     /// Thread id: peer account for 1:1, group id for `chat.group.talk`.

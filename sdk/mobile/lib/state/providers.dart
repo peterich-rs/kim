@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/misc.dart';
 import '../core/media.dart';
 import '../core/runtime.dart';
 import '../data/conversation_store.dart';
+import '../data/message_repository.dart';
 import '../kim_bridge.dart';
 
 final runtimeProvider = Provider<KimRuntime>((ref) {
@@ -24,6 +25,10 @@ final conversationStoreProvider = Provider<ConversationStore>((ref) {
   throw StateError(
     'conversationStoreProvider must be overridden in main / tests',
   );
+});
+
+final messageRepositoryProvider = Provider<MessageRepository>((ref) {
+  return MessageRepository(ref.watch(conversationStoreProvider));
 });
 
 final mediaPortProvider = Provider<KimMediaPort>((ref) {

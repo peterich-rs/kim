@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/format.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
@@ -146,7 +147,11 @@ void main() {
       }
     });
     final prefs = await SharedPreferences.getInstance();
-    final db = await ConversationStore.open(support: tmp, prefs: prefs);
+    final db = await ConversationStore.open(
+      support: tmp,
+      prefs: prefs,
+      isolate: false,
+    );
     addTearDown(db.close);
     expect(db.loadThreads('alice').single.id, 'bob');
     expect(db.loadMessages('alice', 'bob').single.body, 'hi');
@@ -156,7 +161,11 @@ void main() {
         {'id': 'carol', 'kind': 'user', 'title': 'carol', 'lastAt': 1},
       ]),
     );
-    final again = await ConversationStore.open(support: tmp, prefs: prefs);
+    final again = await ConversationStore.open(
+      support: tmp,
+      prefs: prefs,
+      isolate: false,
+    );
     addTearDown(again.close);
     expect(again.loadThreads('alice').single.id, 'bob');
   });
@@ -303,5 +312,199 @@ void main() {
     ]);
     expect(db.loadPending('alice').single.key, 's');
     expect(db.loadFailed('alice').single.key, 'f');
+  });
+
+  test(
+    'own send and history with same messageId collapse to one row',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('kim-id-');
+      addTearDown(() {
+        if (dir.existsSync()) {
+          dir.deleteSync(recursive: true);
+        }
+      });
+      var db = await ConversationStore.open(support: dir, isolate: false);
+      const uuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+      await db.applyMessages('alice', const [
+        KimChatMsg(
+          key: uuid,
+          dest: 'bob',
+          sender: 'alice',
+          body: 'hi',
+          at: 1,
+          messageId: 123,
+          status: KimSendStatus.sent,
+        ),
+      ], policy: UnreadPolicy.keep);
+      await db.applyMessages('alice', const [
+        KimChatMsg(
+          key: 'm123',
+          dest: 'bob',
+          sender: 'alice',
+          body: 'hi',
+          at: 1,
+          messageId: 123,
+        ),
+      ], policy: UnreadPolicy.keep);
+      expect(db.loadMessages('alice', 'bob'), hasLength(1));
+      expect(db.loadMessages('alice', 'bob').single.key, uuid);
+      db.close();
+      db = await ConversationStore.open(support: dir, isolate: false);
+      addTearDown(db.close);
+      expect(db.loadMessages('alice', 'bob'), hasLength(1));
+      expect(db.loadMessages('alice', 'bob').single.key, uuid);
+      expect(db.loadMessages('alice', 'bob').single.messageId, 123);
+    },
+  );
+
+  test('same timestamp page uses key as a second cursor', () async {
+    final db = store();
+    await db.applyMessages('alice', [
+      for (var i = 0; i < 60; i++)
+        KimChatMsg(
+          key: 'k${i.toString().padLeft(3, '0')}',
+          dest: 'bob',
+          sender: 'bob',
+          body: '$i',
+          at: 5,
+          messageId: i + 1,
+        ),
+    ], policy: UnreadPolicy.keep);
+    final first = db.loadMessagesPage('alice', 'bob', limit: 50);
+    expect(first, hasLength(50));
+    final older = db.loadMessagesPage(
+      'alice',
+      'bob',
+      beforeAt: first.last.at,
+      beforeKey: first.last.key,
+      limit: 50,
+    );
+    expect(older, hasLength(10));
+    expect({
+      ...first.map((m) => m.key),
+      ...older.map((m) => m.key),
+    }, hasLength(60));
+  });
+
+  test('replay of same messageId does not bump unread', () async {
+    final db = store();
+    const msg = KimChatMsg(
+      key: 'm9',
+      dest: 'bob',
+      sender: 'bob',
+      body: 'hi',
+      at: 1,
+      messageId: 9,
+    );
+    final first = await db.applyMessages('alice', [msg]);
+    expect(first.single.inserted, isTrue);
+    expect(first.single.unreadDelta, 1);
+    expect(first.single.thread.unread, 1);
+    final second = await db.applyMessages('alice', [msg]);
+    expect(second.single.inserted, isFalse);
+    expect(second.single.unreadDelta, 0);
+    expect(second.single.thread.unread, 1);
+  });
+
+  test('isolate-backed store round-trips apply', () async {
+    final dir = Directory.systemTemp.createTempSync('kim-iso-');
+    addTearDown(() {
+      if (dir.existsSync()) {
+        dir.deleteSync(recursive: true);
+      }
+    });
+    final db = await ConversationStore.open(support: dir);
+    addTearDown(db.close);
+    final results = await db.applyMessages('alice', const [
+      KimChatMsg(
+        key: 'm1',
+        dest: 'bob',
+        sender: 'bob',
+        body: 'hi',
+        at: 1,
+        messageId: 1,
+      ),
+    ]);
+    expect(results, hasLength(1));
+    expect(results.single.inserted, isTrue);
+    await db.warmThreads('alice');
+    await db.ensureMessages('alice', 'bob');
+    expect(db.loadThreads('alice').single.id, 'bob');
+    expect(db.loadMessagesPage('alice', 'bob').single.body, 'hi');
+  });
+
+  test('isolate upsertThread from inbox persist does not throw', () async {
+    final dir = Directory.systemTemp.createTempSync('kim-iso-thread-');
+    addTearDown(() {
+      if (dir.existsSync()) {
+        dir.deleteSync(recursive: true);
+      }
+    });
+    final db = await ConversationStore.open(support: dir);
+    addTearDown(db.close);
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        lastBody: 'hi',
+        lastAt: 9,
+        unread: 1,
+      ),
+    );
+    await db.warmThreads('alice');
+    expect(db.loadThreads('alice').single.unread, 1);
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'Bobby',
+        lastBody: 'there',
+        lastAt: 10,
+        unread: 2,
+      ),
+    );
+    expect(db.loadThreads('alice').single.title, 'Bobby');
+    expect(db.loadThreads('alice').single.unread, 2);
+  });
+
+  test('image lastBody is stored as [图片] across reopen', () async {
+    final dir = Directory.systemTemp.createTempSync('kim-preview-');
+    addTearDown(() {
+      if (dir.existsSync()) {
+        dir.deleteSync(recursive: true);
+      }
+    });
+    var db = await ConversationStore.open(support: dir, isolate: false);
+    await db.applyMessages('alice', const [
+      KimChatMsg(
+        key: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        dest: 'bob',
+        sender: 'alice',
+        body: 'https://media.kim.ainexc.com/alice/a.jpg',
+        at: 1,
+        kind: KimMsgKind.image,
+        messageId: 9,
+        status: KimSendStatus.sent,
+      ),
+    ], policy: UnreadPolicy.keep);
+    expect(db.loadThreads('alice').single.lastBody, Copy.imageMessage);
+    db.close();
+    db = await ConversationStore.open(support: dir, isolate: false);
+    addTearDown(db.close);
+    expect(db.loadThreads('alice').single.lastBody, Copy.imageMessage);
+    await db.upsertThread(
+      'alice',
+      const KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        lastBody: 'https://media.kim.ainexc.com/alice/a.jpg',
+        lastAt: 1,
+      ),
+    );
+    expect(db.loadThreads('alice').single.lastBody, Copy.imageMessage);
   });
 }

@@ -1008,6 +1008,7 @@ version = "0.1.0"
 dependencies = [
  "flutter_rust_bridge",
  "kim-client",
+ "serde_json",
  "tokio",
 ]
 

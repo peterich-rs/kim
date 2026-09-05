@@ -402,7 +402,7 @@ class _MediaBody extends StatelessWidget {
         ),
       );
     }
-    final src = message.body;
+    final src = message.displaySrc;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cacheW = (maxW * dpr).round();
     final tag = 'img-${message.key}';

@@ -358,7 +358,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
           id: item.dest,
           kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
           title: item.title.isEmpty ? item.dest : item.title,
-          lastBody: item.lastBody,
+          lastBody: previewSnippet(item.lastBody),
           lastAt: sendTimeMs(item.lastSendTime.toInt()),
           unread: item.unread,
           avatar: item.avatar,
@@ -393,6 +393,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'sync_progress' => KimEventKind.syncProgress,
       'sync_done' => KimEventKind.syncDone,
       'sync_failed' => KimEventKind.syncFailed,
+      'sync_page' => KimEventKind.syncPage,
       'auth' => KimEventKind.authExpired,
       _ => KimEventKind.closed,
     };
@@ -414,7 +415,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
             id: item.dest,
             kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
             title: item.title.isEmpty ? item.dest : item.title,
-            lastBody: item.lastBody,
+            lastBody: previewSnippet(item.lastBody),
             lastAt: sendTimeMs(item.lastSendTime.toInt()),
             unread: item.unread,
             avatar: item.avatar,
@@ -425,7 +426,39 @@ class KimBridge implements KimAuthPort, KimClientPort {
       error: push.error,
       msgType: push.msgType,
       nickname: push.nickname,
+      talks: kind == KimEventKind.syncPage
+          ? _talksFromJson(push.body)
+          : const [],
+      pageId: kind == KimEventKind.syncPage ? push.messageId.toInt() : 0,
     );
+  }
+
+  List<KimEvent> _talksFromJson(String raw) {
+    if (raw.isEmpty) {
+      return const [];
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return const [];
+      }
+      return [
+        for (final row in decoded)
+          if (row is Map)
+            KimEvent(
+              kind: KimEventKind.talk,
+              dest: '${row['dest'] ?? ''}',
+              sender: '${row['sender'] ?? ''}',
+              body: '${row['body'] ?? ''}',
+              extra: '${row['extra'] ?? ''}',
+              messageId: (row['message_id'] as num?)?.toInt() ?? 0,
+              sendTime: (row['send_time'] as num?)?.toInt() ?? 0,
+              msgType: (row['msg_type'] as num?)?.toInt() ?? 0,
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   List<KimPerson> _people(String raw) {

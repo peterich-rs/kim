@@ -57,6 +57,7 @@ enum KimEventKind {
   syncDone,
   syncFailed,
   authExpired,
+  syncPage,
 }
 
 class KimEvent {
@@ -78,6 +79,8 @@ class KimEvent {
     this.error = '',
     this.msgType = 0,
     this.nickname = '',
+    this.talks = const [],
+    this.pageId = 0,
   });
 
   final KimEventKind kind;
@@ -97,6 +100,8 @@ class KimEvent {
   final String error;
   final int msgType;
   final String nickname;
+  final List<KimEvent> talks;
+  final int pageId;
 }
 
 class KimTalkResult {
@@ -257,6 +262,7 @@ class KimChatMsg {
     this.messageId = 0,
     this.batchId,
     this.status = KimSendStatus.sent,
+    this.localPath,
   });
 
   final String key;
@@ -272,8 +278,18 @@ class KimChatMsg {
   final int messageId;
   final String? batchId;
   final KimSendStatus status;
+  final String? localPath;
 
   bool get isImage => kind == KimMsgKind.image;
+
+  /// Prefer a local file for display after the body has been replaced by a URL.
+  String get displaySrc {
+    final local = localPath;
+    if (local != null && local.isNotEmpty) {
+      return local;
+    }
+    return body;
+  }
 
   bool get isVideo => kind == KimMsgKind.video;
 
@@ -291,6 +307,7 @@ class KimChatMsg {
     String? batchId,
     KimSendStatus? status,
     int? at,
+    String? localPath,
   }) {
     final nextStatus =
         status ??
@@ -312,6 +329,7 @@ class KimChatMsg {
       messageId: messageId ?? this.messageId,
       batchId: batchId ?? this.batchId,
       status: nextStatus,
+      localPath: localPath ?? this.localPath,
     );
   }
 
@@ -329,6 +347,7 @@ class KimChatMsg {
     'messageId': messageId,
     'batchId': batchId,
     'status': status.name,
+    'localPath': localPath,
   };
 
   static KimChatMsg? fromJson(Object? raw) {
@@ -370,6 +389,7 @@ class KimChatMsg {
       messageId: raw['messageId'] is int ? raw['messageId'] as int : 0,
       batchId: raw['batchId'] is String ? raw['batchId'] as String : null,
       status: status,
+      localPath: raw['localPath'] is String ? raw['localPath'] as String : null,
     );
   }
 }
