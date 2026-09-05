@@ -52,3 +52,18 @@ openssl pkey -in ota_ed25519_private.pem -pubout -out ed25519_public.pem
 1. Upload `logic-ota-*.zip`, `manifest.json`, `manifest.json.sig` to CDN.
 2. Point Royal check API (see design doc) at the new logic_version for the matching `host_line` / channel.
 3. Clients download on the next check; apply on the **following cold start**.
+
+## CI workflow reference
+
+GitHub App / OAuth tokens without the `workflow` scope cannot create
+`.github/workflows/*.yml` via git push. The full workflow YAML lives at
+[`logic-ota.workflow.yml`](logic-ota.workflow.yml). To enable it on the repo:
+
+```bash
+cp sdk/mobile/ota/logic-ota.workflow.yml .github/workflows/logic-ota.yml
+git add .github/workflows/logic-ota.yml
+git commit -m "ci: enable logic SO OTA pack workflow"
+git push   # requires a credential with the workflow scope
+```
+
+Required secret (optional for UNSIGNED dry-run): `OTA_ED25519_PRIVATE_PEM`.
