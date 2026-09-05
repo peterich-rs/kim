@@ -43,12 +43,10 @@ void main() {
     );
   });
 
-  test('send while offline still enqueues', () async {
-    final env = await kimHarness(
-      token: 'tok.jwt',
-      account: 'alice',
-      online: false,
-    );
+  test('send while socket offline still enqueues', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.connectError = Exception('offline');
+    await _online(env);
     final msg = await env.container
         .read(outboxProvider.notifier)
         .sendText('bob', 'hello');

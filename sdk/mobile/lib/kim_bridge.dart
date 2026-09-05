@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'core/format.dart';
 import 'core/image_extra.dart';
+import 'core/jwt.dart';
 import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
 import 'src/rust/api/client.dart' as rust;
@@ -40,6 +41,8 @@ abstract class KimClientPort {
   Future<void> syncConfirm(int cursor);
 
   Future<void> notifyRadioUp();
+
+  Future<void> notifyForeground();
 
   Future<KimTalkResult> sendMessage(
     String dest,
@@ -122,6 +125,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   static bool _inited = false;
   rust.KimApi? _api;
   Stream<KimEvent>? _events;
+  String? _account;
 
   /// Last WGateway URL passed to [startSession]. Not a second source of truth —
   /// [SettingsStore] persists it.
@@ -234,6 +238,13 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     await _ensure();
     lastUrl = url;
+    final account = JwtPeek.account(token) ?? '';
+    if (_api != null && _account == account && account.isNotEmpty) {
+      try {
+        await _api!.notifyRadioUp();
+      } catch (_) {}
+      return;
+    }
     final prev = _api;
     if (prev != null) {
       try {
@@ -242,7 +253,12 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     final api = rust.KimApi.start(url: url, token: token, userAgent: userAgent);
     _api = api;
-    _events = api.sessionEvents().map(_event);
+    _account = account;
+    _events = api
+        .sessionEvents()
+        .map(_event)
+        .where((event) => event != null)
+        .map((event) => event!);
   }
 
   @override
@@ -250,6 +266,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     final api = _api;
     _api = null;
     _events = null;
+    _account = null;
     if (api == null) {
       return;
     }
@@ -280,6 +297,11 @@ class KimBridge implements KimAuthPort, KimClientPort {
   @override
   Future<void> notifyRadioUp() async {
     await _require().notifyRadioUp();
+  }
+
+  @override
+  Future<void> notifyForeground() async {
+    await _require().notifyForeground();
   }
 
   @override
@@ -380,7 +402,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     );
   }
 
-  KimEvent _event(rust.KimSessionEvent push) {
+  KimEvent? _event(rust.KimSessionEvent push) {
     final kind = switch (push.kind) {
       'talk' => KimEventKind.talk,
       'kick' => KimEventKind.kick,
@@ -395,8 +417,12 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'sync_failed' => KimEventKind.syncFailed,
       'sync_page' => KimEventKind.syncPage,
       'auth' => KimEventKind.authExpired,
-      _ => KimEventKind.closed,
+      'closed' => KimEventKind.closed,
+      _ => null,
     };
+    if (kind == null) {
+      return null;
+    }
     return KimEvent(
       kind: kind,
       dest: push.dest,

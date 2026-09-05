@@ -30,7 +30,7 @@ void main() {
     expect(env.container.read(sessionProvider).status, ConnStatus.online);
   });
 
-  test('radio down shows offline', () async {
+  test('radio down keeps socket online', () async {
     final env = await kimHarness(
       token: 'tok.jwt',
       account: 'alice',
@@ -38,7 +38,31 @@ void main() {
     );
     env.container.read(linkProvider);
     await _tick();
-    expect(env.container.read(sessionProvider).status, ConnStatus.offline);
+    expect(env.container.read(sessionProvider).status, ConnStatus.online);
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
+  });
+
+  test('unknown ffi kind does not mark reconnecting', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(linkProvider);
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
+    env.fake.eventsController.add(
+      const KimEvent(kind: KimEventKind.closed, error: 'ignored'),
+    );
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
+  });
+
+  test('token renew does not restart session', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(linkProvider);
+    await _tick();
+    final connects = env.fake.connects;
+    await env.container.read(linkProvider.notifier).retry();
+    await _tick();
+    expect(env.fake.connects, connects);
+    expect(env.fake.radioUps, greaterThan(0));
   });
 
   test('connect failure surfaces offline', () async {
