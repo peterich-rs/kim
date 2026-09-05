@@ -180,6 +180,7 @@ class _PeerBlock extends StatelessWidget {
                 name: displayName,
                 url: avatarUrl,
                 size: KimAvatarSize.sm,
+                shape: KimAvatarShape.squircle,
               )
             : const SizedBox(width: 36),
         const Gap(10),

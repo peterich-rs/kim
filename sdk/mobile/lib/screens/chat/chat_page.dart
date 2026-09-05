@@ -29,7 +29,6 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
 import '../../widgets/kim_composer.dart';
-import '../../widgets/kim_hairline.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -245,122 +244,245 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         widget.kind == ThreadKind.user &&
         social.ready &&
         !social.isFriend(widget.id);
-
     return Scaffold(
+      extendBody: true,
       resizeToAvoidBottomInset: true,
       backgroundColor: KimTheme.chatCanvasOf(context),
-      appBar: AppBar(
-        centerTitle: false,
-        leadingWidth: 52,
-        leading: const _FrostedBack(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontSize: KimTheme.fontTitle,
-                fontWeight: FontWeight.w600,
+      body: Builder(
+        builder: (context) {
+          final media = MediaQuery.of(context);
+          // Reverse ChatList: padding.top clears the composer (visual bottom);
+          // padding.bottom clears the floating header chips (visual top).
+          final listPadding = EdgeInsets.fromLTRB(
+            0,
+            72 + media.padding.bottom,
+            0,
+            64 + media.padding.top,
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ChatList(
+                items: thread.items,
+                controller: _list,
+                padding: listPadding,
+                loadingOlder: thread.loadingOlder,
+                hasMore: thread.hasMore,
+                onLoadOlder: () => unawaited(
+                  ref
+                      .read(threadMessagesProvider(widget.id).notifier)
+                      .loadOlder(),
+                ),
+                empty: const EmptyState(
+                  icon: LucideIcons.messageCircle,
+                  title: Copy.noMessages,
+                  subtitle: Copy.noMessagesHint,
+                ),
+                itemBuilder: (context, msg, index) {
+                  final prev = index > 0 ? thread.items[index - 1] : null;
+                  final next = index + 1 < thread.items.length
+                      ? thread.items[index + 1]
+                      : null;
+                  return KimMessageRow(
+                    key: Key('msg-${msg.key}'),
+                    message: msg,
+                    previous: prev,
+                    next: next,
+                    isSentByMe: msg.sender == account,
+                    displayName: _nameOf(msg.sender, account, social),
+                    avatarUrl: avatarFor(me, social, msg.sender),
+                    unreadAnchor: thread.unreadAnchorId == msg.key,
+                    onRetry: msg.isFailed
+                        ? () => unawaited(_retry(msg.key))
+                        : null,
+                    onLongPress: (_) => unawaited(_onLongPress(context, msg)),
+                  );
+                },
               ),
-            ),
-            Text(
-              session.statusLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                fontSize: KimTheme.fontMeta,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                        child: Row(
+                          children: [
+                            _FrostedCircleButton(
+                              key: const Key('chat-back'),
+                              onTap: () => Navigator.of(context).maybePop(),
+                              child: const Icon(
+                                LucideIcons.chevronLeft,
+                                size: 22,
+                              ),
+                            ),
+                            const Gap(8),
+                            _ChatTitleChrome(
+                              title: widget.title,
+                              avatarUrl: avatarFor(me, social, widget.id),
+                              status: session.status,
+                            ),
+                            const Spacer(),
+                            const _FrostedCircleButton(
+                              key: Key('chat-more'),
+                              tooltip: Copy.more,
+                              child: Icon(LucideIcons.ellipsis, size: 20),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ConnectionBanner(
+                        status: session.status,
+                        error: session.connectError,
+                        onRetry: () => ref.read(linkProvider.notifier).retry(),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          ConnectionBanner(
-            status: session.status,
-            error: session.connectError,
-            onRetry: () => ref.read(linkProvider.notifier).retry(),
-          ),
-          Expanded(
-            child: ChatList(
-              items: thread.items,
-              controller: _list,
-              loadingOlder: thread.loadingOlder,
-              hasMore: thread.hasMore,
-              onLoadOlder: () => unawaited(
-                ref
-                    .read(threadMessagesProvider(widget.id).notifier)
-                    .loadOlder(),
+              Positioned(
+                left: 0,
+                right: 0,
+                // Scaffold strips viewInsets when resizing; keep the hook so
+                // the composer still lifts if insets remain.
+                bottom: media.viewInsets.bottom,
+                child: gated
+                    ? _FriendGate(
+                        dest: widget.id,
+                        title: widget.title,
+                        incoming: social.isIncoming(widget.id),
+                        outgoing: social.isOutgoing(widget.id),
+                      )
+                    : KeyedSubtree(
+                        key: const Key('chat-composer'),
+                        child: KimComposer(
+                          key: _composer,
+                          hintText: Copy.messagePlaceholder,
+                          onSend: (text) => unawaited(_send(text)),
+                          onPickAlbum: () => unawaited(_pickAlbum()),
+                          onTakePhoto: () => unawaited(_takePhoto()),
+                        ),
+                      ),
               ),
-              empty: const EmptyState(
-                icon: LucideIcons.messageCircle,
-                title: Copy.noMessages,
-                subtitle: Copy.noMessagesHint,
-              ),
-              itemBuilder: (context, msg, index) {
-                final prev = index > 0 ? thread.items[index - 1] : null;
-                final next = index + 1 < thread.items.length
-                    ? thread.items[index + 1]
-                    : null;
-                return KimMessageRow(
-                  key: Key('msg-${msg.key}'),
-                  message: msg,
-                  previous: prev,
-                  next: next,
-                  isSentByMe: msg.sender == account,
-                  displayName: _nameOf(msg.sender, account, social),
-                  avatarUrl: avatarFor(me, social, msg.sender),
-                  unreadAnchor: thread.unreadAnchorId == msg.key,
-                  onRetry: msg.isFailed
-                      ? () => unawaited(_retry(msg.key))
-                      : null,
-                  onLongPress: (_) => unawaited(_onLongPress(context, msg)),
-                );
-              },
-            ),
-          ),
-          if (gated)
-            _FriendGate(
-              dest: widget.id,
-              title: widget.title,
-              incoming: social.isIncoming(widget.id),
-              outgoing: social.isOutgoing(widget.id),
-            )
-          else
-            KeyedSubtree(
-              key: const Key('chat-composer'),
-              child: KimComposer(
-                key: _composer,
-                hintText: Copy.messagePlaceholder,
-                onSend: (text) => unawaited(_send(text)),
-                onPickAlbum: () => unawaited(_pickAlbum()),
-                onTakePhoto: () => unawaited(_takePhoto()),
-              ),
-            ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _FrostedBack extends StatelessWidget {
-  const _FrostedBack();
+class _FrostedCircleButton extends StatelessWidget {
+  const _FrostedCircleButton({
+    super.key,
+    required this.child,
+    this.tooltip,
+    this.onTap,
+  });
+
+  final Widget child;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, top: 6, bottom: 6),
-      child: Material(
-        color: scheme.surface.withValues(alpha: 0.55),
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: const BackButton(),
+    final button = ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Material(
+          color: KimTheme.frostFillOf(context),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: IconTheme.merge(
+                data: IconThemeData(color: scheme.onSurface, size: 20),
+                child: Center(child: child),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _ChatTitleChrome extends StatelessWidget {
+  const _ChatTitleChrome({
+    required this.title,
+    required this.avatarUrl,
+    required this.status,
+  });
+
+  final String title;
+  final String avatarUrl;
+  final ConnStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(6, 4, 12, 4),
+          color: KimTheme.frostFillOf(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  KimAvatar(
+                    name: title,
+                    url: avatarUrl,
+                    size: KimAvatarSize.sm,
+                    shape: KimAvatarShape.squircle,
+                  ),
+                  Positioned(
+                    right: -1,
+                    bottom: -1,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: KimTheme.chatCanvasOf(context),
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: StatusDot(status: status, size: 8),
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: KimTheme.fontTitle,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -415,73 +537,71 @@ class _FriendGate extends ConsumerWidget {
       }
     }
 
-    return Material(
-      color: KimTheme.raisedOf(context),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const KimHairline(),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(KimTheme.radiusCard),
-                  border: Border.all(color: KimTheme.hairlineOf(context)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      KimAvatar(name: title, url: avatarUrl),
-                      const Gap(10),
-                      Text(Copy.notFriends, style: theme.textTheme.titleSmall),
-                      const Gap(4),
-                      Text(
-                        outgoing
-                            ? Copy.waitingAccept
-                            : incoming
-                            ? Copy.friendRequestToast
-                            : Copy.addFriendToChat,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const Gap(12),
-                      if (outgoing)
-                        Text(Copy.requested, style: theme.textTheme.labelMedium)
-                      else if (incoming)
-                        FilledButton(
-                          onPressed: () => run(
-                            () => friendAcceptMutation.run(ref, (tsx) {
-                              return tsx
-                                  .get(contactsProvider.notifier)
-                                  .accept(dest);
-                            }),
-                            Copy.friendAccepted,
-                          ),
-                          child: const Text(Copy.accept),
-                        )
-                      else
-                        FilledButton.tonal(
-                          onPressed: () => run(
-                            () => friendRequestMutation.run(ref, (tsx) {
-                              return tsx
-                                  .get(contactsProvider.notifier)
-                                  .request(dest);
-                            }),
-                            Copy.requestSent,
-                          ),
-                          child: const Text(Copy.addFriend),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(KimTheme.radiusCard),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: KimTheme.frostFillOf(context),
+                borderRadius: BorderRadius.circular(KimTheme.radiusCard),
+                border: Border.all(color: KimTheme.hairlineOf(context)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    KimAvatar(name: title, url: avatarUrl),
+                    const Gap(10),
+                    Text(Copy.notFriends, style: theme.textTheme.titleSmall),
+                    const Gap(4),
+                    Text(
+                      outgoing
+                          ? Copy.waitingAccept
+                          : incoming
+                          ? Copy.friendRequestToast
+                          : Copy.addFriendToChat,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const Gap(12),
+                    if (outgoing)
+                      Text(Copy.requested, style: theme.textTheme.labelMedium)
+                    else if (incoming)
+                      FilledButton(
+                        onPressed: () => run(
+                          () => friendAcceptMutation.run(ref, (tsx) {
+                            return tsx
+                                .get(contactsProvider.notifier)
+                                .accept(dest);
+                          }),
+                          Copy.friendAccepted,
                         ),
-                    ],
-                  ),
+                        child: const Text(Copy.accept),
+                      )
+                    else
+                      FilledButton.tonal(
+                        onPressed: () => run(
+                          () => friendRequestMutation.run(ref, (tsx) {
+                            return tsx
+                                .get(contactsProvider.notifier)
+                                .request(dest);
+                          }),
+                          Copy.requestSent,
+                        ),
+                        child: const Text(Copy.addFriend),
+                      ),
+                  ],
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

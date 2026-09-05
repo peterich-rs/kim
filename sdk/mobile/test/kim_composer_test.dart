@@ -27,6 +27,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(Copy.album), findsOneWidget);
     expect(find.text(Copy.camera), findsOneWidget);
+    // Pull-up panel is opaque surface (WeChat-style), not frosted.
+    final panelMaterial = tester
+        .widgetList<Material>(find.byType(Material))
+        .where((m) {
+          return m.color == KimTheme.light().colorScheme.surface;
+        });
+    expect(panelMaterial.isNotEmpty, isTrue);
 
     await tester.tap(find.byKey(const Key('composer-album')));
     await tester.pumpAndSettle();
@@ -41,7 +48,9 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('composer-plus')), findsNothing);
+    // Floating chrome keeps + and send as separate controls.
+    expect(find.byKey(const Key('composer-plus')), findsOneWidget);
+    expect(find.byKey(const Key('composer-send')), findsOneWidget);
     await tester.tap(find.byKey(const Key('composer-send')));
     await tester.pumpAndSettle();
     expect(sent, 'hello');

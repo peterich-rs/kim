@@ -16,15 +16,43 @@ import '../../state/profile.dart';
 import '../../state/session.dart';
 import '../../widgets/conversation_tile.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/kim_header.dart';
+import '../../widgets/kim_avatar.dart';
 import '../../widgets/new_chat_sheet.dart';
 import '../../widgets/status_chip.dart';
 
-class ChatsPage extends ConsumerWidget {
+class ChatsPage extends ConsumerStatefulWidget {
   const ChatsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatsPage> createState() => _ChatsPageState();
+}
+
+class _ChatsPageState extends ConsumerState<ChatsPage> {
+  var _searchOpen = false;
+  final _searchFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() => _searchOpen = !_searchOpen);
+    if (_searchOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _searchFocus.requestFocus();
+        }
+      });
+    } else {
+      ref.read(threadsProvider.notifier).setQuery('');
+      _searchFocus.unfocus();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final inbox = ref.watch(threadsProvider);
     final me = ref.watch(profileProvider);
@@ -33,36 +61,71 @@ class ChatsPage extends ConsumerWidget {
     final connecting =
         session.status == ConnStatus.connecting && inbox.threads.isEmpty;
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final chrome = scheme.surfaceContainerHigh;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          KimSliverHeader(
-            title: Copy.conversations,
-            actions: [
-              IconButton(
-                key: const Key('compose-chat'),
-                tooltip: Copy.newChat,
-                onPressed: () => openNewChatSheet(context),
-                icon: const Icon(LucideIcons.edit3),
-              ),
-            ],
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: SearchBar(
-                hintText: Copy.searchChats,
-                leading: Icon(
-                  LucideIcons.search,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
+          SliverAppBar(
+            pinned: true,
+            toolbarHeight: 56,
+            titleSpacing: 16,
+            title: Align(
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                onTap: () => context.go('/me'),
+                child: KimAvatar(
+                  name: me.title.isEmpty ? Copy.me : me.title,
+                  url: me.avatar,
+                  size: KimAvatarSize.sm,
+                  shape: KimAvatarShape.circle,
                 ),
-                onChanged: (v) =>
-                    ref.read(threadsProvider.notifier).setQuery(v),
               ),
             ),
+            actions: [
+              _HeaderCircleButton(
+                key: const Key('chats-search'),
+                tooltip: Copy.searchChats,
+                color: chrome,
+                icon: LucideIcons.search,
+                onTap: _toggleSearch,
+              ),
+              const SizedBox(width: 8),
+              _HeaderCircleButton(
+                key: const Key('compose-chat'),
+                tooltip: Copy.newChat,
+                color: chrome,
+                icon: LucideIcons.plus,
+                onTap: () => openNewChatSheet(context),
+              ),
+              const SizedBox(width: 12),
+            ],
           ),
+          if (_searchOpen)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: SearchBar(
+                  focusNode: _searchFocus,
+                  hintText: Copy.searchChats,
+                  leading: Icon(
+                    LucideIcons.search,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  trailing: [
+                    IconButton(
+                      tooltip: Copy.cancel,
+                      onPressed: _toggleSearch,
+                      icon: const Icon(LucideIcons.x, size: 18),
+                    ),
+                  ],
+                  onChanged: (v) =>
+                      ref.read(threadsProvider.notifier).setQuery(v),
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: ConnectionBanner(
               status: session.status,
@@ -111,11 +174,8 @@ class ChatsPage extends ConsumerWidget {
           else
             SliverPadding(
               padding: const EdgeInsets.only(bottom: 24),
-              sliver: SliverList.separated(
-                itemCount: visible.length,
-                separatorBuilder: (context, _) =>
-                    Divider(indent: 80, color: theme.dividerColor),
-                itemBuilder: (context, i) {
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, i) {
                   final thread = visible[i];
                   return ConversationTile(
                     thread: thread,
@@ -135,11 +195,49 @@ class ChatsPage extends ConsumerWidget {
                         .read(threadsProvider.notifier)
                         .deleteThread(thread.id),
                   );
-                },
+                }, childCount: visible.length),
               ),
             ),
         ],
       ),
     );
+  }
+}
+
+class _HeaderCircleButton extends StatelessWidget {
+  const _HeaderCircleButton({
+    super.key,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final button = Material(
+      color: color,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, size: 20, color: scheme.onSurface),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
   }
 }

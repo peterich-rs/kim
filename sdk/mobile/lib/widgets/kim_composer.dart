@@ -1,5 +1,7 @@
 library;
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -7,9 +9,8 @@ import '../copy.dart';
 import '../core/haptics.dart';
 import '../theme/kim_theme.dart';
 import '../theme/motion.dart';
-import 'kim_hairline.dart';
 
-/// Telegram-style composer: capsule field, send/plus crossfade, media panel.
+/// Floating composer chrome: circular +, stadium field, circular send (↑).
 class KimComposer extends StatefulWidget {
   const KimComposer({
     super.key,
@@ -33,7 +34,11 @@ class KimComposerState extends State<KimComposer> {
   final _focus = FocusNode();
   var _panel = false;
   var _hasText = false;
-  var _pressed = false;
+  var _sendPressed = false;
+  var _plusPressed = false;
+
+  static const double _btn = 40;
+  static const double _fieldRadius = 22;
 
   @override
   void initState() {
@@ -99,97 +104,91 @@ class KimComposerState extends State<KimComposer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final raised = KimTheme.raisedOf(context);
-    final capsule = BorderRadius.circular(22);
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final frost = KimTheme.frostFillOf(context);
+    final stadium = BorderRadius.circular(_fieldRadius);
+
     return Material(
-      color: raised,
+      color: Colors.transparent,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KimHairline(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            padding: EdgeInsets.fromLTRB(12, 6, 12, _panel ? 4 : 8 + bottom),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                _FrostCircle(
+                  key: const Key('composer-plus'),
+                  size: _btn,
+                  pressed: _plusPressed,
+                  onPressedChanged: (v) => setState(() => _plusPressed = v),
+                  onTap: _togglePanel,
+                  tooltip: Copy.plusPanel,
+                  child: Icon(
+                    _panel ? LucideIcons.x : LucideIcons.plus,
+                    size: 22,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focus,
-                    minLines: 1,
-                    maxLines: 4,
-                    style: const TextStyle(fontSize: KimTheme.fontBody),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submit(),
-                    decoration: InputDecoration(
-                      hintText: widget.hintText ?? Copy.messagePlaceholder,
-                      filled: true,
-                      fillColor: scheme.surface,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      border: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(
-                          color: KimTheme.hairlineOf(context),
+                  child: ClipRRect(
+                    borderRadius: stadium,
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        minLines: 1,
+                        maxLines: 4,
+                        style: const TextStyle(fontSize: KimTheme.fontBody),
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          hintText: widget.hintText ?? Copy.messagePlaceholder,
+                          filled: true,
+                          fillColor: frost,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            10,
+                            16,
+                            10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: stadium,
+                            borderSide: BorderSide(
+                              color: scheme.outline.withValues(alpha: 0.35),
+                            ),
+                          ),
                         ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(
-                          color: KimTheme.hairlineOf(context),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: capsule,
-                        borderSide: BorderSide(color: scheme.primary),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                Listener(
-                  onPointerDown: (_) => setState(() => _pressed = true),
-                  onPointerUp: (_) => setState(() => _pressed = false),
-                  onPointerCancel: (_) => setState(() => _pressed = false),
-                  child: AnimatedScale(
-                    scale: _pressed ? 0.9 : 1,
-                    duration: KimTheme.motionFast,
-                    curve: KimTheme.motionEmphasized,
-                    child: AnimatedSwitcher(
-                      duration: KimTheme.motionFast,
-                      switchInCurve: KimTheme.motionEmphasized,
-                      switchOutCurve: KimTheme.motionEmphasized,
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(
-                            scale: animation,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _hasText
-                          ? IconButton(
-                              key: const Key('composer-send'),
-                              tooltip: Copy.send,
-                              onPressed: _submit,
-                              style: IconButton.styleFrom(
-                                backgroundColor: scheme.primary,
-                                foregroundColor: scheme.onPrimary,
-                              ),
-                              icon: const Icon(LucideIcons.send, size: 18),
-                            )
-                          : IconButton(
-                              key: const Key('composer-plus'),
-                              tooltip: Copy.plusPanel,
-                              onPressed: _togglePanel,
-                              icon: Icon(
-                                _panel ? LucideIcons.x : LucideIcons.plus,
-                                size: 22,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                    ),
+                const SizedBox(width: 8),
+                _SolidCircle(
+                  key: const Key('composer-send'),
+                  size: _btn,
+                  color: scheme.onSurface,
+                  pressed: _sendPressed,
+                  enabled: _hasText,
+                  onPressedChanged: (v) => setState(() => _sendPressed = v),
+                  onTap: _submit,
+                  tooltip: Copy.send,
+                  child: Icon(
+                    LucideIcons.arrowUp,
+                    size: 20,
+                    color: scheme.surface,
                   ),
                 ),
               ],
@@ -212,10 +211,123 @@ class KimComposerState extends State<KimComposer> {
                   )
                 : const SizedBox(width: double.infinity, height: 0),
           ),
-          SizedBox(height: MediaQuery.paddingOf(context).bottom),
         ],
       ),
     );
+  }
+}
+
+class _FrostCircle extends StatelessWidget {
+  const _FrostCircle({
+    super.key,
+    required this.size,
+    required this.child,
+    required this.onTap,
+    required this.pressed,
+    required this.onPressedChanged,
+    this.tooltip,
+  });
+
+  final double size;
+  final Widget child;
+  final VoidCallback onTap;
+  final bool pressed;
+  final ValueChanged<bool> onPressedChanged;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Listener(
+      onPointerDown: (_) => onPressedChanged(true),
+      onPointerUp: (_) => onPressedChanged(false),
+      onPointerCancel: (_) => onPressedChanged(false),
+      child: AnimatedScale(
+        scale: pressed ? 0.9 : 1,
+        duration: KimTheme.motionFast,
+        curve: KimTheme.motionEmphasized,
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Material(
+              color: KimTheme.frostFillOf(context),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onTap,
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Center(child: child),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _SolidCircle extends StatelessWidget {
+  const _SolidCircle({
+    super.key,
+    required this.size,
+    required this.color,
+    required this.child,
+    required this.onTap,
+    required this.pressed,
+    required this.onPressedChanged,
+    this.enabled = true,
+    this.tooltip,
+  });
+
+  final double size;
+  final Color color;
+  final Widget child;
+  final VoidCallback onTap;
+  final bool pressed;
+  final ValueChanged<bool> onPressedChanged;
+  final bool enabled;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Listener(
+      onPointerDown: enabled ? (_) => onPressedChanged(true) : null,
+      onPointerUp: (_) => onPressedChanged(false),
+      onPointerCancel: (_) => onPressedChanged(false),
+      child: AnimatedScale(
+        scale: pressed ? 0.9 : 1,
+        duration: KimTheme.motionFast,
+        curve: KimTheme.motionEmphasized,
+        child: AnimatedOpacity(
+          opacity: enabled ? 1 : 0.38,
+          duration: KimTheme.motionFast,
+          child: Material(
+            color: color,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: enabled ? onTap : null,
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: Center(child: child),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return button;
+    }
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -227,24 +339,30 @@ class _MediaPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-      child: Row(
-        children: [
-          _ActionTile(
-            key: const Key('composer-album'),
-            icon: LucideIcons.image,
-            label: Copy.album,
-            onTap: onPickAlbum,
-          ),
-          const SizedBox(width: 24),
-          _ActionTile(
-            key: const Key('composer-camera'),
-            icon: LucideIcons.camera,
-            label: Copy.camera,
-            onTap: onTakePhoto,
-          ),
-        ],
+    final scheme = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    // Opaque WeChat-style pull-up sheet (no frost / BackdropFilter).
+    return Material(
+      color: scheme.surface,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        child: Row(
+          children: [
+            _ActionTile(
+              key: const Key('composer-album'),
+              icon: LucideIcons.image,
+              label: Copy.album,
+              onTap: onPickAlbum,
+            ),
+            const SizedBox(width: 24),
+            _ActionTile(
+              key: const Key('composer-camera'),
+              icon: LucideIcons.camera,
+              label: Copy.camera,
+              onTap: onTakePhoto,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -276,9 +394,8 @@ class _ActionTile extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: scheme.surface,
+              color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(KimTheme.radiusField),
-              border: Border.all(color: KimTheme.hairlineOf(context)),
             ),
             child: Icon(icon, size: 26, color: scheme.onSurface),
           ),

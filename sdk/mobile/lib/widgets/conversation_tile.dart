@@ -51,104 +51,103 @@ class ConversationTile extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onOpen,
-        child: SizedBox(
-          height: 60,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                KimAvatar(
-                  name: thread.title,
-                  url: avatarUrl,
-                  size: KimAvatarSize.md,
-                ),
-                const Gap(12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              KimAvatar(
+                name: thread.title,
+                url: avatarUrl,
+                size: KimAvatarSize.md,
+                shape: KimAvatarShape.squircle,
+              ),
+              const Gap(14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            thread.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: thread.unread > 0
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              fontSize: KimTheme.fontTitle,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        if (time.isNotEmpty)
+                          Text(
+                            time,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: thread.unread > 0
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
+                              fontSize: KimTheme.fontMeta,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const Gap(4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: thread.unread > 0
+                                  ? scheme.onSurface.withValues(alpha: 0.82)
+                                  : scheme.onSurfaceVariant,
+                              fontSize: KimTheme.fontBody,
+                              fontWeight: thread.unread > 0
+                                  ? FontWeight.w500
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        if (thread.unread > 0) ...[
+                          const Gap(8),
+                          Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 20,
+                              minHeight: 20,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                             child: Text(
-                              thread.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: thread.unread > 0
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
-                                fontSize: KimTheme.fontTitle,
-                                color: scheme.onSurface,
+                              thread.unread > 99 ? '99+' : '${thread.unread}',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: scheme.onPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
                               ),
                             ),
                           ),
-                          if (time.isNotEmpty)
-                            Text(
-                              time,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: thread.unread > 0
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant,
-                                fontSize: KimTheme.fontMeta,
-                              ),
-                            ),
                         ],
-                      ),
-                      const Gap(2),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              preview,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: thread.unread > 0
-                                    ? scheme.onSurface.withValues(alpha: 0.82)
-                                    : scheme.onSurfaceVariant,
-                                fontSize: KimTheme.fontBody,
-                                fontWeight: thread.unread > 0
-                                    ? FontWeight.w500
-                                    : FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          if (thread.unread > 0) ...[
-                            const Gap(8),
-                            Container(
-                              constraints: const BoxConstraints(
-                                minWidth: 20,
-                                minHeight: 20,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.primary,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                thread.unread > 99 ? '99+' : '${thread.unread}',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: scheme.onPrimary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

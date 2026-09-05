@@ -65,6 +65,7 @@ abstract final class Copy {
   static const mediaFailed = '无法打开相机或相册';
   static const mediaPermission = '需要相机或相册权限才能继续';
   static const plusPanel = '更多';
+  static const more = '更多';
   static const notConnected = '尚未连接，请稍后重试';
   static const notFriends = '对方还不是你好友';
   static const blocked = '无法与该用户互动';
