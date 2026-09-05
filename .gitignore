@@ -21,3 +21,8 @@ node_modules/
 /sdk/mobile/rust/target/
 /sdk/mobile/plugins/**/.dart_tool/
 /sdk/mobile/plugins/**/build/
+
+# Logic SO OTA signing private keys (CI secrets only)
+**/ed25519_private*.pem
+**/*_ed25519_private.pem
+sdk/mobile/ota/*.secret

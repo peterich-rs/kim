@@ -1,0 +1,3 @@
+dev_placeholder_ed25519_private.pem
+**/ed25519_private*.pem
+*.pem.secret

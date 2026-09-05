@@ -1,0 +1,139 @@
+# Pack Android logic SO OTA artifacts (libapp.so + libkim_client_ffi.so only).
+# Fails closed if the triggering ref touches platform / iOS / plugins paths.
+name: Logic SO OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      host_line:
+        description: Host compatibility line
+        required: true
+        default: kim-android-1
+      logic_version:
+        description: Logic package version
+        required: true
+      channel:
+        description: stable | beta | dev
+        required: true
+        default: dev
+      min_host:
+        description: min_host_version_code
+        required: true
+        default: "1"
+      max_host:
+        description: max_host_version_code
+        required: true
+        default: "9999"
+      engine_build_id:
+        description: Flutter/engine build id
+        required: true
+        default: "3.47.2"
+      libapp_artifact:
+        description: Workspace-relative path to libapp.so
+        required: true
+      libffi_artifact:
+        description: Workspace-relative path to libkim_client_ffi.so
+        required: true
+  push:
+    paths:
+      - "sdk/mobile/lib/**"
+      - "sdk/mobile/rust/**"
+      - "sdk/mobile/ota/**"
+      - "crates/kim-client/**"
+      - ".github/workflows/logic-ota.yml"
+
+concurrency:
+  group: logic-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard-paths:
+    name: Fail on platform path diffs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Reject platform / iOS / plugins changes
+        env:
+          BASE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "workflow_dispatch: skip path-diff guard (operator responsibility)."
+            exit 0
+          fi
+          if [[ -z "${BASE}" || "${BASE}" == "0000000000000000000000000000000000000000" ]]; then
+            git fetch origin main || true
+            RANGE="origin/main...HEAD"
+          else
+            RANGE="${BASE}...HEAD"
+          fi
+          echo "Checking diff range: ${RANGE}"
+          blocked=0
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            case "$f" in
+              sdk/mobile/android/*|sdk/mobile/ios/*|sdk/mobile/plugins/*)
+                echo "BLOCKED path: $f"
+                blocked=1
+                ;;
+            esac
+          done < <(git diff --name-only ${RANGE} || true)
+          if [[ "$blocked" -ne 0 ]]; then
+            echo "::error::logic-ota refuses platform/iOS/plugin diffs. Cut a full app release + new host_line."
+            exit 1
+          fi
+          echo "Path guard OK."
+
+  pack:
+    name: Pack (manual SO paths)
+    needs: guard-paths
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require SO inputs
+        run: |
+          test -f "${{ inputs.libapp_artifact }}"
+          test -f "${{ inputs.libffi_artifact }}"
+
+      - name: Pack + optional sign
+        env:
+          OTA_ED25519_PRIVATE_PEM: ${{ secrets.OTA_ED25519_PRIVATE_PEM }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            ./sdk/mobile/ota/pack_logic_ota.sh
+            --libapp "${{ inputs.libapp_artifact }}"
+            --libffi "${{ inputs.libffi_artifact }}"
+            --out-dir ./ota-dist
+            --host-line "${{ inputs.host_line }}"
+            --min-host "${{ inputs.min_host }}"
+            --max-host "${{ inputs.max_host }}"
+            --engine-build-id "${{ inputs.engine_build_id }}"
+            --logic-version "${{ inputs.logic_version }}"
+            --channel "${{ inputs.channel }}"
+          )
+          if [[ -n "${OTA_ED25519_PRIVATE_PEM:-}" ]]; then
+            KEY_FILE=$(mktemp)
+            printf '%s\n' "$OTA_ED25519_PRIVATE_PEM" > "$KEY_FILE"
+            OTA_SIGNING_KEY="$KEY_FILE" "${ARGS[@]}"
+            rm -f "$KEY_FILE"
+          else
+            echo "::warning::No OTA_ED25519_PRIVATE_PEM secret — UNSIGNED dry-run."
+            "${ARGS[@]}"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: logic-ota-${{ inputs.logic_version }}
+          path: ota-dist/
