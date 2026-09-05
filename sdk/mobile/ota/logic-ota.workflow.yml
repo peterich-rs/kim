@@ -1,33 +1,19 @@
 # Build arm64 logic SOs, pack+sign, publish a GitHub Release (assets = catalog).
 # Client catalogs via GET /repos/{owner}/{repo}/releases — no Royal check API.
+# Patch-only dynamic semver: logic_version=x.y.z → host_line=x.y; engine from .fvmrc.
 name: Logic SO OTA
 
 on:
   workflow_dispatch:
     inputs:
       logic_version:
-        description: Logic package version (tag becomes logic-ota-v<this>)
-        required: true
-      host_line:
-        description: Host compatibility line
-        required: true
-        default: kim-android-1
-      min_host:
-        description: min_host_version_code
-        required: true
-        default: "1"
-      max_host:
-        description: max_host_version_code
-        required: true
-        default: "9999"
+        description: "Semver x.y.z (default: version from sdk/mobile/pubspec.yaml before +build)"
+        required: false
+        default: ""
       channel:
-        description: stable | beta | dev
-        required: true
-        default: dev
-      engine_build_id:
-        description: Flutter/engine build id
-        required: true
-        default: "3.47.2"
+        description: "stable | beta | dev"
+        required: false
+        default: "dev"
   push:
     tags:
       - "logic-ota-v*"
@@ -76,7 +62,7 @@ jobs:
             esac
           done < <(git diff --name-only ${RANGE} || true)
           if [[ "$blocked" -ne 0 ]]; then
-            echo "::error::logic-ota refuses platform/iOS/plugin diffs vs main. Cut a full app release + new host_line."
+            echo "::error::logic-ota refuses platform/iOS/plugin diffs vs main. Bump minor/major in pubspec and ship a full APK (new x.y baseline)."
             exit 1
           fi
           echo "Path guard OK."
@@ -95,11 +81,11 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             LV="${{ inputs.logic_version }}"
-            HOST_LINE="${{ inputs.host_line }}"
-            MIN_HOST="${{ inputs.min_host }}"
-            MAX_HOST="${{ inputs.max_host }}"
             CHANNEL="${{ inputs.channel }}"
-            ENGINE="${{ inputs.engine_build_id }}"
+            if [[ -z "$LV" ]]; then
+              LV=$(python3 -c "import re; t=open('sdk/mobile/pubspec.yaml').read(); m=re.search(r'(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)', t); assert m, 'pubspec version'; print(m.group(1))")
+              echo "logic_version defaulted from pubspec: ${LV}"
+            fi
           else
             TAG="${GITHUB_REF_NAME}"
             PREFIX="logic-ota-v"
@@ -108,14 +94,20 @@ jobs:
               exit 1
             fi
             LV="${TAG#"$PREFIX"}"
-            HOST_LINE="kim-android-1"
-            MIN_HOST="1"
-            MAX_HOST="9999"
             CHANNEL="dev"
-            ENGINE="3.47.2"
           fi
           if [[ -z "$LV" ]]; then
             echo "::error::empty logic_version"
+            exit 1
+          fi
+          if [[ ! "$LV" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::logic_version must be x.y.z, got: $LV"
+            exit 1
+          fi
+          HOST_LINE="${LV%.*}"
+          ENGINE=$(python3 -c "import json; print(json.load(open('sdk/mobile/.fvmrc'))['flutter'])")
+          if [[ -z "$ENGINE" ]]; then
+            echo "::error::empty engine_build_id from sdk/mobile/.fvmrc"
             exit 1
           fi
           TAG_NAME="logic-ota-v${LV}"
@@ -123,8 +115,6 @@ jobs:
             echo "logic_version=${LV}"
             echo "tag_name=${TAG_NAME}"
             echo "host_line=${HOST_LINE}"
-            echo "min_host=${MIN_HOST}"
-            echo "max_host=${MAX_HOST}"
             echo "channel=${CHANNEL}"
             echo "engine_build_id=${ENGINE}"
           } >> "$GITHUB_OUTPUT"
@@ -224,11 +214,8 @@ jobs:
             --libapp /tmp/ota-sos/libapp.so \
             --libffi /tmp/ota-sos/libkim_client_ffi.so \
             --out-dir ./ota-dist \
-            --host-line "${{ steps.meta.outputs.host_line }}" \
-            --min-host "${{ steps.meta.outputs.min_host }}" \
-            --max-host "${{ steps.meta.outputs.max_host }}" \
-            --engine-build-id "${{ steps.meta.outputs.engine_build_id }}" \
             --logic-version "${{ steps.meta.outputs.logic_version }}" \
+            --engine-build-id "${{ steps.meta.outputs.engine_build_id }}" \
             --channel "${{ steps.meta.outputs.channel }}"
           rm -f "$KEY_FILE"
           test -f ./ota-dist/manifest.json
@@ -258,14 +245,13 @@ jobs:
             echo
             echo "- **tag:** \`${TAG}\`"
             echo "- **logic_version:** \`${LV}\`"
-            echo "- **host_line:** \`${{ steps.meta.outputs.host_line }}\`"
+            echo "- **host_line:** \`${{ steps.meta.outputs.host_line }}\` (MAJOR.MINOR)"
             echo "- **channel:** \`${{ steps.meta.outputs.channel }}\`"
             echo "- **engine_build_id:** \`${{ steps.meta.outputs.engine_build_id }}\`"
-            echo "- **host window:** ${{ steps.meta.outputs.min_host }}…${{ steps.meta.outputs.max_host }}"
             echo "- **abi:** arm64-v8a"
             echo "- **artifacts:** \`libapp.so\` + \`libkim_client_ffi.so\` (always shipped together)"
             echo
-            echo "Clients list \`GET /repos/${{ github.repository }}/releases\` and install the newest compatible signed package."
+            echo "Clients list \`GET /repos/${{ github.repository }}/releases\` and install the newest compatible signed package (same x.y, newer patch)."
           } > "$NOTES_FILE"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — uploading/clobbering assets"

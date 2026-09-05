@@ -31,7 +31,7 @@ Android: packaging is **arm64-v8a only** (`ndk.abiFilters` in `android/app/build
 
 ## Android Logic SO OTA
 
-App-store APK is primary. A small Android-only hotfix channel can swap `libapp.so` + `libkim_client_ffi.so` (arm64-v8a) after SHA-256 + Ed25519 verify. **Catalog = GitHub Releases** (`logic-ota-v*` tags + assets); no Royal check API. Never OTAs Flutter engine, plugins, Java/Kotlin, resources, or sqlite3 (phase 1). Platform changes require a full release and a new `host_line`. Both SOs always ship together.
+App-store APK is primary. A small Android-only hotfix channel can swap `libapp.so` + `libkim_client_ffi.so` (arm64-v8a) after SHA-256 + Ed25519 verify. **Catalog = GitHub Releases** (`logic-ota-v{x.y.z}` tags + assets); no Royal check API. **Patch-only dynamic semver:** OTA stays within the same `x.y` from `pubspec.yaml`; `host_line` is derived `x.y` (not a separate knob). Never OTAs Flutter engine, plugins, Java/Kotlin, resources, or sqlite3 (phase 1). Platform / Manifest / permission changes bump **minor or major** and ship a full APK. Both SOs always ship together.
 
 Design: [docs/mobile-android-so-ota.md](../../docs/mobile-android-so-ota.md). Pack/verify/publish: [ota/README.md](ota/README.md).
 

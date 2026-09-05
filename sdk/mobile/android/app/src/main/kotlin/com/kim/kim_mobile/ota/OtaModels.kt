@@ -2,12 +2,10 @@ package com.kim.kim_mobile.ota
 
 import org.json.JSONObject
 
-/** Signed logic-OTA manifest (schema_version = 1). */
+/** Signed logic-OTA manifest (schema_version = 1). Patch-only dynamic semver. */
 data class OtaManifest(
     val schemaVersion: Int,
     val hostLine: String,
-    val minHostVersionCode: Int,
-    val maxHostVersionCode: Int,
     val engineBuildId: String,
     val logicVersion: String,
     val abi: String,
@@ -30,8 +28,6 @@ data class OtaManifest(
             return OtaManifest(
                 schemaVersion = o.getInt("schema_version"),
                 hostLine = o.getString("host_line"),
-                minHostVersionCode = o.getInt("min_host_version_code"),
-                maxHostVersionCode = o.getInt("max_host_version_code"),
                 engineBuildId = o.getString("engine_build_id"),
                 logicVersion = o.getString("logic_version"),
                 abi = o.getString("abi"),
@@ -87,4 +83,22 @@ object OtaAllowed {
     const val LIB_APP = "libapp.so"
     const val LIB_FFI = "libkim_client_ffi.so"
     val NAMES = setOf(LIB_APP, LIB_FFI)
+}
+
+/** Parsed `x.y.z` (no prerelease / build metadata). */
+data class SemverTriple(val major: Long, val minor: Long, val patch: Long) {
+    val hostLine: String get() = "$major.$minor"
+
+    companion object {
+        fun parse(raw: String): SemverTriple? {
+            val core = raw.trim().substringBefore('+').substringBefore('-')
+            val parts = core.split('.')
+            if (parts.size != 3) return null
+            val nums = parts.map { p ->
+                if (p.isEmpty() || !p.all { it.isDigit() }) return null
+                p.toLongOrNull() ?: return null
+            }
+            return SemverTriple(nums[0], nums[1], nums[2])
+        }
+    }
 }

@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # Pack Android logic SO OTA: libapp.so + libkim_client_ffi.so → zip + manifest (+ optional Ed25519 sig).
+# Patch-only dynamic semver: logic_version=x.y.z → host_line=x.y (auto).
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
 Usage:
   pack_logic_ota.sh --libapp PATH --libffi PATH --out-dir DIR \
-    --host-line STR --min-host N --max-host N \
-    --engine-build-id STR --logic-version STR [--channel stable|beta|dev]
+    --logic-version x.y.z --engine-build-id STR \
+    [--channel stable|beta|dev] [--host-line x.y]
+
+  --logic-version   Required. Full semver x.y.z (release tag suffix).
+  --host-line       Optional. Defaults to MAJOR.MINOR of --logic-version.
+                    Override only for tests; production always derives.
+  --engine-build-id Required. Flutter version used to build the SOs (.fvmrc).
 
 Env:
   OTA_SIGNING_KEY   Path to Ed25519 private key PEM (OpenSSL). If set, writes manifest.json.sig.
@@ -25,8 +31,6 @@ LIBAPP=""
 LIBFFI=""
 OUT_DIR=""
 HOST_LINE=""
-MIN_HOST=""
-MAX_HOST=""
 ENGINE_BUILD_ID=""
 LOGIC_VERSION=""
 CHANNEL="dev"
@@ -38,23 +42,42 @@ while [[ $# -gt 0 ]]; do
     --libffi) LIBFFI="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
     --host-line) HOST_LINE="$2"; shift 2 ;;
-    --min-host) MIN_HOST="$2"; shift 2 ;;
-    --max-host) MAX_HOST="$2"; shift 2 ;;
     --engine-build-id) ENGINE_BUILD_ID="$2"; shift 2 ;;
     --logic-version) LOGIC_VERSION="$2"; shift 2 ;;
     --channel) CHANNEL="$2"; shift 2 ;;
+    --min-host|--max-host)
+      echo "removed: $1 (patch-only semver uses host_line=x.y + logic_version)" >&2
+      exit 2
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 2 ;;
   esac
 done
 
-for req in LIBAPP LIBFFI OUT_DIR HOST_LINE MIN_HOST MAX_HOST ENGINE_BUILD_ID LOGIC_VERSION; do
+for req in LIBAPP LIBFFI OUT_DIR ENGINE_BUILD_ID LOGIC_VERSION; do
   if [[ -z "${!req}" ]]; then
     echo "missing required: $req" >&2
     usage
     exit 2
   fi
 done
+
+if [[ ! "$LOGIC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "logic_version must be x.y.z, got: $LOGIC_VERSION" >&2
+  exit 2
+fi
+
+DERIVED_HOST_LINE="${LOGIC_VERSION%.*}"
+if [[ -z "$HOST_LINE" ]]; then
+  HOST_LINE="$DERIVED_HOST_LINE"
+elif [[ "$HOST_LINE" != "$DERIVED_HOST_LINE" ]]; then
+  echo "warning: --host-line $HOST_LINE != derived $DERIVED_HOST_LINE (test override)" >&2
+fi
+
+if [[ ! "$HOST_LINE" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  echo "host_line must be x.y, got: $HOST_LINE" >&2
+  exit 2
+fi
 
 if [[ ! -f "$LIBAPP" || ! -f "$LIBFFI" ]]; then
   echo "libapp / libffi paths must exist" >&2
@@ -100,8 +123,6 @@ cat >"$MANIFEST" <<JSON
 {
   "schema_version": 1,
   "host_line": "${HOST_LINE}",
-  "min_host_version_code": ${MIN_HOST},
-  "max_host_version_code": ${MAX_HOST},
   "engine_build_id": "${ENGINE_BUILD_ID}",
   "logic_version": "${LOGIC_VERSION}",
   "abi": "${ABI}",
@@ -143,4 +164,5 @@ fi
 
 echo "wrote $ZIP_PATH"
 echo "wrote $MANIFEST"
+echo "host_line=$HOST_LINE"
 echo "zip_sha256=$ZIP_SHA"

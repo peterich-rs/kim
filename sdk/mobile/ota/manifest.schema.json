@@ -7,8 +7,6 @@
   "required": [
     "schema_version",
     "host_line",
-    "min_host_version_code",
-    "max_host_version_code",
     "engine_build_id",
     "logic_version",
     "abi",
@@ -23,25 +21,18 @@
     },
     "host_line": {
       "type": "string",
-      "minLength": 1,
-      "description": "Store APK compatibility line; bump on platform/engine/plugin changes."
-    },
-    "min_host_version_code": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "max_host_version_code": {
-      "type": "integer",
-      "minimum": 1
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "MAJOR.MINOR only (x.y), derived from logic_version / store APK versionName. Never a separate product knob."
     },
     "engine_build_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Flutter/engine id the AOT was built against, e.g. 3.47.2."
+      "description": "Flutter/engine id the AOT was built against (from .fvmrc / flutter --version at pack time)."
     },
     "logic_version": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Full semver x.y.z; same as release tag suffix. Patch-only OTA within a fixed x.y."
     },
     "abi": {
       "type": "string",

@@ -196,41 +196,24 @@ class OtaGate(
         if (m.engineBuildId != config.engineBuildId) return false
         if (m.abi != "arm64-v8a") return false
         if (m.channel != config.channel) return false
-        val vc = config.hostVersionCode
-        if (vc < m.minHostVersionCode || vc > m.maxHostVersionCode) return false
+        val logic = SemverTriple.parse(m.logicVersion) ?: return false
+        // logic_version must share the APK host line (MAJOR.MINOR).
+        if (logic.hostLine != config.hostLine) return false
         return true
     }
 
     /**
-     * Prefer dotted-numeric compare (`42`, `1.0.42`); else lexicographic after trim.
-     * Equal → not newer; installed null/empty → accept.
+     * Patch-only: same MAJOR.MINOR as the baseline, strictly greater PATCH.
+     * Baseline = installed OTA logic_version, else host APK versionName (x.y.z).
+     * Different minor/major → reject (never OTA across x.y).
      */
     internal fun isNewerLogic(candidate: String, installed: String?): Boolean {
-        if (installed.isNullOrEmpty()) return true
-        if (candidate == installed) return false
-        val cp = parseDottedNumeric(candidate)
-        val ip = parseDottedNumeric(installed)
-        if (cp != null && ip != null) {
-            val len = maxOf(cp.size, ip.size)
-            for (i in 0 until len) {
-                val a = cp.getOrElse(i) { 0L }
-                val b = ip.getOrElse(i) { 0L }
-                if (a != b) return a > b
-            }
-            return false
-        }
-        return candidate.trim() > installed.trim()
-    }
-
-    private fun parseDottedNumeric(v: String): List<Long>? {
-        val parts = v.trim().split('.')
-        if (parts.isEmpty()) return null
-        val out = ArrayList<Long>(parts.size)
-        for (p in parts) {
-            if (p.isEmpty() || !p.all { it.isDigit() }) return null
-            out.add(p.toLongOrNull() ?: return null)
-        }
-        return out
+        val cand = SemverTriple.parse(candidate) ?: return false
+        val baselineRaw =
+            if (!installed.isNullOrEmpty()) installed else config.versionName
+        val base = SemverTriple.parse(baselineRaw) ?: return false
+        if (cand.major != base.major || cand.minor != base.minor) return false
+        return cand.patch > base.patch
     }
 
     private fun downloadVerifyPromote(
@@ -258,9 +241,10 @@ class OtaGate(
         ) {
             throw IllegalStateException("manifest host mapping mismatch")
         }
-        val vc = config.hostVersionCode
-        if (vc < manifest.minHostVersionCode || vc > manifest.maxHostVersionCode) {
-            throw IllegalStateException("host versionCode outside manifest window")
+        val logic = SemverTriple.parse(manifest.logicVersion)
+            ?: throw IllegalStateException("logic_version must be x.y.z")
+        if (logic.hostLine != config.hostLine) {
+            throw IllegalStateException("logic_version host line mismatch")
         }
         val zipBytes = zipFile.readBytes()
         val zipSha = OtaCrypto.sha256Hex(zipBytes)

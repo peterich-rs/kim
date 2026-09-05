@@ -1,8 +1,24 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+
+// Flutter version used to compile this APK — also the OTA engine_build_id.
+// Sourced from sdk/mobile/.fvmrc (same file CI flutter-action consumes).
+val otaEngineBuildId: String =
+    run {
+        val fvmrc = file("../../.fvmrc")
+        require(fvmrc.isFile) { "Missing ${fvmrc.path}; cannot set OTA_ENGINE_BUILD_ID" }
+        @Suppress("UNCHECKED_CAST")
+        val map = JsonSlurper().parse(fvmrc) as Map<String, Any?>
+        val v = map["flutter"] as? String
+        require(!v.isNullOrBlank()) { "Could not parse flutter version from ${fvmrc.path}" }
+        v!!
+    }
 
 android {
     namespace = "com.kim.kim_mobile"
@@ -40,9 +56,9 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
-        // Logic SO OTA host identity (bump host_line on platform/engine/plugin changes).
-        buildConfigField("String", "OTA_HOST_LINE", "\"kim-android-1\"")
-        buildConfigField("String", "OTA_ENGINE_BUILD_ID", "\"3.47.2\"")
+        // Logic SO OTA: host_line is derived at runtime from VERSION_NAME (x.y).
+        // engine_build_id matches the Flutter version that compiled this APK.
+        buildConfigField("String", "OTA_ENGINE_BUILD_ID", "\"${otaEngineBuildId}\"")
         buildConfigField("String", "OTA_CHANNEL", "\"dev\"")
         buildConfigField("String", "OTA_GITHUB_OWNER", "\"peterich-rs\"")
         buildConfigField("String", "OTA_GITHUB_REPO", "\"kim\"")
