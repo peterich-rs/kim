@@ -6,6 +6,9 @@ plugins {
 
 android {
     namespace = "com.kim.kim_mobile"
+    buildFeatures {
+        buildConfig = true
+    }
     // Flutter 3.47 still defaults compileSdk to 36. flutter_secure_storage 11
     // and permission_handler 13 compile against 37; Flutter's Android build
     // guide says bump compileSdk when a plugin needs a newer API:
@@ -37,6 +40,11 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // Logic SO OTA host identity (bump host_line on platform/engine/plugin changes).
+        buildConfigField("String", "OTA_HOST_LINE", "\"kim-android-1\"")
+        buildConfigField("String", "OTA_ENGINE_BUILD_ID", "\"3.47.2\"")
+        buildConfigField("String", "OTA_CHANNEL", "\"dev\"")
+        buildConfigField("String", "OTA_CHECK_BASE_URL", "\"https://kim.ainexc.com/api\"")
     }
 
     buildTypes {
@@ -62,4 +70,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+
+dependencies {
+    // Ed25519 verify for logic SO OTA manifests (OpenSSL pkeyutl compatible).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 }

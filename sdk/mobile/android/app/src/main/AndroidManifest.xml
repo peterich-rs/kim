@@ -13,7 +13,7 @@
 
     <application
         android:label="KIM"
-        android:name="${applicationName}"
+        android:name=".KimApplication"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"

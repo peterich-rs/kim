@@ -13,6 +13,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../copy.dart';
+import '../../core/ota_info.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../state/auth.dart';
@@ -169,6 +170,20 @@ class MePage extends ConsumerWidget {
                       title: const Text(Copy.about),
                       subtitle: Text('${Copy.brand} ${runtime.versionLabel}'),
                     ),
+                    if (Platform.isAndroid) ...[
+                      const Divider(indent: 56),
+                      FutureBuilder<OtaInfo>(
+                        future: OtaBridge.status(),
+                        builder: (context, snap) {
+                          final info = snap.data ?? OtaInfo.none;
+                          return ListTile(
+                            leading: const Icon(LucideIcons.package2),
+                            title: const Text('Logic OTA'),
+                            subtitle: Text(info.debugLabel),
+                          );
+                        },
+                      ),
+                    ],
                     if (session.status != ConnStatus.online)
                       ListTile(
                         leading: const Icon(LucideIcons.refreshCw),
