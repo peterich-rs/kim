@@ -177,9 +177,10 @@ TcpServer::start
 
 ## 心跳
 
-- 客户端按间隔发 `Ping`（`ClientOptions.heartbeat`）。  
-- 服务端读循环见 Ping 回 Pong，并靠 `read_wait` 判断对面是不是死了。  
-- `read_wait` 必须大于心跳间隔，否则活连接会被误判超时。
+- 客户端按间隔发应用层 `CODE_PING`（`kim-client` `Live`，默认 `DEFAULT_HEARTBEAT` 30s，fire-and-forget）。网关 `MessageListener` 见 Basic ping 走 `heartbeat()`（吊销 / idle_exp / JWT 续期）再回 `CODE_PONG`。
+- WS `OpCode::Ping` 只复位 `read_wait`，不进 `heartbeat()`。移动端 **不主动** 发 WS Ping；入站仍回 Pong。
+- 服务端读循环靠 `read_wait`（默认 60s）判断对面是不是死了。`read_wait` 必须大于心跳间隔。
+- `kim-ws` `connect_ws*` 另设 `TCP_NODELAY` + TCP keepalive（idle 30s / interval 10s / retries 3），管 NAT，不管 JWT。
 
 ## 内核 TCP 和「改操作系统」
 

@@ -47,5 +47,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 |---:|---|---|---|---|
 | B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | SCAN fail-closed 已合入；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
 | — | 客户端 | Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
+| — | 客户端 | 链接控制域（keepalive / CODE_PING / 看门狗 / 退避复位） | 不改 gateway ACK | [07-mobile-link-control.md](./07-mobile-link-control.md) |
 
 G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。
