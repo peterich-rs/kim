@@ -10,16 +10,18 @@ use kim_core::{
     StateListener,
 };
 use kim_protocol::pkt::{
-    Flag, HistoryItem as ProtoHistory, HistoryReq, HistoryResp, InboxItem as ProtoInbox, InboxReq,
-    InboxResp, KickoutNotify, LoginReq, LoginResp, Message as PktMessage, MessageAckReq,
-    MessageContentReq, MessageContentResp, MessageIndex as ProtoIndex, MessageIndexReq,
-    MessageIndexResp, MessagePush, MessageReq, MessageResp, Status, UserListResp, UserProfile,
+    ConversationReadReq, Flag, FriendRequestNotify, HistoryItem as ProtoHistory, HistoryReq,
+    HistoryResp, InboxItem as ProtoInbox, InboxReq, InboxResp, KickoutNotify, LoginReq, LoginResp,
+    Message as PktMessage, MessageAckReq, MessageContentReq, MessageContentResp,
+    MessageIndex as ProtoIndex, MessageIndexReq, MessageIndexResp, MessagePush, MessageReq,
+    MessageResp, Status, UserListResp, UserProfile,
 };
 use kim_protocol::{
     generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY, CMD_INBOX_LIST,
-    CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CODE_PING, DEMO_DEFAULT_SECRET,
-    INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    CODE_PING, DEMO_DEFAULT_SECRET, INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE,
+    MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -33,8 +35,8 @@ use crate::sync::{ConfirmGate, SyncEngine};
 use crate::token::account_from_token;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_history, encode_inbox_list,
-    encode_offline_content, encode_offline_index, encode_outgoing, encode_ping, encode_user_image,
-    encode_user_talk, is_kickout,
+    encode_inbox_read, encode_offline_content, encode_offline_index, encode_outgoing, encode_ping,
+    encode_user_image, encode_user_talk, is_kickout,
 };
 use crate::ClientError;
 
@@ -214,6 +216,24 @@ fn image_packet_uses_type_2_and_url_body() {
             assert_eq!(req.client_id, "cid-2");
         }
         _ => panic!("expected logic"),
+    }
+}
+
+#[test]
+fn decode_friend_accept_push() {
+    let mut pkt = LogicPkt::new(CMD_FRIEND_ACCEPT, 9, Bytes::new());
+    pkt.header.flag = Flag::Push as i32;
+    pkt.write_body(&FriendRequestNotify {
+        from_account: "bob".into(),
+        from_nickname: "Bobby".into(),
+    });
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    match ev {
+        Event::FriendAccepted { from, nickname } => {
+            assert_eq!(from, "bob");
+            assert_eq!(nickname, "Bobby");
+        }
+        other => panic!("expected FriendAccepted, got {other:?}"),
     }
 }
 
@@ -596,6 +616,21 @@ fn encode_inbox_list_writes_limit() {
 }
 
 #[test]
+fn encode_inbox_read_sets_dest_and_cursor() {
+    match read(&encode_inbox_read(5, "bob", INBOX_KIND_USER, 42)).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_INBOX_READ);
+            assert_eq!(p.header.sequence, 5);
+            assert_eq!(p.header.dest, "bob");
+            let req: ConversationReadReq = p.read_body().unwrap();
+            assert_eq!(req.message_id, 42);
+            assert_eq!(req.kind, INBOX_KIND_USER);
+        }
+        _ => panic!("expected logic"),
+    }
+}
+
+#[test]
 fn encode_history_sets_dest_and_kind() {
     match read(&encode_history(5, "bob", INBOX_KIND_USER, 10, 50)).unwrap() {
         Packet::Logic(p) => {
@@ -725,6 +760,24 @@ async fn inbox_history_offline_round_trip() {
     assert_eq!(idx[0].message_id, 9);
     let msgs = client.offline_content(&[9]).await.unwrap();
     assert_eq!(msgs[0].body, "yo");
+}
+
+#[tokio::test]
+async fn mark_read_sends_inbox_read() {
+    let ack = resp_logic(CMD_INBOX_READ, 2, |_| {});
+    let (client, outgoing) = logged_in_shared(vec![ack]);
+    client.mark_read("bob", INBOX_KIND_USER, 9).await.unwrap();
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner());
+    match read(&frames[0].payload).unwrap() {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.command, CMD_INBOX_READ);
+            assert_eq!(p.header.dest, "bob");
+            let req: ConversationReadReq = p.read_body().unwrap();
+            assert_eq!(req.message_id, 9);
+            assert_eq!(req.kind, INBOX_KIND_USER);
+        }
+        _ => panic!("expected logic"),
+    }
 }
 
 #[tokio::test]
@@ -960,6 +1013,35 @@ async fn supervisor_radio_up_retries_immediately() {
         start.elapsed() < Duration::from_millis(400),
         "radio up should not wait out backoff"
     );
+    sup.stop();
+}
+
+#[tokio::test]
+async fn radio_up_during_connect_does_not_abort_handshake() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let token = mint("alice");
+    let mut cfg = ClientConfig::new(format!("ws://{addr}/"), token);
+    cfg.handshake_timeout = Duration::from_secs(2);
+    let sup = SessionSupervisor::start(cfg);
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(400);
+    loop {
+        if matches!(sup.state(), LinkState::Connecting) {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("never connecting, state={:?}", sup.state());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    sup.notify_radio_up();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(
+        matches!(sup.state(), LinkState::Connecting),
+        "radio up must not abort an in-flight handshake, state={:?}",
+        sup.state()
+    );
+    drop(listener);
     sup.stop();
 }
 

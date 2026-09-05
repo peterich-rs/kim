@@ -17,23 +17,33 @@ import 'kim_network_image.dart';
 const _groupWindow = Duration(minutes: 5);
 
 bool kimIsGroupStart(KimChatMsg msg, KimChatMsg? previous) {
-  if (previous == null || previous.sys || msg.sys) {
-    return true;
-  }
-  if (previous.sender != msg.sender) {
-    return true;
-  }
-  return (msg.at - previous.at).abs() > _groupWindow.inMilliseconds;
+  return !_sameGroup(previous, msg);
 }
 
 bool kimIsGroupEnd(KimChatMsg msg, KimChatMsg? next) {
-  if (next == null || next.sys || msg.sys) {
-    return true;
+  return !_sameGroup(msg, next);
+}
+
+/// Consecutive grouping is millisecond-based on every platform. Wire
+/// `sendTime` may be ns/µs/s; [dateTimeFromEpoch] normalizes first.
+bool _sameGroup(KimChatMsg? earlier, KimChatMsg? later) {
+  if (earlier == null || later == null || earlier.sys || later.sys) {
+    return false;
   }
-  if (next.sender != msg.sender) {
-    return true;
+  if (earlier.sender != later.sender) {
+    return false;
   }
-  return (next.at - msg.at).abs() > _groupWindow.inMilliseconds;
+  final a = dateTimeFromEpoch(earlier.at);
+  final b = dateTimeFromEpoch(later.at);
+  if (a == null || b == null) {
+    return false;
+  }
+  final localA = a.toLocal();
+  final localB = b.toLocal();
+  if (!sameCalendarDay(localA, localB)) {
+    return false;
+  }
+  return b.difference(a).abs() <= _groupWindow;
 }
 
 bool kimSameBatch(KimChatMsg msg, KimChatMsg? previous) {

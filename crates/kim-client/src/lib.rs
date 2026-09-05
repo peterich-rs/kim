@@ -34,9 +34,9 @@ pub use supervisor::{LinkState, SessionEvent, SessionSupervisor};
 pub use token::{account_from_token, token_unusable, unverified_claims, UnverifiedClaims};
 pub use wire::{
     encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
-    encode_inbox_list, encode_login, encode_offline_content, encode_offline_index, encode_outgoing,
-    encode_ping, encode_user_image, encode_user_search, encode_user_talk, encode_user_talk_typed,
-    encode_user_update, is_kickout,
+    encode_inbox_list, encode_inbox_read, encode_login, encode_offline_content,
+    encode_offline_index, encode_outgoing, encode_ping, encode_user_image, encode_user_search,
+    encode_user_talk, encode_user_talk_typed, encode_user_update, is_kickout,
 };
 
 pub use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};

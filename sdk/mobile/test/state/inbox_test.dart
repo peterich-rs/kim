@@ -5,8 +5,10 @@ import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/contacts.dart';
+import 'package:kim_mobile/core/format.dart';
 import 'package:kim_mobile/state/inbox.dart';
 import 'package:kim_mobile/state/link.dart';
+import 'package:kim_mobile/state/location.dart';
 import 'package:kim_mobile/state/messages.dart';
 import 'package:kim_mobile/state/outbox.dart';
 
@@ -169,5 +171,71 @@ void main() {
       env.container.read(threadMessagesProvider('bob')).items.single.status,
       KimSendStatus.sent,
     );
+  });
+
+  test('talk sendTime is stored as milliseconds', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    env.fake.talkSendTime = 1788077118498491646;
+    await _online(env);
+    await env.container.read(contactsProvider.notifier).refresh();
+    await env.container.read(outboxProvider.notifier).sendText('bob', 'hello');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final stored = env.container
+        .read(threadMessagesProvider('bob'))
+        .items
+        .single;
+    expect(stored.at, sendTimeMs(1788077118498491646));
+    expect(stored.at, lessThanOrEqualTo(kDateTimeMsMax));
+  });
+
+  test(
+    'viewing a thread clears unread and keeps inbox merge from restoring it',
+    () async {
+      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+      env.container.read(threadsProvider.notifier).mergeInbox(const [
+        KimThread(
+          id: 'bob',
+          kind: ThreadKind.user,
+          title: 'bob',
+          lastBody: 'hi',
+          lastAt: 9,
+          unread: 3,
+        ),
+      ]);
+      expect(env.container.read(threadsProvider).threads.single.unread, 3);
+      env.container.read(locationProvider.notifier).setPath('/chat/bob');
+      env.container.read(threadsProvider.notifier).markRead('bob');
+      expect(env.container.read(threadsProvider).threads.single.unread, 0);
+      env.container.read(threadsProvider.notifier).mergeInbox(const [
+        KimThread(
+          id: 'bob',
+          kind: ThreadKind.user,
+          title: 'bob',
+          lastBody: 'hi',
+          lastAt: 9,
+          unread: 3,
+        ),
+      ]);
+      expect(env.container.read(threadsProvider).threads.single.unread, 0);
+    },
+  );
+
+  test('incoming talk while viewing stays read on the list', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.container.read(locationProvider.notifier).setPath('/chat/bob');
+    env.fake.emitTalk(
+      dest: 'bob',
+      sender: 'bob',
+      body: 'hello',
+      sendTime: 1_700_000_000_000,
+      messageId: 11,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(threadsProvider).threads.single.unread, 0);
+    expect(env.fake.reads, 1);
+    expect(env.fake.lastReadDest, 'bob');
+    expect(env.fake.lastReadMessageId, 11);
   });
 }

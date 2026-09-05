@@ -35,6 +35,12 @@ abstract class KimApi implements RustOpaqueInterface {
 
   String linkState();
 
+  Future<void> markRead({
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  });
+
   Future<void> notifyRadioUp();
 
   Future<String> profile({required String dest});

@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/widgets.dart';
@@ -10,7 +11,7 @@ bool networkLinkUp(List<ConnectivityResult> results) {
   if (results.isEmpty) {
     return false;
   }
-  if (results.length == 1 && results.first == ConnectivityResult.none) {
+  if (results.every((r) => r == ConnectivityResult.none)) {
     return false;
   }
   return results.any(
@@ -18,8 +19,25 @@ bool networkLinkUp(List<ConnectivityResult> results) {
         r == ConnectivityResult.wifi ||
         r == ConnectivityResult.mobile ||
         r == ConnectivityResult.ethernet ||
-        r == ConnectivityResult.vpn,
+        r == ConnectivityResult.vpn ||
+        r == ConnectivityResult.other,
   );
+}
+
+/// `ws://127.0.0.1` reaches the Mac in the iOS simulator, not on a phone.
+bool loopbackUnreachableOnThisDevice(String url) {
+  final loopback =
+      url.contains('127.0.0.1') ||
+      url.contains('localhost') ||
+      url.contains('[::1]');
+  if (!loopback) {
+    return false;
+  }
+  if (Platform.isIOS) {
+    return Platform.environment['SIMULATOR_DEVICE_NAME'] == null &&
+        Platform.environment['SIMULATOR_UDID'] == null;
+  }
+  return Platform.isAndroid;
 }
 
 class KimConnectivity with WidgetsBindingObserver {

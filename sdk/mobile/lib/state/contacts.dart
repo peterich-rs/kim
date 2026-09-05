@@ -180,7 +180,14 @@ class ContactsNotifier extends Notifier<ContactsState> {
   }
 
   void onRequest(String from, String nickname) {
-    if (from.isEmpty || state.isIncoming(from) || state.isFriend(from)) {
+    if (from.isEmpty || state.isFriend(from)) {
+      return;
+    }
+    if (state.isOutgoing(from)) {
+      onAccepted(from, nickname);
+      return;
+    }
+    if (state.isIncoming(from)) {
       return;
     }
     final person = KimPerson(
@@ -188,6 +195,26 @@ class ContactsNotifier extends Notifier<ContactsState> {
       nickname: nickname.isEmpty ? from : nickname,
     );
     state = state.copyWith(incoming: [person, ...state.incoming]);
+  }
+
+  void onAccepted(String from, String nickname) {
+    if (from.isEmpty) {
+      return;
+    }
+    final person = KimPerson(
+      account: from,
+      nickname: nickname.isEmpty ? from : nickname,
+    );
+    final friends = [
+      if (!state.isFriend(from)) person,
+      ...state.friends.where((p) => p.account != from),
+    ];
+    state = state.copyWith(
+      friends: friends,
+      incoming: state.incoming.where((p) => p.account != from).toList(),
+      outgoing: {...state.outgoing}..remove(from),
+    );
+    unawaited(refresh());
   }
 }
 

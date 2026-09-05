@@ -23,7 +23,10 @@ void main() {
     expect(networkLinkUp(const []), isFalse);
     expect(networkLinkUp(const [ConnectivityResult.wifi]), isTrue);
     expect(networkLinkUp(const [ConnectivityResult.mobile]), isTrue);
+    expect(networkLinkUp(const [ConnectivityResult.other]), isTrue);
     expect(networkLinkUp(const [ConnectivityResult.bluetooth]), isFalse);
+    expect(loopbackUnreachableOnThisDevice('wss://kim.ainexc.com/'), isFalse);
+    expect(loopbackUnreachableOnThisDevice('ws://127.0.0.1:8001/'), isFalse);
   });
 
   test('threads persist per account', () async {

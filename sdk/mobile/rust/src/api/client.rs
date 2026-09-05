@@ -205,6 +205,12 @@ impl KimApi {
         Ok(items.into_iter().map(KimInboxItem::from).collect())
     }
 
+    pub fn mark_read(&self, dest: String, kind: i32, message_id: i64) -> Result<(), String> {
+        let client = self.supervisor.client();
+        rt().block_on(client.mark_read(&dest, kind, message_id))
+            .map_err(|e| e.to_string())
+    }
+
     pub fn ack(&self, message_id: i64) -> Result<(), String> {
         let client = self.supervisor.client();
         rt().block_on(client.ack(message_id))
@@ -341,6 +347,14 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
         SessionEvent::FriendRequest { from, nickname } => {
             let mut ev = KimSessionEvent::empty();
             ev.kind = "friend".into();
+            ev.dest = from.clone();
+            ev.sender = from;
+            ev.nickname = nickname;
+            ev
+        }
+        SessionEvent::FriendAccepted { from, nickname } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "friend_accepted".into();
             ev.dest = from.clone();
             ev.sender = from;
             ev.nickname = nickname;

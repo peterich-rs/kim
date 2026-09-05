@@ -379,6 +379,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [people, setPeople] = useState<Person[]>([]);
   const [incomingPeople, setIncomingPeople] = useState<Person[]>([]);
   const [outgoing, setOutgoing] = useState<string[]>([]);
+  const outgoingRef = useRef(outgoing);
+  outgoingRef.current = outgoing;
   const [socialReady, setSocialReady] = useState(false);
   const [inboxReady, setInboxReady] = useState(false);
   const [kicked, setKicked] = useState(false);
@@ -451,6 +453,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const markFriendAccepted = useCallback((from: string, nick: string) => {
+    const person = { account: from, nickname: nick || from };
+    setOutgoing((cur) => cur.filter((id) => id !== from));
+    setPeople((cur) => (cur.some((p) => p.account === from) ? cur : [person, ...cur]));
+    setIncomingPeople((cur) => {
+      if (!cur.some((p) => p.account === from)) {
+        return cur;
+      }
+      setIncomingCount((n) => Math.max(0, n - 1));
+      return cur.filter((p) => p.account !== from);
+    });
+    toast.success(COPY.friendAccepted);
+  }, []);
+
   const attach = useCallback(
     (account: string, ws: string, token: string): ChatSession => {
       sessionRef.current?.dispose();
@@ -481,6 +497,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           void refreshGroup(groupId, session);
         },
         onFriend: (from, nick) => {
+          if (outgoingRef.current.includes(from)) {
+            markFriendAccepted(from, nick);
+            return;
+          }
           setIncomingPeople((cur) => {
             if (cur.some((p) => p.account === from)) {
               return cur;
@@ -489,6 +509,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           });
           setIncomingCount((n) => n + 1);
           toast.message(`${nick || from} ${COPY.friendRequestToast}`);
+        },
+        onFriendAccepted: (from, nick) => {
+          markFriendAccepted(from, nick);
         },
       });
       sessionRef.current = session;
@@ -522,6 +545,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             setPeople(
               friendRows.map((p) => ({ account: p.account, nickname: p.nickname || p.account })),
             );
+            setOutgoing((cur) =>
+              cur.filter((id) => !friendRows.some((p) => p.account === id)),
+            );
           }
           const items = await session.inbox();
           if (!session.alive) {
@@ -551,7 +577,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       })();
       return session;
     },
-    [pushMessage, refreshGroup, signOut],
+    [pushMessage, refreshGroup, signOut, markFriendAccepted],
   );
 
   useEffect(() => {

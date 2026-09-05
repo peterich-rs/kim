@@ -3,12 +3,13 @@ mod harness;
 use bytes::Bytes;
 use harness::*;
 use kim_protocol::pkt::{
-    Status, UserListResp, UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
+    Flag, FriendRequestNotify, Status, UserListResp, UserProfile, UserProfileUpdate, UserSearchReq,
+    UserSearchResp,
 };
 use kim_protocol::{
-    marshal, read, LogicPkt, Packet, CMD_BLOCK_ADD, CMD_CHAT_USER_TALK, CMD_FRIEND_INCOMING,
-    CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, CMD_USER_SEARCH,
-    CMD_USER_UPDATE,
+    marshal, read, LogicPkt, Packet, CMD_BLOCK_ADD, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
+    CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -156,6 +157,51 @@ async fn profile_search_friends_and_talk_gate() {
             assert_eq!(got.nickname, "Ali");
         }
         _ => panic!("expected me"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn accept_pushes_friend_accept_to_requester() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+
+    let req = dest_pkt(CMD_FRIEND_REQUEST, 2, "bob");
+    alice.send(marshal(&Packet::Logic(req))).await.expect("req");
+    let frame = timeout_read(&alice).await;
+    match read(&frame.payload).expect("req resp") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::Success as i32),
+        _ => panic!("expected req resp"),
+    }
+    let frame = timeout_read(&bob).await;
+    match read(&frame.payload).expect("req push") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.flag, Flag::Push as i32);
+            assert_eq!(p.header.command, CMD_FRIEND_REQUEST);
+        }
+        _ => panic!("expected request push"),
+    }
+
+    let acc = dest_pkt(CMD_FRIEND_ACCEPT, 3, "alice");
+    bob.send(marshal(&Packet::Logic(acc))).await.expect("acc");
+    let frame = timeout_read(&bob).await;
+    match read(&frame.payload).expect("acc resp") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::Success as i32),
+        _ => panic!("expected acc resp"),
+    }
+    let frame = timeout_read(&alice).await;
+    match read(&frame.payload).expect("acc push") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.flag, Flag::Push as i32);
+            assert_eq!(p.header.command, CMD_FRIEND_ACCEPT);
+            let n: FriendRequestNotify = p.read_body().expect("notify");
+            assert_eq!(n.from_account, "bob");
+        }
+        _ => panic!("expected accept push"),
     }
 
     let _ = stack.gw.shutdown().await;

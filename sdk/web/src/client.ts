@@ -156,6 +156,7 @@ export class KIMClient implements ContentLoader {
   };
   private groupCreateCallback: ((groupId: string, members: string[]) => void) | undefined;
   private friendRequestCallback: ((from: string, nickname: string) => void) | undefined;
+  private friendAcceptedCallback: ((from: string, nickname: string) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private pendingAckIds: bigint[] = [];
   private lastAckArrival = 0;
@@ -207,6 +208,10 @@ export class KIMClient implements ContentLoader {
 
   onfriendrequest(cb: (from: string, nickname: string) => void): void {
     this.friendRequestCallback = cb;
+  }
+
+  onfriendaccepted(cb: (from: string, nickname: string) => void): void {
+    this.friendAcceptedCallback = cb;
   }
 
   ontoken(cb: (token: string, exp: number) => void): void {
@@ -753,6 +758,11 @@ export class KIMClient implements ContentLoader {
       case Command.FriendRequest: {
         const n = decodeFriendRequestNotify(pkt.payload);
         this.friendRequestCallback?.(n.fromAccount, n.fromNickname);
+        break;
+      }
+      case Command.FriendAccept: {
+        const n = decodeFriendRequestNotify(pkt.payload);
+        this.friendAcceptedCallback?.(n.fromAccount, n.fromNickname);
         break;
       }
       default:

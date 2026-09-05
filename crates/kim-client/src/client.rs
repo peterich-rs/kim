@@ -16,8 +16,8 @@ use crate::pump::{start_split_pump, Live};
 use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
-    encode_inbox_list, encode_offline_content, encode_offline_index, encode_outgoing, encode_ping,
-    encode_user_search, encode_user_update,
+    encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
+    encode_outgoing, encode_ping, encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -226,6 +226,38 @@ impl KimClient {
             } if *sequence == seq => Some(Err(ClientError::Status(*status))),
             _ => None,
         })
+        .await
+    }
+
+    pub async fn mark_read(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<(), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        if dest.is_empty() {
+            return Ok(());
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_inbox_read(seq, dest, kind, message_id),
+            seq,
+            |ev| match ev {
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => {
+                    if *status == 0 {
+                        Some(Ok(()))
+                    } else {
+                        Some(Err(ClientError::Status(*status)))
+                    }
+                }
+                _ => None,
+            },
+        )
         .await
     }
 
@@ -559,6 +591,7 @@ fn is_unsolicited(event: &Event) -> bool {
             | Event::TokenRenew { .. }
             | Event::GroupCreate { .. }
             | Event::FriendRequest { .. }
+            | Event::FriendAccepted { .. }
             | Event::Closed
     )
 }

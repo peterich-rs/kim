@@ -102,4 +102,23 @@ void main() {
     final firstUnread = tester.getRect(find.text('first unread'));
     expect(divider.bottom, lessThanOrEqualTo(firstUnread.top + 1));
   });
+
+  test('groups consecutive messages using millisecond windows', () {
+    const nano = 1788077118498491646;
+    const twoSecondsLater = nano + 2 * 1000 * 1000 * 1000;
+    final first = _msg('a', 'one', at: nano);
+    final second = _msg('b', 'two', at: twoSecondsLater);
+    expect(kimIsGroupStart(first, null), isTrue);
+    expect(kimIsGroupStart(second, first), isFalse);
+    expect(kimIsGroupEnd(first, second), isFalse);
+    expect(kimIsGroupEnd(second, null), isTrue);
+
+    final later = _msg(
+      'c',
+      'next batch',
+      at: 1_700_000_000_000 + const Duration(minutes: 6).inMilliseconds,
+    );
+    final earlier = _msg('d', 'old', at: 1_700_000_000_000);
+    expect(kimIsGroupStart(later, earlier), isTrue);
+  });
 }

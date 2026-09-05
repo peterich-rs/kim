@@ -8,6 +8,7 @@ import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../copy.dart';
+import '../core/format.dart';
 import '../core/haptics.dart';
 import '../core/image_extra.dart';
 import '../core/media.dart';
@@ -210,7 +211,7 @@ class OutboxNotifier extends Notifier<int> {
         status: KimSendStatus.sent,
         failed: false,
         messageId: result.messageId,
-        at: result.sendTime == 0 ? msg.at : result.sendTime,
+        at: result.sendTime == 0 ? msg.at : sendTimeMs(result.sendTime),
       );
       await _persist(sent, fromSelf: true);
       await KimHaptics.light();

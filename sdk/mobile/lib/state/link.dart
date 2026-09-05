@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../copy.dart';
+import '../core/connectivity.dart';
 import '../core/format.dart';
 import '../core/haptics.dart';
 import '../core/image_extra.dart';
@@ -13,6 +15,7 @@ import '../models/models.dart';
 import 'auth.dart';
 import 'contacts.dart';
 import 'inbox.dart';
+import 'location.dart';
 import 'messages.dart';
 import 'providers.dart';
 
@@ -27,6 +30,7 @@ class LinkNotifier extends Notifier<KimLinkState> {
   var _syncing = false;
   var _maxTalkId = 0;
   var _askedNotes = false;
+  var _radioWasUp = false;
   KimLinkState _snapshot = const KimLinkState();
 
   @override
@@ -36,6 +40,7 @@ class LinkNotifier extends Notifier<KimLinkState> {
     final radio = ref.watch(radioOnlineProvider);
     if (!signedIn) {
       _startedFor = '';
+      _radioWasUp = false;
       _snapshot = const KimLinkState();
       unawaited(_stop());
       return _snapshot;
@@ -44,9 +49,10 @@ class LinkNotifier extends Notifier<KimLinkState> {
       _startedFor = account;
       _snapshot = const KimLinkState(status: ConnStatus.connecting);
       unawaited(_start());
-    } else if (radio) {
+    } else if (radio && !_radioWasUp) {
       unawaited(_radioUp());
     }
+    _radioWasUp = radio;
     if (!radio) {
       return KimLinkState(
         status: ConnStatus.offline,
@@ -92,6 +98,14 @@ class LinkNotifier extends Notifier<KimLinkState> {
     if (token.isEmpty) {
       return;
     }
+    if (loopbackUnreachableOnThisDevice(runtime.settings.url)) {
+      _set(
+        const KimLinkState(
+          status: ConnStatus.reconnecting,
+          error: Copy.loopbackUnreachable,
+        ),
+      );
+    }
     try {
       await ref
           .read(clientPortProvider)
@@ -115,6 +129,14 @@ class LinkNotifier extends Notifier<KimLinkState> {
   }
 
   void _set(KimLinkState next) {
+    final error = next.status == ConnStatus.online
+        ? null
+        : (next.error ?? _snapshot.error);
+    next = KimLinkState(
+      status: next.status,
+      attempt: next.attempt,
+      error: error,
+    );
     _snapshot = next;
     if (!ref.read(radioOnlineProvider) && next.status != ConnStatus.offline) {
       state = KimLinkState(
@@ -146,10 +168,14 @@ class LinkNotifier extends Notifier<KimLinkState> {
     }
     switch (event.kind) {
       case KimEventKind.link:
+        final status = KimLinkState.statusFromLabel(event.state);
         _set(
           KimLinkState(
-            status: KimLinkState.statusFromLabel(event.state),
+            status: status,
             attempt: event.attempt,
+            error: status == ConnStatus.online
+                ? null
+                : (event.error.isNotEmpty ? event.error : _snapshot.error),
           ),
         );
         if (_snapshot.status == ConnStatus.online) {
@@ -180,13 +206,11 @@ class LinkNotifier extends Notifier<KimLinkState> {
       case KimEventKind.authExpired:
         unawaited(ref.read(authProvider.notifier).signOut(expired: true));
       case KimEventKind.friend:
-        ref
-            .read(contactsProvider.notifier)
-            .onRequest(
-              event.sender,
-              event.nickname.isEmpty ? event.extra : event.nickname,
-            );
         unawaited(KimHaptics.light());
+        unawaited(_friendPush(event, accepted: false));
+      case KimEventKind.friendAccepted:
+        unawaited(KimHaptics.success());
+        unawaited(_friendPush(event, accepted: true));
       case KimEventKind.group:
         if (event.dest.isNotEmpty) {
           ref
@@ -203,6 +227,20 @@ class LinkNotifier extends Notifier<KimLinkState> {
         if (ref.mounted && gen == _sessionGen) {
           _set(const KimLinkState(status: ConnStatus.reconnecting));
         }
+    }
+  }
+
+  Future<void> _friendPush(KimEvent event, {required bool accepted}) async {
+    await Future<void>.microtask(() {});
+    if (!ref.mounted) {
+      return;
+    }
+    final contacts = ref.read(contactsProvider.notifier);
+    final name = event.nickname.isEmpty ? event.extra : event.nickname;
+    if (accepted) {
+      contacts.onAccepted(event.sender, name);
+    } else {
+      contacts.onRequest(event.sender, name);
     }
   }
 
@@ -242,6 +280,9 @@ class LinkNotifier extends Notifier<KimLinkState> {
     final thread = ref.read(threadsProvider).thread(dest);
     if (thread != null) {
       await store.upsertThread(account, thread);
+    }
+    if (chatIdFromPath(ref.read(locationProvider)) == dest) {
+      unawaited(ref.read(threadMessagesProvider(dest).notifier).markRead());
     }
     if (!ref.mounted) {
       return;

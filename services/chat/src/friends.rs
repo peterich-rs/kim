@@ -110,7 +110,19 @@ pub async fn do_friend_request(
             .await;
             let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
         }
-        Ok(FriendRequestOutcome::AutoAccepted | FriendRequestOutcome::AlreadyFriends) => {
+        Ok(FriendRequestOutcome::AutoAccepted) => {
+            notify_peer(
+                &ctx,
+                peer,
+                &FriendRequestNotify {
+                    from_account: from,
+                    from_nickname: nickname,
+                },
+            )
+            .await;
+            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+        }
+        Ok(FriendRequestOutcome::AlreadyFriends) => {
             let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
         }
         Err(err) => {

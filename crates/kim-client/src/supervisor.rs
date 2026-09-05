@@ -49,6 +49,10 @@ pub enum SessionEvent {
         from: String,
         nickname: String,
     },
+    FriendAccepted {
+        from: String,
+        nickname: String,
+    },
     GroupCreate {
         group_id: String,
         members: Vec<String>,
@@ -188,6 +192,7 @@ async fn run_loop(inner: Arc<Inner>) {
             }
             SessionEnd::Drop(err) => {
                 warn!(error = %err, "session dropped");
+                let _ = inner.events.send(SessionEvent::SyncFailed(err.to_string()));
             }
         }
         if stopped(&inner) {
@@ -232,10 +237,6 @@ async fn run_session(inner: &Inner) -> SessionEnd {
             if let Err(err) = result {
                 return SessionEnd::Drop(err);
             }
-        }
-        _ = inner.radio.notified() => {
-            let _ = client.disconnect().await;
-            return SessionEnd::Drop(ClientError::other("radio"));
         }
         _ = inner.stop.notified() => return SessionEnd::Stop,
     }
@@ -304,6 +305,11 @@ fn dispatch_event(inner: &Inner, engine: &mut SyncEngine, event: Event) {
             let _ = inner
                 .events
                 .send(SessionEvent::FriendRequest { from, nickname });
+        }
+        Event::FriendAccepted { from, nickname } => {
+            let _ = inner
+                .events
+                .send(SessionEvent::FriendAccepted { from, nickname });
         }
         Event::GroupCreate { group_id, members } => {
             let _ = inner
