@@ -9,6 +9,7 @@ description = "KIM 通信层接口：帧、连接、连接表、Server/Client �
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
+socket2 = { version = "0.6", features = ["all"] }
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

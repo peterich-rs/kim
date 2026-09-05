@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use socket2::SockRef;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Notify, OwnedSemaphorePermit, Semaphore};
@@ -15,12 +14,11 @@ use tracing::{info, warn};
 
 use kim_core::{
     Acceptor, Channel, ChannelHandle, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
-    MailboxFullHook, MessageListener, OpCode, Server, StateListener, WriteFullPolicy,
+    MailboxFullHook, MessageListener, OpCode, Server, SocketOpts, StateListener, WriteFullPolicy,
     DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
 };
 
 use crate::conn::TcpConn;
-use crate::opts::SocketOpts;
 
 fn lock_inner<T>(m: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -420,7 +418,7 @@ impl Server for TcpServer {
 }
 
 pub fn apply_socket_opts(stream: &TcpStream, opts: &SocketOpts) -> io::Result<()> {
-    opts.apply(&SockRef::from(stream))
+    kim_core::apply_socket_opts(stream, opts)
 }
 
 /// 拿不到 permit 时立刻关流。`Ok(None)` = 不限制。

@@ -19,8 +19,8 @@ use tokio_rustls::TlsConnector;
 use tracing::debug;
 
 use kim_core::{
-    Conn, DialerContext, Error, Frame, OpCode, DEFAULT_HEARTBEAT, DEFAULT_LOGIN_WAIT,
-    DEFAULT_WRITE_WAIT,
+    apply_socket_opts, Conn, DialerContext, Error, Frame, OpCode, SocketOpts, DEFAULT_HEARTBEAT,
+    DEFAULT_LOGIN_WAIT, DEFAULT_WRITE_WAIT,
 };
 
 use crate::conn::{WsConn, WsReadHalf, WsWriteHalf};
@@ -110,6 +110,8 @@ async fn connect_ws_inner(
     let stream = TcpStream::connect(&parsed.connect)
         .await
         .map_err(Error::from)?;
+    let _ = stream.set_nodelay(true);
+    let _ = apply_socket_opts(&stream, &SocketOpts::default());
     if parsed.tls {
         let cfg = match tls {
             Some(c) => c,
