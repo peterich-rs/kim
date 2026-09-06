@@ -1,10 +1,10 @@
 # macOS Desktop Agent Experience — Design（kim）
 
-> Status: **docs only** — no implementation in this PR  
+> Status: **implementation in progress / this PR** — Phase A+B (+C best-effort)  
 > Depends on: Phase 0 harness (`kim-agent-*`, see PR #94 / `docs/agent-harness-phase0.md` once merged)  
 > Flutter: **3.47.2**（Dart 3.13.2；钉在 `sdk/mobile/.fvmrc`）  
 > Language: Rust (tokio) + Flutter shell（FRB 2.13 Native Assets）  
-> Out of scope here: shipping code, App Store notarization polish, Windows/Linux desktop, team/graph
+> Out of scope here: App Store notarization polish, Windows/Linux desktop, team/graph
 
 ---
 
@@ -617,3 +617,36 @@ crates/kim-agent-*                   # harness（#94）
 |---|---|
 | 2026-09-06 | 初稿：macOS desktop Agent 体验设计（docs only） |
 | 2026-09-06 | 加强：App shell 视觉对齐锚点；主流 Agent IA；Provider 可配置；Phase A/B/C |
+| 2026-09-06 | **Implementation**: macOS platform, `kim_agent_ffi`, Agent Tab, Scripted+Live, FS tools |
+
+
+---
+
+## 14. How to try (macOS)
+
+This Linux CI/dev box may lack Xcode — GUI run requires a Mac.
+
+```bash
+export PATH=/workspace/flutter-3.47.2/bin:$PATH   # or fvm / local Flutter 3.47.2
+cd sdk/mobile
+flutter pub get
+flutter run -d macos
+```
+
+1. Sign in (IM path unchanged).
+2. Open **Agent** tab → **新会话** → type a prompt.
+3. Default **ScriptedLlm** streams text / tool cards; Stop replaces Send while busy.
+4. **我 → Agent 设置**: switch Scripted vs Live (Responses), set `base_url` / `model` / API key (Keychain). Saving settings does **not** delete `sessions/*.sqlite`.
+5. SQLite + workspace: `~/Library/Application Support/<bundle>/agent/`.
+
+### Linux checks (no Mac required)
+
+```bash
+cd sdk/mobile && flutter analyze && flutter test
+cargo test --manifest-path sdk/mobile/rust_agent/Cargo.toml
+cargo test -p kim-agent-llm -p kim-agent-tools -p kim-agent-harness
+```
+
+### Sandbox note (Phase C)
+
+Debug entitlements disable App Sandbox so `read`/`write`/`edit`/`bash` work under `agent/workspace`. Release keeps sandbox + `network.client`; tighten before distribution.

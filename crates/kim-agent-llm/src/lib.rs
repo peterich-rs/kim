@@ -6,6 +6,7 @@ pub mod scripted;
 
 pub use reduce::{reduce_events, reduce_stream, Reducer};
 pub use responses::parse::{parse_sse_chunk, parse_sse_stream, ResponsesParseError};
+pub use responses::OpenAiResponsesClient;
 pub use scripted::ScriptedLlm;
 
 use async_trait::async_trait;

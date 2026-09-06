@@ -133,6 +133,13 @@ class MePage extends ConsumerWidget {
                 KimGroupCard(
                   children: [
                     ListTile(
+                      leading: const Icon(LucideIcons.bot),
+                      title: const Text(Copy.agentSettings),
+                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                      onTap: () {},
+                    ),
+                    const Divider(indent: 56),
+                    ListTile(
                       leading: const Icon(LucideIcons.server),
                       title: const Text(Copy.environment),
                       subtitle: Text(

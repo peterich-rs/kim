@@ -10,6 +10,8 @@ import '../screens/chat/chat_page.dart';
 import '../screens/home/chats_page.dart';
 import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
+import '../screens/agent/agent_page.dart';
+import '../screens/agent/agent_settings_page.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
 import '../state/auth.dart';
@@ -75,6 +77,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
+              GoRoute(
+                path: '/agent',
+                builder: (context, state) => const AgentPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
               GoRoute(path: '/me', builder: (context, state) => const MePage()),
             ],
           ),
@@ -105,6 +115,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           key: state.pageKey,
           name: state.name,
           child: const PasswordPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/agent/settings',
+        pageBuilder: (context, state) => kimPushPage(
+          key: state.pageKey,
+          name: state.name,
+          child: const AgentSettingsPage(),
         ),
       ),
     ],

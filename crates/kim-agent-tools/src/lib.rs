@@ -1,5 +1,9 @@
 //! Tool trait, registry, and scripted tools for Phase 0.
 
+mod fs_tools;
+
+pub use fs_tools::{register_fs_tools, BashTool, EditTool, ReadTool, WriteTool};
+
 use async_trait::async_trait;
 use kim_agent_types::{JsonValue, ReplayPolicy, ToolResult, ToolSchema};
 use std::collections::HashMap;

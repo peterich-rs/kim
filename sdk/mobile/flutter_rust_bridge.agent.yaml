@@ -1,0 +1,4 @@
+rust_input: crate::api
+rust_root: rust_agent/
+dart_output: lib/src/rust_agent
+dart_entrypoint_class_name: AgentRustLib

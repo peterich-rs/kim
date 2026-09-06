@@ -146,4 +146,27 @@ abstract final class Copy {
   static const noFriendsHint = '搜索账号，发送好友申请';
   static const addByAccount = '添加好友';
   static const recentContacts = '好友';
+
+  static const agent = 'Agent';
+  static const agentSessions = '会话';
+  static const agentNewSession = '新会话';
+  static const agentEmptyTitle = '开始一次 Agent 对话';
+  static const agentEmptyHint =
+      '默认 ScriptedLlm 本地演示。可在「我 → Agent 设置」切换 Live Responses。';
+  static const agentPromptHint = '给 Agent 发消息';
+  static const agentStop = '停止';
+  static const agentSettings = 'Agent 设置';
+  static const agentMode = '模式';
+  static const agentModeScripted = 'Scripted（本地演示）';
+  static const agentModeLive = 'Live（Responses）';
+  static const agentBaseUrl = 'Base URL';
+  static const agentModel = '模型';
+  static const agentApiKey = 'API Key';
+  static const agentApiKeyHint = '保存在系统安全存储，不会写入普通偏好';
+  static const agentSaved = 'Agent 设置已保存';
+  static const agentKeyMissing = 'Live 模式需要 API Key';
+  static const agentToolRunning = '运行中';
+  static const agentToolOk = '成功';
+  static const agentToolFail = '失败';
+  static const agentBusy = 'Agent 正在运行';
 }

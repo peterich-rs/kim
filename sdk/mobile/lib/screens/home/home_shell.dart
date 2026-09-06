@@ -19,6 +19,63 @@ class HomeShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final incoming = ref.watch(contactsProvider.select((s) => s.incomingCount));
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final destinations = <NavigationDestination>[
+      const NavigationDestination(
+        icon: Icon(LucideIcons.messageCircle),
+        label: Copy.conversations,
+      ),
+      NavigationDestination(
+        icon: Badge(
+          isLabelVisible: incoming > 0,
+          label: Text(incoming > 9 ? '9+' : '$incoming'),
+          child: const Icon(LucideIcons.users),
+        ),
+        label: Copy.contacts,
+      ),
+      const NavigationDestination(
+        icon: Icon(LucideIcons.bot),
+        label: Copy.agent,
+      ),
+      const NavigationDestination(
+        icon: Icon(LucideIcons.user),
+        label: Copy.me,
+      ),
+    ];
+
+    void go(int index) {
+      KimHaptics.selection();
+      navigationShell.goBranch(
+        index,
+        initialLocation: index == navigationShell.currentIndex,
+      );
+    }
+
+    if (wide) {
+      return Scaffold(
+        backgroundColor: KimTheme.canvasOf(context),
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: navigationShell.currentIndex,
+              onDestinationSelected: go,
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                for (final d in destinations)
+                  NavigationRailDestination(icon: d.icon, label: Text(d.label)),
+              ],
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: KimTheme.hairlineOf(context),
+            ),
+            Expanded(child: navigationShell),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: KimTheme.canvasOf(context),
       body: navigationShell,
@@ -28,31 +85,8 @@ class HomeShell extends ConsumerWidget {
           const KimHairline(),
           NavigationBar(
             selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: (index) {
-              KimHaptics.selection();
-              navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
-              );
-            },
-            destinations: [
-              const NavigationDestination(
-                icon: Icon(LucideIcons.messageCircle),
-                label: Copy.conversations,
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: incoming > 0,
-                  label: Text(incoming > 9 ? '9+' : '$incoming'),
-                  child: const Icon(LucideIcons.users),
-                ),
-                label: Copy.contacts,
-              ),
-              const NavigationDestination(
-                icon: Icon(LucideIcons.user),
-                label: Copy.me,
-              ),
-            ],
+            onDestinationSelected: go,
+            destinations: destinations,
           ),
         ],
       ),

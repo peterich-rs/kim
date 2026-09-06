@@ -1,0 +1,33 @@
+[workspace]
+
+[package]
+name = "kim_agent_ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.13.0"
+async-trait = "0.1"
+futures = "0.3"
+kim-agent-harness = { path = "../../../crates/kim-agent-harness" }
+kim-agent-hooks = { path = "../../../crates/kim-agent-hooks" }
+kim-agent-llm = { path = "../../../crates/kim-agent-llm" }
+kim-agent-storage = { path = "../../../crates/kim-agent-storage" }
+kim-agent-tools = { path = "../../../crates/kim-agent-tools" }
+kim-agent-types = { path = "../../../crates/kim-agent-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio-util = "0.7"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "v7"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
