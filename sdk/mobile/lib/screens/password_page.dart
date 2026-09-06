@@ -47,9 +47,14 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   }
 
   Future<void> _save() async {
-    final oldErr = validatePassword(_old.text);
-    final nextErr = validatePassword(_next.text);
-    final confirmErr = validateConfirm(_next.text, _confirm.text);
+    final oldPassword = sanitizePassword(_old.text);
+    final newPassword = sanitizePassword(_next.text);
+    final oldErr = validatePassword(oldPassword);
+    final nextErr = validatePassword(newPassword);
+    final confirmErr = validateConfirm(
+      newPassword,
+      sanitizePassword(_confirm.text),
+    );
     setState(() {
       _oldErr = oldErr;
       _nextErr = nextErr;
@@ -63,7 +68,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       await changePasswordMutation.run(ref, (tsx) async {
         await tsx
             .get(authProvider.notifier)
-            .changePassword(oldPassword: _old.text, newPassword: _next.text);
+            .changePassword(oldPassword: oldPassword, newPassword: newPassword);
       });
       if (!mounted) {
         return;

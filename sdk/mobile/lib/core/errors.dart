@@ -7,6 +7,8 @@ bool isPermanentClientError(Object err) {
   final msg = err.toString();
   return msg.contains('401') ||
       msg.contains('409') ||
+      msg.contains('-34018') ||
+      msg.contains('entitlement isn\'t present') ||
       msg.contains('账号或密码错误') ||
       msg.contains('账号已存在') ||
       msg.contains('invalid account') ||
@@ -22,6 +24,11 @@ bool isPermanentClientError(Object err) {
 
 String mapUserError(Object err) {
   final msg = err.toString();
+  if (msg.contains('-34018') ||
+      msg.contains('entitlement isn\'t present') ||
+      msg.contains('Unexpected security result code')) {
+    return Copy.sessionPersistFailed;
+  }
   if (msg.contains('401') || msg.contains('账号或密码错误')) {
     return Copy.badCredentials;
   }

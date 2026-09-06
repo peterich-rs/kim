@@ -1,10 +1,10 @@
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent_bridge.dart';
+import '../core/settings.dart';
 
 const _kMode = 'agent.llm_backend';
 const _kBaseUrl = 'agent.base_url';
@@ -76,7 +76,7 @@ class AgentSettings {
 }
 
 class AgentSettingsNotifier extends Notifier<AgentSettings> {
-  final _secure = const FlutterSecureStorage();
+  final _secure = SettingsStore.productionSecureStorage();
 
   @override
   AgentSettings build() {

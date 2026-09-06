@@ -25,6 +25,9 @@ class SettingsStore {
   static const _kNotifAsked = 'kim.notifications_asked';
   static const _kToken = 'kim.jwt';
 
+  /// Used only when Keychain throws (macOS ad-hoc -34018). Not the happy path.
+  static const _kTokenFallback = 'kim.jwt.fallback';
+
   final SharedPreferences _prefs;
   final FlutterSecureStorage? _secure;
   final Map<String, String> _memorySecure = {};
@@ -38,14 +41,33 @@ class SettingsStore {
   bool notificationsAsked = false;
   bool discardedExpiredToken = false;
 
+  /// macOS Data Protection keychain (iOS-style). No login-keychain password
+  /// dialog, no biometry, no passcode. Available after first unlock.
+  ///
+  /// Do not set [MacOsOptions.usesDataProtectionKeychain] to false: that
+  /// stores into the file-based login keychain, which can prompt for the
+  /// user's login password. Ad-hoc "Sign to Run Locally" still lacks
+  /// `application-identifier` and may throw -34018; [saveToken] then falls
+  /// back without prompting.
+  static const macOsKeychain = MacOsOptions(
+    usesDataProtectionKeychain: true,
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+    synchronizable: false,
+    useSecureEnclave: false,
+    accessControlFlags: [],
+    // kSecUseAuthenticationUIFail — never present an auth UI.
+    authenticationUIBehavior: 'u_AuthUIF',
+  );
+
   static FlutterSecureStorage productionSecureStorage() {
     // iOS Keychain. Android: RSA-OAEP + AES-GCM (EncryptedSharedPreferences
     // was removed in flutter_secure_storage 11; this is the replacement).
     return const FlutterSecureStorage(
       aOptions: AndroidOptions(),
       iOptions: IOSOptions(
-        accessibility: KeychainAccessibility.unlocked_this_device,
+        accessibility: KeychainAccessibility.first_unlock_this_device,
       ),
+      mOptions: macOsKeychain,
     );
   }
 
@@ -158,17 +180,27 @@ class SettingsStore {
 
   Future<void> saveToken(String value) async {
     token = value.trim();
-    if (_secure != null) {
-      if (token.isEmpty) {
-        await _secure.delete(key: _kToken);
-      } else {
-        await _secure.write(key: _kToken, value: token);
+    final secure = _secure;
+    if (secure != null) {
+      try {
+        if (token.isEmpty) {
+          await secure.delete(key: _kToken);
+        } else {
+          await secure.write(key: _kToken, value: token);
+        }
+        await _prefs.remove(_kTokenFallback);
+        return;
+      } catch (_) {
+        // Missing Keychain entitlement (-34018) must not fail login.
       }
+    }
+    if (token.isEmpty) {
+      _memorySecure.remove(_kToken);
+      await _prefs.remove(_kTokenFallback);
     } else {
-      if (token.isEmpty) {
-        _memorySecure.remove(_kToken);
-      } else {
-        _memorySecure[_kToken] = token;
+      _memorySecure[_kToken] = token;
+      if (secure != null) {
+        await _prefs.setString(_kTokenFallback, token);
       }
     }
   }
@@ -180,10 +212,7 @@ class SettingsStore {
 
   Future<String> _readToken() async {
     try {
-      final secure = _secure;
-      final raw = secure != null
-          ? (await secure.read(key: _kToken))?.trim() ?? ''
-          : _memorySecure[_kToken] ?? '';
+      final raw = (await _readTokenRaw()).trim();
       if (raw.isEmpty) {
         return '';
       }
@@ -197,5 +226,21 @@ class SettingsStore {
       // Missing plugin / Keystore errors: treat as empty, never mint.
       return '';
     }
+  }
+
+  Future<String> _readTokenRaw() async {
+    final secure = _secure;
+    if (secure == null) {
+      return _memorySecure[_kToken] ?? '';
+    }
+    try {
+      final fromKeychain = (await secure.read(key: _kToken))?.trim() ?? '';
+      if (fromKeychain.isNotEmpty) {
+        return fromKeychain;
+      }
+    } catch (_) {}
+    return _prefs.getString(_kTokenFallback)?.trim() ??
+        _memorySecure[_kToken] ??
+        '';
   }
 }

@@ -35,6 +35,7 @@ abstract final class Copy {
   static const unavailable = '服务暂时不可用，请稍后重试';
   static const authFailed = '登录失败，请稍后重试';
   static const sessionExpired = '登录已过期，请重新登录';
+  static const sessionPersistFailed = '登录成功但无法保存会话，请检查 Keychain 权限';
   static const timeout = '连接超时，请稍后重试';
   static const required = '请填写完整信息';
 

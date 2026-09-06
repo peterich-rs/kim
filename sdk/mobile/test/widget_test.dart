@@ -91,6 +91,21 @@ void main() {
     expect(fake.logins, 0);
   });
 
+  testWidgets('login strips CR LF from macOS password field', (tester) async {
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'secret123\r\n');
+    await tapKey(tester, const Key('auth-submit'));
+
+    expect(fake.logins, 1);
+    expect(fake.lastPassword, 'secret123');
+    expect(find.text(Copy.conversations), findsWidgets);
+  });
+
   testWidgets('successful login opens conversation list', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
@@ -107,6 +122,26 @@ void main() {
     expect(find.text(Copy.noConversations), findsOneWidget);
     expect(env.runtime.settings.token, 'tok.jwt');
     expect(fake.connects, greaterThan(0));
+  });
+
+  testWidgets('keychain entitlement error is not bad credentials', (
+    tester,
+  ) async {
+    final env = await testRuntime();
+    final fake = FakeKim(
+      error: Exception(
+        'PlatformException(Unexpected security result code, Code: -34018, Message: A required entitlement isn\'t present., -34018, null)',
+      ),
+    );
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'peterich');
+    await tester.enterText(find.byType(TextField).at(1), 'secret1234');
+    await tapKey(tester, const Key('auth-submit'));
+
+    expect(find.text(Copy.sessionPersistFailed), findsOneWidget);
+    expect(find.text(Copy.badCredentials), findsNothing);
   });
 
   testWidgets('http 401 maps to bad credentials', (tester) async {

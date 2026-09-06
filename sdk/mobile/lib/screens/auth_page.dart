@@ -1,5 +1,7 @@
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,12 +65,14 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   Mutation<void> get _mutation => _register ? registerMutation : signInMutation;
 
   Future<void> _submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await WidgetsBinding.instance.endOfFrame;
     final account = _account.text.trim();
-    final password = _password.text;
+    final password = sanitizePassword(_password.text);
     final accountErr = validateAccount(account);
     final passwordErr = validatePassword(password);
     final confirmErr = _register
-        ? validateConfirm(password, _confirm.text)
+        ? validateConfirm(password, sanitizePassword(_confirm.text))
         : null;
     setState(() {
       _accountErr = accountErr;
@@ -139,7 +143,9 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               keyboardType: TextInputType.visiblePassword,
               autocorrect: false,
               enableSuggestions: false,
-              autofillHints: const [AutofillHints.username],
+              autofillHints: Platform.isMacOS
+                  ? null
+                  : const [AutofillHints.username],
             ),
             KimTextField(
               controller: _password,
@@ -147,9 +153,17 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               errorText: _passwordErr,
               obscureable: true,
               maxLength: 128,
-              autofillHints: [
-                isRegister ? AutofillHints.newPassword : AutofillHints.password,
-              ],
+              textInputAction: isRegister
+                  ? TextInputAction.next
+                  : TextInputAction.done,
+              onEditingComplete: isRegister ? null : _submit,
+              autofillHints: Platform.isMacOS
+                  ? null
+                  : [
+                      isRegister
+                          ? AutofillHints.newPassword
+                          : AutofillHints.password,
+                    ],
             ),
             AnimatedSize(
               duration: KimMotion.medium,
@@ -164,7 +178,9 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                       maxLength: 128,
                       textInputAction: TextInputAction.done,
                       onEditingComplete: _submit,
-                      autofillHints: const [AutofillHints.newPassword],
+                      autofillHints: Platform.isMacOS
+                          ? null
+                          : const [AutofillHints.newPassword],
                     )
                   : const SizedBox.shrink(),
             ),

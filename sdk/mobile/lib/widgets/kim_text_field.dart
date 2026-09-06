@@ -1,6 +1,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../copy.dart';
@@ -59,12 +60,24 @@ class _KimTextFieldState extends State<KimTextField> {
         obscureText: _obscured,
         enableSuggestions: widget.enableSuggestions ?? !widget.obscureable,
         autocorrect: widget.autocorrect ?? !widget.obscureable,
+        enableIMEPersonalizedLearning: !widget.obscureable,
+        spellCheckConfiguration: widget.obscureable
+            ? const SpellCheckConfiguration.disabled()
+            : null,
+        smartQuotesType: widget.obscureable
+            ? SmartQuotesType.disabled
+            : SmartQuotesType.enabled,
+        smartDashesType: widget.obscureable
+            ? SmartDashesType.disabled
+            : SmartDashesType.enabled,
         keyboardType: widget.keyboardType,
         textInputAction: widget.textInputAction,
         onEditingComplete: widget.onEditingComplete,
         autofocus: widget.autofocus,
         enabled: widget.enabled,
+        maxLines: 1,
         maxLength: widget.maxLength,
+        inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'[\n\r]'))],
         autofillHints: widget.autofillHints,
         style: const TextStyle(fontSize: 16, height: 1.3),
         decoration: InputDecoration(
