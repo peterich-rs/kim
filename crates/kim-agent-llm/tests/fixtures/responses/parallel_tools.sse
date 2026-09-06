@@ -1,0 +1,26 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_par_1","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","id":"fc_a","call_id":"call_a","name":"read","arguments":""}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":1,"item":{"type":"function_call","id":"fc_b","call_id":"call_b","name":"bash","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":3,"output_index":1,"call_id":"call_b","delta":"{\"cmd\":\"ls\"}"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":4,"output_index":0,"call_id":"call_a","delta":"{\"path\":\"a\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":5,"output_index":0,"item":{"type":"function_call","id":"fc_a","call_id":"call_a","name":"read","arguments":"{\"path\":\"a\"}"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":6,"output_index":1,"item":{"type":"function_call","id":"fc_b","call_id":"call_b","name":"bash","arguments":"{\"cmd\":\"ls\"}"}}
+
+event: response.unknown_future_event
+data: {"type":"response.unknown_future_event","sequence_number":7,"payload":true}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":8,"response":{"id":"resp_par_1","status":"completed"}}

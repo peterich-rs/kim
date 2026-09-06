@@ -1,0 +1,5 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_fail_1","status":"in_progress"}}
+
+event: response.failed
+data: {"type":"response.failed","sequence_number":1,"response":{"id":"resp_fail_1","status":"failed","error":{"message":"model overloaded"}}}
