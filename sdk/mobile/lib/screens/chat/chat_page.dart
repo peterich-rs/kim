@@ -15,6 +15,7 @@ import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 import '../../copy.dart';
 import '../../core/format.dart';
 import '../../core/haptics.dart';
+import '../../kim_bridge.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
 import '../../state/link.dart';
@@ -57,11 +58,15 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   final _list = ChatListController();
   final _composer = GlobalKey<KimComposerState>();
-  Timer? _leaveTimer;
   Timer? _typingIdle;
   Timer? _typingSendGate;
-  bool _entered = false;
   bool _typingActive = false;
+
+  /// Captured while mounted; never use [ref] from [dispose].
+  KimClientPort? _client;
+
+  /// Set after a successful room enter; invoked from [dispose] without [ref].
+  VoidCallback? _leaveRoom;
 
   @override
   void initState() {
@@ -70,6 +75,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (!mounted) {
         return;
       }
+      _client = ref.read(clientPortProvider);
       final messages = ref.read(threadMessagesProvider(widget.id).notifier);
       messages.captureUnreadAnchor(
         unread: widget.initialUnread,
@@ -85,17 +91,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (widget.kind != ThreadKind.user) {
       return;
     }
-    _leaveTimer?.cancel();
-    _leaveTimer = null;
+    final client = _client ?? (mounted ? ref.read(clientPortProvider) : null);
+    if (client == null) {
+      return;
+    }
+    _client = client;
+    final dest = widget.id;
     try {
-      final rows = await ref
-          .read(clientPortProvider)
-          .roomEnter(widget.id, kind: 0);
+      final rows = await client.roomEnter(dest, kind: 0);
+      // Close over [client]/ never use ref/context after unmount.
+      void leave() {
+        unawaited(() async {
+          try {
+            await client.roomLeave(dest, kind: 0);
+          } catch (_) {}
+        }());
+      }
+
       if (!mounted) {
+        // Enter completed after unmount — leave without ref/context.
+        leave();
         return;
       }
       ref.read(presenceProvider.notifier).applySnapshot(rows);
-      _entered = true;
+      _leaveRoom = leave;
     } catch (_) {
       // Presence is best-effort; chat still works offline of interest.
     }
@@ -103,28 +122,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   void dispose() {
-    _leaveTimer?.cancel();
     _typingIdle?.cancel();
     _typingSendGate?.cancel();
-    if (_typingActive && widget.kind == ThreadKind.user) {
-      final dest = widget.id;
-      final client = ref.read(clientPortProvider);
+    final client = _client;
+    final dest = widget.id;
+    if (_typingActive && widget.kind == ThreadKind.user && client != null) {
+      _typingActive = false;
       unawaited(() async {
         try {
           await client.sendTyping(dest, kind: 0, active: false);
         } catch (_) {}
       }());
     }
-    if (_entered && widget.kind == ThreadKind.user) {
-      final dest = widget.id;
-      final client = ref.read(clientPortProvider);
-      Timer(const Duration(milliseconds: 350), () {
-        unawaited(() async {
-          try {
-            await client.roomLeave(dest, kind: 0);
-          } catch (_) {}
-        }());
-      });
+    final leave = _leaveRoom;
+    _leaveRoom = null;
+    if (leave != null) {
+      // Callback closes over KimClientPort — never touch ref/context here.
+      leave();
     }
     super.dispose();
   }
@@ -166,10 +180,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _emitTyping(bool active) async {
+    final client = _client;
+    if (client == null) {
+      return;
+    }
     try {
-      await ref
-          .read(clientPortProvider)
-          .sendTyping(widget.id, kind: 0, active: active);
+      await client.sendTyping(widget.id, kind: 0, active: active);
     } catch (_) {}
   }
 
