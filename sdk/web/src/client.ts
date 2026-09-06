@@ -21,7 +21,9 @@ import {
   decodeUserListResp,
   decodeUserProfile,
   decodePresencePush,
+  decodeReadReceiptPush,
   decodeRoomEnterResp,
+  decodeTypingPush,
   decodeUserSearchResp,
   encodeAckReq,
   encodeContentReq,
@@ -35,10 +37,13 @@ import {
   encodeMessageReq,
   encodeRoomEnterReq,
   encodeRoomLeaveReq,
+  encodeTypingReq,
   encodeUserProfileUpdate,
   encodeUserSearchReq,
   type WireHistoryItem,
   type WirePresence,
+  type WireReadReceipt,
+  type WireTyping,
   type WireInboxItem,
   type WireIndex,
   type WireProfile,
@@ -164,6 +169,8 @@ export class KIMClient implements ContentLoader {
   private friendAcceptedCallback: ((from: string, nickname: string) => void) | undefined;
   private profileUpdatedCallback: ((profile: WireProfile) => void) | undefined;
   private presenceCallback: ((entries: WirePresence[]) => void) | undefined;
+  private typingCallback: ((t: WireTyping) => void) | undefined;
+  private receiptCallback: ((r: WireReadReceipt) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private pendingAckIds: bigint[] = [];
   private lastAckArrival = 0;
@@ -227,6 +234,14 @@ export class KIMClient implements ContentLoader {
 
   onpresence(cb: (entries: WirePresence[]) => void): void {
     this.presenceCallback = cb;
+  }
+
+  ontyping(cb: (t: WireTyping) => void): void {
+    this.typingCallback = cb;
+  }
+
+  onreceiptread(cb: (r: WireReadReceipt) => void): void {
+    this.receiptCallback = cb;
   }
 
   ontoken(cb: (token: string, exp: number) => void): void {
@@ -459,6 +474,22 @@ export class KIMClient implements ContentLoader {
       return { status: resp.status, err: new Error(`status ${resp.status}`) };
     }
     return { status: resp.status };
+  }
+
+  /** Fire-and-forget typing; ignores response status. */
+  async sendTyping(
+    dest: string,
+    active: boolean,
+    kind = 0,
+  ): Promise<void> {
+    const pkt = LogicPkt.build(
+      Command.Typing,
+      "",
+      encodeTypingReq(dest, kind, active),
+      this.allocSeq(),
+    );
+    // Best-effort: do not block UI on the Status response.
+    void this.request(pkt).catch(() => undefined);
   }
 
   async searchUsers(query: string): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
@@ -822,6 +853,16 @@ export class KIMClient implements ContentLoader {
       case Command.Presence: {
         const entries = decodePresencePush(pkt.payload);
         this.presenceCallback?.(entries);
+        break;
+      }
+      case Command.Typing: {
+        const typing = decodeTypingPush(pkt.payload);
+        this.typingCallback?.(typing);
+        break;
+      }
+      case Command.ReceiptRead: {
+        const receipt = decodeReadReceiptPush(pkt.payload);
+        this.receiptCallback?.(receipt);
         break;
       }
       default:

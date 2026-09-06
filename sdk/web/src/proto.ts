@@ -56,6 +56,9 @@ const RoomEnterReqType = lookup("RoomEnterReq");
 const RoomEnterRespType = lookup("RoomEnterResp");
 const RoomLeaveReqType = lookup("RoomLeaveReq");
 const PresencePushType = lookup("PresencePush");
+const TypingReqType = lookup("TypingReq");
+const TypingPushType = lookup("TypingPush");
+const ReadReceiptPushType = lookup("ReadReceiptPush");
 
 function encode(type: protobuf.Type, obj: object): Uint8Array {
   return type.encode(type.create(obj)).finish();
@@ -643,3 +646,60 @@ export function decodePresencePush(buf: Uint8Array): WirePresence[] {
     lastSeen: BigInt(e.lastSeen ?? 0),
   }));
 }
+export type WireTyping = {
+  typer: string;
+  dest: string;
+  kind: number;
+  active: boolean;
+};
+
+export function encodeTypingReq(dest: string, kind: number, active: boolean): Uint8Array {
+  return encode(TypingReqType, { dest, kind, active });
+}
+
+export function decodeTypingPush(buf: Uint8Array): WireTyping {
+  const o = decode<{
+    typer?: string;
+    dest?: string;
+    kind?: number;
+    active?: boolean;
+  }>(TypingPushType, buf);
+  return {
+    typer: o.typer ?? "",
+    dest: o.dest ?? "",
+    kind: o.kind ?? 0,
+    active: !!o.active,
+  };
+}
+
+export type WireReadReceipt = {
+  reader: string;
+  dest: string;
+  kind: number;
+  messageId: bigint;
+};
+
+export function decodeReadReceiptPush(buf: Uint8Array): WireReadReceipt {
+  const o = decode<{
+    reader?: string;
+    dest?: string;
+    kind?: number;
+    messageId?: string | number | Long;
+  }>(ReadReceiptPushType, buf);
+  const mid = o.messageId;
+  let messageId = 0n;
+  if (typeof mid === "bigint") messageId = mid;
+  else if (typeof mid === "number") messageId = BigInt(mid);
+  else if (typeof mid === "string") messageId = BigInt(mid || 0);
+  else if (mid && typeof (mid as { toString: () => string }).toString === "function") {
+    messageId = BigInt((mid as { toString: () => string }).toString());
+  }
+  return {
+    reader: o.reader ?? "",
+    dest: o.dest ?? "",
+    kind: o.kind ?? 0,
+    messageId,
+  };
+}
+
+

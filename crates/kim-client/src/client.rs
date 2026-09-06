@@ -17,8 +17,8 @@ use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
     encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
-    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_user_search,
-    encode_user_update,
+    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_typing,
+    encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -452,6 +452,20 @@ impl KimClient {
         .await
     }
 
+    /// Fire-and-forget typing indicator (server may reply Status; ignored).
+    pub async fn send_typing(
+        &self,
+        dest: &str,
+        kind: i32,
+        active: bool,
+    ) -> Result<(), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_ack(encode_typing(seq, dest, kind, active)).await
+    }
+
     async fn dest_status(&self, command: &str, dest: &str) -> Result<(), ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
@@ -653,6 +667,8 @@ fn is_unsolicited(event: &Event) -> bool {
             | Event::FriendAccepted { .. }
             | Event::ProfileUpdated { .. }
             | Event::PresenceUpdated { .. }
+            | Event::TypingUpdated { .. }
+            | Event::ReceiptRead { .. }
             | Event::Closed
     )
 }

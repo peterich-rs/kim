@@ -42,6 +42,7 @@ class ChatList extends StatefulWidget {
     this.hasMore = true,
     this.empty,
     this.padding = const EdgeInsets.only(bottom: 8),
+    this.footer,
   });
 
   final List<KimChatMsg> items;
@@ -53,6 +54,9 @@ class ChatList extends StatefulWidget {
   final bool hasMore;
   final Widget? empty;
   final EdgeInsets padding;
+
+  /// Painted at the visual bottom of the reverse list (newest edge).
+  final Widget? footer;
 
   @override
   State<ChatList> createState() => _ChatListState();
@@ -298,7 +302,7 @@ class _ChatListState extends State<ChatList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.items.isEmpty) {
+    if (widget.items.isEmpty && widget.footer == null) {
       return widget.empty ?? const SizedBox.expand();
     }
     return LayoutBuilder(
@@ -324,6 +328,16 @@ class _ChatListState extends State<ChatList> {
                     parent: BouncingScrollPhysics(),
                   ),
                   slivers: [
+                    if (widget.footer != null)
+                      SliverPadding(
+                        padding: EdgeInsets.only(
+                          left: widget.padding.left,
+                          right: widget.padding.right,
+                          bottom: 0,
+                          top: 0,
+                        ),
+                        sliver: SliverToBoxAdapter(child: widget.footer),
+                      ),
                     SliverPadding(
                       padding: widget.padding,
                       sliver: SliverList(

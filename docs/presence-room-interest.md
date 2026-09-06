@@ -1,9 +1,9 @@
 # Presence 与房间兴趣（进房 / 退房）方案
 
-状态：**P1a+P1b 已落地（本 PR）**  
+状态：**P1a+P1b+typing+DM receipts 已落地（本 PR）**  
 日期：2026-09-06  
-范围：好友在线状态（Presence）+ 会话级房间兴趣（Room Interest）  
-不在范围：资料变更推送（见 `chat.user.updated` / PR #92）、隐身模式产品细节、群成员列表级 presence 广播
+范围：好友在线状态（Presence）+ 会话级房间兴趣（Room Interest）+ 正在输入 + 私聊已读回执  
+不在范围：资料变更推送（见 `chat.user.updated` / PR #92）、隐身模式产品细节、群成员列表级 presence 广播、群已读
 
 相关缺口：`docs/production-gaps.md` G-27（在线状态 / 正在输入 | 无）
 
@@ -362,6 +362,23 @@ sequenceDiagram
 
 ---
 
+---
+
+## 8.1 正在输入（Typing）
+
+- **协议**：`chat.typing` Request（`TypingReq{dest,kind,active}`）→ Push 同 command（`TypingPush{typer,dest,kind,active}`）。
+- **范围**：v1 仅私聊 `kind=user`；须好友；不落库。
+- **Fanout**：查 `room interest` 中 **enter 了 dest=typer** 的观看者，且 **viewer.account == TypingReq.dest（peer）**。这样 A 在 A↔B 输入不会泄漏到 A↔C 或 C↔B。
+- **客户端**：进入房间后，composer 防抖发送；空闲 ~2.5s / 发消息 / 离开会话发 `active=false`。UI 在消息列表视觉底部（reverse list footer）用 `KimTypingBars` 等化器竖条，靠 peer 头像一侧。
+
+## 8.2 私聊已读回执（DM read receipts）
+
+- **协议**：成功 `chat.inbox.read`（DM）后 Push `chat.receipt.read`（`ReadReceiptPush{reader,dest,kind,message_id}`）。
+- **范围**：**仅私聊**；群 `kind=group` 不推。
+- **Fanout**：peer 的全部在线 location（兴趣可选；与 presence 不同）。
+- **客户端**：按 peer 维护 read watermark；仅在己方已发送气泡上展示「已读」，不改气泡布局。
+
+
 ## 9. 实现分期
 
 ### P1a — 协议与房间兴趣骨架
@@ -386,7 +403,7 @@ sequenceDiagram
 
 ### 明确后置
 
-- Typing、BUSY 产品、群成员在线墙、隐身
+- BUSY 产品、群成员在线墙、隐身、群已读
 
 ---
 
@@ -415,7 +432,7 @@ sequenceDiagram
 | 下线 | 30–60s debounce |
 | 心跳 | 不推 presence |
 | 资料变更 | 独立通道，已实现于 profile-push |
-| Typing 等 | 复用 room interest，本阶段不实现 |
+| Typing / DM 已读 | 见 §8.1 / §8.2（已落地） |
 
 ---
 

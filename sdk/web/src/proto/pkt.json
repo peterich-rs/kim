@@ -897,6 +897,62 @@
                 }
               }
             },
+            "TypingReq": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "active": {
+                  "type": "bool",
+                  "id": 3
+                }
+              }
+            },
+            "TypingPush": {
+              "fields": {
+                "typer": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "active": {
+                  "type": "bool",
+                  "id": 4
+                }
+              }
+            },
+            "ReadReceiptPush": {
+              "fields": {
+                "reader": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "messageId": {
+                  "type": "int64",
+                  "id": 4
+                }
+              }
+            },
             "FriendRequestNotify": {
               "fields": {
                 "fromAccount": {

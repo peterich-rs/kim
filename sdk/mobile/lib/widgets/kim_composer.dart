@@ -18,12 +18,16 @@ class KimComposer extends StatefulWidget {
     required this.onPickAlbum,
     required this.onTakePhoto,
     this.hintText,
+    this.onTypingChanged,
   });
 
   final ValueChanged<String> onSend;
   final VoidCallback onPickAlbum;
   final VoidCallback onTakePhoto;
   final String? hintText;
+
+  /// Fired while composing (debounced by caller). Empty string means idle/stop.
+  final ValueChanged<String>? onTypingChanged;
 
   @override
   KimComposerState createState() => KimComposerState();
@@ -72,7 +76,9 @@ class KimComposerState extends State<KimComposer> {
   }
 
   void _onText() {
-    final next = _controller.text.trim().isNotEmpty;
+    final raw = _controller.text;
+    widget.onTypingChanged?.call(raw);
+    final next = raw.trim().isNotEmpty;
     if (next == _hasText) {
       return;
     }
@@ -97,6 +103,7 @@ class KimComposerState extends State<KimComposer> {
     }
     KimHaptics.selection();
     widget.onSend(text);
+    widget.onTypingChanged?.call('');
     _controller.clear();
   }
 

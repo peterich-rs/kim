@@ -19,6 +19,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int imageTalks = 0;
   int acks = 0;
   int reads = 0;
+  int typingCalls = 0;
+  String lastTypingDest = '';
+  bool lastTypingActive = false;
   String lastReadDest = '';
   int lastReadMessageId = 0;
   int talkSendTime = 1;
@@ -312,6 +315,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<void> roomLeave(String dest, {int kind = 0}) async {}
+
+  @override
+  Future<void> sendTyping(
+    String dest, {
+    int kind = 0,
+    bool active = true,
+  }) async {
+    lastTypingDest = dest;
+    lastTypingActive = active;
+    typingCalls += 1;
+  }
 
   @override
   Future<KimPerson> updateProfile({

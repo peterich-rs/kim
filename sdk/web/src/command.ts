@@ -31,6 +31,8 @@ export const Command = {
   RoomEnter: "chat.room.enter",
   RoomLeave: "chat.room.leave",
   Presence: "chat.presence",
+  Typing: "chat.typing",
+  ReceiptRead: "chat.receipt.read",
 } as const;
 
 export const InboxKind = {

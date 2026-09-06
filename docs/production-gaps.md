@@ -342,7 +342,7 @@ Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`
 
 ## P2 —— 规模化与产品完整性
 
-### G-27 原报告 P1 产品缺口（代码确认仍缺）
+### G-27 原报告 P1 产品缺口（代码确认仍缺）（presence+typing+DM receipts 已在 feat/presence-design）
 
 | 项 | 现状 |
 |---|---|

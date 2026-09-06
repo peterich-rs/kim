@@ -4,17 +4,17 @@ use kim_protocol::pkt::{
     AuthResp, ConversationReadReq, Flag, FriendRequestNotify, GroupCreateNotify, HistoryReq,
     HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq, MessageAckReq, MessageContentReq,
     MessageContentResp, MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp,
-    PresencePush, RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, UserListResp, UserProfile,
-    UserProfileUpdate, UserSearchReq, UserSearchResp,
+    PresencePush, ReadReceiptPush, RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, TypingPush,
+    TypingReq, UserListResp, UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
     CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ,
     CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE,
-    CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
-    CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
-    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
+    CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -229,6 +229,16 @@ pub fn encode_room_leave(seq: u32, dest: &str, kind: i32) -> Bytes {
     marshal(&Packet::Logic(pkt))
 }
 
+pub fn encode_typing(seq: u32, dest: &str, kind: i32, active: bool) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_TYPING, seq, Bytes::new());
+    pkt.write_body(&TypingReq {
+        dest: dest.to_string(),
+        kind,
+        active,
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
 pub fn is_kickout(pkt: &LogicPkt) -> Option<KickoutNotify> {
     if pkt.header.flag != Flag::Push as i32 {
         return None;
@@ -303,6 +313,24 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
             account: String::new(),
             status: 0,
             last_seen: 0,
+        });
+    }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_TYPING {
+        let push: TypingPush = p.read_body()?;
+        return Ok(Event::TypingUpdated {
+            typer: push.typer,
+            dest: push.dest,
+            kind: push.kind,
+            active: push.active,
+        });
+    }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_RECEIPT_READ {
+        let push: ReadReceiptPush = p.read_body()?;
+        return Ok(Event::ReceiptRead {
+            reader: push.reader,
+            dest: push.dest,
+            kind: push.kind,
+            message_id: push.message_id,
         });
     }
     if p.header.flag == Flag::Response as i32 && p.header.command == CMD_ROOM_ENTER {

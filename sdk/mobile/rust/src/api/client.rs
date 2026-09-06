@@ -323,6 +323,12 @@ impl KimApi {
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
+
+    pub fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+        let client = self.supervisor.client();
+        rt().block_on(client.send_typing(&dest, kind, active))
+            .map_err(|e| e.to_string())
+    }
 }
 
 
@@ -439,6 +445,35 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
             ev.sender = account;
             ev.msg_type = status;
             ev.send_time = last_seen;
+            ev
+        }
+        SessionEvent::TypingUpdated {
+            typer,
+            dest,
+            kind,
+            active,
+        } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "typing".into();
+            ev.dest = dest;
+            ev.sender = typer;
+            ev.msg_type = kind;
+            // Reuse page_pending as active flag to avoid FRB schema churn.
+            ev.page_pending = active;
+            ev
+        }
+        SessionEvent::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "receipt_read".into();
+            ev.dest = dest;
+            ev.sender = reader;
+            ev.msg_type = kind;
+            ev.message_id = message_id;
             ev
         }
         SessionEvent::GroupCreate { group_id, members } => {

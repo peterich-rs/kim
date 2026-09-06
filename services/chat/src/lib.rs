@@ -23,6 +23,7 @@ pub mod social;
 pub mod social_cache;
 pub mod store;
 mod talk;
+mod typing;
 pub mod users;
 
 use std::sync::Arc;
@@ -40,8 +41,8 @@ use kim_protocol::{
     CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
     CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
     CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_USER_PROFILE, CMD_USER_SEARCH,
-    CMD_USER_UPDATE, META_DEST_CHANNELS, META_DEST_SERVER,
+    CMD_OFFLINE_INDEX, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -55,6 +56,7 @@ use crate::presence::{offline_debounce_from_env, PresenceHub};
 use crate::room::{do_room_enter, do_room_leave};
 use crate::social::{MemorySocialDirectory, SocialDirectory};
 use crate::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
+use crate::typing::do_typing;
 use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
@@ -426,6 +428,15 @@ impl ChatHandler {
             router.handle(CMD_ROOM_LEAVE, move |ctx| {
                 let svc = svc.clone();
                 async move { do_room_leave(ctx, svc.presence.interest().as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_TYPING, move |ctx| {
+                let svc = svc.clone();
+                async move {
+                    do_typing(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
+                }
             });
         }
         {

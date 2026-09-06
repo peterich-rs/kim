@@ -62,6 +62,18 @@ pub enum SessionEvent {
         status: i32,
         last_seen: i64,
     },
+    TypingUpdated {
+        typer: String,
+        dest: String,
+        kind: i32,
+        active: bool,
+    },
+    ReceiptRead {
+        reader: String,
+        dest: String,
+        kind: i32,
+        message_id: i64,
+    },
     GroupCreate {
         group_id: String,
         members: Vec<String>,

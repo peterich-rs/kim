@@ -61,6 +61,12 @@ abstract class KimApi implements RustOpaqueInterface {
     required String clientId,
   });
 
+  Future<void> sendTyping({
+    required String dest,
+    required int kind,
+    required bool active,
+  });
+
   /// Supervisor event stream. Replaces `listen` / `KimPush`.
   Stream<KimSessionEvent> sessionEvents();
 

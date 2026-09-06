@@ -22,6 +22,8 @@ export interface ChatHandlers {
   onFriendAccepted?: (from: string, nickname: string) => void;
   onProfileUpdated?: (profile: WireProfile) => void;
   onPresence?: (entries: import("../../src/proto.ts").WirePresence[]) => void;
+  onTyping?: (t: import("../../src/proto.ts").WireTyping) => void;
+  onReceiptRead?: (r: import("../../src/proto.ts").WireReadReceipt) => void;
   onToken?: (token: string, exp: number) => void;
 }
 
@@ -157,6 +159,18 @@ export class ChatSession {
       }
       this.handlers.onPresence?.(entries);
     });
+    cli.ontyping((typing) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onTyping?.(typing);
+    });
+    cli.onreceiptread((receipt) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onReceiptRead?.(receipt);
+    });
   }
 
   async roomEnter(dest: string, kind = 0) {
@@ -173,6 +187,14 @@ export class ChatSession {
       throw new Error("not connected");
     }
     return cli.roomLeave(dest, kind);
+  }
+
+  async sendTyping(dest: string, active: boolean, kind = 0) {
+    const cli = this.client;
+    if (!cli || cli.state !== State.CONNECTED) {
+      return;
+    }
+    await cli.sendTyping(dest, active, kind);
   }
 
   async send(dest: string, kind: Kind, text: string): Promise<Message> {

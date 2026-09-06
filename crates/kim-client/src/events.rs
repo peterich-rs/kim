@@ -127,6 +127,20 @@ pub enum Event {
         status: i32,
         last_seen: i64,
     },
+    /// Push `chat.typing` — conversation-scoped typing indicator.
+    TypingUpdated {
+        typer: String,
+        dest: String,
+        kind: i32,
+        active: bool,
+    },
+    /// Push `chat.receipt.read` — DM peer read watermark.
+    ReceiptRead {
+        reader: String,
+        dest: String,
+        kind: i32,
+        message_id: i64,
+    },
     /// Response `chat.room.enter` snapshot.
     RoomEnter {
         sequence: u32,

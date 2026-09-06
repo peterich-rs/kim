@@ -356,6 +356,29 @@ message PresencePush {
   repeated Presence entries = 1;
 }
 
+// Conversation-scoped typing (DM v1). Ephemeral; no DB.
+message TypingReq {
+  string dest = 1; // peer account
+  int32 kind = 2;  // 0 = user only for v1
+  bool active = 3; // true while composing; false = stop
+}
+
+message TypingPush {
+  string typer = 1;
+  string dest = 2;
+  int32 kind = 3;
+  bool active = 4;
+}
+
+// DM read receipt push body (reuse ConversationRead shape on wire via fields).
+// Push command: chat.receipt.read
+message ReadReceiptPush {
+  string reader = 1;
+  string dest = 2;
+  int32 kind = 3;
+  int64 message_id = 4;
+}
+
 message FriendRequestNotify {
   string fromAccount = 1;
   string fromNickname = 2;

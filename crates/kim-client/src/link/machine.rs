@@ -332,6 +332,32 @@ fn dispatch_event(inner: &Inner, seen: &Arc<std::sync::Mutex<SeenSet>>, event: E
                 last_seen,
             });
         }
+        Event::TypingUpdated {
+            typer,
+            dest,
+            kind,
+            active,
+        } => {
+            let _ = inner.events.send(SessionEvent::TypingUpdated {
+                typer,
+                dest,
+                kind,
+                active,
+            });
+        }
+        Event::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        } => {
+            let _ = inner.events.send(SessionEvent::ReceiptRead {
+                reader,
+                dest,
+                kind,
+                message_id,
+            });
+        }
         Event::GroupCreate { group_id, members } => {
             let _ = inner
                 .events

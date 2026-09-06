@@ -66,6 +66,8 @@ enum KimEventKind {
   friendAccepted,
   profileUpdated,
   presence,
+  typing,
+  receiptRead,
   group,
   token,
   closed,

@@ -94,6 +94,9 @@ abstract class KimClientPort {
   Future<List<Map<String, dynamic>>> roomEnter(String dest, {int kind = 0});
 
   Future<void> roomLeave(String dest, {int kind = 0});
+
+  /// Fire-and-forget typing indicator for a DM thread.
+  Future<void> sendTyping(String dest, {int kind = 0, bool active = true});
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -437,6 +440,8 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'friend_accepted' => KimEventKind.friendAccepted,
       'profile_updated' => KimEventKind.profileUpdated,
       'presence' => KimEventKind.presence,
+      'typing' => KimEventKind.typing,
+      'receipt_read' => KimEventKind.receiptRead,
       'group' => KimEventKind.group,
       'token' => KimEventKind.token,
       'link' => KimEventKind.link,
@@ -622,6 +627,15 @@ class KimBridge implements KimAuthPort, KimClientPort {
                       0,
           },
     ];
+  }
+
+  @override
+  Future<void> sendTyping(
+    String dest, {
+    int kind = 0,
+    bool active = true,
+  }) async {
+    await _require().sendTyping(dest: dest, kind: kind, active: active);
   }
 
   @override

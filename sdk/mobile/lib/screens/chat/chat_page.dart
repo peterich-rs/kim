@@ -21,6 +21,8 @@ import '../../state/link.dart';
 import '../../state/messages.dart';
 import '../../state/outbox.dart';
 import '../../state/presence.dart';
+import '../../state/receipts.dart';
+import '../../state/typing.dart';
 import '../../state/providers.dart';
 import '../../state/mutations.dart';
 import '../../state/profile.dart';
@@ -31,6 +33,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
 import '../../widgets/kim_composer.dart';
+import '../../widgets/kim_typing_bars.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -55,7 +58,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _list = ChatListController();
   final _composer = GlobalKey<KimComposerState>();
   Timer? _leaveTimer;
+  Timer? _typingIdle;
+  Timer? _typingSendGate;
   bool _entered = false;
+  bool _typingActive = false;
 
   @override
   void initState() {
@@ -98,6 +104,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void dispose() {
     _leaveTimer?.cancel();
+    _typingIdle?.cancel();
+    _typingSendGate?.cancel();
+    if (_typingActive && widget.kind == ThreadKind.user) {
+      final dest = widget.id;
+      final client = ref.read(clientPortProvider);
+      unawaited(() async {
+        try {
+          await client.sendTyping(dest, kind: 0, active: false);
+        } catch (_) {}
+      }());
+    }
     if (_entered && widget.kind == ThreadKind.user) {
       final dest = widget.id;
       final client = ref.read(clientPortProvider);
@@ -112,7 +129,52 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.dispose();
   }
 
+  void _onComposerTyping(String text) {
+    if (widget.kind != ThreadKind.user) {
+      return;
+    }
+    final has = text.trim().isNotEmpty;
+    _typingIdle?.cancel();
+    if (!has) {
+      _stopTyping();
+      return;
+    }
+    if (!_typingActive) {
+      _typingActive = true;
+      unawaited(_emitTyping(true));
+    } else if (_typingSendGate?.isActive != true) {
+      // Re-announce while composing (debounce ~1.2s).
+      _typingSendGate = Timer(const Duration(milliseconds: 1200), () {
+        if (_typingActive) {
+          unawaited(_emitTyping(true));
+        }
+      });
+    }
+    _typingIdle = Timer(const Duration(milliseconds: 2500), _stopTyping);
+  }
+
+  void _stopTyping() {
+    _typingIdle?.cancel();
+    _typingIdle = null;
+    _typingSendGate?.cancel();
+    _typingSendGate = null;
+    if (!_typingActive) {
+      return;
+    }
+    _typingActive = false;
+    unawaited(_emitTyping(false));
+  }
+
+  Future<void> _emitTyping(bool active) async {
+    try {
+      await ref
+          .read(clientPortProvider)
+          .sendTyping(widget.id, kind: 0, active: active);
+    } catch (_) {}
+  }
+
   Future<void> _send(String text) async {
+    _stopTyping();
     try {
       await sendMessageMutation(widget.id).run(ref, (tsx) {
         return tsx.get(outboxProvider.notifier).sendText(widget.id, text);
@@ -281,6 +343,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final social = ref.watch(contactsProvider);
     final me = ref.watch(profileProvider);
     final thread = ref.watch(threadMessagesProvider(widget.id));
+    final peerTyping = widget.kind == ThreadKind.user
+        ? ref.watch(peerTypingProvider(widget.id))
+        : false;
+    final readUpTo = widget.kind == ThreadKind.user
+        ? ref.watch(peerReadUpToProvider(widget.id))
+        : null;
     final account = session.account;
     final liveTitle = widget.kind == ThreadKind.user
         ? (social.person(widget.id)?.title ?? widget.title)
@@ -318,25 +386,44 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       .read(threadMessagesProvider(widget.id).notifier)
                       .loadOlder(),
                 ),
-                empty: const EmptyState(
-                  icon: LucideIcons.messageCircle,
-                  title: Copy.noMessages,
-                  subtitle: Copy.noMessagesHint,
-                ),
+                empty: peerTyping
+                    ? null
+                    : const EmptyState(
+                        icon: LucideIcons.messageCircle,
+                        title: Copy.noMessages,
+                        subtitle: Copy.noMessagesHint,
+                      ),
+                footer: peerTyping
+                    ? KimTypingRow(
+                        key: const Key('typing-row'),
+                        name: liveTitle,
+                        avatar: KimAvatar(
+                          name: liveTitle,
+                          url: avatarFor(me, social, widget.id),
+                          size: KimAvatarSize.sm,
+                          shape: KimAvatarShape.squircle,
+                        ),
+                      )
+                    : null,
                 itemBuilder: (context, msg, index) {
                   final prev = index > 0 ? thread.items[index - 1] : null;
                   final next = index + 1 < thread.items.length
                       ? thread.items[index + 1]
                       : null;
+                  final own = msg.sender == account;
+                  final mid = msg.messageId;
+                  final showRead =
+                      own && readUpTo != null && mid > 0 && mid <= readUpTo;
                   return KimMessageRow(
                     key: Key('msg-${msg.key}'),
                     message: msg,
                     previous: prev,
                     next: next,
-                    isSentByMe: msg.sender == account,
+                    isSentByMe: own,
                     displayName: _nameOf(msg.sender, account, social),
                     avatarUrl: avatarFor(me, social, msg.sender),
                     unreadAnchor: thread.unreadAnchorId == msg.key,
+                    showRead: showRead,
                     onRetry: msg.isFailed
                         ? () => unawaited(_retry(msg.key))
                         : null,
@@ -412,6 +499,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                           onSend: (text) => unawaited(_send(text)),
                           onPickAlbum: () => unawaited(_pickAlbum()),
                           onTakePhoto: () => unawaited(_takePhoto()),
+                          onTypingChanged: widget.kind == ThreadKind.user
+                              ? _onComposerTyping
+                              : null,
                         ),
                       ),
               ),
