@@ -1,5 +1,7 @@
 use kim_agent_storage::{MemoryStorage, SqliteStorage, Storage, ValueAddr, Write};
-use kim_agent_types::{AgentMessage, Entry, EntryBase, EntryId, UsageId, UsageRow, OperationId, Usage};
+use kim_agent_types::{
+    AgentMessage, Entry, EntryBase, EntryId, OperationId, Usage, UsageId, UsageRow,
+};
 
 async fn check_backend<S: Storage>(store: &S) {
     let id = EntryId::new();
@@ -10,7 +12,9 @@ async fn check_backend<S: Storage>(store: &S) {
             seq: 0,
             timestamp_ms: 0,
         },
-        message: AgentMessage::User { text: "hello".into() },
+        message: AgentMessage::User {
+            text: "hello".into(),
+        },
     };
     let usage_id = UsageId::new();
     let op = OperationId::new();
@@ -46,7 +50,14 @@ async fn check_backend<S: Storage>(store: &S) {
             .unwrap(),
         id.to_string()
     );
-    assert_eq!(store.get_list(&ValueAddr::new("app.list", "a")).await.unwrap().len(), 1);
+    assert_eq!(
+        store
+            .get_list(&ValueAddr::new("app.list", "a"))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert!(store.get_usage(usage_id).await.unwrap().is_some());
 
     let dup = Entry::Message {

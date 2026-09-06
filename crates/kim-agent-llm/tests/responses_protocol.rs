@@ -1,6 +1,6 @@
-use kim_agent_llm::{parse_sse_stream, reduce_events, LlmError, ScriptedLlm, LlmClient};
-use kim_agent_types::{AssistantContent, Context, StopReason, StreamEvent};
 use futures::StreamExt;
+use kim_agent_llm::{parse_sse_stream, reduce_events, LlmClient, LlmError, ScriptedLlm};
+use kim_agent_types::{AssistantContent, Context, StopReason, StreamEvent};
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> String {
@@ -15,10 +15,7 @@ fn text_only_stream_settles_stop() {
     let events = parse_sse_stream(&fixture("text_only.sse")).unwrap();
     let settled = reduce_events(events);
     assert_eq!(settled.stop_reason, StopReason::Stop);
-    assert_eq!(
-        settled.provider_response_id.as_deref(),
-        Some("resp_text_1")
-    );
+    assert_eq!(settled.provider_response_id.as_deref(), Some("resp_text_1"));
     match &settled.content[0] {
         AssistantContent::Text { text } => assert_eq!(text, "Hello, world"),
         _ => panic!("expected text"),

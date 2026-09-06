@@ -86,11 +86,7 @@ async fn run_e2e(storage: Arc<dyn Storage>) {
         },
         other => panic!("unexpected drive status {other:?}"),
     }
-    assert_eq!(
-        echo.call_count
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
+    assert_eq!(echo.call_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     // tree has user + assistant(tool) + tool + assistant(text)
     let entries = storage.scan_entries().await.unwrap();

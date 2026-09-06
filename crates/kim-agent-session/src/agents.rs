@@ -149,11 +149,7 @@ mod tests {
             "agents dir instructions",
         )
         .unwrap();
-        fs::write(
-            dir.path().join(".agents/skills/foo.md"),
-            "skill foo",
-        )
-        .unwrap();
+        fs::write(dir.path().join(".agents/skills/foo.md"), "skill foo").unwrap();
 
         let (text, meta) = discover_agents_context(dir.path(), DEFAULT_AGENTS_CHAR_CAP);
         assert!(meta.root_agents_md.is_some());

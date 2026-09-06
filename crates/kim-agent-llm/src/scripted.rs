@@ -46,10 +46,7 @@ impl LlmClient for ScriptedLlm {
                 if cancelled.is_cancelled() {
                     return Some((Err(LlmError::Aborted), (iter, cancelled, true)));
                 }
-                match iter.next() {
-                    Some(ev) => Some((Ok(ev), (iter, cancelled, false))),
-                    None => None,
-                }
+                iter.next().map(|ev| (Ok(ev), (iter, cancelled, false)))
             },
         );
         Ok(Box::pin(s))

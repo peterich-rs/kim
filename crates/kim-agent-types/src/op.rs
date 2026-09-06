@@ -159,21 +159,11 @@ impl OperationState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LaneState {
     pub current_operation_id: Option<OperationId>,
     pub last_operation_id: Option<OperationId>,
     pub inbox: Vec<serde_json::Value>,
-}
-
-impl Default for LaneState {
-    fn default() -> Self {
-        Self {
-            current_operation_id: None,
-            last_operation_id: None,
-            inbox: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

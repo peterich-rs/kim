@@ -10,9 +10,7 @@ pub use scripted::ScriptedLlm;
 
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use kim_agent_types::{
-    Context, JsonValue, StreamEvent, ToolChoice, ToolSchema,
-};
+use kim_agent_types::{Context, JsonValue, StreamEvent, ToolChoice, ToolSchema};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -108,16 +106,12 @@ pub fn map_history_to_input(items: &[(String, String)]) -> Vec<ResponseInputItem
             let (role, part) = if role == "assistant" {
                 (
                     "assistant".to_string(),
-                    ContentPart::OutputText {
-                        text: text.clone(),
-                    },
+                    ContentPart::OutputText { text: text.clone() },
                 )
             } else {
                 (
                     "user".to_string(),
-                    ContentPart::InputText {
-                        text: text.clone(),
-                    },
+                    ContentPart::InputText { text: text.clone() },
                 )
             };
             ResponseInputItem::Message {

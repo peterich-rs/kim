@@ -103,7 +103,10 @@ impl Tool for ScriptedTool {
     async fn call(&self, _args: JsonValue) -> Result<ToolResult, ToolError> {
         self.call_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let mut g = self.outputs.lock().map_err(|e| ToolError::Failed(e.to_string()))?;
+        let mut g = self
+            .outputs
+            .lock()
+            .map_err(|e| ToolError::Failed(e.to_string()))?;
         if g.is_empty() {
             Ok(ToolResult {
                 output: "scripted: no more outputs".into(),

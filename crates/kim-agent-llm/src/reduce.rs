@@ -2,9 +2,7 @@
 
 use crate::LlmError;
 use futures::StreamExt;
-use kim_agent_types::{
-    AssistantContent, SettledAssistantMessage, StopReason, StreamEvent, Usage,
-};
+use kim_agent_types::{AssistantContent, SettledAssistantMessage, StopReason, StreamEvent, Usage};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Default)]
@@ -56,7 +54,11 @@ impl Reducer {
                 output_index,
                 delta,
             } => {
-                self.texts.entry(output_index).or_default().text.push_str(&delta);
+                self.texts
+                    .entry(output_index)
+                    .or_default()
+                    .text
+                    .push_str(&delta);
             }
             StreamEvent::ToolCallStarted {
                 output_index,
@@ -109,11 +111,15 @@ impl Reducer {
         // Classification order (§10.6): Aborted → Error → Length → ToolUse → Stop
         let stop_reason = if self.aborted {
             StopReason::Aborted
-        } else if let Some(_) = &self.failed {
+        } else if self.failed.is_some() {
             StopReason::Error
         } else if self.length {
             StopReason::Length
-        } else if self.tools.values().any(|t| t.finished || !t.name.is_empty()) {
+        } else if self
+            .tools
+            .values()
+            .any(|t| t.finished || !t.name.is_empty())
+        {
             StopReason::ToolUse
         } else {
             StopReason::Stop
@@ -141,19 +147,18 @@ impl Reducer {
             }
             if let Some(tool) = self.tools.get(&idx) {
                 if !tool.name.is_empty() || tool.finished {
-                    let (arguments, parse_error) = match serde_json::from_str::<serde_json::Value>(
-                        if tool.args.is_empty() {
+                    let (arguments, parse_error) =
+                        match serde_json::from_str::<serde_json::Value>(if tool.args.is_empty() {
                             "{}"
                         } else {
                             &tool.args
-                        },
-                    ) {
-                        Ok(v) => (v, None),
-                        Err(e) => (
-                            serde_json::json!({}),
-                            Some(format!("invalid tool arguments json: {e}")),
-                        ),
-                    };
+                        }) {
+                            Ok(v) => (v, None),
+                            Err(e) => (
+                                serde_json::json!({}),
+                                Some(format!("invalid tool arguments json: {e}")),
+                            ),
+                        };
                     content.push(AssistantContent::ToolCall {
                         call_id: tool.call_id.clone(),
                         name: tool.name.clone(),

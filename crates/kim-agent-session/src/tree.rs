@@ -1,7 +1,5 @@
 use kim_agent_storage::{Storage, StorageError, ValueAddr, Write};
-use kim_agent_types::{
-    AgentMessage, Entry, EntryBase, EntryId, LaneState, StopReason,
-};
+use kim_agent_types::{AgentMessage, Entry, EntryBase, EntryId, LaneState, StopReason};
 use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
@@ -60,8 +58,9 @@ impl SessionFacade {
             .await?;
         match v {
             None => Ok(LaneState::default()),
-            Some(val) => serde_json::from_value(val)
-                .map_err(|e| SessionError::Serde(e.to_string())),
+            Some(val) => {
+                serde_json::from_value(val).map_err(|e| SessionError::Serde(e.to_string()))
+            }
         }
     }
 

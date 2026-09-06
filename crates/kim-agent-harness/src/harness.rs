@@ -2,9 +2,7 @@ use crate::effects::Effects;
 use futures::StreamExt;
 use kim_agent_hooks::{BeforeToolDecision, Hooks, NoopHooks, ToolInvocation};
 use kim_agent_llm::{reduce_events, ContentPart, ModelRef, ResponseInputItem, ResponseRequest};
-use kim_agent_session::{
-    discover_agents_context, SessionFacade, DEFAULT_AGENTS_CHAR_CAP,
-};
+use kim_agent_session::{discover_agents_context, SessionFacade, DEFAULT_AGENTS_CHAR_CAP};
 use kim_agent_storage::{now_ms, Storage, ValueAddr, Write};
 use kim_agent_tools::ToolRegistry;
 use kim_agent_types::*;
@@ -183,7 +181,11 @@ impl Harness {
                     if scope.is_cancel_requested() || cx.is_cancelled() {
                         return self.terminal_abort(op, None).await;
                     }
-                    let tip = self.session.branch_tip().await?.unwrap_or_else(EntryId::new);
+                    let tip = self
+                        .session
+                        .branch_tip()
+                        .await?
+                        .unwrap_or_else(EntryId::new);
                     let next = OperationState::Checkpoint {
                         scope: {
                             // before_run skipped (D4 optional)
@@ -214,7 +216,9 @@ impl Harness {
                 }
                 OperationState::AssistantReady { scope } => {
                     if scope.is_cancel_requested() || cx.is_cancelled() {
-                        return self.terminal_abort(op, scope.latest_assistant_entry_id).await;
+                        return self
+                            .terminal_abort(op, scope.latest_assistant_entry_id)
+                            .await;
                     }
                     let response_entry_id = EntryId::new();
                     let usage_id = UsageId::new();
@@ -239,7 +243,14 @@ impl Harness {
                             .await;
                     }
                     match self
-                        .run_assistant_effect(op, &mut scope, response_entry_id, usage_id, attempt, cx)
+                        .run_assistant_effect(
+                            op,
+                            &mut scope,
+                            response_entry_id,
+                            usage_id,
+                            attempt,
+                            cx,
+                        )
                         .await
                     {
                         Ok(DriveStep::Continue) => {}
@@ -268,15 +279,10 @@ impl Harness {
                     scope,
                     step_id,
                     calls,
-                } => {
-                    match self
-                        .drive_tools(op, scope, step_id, calls, cx)
-                        .await?
-                    {
-                        DriveStep::Continue => {}
-                        DriveStep::Done(status) => return Ok(status),
-                    }
-                }
+                } => match self.drive_tools(op, scope, step_id, calls, cx).await? {
+                    DriveStep::Continue => {}
+                    DriveStep::Done(status) => return Ok(status),
+                },
             }
         }
     }
@@ -368,7 +374,14 @@ impl Harness {
                         provider_response_id: None,
                     };
                     return self
-                        .settle_assistant(op, scope, response_entry_id, usage_id, settled, Usage::default())
+                        .settle_assistant(
+                            op,
+                            scope,
+                            response_entry_id,
+                            usage_id,
+                            settled,
+                            Usage::default(),
+                        )
                         .await;
                 }
             }
@@ -382,8 +395,15 @@ impl Harness {
         if aborted {
             settled.stop_reason = StopReason::Aborted;
         }
-        self.settle_assistant(op, scope, response_entry_id, usage_id, settled, Usage::default())
-            .await
+        self.settle_assistant(
+            op,
+            scope,
+            response_entry_id,
+            usage_id,
+            settled,
+            Usage::default(),
+        )
+        .await
     }
 
     async fn settle_assistant_aborted(
@@ -401,7 +421,14 @@ impl Harness {
             provider_response_id: None,
         };
         match self
-            .settle_assistant(op, &mut scope, response_entry_id, usage_id, settled, Usage::default())
+            .settle_assistant(
+                op,
+                &mut scope,
+                response_entry_id,
+                usage_id,
+                settled,
+                Usage::default(),
+            )
             .await?
         {
             DriveStep::Done(s) => Ok(s),
@@ -480,11 +507,13 @@ impl Harness {
                     self.terminal_abort(op, Some(response_entry_id)).await?,
                 ));
             }
-            StopReason::Error | StopReason::Length | StopReason::Stop => OperationState::Checkpoint {
-                scope: scope.clone(),
-                continuation: Continuation::MayFinish,
-                trigger_entry_id: response_entry_id,
-            },
+            StopReason::Error | StopReason::Length | StopReason::Stop => {
+                OperationState::Checkpoint {
+                    scope: scope.clone(),
+                    continuation: Continuation::MayFinish,
+                    trigger_entry_id: response_entry_id,
+                }
+            }
         };
 
         self.session
@@ -723,7 +752,11 @@ impl Harness {
         let mut progressed = false;
         for i in 0..calls.len() {
             // Only materialize if all previous are Completed
-            if calls.iter().take(i).any(|c| !matches!(c, ToolCallState::Completed { .. })) {
+            if calls
+                .iter()
+                .take(i)
+                .any(|c| !matches!(c, ToolCallState::Completed { .. }))
+            {
                 break;
             }
             if let ToolCallState::OutcomeReady {
@@ -915,7 +948,11 @@ impl Harness {
         serde_json::from_value(v).map_err(|e| HarnessError::Serde(e.to_string()))
     }
 
-    async fn save_op_state(&self, op: OperationId, state: &OperationState) -> Result<(), HarnessError> {
+    async fn save_op_state(
+        &self,
+        op: OperationId,
+        state: &OperationState,
+    ) -> Result<(), HarnessError> {
         self.session
             .storage()
             .commit(vec![Write::SetValue {
@@ -943,9 +980,7 @@ fn map_messages_to_input(msgs: &[AgentMessage]) -> Vec<ResponseInputItem> {
             AgentMessage::System { text } | AgentMessage::User { text } => {
                 out.push(ResponseInputItem::Message {
                     role: "user".into(),
-                    content: vec![ContentPart::InputText {
-                        text: text.clone(),
-                    }],
+                    content: vec![ContentPart::InputText { text: text.clone() }],
                 });
             }
             AgentMessage::Assistant { content, .. } => {

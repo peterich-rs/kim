@@ -35,7 +35,10 @@ impl Default for MemoryStorage {
 #[async_trait]
 impl Storage for MemoryStorage {
     async fn commit(&self, writes: Vec<Write>) -> StorageResult<CommitResult> {
-        let mut g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let mut g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         let ts = now_ms();
         let first_seq = g.next_seq + 1;
         let mut seqs = Vec::with_capacity(writes.len());
@@ -97,19 +100,28 @@ impl Storage for MemoryStorage {
     }
 
     async fn get_entry(&self, id: EntryId) -> StorageResult<Option<Entry>> {
-        let g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         Ok(g.entries.get(&id).cloned())
     }
 
     async fn get_value(&self, addr: &ValueAddr) -> StorageResult<Option<JsonValue>> {
-        let g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         Ok(g.values
             .get(&(addr.namespace.clone(), addr.key.clone()))
             .cloned())
     }
 
     async fn get_list(&self, addr: &ListAddr) -> StorageResult<Vec<JsonValue>> {
-        let g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         Ok(g.lists
             .get(&(addr.namespace.clone(), addr.key.clone()))
             .cloned()
@@ -117,12 +129,18 @@ impl Storage for MemoryStorage {
     }
 
     async fn get_usage(&self, id: UsageId) -> StorageResult<Option<UsageRow>> {
-        let g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         Ok(g.usage.get(&id).cloned())
     }
 
     async fn scan_entries(&self) -> StorageResult<Vec<Entry>> {
-        let g = self.inner.lock().map_err(|e| StorageError::Backend(e.to_string()))?;
+        let g = self
+            .inner
+            .lock()
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
         let mut v: Vec<_> = g.entries.values().cloned().collect();
         v.sort_by_key(|e| e.base().seq);
         Ok(v)

@@ -252,8 +252,8 @@ impl Storage for SqliteStorage {
         let mut out = Vec::new();
         for r in rows {
             let payload: String = r.get(0);
-            let v: JsonValue = serde_json::from_str(&payload)
-                .map_err(|e| StorageError::Corrupt(e.to_string()))?;
+            let v: JsonValue =
+                serde_json::from_str(&payload).map_err(|e| StorageError::Corrupt(e.to_string()))?;
             out.push(v);
         }
         Ok(out)
@@ -284,8 +284,8 @@ impl Storage for SqliteStorage {
         let mut out = Vec::new();
         for r in rows {
             let payload: String = r.get(0);
-            let e: Entry = serde_json::from_str(&payload)
-                .map_err(|e| StorageError::Corrupt(e.to_string()))?;
+            let e: Entry =
+                serde_json::from_str(&payload).map_err(|e| StorageError::Corrupt(e.to_string()))?;
             out.push(e);
         }
         Ok(out)
@@ -316,9 +316,7 @@ mod tests {
                     seq: 0,
                     timestamp_ms: 0,
                 },
-                message: AgentMessage::User {
-                    text: "hi".into(),
-                },
+                message: AgentMessage::User { text: "hi".into() },
             };
             store
                 .commit(vec![
