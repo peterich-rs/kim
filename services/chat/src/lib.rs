@@ -51,7 +51,6 @@ use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{IdGenerator, SequenceIdGen};
-use crate::interest::{MemoryRoomInterest, RoomInterestStore};
 use crate::presence::{offline_debounce_from_env, PresenceHub};
 use crate::room::{do_room_enter, do_room_leave};
 use crate::social::{MemorySocialDirectory, SocialDirectory};
@@ -74,6 +73,9 @@ pub use group::{do_group_create, do_group_detail, do_group_join, do_group_member
 pub use hmac_nonce::RedisHmacNonceGuard;
 pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
 pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
+#[cfg(feature = "redis")]
+pub use interest::RedisRoomInterest;
+pub use interest::{open_room_interest, MemoryRoomInterest, RoomInterestStore};
 pub use kim_session::open_uncached_session_store;
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
@@ -241,8 +243,35 @@ impl ChatHandler {
         social: Arc<dyn SocialDirectory>,
         pending_receipt: bool,
     ) -> Self {
+        Self::with_social_interest(
+            container,
+            cache,
+            store,
+            groups,
+            zone,
+            filter,
+            users,
+            social,
+            pending_receipt,
+            Arc::new(MemoryRoomInterest::new()),
+        )
+    }
+
+    /// Production path: inject Redis (or memory) room-interest from boot.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_social_interest(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
+        pending_receipt: bool,
+        interest: Arc<dyn RoomInterestStore>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
-        let interest: Arc<dyn RoomInterestStore> = Arc::new(MemoryRoomInterest::new());
         let presence = Arc::new(PresenceHub::new(
             interest,
             cache.clone(),

@@ -331,7 +331,6 @@ impl KimApi {
     }
 }
 
-
 fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {
     let mut ev = KimSessionEvent::empty();
     ev.kind = "link".into();

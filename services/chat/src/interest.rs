@@ -5,7 +5,7 @@
 //! - `room:viewing:{app}:{account}:{channel}` → SET of `dest:kind`
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -382,6 +382,29 @@ mod redis_store {
 
 #[cfg(feature = "redis")]
 pub use redis_store::RedisRoomInterest;
+
+/// Open room-interest store. Empty/`None` → in-memory (tests / local default).
+/// Non-empty URL requires `--features redis` (same URL as session / ack).
+pub async fn open_room_interest(
+    redis_url: Option<&str>,
+) -> Result<Arc<dyn RoomInterestStore>, InterestError> {
+    match redis_url {
+        None | Some("") => Ok(Arc::new(MemoryRoomInterest::new())),
+        Some(url) => open_redis_room_interest(url).await,
+    }
+}
+
+#[cfg(feature = "redis")]
+async fn open_redis_room_interest(url: &str) -> Result<Arc<dyn RoomInterestStore>, InterestError> {
+    Ok(Arc::new(RedisRoomInterest::open(url).await?))
+}
+
+#[cfg(not(feature = "redis"))]
+async fn open_redis_room_interest(_url: &str) -> Result<Arc<dyn RoomInterestStore>, InterestError> {
+    Err(InterestError::Backend(
+        "rebuild chat with --features redis".into(),
+    ))
+}
 
 #[cfg(test)]
 mod tests {
