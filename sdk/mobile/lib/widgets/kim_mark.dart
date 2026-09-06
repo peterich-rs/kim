@@ -2,6 +2,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/kim_theme.dart';
+
 class KimMark extends StatelessWidget {
   const KimMark({super.key, this.size = 56});
 
@@ -15,25 +17,14 @@ class KimMark extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [scheme.primary, scheme.tertiary],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.primary.withValues(alpha: 0.28),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(KimTheme.radiusField),
       ),
       child: Text(
         'K',
         style: TextStyle(
           color: scheme.onPrimary,
-          fontSize: size * 0.46,
+          fontSize: size * 0.44,
           fontWeight: FontWeight.w700,
           height: 1,
         ),
