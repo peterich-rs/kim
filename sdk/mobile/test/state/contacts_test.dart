@@ -41,4 +41,20 @@ void main() {
       expect(social.isIncoming('bob'), isFalse);
     },
   );
+
+  test('onProfileUpdated patches friend nickname and avatar', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.fake.friends = const [
+      KimPerson(account: 'bob', nickname: 'Bobby', avatar: 'old.png'),
+    ];
+    await env.container.read(contactsProvider.notifier).refresh();
+    await Future<void>.delayed(Duration.zero);
+    env.container
+        .read(contactsProvider.notifier)
+        .onProfileUpdated('bob', 'Robert', 'new.png');
+    final bob = env.container.read(contactsProvider).person('bob');
+    expect(bob?.nickname, 'Robert');
+    expect(bob?.avatar, 'new.png');
+  });
 }

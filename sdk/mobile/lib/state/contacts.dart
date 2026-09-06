@@ -216,6 +216,33 @@ class ContactsNotifier extends Notifier<ContactsState> {
     );
     unawaited(refresh());
   }
+
+  /// Patch a known contact's nickname/avatar from `chat.user.updated`.
+  void onProfileUpdated(String account, String nickname, String avatar) {
+    if (account.isEmpty) {
+      return;
+    }
+    final title = nickname.isEmpty ? account : nickname;
+    List<KimPerson> patch(List<KimPerson> rows) {
+      return [
+        for (final p in rows)
+          if (p.account == account)
+            KimPerson(account: account, nickname: title, avatar: avatar)
+          else
+            p,
+      ];
+    }
+
+    final friends = patch(state.friends);
+    final incoming = patch(state.incoming);
+    final hits = patch(state.hits);
+    if (friends == state.friends &&
+        incoming == state.incoming &&
+        hits == state.hits) {
+      return;
+    }
+    state = state.copyWith(friends: friends, incoming: incoming, hits: hits);
+  }
 }
 
 final contactsProvider = NotifierProvider<ContactsNotifier, ContactsState>(

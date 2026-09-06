@@ -153,6 +153,24 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     );
   }
 
+  /// Refresh DM thread title/avatar when a friend profile push arrives.
+  void patchPeerProfile(
+    String account, {
+    required String title,
+    required String avatar,
+  }) {
+    final existing = state.thread(account);
+    if (existing == null || existing.kind != ThreadKind.user) {
+      return;
+    }
+    final nextTitle = title.isEmpty ? account : title;
+    if (existing.title == nextTitle && existing.avatar == avatar) {
+      return;
+    }
+    _upsert(existing.copyWith(title: nextTitle, avatar: avatar));
+    _persist();
+  }
+
   KimThread ensureThread({
     required String id,
     ThreadKind kind = ThreadKind.user,

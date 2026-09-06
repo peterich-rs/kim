@@ -1,9 +1,11 @@
 use kim_protocol::pkt::{
     Status, UserProfile as PbProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
+use kim_protocol::CMD_USER_UPDATED;
 use kim_router::Context;
 use tracing::warn;
 
+use crate::notify::notify_account;
 use crate::social::SocialDirectory;
 use crate::users::{
     validate_patch, ProfilePatch, UserDirectory, UserError, UserProfile, SEARCH_LIMIT,
@@ -50,7 +52,7 @@ pub async fn do_user_profile(ctx: Context, users: &dyn UserDirectory) {
     }
 }
 
-pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory) {
+pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory, social: &dyn SocialDirectory) {
     let req = match ctx.read_body::<UserProfileUpdate>() {
         Ok(r) => r,
         Err(err) => {
@@ -81,7 +83,9 @@ pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory) {
         .await
     {
         Ok(p) => {
-            let _ = ctx.resp(Status::Success, Some(&to_pb(&p))).await;
+            let body = to_pb(&p);
+            let _ = ctx.resp(Status::Success, Some(&body)).await;
+            push_profile_updated(&ctx, social, &body).await;
         }
         Err(UserError::NotFound) => {
             let _ = ctx
@@ -98,6 +102,21 @@ pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory) {
             let _ = ctx.resp_with_error(Status::SystemException, &err).await;
         }
     }
+}
+
+/// Push full profile snapshot to online friends (and other online devices of self).
+async fn push_profile_updated(ctx: &Context, social: &dyn SocialDirectory, body: &PbProfile) {
+    let me = ctx.session().account.as_str();
+    match social.list_friends(&ctx.session().app, me).await {
+        Ok(friends) => {
+            for peer in friends {
+                notify_account(ctx, &peer, CMD_USER_UPDATED, body).await;
+            }
+        }
+        Err(err) => warn!(%err, "list friends for profile push failed"),
+    }
+    // Other online devices of the updater (dispatch_cmd skips this channel).
+    notify_account(ctx, me, CMD_USER_UPDATED, body).await;
 }
 
 pub async fn do_user_search(ctx: Context, users: &dyn UserDirectory, social: &dyn SocialDirectory) {

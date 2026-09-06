@@ -26,6 +26,7 @@ pub const CMD_OFFLINE_INDEX: &str = "chat.offline.index";
 pub const CMD_OFFLINE_CONTENT: &str = "chat.offline.content";
 pub const CMD_USER_PROFILE: &str = "chat.user.profile";
 pub const CMD_USER_UPDATE: &str = "chat.user.update";
+pub const CMD_USER_UPDATED: &str = "chat.user.updated";
 pub const CMD_USER_SEARCH: &str = "chat.user.search";
 pub const CMD_FRIEND_REQUEST: &str = "chat.friend.request";
 pub const CMD_FRIEND_ACCEPT: &str = "chat.friend.accept";
@@ -73,6 +74,7 @@ mod tests {
         assert_eq!(service_name(CMD_OFFLINE_INDEX), "chat");
         assert_eq!(service_name(CMD_OFFLINE_CONTENT), "chat");
         assert_eq!(service_name(CMD_USER_PROFILE), "chat");
+        assert_eq!(service_name(CMD_USER_UPDATED), "chat");
         assert_eq!(service_name(CMD_FRIEND_REQUEST), "chat");
         assert_eq!(service_name(CMD_INBOX_LIST), "chat");
         assert_eq!(service_name(CMD_HISTORY), "chat");

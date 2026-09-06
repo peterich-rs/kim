@@ -9,7 +9,7 @@ use kim_protocol::pkt::{
 use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_BLOCK_ADD, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
     CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -202,6 +202,54 @@ async fn accept_pushes_friend_accept_to_requester() {
             assert_eq!(n.from_account, "bob");
         }
         _ => panic!("expected accept push"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn profile_update_pushes_to_online_friend() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+
+    become_friends(&alice, &bob, "bob", "alice").await;
+
+    let mut upd = LogicPkt::new(CMD_USER_UPDATE, 20, Bytes::new());
+    upd.write_body(&UserProfileUpdate {
+        nickname: "AliNew".into(),
+        avatar: "https://cdn.example/a.png".into(),
+        bio: "bio".into(),
+    });
+    alice
+        .send(marshal(&Packet::Logic(upd)))
+        .await
+        .expect("update");
+    let frame = timeout_read(&alice).await;
+    match read(&frame.payload).expect("upd resp") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::Success as i32);
+            let got: UserProfile = p.read_body().expect("profile");
+            assert_eq!(got.nickname, "AliNew");
+            assert_eq!(got.avatar, "https://cdn.example/a.png");
+        }
+        _ => panic!("expected update response"),
+    }
+
+    let frame = timeout_read(&bob).await;
+    match read(&frame.payload).expect("upd push") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.flag, Flag::Push as i32);
+            assert_eq!(p.header.command, CMD_USER_UPDATED);
+            let got: UserProfile = p.read_body().expect("push profile");
+            assert_eq!(got.account, "alice");
+            assert_eq!(got.nickname, "AliNew");
+            assert_eq!(got.avatar, "https://cdn.example/a.png");
+            assert_eq!(got.bio, "bio");
+        }
+        _ => panic!("expected profile push"),
     }
 
     let _ = stack.gw.shutdown().await;

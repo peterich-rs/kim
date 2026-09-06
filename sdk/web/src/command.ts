@@ -14,6 +14,7 @@ export const Command = {
   GroupMembers: "chat.group.members",
   UserProfile: "chat.user.profile",
   UserUpdate: "chat.user.update",
+  UserUpdated: "chat.user.updated",
   UserSearch: "chat.user.search",
   FriendRequest: "chat.friend.request",
   FriendAccept: "chat.friend.accept",

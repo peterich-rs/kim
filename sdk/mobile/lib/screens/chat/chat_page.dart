@@ -240,6 +240,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final me = ref.watch(profileProvider);
     final thread = ref.watch(threadMessagesProvider(widget.id));
     final account = session.account;
+    final liveTitle = widget.kind == ThreadKind.user
+        ? (social.person(widget.id)?.title ?? widget.title)
+        : widget.title;
     final gated =
         widget.kind == ThreadKind.user &&
         social.ready &&
@@ -322,7 +325,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             ),
                             const Gap(8),
                             _ChatTitleChrome(
-                              title: widget.title,
+                              title: liveTitle,
                               avatarUrl: avatarFor(me, social, widget.id),
                               status: session.status,
                             ),
@@ -353,7 +356,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 child: gated
                     ? _FriendGate(
                         dest: widget.id,
-                        title: widget.title,
+                        title: liveTitle,
                         incoming: social.isIncoming(widget.id),
                         outgoing: social.isOutgoing(widget.id),
                       )

@@ -430,6 +430,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'kick' => KimEventKind.kick,
       'friend' => KimEventKind.friend,
       'friend_accepted' => KimEventKind.friendAccepted,
+      'profile_updated' => KimEventKind.profileUpdated,
       'group' => KimEventKind.group,
       'token' => KimEventKind.token,
       'link' => KimEventKind.link,

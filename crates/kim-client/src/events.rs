@@ -117,6 +117,10 @@ pub enum Event {
         from: String,
         nickname: String,
     },
+    /// Push `chat.user.updated` — friend (or self other device) profile snapshot.
+    ProfileUpdated {
+        profile: Profile,
+    },
     UserList {
         command: String,
         sequence: u32,

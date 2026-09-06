@@ -609,6 +609,7 @@ fn is_unsolicited(event: &Event) -> bool {
             | Event::GroupCreate { .. }
             | Event::FriendRequest { .. }
             | Event::FriendAccepted { .. }
+            | Event::ProfileUpdated { .. }
             | Event::Closed
     )
 }

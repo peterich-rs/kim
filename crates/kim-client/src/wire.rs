@@ -11,8 +11,8 @@ use kim_protocol::{
     CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
     CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ,
     CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE,
-    MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -260,6 +260,12 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
         return Ok(Event::FriendRequest {
             from: n.from_account,
             nickname: n.from_nickname,
+        });
+    }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_USER_UPDATED {
+        let u: UserProfile = p.read_body()?;
+        return Ok(Event::ProfileUpdated {
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar),
         });
     }
     if p.header.flag == Flag::Push as i32
