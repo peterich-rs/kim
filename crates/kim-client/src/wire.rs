@@ -4,15 +4,17 @@ use kim_protocol::pkt::{
     AuthResp, ConversationReadReq, Flag, FriendRequestNotify, GroupCreateNotify, HistoryReq,
     HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq, MessageAckReq, MessageContentReq,
     MessageContentResp, MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp,
-    Status, UserListResp, UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
+    PresencePush, RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, UserListResp, UserProfile,
+    UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
     CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ,
-    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP,
-    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE,
+    CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
+    CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -209,6 +211,24 @@ pub fn encode_user_search(seq: u32, query: &str) -> Bytes {
     marshal(&Packet::Logic(pkt))
 }
 
+pub fn encode_room_enter(seq: u32, dest: &str, kind: i32) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_ROOM_ENTER, seq, Bytes::new());
+    pkt.write_body(&RoomEnterReq {
+        dest: dest.to_string(),
+        kind,
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_room_leave(seq: u32, dest: &str, kind: i32) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_ROOM_LEAVE, seq, Bytes::new());
+    pkt.write_body(&RoomLeaveReq {
+        dest: dest.to_string(),
+        kind,
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
 pub fn is_kickout(pkt: &LogicPkt) -> Option<KickoutNotify> {
     if pkt.header.flag != Flag::Push as i32 {
         return None;
@@ -266,6 +286,52 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
         let u: UserProfile = p.read_body()?;
         return Ok(Event::ProfileUpdated {
             profile: Profile::from_wire(u.account, u.nickname, u.avatar),
+        });
+    }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_PRESENCE {
+        let push: PresencePush = p.read_body()?;
+        // Decode path returns first entry; pump/supervisor expand batches.
+        // For Event stream we emit one PresenceUpdated per entry via helper.
+        if let Some(e) = push.entries.first() {
+            return Ok(Event::PresenceUpdated {
+                account: e.account.clone(),
+                status: e.status,
+                last_seen: e.last_seen,
+            });
+        }
+        return Ok(Event::PresenceUpdated {
+            account: String::new(),
+            status: 0,
+            last_seen: 0,
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_ROOM_ENTER {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: RoomEnterResp = p.read_body()?;
+        return Ok(Event::RoomEnter {
+            sequence: p.header.sequence,
+            presence: resp
+                .presence
+                .into_iter()
+                .map(|e| crate::events::PresenceEntry {
+                    account: e.account,
+                    status: e.status,
+                    last_seen: e.last_seen,
+                })
+                .collect(),
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_ROOM_LEAVE {
+        return Ok(Event::Status {
+            command: p.header.command,
+            status: p.header.status,
+            sequence: p.header.sequence,
         });
     }
     if p.header.flag == Flag::Push as i32

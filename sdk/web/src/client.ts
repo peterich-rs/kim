@@ -20,6 +20,8 @@ import {
   decodeMessageResp,
   decodeUserListResp,
   decodeUserProfile,
+  decodePresencePush,
+  decodeRoomEnterResp,
   decodeUserSearchResp,
   encodeAckReq,
   encodeContentReq,
@@ -31,9 +33,12 @@ import {
   encodeInboxReq,
   encodeIndexReq,
   encodeMessageReq,
+  encodeRoomEnterReq,
+  encodeRoomLeaveReq,
   encodeUserProfileUpdate,
   encodeUserSearchReq,
   type WireHistoryItem,
+  type WirePresence,
   type WireInboxItem,
   type WireIndex,
   type WireProfile,
@@ -158,6 +163,7 @@ export class KIMClient implements ContentLoader {
   private friendRequestCallback: ((from: string, nickname: string) => void) | undefined;
   private friendAcceptedCallback: ((from: string, nickname: string) => void) | undefined;
   private profileUpdatedCallback: ((profile: WireProfile) => void) | undefined;
+  private presenceCallback: ((entries: WirePresence[]) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private pendingAckIds: bigint[] = [];
   private lastAckArrival = 0;
@@ -217,6 +223,10 @@ export class KIMClient implements ContentLoader {
 
   onprofileupdated(cb: (profile: WireProfile) => void): void {
     this.profileUpdatedCallback = cb;
+  }
+
+  onpresence(cb: (entries: WirePresence[]) => void): void {
+    this.presenceCallback = cb;
   }
 
   ontoken(cb: (token: string, exp: number) => void): void {
@@ -415,6 +425,40 @@ export class KIMClient implements ContentLoader {
       return { status: resp.status, err: new Error(`status ${resp.status}`) };
     }
     return { status: resp.status, profile: decodeUserProfile(resp.payload) };
+  }
+
+  async roomEnter(
+    dest: string,
+    kind = 0,
+  ): Promise<{ status: number; presence: WirePresence[]; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.RoomEnter,
+      "",
+      encodeRoomEnterReq(dest, kind),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, presence: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, presence: decodeRoomEnterResp(resp.payload) };
+  }
+
+  async roomLeave(
+    dest: string,
+    kind = 0,
+  ): Promise<{ status: number; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.RoomLeave,
+      "",
+      encodeRoomLeaveReq(dest, kind),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status };
   }
 
   async searchUsers(query: string): Promise<{ status: number; users: WireProfile[]; err?: Error }> {
@@ -773,6 +817,11 @@ export class KIMClient implements ContentLoader {
       case Command.UserUpdated: {
         const profile = decodeUserProfile(pkt.payload);
         this.profileUpdatedCallback?.(profile);
+        break;
+      }
+      case Command.Presence: {
+        const entries = decodePresencePush(pkt.payload);
+        this.presenceCallback?.(entries);
         break;
       }
       default:

@@ -1,6 +1,6 @@
 # Presence 与房间兴趣（进房 / 退房）方案
 
-状态：**设计定稿（待实现）**  
+状态：**P1a+P1b 已落地（本 PR）**  
 日期：2026-09-06  
 范围：好友在线状态（Presence）+ 会话级房间兴趣（Room Interest）  
 不在范围：资料变更推送（见 `chat.user.updated` / PR #92）、隐身模式产品细节、群成员列表级 presence 广播

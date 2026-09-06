@@ -9,6 +9,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
+import '../../state/presence.dart';
 import '../../state/contacts.dart';
 import '../../state/link.dart';
 import '../../state/inbox.dart';
@@ -180,6 +181,9 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
                   return ConversationTile(
                     thread: thread,
                     avatarUrl: avatarFor(me, social, thread.id),
+                    presence: thread.kind == ThreadKind.user
+                        ? ref.watch(peerPresenceProvider(thread.id))
+                        : PeerPresenceStatus.unknown,
                     onOpen: () {
                       KimHaptics.selection();
                       ref

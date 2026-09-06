@@ -13,6 +13,7 @@ import '../core/user_agent.dart';
 import '../models/models.dart';
 import 'auth.dart';
 import 'contacts.dart';
+import 'presence.dart';
 import 'inbox.dart';
 import 'location.dart';
 import 'messages.dart';
@@ -237,6 +238,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         unawaited(_friendPush(event, accepted: true));
       case KimEventKind.profileUpdated:
         _onProfileUpdated(event);
+      case KimEventKind.presence:
+        _onPresence(event);
       case KimEventKind.group:
         if (event.dest.isNotEmpty) {
           ref
@@ -281,6 +284,20 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     ref
         .read(threadsProvider.notifier)
         .patchPeerProfile(account, title: nickname, avatar: avatar);
+  }
+
+  void _onPresence(KimEvent event) {
+    final account = event.sender.isNotEmpty ? event.sender : event.dest;
+    if (account.isEmpty) {
+      return;
+    }
+    ref
+        .read(presenceProvider.notifier)
+        .applyPush(
+          account: account,
+          status: event.msgType,
+          lastSeen: event.sendTime,
+        );
   }
 
   Future<void> _onSyncPage(KimEvent event) async {

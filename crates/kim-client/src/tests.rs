@@ -14,14 +14,14 @@ use kim_protocol::pkt::{
     HistoryResp, InboxItem as ProtoInbox, InboxReq, InboxResp, KickoutNotify, LoginReq, LoginResp,
     Message as PktMessage, MessageAckReq, MessageContentReq, MessageContentResp,
     MessageIndex as ProtoIndex, MessageIndexReq, MessageIndexResp, MessagePush, MessageReq,
-    MessageResp, Status, UserListResp, UserProfile,
+    MessageResp, Presence, PresencePush, Status, UserListResp, UserProfile,
 };
 use kim_protocol::{
     generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY,
     CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    CMD_USER_UPDATED, CODE_PING, DEMO_DEFAULT_SECRET, INBOX_KIND_GROUP, INBOX_KIND_USER,
-    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    CMD_PRESENCE, CMD_ROOM_ENTER, CMD_USER_UPDATED, CODE_PING, DEMO_DEFAULT_SECRET,
+    INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -255,6 +255,56 @@ fn decode_profile_updated_push() {
             assert_eq!(profile.avatar, "https://cdn/a.png");
         }
         other => panic!("expected ProfileUpdated, got {other:?}"),
+    }
+}
+
+#[test]
+fn decode_presence_push() {
+    let mut pkt = LogicPkt::new(CMD_PRESENCE, 12, Bytes::new());
+    pkt.header.flag = Flag::Push as i32;
+    pkt.write_body(&PresencePush {
+        entries: vec![Presence {
+            account: "bob".into(),
+            status: 2,
+            last_seen: 0,
+        }],
+    });
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    match ev {
+        Event::PresenceUpdated {
+            account,
+            status,
+            last_seen,
+        } => {
+            assert_eq!(account, "bob");
+            assert_eq!(status, 2);
+            assert_eq!(last_seen, 0);
+        }
+        other => panic!("expected PresenceUpdated, got {other:?}"),
+    }
+}
+
+#[test]
+fn decode_room_enter_resp() {
+    let mut pkt = LogicPkt::new(CMD_ROOM_ENTER, 13, Bytes::new());
+    pkt.header.flag = Flag::Response as i32;
+    pkt.header.status = Status::Success as i32;
+    pkt.write_body(&kim_protocol::pkt::RoomEnterResp {
+        presence: vec![Presence {
+            account: "bob".into(),
+            status: 1,
+            last_seen: 0,
+        }],
+    });
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    match ev {
+        Event::RoomEnter { sequence, presence } => {
+            assert_eq!(sequence, 13);
+            assert_eq!(presence.len(), 1);
+            assert_eq!(presence[0].account, "bob");
+            assert_eq!(presence[0].status, 1);
+        }
+        other => panic!("expected RoomEnter, got {other:?}"),
     }
 }
 

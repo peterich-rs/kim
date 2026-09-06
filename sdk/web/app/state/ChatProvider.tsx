@@ -325,6 +325,7 @@ function toChatMsg(msg: Message, dest: string, me: string): ChatMsg {
 }
 
 interface ChatContextValue {
+  presenceByAccount: Record<string, number>;
   account: string | undefined;
   status: ConnStatus;
   threads: Thread[];
@@ -388,6 +389,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef(new Map<string, PendingPayload>());
   const [nickname, setNickname] = useState(initial?.account ?? "");
   const [incomingCount, setIncomingCount] = useState(0);
+  const [presenceByAccount, setPresenceByAccount] = useState<Record<string, number>>({});
   const [people, setPeople] = useState<Person[]>([]);
   const [incomingPeople, setIncomingPeople] = useState<Person[]>([]);
   const [outgoing, setOutgoing] = useState<string[]>([]);
@@ -534,6 +536,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setPeople(patch);
           setIncomingPeople(patch);
           dispatch({ type: "patchThreadTitle", id: profile.account, title: nick });
+        },
+        onPresence: (entries) => {
+          setPresenceByAccount((cur) => {
+            const next = { ...cur };
+            for (const e of entries) {
+              if (e.account) {
+                next[e.account] = e.status;
+              }
+            }
+            return next;
+          });
         },
       });
       sessionRef.current = session;
@@ -1017,6 +1030,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ChatContextValue>(
     () => ({
       account: auth?.account,
+      presenceByAccount,
       status: state.status,
       threads: state.threads,
       messages: state.messages,
@@ -1063,6 +1077,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }),
     [
       auth?.account,
+      presenceByAccount,
       state.status,
       state.threads,
       state.messages,

@@ -20,6 +20,8 @@ import '../../state/contacts.dart';
 import '../../state/link.dart';
 import '../../state/messages.dart';
 import '../../state/outbox.dart';
+import '../../state/presence.dart';
+import '../../state/providers.dart';
 import '../../state/mutations.dart';
 import '../../state/profile.dart';
 import '../../state/session.dart';
@@ -52,6 +54,8 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   final _list = ChatListController();
   final _composer = GlobalKey<KimComposerState>();
+  Timer? _leaveTimer;
+  bool _entered = false;
 
   @override
   void initState() {
@@ -67,7 +71,45 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       );
       unawaited(messages.reconcile());
       unawaited(messages.markRead());
+      unawaited(_enterRoom());
     });
+  }
+
+  Future<void> _enterRoom() async {
+    if (widget.kind != ThreadKind.user) {
+      return;
+    }
+    _leaveTimer?.cancel();
+    _leaveTimer = null;
+    try {
+      final rows = await ref
+          .read(clientPortProvider)
+          .roomEnter(widget.id, kind: 0);
+      if (!mounted) {
+        return;
+      }
+      ref.read(presenceProvider.notifier).applySnapshot(rows);
+      _entered = true;
+    } catch (_) {
+      // Presence is best-effort; chat still works offline of interest.
+    }
+  }
+
+  @override
+  void dispose() {
+    _leaveTimer?.cancel();
+    if (_entered && widget.kind == ThreadKind.user) {
+      final dest = widget.id;
+      final client = ref.read(clientPortProvider);
+      Timer(const Duration(milliseconds: 350), () {
+        unawaited(() async {
+          try {
+            await client.roomLeave(dest, kind: 0);
+          } catch (_) {}
+        }());
+      });
+    }
+    super.dispose();
   }
 
   Future<void> _send(String text) async {
@@ -327,7 +369,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             _ChatTitleChrome(
                               title: liveTitle,
                               avatarUrl: avatarFor(me, social, widget.id),
-                              status: session.status,
+                              presence: ref.watch(
+                                peerPresenceProvider(widget.id),
+                              ),
                             ),
                             const Spacer(),
                             const _FrostedCircleButton(
@@ -426,12 +470,12 @@ class _ChatTitleChrome extends StatelessWidget {
   const _ChatTitleChrome({
     required this.title,
     required this.avatarUrl,
-    required this.status,
+    required this.presence,
   });
 
   final String title;
   final String avatarUrl;
-  final ConnStatus status;
+  final PeerPresenceStatus presence;
 
   @override
   Widget build(BuildContext context) {
@@ -455,20 +499,21 @@ class _ChatTitleChrome extends StatelessWidget {
                     size: KimAvatarSize.sm,
                     shape: KimAvatarShape.squircle,
                   ),
-                  Positioned(
-                    right: -1,
-                    bottom: -1,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: KimTheme.chatCanvasOf(context),
-                        shape: BoxShape.circle,
+                  if (presence != PeerPresenceStatus.unknown)
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: KimTheme.chatCanvasOf(context),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: PeerPresenceDot(status: presence, size: 8),
                       ),
-                      alignment: Alignment.center,
-                      child: StatusDot(status: status, size: 8),
                     ),
-                  ),
                 ],
               ),
               const Gap(8),

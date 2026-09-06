@@ -121,6 +121,17 @@ pub enum Event {
     ProfileUpdated {
         profile: Profile,
     },
+    /// Push `chat.presence` — one entry from a PresencePush batch.
+    PresenceUpdated {
+        account: String,
+        status: i32,
+        last_seen: i64,
+    },
+    /// Response `chat.room.enter` snapshot.
+    RoomEnter {
+        sequence: u32,
+        presence: Vec<PresenceEntry>,
+    },
     UserList {
         command: String,
         sequence: u32,
@@ -154,6 +165,13 @@ pub enum Event {
         sequence: u32,
     },
     Closed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PresenceEntry {
+    pub account: String,
+    pub status: i32,
+    pub last_seen: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -321,6 +321,17 @@ fn dispatch_event(inner: &Inner, seen: &Arc<std::sync::Mutex<SeenSet>>, event: E
         Event::ProfileUpdated { profile } => {
             let _ = inner.events.send(SessionEvent::ProfileUpdated { profile });
         }
+        Event::PresenceUpdated {
+            account,
+            status,
+            last_seen,
+        } => {
+            let _ = inner.events.send(SessionEvent::PresenceUpdated {
+                account,
+                status,
+                last_seen,
+            });
+        }
         Event::GroupCreate { group_id, members } => {
             let _ = inner
                 .events

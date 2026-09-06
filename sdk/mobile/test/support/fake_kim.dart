@@ -301,6 +301,19 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> roomEnter(
+    String dest, {
+    int kind = 0,
+  }) async {
+    return [
+      {'account': dest, 'status': 2, 'lastSeen': 0},
+    ];
+  }
+
+  @override
+  Future<void> roomLeave(String dest, {int kind = 0}) async {}
+
+  @override
   Future<KimPerson> updateProfile({
     required String nickname,
     required String avatar,

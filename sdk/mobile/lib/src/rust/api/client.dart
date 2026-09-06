@@ -47,6 +47,11 @@ abstract class KimApi implements RustOpaqueInterface {
 
   Future<String> profile({required String dest});
 
+  /// Returns JSON array of `{account,status,last_seen}`.
+  Future<String> roomEnter({required String dest, required int kind});
+
+  Future<String> roomLeave({required String dest, required int kind});
+
   Future<String> searchUsers({required String query});
 
   Future<KimTalkResult> sendMessage({

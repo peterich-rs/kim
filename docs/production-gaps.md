@@ -350,7 +350,7 @@ Dual-write 默认仍 fail-open，镜像失败打 `kim_session_mirror_fail_total`
 | 已读回执 | 只有自己的 `conversation_reads`，发送方不可见 |
 | 系统推送 APNs/FCM/Web Push | 无 |
 | 语音/视频/文件消息 | 常量有 VOICE/VIDEO；无 FILE；SDK 不渲染 |
-| 在线状态 / 正在输入 | 无；session 可做 presence，要注意好友广播风暴 |
+| 在线状态 / 正在输入 | Presence + room enter/leave 已落地（见 `docs/presence-room-interest.md`）；typing 仍缺 |
 | 转发 / 引用回复 / 本地删除 | 无 |
 | 消息搜索 / E2EE / 消息编辑 | 无 |
 | 大群读扩散混合 | 仍是纯写扩散 |

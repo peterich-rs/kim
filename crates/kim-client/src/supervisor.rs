@@ -57,6 +57,11 @@ pub enum SessionEvent {
     ProfileUpdated {
         profile: crate::events::Profile,
     },
+    PresenceUpdated {
+        account: String,
+        status: i32,
+        last_seen: i64,
+    },
     GroupCreate {
         group_id: String,
         members: Vec<String>,
