@@ -8,7 +8,8 @@
 
 use std::time::Duration;
 
-use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq};
+use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
+use kim_protocol::{PasswordSealPublic, PASSWORD_SEAL_ALG};
 use prost::Message;
 use reqwest::header::{
     HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE,
@@ -23,6 +24,44 @@ const ACCOUNT_MIN: usize = 3;
 const ACCOUNT_MAX: usize = 32;
 const PASSWORD_MIN: usize = 8;
 const PASSWORD_MAX: usize = 128;
+const SEAL_KEY_TTL: Duration = Duration::from_secs(300);
+
+#[derive(Clone)]
+struct CachedSealKey {
+    key: PasswordSealPublic,
+    fetched_at: std::time::Instant,
+}
+
+/// Reject non-localhost `http://` Royal origins (TLS still required in production).
+pub fn require_secure_auth_origin(base: &str) -> Result<(), ClientError> {
+    let base = base.trim().trim_end_matches('/');
+    if base.starts_with("https://") {
+        return Ok(());
+    }
+    if is_loopback_http(base) {
+        return Ok(());
+    }
+    Err(ClientError::InsecureOrigin)
+}
+
+fn is_loopback_http(base: &str) -> bool {
+    let Some(rest) = base.strip_prefix("http://") else {
+        return false;
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = host.split('@').next_back().unwrap_or(host);
+    let host = host.split('%').next().unwrap_or(host); // drop zone id
+    let host = if let Some(h) = host.strip_prefix('[') {
+        h.split(']').next().unwrap_or(h)
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    matches!(
+        host,
+        "127.0.0.1" | "localhost" | "::1" | "0:0:0:0:0:0:0:1"
+    )
+}
+
 
 /// JWT issued by Royal `/api/v1/auth/{register,login}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,6 +76,7 @@ pub struct AuthSession {
 pub struct AuthClient {
     http: reqwest::Client,
     base: String,
+    seal_cache: std::sync::Arc<tokio::sync::Mutex<Option<CachedSealKey>>>,
 }
 
 impl AuthClient {
@@ -70,6 +110,7 @@ impl AuthClient {
         if base.is_empty() {
             return Err(ClientError::other("empty auth origin"));
         }
+        require_secure_auth_origin(&base)?;
         let user_agent = user_agent.into();
         let user_agent = valid_header_value(&user_agent, "invalid user-agent")?;
         let mut default_headers = HeaderMap::new();
@@ -85,7 +126,11 @@ impl AuthClient {
             .gzip(true)
             .build()
             .map_err(|e| ClientError::other(e.to_string()))?;
-        Ok(Self { http, base })
+        Ok(Self {
+            http,
+            base,
+            seal_cache: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+        })
     }
 
     pub async fn register(
@@ -135,9 +180,37 @@ impl AuthClient {
         }
         let old_password = valid_password(old_password)?;
         let new_password = valid_password(new_password)?;
+        let seal = self.seal_key().await?;
+        let (old_plain, old_sealed, new_plain, new_sealed, key_id) = match seal {
+            Some(k) => {
+                let old_sealed = k
+                    .seal(old_password.as_bytes())
+                    .map_err(|_| ClientError::PasswordSeal)?;
+                let new_sealed = k
+                    .seal(new_password.as_bytes())
+                    .map_err(|_| ClientError::PasswordSeal)?;
+                (
+                    String::new(),
+                    old_sealed,
+                    String::new(),
+                    new_sealed,
+                    k.key_id.clone(),
+                )
+            }
+            None => (
+                old_password.to_string(),
+                Vec::new(),
+                new_password.to_string(),
+                Vec::new(),
+                String::new(),
+            ),
+        };
         let body = PasswordChangeReq {
-            old_password: old_password.to_string(),
-            new_password: new_password.to_string(),
+            old_password: old_plain,
+            new_password: new_plain,
+            old_password_sealed: old_sealed,
+            new_password_sealed: new_sealed,
+            key_id,
         }
         .encode_to_vec();
         let resp = self
@@ -165,10 +238,25 @@ impl AuthClient {
     ) -> Result<AuthSession, ClientError> {
         let account = valid_account(account)?;
         let password = valid_password(password)?;
-        let body = AuthReq {
-            account: account.to_string(),
-            password: password.to_string(),
-            ..Default::default()
+        let seal = self.seal_key().await?;
+        let body = match seal {
+            Some(k) => {
+                let password_sealed = k
+                    .seal(password.as_bytes())
+                    .map_err(|_| ClientError::PasswordSeal)?;
+                AuthReq {
+                    account: account.to_string(),
+                    password: String::new(),
+                    password_sealed,
+                    key_id: k.key_id.clone(),
+                    ..Default::default()
+                }
+            }
+            None => AuthReq {
+                account: account.to_string(),
+                password: password.to_string(),
+                ..Default::default()
+            },
         }
         .encode_to_vec();
         let resp = self
@@ -203,6 +291,48 @@ impl AuthClient {
             exp: decoded.exp,
             account,
         })
+    }
+
+    async fn seal_key(&self) -> Result<Option<PasswordSealPublic>, ClientError> {
+        {
+            let guard = self.seal_cache.lock().await;
+            if let Some(cached) = guard.as_ref() {
+                if cached.fetched_at.elapsed() < SEAL_KEY_TTL {
+                    return Ok(Some(cached.key.clone()));
+                }
+            }
+        }
+        let resp = self
+            .http
+            .get(format!("{}/api/v1/auth/password-key", self.base))
+            .send()
+            .await
+            .map_err(|e| ClientError::other(e.to_string()))?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let buf = resp
+            .bytes()
+            .await
+            .map_err(|e| ClientError::other(e.to_string()))?;
+        if !status.is_success() {
+            let text = String::from_utf8_lossy(&buf).into_owned();
+            return Err(http_err(status, text));
+        }
+        let decoded =
+            PasswordKeyResp::decode(buf.as_ref()).map_err(|e| ClientError::other(e.to_string()))?;
+        if decoded.alg != PASSWORD_SEAL_ALG {
+            return Err(ClientError::PasswordSeal);
+        }
+        let key = PasswordSealPublic::from_b64(decoded.key_id, &decoded.public_key_b64)
+            .map_err(|_| ClientError::PasswordSeal)?;
+        let mut guard = self.seal_cache.lock().await;
+        *guard = Some(CachedSealKey {
+            key: key.clone(),
+            fetched_at: std::time::Instant::now(),
+        });
+        Ok(Some(key))
     }
 }
 
@@ -449,5 +579,61 @@ mod tests {
             }
             other => panic!("{other}"),
         }
+    }
+
+    #[test]
+    fn rejects_insecure_non_localhost_http_origin() {
+        assert!(matches!(
+            require_secure_auth_origin("http://evil.example/api"),
+            Err(ClientError::InsecureOrigin)
+        ));
+        assert!(require_secure_auth_origin("https://kim.ainexc.com").is_ok());
+        assert!(require_secure_auth_origin("http://127.0.0.1:8080").is_ok());
+        assert!(require_secure_auth_origin("http://localhost:8080").is_ok());
+        assert!(require_secure_auth_origin("http://[::1]:8080").is_ok());
+        assert!(AuthClient::new("http://evil.example", DEFAULT_CLIENT_USER_AGENT).is_err());
+    }
+
+    #[tokio::test]
+    async fn login_seals_password_when_server_publishes_key() {
+        use axum::routing::get;
+        use kim_protocol::PasswordSealKey;
+
+        let key = PasswordSealKey::generate(Some("k-test".into()));
+        let key_resp = PasswordKeyResp {
+            key_id: key.key_id().to_string(),
+            alg: key.alg().to_string(),
+            public_key_b64: key.public_key_b64(),
+        }
+        .encode_to_vec();
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let app = Router::new()
+            .route(
+                "/api/v1/auth/password-key",
+                get(move || {
+                    let body = key_resp.clone();
+                    async move { (StatusCode::OK, Bytes::from(body)) }
+                }),
+            )
+            .route("/api/v1/auth/login", post(capture))
+            .with_state(seen.clone());
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let client =
+            AuthClient::new(format!("http://{addr}"), DEFAULT_CLIENT_USER_AGENT).expect("client");
+        let session = client.login("alice", "secret123").await.expect("login");
+        assert_eq!(session.token, "tok.jwt");
+        let g = seen.lock().unwrap_or_else(|e| e.into_inner());
+        let req = AuthReq::decode(g.body.as_slice()).expect("pb");
+        assert!(req.password.is_empty(), "must not send plaintext");
+        assert_eq!(req.key_id, "k-test");
+        assert!(!req.password_sealed.is_empty());
+        let opened = key.unseal(&req.password_sealed).expect("unseal");
+        assert_eq!(opened, b"secret123");
     }
 }

@@ -52,6 +52,7 @@ const HistoryReqType = lookup("HistoryReq");
 const HistoryRespType = lookup("HistoryResp");
 const ConversationReadReqType = lookup("ConversationReadReq");
 const PasswordChangeReqType = lookup("PasswordChangeReq");
+const PasswordKeyRespType = lookup("PasswordKeyResp");
 const RoomEnterReqType = lookup("RoomEnterReq");
 const RoomEnterRespType = lookup("RoomEnterResp");
 const RoomLeaveReqType = lookup("RoomLeaveReq");
@@ -420,8 +421,33 @@ export function decodeGroupMembers(buf: Uint8Array): string[] {
   return o.members ?? [];
 }
 
-export function encodeAuthReq(account: string, password: string): Uint8Array {
-  return encode(AuthReqType, { account, password });
+export function encodeAuthReq(
+  account: string,
+  password: string,
+  opts?: { passwordSealed?: Uint8Array; keyId?: string },
+): Uint8Array {
+  return encode(AuthReqType, {
+    account,
+    password,
+    passwordSealed: opts?.passwordSealed,
+    keyId: opts?.keyId,
+  });
+}
+
+export function decodePasswordKeyResp(buf: Uint8Array): {
+  keyId: string;
+  alg: string;
+  publicKeyB64: string;
+} {
+  const o = decode<{ keyId?: string; alg?: string; publicKeyB64?: string }>(
+    PasswordKeyRespType,
+    buf,
+  );
+  return {
+    keyId: o.keyId ?? "",
+    alg: o.alg ?? "",
+    publicKeyB64: o.publicKeyB64 ?? "",
+  };
 }
 
 export function decodeAuthResp(buf: Uint8Array): {
@@ -607,8 +633,22 @@ export function encodeConversationReadReq(messageId: bigint, kind: number): Uint
   });
 }
 
-export function encodePasswordChangeReq(oldPassword: string, newPassword: string): Uint8Array {
-  return encode(PasswordChangeReqType, { oldPassword, newPassword });
+export function encodePasswordChangeReq(
+  oldPassword: string,
+  newPassword: string,
+  opts?: {
+    oldPasswordSealed?: Uint8Array;
+    newPasswordSealed?: Uint8Array;
+    keyId?: string;
+  },
+): Uint8Array {
+  return encode(PasswordChangeReqType, {
+    oldPassword,
+    newPassword,
+    oldPasswordSealed: opts?.oldPasswordSealed,
+    newPasswordSealed: opts?.newPasswordSealed,
+    keyId: opts?.keyId,
+  });
 }
 
 export interface WirePresence {

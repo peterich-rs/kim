@@ -31,6 +31,7 @@
   "network": "Network error, try again later",
   "unavailable": "Service unavailable, try again later",
   "authFailed": "Sign-in failed, try again later",
+  "insecureAuthOrigin": "Use HTTPS in production (http://127.0.0.1 is allowed locally)",
   "sessionExpired": "Session expired, please sign in again",
   "sessionPersistFailed": "Signed in but the session could not be saved. Check Keychain access.",
   "timeout": "Timed out, try again later",

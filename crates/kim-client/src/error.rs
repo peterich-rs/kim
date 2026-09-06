@@ -28,6 +28,10 @@ pub enum ClientError {
     InvalidAccount,
     #[error("invalid password")]
     InvalidPassword,
+    #[error("auth origin must be https (or http://127.0.0.1 / localhost for local dev)")]
+    InsecureOrigin,
+    #[error("password seal unavailable")]
+    PasswordSeal,
     #[error("http {status}: {body}")]
     Http { status: u16, body: String },
     #[error("{0}")]

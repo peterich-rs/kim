@@ -18,7 +18,7 @@ mod sync;
 mod token;
 mod wire;
 
-pub use auth::{AuthClient, AuthSession};
+pub use auth::{require_secure_auth_origin, AuthClient, AuthSession};
 pub use client::KimClient;
 pub use config::{
     device_for_target_os, http_origin_from_ws, ClientConfig, DEFAULT_CLIENT_USER_AGENT,

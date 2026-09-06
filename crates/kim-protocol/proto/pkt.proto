@@ -237,9 +237,11 @@ message DeliveryBackfillReq {
 
 message AuthReq {
   string account = 1;
-  string password = 2;
+  string password = 2; // plaintext; only when server allows (tests/legacy)
   string deviceCredential = 3; // present to bind an issued credential
   bool enrollDevice = 4;       // old clients default false
+  bytes passwordSealed = 5;    // X25519 sealed box ciphertext
+  string keyId = 6;            // matches GET /api/v1/auth/password-key
 }
 
 message AuthResp {
@@ -318,6 +320,16 @@ message UserListResp {
 message PasswordChangeReq {
   string oldPassword = 1;
   string newPassword = 2;
+  bytes oldPasswordSealed = 3;
+  bytes newPasswordSealed = 4;
+  string keyId = 5;
+}
+
+// Public password-envelope key for clients (X25519 sealed box).
+message PasswordKeyResp {
+  string keyId = 1;
+  string alg = 2;          // "x25519-seal"
+  string publicKeyB64 = 3; // 32-byte X25519 public key, standard base64
 }
 
 message AccountPair {

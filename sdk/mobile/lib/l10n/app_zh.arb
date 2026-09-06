@@ -31,6 +31,7 @@
   "network": "网络异常，请稍后重试",
   "unavailable": "服务暂时不可用，请稍后重试",
   "authFailed": "登录失败，请稍后重试",
+  "insecureAuthOrigin": "生产环境请使用 HTTPS（本地可用 http://127.0.0.1）",
   "sessionExpired": "登录已过期，请重新登录",
   "sessionPersistFailed": "登录成功但无法保存会话，请检查 Keychain 权限",
   "timeout": "连接超时，请稍后重试",

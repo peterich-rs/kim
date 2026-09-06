@@ -634,6 +634,14 @@
                 "enrollDevice": {
                   "type": "bool",
                   "id": 4
+                },
+                "passwordSealed": {
+                  "type": "bytes",
+                  "id": 5
+                },
+                "keyId": {
+                  "type": "string",
+                  "id": 6
                 }
               }
             },
@@ -816,6 +824,34 @@
                 "newPassword": {
                   "type": "string",
                   "id": 2
+                },
+                "oldPasswordSealed": {
+                  "type": "bytes",
+                  "id": 3
+                },
+                "newPasswordSealed": {
+                  "type": "bytes",
+                  "id": 4
+                },
+                "keyId": {
+                  "type": "string",
+                  "id": 5
+                }
+              }
+            },
+            "PasswordKeyResp": {
+              "fields": {
+                "keyId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "alg": {
+                  "type": "string",
+                  "id": 2
+                },
+                "publicKeyB64": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             },
