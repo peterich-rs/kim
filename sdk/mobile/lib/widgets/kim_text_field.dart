@@ -53,7 +53,7 @@ class _KimTextFieldState extends State<KimTextField> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 14),
       child: TextField(
         controller: widget.controller,
         obscureText: _obscured,

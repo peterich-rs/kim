@@ -94,7 +94,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
     return Scaffold(
       appBar: AppBar(title: const Text(Copy.changePassword)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: const EdgeInsets.fromLTRB(28, 12, 28, 28),
         children: [
           KimTextField(
             controller: _old,
@@ -108,7 +108,6 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
           KimTextField(
             controller: _next,
             label: Copy.newPassword,
-            helperText: Copy.passwordHint,
             errorText: _nextErr,
             obscureable: true,
             maxLength: 128,
