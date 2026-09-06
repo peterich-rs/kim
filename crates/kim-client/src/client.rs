@@ -17,7 +17,8 @@ use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
     encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
-    encode_outgoing, encode_ping, encode_user_search, encode_user_update,
+    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_typing,
+    encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -410,6 +411,61 @@ impl KimClient {
         .await
     }
 
+    pub async fn room_enter(
+        &self,
+        dest: &str,
+        kind: i32,
+    ) -> Result<Vec<crate::events::PresenceEntry>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_room_enter(seq, dest, kind), seq, |ev| match ev {
+            Event::RoomEnter { sequence, presence } if *sequence == seq => {
+                Some(Ok(presence.clone()))
+            }
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    pub async fn room_leave(&self, dest: &str, kind: i32) -> Result<(), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_room_leave(seq, dest, kind), seq, |ev| match ev {
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => {
+                if *status == 0 {
+                    Some(Ok(()))
+                } else {
+                    Some(Err(ClientError::Status(*status)))
+                }
+            }
+            _ => None,
+        })
+        .await
+    }
+
+    /// Fire-and-forget typing indicator (server may reply Status; ignored).
+    pub async fn send_typing(
+        &self,
+        dest: &str,
+        kind: i32,
+        active: bool,
+    ) -> Result<(), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_ack(encode_typing(seq, dest, kind, active)).await
+    }
+
     async fn dest_status(&self, command: &str, dest: &str) -> Result<(), ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
@@ -610,6 +666,9 @@ fn is_unsolicited(event: &Event) -> bool {
             | Event::FriendRequest { .. }
             | Event::FriendAccepted { .. }
             | Event::ProfileUpdated { .. }
+            | Event::PresenceUpdated { .. }
+            | Event::TypingUpdated { .. }
+            | Event::ReceiptRead { .. }
             | Event::Closed
     )
 }

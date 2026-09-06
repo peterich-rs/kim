@@ -295,6 +295,40 @@ impl KimApi {
             .map_err(|e| e.to_string())?;
         kim_client::Profile::encode_list(&users)
     }
+
+    /// Returns JSON array of `{account,status,last_seen}`.
+    pub fn room_enter(&self, dest: String, kind: i32) -> Result<String, String> {
+        let client = self.supervisor.client();
+        let rows = rt()
+            .block_on(client.room_enter(&dest, kind))
+            .map_err(|e| e.to_string())?;
+        serde_json::to_string(
+            &rows
+                .into_iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "account": e.account,
+                        "status": e.status,
+                        "last_seen": e.last_seen,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
+        let client = self.supervisor.client();
+        rt().block_on(client.room_leave(&dest, kind))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
+    pub fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+        let client = self.supervisor.client();
+        rt().block_on(client.send_typing(&dest, kind, active))
+            .map_err(|e| e.to_string())
+    }
 }
 
 fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {
@@ -397,6 +431,48 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
             ev.nickname = profile.nickname;
             // Reuse `extra` for avatar to avoid FRB schema churn.
             ev.extra = profile.avatar;
+            ev
+        }
+        SessionEvent::PresenceUpdated {
+            account,
+            status,
+            last_seen,
+        } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "presence".into();
+            ev.dest = account.clone();
+            ev.sender = account;
+            ev.msg_type = status;
+            ev.send_time = last_seen;
+            ev
+        }
+        SessionEvent::TypingUpdated {
+            typer,
+            dest,
+            kind,
+            active,
+        } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "typing".into();
+            ev.dest = dest;
+            ev.sender = typer;
+            ev.msg_type = kind;
+            // Reuse page_pending as active flag to avoid FRB schema churn.
+            ev.page_pending = active;
+            ev
+        }
+        SessionEvent::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "receipt_read".into();
+            ev.dest = dest;
+            ev.sender = reader;
+            ev.msg_type = kind;
+            ev.message_id = message_id;
             ev
         }
         SessionEvent::GroupCreate { group_id, members } => {

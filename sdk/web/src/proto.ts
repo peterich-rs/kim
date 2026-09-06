@@ -52,6 +52,13 @@ const HistoryReqType = lookup("HistoryReq");
 const HistoryRespType = lookup("HistoryResp");
 const ConversationReadReqType = lookup("ConversationReadReq");
 const PasswordChangeReqType = lookup("PasswordChangeReq");
+const RoomEnterReqType = lookup("RoomEnterReq");
+const RoomEnterRespType = lookup("RoomEnterResp");
+const RoomLeaveReqType = lookup("RoomLeaveReq");
+const PresencePushType = lookup("PresencePush");
+const TypingReqType = lookup("TypingReq");
+const TypingPushType = lookup("TypingPush");
+const ReadReceiptPushType = lookup("ReadReceiptPush");
 
 function encode(type: protobuf.Type, obj: object): Uint8Array {
   return type.encode(type.create(obj)).finish();
@@ -603,3 +610,96 @@ export function encodeConversationReadReq(messageId: bigint, kind: number): Uint
 export function encodePasswordChangeReq(oldPassword: string, newPassword: string): Uint8Array {
   return encode(PasswordChangeReqType, { oldPassword, newPassword });
 }
+
+export interface WirePresence {
+  account: string;
+  status: number;
+  lastSeen: bigint;
+}
+
+export function encodeRoomEnterReq(dest: string, kind: number): Uint8Array {
+  return encode(RoomEnterReqType, { dest, kind });
+}
+
+export function encodeRoomLeaveReq(dest: string, kind: number): Uint8Array {
+  return encode(RoomLeaveReqType, { dest, kind });
+}
+
+export function decodeRoomEnterResp(buf: Uint8Array): WirePresence[] {
+  const o = decode<{
+    presence?: Array<{ account?: string; status?: number; lastSeen?: string | number }>;
+  }>(RoomEnterRespType, buf);
+  return (o.presence ?? []).map((e) => ({
+    account: e.account ?? "",
+    status: e.status ?? 0,
+    lastSeen: BigInt(e.lastSeen ?? 0),
+  }));
+}
+
+export function decodePresencePush(buf: Uint8Array): WirePresence[] {
+  const o = decode<{
+    entries?: Array<{ account?: string; status?: number; lastSeen?: string | number }>;
+  }>(PresencePushType, buf);
+  return (o.entries ?? []).map((e) => ({
+    account: e.account ?? "",
+    status: e.status ?? 0,
+    lastSeen: BigInt(e.lastSeen ?? 0),
+  }));
+}
+export type WireTyping = {
+  typer: string;
+  dest: string;
+  kind: number;
+  active: boolean;
+};
+
+export function encodeTypingReq(dest: string, kind: number, active: boolean): Uint8Array {
+  return encode(TypingReqType, { dest, kind, active });
+}
+
+export function decodeTypingPush(buf: Uint8Array): WireTyping {
+  const o = decode<{
+    typer?: string;
+    dest?: string;
+    kind?: number;
+    active?: boolean;
+  }>(TypingPushType, buf);
+  return {
+    typer: o.typer ?? "",
+    dest: o.dest ?? "",
+    kind: o.kind ?? 0,
+    active: !!o.active,
+  };
+}
+
+export type WireReadReceipt = {
+  reader: string;
+  dest: string;
+  kind: number;
+  messageId: bigint;
+};
+
+export function decodeReadReceiptPush(buf: Uint8Array): WireReadReceipt {
+  const o = decode<{
+    reader?: string;
+    dest?: string;
+    kind?: number;
+    messageId?: string | number | Long;
+  }>(ReadReceiptPushType, buf);
+  const mid = o.messageId;
+  let messageId = 0n;
+  if (typeof mid === "bigint") messageId = mid;
+  else if (typeof mid === "number") messageId = BigInt(mid);
+  else if (typeof mid === "string") messageId = BigInt(mid || 0);
+  else if (mid && typeof (mid as { toString: () => string }).toString === "function") {
+    messageId = BigInt((mid as { toString: () => string }).toString());
+  }
+  return {
+    reader: o.reader ?? "",
+    dest: o.dest ?? "",
+    kind: o.kind ?? 0,
+    messageId,
+  };
+}
+
+

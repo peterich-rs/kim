@@ -282,7 +282,7 @@ void main() {
     expect(find.byIcon(LucideIcons.monitor), findsNothing);
     expect(find.byKey(const Key('chat-composer')), findsOneWidget);
     expect(find.text('Bobby'), findsWidgets);
-    expect(find.byType(StatusDot), findsWidgets);
+    expect(find.byType(PeerPresenceDot), findsWidgets);
   });
 
   testWidgets('chat composer sits below the message list', (tester) async {

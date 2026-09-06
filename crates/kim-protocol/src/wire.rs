@@ -40,6 +40,11 @@ pub const CMD_BLOCK_LIST: &str = "chat.block.list";
 pub const CMD_INBOX_LIST: &str = "chat.inbox.list";
 pub const CMD_INBOX_READ: &str = "chat.inbox.read";
 pub const CMD_HISTORY: &str = "chat.history";
+pub const CMD_ROOM_ENTER: &str = "chat.room.enter";
+pub const CMD_ROOM_LEAVE: &str = "chat.room.leave";
+pub const CMD_PRESENCE: &str = "chat.presence";
+pub const CMD_TYPING: &str = "chat.typing";
+pub const CMD_RECEIPT_READ: &str = "chat.receipt.read";
 
 pub const INBOX_KIND_USER: i32 = 0;
 pub const INBOX_KIND_GROUP: i32 = 1;
@@ -78,6 +83,11 @@ mod tests {
         assert_eq!(service_name(CMD_FRIEND_REQUEST), "chat");
         assert_eq!(service_name(CMD_INBOX_LIST), "chat");
         assert_eq!(service_name(CMD_HISTORY), "chat");
+        assert_eq!(service_name(CMD_ROOM_ENTER), "chat");
+        assert_eq!(service_name(CMD_ROOM_LEAVE), "chat");
+        assert_eq!(service_name(CMD_PRESENCE), "chat");
+        assert_eq!(service_name(CMD_TYPING), "chat");
+        assert_eq!(service_name(CMD_RECEIPT_READ), "chat");
         assert_eq!(service_name("chat.offline.index"), "chat");
         // Accept must not use service_name for login: this is `"login"`, not SN_LOGIN.
         assert_eq!(service_name("login.signin"), "login");

@@ -10,16 +10,20 @@ mod group;
 mod hmac_nonce;
 pub mod idgen;
 mod inbox;
+mod interest;
 mod login;
 mod notify;
 mod offline;
+mod presence;
 mod profile;
+mod room;
 pub mod royal;
 pub mod royal_pool;
 pub mod social;
 pub mod social_cache;
 pub mod store;
 mod talk;
+mod typing;
 pub mod users;
 
 use std::sync::Arc;
@@ -37,8 +41,8 @@ use kim_protocol::{
     CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
     CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
     CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, META_DEST_CHANNELS,
-    META_DEST_SERVER,
+    CMD_OFFLINE_INDEX, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -47,8 +51,11 @@ use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, MemoryGroupDirectory};
 use crate::idgen::{IdGenerator, SequenceIdGen};
+use crate::presence::{offline_debounce_from_env, PresenceHub};
+use crate::room::{do_room_enter, do_room_leave};
 use crate::social::{MemorySocialDirectory, SocialDirectory};
 use crate::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
+use crate::typing::do_typing;
 use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
@@ -66,6 +73,9 @@ pub use group::{do_group_create, do_group_detail, do_group_join, do_group_member
 pub use hmac_nonce::RedisHmacNonceGuard;
 pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
 pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
+#[cfg(feature = "redis")]
+pub use interest::RedisRoomInterest;
+pub use interest::{open_room_interest, MemoryRoomInterest, RoomInterestStore};
 pub use kim_session::open_uncached_session_store;
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
@@ -85,6 +95,7 @@ pub(crate) struct ChatSvc {
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
     social: Arc<dyn SocialDirectory>,
+    presence: Arc<PresenceHub>,
     metrics: Arc<Mutex<Option<Arc<KimMetrics>>>>,
     pending_receipt: bool,
 }
@@ -232,16 +243,52 @@ impl ChatHandler {
         social: Arc<dyn SocialDirectory>,
         pending_receipt: bool,
     ) -> Self {
+        Self::with_social_interest(
+            container,
+            cache,
+            store,
+            groups,
+            zone,
+            filter,
+            users,
+            social,
+            pending_receipt,
+            Arc::new(MemoryRoomInterest::new()),
+        )
+    }
+
+    /// Production path: inject Redis (or memory) room-interest from boot.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_social_interest(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
+        pending_receipt: bool,
+        interest: Arc<dyn RoomInterestStore>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
+        let presence = Arc::new(PresenceHub::new(
+            interest,
+            cache.clone(),
+            dispatcher.clone(),
+            offline_debounce_from_env(),
+        ));
         let mut router = Router::new();
         {
             let zone = zone.clone();
             let users = users.clone();
             let store = store.clone();
+            let presence = presence.clone();
             router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
                 let zone = zone.clone();
                 let users = users.clone();
                 let store = store.clone();
+                let presence = presence.clone();
                 async move {
                     do_sys_login_with_zone(
                         ctx,
@@ -249,12 +296,19 @@ impl ChatHandler {
                         users.as_ref(),
                         Some(store.as_ref()),
                         pending_receipt,
+                        Some(presence.as_ref()),
                     )
                     .await
                 }
             });
         }
-        router.handle(CMD_LOGIN_SIGN_OUT, do_sys_logout);
+        {
+            let presence = presence.clone();
+            router.handle(CMD_LOGIN_SIGN_OUT, move |ctx| {
+                let presence = presence.clone();
+                async move { do_sys_logout(ctx, Some(presence.as_ref())).await }
+            });
+        }
         router.handle(CMD_DEMO_ECHO, do_echo);
         let svc = ChatSvc {
             store,
@@ -262,6 +316,7 @@ impl ChatHandler {
             filter,
             users,
             social,
+            presence,
             metrics: Arc::new(Mutex::new(None)),
             pending_receipt,
         };
@@ -385,6 +440,32 @@ impl ChatHandler {
             router.handle(CMD_USER_SEARCH, move |ctx| {
                 let svc = svc.clone();
                 async move { do_user_search(ctx, svc.users.as_ref(), svc.social.as_ref()).await }
+            });
+        }
+
+        {
+            let svc = svc.clone();
+            router.handle(CMD_ROOM_ENTER, move |ctx| {
+                let svc = svc.clone();
+                async move {
+                    do_room_enter(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
+                }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_ROOM_LEAVE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_room_leave(ctx, svc.presence.interest().as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_TYPING, move |ctx| {
+                let svc = svc.clone();
+                async move {
+                    do_typing(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
+                }
             });
         }
         {

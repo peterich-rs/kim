@@ -13,6 +13,9 @@ import '../core/user_agent.dart';
 import '../models/models.dart';
 import 'auth.dart';
 import 'contacts.dart';
+import 'presence.dart';
+import 'receipts.dart';
+import 'typing.dart';
 import 'inbox.dart';
 import 'location.dart';
 import 'messages.dart';
@@ -237,6 +240,12 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         unawaited(_friendPush(event, accepted: true));
       case KimEventKind.profileUpdated:
         _onProfileUpdated(event);
+      case KimEventKind.presence:
+        _onPresence(event);
+      case KimEventKind.typing:
+        _onTyping(event);
+      case KimEventKind.receiptRead:
+        _onReceiptRead(event);
       case KimEventKind.group:
         if (event.dest.isNotEmpty) {
           ref
@@ -281,6 +290,20 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     ref
         .read(threadsProvider.notifier)
         .patchPeerProfile(account, title: nickname, avatar: avatar);
+  }
+
+  void _onPresence(KimEvent event) {
+    final account = event.sender.isNotEmpty ? event.sender : event.dest;
+    if (account.isEmpty) {
+      return;
+    }
+    ref
+        .read(presenceProvider.notifier)
+        .applyPush(
+          account: account,
+          status: event.msgType,
+          lastSeen: event.sendTime,
+        );
   }
 
   Future<void> _onSyncPage(KimEvent event) async {
@@ -336,6 +359,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (dest.isEmpty || event.body.isEmpty) {
       return;
     }
+    if (event.sender.isNotEmpty) {
+      ref.read(typingProvider.notifier).clearDest(event.sender);
+    }
     final account = ref.read(authProvider).account;
     final viewing = chatIdFromPath(ref.read(locationProvider));
     final repo = ref.read(messageRepositoryProvider);
@@ -365,6 +391,30 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     try {
       await ref.read(clientPortProvider).ack(event.messageId);
     } catch (_) {}
+  }
+
+  void _onTyping(KimEvent event) {
+    final typer = event.sender;
+    if (typer.isEmpty) {
+      return;
+    }
+    ref
+        .read(typingProvider.notifier)
+        .applyPush(typer: typer, dest: event.dest, active: event.pagePending);
+  }
+
+  void _onReceiptRead(KimEvent event) {
+    if (event.msgType != 0) {
+      return;
+    }
+    ref
+        .read(receiptsProvider.notifier)
+        .applyPush(
+          reader: event.sender,
+          dest: event.dest,
+          kind: event.msgType,
+          messageId: event.messageId,
+        );
   }
 
   void _askNotifications() {

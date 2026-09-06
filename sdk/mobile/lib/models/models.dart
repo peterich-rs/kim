@@ -18,6 +18,22 @@ class KimPerson {
 
 enum ConnStatus { connecting, online, reconnecting, offline }
 
+/// Peer presence from room enter / chat.presence. Unknown = no badge.
+enum PeerPresenceStatus { unknown, offline, online, busy }
+
+PeerPresenceStatus peerPresenceFromWire(int status) {
+  switch (status) {
+    case 1:
+      return PeerPresenceStatus.offline;
+    case 2:
+      return PeerPresenceStatus.online;
+    case 3:
+      return PeerPresenceStatus.busy;
+    default:
+      return PeerPresenceStatus.unknown;
+  }
+}
+
 class KimLinkState {
   const KimLinkState({
     this.status = ConnStatus.offline,
@@ -49,6 +65,9 @@ enum KimEventKind {
   friend,
   friendAccepted,
   profileUpdated,
+  presence,
+  typing,
+  receiptRead,
   group,
   token,
   closed,

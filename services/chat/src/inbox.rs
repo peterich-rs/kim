@@ -1,12 +1,13 @@
 use kim_protocol::pkt::{
     ConversationReadReq, HistoryItem, HistoryReq, HistoryResp, InboxItem, InboxReq, InboxResp,
-    Status,
+    ReadReceiptPush, Status,
 };
-use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};
+use kim_protocol::{CMD_RECEIPT_READ, INBOX_KIND_GROUP, INBOX_KIND_USER};
 use kim_router::Context;
 use tracing::warn;
 
 use crate::directory::GroupDirectory;
+use crate::notify::notify_account;
 use crate::store::{MessageKind, MessageStore};
 use crate::users::UserDirectory;
 
@@ -188,18 +189,24 @@ pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) {
             .await;
         return;
     };
+    let dest = ctx.header().dest.clone();
+    let reader = ctx.session().account.clone();
     match store
-        .mark_read(
-            &ctx.session().app,
-            &ctx.session().account,
-            &ctx.header().dest,
-            kind,
-            req.message_id,
-        )
+        .mark_read(&ctx.session().app, &reader, &dest, kind, req.message_id)
         .await
     {
         Ok(()) => {
             let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            // DM only: notify peer that messages up to message_id were read.
+            if kind == MessageKind::User {
+                let body = ReadReceiptPush {
+                    reader: reader.clone(),
+                    dest: dest.clone(),
+                    kind: INBOX_KIND_USER,
+                    message_id: req.message_id,
+                };
+                notify_account(&ctx, &dest, CMD_RECEIPT_READ, &body).await;
+            }
         }
         Err(err) => {
             warn!(%err, "mark read failed");

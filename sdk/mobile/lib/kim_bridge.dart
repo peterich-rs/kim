@@ -89,6 +89,14 @@ abstract class KimClientPort {
     required String avatar,
     String bio = '',
   });
+
+  /// Room interest enter; returns snapshot entries `{account,status,lastSeen}`.
+  Future<List<Map<String, dynamic>>> roomEnter(String dest, {int kind = 0});
+
+  Future<void> roomLeave(String dest, {int kind = 0});
+
+  /// Fire-and-forget typing indicator for a DM thread.
+  Future<void> sendTyping(String dest, {int kind = 0, bool active = true});
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -431,6 +439,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
       'friend' => KimEventKind.friend,
       'friend_accepted' => KimEventKind.friendAccepted,
       'profile_updated' => KimEventKind.profileUpdated,
+      'presence' => KimEventKind.presence,
+      'typing' => KimEventKind.typing,
+      'receipt_read' => KimEventKind.receiptRead,
       'group' => KimEventKind.group,
       'token' => KimEventKind.token,
       'link' => KimEventKind.link,
@@ -590,5 +601,45 @@ class KimBridge implements KimAuthPort, KimClientPort {
         bio: bio,
       ),
     );
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> roomEnter(
+    String dest, {
+    int kind = 0,
+  }) async {
+    final raw = await _require().roomEnter(dest: dest, kind: kind);
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      return const [];
+    }
+    return [
+      for (final row in decoded)
+        if (row is Map)
+          {
+            'account': '${row['account'] ?? ''}',
+            'status': row['status'] is int
+                ? row['status'] as int
+                : int.tryParse('${row['status']}') ?? 0,
+            'lastSeen': row['last_seen'] is int
+                ? row['last_seen'] as int
+                : int.tryParse('${row['last_seen'] ?? row['lastSeen'] ?? 0}') ??
+                      0,
+          },
+    ];
+  }
+
+  @override
+  Future<void> sendTyping(
+    String dest, {
+    int kind = 0,
+    bool active = true,
+  }) async {
+    await _require().sendTyping(dest: dest, kind: kind, active: active);
+  }
+
+  @override
+  Future<void> roomLeave(String dest, {int kind = 0}) async {
+    await _require().roomLeave(dest: dest, kind: kind);
   }
 }

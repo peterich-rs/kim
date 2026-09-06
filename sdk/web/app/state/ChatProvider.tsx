@@ -325,6 +325,9 @@ function toChatMsg(msg: Message, dest: string, me: string): ChatMsg {
 }
 
 interface ChatContextValue {
+  presenceByAccount: Record<string, number>;
+  typingByAccount: Record<string, boolean>;
+  readUpToByAccount: Record<string, bigint>;
   account: string | undefined;
   status: ConnStatus;
   threads: Thread[];
@@ -388,6 +391,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef(new Map<string, PendingPayload>());
   const [nickname, setNickname] = useState(initial?.account ?? "");
   const [incomingCount, setIncomingCount] = useState(0);
+  const [presenceByAccount, setPresenceByAccount] = useState<Record<string, number>>({});
+  const [typingByAccount, setTypingByAccount] = useState<Record<string, boolean>>({});
+  const [readUpToByAccount, setReadUpToByAccount] = useState<Record<string, bigint>>({});
   const [people, setPeople] = useState<Person[]>([]);
   const [incomingPeople, setIncomingPeople] = useState<Person[]>([]);
   const [outgoing, setOutgoing] = useState<string[]>([]);
@@ -534,6 +540,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setPeople(patch);
           setIncomingPeople(patch);
           dispatch({ type: "patchThreadTitle", id: profile.account, title: nick });
+        },
+        onTyping: (typing) => {
+          setTypingByAccount((prev) => {
+            const next = { ...prev };
+            if (typing.active) next[typing.typer] = true;
+            else delete next[typing.typer];
+            return next;
+          });
+        },
+        onReceiptRead: (receipt) => {
+          if (receipt.kind !== 0) return;
+          setReadUpToByAccount((prev) => {
+            const cur = prev[receipt.reader] ?? 0n;
+            if (receipt.messageId < cur) return prev;
+            return { ...prev, [receipt.reader]: receipt.messageId };
+          });
+        },
+        onPresence: (entries) => {
+          setPresenceByAccount((cur) => {
+            const next = { ...cur };
+            for (const e of entries) {
+              if (e.account) {
+                next[e.account] = e.status;
+              }
+            }
+            return next;
+          });
         },
       });
       sessionRef.current = session;
@@ -1017,6 +1050,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ChatContextValue>(
     () => ({
       account: auth?.account,
+      presenceByAccount,
+      typingByAccount,
+      readUpToByAccount,
       status: state.status,
       threads: state.threads,
       messages: state.messages,
@@ -1063,6 +1099,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }),
     [
       auth?.account,
+      presenceByAccount,
+      typingByAccount,
+      readUpToByAccount,
       state.status,
       state.threads,
       state.messages,

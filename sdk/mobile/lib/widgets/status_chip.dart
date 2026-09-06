@@ -78,3 +78,30 @@ class ConnectionBanner extends StatelessWidget {
     );
   }
 }
+
+/// Peer presence badge. Renders nothing for unknown (no misleading offline).
+class PeerPresenceDot extends StatelessWidget {
+  const PeerPresenceDot({super.key, required this.status, this.size = 8});
+
+  final PeerPresenceStatus status;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (status == PeerPresenceStatus.unknown) {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    final color = switch (status) {
+      PeerPresenceStatus.online => const Color(0xFF34C759),
+      PeerPresenceStatus.busy => scheme.tertiary,
+      PeerPresenceStatus.offline => scheme.outline,
+      PeerPresenceStatus.unknown => scheme.outline,
+    };
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}

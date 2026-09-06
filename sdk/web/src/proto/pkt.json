@@ -97,6 +97,10 @@
                 "device": {
                   "type": "string",
                   "id": 2
+                },
+                "deviceCredential": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             },
@@ -150,6 +154,10 @@
                 "jti": {
                   "type": "string",
                   "id": 10
+                },
+                "deviceId": {
+                  "type": "string",
+                  "id": 11
                 }
               }
             },
@@ -618,6 +626,14 @@
                 "password": {
                   "type": "string",
                   "id": 2
+                },
+                "deviceCredential": {
+                  "type": "string",
+                  "id": 3
+                },
+                "enrollDevice": {
+                  "type": "bool",
+                  "id": 4
                 }
               }
             },
@@ -634,6 +650,14 @@
                 "account": {
                   "type": "string",
                   "id": 3
+                },
+                "deviceId": {
+                  "type": "string",
+                  "id": 4
+                },
+                "deviceCredential": {
+                  "type": "string",
+                  "id": 5
                 }
               }
             },
@@ -676,6 +700,46 @@
             "RevokeStatus": {
               "fields": {
                 "revoked": {
+                  "type": "bool",
+                  "id": 1
+                }
+              }
+            },
+            "TokenEpochQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "TokenEpoch": {
+              "fields": {
+                "epoch": {
+                  "type": "uint32",
+                  "id": 1
+                }
+              }
+            },
+            "DeviceCheckQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "deviceId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "deviceCredential": {
+                  "type": "string",
+                  "id": 3
+                }
+              }
+            },
+            "DeviceCheckStatus": {
+              "fields": {
+                "ok": {
                   "type": "bool",
                   "id": 1
                 }
@@ -764,6 +828,128 @@
                 "peer": {
                   "type": "string",
                   "id": 2
+                }
+              }
+            },
+            "PresenceStatus": {
+              "values": {
+                "PRESENCE_UNSPECIFIED": 0,
+                "PRESENCE_OFFLINE": 1,
+                "PRESENCE_ONLINE": 2,
+                "PRESENCE_BUSY": 3
+              }
+            },
+            "Presence": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "status": {
+                  "type": "PresenceStatus",
+                  "id": 2
+                },
+                "lastSeen": {
+                  "type": "int64",
+                  "id": 3
+                }
+              }
+            },
+            "RoomEnterReq": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "RoomEnterResp": {
+              "fields": {
+                "presence": {
+                  "rule": "repeated",
+                  "type": "Presence",
+                  "id": 1
+                }
+              }
+            },
+            "RoomLeaveReq": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "PresencePush": {
+              "fields": {
+                "entries": {
+                  "rule": "repeated",
+                  "type": "Presence",
+                  "id": 1
+                }
+              }
+            },
+            "TypingReq": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "active": {
+                  "type": "bool",
+                  "id": 3
+                }
+              }
+            },
+            "TypingPush": {
+              "fields": {
+                "typer": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "active": {
+                  "type": "bool",
+                  "id": 4
+                }
+              }
+            },
+            "ReadReceiptPush": {
+              "fields": {
+                "reader": {
+                  "type": "string",
+                  "id": 1
+                },
+                "dest": {
+                  "type": "string",
+                  "id": 2
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 3
+                },
+                "messageId": {
+                  "type": "int64",
+                  "id": 4
                 }
               }
             },
@@ -1045,6 +1231,44 @@
                 "groupId": {
                   "type": "string",
                   "id": 2
+                }
+              }
+            },
+            "GroupSummary": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "name": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                }
+              }
+            },
+            "GroupListReq": {
+              "fields": {
+                "app": {
+                  "type": "string",
+                  "id": 1
+                },
+                "groupIds": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
+            "GroupListResp": {
+              "fields": {
+                "groups": {
+                  "rule": "repeated",
+                  "type": "GroupSummary",
+                  "id": 1
                 }
               }
             },

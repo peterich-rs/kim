@@ -4,11 +4,12 @@ use kim_router::{Context, SessionError};
 use kim_session::exclusive_device;
 use tracing::{error, info, warn};
 
+use crate::presence::PresenceHub;
 use crate::store::MessageStore;
 use crate::users::UserDirectory;
 
 pub async fn do_sys_login(ctx: Context, users: &dyn UserDirectory) {
-    do_sys_login_with_zone(ctx, "", users, None, false).await;
+    do_sys_login_with_zone(ctx, "", users, None, false, None).await;
 }
 
 pub async fn do_sys_login_with_zone(
@@ -17,6 +18,7 @@ pub async fn do_sys_login_with_zone(
     users: &dyn UserDirectory,
     store: Option<&dyn MessageStore>,
     pending_receipt: bool,
+    presence: Option<&PresenceHub>,
 ) {
     let body = match ctx.read_body::<kim_protocol::pkt::Session>() {
         Ok(s) if !s.account.is_empty() => s,
@@ -107,6 +109,9 @@ pub async fn do_sys_login_with_zone(
             return;
         }
     }
+    if let Some(hub) = presence {
+        hub.on_location_added(&body.app, &body.account).await;
+    }
     let resp = LoginResp {
         channel_id: body.channel_id.clone(),
     };
@@ -115,12 +120,16 @@ pub async fn do_sys_login_with_zone(
     }
 }
 
-pub async fn do_sys_logout(ctx: Context) {
+pub async fn do_sys_logout(ctx: Context, presence: Option<&PresenceHub>) {
     let account = ctx.session().account.clone();
     let channel_id = ctx.session().channel_id.clone();
+    let app = ctx.session().app.clone();
     info!(account = %account, channel = %channel_id, "do logout");
     match ctx.delete(&account, &channel_id).await {
         Ok(()) => {
+            if let Some(hub) = presence {
+                hub.on_location_removed(&app, &account, &channel_id).await;
+            }
             if let Err(err) = ctx.resp_bytes(Status::Success, Bytes::new()).await {
                 warn!(%err, "resp failed");
             }
@@ -442,6 +451,7 @@ mod tests {
                         users.as_ref(),
                         Some(store.as_ref()),
                         true,
+                        None,
                     )
                     .await
                 }

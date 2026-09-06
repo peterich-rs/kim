@@ -15,11 +15,16 @@ import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 import '../../copy.dart';
 import '../../core/format.dart';
 import '../../core/haptics.dart';
+import '../../kim_bridge.dart';
 import '../../models/models.dart';
 import '../../state/contacts.dart';
 import '../../state/link.dart';
 import '../../state/messages.dart';
 import '../../state/outbox.dart';
+import '../../state/presence.dart';
+import '../../state/receipts.dart';
+import '../../state/typing.dart';
+import '../../state/providers.dart';
 import '../../state/mutations.dart';
 import '../../state/profile.dart';
 import '../../state/session.dart';
@@ -29,6 +34,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
 import '../../widgets/kim_bubble.dart';
 import '../../widgets/kim_composer.dart';
+import '../../widgets/kim_typing_bars.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -52,6 +58,15 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   final _list = ChatListController();
   final _composer = GlobalKey<KimComposerState>();
+  Timer? _typingIdle;
+  Timer? _typingSendGate;
+  bool _typingActive = false;
+
+  /// Captured while mounted; never use [ref] from [dispose].
+  KimClientPort? _client;
+
+  /// Set after a successful room enter; invoked from [dispose] without [ref].
+  VoidCallback? _leaveRoom;
 
   @override
   void initState() {
@@ -60,6 +75,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (!mounted) {
         return;
       }
+      _client = ref.read(clientPortProvider);
       final messages = ref.read(threadMessagesProvider(widget.id).notifier);
       messages.captureUnreadAnchor(
         unread: widget.initialUnread,
@@ -67,10 +83,114 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       );
       unawaited(messages.reconcile());
       unawaited(messages.markRead());
+      unawaited(_enterRoom());
     });
   }
 
+  Future<void> _enterRoom() async {
+    if (widget.kind != ThreadKind.user) {
+      return;
+    }
+    final client = _client ?? (mounted ? ref.read(clientPortProvider) : null);
+    if (client == null) {
+      return;
+    }
+    _client = client;
+    final dest = widget.id;
+    try {
+      final rows = await client.roomEnter(dest, kind: 0);
+      // Close over [client]/ never use ref/context after unmount.
+      void leave() {
+        unawaited(() async {
+          try {
+            await client.roomLeave(dest, kind: 0);
+          } catch (_) {}
+        }());
+      }
+
+      if (!mounted) {
+        // Enter completed after unmount — leave without ref/context.
+        leave();
+        return;
+      }
+      ref.read(presenceProvider.notifier).applySnapshot(rows);
+      _leaveRoom = leave;
+    } catch (_) {
+      // Presence is best-effort; chat still works offline of interest.
+    }
+  }
+
+  @override
+  void dispose() {
+    _typingIdle?.cancel();
+    _typingSendGate?.cancel();
+    final client = _client;
+    final dest = widget.id;
+    if (_typingActive && widget.kind == ThreadKind.user && client != null) {
+      _typingActive = false;
+      unawaited(() async {
+        try {
+          await client.sendTyping(dest, kind: 0, active: false);
+        } catch (_) {}
+      }());
+    }
+    final leave = _leaveRoom;
+    _leaveRoom = null;
+    if (leave != null) {
+      // Callback closes over KimClientPort — never touch ref/context here.
+      leave();
+    }
+    super.dispose();
+  }
+
+  void _onComposerTyping(String text) {
+    if (widget.kind != ThreadKind.user) {
+      return;
+    }
+    final has = text.trim().isNotEmpty;
+    _typingIdle?.cancel();
+    if (!has) {
+      _stopTyping();
+      return;
+    }
+    if (!_typingActive) {
+      _typingActive = true;
+      unawaited(_emitTyping(true));
+    } else if (_typingSendGate?.isActive != true) {
+      // Re-announce while composing (debounce ~1.2s).
+      _typingSendGate = Timer(const Duration(milliseconds: 1200), () {
+        if (_typingActive) {
+          unawaited(_emitTyping(true));
+        }
+      });
+    }
+    _typingIdle = Timer(const Duration(milliseconds: 2500), _stopTyping);
+  }
+
+  void _stopTyping() {
+    _typingIdle?.cancel();
+    _typingIdle = null;
+    _typingSendGate?.cancel();
+    _typingSendGate = null;
+    if (!_typingActive) {
+      return;
+    }
+    _typingActive = false;
+    unawaited(_emitTyping(false));
+  }
+
+  Future<void> _emitTyping(bool active) async {
+    final client = _client;
+    if (client == null) {
+      return;
+    }
+    try {
+      await client.sendTyping(widget.id, kind: 0, active: active);
+    } catch (_) {}
+  }
+
   Future<void> _send(String text) async {
+    _stopTyping();
     try {
       await sendMessageMutation(widget.id).run(ref, (tsx) {
         return tsx.get(outboxProvider.notifier).sendText(widget.id, text);
@@ -239,6 +359,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final social = ref.watch(contactsProvider);
     final me = ref.watch(profileProvider);
     final thread = ref.watch(threadMessagesProvider(widget.id));
+    final peerTyping = widget.kind == ThreadKind.user
+        ? ref.watch(peerTypingProvider(widget.id))
+        : false;
+    final readUpTo = widget.kind == ThreadKind.user
+        ? ref.watch(peerReadUpToProvider(widget.id))
+        : null;
     final account = session.account;
     final liveTitle = widget.kind == ThreadKind.user
         ? (social.person(widget.id)?.title ?? widget.title)
@@ -276,25 +402,44 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       .read(threadMessagesProvider(widget.id).notifier)
                       .loadOlder(),
                 ),
-                empty: const EmptyState(
-                  icon: LucideIcons.messageCircle,
-                  title: Copy.noMessages,
-                  subtitle: Copy.noMessagesHint,
-                ),
+                empty: peerTyping
+                    ? null
+                    : const EmptyState(
+                        icon: LucideIcons.messageCircle,
+                        title: Copy.noMessages,
+                        subtitle: Copy.noMessagesHint,
+                      ),
+                footer: peerTyping
+                    ? KimTypingRow(
+                        key: const Key('typing-row'),
+                        name: liveTitle,
+                        avatar: KimAvatar(
+                          name: liveTitle,
+                          url: avatarFor(me, social, widget.id),
+                          size: KimAvatarSize.sm,
+                          shape: KimAvatarShape.squircle,
+                        ),
+                      )
+                    : null,
                 itemBuilder: (context, msg, index) {
                   final prev = index > 0 ? thread.items[index - 1] : null;
                   final next = index + 1 < thread.items.length
                       ? thread.items[index + 1]
                       : null;
+                  final own = msg.sender == account;
+                  final mid = msg.messageId;
+                  final showRead =
+                      own && readUpTo != null && mid > 0 && mid <= readUpTo;
                   return KimMessageRow(
                     key: Key('msg-${msg.key}'),
                     message: msg,
                     previous: prev,
                     next: next,
-                    isSentByMe: msg.sender == account,
+                    isSentByMe: own,
                     displayName: _nameOf(msg.sender, account, social),
                     avatarUrl: avatarFor(me, social, msg.sender),
                     unreadAnchor: thread.unreadAnchorId == msg.key,
+                    showRead: showRead,
                     onRetry: msg.isFailed
                         ? () => unawaited(_retry(msg.key))
                         : null,
@@ -327,7 +472,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             _ChatTitleChrome(
                               title: liveTitle,
                               avatarUrl: avatarFor(me, social, widget.id),
-                              status: session.status,
+                              presence: ref.watch(
+                                peerPresenceProvider(widget.id),
+                              ),
                             ),
                             const Spacer(),
                             const _FrostedCircleButton(
@@ -368,6 +515,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                           onSend: (text) => unawaited(_send(text)),
                           onPickAlbum: () => unawaited(_pickAlbum()),
                           onTakePhoto: () => unawaited(_takePhoto()),
+                          onTypingChanged: widget.kind == ThreadKind.user
+                              ? _onComposerTyping
+                              : null,
                         ),
                       ),
               ),
@@ -426,12 +576,12 @@ class _ChatTitleChrome extends StatelessWidget {
   const _ChatTitleChrome({
     required this.title,
     required this.avatarUrl,
-    required this.status,
+    required this.presence,
   });
 
   final String title;
   final String avatarUrl;
-  final ConnStatus status;
+  final PeerPresenceStatus presence;
 
   @override
   Widget build(BuildContext context) {
@@ -455,20 +605,21 @@ class _ChatTitleChrome extends StatelessWidget {
                     size: KimAvatarSize.sm,
                     shape: KimAvatarShape.squircle,
                   ),
-                  Positioned(
-                    right: -1,
-                    bottom: -1,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: KimTheme.chatCanvasOf(context),
-                        shape: BoxShape.circle,
+                  if (presence != PeerPresenceStatus.unknown)
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: KimTheme.chatCanvasOf(context),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: PeerPresenceDot(status: presence, size: 8),
                       ),
-                      alignment: Alignment.center,
-                      child: StatusDot(status: status, size: 8),
                     ),
-                  ),
                 ],
               ),
               const Gap(8),

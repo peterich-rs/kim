@@ -89,6 +89,7 @@ abstract final class Copy {
   static const delete = '删除';
   static const cancel = '取消';
   static const copy = '复制';
+  static const readReceipt = '已读';
   static const copied = '已复制';
   static const quote = '引用';
   static const unreadBelow = '以下未读';

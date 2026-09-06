@@ -11,6 +11,7 @@ use chat::social_cache::{CachedSocial, CachedUserDirectory};
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
+use chat::{open_room_interest, RoomInterestStore};
 use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
@@ -272,7 +273,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: vec![],
     });
-    let handler = Arc::new(ChatHandler::with_social(
+    let interest: Arc<dyn RoomInterestStore> = open_room_interest(redis_url.as_deref()).await?;
+    let handler = Arc::new(ChatHandler::with_social_interest(
         container.clone(),
         cache,
         store,
@@ -282,6 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         users,
         social,
         chat::store::pending_receipt_enabled(),
+        interest,
     ));
     if let Some(m) = metrics.clone() {
         handler.with_metrics(m);

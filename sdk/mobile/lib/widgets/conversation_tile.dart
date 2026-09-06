@@ -11,6 +11,7 @@ import '../core/image_extra.dart';
 import '../models/models.dart';
 import '../theme/kim_theme.dart';
 import 'kim_avatar.dart';
+import 'status_chip.dart';
 
 class ConversationTile extends StatelessWidget {
   const ConversationTile({
@@ -19,12 +20,14 @@ class ConversationTile extends StatelessWidget {
     required this.onOpen,
     required this.onDelete,
     this.avatarUrl = '',
+    this.presence = PeerPresenceStatus.unknown,
   });
 
   final KimThread thread;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
   final String avatarUrl;
+  final PeerPresenceStatus presence;
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +59,22 @@ class ConversationTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              KimAvatar(
-                name: thread.title,
-                url: avatarUrl,
-                size: KimAvatarSize.md,
-                shape: KimAvatarShape.squircle,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  KimAvatar(
+                    name: thread.title,
+                    url: avatarUrl,
+                    size: KimAvatarSize.md,
+                    shape: KimAvatarShape.squircle,
+                  ),
+                  if (presence != PeerPresenceStatus.unknown)
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: PeerPresenceDot(status: presence, size: 10),
+                    ),
+                ],
               ),
               const Gap(14),
               Expanded(

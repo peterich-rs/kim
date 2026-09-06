@@ -61,6 +61,7 @@ class KimMessageRow extends StatelessWidget {
     this.displayName,
     this.avatarUrl = '',
     this.unreadAnchor = false,
+    this.showRead = false,
     this.onRetry,
     this.onLongPress,
   });
@@ -72,6 +73,9 @@ class KimMessageRow extends StatelessWidget {
   final String? displayName;
   final String avatarUrl;
   final bool unreadAnchor;
+
+  /// DM peer has read up to/through this own message.
+  final bool showRead;
   final VoidCallback? onRetry;
   final void Function(LongPressStartDetails details)? onLongPress;
 
@@ -118,6 +122,7 @@ class KimMessageRow extends StatelessWidget {
                     message: message,
                     first: first,
                     last: last,
+                    showRead: showRead,
                     onRetry: onRetry,
                   )
                 : _PeerBlock(
@@ -232,12 +237,14 @@ class _OwnBlock extends StatelessWidget {
     required this.message,
     required this.first,
     required this.last,
+    this.showRead = false,
     this.onRetry,
   });
 
   final KimChatMsg message;
   final bool first;
   final bool last;
+  final bool showRead;
   final VoidCallback? onRetry;
 
   @override
@@ -269,6 +276,17 @@ class _OwnBlock extends StatelessWidget {
           ],
         ),
         if (message.isFailed) _Retry(messageKey: message.key, onRetry: onRetry),
+        if (showRead && last && !message.isFailed)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 4),
+            child: Text(
+              Copy.readReceipt,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: KimTheme.fontMeta,
+              ),
+            ),
+          ),
       ],
     );
   }
