@@ -102,7 +102,8 @@ type Action =
   | { type: "patchMessage"; dest: string; key: string; patch: Partial<ChatMsg> }
   | { type: "mute"; id: string; muted: boolean }
   | { type: "loadingOlder"; dest: string; loading: boolean }
-  | { type: "deleteMessage"; dest: string; key: string };
+  | { type: "deleteMessage"; dest: string; key: string }
+  | { type: "patchThreadTitle"; id: string; title: string };
 
 const empty: ChatState = {
   status: "offline",
@@ -170,6 +171,17 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, connectError: action.error };
     case "upsertThread":
       return { ...state, threads: upsertThread(state.threads, action.thread) };
+    case "patchThreadTitle": {
+      if (!state.threads.some((t) => t.id === action.id)) {
+        return state;
+      }
+      return {
+        ...state,
+        threads: state.threads.map((t) =>
+          t.id === action.id ? { ...t, title: action.title } : t,
+        ),
+      };
+    }
     case "message": {
       const prev = state.messages[action.dest] ?? [];
       if (prev.some((m) => m.key === action.msg.key)) {
@@ -512,6 +524,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         },
         onFriendAccepted: (from, nick) => {
           markFriendAccepted(from, nick);
+        },
+        onProfileUpdated: (profile) => {
+          const nick = profile.nickname || profile.account;
+          const patch = (cur: Person[]) =>
+            cur.map((p) =>
+              p.account === profile.account ? { account: p.account, nickname: nick } : p,
+            );
+          setPeople(patch);
+          setIncomingPeople(patch);
+          dispatch({ type: "patchThreadTitle", id: profile.account, title: nick });
         },
       });
       sessionRef.current = session;

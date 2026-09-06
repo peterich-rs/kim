@@ -20,6 +20,7 @@ export interface ChatHandlers {
   onGroup: (groupId: string, members: string[]) => void;
   onFriend?: (from: string, nickname: string) => void;
   onFriendAccepted?: (from: string, nickname: string) => void;
+  onProfileUpdated?: (profile: WireProfile) => void;
   onToken?: (token: string, exp: number) => void;
 }
 
@@ -142,6 +143,12 @@ export class ChatSession {
         return;
       }
       this.handlers.onFriendAccepted?.(from, nickname);
+    });
+    cli.onprofileupdated((profile) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onProfileUpdated?.(profile);
     });
   }
 

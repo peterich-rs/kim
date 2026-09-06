@@ -11,6 +11,7 @@ mod hmac_nonce;
 pub mod idgen;
 mod inbox;
 mod login;
+mod notify;
 mod offline;
 mod profile;
 pub mod royal;
@@ -376,7 +377,7 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(CMD_USER_UPDATE, move |ctx| {
                 let svc = svc.clone();
-                async move { do_user_update(ctx, svc.users.as_ref()).await }
+                async move { do_user_update(ctx, svc.users.as_ref(), svc.social.as_ref()).await }
             });
         }
         {

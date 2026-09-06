@@ -48,6 +48,7 @@ enum KimEventKind {
   kick,
   friend,
   friendAccepted,
+  profileUpdated,
   group,
   token,
   closed,

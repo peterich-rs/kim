@@ -81,10 +81,21 @@ impl Context {
     }
 
     /// Push to `recvs`, skipping the sender's own `channel_id`, coalescing by
-    /// `gate_id`. Every gateway is pushed; the first error is returned after
-    /// attempting the rest.
+    /// `gate_id`. Command is copied from the inbound request (friend notify).
     pub async fn dispatch<B: Message>(
         &self,
+        body: &B,
+        recvs: &[Location],
+    ) -> Result<(), RouterError> {
+        self.dispatch_cmd(&self.request.header.command, body, recvs)
+            .await
+    }
+
+    /// Like [`dispatch`], but sets an explicit push `command` (e.g. profile
+    /// snapshot `chat.user.updated` while handling `chat.user.update`).
+    pub async fn dispatch_cmd<B: Message>(
+        &self,
+        command: &str,
         body: &B,
         recvs: &[Location],
     ) -> Result<(), RouterError> {
@@ -92,6 +103,7 @@ impl Context {
             return Ok(());
         }
         let mut packet = LogicPkt::new_from(&self.request.header);
+        packet.header.command = command.to_string();
         packet.header.flag = Flag::Push as i32;
         packet.write_body(body);
 
@@ -178,7 +190,7 @@ mod tests {
     use crate::test_support::{NoopStorage, RecordingDispatcher};
     use crate::{Router, RouterError};
     use kim_protocol::pkt::KickoutNotify;
-    use kim_protocol::{CMD_DEMO_ECHO, META_DEST_CHANNELS, META_DEST_SERVER};
+    use kim_protocol::{CMD_DEMO_ECHO, CMD_USER_UPDATED, META_DEST_CHANNELS, META_DEST_SERVER};
 
     fn session(channel: &str, gate: &str) -> Session {
         Session {
@@ -405,6 +417,35 @@ mod tests {
         assert_eq!(got[1].channels, vec!["ch-b".to_string()]);
         assert_eq!(got[1].pkt.get_meta(META_DEST_CHANNELS), Some("ch-b"));
         assert_ne!(got[0].channels, got[1].channels);
+    }
+
+    #[tokio::test]
+    async fn dispatch_cmd_overrides_request_command() {
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let ctx = Context::new(
+            request(CMD_DEMO_ECHO, Bytes::new()),
+            session("ch-self", "wg-1"),
+            dispatcher.clone(),
+            Arc::new(NoopStorage),
+        );
+        ctx.dispatch_cmd(
+            CMD_USER_UPDATED,
+            &KickoutNotify {
+                channel_id: "ch-a".into(),
+            },
+            &[Location {
+                channel_id: "ch-a".into(),
+                gate_id: "wg-1".into(),
+                device: String::new(),
+                jti: String::new(),
+            }],
+        )
+        .await
+        .unwrap();
+        let got = dispatcher.recorded();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].pkt.header.command, CMD_USER_UPDATED);
+        assert_eq!(got[0].pkt.header.flag, Flag::Push as i32);
     }
 
     #[tokio::test]

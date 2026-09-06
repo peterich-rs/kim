@@ -20,8 +20,8 @@ use kim_protocol::{
     generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY,
     CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    CODE_PING, DEMO_DEFAULT_SECRET, INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE,
-    MESSAGE_TYPE_TEXT,
+    CMD_USER_UPDATED, CODE_PING, DEMO_DEFAULT_SECRET, INBOX_KIND_GROUP, INBOX_KIND_USER,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -234,6 +234,27 @@ fn decode_friend_accept_push() {
             assert_eq!(nickname, "Bobby");
         }
         other => panic!("expected FriendAccepted, got {other:?}"),
+    }
+}
+
+#[test]
+fn decode_profile_updated_push() {
+    let mut pkt = LogicPkt::new(CMD_USER_UPDATED, 11, Bytes::new());
+    pkt.header.flag = Flag::Push as i32;
+    pkt.write_body(&UserProfile {
+        account: "alice".into(),
+        nickname: "Ali".into(),
+        avatar: "https://cdn/a.png".into(),
+        bio: "x".into(),
+    });
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    match ev {
+        Event::ProfileUpdated { profile } => {
+            assert_eq!(profile.account, "alice");
+            assert_eq!(profile.nickname, "Ali");
+            assert_eq!(profile.avatar, "https://cdn/a.png");
+        }
+        other => panic!("expected ProfileUpdated, got {other:?}"),
     }
 }
 

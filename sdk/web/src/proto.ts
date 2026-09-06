@@ -461,6 +461,10 @@ function toProfile(o: {
   };
 }
 
+export function encodeUserProfile(p: WireProfile): Uint8Array {
+  return encode(UserProfileType, p);
+}
+
 export function encodeUserProfileUpdate(p: {
   nickname: string;
   avatar: string;

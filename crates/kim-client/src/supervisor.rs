@@ -54,6 +54,9 @@ pub enum SessionEvent {
         from: String,
         nickname: String,
     },
+    ProfileUpdated {
+        profile: crate::events::Profile,
+    },
     GroupCreate {
         group_id: String,
         members: Vec<String>,

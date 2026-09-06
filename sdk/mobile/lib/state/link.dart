@@ -235,6 +235,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       case KimEventKind.friendAccepted:
         unawaited(KimHaptics.success());
         unawaited(_friendPush(event, accepted: true));
+      case KimEventKind.profileUpdated:
+        _onProfileUpdated(event);
       case KimEventKind.group:
         if (event.dest.isNotEmpty) {
           ref
@@ -264,6 +266,21 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     } else {
       contacts.onRequest(event.sender, name);
     }
+  }
+
+  void _onProfileUpdated(KimEvent event) {
+    final account = event.sender.isNotEmpty ? event.sender : event.dest;
+    if (account.isEmpty) {
+      return;
+    }
+    final nickname = event.nickname.isEmpty ? account : event.nickname;
+    final avatar = event.extra;
+    ref
+        .read(contactsProvider.notifier)
+        .onProfileUpdated(account, nickname, avatar);
+    ref
+        .read(threadsProvider.notifier)
+        .patchPeerProfile(account, title: nickname, avatar: avatar);
   }
 
   Future<void> _onSyncPage(KimEvent event) async {

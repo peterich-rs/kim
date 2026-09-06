@@ -4,7 +4,7 @@ import { KIMClient, KIMEvent, State } from "../src/client.ts";
 import { Command } from "../src/command.ts";
 import { Content } from "../src/message.ts";
 import { LogicPkt, readPacket } from "../src/packet.ts";
-import { encodeFriendRequestNotify, encodeKickout, encodeMessagePush } from "../src/proto.ts";
+import { encodeFriendRequestNotify, encodeKickout, encodeMessagePush, encodeUserProfile } from "../src/proto.ts";
 import { Flag, KIMStatus, Status } from "../src/status.ts";
 import { MemoryStore } from "../src/store.ts";
 import { accountFromToken } from "../src/token.ts";
@@ -283,6 +283,31 @@ describe("KIMClient", () => {
     gw.lastSocket().deliver(pkt.bytes());
     await new Promise((r) => setTimeout(r, 20));
     expect(got).toEqual(["bob:Bobby"]);
+  });
+
+  it("delivers profile updated push", async () => {
+    const gw = new LoopbackGw();
+    const cli = client(gw);
+    const got: string[] = [];
+    cli.onprofileupdated((p) => {
+      got.push(`${p.account}:${p.nickname}:${p.avatar}`);
+    });
+    await cli.login();
+    const pkt = LogicPkt.build(
+      Command.UserUpdated,
+      "",
+      encodeUserProfile({
+        account: "alice",
+        nickname: "Ali",
+        avatar: "a.png",
+        bio: "x",
+      }),
+      12,
+    );
+    pkt.flag = Flag.Push;
+    gw.lastSocket().deliver(pkt.bytes());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(got).toEqual(["alice:Ali:a.png"]);
   });
 
   it("delivers online push only after CONNECTED and dedups messageId", async () => {

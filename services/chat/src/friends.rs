@@ -1,7 +1,8 @@
 use kim_protocol::pkt::{FriendRequestNotify, Status, UserListResp};
-use kim_router::{Context, SessionError};
+use kim_router::Context;
 use tracing::warn;
 
+use crate::notify::notify_account;
 use crate::profile::profiles_pb;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
 use crate::users::{UserDirectory, UserError};
@@ -43,15 +44,8 @@ async fn require_user(
 }
 
 async fn notify_peer(ctx: &Context, account: &str, body: &FriendRequestNotify) {
-    match ctx.list_locations(account).await {
-        Ok(locs) if !locs.is_empty() => {
-            if let Err(err) = ctx.dispatch(body, &locs).await {
-                warn!(%err, account, "friend notify failed");
-            }
-        }
-        Ok(_) | Err(SessionError::NotFound) => {}
-        Err(err) => warn!(%err, account, "friend notify loc failed"),
-    }
+    // Push keeps the inbound command (`chat.friend.request` / `chat.friend.accept`).
+    notify_account(ctx, account, ctx.header().command.as_str(), body).await;
 }
 
 pub async fn do_friend_request(

@@ -389,6 +389,16 @@ fn map_event(event: SessionEvent) -> KimSessionEvent {
             ev.nickname = nickname;
             ev
         }
+        SessionEvent::ProfileUpdated { profile } => {
+            let mut ev = KimSessionEvent::empty();
+            ev.kind = "profile_updated".into();
+            ev.dest = profile.account.clone();
+            ev.sender = profile.account;
+            ev.nickname = profile.nickname;
+            // Reuse `extra` for avatar to avoid FRB schema churn.
+            ev.extra = profile.avatar;
+            ev
+        }
         SessionEvent::GroupCreate { group_id, members } => {
             let mut ev = KimSessionEvent::empty();
             ev.kind = "group".into();
