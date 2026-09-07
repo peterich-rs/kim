@@ -15,6 +15,7 @@ import '../../state/inbox.dart';
 import '../../state/mutations.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_dock.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 import '../../widgets/kim_text_field.dart';
@@ -239,7 +240,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                   if (i != social.friends.length - 1) const Divider(indent: 72),
                 ],
               ]),
-            const SliverToBoxAdapter(child: Gap(24)),
+            SliverToBoxAdapter(child: Gap(KimDock.overlapOf(context))),
           ],
         ),
       ),

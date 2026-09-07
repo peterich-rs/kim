@@ -18,6 +18,7 @@ import '../../state/session.dart';
 import '../../widgets/conversation_tile.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_dock.dart';
 import '../../widgets/new_chat_sheet.dart';
 import '../../widgets/status_chip.dart';
 
@@ -139,6 +140,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
               child: Skeletonizer(
                 child: ListView.builder(
                   physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
                   itemCount: 7,
                   itemBuilder: (context, i) => ConversationTile(
                     thread: KimThread(
@@ -156,25 +158,28 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
             )
           else if (visible.isEmpty)
             SliverFillRemaining(
-              child: EmptyState(
-                icon: LucideIcons.messageCircle,
-                title: inbox.threads.isEmpty
-                    ? Copy.noConversations
-                    : Copy.noMatch,
-                subtitle: inbox.threads.isEmpty
-                    ? Copy.noConversationsHint
-                    : Copy.searchChats,
-                action: inbox.threads.isEmpty
-                    ? FilledButton.tonal(
-                        onPressed: () => openNewChatSheet(context),
-                        child: const Text(Copy.newChat),
-                      )
-                    : null,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
+                child: EmptyState(
+                  icon: LucideIcons.messageCircle,
+                  title: inbox.threads.isEmpty
+                      ? Copy.noConversations
+                      : Copy.noMatch,
+                  subtitle: inbox.threads.isEmpty
+                      ? Copy.noConversationsHint
+                      : Copy.searchChats,
+                  action: inbox.threads.isEmpty
+                      ? FilledButton.tonal(
+                          onPressed: () => openNewChatSheet(context),
+                          child: const Text(Copy.newChat),
+                        )
+                      : null,
+                ),
               ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate((context, i) {
                   final thread = visible[i];

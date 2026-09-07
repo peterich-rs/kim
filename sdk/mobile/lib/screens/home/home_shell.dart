@@ -9,7 +9,7 @@ import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../state/contacts.dart';
 import '../../theme/kim_theme.dart';
-import '../../widgets/kim_hairline.dart';
+import '../../widgets/kim_dock.dart';
 
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.navigationShell});
@@ -21,38 +21,42 @@ class HomeShell extends ConsumerWidget {
     final incoming = ref.watch(contactsProvider.select((s) => s.incomingCount));
     return Scaffold(
       backgroundColor: KimTheme.canvasOf(context),
-      body: navigationShell,
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
         children: [
-          const KimHairline(),
-          NavigationBar(
-            selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: (index) {
-              KimHaptics.selection();
-              navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
-              );
-            },
-            destinations: [
-              const NavigationDestination(
-                icon: Icon(LucideIcons.messageCircle),
-                label: Copy.conversations,
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: incoming > 0,
-                  label: Text(incoming > 9 ? '9+' : '$incoming'),
-                  child: const Icon(LucideIcons.users),
+          navigationShell,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: KimDock(
+              selectedIndex: navigationShell.currentIndex,
+              onSelected: (index) {
+                KimHaptics.selection();
+                navigationShell.goBranch(
+                  index,
+                  initialLocation: index == navigationShell.currentIndex,
+                );
+              },
+              items: [
+                const KimDockItem(
+                  key: Key('nav-conversations'),
+                  icon: LucideIcons.messageCircle,
+                  label: Copy.conversations,
                 ),
-                label: Copy.contacts,
-              ),
-              const NavigationDestination(
-                icon: Icon(LucideIcons.user),
-                label: Copy.me,
-              ),
-            ],
+                KimDockItem(
+                  key: const Key('nav-contacts'),
+                  icon: LucideIcons.users,
+                  label: Copy.contacts,
+                  badge: incoming,
+                ),
+                const KimDockItem(
+                  key: Key('nav-me'),
+                  icon: LucideIcons.user,
+                  label: Copy.me,
+                ),
+              ],
+            ),
           ),
         ],
       ),
