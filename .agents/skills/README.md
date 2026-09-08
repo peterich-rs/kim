@@ -18,6 +18,7 @@ Grok loads these from `.agents/skills/` (repo scope). Slash: `/<name>`.
 | `git-advanced-workflows` | rebase, bisect, worktree, reflog |
 | `github-standards` | Branch/PR format, secrets scan, CI hygiene |
 | `code-review` | Structured review of a branch or PR |
+| `ascii-diagram` | Any logic spanning 2+ hops / 3+ participants: sequence, call-chain, dataflow, pipeline, layered, state diagrams -- diagram first, prose second |
 
 ## Sources (MIT)
 
