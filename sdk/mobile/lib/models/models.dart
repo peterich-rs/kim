@@ -239,27 +239,32 @@ class KimThread {
     'avatar': avatar,
   };
 
-  static KimThread? fromJson(Object? raw) {
+  factory KimThread.fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    if (id is! String || id.isEmpty) {
+      throw const FormatException('KimThread.id');
+    }
+    final title = json['title'];
+    return KimThread(
+      id: id,
+      kind: json['kind'] == 'group' ? ThreadKind.group : ThreadKind.user,
+      title: title is String && title.isNotEmpty ? title : id,
+      lastBody: json['lastBody'] is String ? json['lastBody'] as String : '',
+      lastAt: _jsonInt(json['lastAt']),
+      unread: _jsonInt(json['unread']),
+      avatar: json['avatar'] is String ? json['avatar'] as String : '',
+    );
+  }
+
+  static KimThread? tryFromJson(Object? raw) {
     if (raw is! Map) {
       return null;
     }
-    final id = raw['id'];
-    if (id is! String || id.isEmpty) {
+    try {
+      return KimThread.fromJson(Map<String, Object?>.from(raw));
+    } on FormatException {
       return null;
     }
-    final kindRaw = raw['kind'];
-    final kind = kindRaw == 'group' ? ThreadKind.group : ThreadKind.user;
-    return KimThread(
-      id: id,
-      kind: kind,
-      title: raw['title'] is String && (raw['title'] as String).isNotEmpty
-          ? raw['title'] as String
-          : id,
-      lastBody: raw['lastBody'] is String ? raw['lastBody'] as String : '',
-      lastAt: raw['lastAt'] is int ? raw['lastAt'] as int : 0,
-      unread: raw['unread'] is int ? raw['unread'] as int : 0,
-      avatar: raw['avatar'] is String ? raw['avatar'] as String : '',
-    );
   }
 }
 
@@ -370,22 +375,19 @@ class KimChatMsg {
     'localPath': localPath,
   };
 
-  static KimChatMsg? fromJson(Object? raw) {
-    if (raw is! Map) {
-      return null;
-    }
-    final key = raw['key'];
-    final dest = raw['dest'];
-    final sender = raw['sender'];
-    final body = raw['body'];
+  factory KimChatMsg.fromJson(Map<String, Object?> json) {
+    final key = json['key'];
+    final dest = json['dest'];
+    final sender = json['sender'];
+    final body = json['body'];
     if (key is! String ||
         dest is! String ||
         sender is! String ||
         body is! String) {
-      return null;
+      throw const FormatException('KimChatMsg');
     }
-    final statusRaw = raw['status'];
-    final failed = raw['failed'] == true;
+    final statusRaw = json['status'];
+    final failed = json['failed'] == true;
     final status = statusRaw == 'sending'
         ? KimSendStatus.sending
         : statusRaw == 'failed' || failed
@@ -396,20 +398,43 @@ class KimChatMsg {
       dest: dest,
       sender: sender,
       body: body,
-      at: raw['at'] is int ? raw['at'] as int : 0,
-      sys: raw['sys'] == true,
+      at: _jsonInt(json['at']),
+      sys: json['sys'] == true,
       failed: status == KimSendStatus.failed,
-      kind: raw['kind'] == 'video'
+      kind: json['kind'] == 'video'
           ? KimMsgKind.video
-          : raw['kind'] == 'image'
+          : json['kind'] == 'image'
           ? KimMsgKind.image
           : KimMsgKind.text,
-      width: raw['width'] is int ? raw['width'] as int : 0,
-      height: raw['height'] is int ? raw['height'] as int : 0,
-      messageId: raw['messageId'] is int ? raw['messageId'] as int : 0,
-      batchId: raw['batchId'] is String ? raw['batchId'] as String : null,
+      width: _jsonInt(json['width']),
+      height: _jsonInt(json['height']),
+      messageId: _jsonInt(json['messageId']),
+      batchId: json['batchId'] is String ? json['batchId'] as String : null,
       status: status,
-      localPath: raw['localPath'] is String ? raw['localPath'] as String : null,
+      localPath: json['localPath'] is String
+          ? json['localPath'] as String
+          : null,
     );
   }
+
+  static KimChatMsg? tryFromJson(Object? raw) {
+    if (raw is! Map) {
+      return null;
+    }
+    try {
+      return KimChatMsg.fromJson(Map<String, Object?>.from(raw));
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
+int _jsonInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return 0;
 }

@@ -77,7 +77,8 @@ class _KimTextFieldState extends State<KimTextField> {
         enabled: widget.enabled,
         maxLines: 1,
         maxLength: widget.maxLength,
-        inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'[\n\r]'))],
+        maxLengthEnforcement: MaxLengthEnforcement.truncateAfterCompositionEnds,
+        inputFormatters: [_SkipComposingFormatter(_denyNewlines)],
         autofillHints: widget.autofillHints,
         style: const TextStyle(fontSize: 16, height: 1.3),
         decoration: InputDecoration(
@@ -103,5 +104,25 @@ class _KimTextFieldState extends State<KimTextField> {
         ),
       ),
     );
+  }
+}
+
+final _denyNewlines = FilteringTextInputFormatter.deny(RegExp(r'[\n\r]'));
+
+/// Deny formatters eat CJK composing text on desktop. Skip until committed.
+class _SkipComposingFormatter extends TextInputFormatter {
+  const _SkipComposingFormatter(this.inner);
+
+  final TextInputFormatter inner;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.isComposingRangeValid) {
+      return newValue;
+    }
+    return inner.formatEditUpdate(oldValue, newValue);
   }
 }

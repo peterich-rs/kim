@@ -125,7 +125,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     if (loopbackUnreachableOnThisDevice(runtime.settings.url)) {
       _set(
-        const KimLinkState(
+        KimLinkState(
           status: ConnStatus.reconnecting,
           error: Copy.loopbackUnreachable,
         ),

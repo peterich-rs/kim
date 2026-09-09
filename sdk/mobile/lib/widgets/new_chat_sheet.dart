@@ -9,9 +9,8 @@ import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 
 import '../copy.dart';
 import '../core/haptics.dart';
-import '../models/models.dart';
+import '../router/open_chat.dart';
 import '../state/contacts.dart';
-import '../state/inbox.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/kim_avatar.dart';
 
@@ -23,8 +22,8 @@ Future<void> openNewChatSheet(BuildContext context) {
       WoltModalSheetPage(
         hasSabGradient: false,
         navBarHeight: 56,
-        pageTitle: const Padding(
-          padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+        pageTitle: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
           child: Text(Copy.newChat),
         ),
         child: const Padding(
@@ -52,7 +51,7 @@ class _NewChatBody extends ConsumerWidget {
             Navigator.of(context).pop();
             context.go('/contacts');
           },
-          child: const Text(Copy.addFriend),
+          child: Text(Copy.addFriend),
         ),
       );
     }
@@ -69,16 +68,9 @@ class _NewChatBody extends ConsumerWidget {
             title: Text(p.title),
             subtitle: Text('@${p.account}'),
             onTap: () {
-              final thread = ref
-                  .read(threadsProvider.notifier)
-                  .ensureThread(
-                    id: p.account,
-                    kind: ThreadKind.user,
-                    title: p.title,
-                  );
               KimHaptics.selection();
               Navigator.of(context).pop();
-              context.push('/chat/${thread.id}', extra: thread);
+              openKimChat(context, ref, id: p.account, title: p.title);
             },
           ),
         const Gap(8),

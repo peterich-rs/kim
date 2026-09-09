@@ -13,6 +13,6 @@ void main() {
     expect(paths.agentWorkspace.existsSync(), isTrue);
     final md = File('${paths.agentWorkspace.path}/AGENTS.md');
     expect(md.existsSync(), isTrue);
-    expect(md.readAsStringSync(), contains('KIM Agent'));
+    expect(md.readAsStringSync(), contains('KIM Goose'));
   });
 }

@@ -71,7 +71,7 @@ class ConnectionBanner extends StatelessWidget {
               ),
             ),
             if (status == ConnStatus.offline && onRetry != null)
-              TextButton(onPressed: onRetry, child: const Text(Copy.retry)),
+              TextButton(onPressed: onRetry, child: Text(Copy.retry)),
           ],
         ),
       ),

@@ -440,7 +440,7 @@ class _NewMessagesPill extends StatelessWidget {
               Icon(LucideIcons.arrowDown, size: 14, color: scheme.onPrimary),
               const SizedBox(width: 6),
               Text(
-                '$count ${Copy.newMessages}',
+                Copy.nNewMessages(count),
                 style: TextStyle(
                   color: scheme.onPrimary,
                   fontSize: KimTheme.fontMeta,

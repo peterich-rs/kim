@@ -10,6 +10,7 @@ import 'package:gap/gap.dart';
 import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
+import '../core/layout.dart';
 import '../core/validation.dart';
 import '../state/auth.dart';
 import '../state/mutations.dart';
@@ -112,176 +113,180 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     return Scaffold(
       backgroundColor: KimTheme.canvasOf(context),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(28, 56, 28, 28),
-          children: [
-            const KimMark(size: 48),
-            const Gap(20),
-            Text(
-              Copy.brand,
-              style: theme.textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-                height: 1.15,
-              ),
-            ),
-            const Gap(6),
-            Text(
-              isRegister ? Copy.registerTitle : Copy.loginTitle,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Gap(36),
-            KimTextField(
-              controller: _account,
-              label: Copy.account,
-              errorText: _accountErr,
-              maxLength: 32,
-              autofocus: true,
-              keyboardType: TextInputType.visiblePassword,
-              autocorrect: false,
-              enableSuggestions: false,
-              autofillHints: Platform.isMacOS
-                  ? null
-                  : const [AutofillHints.username],
-            ),
-            KimTextField(
-              controller: _password,
-              label: Copy.password,
-              errorText: _passwordErr,
-              obscureable: true,
-              maxLength: 128,
-              textInputAction: isRegister
-                  ? TextInputAction.next
-                  : TextInputAction.done,
-              onEditingComplete: isRegister ? null : _submit,
-              autofillHints: Platform.isMacOS
-                  ? null
-                  : [
-                      isRegister
-                          ? AutofillHints.newPassword
-                          : AutofillHints.password,
-                    ],
-            ),
-            AnimatedSize(
-              duration: KimMotion.medium,
-              curve: KimMotion.standard,
-              alignment: Alignment.topCenter,
-              child: isRegister
-                  ? KimTextField(
-                      controller: _confirm,
-                      label: Copy.confirmPassword,
-                      errorText: _confirmErr,
-                      obscureable: true,
-                      maxLength: 128,
-                      textInputAction: TextInputAction.done,
-                      onEditingComplete: _submit,
-                      autofillHints: Platform.isMacOS
-                          ? null
-                          : const [AutofillHints.newPassword],
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            if (error.isNotEmpty) ...[
-              const Gap(16),
+        child: kimConstrainedForm(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(28, 56, 28, 28),
+            children: [
+              const KimMark(size: 48),
+              const Gap(20),
               Text(
-                error,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.error,
-                  height: 1.35,
+                Copy.brand,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  height: 1.15,
+                ),
+              ),
+              const Gap(6),
+              Text(
+                isRegister ? Copy.registerTitle : Copy.loginTitle,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Gap(36),
+              KimTextField(
+                controller: _account,
+                label: Copy.account,
+                errorText: _accountErr,
+                maxLength: 32,
+                autofocus: true,
+                keyboardType: (Platform.isIOS || Platform.isAndroid)
+                    ? TextInputType.visiblePassword
+                    : TextInputType.text,
+                autocorrect: false,
+                enableSuggestions: false,
+                autofillHints: Platform.isMacOS
+                    ? null
+                    : const [AutofillHints.username],
+              ),
+              KimTextField(
+                controller: _password,
+                label: Copy.password,
+                errorText: _passwordErr,
+                obscureable: true,
+                maxLength: 128,
+                textInputAction: isRegister
+                    ? TextInputAction.next
+                    : TextInputAction.done,
+                onEditingComplete: isRegister ? null : _submit,
+                autofillHints: Platform.isMacOS
+                    ? null
+                    : [
+                        isRegister
+                            ? AutofillHints.newPassword
+                            : AutofillHints.password,
+                      ],
+              ),
+              AnimatedSize(
+                duration: KimMotion.medium,
+                curve: KimMotion.standard,
+                alignment: Alignment.topCenter,
+                child: isRegister
+                    ? KimTextField(
+                        controller: _confirm,
+                        label: Copy.confirmPassword,
+                        errorText: _confirmErr,
+                        obscureable: true,
+                        maxLength: 128,
+                        textInputAction: TextInputAction.done,
+                        onEditingComplete: _submit,
+                        autofillHints: Platform.isMacOS
+                            ? null
+                            : const [AutofillHints.newPassword],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              if (error.isNotEmpty) ...[
+                const Gap(16),
+                Text(
+                  error,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.error,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              const Gap(28),
+              FilledButton(
+                key: const Key('auth-submit'),
+                onPressed: busy ? null : _submit,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(KimTheme.radiusField),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                child: busy
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: scheme.onPrimary,
+                        ),
+                      )
+                    : Text(isRegister ? Copy.registerAction : Copy.loginAction),
+              ),
+              const Gap(8),
+              Center(
+                child: TextButton(
+                  key: const Key('auth-toggle'),
+                  onPressed: busy
+                      ? null
+                      : () {
+                          _mutation.reset(ref);
+                          setState(() {
+                            _register = !_register;
+                            _confirmErr = null;
+                            _passwordErr = null;
+                            _accountErr = null;
+                          });
+                        },
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.primary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
+                  child: Text(
+                    isRegister
+                        ? '${Copy.hasAccount}${Copy.goLogin}'
+                        : '${Copy.noAccount}${Copy.goRegister}',
+                  ),
+                ),
+              ),
+              const Gap(40),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _EnvChip(
+                    label: Copy.localServer,
+                    selected: local,
+                    enabled: !busy,
+                    onTap: () async {
+                      await settings.useLocal();
+                      setState(() {});
+                    },
+                  ),
+                  const Gap(8),
+                  _EnvChip(
+                    label: Copy.prodServer,
+                    selected: !local,
+                    enabled: !busy,
+                    onTap: () async {
+                      await settings.useProd();
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+              const Gap(8),
+              Text(
+                settings.httpOrigin,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.outline,
                 ),
               ),
             ],
-            const Gap(28),
-            FilledButton(
-              key: const Key('auth-submit'),
-              onPressed: busy ? null : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(KimTheme.radiusField),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: busy
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: scheme.onPrimary,
-                      ),
-                    )
-                  : Text(isRegister ? Copy.registerAction : Copy.loginAction),
-            ),
-            const Gap(8),
-            Center(
-              child: TextButton(
-                key: const Key('auth-toggle'),
-                onPressed: busy
-                    ? null
-                    : () {
-                        _mutation.reset(ref);
-                        setState(() {
-                          _register = !_register;
-                          _confirmErr = null;
-                          _passwordErr = null;
-                          _accountErr = null;
-                        });
-                      },
-                style: TextButton.styleFrom(
-                  foregroundColor: scheme.primary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                ),
-                child: Text(
-                  isRegister
-                      ? '${Copy.hasAccount}${Copy.goLogin}'
-                      : '${Copy.noAccount}${Copy.goRegister}',
-                ),
-              ),
-            ),
-            const Gap(40),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _EnvChip(
-                  label: Copy.localServer,
-                  selected: local,
-                  enabled: !busy,
-                  onTap: () async {
-                    await settings.useLocal();
-                    setState(() {});
-                  },
-                ),
-                const Gap(8),
-                _EnvChip(
-                  label: Copy.prodServer,
-                  selected: !local,
-                  enabled: !busy,
-                  onTap: () async {
-                    await settings.useProd();
-                    setState(() {});
-                  },
-                ),
-              ],
-            ),
-            const Gap(8),
-            Text(
-              settings.httpOrigin,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: scheme.outline,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

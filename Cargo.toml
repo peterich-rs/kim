@@ -11,13 +11,7 @@ members = [
     "crates/kim-session",
     "crates/kim-metrics",
     "crates/kim-client",
-    "crates/kim-agent-types",
-    "crates/kim-agent-llm",
-    "crates/kim-agent-storage",
-    "crates/kim-agent-session",
-    "crates/kim-agent-tools",
-    "crates/kim-agent-hooks",
-    "crates/kim-agent-harness",
+    "crates/kim-agent-host",
     "services/gateway",
     "services/chat",
     "services/royal",
@@ -79,10 +73,4 @@ url = "2"
 futures = "0.3"
 tokio-util = { version = "0.7", features = ["rt"] }
 tempfile = "3"
-kim-agent-types = { path = "crates/kim-agent-types" }
-kim-agent-llm = { path = "crates/kim-agent-llm" }
-kim-agent-storage = { path = "crates/kim-agent-storage" }
-kim-agent-session = { path = "crates/kim-agent-session" }
-kim-agent-tools = { path = "crates/kim-agent-tools" }
-kim-agent-hooks = { path = "crates/kim-agent-hooks" }
-kim-agent-harness = { path = "crates/kim-agent-harness" }
+kim-agent-host = { path = "crates/kim-agent-host" }

@@ -21,6 +21,9 @@ Future<void> _online(dynamic env) async {
   await Future<void>.delayed(Duration.zero);
 }
 
+KimThread _bob(List<KimThread> threads) =>
+    threads.firstWhere((t) => t.id == 'bob');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -94,7 +97,7 @@ void main() {
       'https://media.kim.ainexc.com/alice/a.jpg',
     );
     expect(
-      env.container.read(threadsProvider).threads.single.lastBody,
+      _bob(env.container.read(threadsProvider).threads).lastBody,
       Copy.imageMessage,
     );
   });
@@ -111,11 +114,11 @@ void main() {
       ),
     ]);
     expect(
-      env.container.read(threadsProvider).threads.single.lastBody,
+      _bob(env.container.read(threadsProvider).threads).lastBody,
       Copy.imageMessage,
     );
     await Future<void>.delayed(Duration.zero);
-    expect(env.store.loadThreads('alice').single.lastBody, Copy.imageMessage);
+    expect(_bob(env.store.loadThreads('alice')).lastBody, Copy.imageMessage);
   });
 
   test('incoming media URL is stored as an image row', () async {
@@ -135,7 +138,7 @@ void main() {
     expect(row.width, 10);
     expect(row.height, 8);
     expect(
-      env.container.read(threadsProvider).threads.single.lastBody,
+      _bob(env.container.read(threadsProvider).threads).lastBody,
       Copy.imageMessage,
     );
   });
@@ -162,7 +165,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(rows.single.isVideo, isTrue);
     expect(
-      env.container.read(threadsProvider).threads.single.lastBody,
+      _bob(env.container.read(threadsProvider).threads).lastBody,
       Copy.videoMessage,
     );
   });
@@ -222,10 +225,10 @@ void main() {
           unread: 3,
         ),
       ]);
-      expect(env.container.read(threadsProvider).threads.single.unread, 3);
+      expect(_bob(env.container.read(threadsProvider).threads).unread, 3);
       env.container.read(locationProvider.notifier).setPath('/chat/bob');
       env.container.read(threadsProvider.notifier).markRead('bob');
-      expect(env.container.read(threadsProvider).threads.single.unread, 0);
+      expect(_bob(env.container.read(threadsProvider).threads).unread, 0);
       env.container.read(threadsProvider.notifier).mergeInbox(const [
         KimThread(
           id: 'bob',
@@ -236,7 +239,7 @@ void main() {
           unread: 3,
         ),
       ]);
-      expect(env.container.read(threadsProvider).threads.single.unread, 0);
+      expect(_bob(env.container.read(threadsProvider).threads).unread, 0);
     },
   );
 
@@ -252,7 +255,7 @@ void main() {
       messageId: 11,
     );
     await Future<void>.delayed(Duration.zero);
-    expect(env.container.read(threadsProvider).threads.single.unread, 0);
+    expect(_bob(env.container.read(threadsProvider).threads).unread, 0);
     expect(env.fake.reads, 1);
     expect(env.fake.lastReadDest, 'bob');
     expect(env.fake.lastReadMessageId, 11);
@@ -269,7 +272,7 @@ void main() {
       messageId: 9,
     );
     await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(env.container.read(threadsProvider).threads.single.unread, 1);
+    expect(_bob(env.container.read(threadsProvider).threads).unread, 1);
     env.fake.emitTalk(
       dest: 'bob',
       sender: 'bob',
@@ -278,7 +281,7 @@ void main() {
       messageId: 9,
     );
     await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(env.container.read(threadsProvider).threads.single.unread, 1);
+    expect(_bob(env.container.read(threadsProvider).threads).unread, 1);
     expect(
       env.container.read(threadMessagesProvider('bob')).items,
       hasLength(1),

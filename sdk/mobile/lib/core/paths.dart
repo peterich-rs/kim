@@ -86,9 +86,9 @@ class KimPaths {
     final agentsMd = File('${agentWorkspace.path}/AGENTS.md');
     if (!await agentsMd.exists()) {
       await agentsMd.writeAsString(
-        '# KIM Agent workspace\n\n'
-        'Local default project root for the macOS Agent tab.\n'
-        'Edit this file (and `.agents/`) to steer the harness.\n',
+        '# KIM Goose workspace\n\n'
+        'Local project root for the desktop Goose host.\n'
+        'Mention @助手 in any IM thread to talk to the local agent.\n',
       );
     }
   }

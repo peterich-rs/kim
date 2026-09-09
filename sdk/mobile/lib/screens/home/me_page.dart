@@ -46,7 +46,7 @@ class MePage extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          const KimSliverHeader(title: Copy.me),
+          KimSliverHeader(title: Copy.me),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -106,7 +106,7 @@ class MePage extends ConsumerWidget {
                   children: [
                     ListTile(
                       leading: const Icon(LucideIcons.lock),
-                      title: const Text(Copy.changePassword),
+                      title: Text(Copy.changePassword),
                       trailing: const Icon(LucideIcons.chevronRight, size: 18),
                       onTap: () => context.push('/password'),
                     ),
@@ -134,14 +134,14 @@ class MePage extends ConsumerWidget {
                   children: [
                     ListTile(
                       leading: const Icon(LucideIcons.bot),
-                      title: const Text(Copy.agentSettings),
+                      title: Text(Copy.agentSettings),
                       trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                      onTap: () {},
+                      onTap: () => context.push('/agent/settings'),
                     ),
                     const Divider(indent: 56),
                     ListTile(
                       leading: const Icon(LucideIcons.server),
-                      title: const Text(Copy.environment),
+                      title: Text(Copy.environment),
                       subtitle: Text(
                         local ? Copy.localServer : Copy.prodServer,
                       ),
@@ -149,7 +149,7 @@ class MePage extends ConsumerWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                       child: SegmentedButton<bool>(
-                        segments: const [
+                        segments: [
                           ButtonSegment(
                             value: false,
                             label: Text(Copy.prodServer),
@@ -174,7 +174,7 @@ class MePage extends ConsumerWidget {
                     const Divider(indent: 56),
                     ListTile(
                       leading: const Icon(LucideIcons.info),
-                      title: const Text(Copy.about),
+                      title: Text(Copy.about),
                       subtitle: Text('${Copy.brand} ${runtime.versionLabel}'),
                     ),
                     if (Platform.isAndroid) ...[
@@ -194,7 +194,7 @@ class MePage extends ConsumerWidget {
                     if (session.status != ConnStatus.online)
                       ListTile(
                         leading: const Icon(LucideIcons.refreshCw),
-                        title: const Text(Copy.retry),
+                        title: Text(Copy.retry),
                         subtitle: Text(session.connectError ?? Copy.offline),
                         onTap: () => ref.read(linkProvider.notifier).retry(),
                       ),
@@ -246,16 +246,16 @@ class _AvatarButton extends ConsumerWidget {
             children: [
               ListTile(
                 leading: const Icon(LucideIcons.camera),
-                title: const Text(Copy.takePhoto),
+                title: Text(Copy.takePhoto),
                 onTap: () => Navigator.pop(ctx, 'camera'),
               ),
               ListTile(
                 leading: const Icon(LucideIcons.image),
-                title: const Text(Copy.pickFromAlbum),
+                title: Text(Copy.pickFromAlbum),
                 onTap: () => Navigator.pop(ctx, 'album'),
               ),
               ListTile(
-                title: const Text(Copy.cancel),
+                title: Text(Copy.cancel),
                 onTap: () => Navigator.pop(ctx),
               ),
             ],
@@ -299,7 +299,7 @@ class _AvatarButton extends ConsumerWidget {
           context: context,
           type: ToastificationType.success,
           style: ToastificationStyle.flatColored,
-          title: const Text(Copy.avatarUpdated),
+          title: Text(Copy.avatarUpdated),
           autoCloseDuration: const Duration(seconds: 2),
           alignment: Alignment.topCenter,
         );

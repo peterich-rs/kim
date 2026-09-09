@@ -4,13 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/models.dart';
+import '../core/layout.dart';
 import '../screens/auth_page.dart';
-import '../screens/chat/chat_page.dart';
-import '../screens/home/chats_page.dart';
+import '../screens/home/chats_split.dart';
 import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
-import '../screens/agent/agent_page.dart';
 import '../screens/agent/agent_settings_page.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
@@ -45,6 +43,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       return null;
     },
+    errorBuilder: (context, state) => KimErrorPage(error: state.error),
     routes: [
       GoRoute(
         path: '/login',
@@ -63,7 +62,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/',
-                builder: (context, state) => const ChatsPage(),
+                builder: (context, state) => const ChatsSplitView(),
+                routes: [
+                  GoRoute(
+                    path: 'chat/:id',
+                    name: 'chat',
+                    pageBuilder: (context, state) {
+                      final id = state.pathParameters['id'] ?? '';
+                      final host = ChatRouteHost(id: id);
+                      if (kimIsWide(context)) {
+                        return NoTransitionPage<void>(
+                          key: state.pageKey,
+                          child: host,
+                        );
+                      }
+                      return kimPushPage(
+                        key: state.pageKey,
+                        name: state.name,
+                        child: host,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -77,37 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(
-                path: '/agent',
-                builder: (context, state) => const AgentPage(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
               GoRoute(path: '/me', builder: (context, state) => const MePage()),
             ],
           ),
         ],
-      ),
-      GoRoute(
-        path: '/chat/:id',
-        pageBuilder: (context, state) {
-          final id = state.pathParameters['id'] ?? '';
-          final extra = state.extra;
-          final thread = extra is KimThread ? extra : null;
-          return kimPushPage(
-            key: state.pageKey,
-            name: state.name,
-            arguments: extra,
-            child: ChatPage(
-              id: id,
-              title: thread?.title ?? id,
-              kind: thread?.kind ?? ThreadKind.user,
-              initialUnread: thread?.unread ?? 0,
-            ),
-          );
-        },
       ),
       GoRoute(
         path: '/password',

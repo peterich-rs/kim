@@ -31,6 +31,8 @@ class AgentSettings {
   final bool bashEnabled;
 
   bool get isLive =>
+      llmBackend == 'openai' ||
+      llmBackend == 'anthropic' ||
       llmBackend == 'responses_http' ||
       llmBackend == 'live' ||
       llmBackend == 'responses';
@@ -66,12 +68,12 @@ class AgentSettings {
   }
 
   static const defaults = AgentSettings(
-    llmBackend: 'scripted',
+    llmBackend: 'openai',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'scripted',
+    model: 'gpt-4o',
     apiKey: '',
-    enableFsTools: true,
-    bashEnabled: true,
+    enableFsTools: false,
+    bashEnabled: false,
   );
 }
 
