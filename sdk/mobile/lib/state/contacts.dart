@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/haptics.dart';
 import '../models/models.dart';
@@ -34,13 +35,17 @@ class ContactsState {
 
   int get incomingCount => incoming.length;
 
-  bool isFriend(String account) => friends.any((p) => p.account == account);
+  bool isFriend(String account) =>
+      isGooseAgentDest(account) || friends.any((p) => p.account == account);
 
   bool isOutgoing(String account) => outgoing.contains(account);
 
   bool isIncoming(String account) => incoming.any((p) => p.account == account);
 
   KimPerson? person(String account) {
+    if (isGooseAgentDest(account)) {
+      return kGooseAgentPerson;
+    }
     for (final p in friends) {
       if (p.account == account) {
         return p;
@@ -96,7 +101,12 @@ class ContactsNotifier extends Notifier<ContactsState> {
         unawaited(refresh());
       }
     });
-    return ContactsState.empty();
+    return ContactsState(
+      friends: withGooseAgent(const []),
+      incoming: const [],
+      outgoing: const {},
+      hits: const [],
+    );
   }
 
   Future<void> refresh() async {
@@ -117,7 +127,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
       }
       final friendIds = {for (final p in friends) p.account};
       state = state.copyWith(
-        friends: friends,
+        friends: withGooseAgent(friends),
         incoming: incoming,
         outgoing: {...state.outgoing}..removeWhere(friendIds.contains),
         ready: true,
@@ -141,7 +151,16 @@ class ContactsNotifier extends Notifier<ContactsState> {
     if (!ref.mounted) {
       return;
     }
-    state = state.copyWith(hits: rows, query: q);
+    final needle = q.toLowerCase();
+    final localHit =
+        kGooseAgentId.contains(needle) ||
+        kGooseAgentName.contains(q) ||
+        needle == '@goose' ||
+        q == '@助手';
+    state = state.copyWith(
+      hits: localHit ? withGooseAgent(rows) : rows,
+      query: q,
+    );
   }
 
   Future<void> request(String dest) async {

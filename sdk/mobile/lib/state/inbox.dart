@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/mention.dart';
 import '../core/format.dart';
 import '../core/image_extra.dart';
 import '../data/conversation_store.dart';
@@ -52,6 +53,20 @@ class ThreadsState {
   }
 }
 
+List<KimThread> withGooseThread(List<KimThread> threads) {
+  if (threads.any((t) => t.id == kGooseAgentId)) {
+    return threads;
+  }
+  return [
+    const KimThread(
+      id: kGooseAgentId,
+      kind: ThreadKind.user,
+      title: kGooseAgentName,
+    ),
+    ...threads,
+  ];
+}
+
 class ThreadsNotifier extends Notifier<ThreadsState> {
   @override
   ThreadsState build() {
@@ -60,7 +75,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
       return ThreadsState.empty();
     }
     final store = ref.watch(conversationStoreProvider);
-    return ThreadsState(threads: store.loadThreads(account));
+    return ThreadsState(threads: withGooseThread(store.loadThreads(account)));
   }
 
   void setQuery(String value) {

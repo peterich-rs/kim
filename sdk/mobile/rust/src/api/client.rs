@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use kim_client::{
-    ClientConfig, HistoryItem, InboxItem, IncomingTalk, LinkState, OutgoingContent, SessionEvent,
-    SessionSupervisor, TalkResult,
+    device_for_target_os, ClientConfig, HistoryItem, InboxItem, IncomingTalk, LinkState,
+    OutgoingContent, SessionEvent, SessionSupervisor, TalkResult,
 };
 
 use super::rt;
@@ -103,7 +103,9 @@ impl KimApi {
     pub fn start(url: String, token: String, user_agent: String) -> Self {
         Self {
             supervisor: Arc::new(SessionSupervisor::new(
-                ClientConfig::new(url, token).with_user_agent(user_agent),
+                ClientConfig::new(url, token)
+                    .with_user_agent(user_agent)
+                    .with_device(device_for_target_os(std::env::consts::OS)),
             )),
         }
     }

@@ -1,149 +1,22 @@
-/// User-facing Chinese copy for the mobile app.
+/// User-facing copy. Source of truth is ARB (`lib/l10n/app_*.arb`).
+///
+/// Widgets with a [BuildContext] should prefer [AppLocalizations.of].
+/// Notifiers, formatters, and tests use [Copy] / [kimL10n] against `zh`.
 library;
 
-abstract final class Copy {
-  static const brand = 'KIM';
-  static const brandSub = '即时通讯';
-  static const brandPitch = '即时通讯';
+import 'package:flutter/widgets.dart';
 
-  static const loginTitle = '登录';
-  static const registerTitle = '注册账号';
-  static const account = '账号';
-  static const password = '密码';
-  static const confirmPassword = '确认密码';
-  static const accountPlaceholder = '账号';
-  static const passwordPlaceholder = '密码';
-  static const confirmPlaceholder = '确认密码';
-  static const accountHint = '3–32 位字母、数字或下划线';
-  static const passwordHint = '8–128 位';
-  static const showPassword = '显示密码';
-  static const hidePassword = '隐藏密码';
-  static const loginAction = '登录';
-  static const registerAction = '注册';
-  static const submittingLogin = '登录中…';
-  static const submittingRegister = '注册中…';
-  static const noAccount = '没有账号？';
-  static const goRegister = '注册';
-  static const hasAccount = '已有账号？';
-  static const goLogin = '去登录';
-  static const mismatch = '两次输入的密码不一致';
-  static const invalidAccount = '账号需为 3–32 位字母、数字或下划线';
-  static const invalidPassword = '密码需为 8–128 位';
-  static const badCredentials = '账号或密码错误';
-  static const accountExists = '账号已存在';
-  static const network = '网络异常，请稍后重试';
-  static const unavailable = '服务暂时不可用，请稍后重试';
-  static const authFailed = '登录失败，请稍后重试';
-  static const sessionExpired = '登录已过期，请重新登录';
-  static const timeout = '连接超时，请稍后重试';
-  static const required = '请填写完整信息';
+import 'l10n/app_localizations.dart';
 
-  static const conversations = '消息';
-  static const contacts = '通讯录';
-  static const me = '我';
-  static const searchPlaceholder = '搜索';
-  static const searchChats = '搜索会话';
-  static const newChat = '发起聊天';
-  static const startChat = '开始聊天';
-  static const noConversations = '还没有会话';
-  static const noConversationsHint = '添加好友后，从通讯录开始聊天';
-  static const noMatch = '没有匹配的会话';
-  static const noMessages = '暂无消息';
-  static const noMessagesHint = '发一条消息，开始对话';
-  static const messagePlaceholder = '发消息';
-  static const send = '发送';
-  static const sendFailed = '发送失败';
-  static const album = '相册';
-  static const camera = '拍摄';
-  static const imageMessage = '[图片]';
-  static const videoMessage = '[视频]';
-  static const viewImage = '查看图片';
-  static const closeViewer = '关闭';
-  static const imageFailed = '图片发送失败';
-  static const imageTooLarge = '图片不能超过 5MB';
-  static const imageUnsupported = '仅支持 JPEG、PNG、WebP、GIF';
-  static const mediaFailed = '无法打开相机或相册';
-  static const mediaPermission = '需要相机或相册权限才能继续';
-  static const plusPanel = '更多';
-  static const more = '更多';
-  static const notConnected = '尚未连接，请稍后重试';
-  static const notFriends = '对方还不是你好友';
-  static const blocked = '无法与该用户互动';
-  static const userNotFound = '找不到该用户';
-  static const cannotAddSelf = '不能添加自己';
-  static const waitingAccept = '已发送申请，通过后即可聊天';
-  static const addFriendToChat = '加为好友后即可发送消息';
-  static const requestSent = '已发送好友申请';
-  static const friendAccepted = '已成为好友';
-  static const addFriend = '添加好友';
-  static const incoming = '新的朋友';
-  static const accept = '同意';
-  static const reject = '拒绝';
-  static const requested = '已申请';
-  static const chatAction = '发消息';
-  static const searchPeople = '搜索账号或昵称';
-  static const searchEmpty = '没有找到相关用户';
-  static const noIncoming = '暂无好友申请';
-  static const friendRequestToast = '发来好友申请';
-  static const retry = '重试';
-  static const delete = '删除';
-  static const cancel = '取消';
-  static const copy = '复制';
-  static const readReceipt = '已读';
-  static const copied = '已复制';
-  static const quote = '引用';
-  static const unreadBelow = '以下未读';
-  static const newMessages = '条新消息';
+export 'l10n/app_localizations.dart';
 
-  static const peerAccount = '对方账号';
-  static const peerPlaceholder = '输入对方账号';
-  static const cannotChatSelf = '不能选择自己的账号';
-  static const openChat = '开始聊天';
-  static const privateChat = '私聊';
-  static const groupChat = '群聊';
-  static const you = '你';
-  static const back = '返回';
-
-  static const online = '在线';
-  static const connecting = '连接中';
-  static const reconnecting = '重连中';
-  static const offline = '未连接';
-  static const kicked = '账号已在其他设备登录';
-  static const logout = '退出登录';
-  static const loggingOut = '退出中…';
-  static const yesterday = '昨天';
-  static const today = '今天';
-  static const offlineBanner = '当前无网络，消息将在恢复后发送';
-  static const loopbackUnreachable = '真机连不上 127.0.0.1，请切到「生产」或改成电脑的局域网 IP';
-
-  static const profile = '个人资料';
-  static const changeAvatar = '更换头像';
-  static const takePhoto = '拍照';
-  static const pickFromAlbum = '从相册选择';
-  static const avatarUpdated = '头像已更新';
-  static const avatarFailed = '头像更新失败';
-  static const avatarRelogin = '请重新登录后再换头像';
-  static const avatarExportFailed = '无法读取这张照片，请换一张再试';
-  static const avatarUnsupportedType = '仅支持 JPEG、PNG、WebP、GIF';
-  static const uploading = '上传中…';
-  static const changePassword = '修改密码';
-  static const oldPassword = '当前密码';
-  static const newPassword = '新密码';
-  static const passwordChanged = '密码已更新';
-  static const save = '保存';
-  static const localServer = '本地';
-  static const prodServer = '正式';
-  static const server = '服务器';
-  static const about = '关于';
-  static const version = '版本';
-  static const signedInAs = '当前账号';
-  static const connection = '连接状态';
-  static const environment = '运行环境';
-  static const accountSection = '账号';
-  static const generalSection = '通用';
-
-  static const noFriends = '还没有好友';
-  static const noFriendsHint = '搜索账号，发送好友申请';
-  static const addByAccount = '添加好友';
-  static const recentContacts = '好友';
+AppLocalizations kimL10n([BuildContext? context]) {
+  if (context != null) {
+    return AppLocalizations.of(context);
+  }
+  return lookupAppLocalizations(const Locale('zh'));
 }
+
+/// Generated l10n for the default product locale.
+// ignore: non_constant_identifier_names
+AppLocalizations get Copy => kimL10n();

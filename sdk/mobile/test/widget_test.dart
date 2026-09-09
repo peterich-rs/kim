@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/agent/mention.dart';
 import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/connectivity.dart';
@@ -11,6 +13,7 @@ import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/widgets/conversation_tile.dart';
 import 'package:kim_mobile/widgets/kim_dock.dart';
 import 'package:kim_mobile/widgets/status_chip.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -67,6 +70,28 @@ Future<void> tapKey(WidgetTester tester, Key key) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(() {
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.implicitView!;
+    view.physicalSize = const Size(390, 844);
+    view.devicePixelRatio = 1.0;
+  });
+
+  tearDown(() {
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.implicitView!;
+    view.resetPhysicalSize();
+    view.resetDevicePixelRatio();
+  });
+
+  test('desktop does not dismiss keyboard on tap outside', () {
+    expect(kimDismissesKeyboardOnTapOutside(TargetPlatform.macOS), isFalse);
+    expect(kimDismissesKeyboardOnTapOutside(TargetPlatform.windows), isFalse);
+    expect(kimDismissesKeyboardOnTapOutside(TargetPlatform.linux), isFalse);
+    expect(kimDismissesKeyboardOnTapOutside(TargetPlatform.iOS), isTrue);
+    expect(kimDismissesKeyboardOnTapOutside(TargetPlatform.android), isTrue);
+  });
+
   testWidgets('signed-out shows login form, not the chat list', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
@@ -76,6 +101,22 @@ void main() {
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.byKey(const Key('auth-submit')), findsOneWidget);
     expect(find.text(Copy.conversations), findsNothing);
+  });
+
+  testWidgets('login account field keeps IME-friendly settings on desktop', (
+    tester,
+  ) async {
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.keyboardType, TextInputType.text);
+    expect(
+      field.maxLengthEnforcement,
+      MaxLengthEnforcement.truncateAfterCompositionEnds,
+    );
   });
 
   testWidgets('invalid account stays on form', (tester) async {
@@ -92,6 +133,21 @@ void main() {
     expect(fake.logins, 0);
   });
 
+  testWidgets('login strips CR LF from macOS password field', (tester) async {
+    final env = await testRuntime();
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'secret123\r\n');
+    await tapKey(tester, const Key('auth-submit'));
+
+    expect(fake.logins, 1);
+    expect(fake.lastPassword, 'secret123');
+    expect(find.byType(KimDock), findsOneWidget);
+  });
+
   testWidgets('successful login opens conversation list', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
@@ -106,9 +162,30 @@ void main() {
     expect(fake.lastUserAgent, contains('KIM/1.0.0'));
     expect(find.byType(KimDock), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text(Copy.noConversations), findsOneWidget);
+    expect(find.text(kGooseAgentName), findsWidgets);
+    expect(find.text(Copy.noConversations), findsNothing);
     expect(env.runtime.settings.token, 'tok.jwt');
     expect(fake.connects, greaterThan(0));
+  });
+
+  testWidgets('keychain entitlement error is not bad credentials', (
+    tester,
+  ) async {
+    final env = await testRuntime();
+    final fake = FakeKim(
+      error: Exception(
+        'PlatformException(Unexpected security result code, Code: -34018, Message: A required entitlement isn\'t present., -34018, null)',
+      ),
+    );
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'peterich');
+    await tester.enterText(find.byType(TextField).at(1), 'secret1234');
+    await tapKey(tester, const Key('auth-submit'));
+
+    expect(find.text(Copy.sessionPersistFailed), findsOneWidget);
+    expect(find.text(Copy.badCredentials), findsNothing);
   });
 
   testWidgets('http 401 maps to bad credentials', (tester) async {
@@ -391,5 +468,50 @@ void main() {
 
     expect(find.text('ping'), findsOneWidget);
     expect(find.text(Copy.retry), findsWidgets);
+  });
+
+  testWidgets('shrinking the window keeps an avatar rail before stacking', (
+    tester,
+  ) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    await pumpUi(tester);
+
+    tester.view.physicalSize = const Size(1100, 800);
+    await pumpUi(tester);
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(KimDock), findsNothing);
+    expect(find.text('hello from bob'), findsOneWidget);
+    expect(find.byType(ConversationTile), findsWidgets);
+    expect(find.byType(ConversationRailAvatar), findsNothing);
+
+    await tester.tap(find.text('hello from bob'));
+    await pumpUi(tester);
+    expect(find.byKey(const Key('chat-back')), findsNothing);
+    expect(find.byKey(const Key('chat-composer')), findsOneWidget);
+
+    tester.view.physicalSize = const Size(720, 800);
+    await pumpUi(tester);
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(KimDock), findsNothing);
+    expect(find.byType(ConversationRailAvatar), findsWidgets);
+    expect(find.byType(ConversationTile), findsNothing);
+    expect(find.text('hello from bob'), findsOneWidget);
+    expect(find.byKey(const Key('rail-bob')), findsOneWidget);
+    expect(find.byKey(const Key('chat-back')), findsNothing);
+    expect(find.byKey(const Key('chat-composer')), findsOneWidget);
+
+    tester.view.physicalSize = const Size(390, 844);
+    await pumpUi(tester);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(KimDock), findsNothing);
+    expect(find.byType(ConversationRailAvatar), findsNothing);
+    expect(find.byKey(const Key('chat-composer')), findsOneWidget);
+    expect(find.byKey(const Key('chat-back')), findsOneWidget);
   });
 }

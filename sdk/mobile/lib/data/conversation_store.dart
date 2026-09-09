@@ -249,7 +249,8 @@ class ConversationStore {
     if (_port != null) {
       final raw = await _call({'op': 'threads', 'account': account});
       final threads = [
-        for (final row in raw as List<dynamic>) KimThread.fromJson(row)!,
+        for (final row in raw as List<dynamic>)
+          if (KimThread.tryFromJson(row) != null) KimThread.tryFromJson(row)!,
       ];
       _threadCache[account] = threads;
       return threads;
@@ -627,7 +628,10 @@ class ConversationStore {
       });
       final list = raw as List<dynamic>;
       final results = [
-        for (final row in list) _applyResultFromJson(row as Map),
+        for (final row in list)
+          _applyResultFromJson(
+            Map<String, Object?>.from(row as Map<Object?, Object?>),
+          ),
       ];
       _rememberResults(account, results);
       return results;
@@ -1132,16 +1136,16 @@ class ConversationStore {
     }
     return [
       for (final row in raw)
-        if (KimChatMsg.fromJson(row) != null) KimChatMsg.fromJson(row)!,
+        if (KimChatMsg.tryFromJson(row) != null) KimChatMsg.tryFromJson(row)!,
     ];
   }
 
-  static ApplyResult _applyResultFromJson(Map row) {
+  static ApplyResult _applyResultFromJson(Map<String, Object?> row) {
     return ApplyResult(
-      message: KimChatMsg.fromJson(row['message'])!,
+      message: KimChatMsg.tryFromJson(row['message'])!,
       inserted: row['inserted'] == true,
       unreadDelta: row['unreadDelta'] is int ? row['unreadDelta'] as int : 0,
-      thread: KimThread.fromJson(row['thread'])!,
+      thread: KimThread.tryFromJson(row['thread'])!,
     );
   }
 
@@ -1182,7 +1186,7 @@ class ConversationStore {
     return raw;
   }
 
-  Object? _dispatch(Map cmd) {
+  Object? _dispatch(Map<String, Object?> cmd) {
     final op = cmd['op'] as String? ?? '';
     switch (op) {
       case 'open':
@@ -1233,7 +1237,7 @@ class ConversationStore {
         ];
       case 'upsertThread':
         final account = cmd['account'] as String? ?? '';
-        final thread = KimThread.fromJson(cmd['thread']);
+        final thread = KimThread.tryFromJson(cmd['thread']);
         if (thread != null) {
           _upsertThreadDb(account, thread);
         }
@@ -1241,7 +1245,7 @@ class ConversationStore {
       case 'saveThreads':
         _saveThreadsDb(cmd['account'] as String? ?? '', [
           for (final row in cmd['threads'] as List<dynamic>? ?? const [])
-            if (KimThread.fromJson(row) != null) KimThread.fromJson(row)!,
+            if (KimThread.tryFromJson(row) != null) KimThread.tryFromJson(row)!,
         ]);
         return 'ok';
       case 'saveMessages':
@@ -1375,7 +1379,7 @@ List<KimThread> _decodeThreads(String? raw) {
     }
     final out = <KimThread>[];
     for (final row in parsed) {
-      final t = KimThread.fromJson(row);
+      final t = KimThread.tryFromJson(row);
       if (t != null) {
         out.add(t);
       }
@@ -1398,7 +1402,7 @@ List<KimChatMsg> _decodeMessages(String? raw) {
     }
     final out = <KimChatMsg>[];
     for (final row in parsed) {
-      final m = KimChatMsg.fromJson(row);
+      final m = KimChatMsg.tryFromJson(row);
       if (m != null) {
         out.add(m);
       }

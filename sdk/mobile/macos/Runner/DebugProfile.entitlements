@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Phase A/C: disable sandbox in debug so FS/bash tools and Native Assets rustup work.
+	     Re-enable for distribution; see docs/agent-macos-desktop.md §2.3. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Data Protection keychain. Explicit group so Xcode does not rewrite
+	     this file during packaging (that fails the build). -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.kim.kimMobile</string>
+	</array>
+</dict>
+</plist>

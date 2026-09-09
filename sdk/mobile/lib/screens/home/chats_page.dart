@@ -8,7 +8,10 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../copy.dart';
 import '../../core/haptics.dart';
+import '../../core/layout.dart';
 import '../../models/models.dart';
+import '../../router/open_chat.dart';
+import '../../state/chats_search.dart';
 import '../../state/presence.dart';
 import '../../state/contacts.dart';
 import '../../state/link.dart';
@@ -23,7 +26,10 @@ import '../../widgets/new_chat_sheet.dart';
 import '../../widgets/status_chip.dart';
 
 class ChatsPage extends ConsumerStatefulWidget {
-  const ChatsPage({super.key});
+  const ChatsPage({super.key, this.selectedId, this.compact = false});
+
+  final String? selectedId;
+  final bool compact;
 
   @override
   ConsumerState<ChatsPage> createState() => _ChatsPageState();
@@ -55,6 +61,14 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(chatsSearchTickProvider, (prev, next) {
+      if (widget.compact) {
+        return;
+      }
+      if (prev != next && !_searchOpen) {
+        _toggleSearch();
+      }
+    });
     final session = ref.watch(sessionProvider);
     final inbox = ref.watch(threadsProvider);
     final me = ref.watch(profileProvider);
@@ -65,6 +79,16 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final chrome = scheme.surfaceContainerHigh;
+
+    if (widget.compact) {
+      return _compactScaffold(
+        connecting: connecting,
+        visible: visible,
+        me: me,
+        social: social,
+        chrome: chrome,
+      );
+    }
 
     return Scaffold(
       body: CustomScrollView(
@@ -140,7 +164,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
               child: Skeletonizer(
                 child: ListView.builder(
                   physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
+                  padding: EdgeInsets.only(bottom: _listBottomPad(context)),
                   itemCount: 7,
                   itemBuilder: (context, i) => ConversationTile(
                     thread: KimThread(
@@ -159,7 +183,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
           else if (visible.isEmpty)
             SliverFillRemaining(
               child: Padding(
-                padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
+                padding: EdgeInsets.only(bottom: _listBottomPad(context)),
                 child: EmptyState(
                   icon: LucideIcons.messageCircle,
                   title: inbox.threads.isEmpty
@@ -171,7 +195,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
                   action: inbox.threads.isEmpty
                       ? FilledButton.tonal(
                           onPressed: () => openNewChatSheet(context),
-                          child: const Text(Copy.newChat),
+                          child: Text(Copy.newChat),
                         )
                       : null,
                 ),
@@ -179,26 +203,26 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
             )
           else
             SliverPadding(
-              padding: EdgeInsets.only(bottom: KimDock.overlapOf(context)),
+              padding: EdgeInsets.only(bottom: _listBottomPad(context)),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate((context, i) {
                   final thread = visible[i];
                   return ConversationTile(
                     thread: thread,
+                    selected: thread.id == widget.selectedId,
                     avatarUrl: avatarFor(me, social, thread.id),
                     presence: thread.kind == ThreadKind.user
                         ? ref.watch(peerPresenceProvider(thread.id))
                         : PeerPresenceStatus.unknown,
                     onOpen: () {
                       KimHaptics.selection();
-                      ref
-                          .read(threadsProvider.notifier)
-                          .ensureThread(
-                            id: thread.id,
-                            kind: thread.kind,
-                            title: thread.title,
-                          );
-                      context.push('/chat/${thread.id}', extra: thread);
+                      openKimChat(
+                        context,
+                        ref,
+                        id: thread.id,
+                        kind: thread.kind,
+                        title: thread.title,
+                      );
                     },
                     onDelete: () => ref
                         .read(threadsProvider.notifier)
@@ -209,6 +233,97 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
             ),
         ],
       ),
+    );
+  }
+
+  double _listBottomPad(BuildContext context) {
+    if (widget.compact || kimLayoutSize(context) != KimLayoutSize.narrow) {
+      return 24;
+    }
+    return KimDock.overlapOf(context);
+  }
+
+  Widget _compactScaffold({
+    required bool connecting,
+    required List<KimThread> visible,
+    required ProfileState me,
+    required ContactsState social,
+    required Color chrome,
+  }) {
+    return Scaffold(
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+              child: Center(
+                child: _HeaderCircleButton(
+                  key: const Key('compose-chat'),
+                  tooltip: Copy.newChat,
+                  color: chrome,
+                  icon: LucideIcons.plus,
+                  onTap: () => openNewChatSheet(context),
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: _compactList(connecting, visible, me, social)),
+        ],
+      ),
+    );
+  }
+
+  Widget _compactList(
+    bool connecting,
+    List<KimThread> visible,
+    ProfileState me,
+    ContactsState social,
+  ) {
+    if (connecting) {
+      return Skeletonizer(
+        child: ListView.builder(
+          padding: const EdgeInsets.only(bottom: 16),
+          itemCount: 7,
+          itemBuilder: (context, i) => ConversationRailAvatar(
+            thread: KimThread(
+              id: 'skel-$i',
+              kind: ThreadKind.user,
+              title: 'skeleton',
+            ),
+            onOpen: () {},
+          ),
+        ),
+      );
+    }
+    if (visible.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: visible.length,
+      itemBuilder: (context, i) {
+        final thread = visible[i];
+        return ConversationRailAvatar(
+          key: Key('rail-${thread.id}'),
+          thread: thread,
+          selected: thread.id == widget.selectedId,
+          avatarUrl: avatarFor(me, social, thread.id),
+          presence: thread.kind == ThreadKind.user
+              ? ref.watch(peerPresenceProvider(thread.id))
+              : PeerPresenceStatus.unknown,
+          onOpen: () {
+            KimHaptics.selection();
+            openKimChat(
+              context,
+              ref,
+              id: thread.id,
+              kind: thread.kind,
+              title: thread.title,
+            );
+          },
+        );
+      },
     );
   }
 }

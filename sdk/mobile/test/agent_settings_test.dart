@@ -1,0 +1,21 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/state/agent_settings.dart';
+
+void main() {
+  test('toOpts preserves session-safe fields', () {
+    const s = AgentSettings(
+      llmBackend: 'openai',
+      baseUrl: 'https://example.com/v1',
+      model: 'gpt-test',
+      apiKey: 'sk-test',
+      enableFsTools: false,
+      bashEnabled: false,
+    );
+    final opts = s.toOpts(resumeOnOpen: false);
+    expect(opts.llmBackend, 'openai');
+    expect(opts.baseUrl, 'https://example.com/v1');
+    expect(opts.apiKey, 'sk-test');
+    expect(opts.resumeOnOpen, isFalse);
+    expect(s.isLive, isTrue);
+  });
+}

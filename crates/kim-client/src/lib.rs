@@ -21,8 +21,9 @@ mod wire;
 pub use auth::{AuthClient, AuthSession};
 pub use client::KimClient;
 pub use config::{
-    http_origin_from_ws, ClientConfig, DEFAULT_CLIENT_USER_AGENT, DEFAULT_DEVICE,
-    DEFAULT_LOCAL_HTTP_ORIGIN, DEFAULT_LOCAL_URL, DEFAULT_PROD_HTTP_ORIGIN, DEFAULT_PROD_URL,
+    device_for_target_os, http_origin_from_ws, ClientConfig, DEFAULT_CLIENT_USER_AGENT,
+    DEFAULT_DEVICE, DEFAULT_LOCAL_HTTP_ORIGIN, DEFAULT_LOCAL_URL, DEFAULT_PROD_HTTP_ORIGIN,
+    DEFAULT_PROD_URL, DESKTOP_DEVICE,
 };
 pub use error::ClientError;
 pub use events::{

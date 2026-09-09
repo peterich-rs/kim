@@ -492,7 +492,7 @@ class _Retry extends StatelessWidget {
         foregroundColor: Theme.of(context).colorScheme.error,
         padding: EdgeInsets.zero,
       ),
-      child: const Text(Copy.retry),
+      child: Text(Copy.retry),
     );
   }
 }

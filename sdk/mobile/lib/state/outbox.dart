@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/format.dart';
 import '../core/haptics.dart';
@@ -326,6 +327,9 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   void _assertCanQueue(String dest, ThreadKind kind) {
+    if (isGooseAgentDest(dest)) {
+      throw StateError(Copy.agentLocalOnly);
+    }
     final accountErr = validateAccount(dest);
     if (accountErr != null) {
       throw StateError(accountErr);

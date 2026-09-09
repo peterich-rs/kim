@@ -35,6 +35,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   List<KimPerson> incoming = const [];
   String lastUserAgent = '';
   String lastOrigin = '';
+  String lastAccount = '';
+  String lastPassword = '';
   String lastTalkDest = '';
   String lastTalkBody = '';
   String lastImageUrl = '';
@@ -65,6 +67,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
     logins += 1;
     lastOrigin = origin;
     lastUserAgent = userAgent;
+    lastAccount = account;
+    lastPassword = password;
     return _run();
   }
 
@@ -78,6 +82,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
     registers += 1;
     lastOrigin = origin;
     lastUserAgent = userAgent;
+    lastAccount = account;
+    lastPassword = password;
     return _run();
   }
 

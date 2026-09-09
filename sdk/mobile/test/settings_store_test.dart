@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,11 +12,28 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('macOS keychain is data-protection and never asks for a password', () {
+    const opts = SettingsStore.macOsKeychain;
+    expect(opts.usesDataProtectionKeychain, isTrue);
+    expect(opts.useSecureEnclave, isFalse);
+    expect(opts.synchronizable, isFalse);
+    expect(opts.accessControlFlags, isEmpty);
+    expect(opts.accessibility, KeychainAccessibility.first_unlock_this_device);
+    expect(opts.authenticationUIBehavior, 'u_AuthUIF');
+  });
+
   test('load uses production URL and dest defaults; token is empty', () async {
     final store = await SettingsStore.load(useSecureStorage: false);
     expect(store.url, SettingsStore.defaultUrl);
     expect(store.dest, SettingsStore.defaultDest);
     expect(store.token, isEmpty);
+  });
+
+  test('token stays in memory when Keychain is disabled', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    await store.saveSession(token: 'tok.jwt', account: 'peterich');
+    expect(store.token, 'tok.jwt');
+    expect(store.account, 'peterich');
   });
 
   test('url and dest persist via SharedPreferences, not the token', () async {

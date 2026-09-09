@@ -3,15 +3,15 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/mention.dart';
 import '../../copy.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
+import '../../router/open_chat.dart';
 import '../../state/contacts.dart';
-import '../../state/inbox.dart';
 import '../../state/mutations.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_avatar.dart';
@@ -105,11 +105,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 
   void _open(String id, String title) {
-    final thread = ref
-        .read(threadsProvider.notifier)
-        .ensureThread(id: id, kind: ThreadKind.user, title: title);
     KimHaptics.selection();
-    context.push('/chat/${thread.id}', extra: thread);
+    openKimChat(context, ref, id: id, title: title);
   }
 
   @override
@@ -124,7 +121,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
         onRefresh: () => ref.read(contactsProvider.notifier).refresh(),
         child: CustomScrollView(
           slivers: [
-            const KimSliverHeader(title: Copy.contacts),
+            KimSliverHeader(title: Copy.contacts),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -145,7 +142,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                     const Gap(8),
                     FilledButton.tonal(
                       onPressed: _searching ? null : _search,
-                      child: const Text(Copy.addFriend),
+                      child: Text(Copy.addFriend),
                     ),
                   ],
                 ),
@@ -154,9 +151,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             if (queried) ...[
               _sectionLabel(theme, Copy.searchPeople),
               if (hits.isEmpty)
-                const SliverToBoxAdapter(
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
+                    padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: Text(Copy.searchEmpty)),
                   ),
                 )
@@ -195,11 +192,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                           onPressed: () => ref
                               .read(contactsProvider.notifier)
                               .reject(social.incoming[i].account),
-                          child: const Text(Copy.reject),
+                          child: Text(Copy.reject),
                         ),
                         FilledButton(
                           onPressed: () => _accept(social.incoming[i]),
-                          child: const Text(Copy.accept),
+                          child: Text(Copy.accept),
                         ),
                       ],
                     ),
@@ -209,11 +206,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                 ],
               ]),
             ],
+            _sectionLabel(theme, Copy.agentLocalSection),
+            _groupSliver([
+              ListTile(
+                leading: const KimAvatar(name: kGooseAgentName),
+                title: const Text(kGooseAgentName),
+                subtitle: Text(Copy.agentLocalSubtitle),
+                trailing: Text(Copy.chatAction),
+                onTap: () => _open(kGooseAgentId, kGooseAgentName),
+              ),
+            ]),
             _sectionLabel(theme, Copy.recentContacts),
-            if (social.friends.isEmpty)
-              const SliverToBoxAdapter(
+            if (social.friends
+                .where((p) => !isGooseAgentDest(p.account))
+                .isEmpty)
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.only(top: 24),
+                  padding: const EdgeInsets.only(top: 24),
                   child: EmptyState(
                     icon: LucideIcons.users,
                     title: Copy.noFriends,
@@ -223,22 +232,16 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
               )
             else
               _groupSliver([
-                for (var i = 0; i < social.friends.length; i++) ...[
+                for (final friend in social.friends.where(
+                  (p) => !isGooseAgentDest(p.account),
+                ))
                   ListTile(
-                    leading: KimAvatar(
-                      name: social.friends[i].title,
-                      url: social.friends[i].avatar,
-                    ),
-                    title: Text(social.friends[i].title),
-                    subtitle: Text('@${social.friends[i].account}'),
-                    trailing: const Text(Copy.chatAction),
-                    onTap: () => _open(
-                      social.friends[i].account,
-                      social.friends[i].title,
-                    ),
+                    leading: KimAvatar(name: friend.title, url: friend.avatar),
+                    title: Text(friend.title),
+                    subtitle: Text('@${friend.account}'),
+                    trailing: Text(Copy.chatAction),
+                    onTap: () => _open(friend.account, friend.title),
                   ),
-                  if (i != social.friends.length - 1) const Divider(indent: 72),
-                ],
               ]),
             SliverToBoxAdapter(child: Gap(KimDock.overlapOf(context))),
           ],
@@ -288,13 +291,10 @@ class _HitTile extends StatelessWidget {
       title: Text(person.title),
       subtitle: Text('@${person.account}'),
       trailing: friend
-          ? TextButton(onPressed: onChat, child: const Text(Copy.chatAction))
+          ? TextButton(onPressed: onChat, child: Text(Copy.chatAction))
           : pending
-          ? const Text(Copy.requested)
-          : FilledButton.tonal(
-              onPressed: onAdd,
-              child: const Text(Copy.addFriend),
-            ),
+          ? Text(Copy.requested)
+          : FilledButton.tonal(onPressed: onAdd, child: Text(Copy.addFriend)),
     );
   }
 }

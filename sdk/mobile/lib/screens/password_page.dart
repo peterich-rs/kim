@@ -10,6 +10,7 @@ import 'package:toastification/toastification.dart';
 import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
+import '../core/layout.dart';
 import '../core/validation.dart';
 import '../state/auth.dart';
 import '../state/mutations.dart';
@@ -47,9 +48,14 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   }
 
   Future<void> _save() async {
-    final oldErr = validatePassword(_old.text);
-    final nextErr = validatePassword(_next.text);
-    final confirmErr = validateConfirm(_next.text, _confirm.text);
+    final oldPassword = sanitizePassword(_old.text);
+    final newPassword = sanitizePassword(_next.text);
+    final oldErr = validatePassword(oldPassword);
+    final nextErr = validatePassword(newPassword);
+    final confirmErr = validateConfirm(
+      newPassword,
+      sanitizePassword(_confirm.text),
+    );
     setState(() {
       _oldErr = oldErr;
       _nextErr = nextErr;
@@ -63,7 +69,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       await changePasswordMutation.run(ref, (tsx) async {
         await tsx
             .get(authProvider.notifier)
-            .changePassword(oldPassword: _old.text, newPassword: _next.text);
+            .changePassword(oldPassword: oldPassword, newPassword: newPassword);
       });
       if (!mounted) {
         return;
@@ -72,7 +78,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
         context: context,
         type: ToastificationType.success,
         style: ToastificationStyle.flatColored,
-        title: const Text(Copy.passwordChanged),
+        title: Text(Copy.passwordChanged),
         autoCloseDuration: const Duration(seconds: 2),
         alignment: Alignment.topCenter,
       );
@@ -92,60 +98,62 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       _ => '',
     };
     return Scaffold(
-      appBar: AppBar(title: const Text(Copy.changePassword)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(28, 12, 28, 28),
-        children: [
-          KimTextField(
-            controller: _old,
-            label: Copy.oldPassword,
-            errorText: _oldErr,
-            obscureable: true,
-            maxLength: 128,
-            autofocus: true,
-            autofillHints: const [AutofillHints.password],
-          ),
-          KimTextField(
-            controller: _next,
-            label: Copy.newPassword,
-            errorText: _nextErr,
-            obscureable: true,
-            maxLength: 128,
-            autofillHints: const [AutofillHints.newPassword],
-          ),
-          KimTextField(
-            controller: _confirm,
-            label: Copy.confirmPassword,
-            errorText: _confirmErr,
-            obscureable: true,
-            maxLength: 128,
-            textInputAction: TextInputAction.done,
-            onEditingComplete: _save,
-            autofillHints: const [AutofillHints.newPassword],
-          ),
-          if (error.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(error, style: TextStyle(color: scheme.error)),
+      appBar: AppBar(title: Text(Copy.changePassword)),
+      body: kimConstrainedForm(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(28, 12, 28, 28),
+          children: [
+            KimTextField(
+              controller: _old,
+              label: Copy.oldPassword,
+              errorText: _oldErr,
+              obscureable: true,
+              maxLength: 128,
+              autofocus: true,
+              autofillHints: const [AutofillHints.password],
             ),
-          const Gap(24),
-          FilledButton(
-            onPressed: busy ? null : _save,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+            KimTextField(
+              controller: _next,
+              label: Copy.newPassword,
+              errorText: _nextErr,
+              obscureable: true,
+              maxLength: 128,
+              autofillHints: const [AutofillHints.newPassword],
             ),
-            child: busy
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: scheme.onPrimary,
-                    ),
-                  )
-                : const Text(Copy.save),
-          ),
-        ],
+            KimTextField(
+              controller: _confirm,
+              label: Copy.confirmPassword,
+              errorText: _confirmErr,
+              obscureable: true,
+              maxLength: 128,
+              textInputAction: TextInputAction.done,
+              onEditingComplete: _save,
+              autofillHints: const [AutofillHints.newPassword],
+            ),
+            if (error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(error, style: TextStyle(color: scheme.error)),
+              ),
+            const Gap(24),
+            FilledButton(
+              onPressed: busy ? null : _save,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+              child: busy
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: scheme.onPrimary,
+                      ),
+                    )
+                  : Text(Copy.save),
+            ),
+          ],
+        ),
       ),
     );
   }

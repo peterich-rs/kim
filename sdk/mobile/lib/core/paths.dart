@@ -71,6 +71,28 @@ class KimPaths {
     return paths;
   }
 
+  Directory get agentRoot => Directory('${support.path}/agent');
+  Directory get agentSessions => Directory('${support.path}/agent/sessions');
+  Directory get agentWorkspace => Directory('${support.path}/agent/workspace');
+
+  Future<void> ensureAgentDirs() async {
+    await Future.wait([
+      agentRoot.create(recursive: true),
+      agentSessions.create(recursive: true),
+      agentWorkspace.create(recursive: true),
+      Directory('${agentWorkspace.path}/.agents/skills')
+          .create(recursive: true),
+    ]);
+    final agentsMd = File('${agentWorkspace.path}/AGENTS.md');
+    if (!await agentsMd.exists()) {
+      await agentsMd.writeAsString(
+        '# KIM Goose workspace\n\n'
+        'Local project root for the desktop Goose host.\n'
+        'Mention @助手 in any IM thread to talk to the local agent.\n',
+      );
+    }
+  }
+
   /// Last two path segments, for the shell status line.
   String get dataDirShort => shorten(support.path);
 

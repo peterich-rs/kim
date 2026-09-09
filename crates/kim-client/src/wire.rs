@@ -24,11 +24,16 @@ use crate::events::{
 };
 use crate::ClientError;
 
-pub fn encode_login(token: &str) -> Bytes {
+pub fn encode_login(token: &str, device: &str) -> Bytes {
+    let device = if device.trim().is_empty() {
+        DEFAULT_DEVICE
+    } else {
+        device.trim()
+    };
     let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 1, Bytes::new());
     pkt.write_body(&LoginReq {
         token: token.to_string(),
-        device: DEFAULT_DEVICE.to_string(),
+        device: device.to_string(),
         ..Default::default()
     });
     marshal(&Packet::Logic(pkt))

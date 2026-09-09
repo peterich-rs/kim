@@ -11,6 +11,10 @@ String? validateAccount(String raw) {
   return null;
 }
 
+/// Drop CR/LF that a single-line field should never keep.
+String sanitizePassword(String raw) =>
+    raw.replaceAll('\r', '').replaceAll('\n', '');
+
 String? validatePassword(String raw) {
   if (raw.length < 8 || raw.length > 128) {
     return Copy.invalidPassword;
