@@ -24,6 +24,7 @@ import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/kim_theme.dart';
 import '../../widgets/kim_avatar.dart';
+import '../../widgets/kim_dock.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 import '../../widgets/status_chip.dart';
@@ -200,7 +201,7 @@ class MePage extends ConsumerWidget {
                       ),
                   ],
                 ),
-                const Gap(48),
+                Gap(KimDock.overlapOf(context) + 16),
               ],
             ),
           ),

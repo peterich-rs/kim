@@ -14,6 +14,7 @@ import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/widgets/conversation_tile.dart';
+import 'package:kim_mobile/widgets/kim_dock.dart';
 import 'package:kim_mobile/widgets/status_chip.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -144,7 +145,7 @@ void main() {
 
     expect(fake.logins, 1);
     expect(fake.lastPassword, 'secret123');
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
   });
 
   testWidgets('successful login opens conversation list', (tester) async {
@@ -159,7 +160,8 @@ void main() {
 
     expect(fake.logins, 1);
     expect(fake.lastUserAgent, contains('KIM/1.0.0'));
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
     expect(find.text(kGooseAgentName), findsWidgets);
     expect(find.text(Copy.noConversations), findsNothing);
     expect(env.runtime.settings.token, 'tok.jwt');
@@ -215,7 +217,7 @@ void main() {
     await tester.enterText(find.byType(TextField).at(2), 'secret123');
     await tapKey(tester, const Key('auth-submit'));
     expect(fake.registers, 1);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
   });
 
   testWidgets('me tab logout returns to login', (tester) async {
@@ -223,7 +225,7 @@ void main() {
     final fake = FakeKim();
     await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
 
     await tester.tap(find.byIcon(LucideIcons.user));
     await pumpUi(tester);
@@ -252,7 +254,7 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
     await pumpUi(tester);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
     expect(find.textContaining(Copy.offlineBanner), findsNothing);
 
     env.runtime.connectivity.online.value = false;
@@ -265,7 +267,7 @@ void main() {
     final fake = FakeKim();
     await tester.pumpWidget(host(env.runtime, fake, env.store));
     await pumpUi(tester);
-    await tester.tap(find.text(Copy.contacts).last);
+    await tester.tap(find.byKey(const Key('nav-contacts')));
     await pumpUi(tester);
     expect(find.text(Copy.noFriends), findsOneWidget);
     expect(find.text(Copy.noFriendsHint), findsOneWidget);
@@ -318,7 +320,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('chat-back')));
     await pumpUi(tester);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
   });
 
   testWidgets('chat thread groups peer rows and right-aligns own bubbles', (
@@ -411,7 +413,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('chat-composer')), findsNothing);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
   });
 
   testWidgets('long-pressing a message offers copy', (tester) async {
@@ -483,7 +485,7 @@ void main() {
     tester.view.physicalSize = const Size(1100, 800);
     await pumpUi(tester);
     expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(KimDock), findsNothing);
     expect(find.text('hello from bob'), findsOneWidget);
     expect(find.byType(ConversationTile), findsWidgets);
     expect(find.byType(ConversationRailAvatar), findsNothing);
@@ -496,7 +498,7 @@ void main() {
     tester.view.physicalSize = const Size(720, 800);
     await pumpUi(tester);
     expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(KimDock), findsNothing);
     expect(find.byType(ConversationRailAvatar), findsWidgets);
     expect(find.byType(ConversationTile), findsNothing);
     expect(find.text('hello from bob'), findsOneWidget);
@@ -507,6 +509,7 @@ void main() {
     tester.view.physicalSize = const Size(390, 844);
     await pumpUi(tester);
     expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(KimDock), findsNothing);
     expect(find.byType(ConversationRailAvatar), findsNothing);
     expect(find.byKey(const Key('chat-composer')), findsOneWidget);
     expect(find.byKey(const Key('chat-back')), findsOneWidget);

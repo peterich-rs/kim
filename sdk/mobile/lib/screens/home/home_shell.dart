@@ -10,7 +10,7 @@ import '../../core/haptics.dart';
 import '../../core/layout.dart';
 import '../../state/contacts.dart';
 import '../../theme/kim_theme.dart';
-import '../../widgets/kim_hairline.dart';
+import '../../widgets/kim_dock.dart';
 
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.navigationShell});
@@ -85,15 +85,36 @@ class HomeShell extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: KimTheme.canvasOf(context),
-      body: navigationShell,
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
         children: [
-          const KimHairline(),
-          NavigationBar(
-            selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: go,
-            destinations: destinations,
+          navigationShell,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: KimDock(
+              selectedIndex: navigationShell.currentIndex,
+              onSelected: go,
+              items: [
+                KimDockItem(
+                  key: const Key('nav-conversations'),
+                  icon: LucideIcons.messageCircle,
+                  label: Copy.conversations,
+                ),
+                KimDockItem(
+                  key: const Key('nav-contacts'),
+                  icon: LucideIcons.users,
+                  label: Copy.contacts,
+                  badge: incoming,
+                ),
+                KimDockItem(
+                  key: const Key('nav-me'),
+                  icon: LucideIcons.user,
+                  label: Copy.me,
+                ),
+              ],
+            ),
           ),
         ],
       ),

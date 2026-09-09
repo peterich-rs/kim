@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/widgets/kim_dock.dart';
 import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
@@ -53,6 +54,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 800));
 
     expect(fake.logins, 1);
-    expect(find.text(Copy.conversations), findsWidgets);
+    expect(find.byType(KimDock), findsOneWidget);
   });
 }
