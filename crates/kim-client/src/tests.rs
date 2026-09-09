@@ -26,9 +26,11 @@ use kim_protocol::{
 use kim_ws::WsServer;
 
 use crate::client::KimClient;
-use crate::config::{ClientConfig, DEFAULT_DEVICE, DEFAULT_LOCAL_URL, DEFAULT_PROD_URL};
+use crate::config::{
+    ClientConfig, DEFAULT_DEVICE, DEFAULT_LOCAL_URL, DEFAULT_PROD_URL, DESKTOP_DEVICE,
+};
 use crate::events::{Event, OutgoingContent};
-use crate::login::login_on_conn;
+use crate::login::{login_on_conn, login_with_device};
 use crate::session::MemorySession;
 use crate::supervisor::{LinkState, SessionEvent, SessionSupervisor};
 use crate::sync::{ConfirmGate, SyncEngine};
@@ -106,6 +108,22 @@ async fn login_first_frame_is_signin_jwt_not_url() {
             let req: LoginReq = p.read_body().unwrap();
             assert_eq!(req.token, token);
             assert_eq!(req.device, DEFAULT_DEVICE);
+        }
+        _ => panic!("expected logic login.signin"),
+    }
+}
+
+#[tokio::test]
+async fn login_encodes_configured_device() {
+    let token = mint("alice");
+    let mut conn = MockConn::with_incoming(vec![login_resp("wg-1_alice_1", Status::Success)]);
+    login_with_device(&mut conn, &token, Duration::from_secs(1), DESKTOP_DEVICE)
+        .await
+        .unwrap();
+    match read(&conn.outgoing[0].payload).unwrap() {
+        Packet::Logic(p) => {
+            let req: LoginReq = p.read_body().unwrap();
+            assert_eq!(req.device, DESKTOP_DEVICE);
         }
         _ => panic!("expected logic login.signin"),
     }

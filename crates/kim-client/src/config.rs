@@ -10,10 +10,24 @@ pub const DEFAULT_PROD_URL: &str = "wss://kim.ainexc.com/";
 pub const DEFAULT_LOCAL_HTTP_ORIGIN: &str = "http://127.0.0.1:8080";
 /// Royal HTTP origin on the product host (Caddy `/api/v1/auth/*`).
 pub const DEFAULT_PROD_HTTP_ORIGIN: &str = "https://kim.ainexc.com";
-/// `LoginReq.device`. Exclusive with other mobile sessions.
+/// `LoginReq.device` fallback. Exclusive with other mobile sessions.
 pub const DEFAULT_DEVICE: &str = "mobile";
+/// Desktop-class `LoginReq.device`. Coexists with mobile / web / cli.
+pub const DESKTOP_DEVICE: &str = "desktop";
 /// Fallback User-Agent when the UI does not pass one.
 pub const DEFAULT_CLIENT_USER_AGENT: &str = "KIM/0.1 (kim-client)";
+
+/// `LoginReq.device` for a compiled client OS.
+///
+/// macOS / Windows / Linux report [`DESKTOP_DEVICE`] so they can sit next to a
+/// phone. iOS / Android (and anything else) stay [`DEFAULT_DEVICE`].
+#[must_use]
+pub fn device_for_target_os(os: &str) -> &'static str {
+    match os {
+        "macos" | "windows" | "linux" => DESKTOP_DEVICE,
+        _ => DEFAULT_DEVICE,
+    }
+}
 
 /// How to reach WGateway. Token is never placed on the Upgrade URL.
 #[derive(Clone, Debug)]
@@ -22,6 +36,8 @@ pub struct ClientConfig {
     pub token: String,
     pub handshake_timeout: Duration,
     pub user_agent: String,
+    /// `LoginReq.device`. See [`device_for_target_os`].
+    pub device: String,
     /// Periodic CODE_PING interval (fire-and-forget).
     pub heartbeat: Duration,
     /// Client watchdog: last_read older than this is IdleTimeout.
@@ -39,6 +55,7 @@ impl ClientConfig {
             token: token.into(),
             handshake_timeout: DEFAULT_LOGIN_WAIT,
             user_agent: DEFAULT_CLIENT_USER_AGENT.to_string(),
+            device: DEFAULT_DEVICE.to_string(),
             heartbeat: DEFAULT_HEARTBEAT,
             read_idle: DEFAULT_HEARTBEAT * 3,
             probe_timeout: Duration::from_secs(5),
@@ -51,6 +68,15 @@ impl ClientConfig {
         let user_agent = user_agent.into();
         if !user_agent.trim().is_empty() {
             self.user_agent = user_agent;
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn with_device(mut self, device: impl Into<String>) -> Self {
+        let device = device.into();
+        if !device.trim().is_empty() {
+            self.device = device;
         }
         self
     }
@@ -134,8 +160,23 @@ mod tests {
         let prod = ClientConfig::production("tok");
         assert_eq!(prod.url, DEFAULT_PROD_URL);
         assert_eq!(DEFAULT_DEVICE, "mobile");
+        assert_eq!(local.device, DEFAULT_DEVICE);
         let ua = ClientConfig::local("tok").with_user_agent("KIM/1.0 (iOS)");
         assert_eq!(ua.user_agent, "KIM/1.0 (iOS)");
+        let desktop = ClientConfig::local("tok").with_device(DESKTOP_DEVICE);
+        assert_eq!(desktop.device, DESKTOP_DEVICE);
+        let empty = ClientConfig::local("tok").with_device("  ");
+        assert_eq!(empty.device, DEFAULT_DEVICE);
+    }
+
+    #[test]
+    fn device_for_os_desktop_vs_mobile() {
+        assert_eq!(device_for_target_os("macos"), DESKTOP_DEVICE);
+        assert_eq!(device_for_target_os("windows"), DESKTOP_DEVICE);
+        assert_eq!(device_for_target_os("linux"), DESKTOP_DEVICE);
+        assert_eq!(device_for_target_os("ios"), DEFAULT_DEVICE);
+        assert_eq!(device_for_target_os("android"), DEFAULT_DEVICE);
+        assert_eq!(device_for_target_os(""), DEFAULT_DEVICE);
     }
 
     #[test]

@@ -346,6 +346,39 @@ mod tests {
         assert!(cache.get("wg-1_alice_m2").await.is_ok());
     }
 
+    #[tokio::test]
+    async fn desktop_and_mobile_keep_both_sessions() {
+        let cache: Arc<dyn SessionStorage> = Arc::new(MemorySessionStore::new());
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let users = Arc::new(MemoryUserDirectory::new());
+        let mut router = Router::new();
+        router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
+            let users = users.clone();
+            async move { do_sys_login(ctx, users.as_ref()).await }
+        });
+        for (ch, device) in [("wg-1_alice_m", "mobile"), ("wg-1_alice_d", "desktop")] {
+            router
+                .serve(
+                    signin_pkt(ch, &body_session_device(ch, device)),
+                    dispatcher.clone(),
+                    cache.clone(),
+                    wrapper(ch),
+                )
+                .await
+                .unwrap();
+        }
+        let kicks: Vec<_> = dispatcher
+            .recorded()
+            .into_iter()
+            .filter(|p| p.header.flag == Flag::Push as i32)
+            .collect();
+        assert!(kicks.is_empty());
+        assert!(cache.get("wg-1_alice_m").await.is_ok());
+        assert!(cache.get("wg-1_alice_d").await.is_ok());
+        let locs = cache.list_locations("alice").await.unwrap();
+        assert_eq!(locs.len(), 2);
+    }
+
     struct FailBackfill;
 
     #[async_trait]

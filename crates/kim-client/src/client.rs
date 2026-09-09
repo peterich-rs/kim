@@ -11,7 +11,7 @@ use crate::config::ClientConfig;
 use crate::events::{
     Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
 };
-use crate::login::{login_on_conn, send_ping};
+use crate::login::{login_with_device, send_ping};
 use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
@@ -104,8 +104,13 @@ impl KimClient {
         let taken = std::mem::replace(&mut *io, Io::Off);
         match taken {
             Io::Handshake(mut ws) => {
-                match login_on_conn(&mut ws, &self.login_token(), self.config.handshake_timeout)
-                    .await
+                match login_with_device(
+                    &mut ws,
+                    &self.login_token(),
+                    self.config.handshake_timeout,
+                    &self.config.device,
+                )
+                .await
                 {
                     Ok(session) => {
                         let (read, write) = ws.split_conn();
@@ -120,10 +125,11 @@ impl KimClient {
                 }
             }
             Io::Conn(mut conn) => {
-                match login_on_conn(
+                match login_with_device(
                     &mut *conn,
                     &self.login_token(),
                     self.config.handshake_timeout,
+                    &self.config.device,
                 )
                 .await
                 {

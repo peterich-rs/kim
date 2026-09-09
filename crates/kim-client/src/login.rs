@@ -4,20 +4,30 @@ use kim_core::{Conn, Error as CoreError, Frame, OpCode};
 use kim_protocol::pkt::{LoginResp, Status};
 use kim_protocol::{read, Packet, CMD_LOGIN_SIGN_IN, CODE_PONG};
 
+use crate::config::DEFAULT_DEVICE;
 use crate::session::MemorySession;
 use crate::token::account_from_token;
 use crate::wire::{encode_login, encode_ping};
 use crate::ClientError;
 
 /// First business frame after WS Upgrade: JWT `login.signin`. Token is in the
-/// body, never on the Upgrade URL.
+/// body, never on the Upgrade URL. Device defaults to [`DEFAULT_DEVICE`].
 pub async fn login_on_conn(
     conn: &mut dyn Conn,
     token: &str,
     timeout: Duration,
 ) -> Result<MemorySession, ClientError> {
+    login_with_device(conn, token, timeout, DEFAULT_DEVICE).await
+}
+
+pub(crate) async fn login_with_device(
+    conn: &mut dyn Conn,
+    token: &str,
+    timeout: Duration,
+    device: &str,
+) -> Result<MemorySession, ClientError> {
     let account = account_from_token(token)?;
-    conn.write_frame(OpCode::Binary, encode_login(token))
+    conn.write_frame(OpCode::Binary, encode_login(token, device))
         .await?;
     conn.flush().await?;
     let channel_id = tokio::time::timeout(timeout, wait_login_resp(conn))

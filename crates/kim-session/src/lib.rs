@@ -206,6 +206,8 @@ mod tests {
         assert!(exclusive_device("iOS"));
         assert!(exclusive_device("Android"));
         assert!(!exclusive_device("web"));
+        assert!(!exclusive_device("desktop"));
+        assert!(!exclusive_device("macos"));
         assert!(!exclusive_device(""));
         assert!(!exclusive_device("cli"));
     }
