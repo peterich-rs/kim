@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tracing::debug;
 
@@ -189,6 +190,50 @@ impl LaneSet {
         self.txs.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
+    fn spawn_lane(
+        &self,
+        map: &mut HashMap<Arc<str>, mpsc::Sender<LaneJob>>,
+        key: Arc<str>,
+    ) -> mpsc::Sender<LaneJob> {
+        let (tx, rx) = mpsc::channel(self.lane_cap);
+        map.insert(key.clone(), tx.clone());
+        let listener = self.listener.clone();
+        let handle = self.handle.clone();
+        let txs = self.txs.clone();
+        let live = self.live.clone();
+        let idle = self.lane_idle;
+        // Weak identity only: a strong `mine` sender would keep rx open after
+        // drain() clears `txs`, delaying disconnect until lane_idle / drain wait.
+        let mine = tx.downgrade();
+        live.fetch_add(1, Ordering::SeqCst);
+        tokio::spawn(async move {
+            let mut rx = rx;
+            loop {
+                match tokio::time::timeout(idle, rx.recv()).await {
+                    Ok(Some(job)) => listener.receive(&handle, job.payload).await,
+                    Ok(None) => break,
+                    Err(_) => {
+                        let mut map = txs.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Ok(job) = rx.try_recv() {
+                            drop(map);
+                            listener.receive(&handle, job.payload).await;
+                            continue;
+                        }
+                        if map
+                            .get(&key)
+                            .is_some_and(|s| mine.upgrade().is_some_and(|u| u.same_channel(s)))
+                        {
+                            map.remove(&key);
+                        }
+                        break;
+                    }
+                }
+            }
+            live.fetch_sub(1, Ordering::SeqCst);
+        });
+        tx
+    }
+
     async fn enqueue(&self, key: Arc<str>, payload: Bytes) -> Result<(), Error> {
         let permit = self
             .in_flight
@@ -196,51 +241,44 @@ impl LaneSet {
             .acquire_owned()
             .await
             .map_err(|_| Error::Closed)?;
-        let tx = {
-            let mut map = self.txs.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(tx) = map.get(&key) {
-                tx.clone()
-            } else {
-                let (tx, rx) = mpsc::channel(self.lane_cap);
-                map.insert(key.clone(), tx.clone());
-                let listener = self.listener.clone();
-                let handle = self.handle.clone();
-                let txs = self.txs.clone();
-                let live = self.live.clone();
-                let idle = self.lane_idle;
-                let mine = tx.clone();
-                live.fetch_add(1, Ordering::SeqCst);
-                tokio::spawn(async move {
-                    let mut rx = rx;
-                    loop {
-                        match tokio::time::timeout(idle, rx.recv()).await {
-                            Ok(Some(job)) => listener.receive(&handle, job.payload).await,
-                            Ok(None) => break,
-                            Err(_) => {
-                                let mut map = txs.lock().unwrap_or_else(|e| e.into_inner());
-                                if let Ok(job) = rx.try_recv() {
-                                    drop(map);
-                                    listener.receive(&handle, job.payload).await;
-                                    continue;
-                                }
-                                if map.get(&key).is_some_and(|s| s.same_channel(&mine)) {
-                                    map.remove(&key);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    live.fetch_sub(1, Ordering::SeqCst);
-                });
-                tx
-            }
-        };
-        tx.send(LaneJob {
+        enum Admit {
+            Sent,
+            Retry(LaneJob),
+            Wait(mpsc::Sender<LaneJob>, LaneJob),
+        }
+        let mut job = LaneJob {
             payload,
             _permit: permit,
-        })
-        .await
-        .map_err(|_| Error::Closed)
+        };
+        loop {
+            // try_send while holding the map lock so an idle worker cannot
+            // retire a lane whose sender was already cloned for this enqueue.
+            let admit = {
+                let mut map = self.txs.lock().unwrap_or_else(|e| e.into_inner());
+                let tx = match map.get(&key) {
+                    Some(tx) => tx.clone(),
+                    None => self.spawn_lane(&mut map, key.clone()),
+                };
+                match tx.try_send(job) {
+                    Ok(()) => Admit::Sent,
+                    Err(TrySendError::Full(j)) => Admit::Wait(tx, j),
+                    Err(TrySendError::Closed(j)) => {
+                        if map.get(&key).is_some_and(|s| s.same_channel(&tx)) {
+                            map.remove(&key);
+                        }
+                        Admit::Retry(j)
+                    }
+                }
+            };
+            match admit {
+                Admit::Sent => return Ok(()),
+                Admit::Retry(j) => job = j,
+                Admit::Wait(tx, j) => match tx.send(j).await {
+                    Ok(()) => return Ok(()),
+                    Err(returned) => job = returned.0,
+                },
+            }
+        }
     }
 
     async fn drain(self) {
@@ -925,5 +963,109 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(80)).await;
         assert_eq!(lanes.lane_len(), 0);
         assert_eq!(saw.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn drain_unblocks_before_idle_timeout() {
+        struct RecvOnce {
+            saw: Arc<AtomicUsize>,
+            gate: Arc<Notify>,
+        }
+        #[async_trait]
+        impl MessageListener for RecvOnce {
+            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+                self.saw.fetch_add(1, Ordering::SeqCst);
+                self.gate.notify_waiters();
+            }
+        }
+        let write = WriteShared::spawn(
+            NullConn,
+            8,
+            Duration::from_secs(2),
+            WriteFullPolicy::Block,
+            None,
+        );
+        let handle = PushHandle {
+            id: Arc::from("c1"),
+            write,
+        };
+        let saw = Arc::new(AtomicUsize::new(0));
+        let gate = Arc::new(Notify::new());
+        let lanes = LaneSet::new(
+            Arc::new(Semaphore::new(8)),
+            8,
+            Duration::from_secs(30),
+            Arc::new(RecvOnce {
+                saw: saw.clone(),
+                gate: gate.clone(),
+            }),
+            handle,
+        );
+        lanes
+            .enqueue(Arc::from("k"), Bytes::from_static(b"x"))
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), gate.notified())
+            .await
+            .expect("handler ran");
+        timeout(Duration::from_secs(2), lanes.drain())
+            .await
+            .expect("drain must observe sender closure instead of waiting out idle");
+        assert_eq!(saw.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enqueue_during_idle_retirement_delivers() {
+        struct CountRecv {
+            saw: Arc<AtomicUsize>,
+        }
+        #[async_trait]
+        impl MessageListener for CountRecv {
+            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+                self.saw.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let write = WriteShared::spawn(
+            NullConn,
+            8,
+            Duration::from_secs(2),
+            WriteFullPolicy::Block,
+            None,
+        );
+        let handle = PushHandle {
+            id: Arc::from("c1"),
+            write,
+        };
+        let saw = Arc::new(AtomicUsize::new(0));
+        let lanes = LaneSet::new(
+            Arc::new(Semaphore::new(32)),
+            8,
+            Duration::from_millis(5),
+            Arc::new(CountRecv { saw: saw.clone() }),
+            handle,
+        );
+        const N: usize = 200;
+        for i in 0..N {
+            lanes
+                .enqueue(Arc::from("k"), Bytes::from_static(b"x"))
+                .await
+                .unwrap();
+            if i % 15 == 14 {
+                tokio::time::sleep(Duration::from_millis(8)).await;
+            }
+        }
+        timeout(Duration::from_secs(2), async {
+            loop {
+                if saw.load(Ordering::SeqCst) >= N {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("every enqueued frame must be delivered across idle retirement");
+        timeout(Duration::from_secs(2), lanes.drain())
+            .await
+            .expect("drain after retirement stress");
     }
 }

@@ -197,15 +197,15 @@ fn loc_inv_subscribe_err(detail: impl std::fmt::Display) -> SessionError {
 }
 
 async fn subscribe_loc_inv(url: &str) -> Result<::redis::aio::PubSub, SessionError> {
-    let client = Client::open(url).map_err(|e| loc_inv_subscribe_err(e))?;
+    let client = Client::open(url).map_err(loc_inv_subscribe_err)?;
     let mut pubsub = tokio::time::timeout(Duration::from_secs(3), client.get_async_pubsub())
         .await
         .map_err(|_| loc_inv_subscribe_err("connect timeout"))?
-        .map_err(|e| loc_inv_subscribe_err(e))?;
+        .map_err(loc_inv_subscribe_err)?;
     tokio::time::timeout(Duration::from_secs(3), pubsub.subscribe(LOC_INV_CHANNEL))
         .await
         .map_err(|_| loc_inv_subscribe_err("subscribe timeout"))?
-        .map_err(|e| loc_inv_subscribe_err(e))?;
+        .map_err(loc_inv_subscribe_err)?;
     Ok(pubsub)
 }
 

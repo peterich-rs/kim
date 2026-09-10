@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -110,6 +110,15 @@ impl MemoryRoomInterest {
     pub fn new() -> Self {
         Self::default()
     }
+
+    fn remove_member(map: &DashMap<String, HashSet<String>>, key: String, member: &str) {
+        if let Entry::Occupied(mut occ) = map.entry(key) {
+            occ.get_mut().remove(member);
+            if occ.get().is_empty() {
+                occ.remove();
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -151,24 +160,8 @@ impl RoomInterestStore for MemoryRoomInterest {
         let ik = interest_key(app, dest, kind);
         let vk = viewing_key(app, viewer, channel);
         let token = dest_token(dest, kind);
-        {
-            let empty = self.interest.get_mut(&ik).is_some_and(|mut set| {
-                set.remove(&member);
-                set.is_empty()
-            });
-            if empty {
-                self.interest.remove(&ik);
-            }
-        }
-        {
-            let empty = self.viewing.get_mut(&vk).is_some_and(|mut set| {
-                set.remove(&token);
-                set.is_empty()
-            });
-            if empty {
-                self.viewing.remove(&vk);
-            }
-        }
+        Self::remove_member(&self.interest, ik, &member);
+        Self::remove_member(&self.viewing, vk, &token);
         Ok(())
     }
 
@@ -193,13 +186,7 @@ impl RoomInterestStore for MemoryRoomInterest {
                 continue;
             };
             let ik = interest_key(app, &dest, kind);
-            let empty = self.interest.get_mut(&ik).is_some_and(|mut set| {
-                set.remove(&member);
-                set.is_empty()
-            });
-            if empty {
-                self.interest.remove(&ik);
-            }
+            Self::remove_member(&self.interest, ik, &member);
         }
         Ok(())
     }
@@ -422,5 +409,36 @@ mod tests {
         store.enter("kim", "alice", "ch-a", "bob", 0).await.unwrap();
         store.enter("kim", "alice", "ch-a", "bob", 0).await.unwrap();
         assert_eq!(store.viewers("kim", "bob", 0).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leave_last_viewer_does_not_drop_concurrent_enter() {
+        for _ in 0..200 {
+            let store = Arc::new(MemoryRoomInterest::new());
+            store.enter("kim", "alice", "ch-a", "bob", 0).await.unwrap();
+            let leaving = store.clone();
+            let entering = store.clone();
+            let leave = tokio::spawn({
+                let store = leaving;
+                async move {
+                    store.leave("kim", "alice", "ch-a", "bob", 0).await.unwrap();
+                }
+            });
+            let enter = tokio::spawn({
+                let store = entering;
+                async move {
+                    store.enter("kim", "carol", "ch-c", "bob", 0).await.unwrap();
+                }
+            });
+            leave.await.unwrap();
+            enter.await.unwrap();
+            let viewers = store.viewers("kim", "bob", 0).await.unwrap();
+            assert!(
+                viewers
+                    .iter()
+                    .any(|v| v.account == "carol" && v.channel_id == "ch-c"),
+                "concurrent enter must survive last-viewer leave: {viewers:?}"
+            );
+        }
     }
 }

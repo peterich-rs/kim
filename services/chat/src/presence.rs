@@ -131,24 +131,22 @@ impl PresenceHub {
                 g.get(&key).copied().unwrap_or(0) == gen
             };
             if still {
-                let locs = match storage.list_locations(&account).await {
-                    Ok(v) => v,
-                    Err(SessionError::NotFound) => Vec::new(),
+                match storage.list_locations(&account).await {
+                    Ok(locs) if !locs.is_empty() => {}
+                    Ok(_) | Err(SessionError::NotFound) => {
+                        let hub = PresenceHub {
+                            interest,
+                            storage,
+                            dispatcher,
+                            debounce,
+                            gens: gens.clone(),
+                        };
+                        hub.fanout(&app, &account, PresenceStatus::PresenceOffline, now_ms())
+                            .await;
+                    }
                     Err(err) => {
                         warn!(%err, account, "presence debounce list_locations");
-                        Vec::new()
                     }
-                };
-                if locs.is_empty() {
-                    let hub = PresenceHub {
-                        interest,
-                        storage,
-                        dispatcher,
-                        debounce,
-                        gens: gens.clone(),
-                    };
-                    hub.fanout(&app, &account, PresenceStatus::PresenceOffline, now_ms())
-                        .await;
                 }
             }
             let mut g = gens.lock().unwrap_or_else(|e| e.into_inner());
@@ -234,7 +232,7 @@ mod tests {
     use async_trait::async_trait;
     use kim_protocol::pkt::Session;
     use kim_protocol::LogicPkt;
-    use kim_router::{RouterError, SessionError, SessionStorage};
+    use kim_router::{RouterError, SessionStorage};
     use kim_session::MemorySessionStore;
 
     struct NoopDisp;
@@ -283,5 +281,97 @@ mod tests {
             "gens leaked across cycles: {}",
             hub.gens_len()
         );
+    }
+
+    #[tokio::test]
+    async fn debounce_storage_error_does_not_announce_offline() {
+        use kim_protocol::INBOX_KIND_USER;
+        use kim_router::SessionError;
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+        struct FailOnNth {
+            inner: MemorySessionStore,
+            calls: AtomicUsize,
+            fail_at: usize,
+        }
+
+        #[async_trait]
+        impl SessionStorage for FailOnNth {
+            async fn add(&self, session: &Session) -> Result<(), SessionError> {
+                self.inner.add(session).await
+            }
+            async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+                self.inner.delete(account, channel_id).await
+            }
+            async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
+                self.inner.get(channel_id).await
+            }
+            async fn get_locations(
+                &self,
+                accounts: &[String],
+            ) -> Result<Vec<Location>, SessionError> {
+                let n = self.calls.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+                if n == self.fail_at {
+                    return Err(SessionError::Other("transient".into()));
+                }
+                self.inner.get_locations(accounts).await
+            }
+            async fn get_location(
+                &self,
+                account: &str,
+                device: &str,
+            ) -> Result<Location, SessionError> {
+                self.inner.get_location(account, device).await
+            }
+        }
+
+        struct RecDisp {
+            pushes: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl Dispatcher for RecDisp {
+            async fn push(
+                &self,
+                _gateway: &str,
+                _channels: &[String],
+                _pkt: LogicPkt,
+            ) -> Result<(), RouterError> {
+                self.pushes.fetch_add(1, AtomicOrdering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let storage = Arc::new(FailOnNth {
+            inner: MemorySessionStore::new(),
+            calls: AtomicUsize::new(0),
+            fail_at: 2,
+        });
+        let interest = Arc::new(MemoryRoomInterest::new());
+        interest
+            .enter("kim", "viewer", "ch-v", "alice", INBOX_KIND_USER)
+            .await
+            .unwrap();
+        storage.add(&session("ch-v", "viewer")).await.unwrap();
+        storage.add(&session("ch-a", "alice")).await.unwrap();
+        storage.delete("alice", "ch-a").await.unwrap();
+
+        let pushes = Arc::new(AtomicUsize::new(0));
+        let hub = PresenceHub::new(
+            interest,
+            storage,
+            Arc::new(RecDisp {
+                pushes: pushes.clone(),
+            }),
+            Duration::from_millis(30),
+        );
+        hub.on_location_removed("kim", "alice", "ch-a").await;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(
+            pushes.load(AtomicOrdering::SeqCst),
+            0,
+            "storage errors must not fanout OFFLINE"
+        );
+        assert_eq!(hub.gens_len(), 0, "generation must still be cleaned up");
     }
 }
