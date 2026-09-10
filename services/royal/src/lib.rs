@@ -2046,9 +2046,15 @@ mod tests {
             .await
             .unwrap();
         assert!(key_resp.status().is_success());
+        assert_eq!(
+            key_resp
+                .headers()
+                .get("cache-control")
+                .and_then(|v| v.to_str().ok()),
+            Some("no-store")
+        );
         let key_buf = key_resp.bytes().await.unwrap();
-        let published =
-            kim_protocol::pkt::PasswordKeyResp::decode(key_buf.as_ref()).unwrap();
+        let published = kim_protocol::pkt::PasswordKeyResp::decode(key_buf.as_ref()).unwrap();
         assert_eq!(published.key_id, "k1");
         assert_eq!(published.alg, kim_protocol::PASSWORD_SEAL_ALG);
 

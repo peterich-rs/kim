@@ -13,6 +13,9 @@ use thiserror::Error;
 /// Algorithm id published by `GET /api/v1/auth/password-key`.
 pub const PASSWORD_SEAL_ALG: &str = "x25519-seal";
 
+/// Royal `400` body when `AuthReq.key_id` does not match the live key.
+pub const PASSWORD_KEY_ID_MISMATCH: &str = "password key id mismatch";
+
 const KEY_LEN: usize = 32;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -115,7 +118,7 @@ impl PasswordSealKey {
     }
 
     pub fn ensure_key_id(&self, key_id: &str) -> Result<(), PasswordSealError> {
-        if key_id.trim().is_empty() || key_id.trim() == self.key_id {
+        if key_id.trim() == self.key_id {
             Ok(())
         } else {
             Err(PasswordSealError::KeyIdMismatch)
@@ -131,7 +134,10 @@ pub struct PasswordSealPublic {
 }
 
 impl PasswordSealPublic {
-    pub fn from_b64(key_id: impl Into<String>, public_b64: &str) -> Result<Self, PasswordSealError> {
+    pub fn from_b64(
+        key_id: impl Into<String>,
+        public_b64: &str,
+    ) -> Result<Self, PasswordSealError> {
         let raw = B64
             .decode(public_b64.trim())
             .map_err(|_| PasswordSealError::InvalidKey)?;
@@ -208,6 +214,6 @@ mod tests {
         let key = PasswordSealKey::generate(Some("a".into()));
         assert!(key.ensure_key_id("b").is_err());
         assert!(key.ensure_key_id("a").is_ok());
-        assert!(key.ensure_key_id("").is_ok());
+        assert!(key.ensure_key_id("").is_err());
     }
 }

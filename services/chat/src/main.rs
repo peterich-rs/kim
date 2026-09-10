@@ -183,6 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis_url: redis_url.as_deref(),
         require_redis: true,
         consul_addr: consul.as_deref(),
+        ..StrictCheck::default()
     })?;
     let naming = open_naming(consul.as_deref(), vec![])?;
     let mut tags = Vec::new();

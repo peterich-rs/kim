@@ -140,9 +140,14 @@ pub struct StrictCheck<'a> {
     pub redis_url: Option<&'a str>,
     pub require_redis: bool,
     pub consul_addr: Option<&'a str>,
+    /// `Some(false)` when `KIM_AUTH_PASSWORD_SEAL_PRIVATE` is unset.
+    pub password_seal_configured: Option<bool>,
+    /// `Some(true)` when plaintext passwords are accepted (`KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD`).
+    pub allow_plaintext_password: Option<bool>,
 }
 
-/// Reject demo/`change-me` secrets, passwordless Redis, and plaintext Consul.
+/// Reject demo/`change-me` secrets, passwordless Redis, plaintext Consul,
+/// and an unsealed password login path.
 ///
 /// # Errors
 ///
@@ -185,6 +190,12 @@ pub fn check_strict_runtime(check: StrictCheck<'_>) -> Result<(), String> {
                 return Err(format!("production requires {key}"));
             }
         }
+    }
+    if check.password_seal_configured == Some(false) {
+        return Err("production requires KIM_AUTH_PASSWORD_SEAL_PRIVATE".into());
+    }
+    if check.allow_plaintext_password == Some(true) {
+        return Err("production must not set KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD".into());
     }
     Ok(())
 }
@@ -547,6 +558,37 @@ mod tests {
         env.set_kim(Some("development"));
         assert!(check_strict_runtime(StrictCheck {
             hmac: Some(DEMO_INTERNAL_HMAC_SECRET),
+            ..StrictCheck::default()
+        })
+        .is_ok());
+    }
+
+    #[test]
+    fn check_strict_rejects_unsealed_password_when_production() {
+        let env = EnvGuard::lock();
+        env.set_kim(Some("production"));
+        env.set_consul(None);
+        assert!(check_strict_runtime(StrictCheck {
+            password_seal_configured: Some(false),
+            ..StrictCheck::default()
+        })
+        .is_err());
+        assert!(check_strict_runtime(StrictCheck {
+            password_seal_configured: Some(true),
+            allow_plaintext_password: Some(true),
+            ..StrictCheck::default()
+        })
+        .is_err());
+        assert!(check_strict_runtime(StrictCheck {
+            password_seal_configured: Some(true),
+            allow_plaintext_password: Some(false),
+            ..StrictCheck::default()
+        })
+        .is_ok());
+        env.set_kim(Some("development"));
+        assert!(check_strict_runtime(StrictCheck {
+            password_seal_configured: Some(false),
+            allow_plaintext_password: Some(true),
             ..StrictCheck::default()
         })
         .is_ok());

@@ -171,6 +171,7 @@ where
         redis_url: redis_url.as_deref(),
         require_redis: true,
         consul_addr: consul.as_deref(),
+        ..StrictCheck::default()
     })?;
     let public_address = std::env::var("KIM_PUBLIC_ADDRESS")
         .ok()

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import nacl from "tweetnacl";
 import { clearPasswordSealCache, login, logout, register } from "../app/lib/auth.ts";
 import { insecureAuthOriginReason } from "../app/lib/secure_origin.ts";
+import { encodeAuthResp, encodePasswordKeyResp } from "../src/proto.ts";
+import { PASSWORD_SEAL_ALG } from "../src/password_seal.ts";
 
 afterEach(() => {
   clearPasswordSealCache();
@@ -83,6 +86,43 @@ describe("auth http", () => {
     });
     expect(fetchFn.mock.calls[1]?.[1]?.body).toBeInstanceOf(Uint8Array);
   });
+
+  it("refetches password-key on key id mismatch", async () => {
+    const pk = nacl.box.keyPair().publicKey;
+    const b64 = btoa(String.fromCharCode(...pk));
+    const fetchFn = mockFetchSequence([
+      () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () =>
+          encodePasswordKeyResp("old", PASSWORD_SEAL_ALG, b64).slice(),
+      }),
+      () => ({
+        ok: false,
+        status: 400,
+        text: async () => "password key id mismatch",
+      }),
+      () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () =>
+          encodePasswordKeyResp("new", PASSWORD_SEAL_ALG, b64).slice(),
+      }),
+      () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => encodeAuthResp("tok.jwt", 99, "alice").slice(),
+      }),
+    ]);
+    const session = await login("alice", "secret123");
+    expect(session.token).toBe("tok.jwt");
+    expect(fetchFn.mock.calls.map((c) => c[0])).toEqual([
+      "/api/v1/auth/password-key",
+      "/api/v1/auth/login",
+      "/api/v1/auth/password-key",
+      "/api/v1/auth/login",
+    ]);
+  });
 });
 
 describe("secure origin", () => {
@@ -91,5 +131,6 @@ describe("secure origin", () => {
     expect(insecureAuthOriginReason("https://kim.ainexc.com")).toBeNull();
     expect(insecureAuthOriginReason("http://127.0.0.1:8080")).toBeNull();
     expect(insecureAuthOriginReason("http://localhost:8080")).toBeNull();
+    expect(insecureAuthOriginReason("http://localhost.evil.com")).toBeTruthy();
   });
 });

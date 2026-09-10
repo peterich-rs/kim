@@ -20,7 +20,8 @@ String? insecureAuthOriginReason(String origin) {
   return 'auth origin must be https (or http://127.0.0.1 / localhost for local dev)';
 }
 
-bool isSecureAuthOrigin(String origin) => insecureAuthOriginReason(origin) == null;
+bool isSecureAuthOrigin(String origin) =>
+    insecureAuthOriginReason(origin) == null;
 
 bool _isLoopbackHost(String host) {
   final h = host.toLowerCase();

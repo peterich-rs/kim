@@ -284,6 +284,12 @@ abstract class AppLocalizations {
   /// **'登录失败，请稍后重试'**
   String get authFailed;
 
+  /// No description provided for @insecureAuthOrigin.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产环境请使用 HTTPS（本地可用 http://127.0.0.1）'**
+  String get insecureAuthOrigin;
+
   /// No description provided for @sessionExpired.
   ///
   /// In zh, this message translates to:

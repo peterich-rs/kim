@@ -7,6 +7,7 @@ void main() {
     expect(isSecureAuthOrigin('http://127.0.0.1:8080'), isTrue);
     expect(isSecureAuthOrigin('http://localhost:8080'), isTrue);
     expect(isSecureAuthOrigin('http://evil.example'), isFalse);
+    expect(isSecureAuthOrigin('http://localhost.evil.com'), isFalse);
     expect(isSecureAuthOrigin('http://192.168.1.1:8080'), isFalse);
   });
 }

@@ -201,12 +201,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if is_demo_internal_hmac(&hmac) {
         tracing::warn!(secret = "demo-default-hmac", "do not use in production");
     }
+    let password_seal = match env_nonempty("KIM_AUTH_PASSWORD_SEAL_PRIVATE") {
+        Some(raw) => {
+            let key_id = env_nonempty("KIM_AUTH_PASSWORD_SEAL_KEY_ID");
+            Some(
+                PasswordSealKey::from_private_b64(&raw, key_id)
+                    .map_err(|e| format!("KIM_AUTH_PASSWORD_SEAL_PRIVATE: {e}"))?,
+            )
+        }
+        None => None,
+    };
+    let allow_plaintext = env_nonempty("KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(password_seal.is_none());
     check_strict_runtime(StrictCheck {
         hmac: Some(&hmac),
         jwt: Some(&jwt.secret),
         redis_url: redis.as_deref(),
         require_redis: true,
         consul_addr: consul.as_deref(),
+        password_seal_configured: Some(password_seal.is_some()),
+        allow_plaintext_password: Some(allow_plaintext),
     })?;
 
     let revoke: Arc<dyn TokenRevocation> = match redis.as_deref() {
@@ -271,24 +286,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => Arc::new(MemoryDeviceHot::new()),
     };
 
-    let password_seal = match env_nonempty("KIM_AUTH_PASSWORD_SEAL_PRIVATE") {
-        Some(raw) => {
-            let key_id = env_nonempty("KIM_AUTH_PASSWORD_SEAL_KEY_ID");
-            Some(
-                PasswordSealKey::from_private_b64(&raw, key_id)
-                    .map_err(|e| format!("KIM_AUTH_PASSWORD_SEAL_PRIVATE: {e}"))?,
-            )
-        }
-        None => {
-            if kim_protocol::strict_runtime() {
-                tracing::warn!("KIM_AUTH_PASSWORD_SEAL_PRIVATE unset; password envelope disabled");
-            }
-            None
-        }
-    };
-    let allow_plaintext = env_nonempty("KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD")
-        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-        .unwrap_or(password_seal.is_none());
     let mut state = state
         .with_app(app)
         .with_chat_url(chat_url)

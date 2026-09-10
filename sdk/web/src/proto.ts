@@ -434,6 +434,18 @@ export function encodeAuthReq(
   });
 }
 
+export function encodePasswordKeyResp(
+  keyId: string,
+  alg: string,
+  publicKeyB64: string,
+): Uint8Array {
+  return encode(PasswordKeyRespType, { keyId, alg, publicKeyB64 });
+}
+
+export function encodeAuthResp(token: string, exp: number, account: string): Uint8Array {
+  return encode(AuthRespType, { token, exp, account });
+}
+
 export function decodePasswordKeyResp(buf: Uint8Array): {
   keyId: string;
   alg: string;

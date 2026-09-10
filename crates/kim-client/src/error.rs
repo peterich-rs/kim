@@ -49,4 +49,12 @@ impl ClientError {
     pub fn is_fatal_auth(&self) -> bool {
         matches!(self, Self::Unauthorized | Self::InvalidToken)
     }
+
+    pub fn is_password_key_id_mismatch(&self) -> bool {
+        matches!(
+            self,
+            Self::Http { status: 400, body }
+                if body.contains(kim_protocol::PASSWORD_KEY_ID_MISMATCH)
+        )
+    }
 }

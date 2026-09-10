@@ -43,7 +43,8 @@ async function fetchSealKey(): Promise<SealMaterial | null> {
     headers: { Accept: "application/x-protobuf" },
   });
   if (resp.status === 404) {
-    cachedSeal = { at: Date.now(), material: null };
+    // Do not cache misses: a later deploy of the seal key must be picked up.
+    cachedSeal = undefined;
     return null;
   }
   if (!resp.ok) {
@@ -67,7 +68,12 @@ export function clearPasswordSealCache(): void {
   cachedSeal = undefined;
 }
 
-async function postAuth(path: string, account: string, password: string): Promise<AuthSession> {
+async function postAuth(
+  path: string,
+  account: string,
+  password: string,
+  retried = false,
+): Promise<AuthSession> {
   assertPageAuthTransport();
   const seal = await fetchSealKey();
   const body = seal
@@ -85,7 +91,12 @@ async function postAuth(path: string, account: string, password: string): Promis
     body: body.slice(),
   });
   if (!resp.ok) {
-    throw asError(resp.status, (await resp.text()) || `http ${resp.status}`);
+    const text = (await resp.text()) || `http ${resp.status}`;
+    if (!retried && resp.status === 400 && text.includes("password key id mismatch")) {
+      clearPasswordSealCache();
+      return postAuth(path, account, password, true);
+    }
+    throw asError(resp.status, text);
   }
   const buf = new Uint8Array(await resp.arrayBuffer());
   const decoded = decodeAuthResp(buf);
@@ -121,6 +132,7 @@ export async function changePassword(
   token: string,
   oldPassword: string,
   newPassword: string,
+  retried = false,
 ): Promise<void> {
   assertPageAuthTransport();
   const seal = await fetchSealKey();
@@ -140,6 +152,11 @@ export async function changePassword(
     body: body.slice(),
   });
   if (!resp.ok) {
-    throw asError(resp.status, (await resp.text()) || `http ${resp.status}`);
+    const text = (await resp.text()) || `http ${resp.status}`;
+    if (!retried && resp.status === 400 && text.includes("password key id mismatch")) {
+      clearPasswordSealCache();
+      return changePassword(token, oldPassword, newPassword, true);
+    }
+    throw asError(resp.status, text);
   }
 }

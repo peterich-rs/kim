@@ -295,6 +295,11 @@ fill_missing_kim_env() {
     append_env KIM_INTERNAL_HMAC_SECRET "$(openssl rand -hex 32)"
     added+=(KIM_INTERNAL_HMAC_SECRET)
   fi
+  if [[ -z "${KIM_AUTH_PASSWORD_SEAL_PRIVATE:-}" ]]; then
+    require_openssl
+    append_env KIM_AUTH_PASSWORD_SEAL_PRIVATE "$(openssl rand -base64 32 | tr -d '\n')"
+    added+=(KIM_AUTH_PASSWORD_SEAL_PRIVATE)
+  fi
   if [[ -z "${CONSUL_MANAGEMENT_TOKEN:-}" ]]; then
     if v="$(mgmt_from_secrets_hcl)"; then
       append_env CONSUL_MANAGEMENT_TOKEN "$v"
@@ -322,6 +327,7 @@ preflight_kim_env() {
     KIM_ENV \
     KIM_JWT_SECRET \
     KIM_INTERNAL_HMAC_SECRET \
+    KIM_AUTH_PASSWORD_SEAL_PRIVATE \
     REDIS_PASSWORD \
     REDIS_URL \
     POSTGRES_PASSWORD \

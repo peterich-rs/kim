@@ -56,12 +56,8 @@ fn is_loopback_http(base: &str) -> bool {
     } else {
         host.split(':').next().unwrap_or(host)
     };
-    matches!(
-        host,
-        "127.0.0.1" | "localhost" | "::1" | "0:0:0:0:0:0:0:1"
-    )
+    matches!(host, "127.0.0.1" | "localhost" | "::1" | "0:0:0:0:0:0:0:1")
 }
-
 
 /// JWT issued by Royal `/api/v1/auth/{register,login}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,12 +134,12 @@ impl AuthClient {
         account: &str,
         password: &str,
     ) -> Result<AuthSession, ClientError> {
-        self.post_auth("/api/v1/auth/register", account, password)
+        self.post_auth("/api/v1/auth/register", account, password, true)
             .await
     }
 
     pub async fn login(&self, account: &str, password: &str) -> Result<AuthSession, ClientError> {
-        self.post_auth("/api/v1/auth/login", account, password)
+        self.post_auth("/api/v1/auth/login", account, password, true)
             .await
     }
 
@@ -173,6 +169,17 @@ impl AuthClient {
         token: &str,
         old_password: &str,
         new_password: &str,
+    ) -> Result<(), ClientError> {
+        self.change_password_inner(token, old_password, new_password, true)
+            .await
+    }
+
+    async fn change_password_inner(
+        &self,
+        token: &str,
+        old_password: &str,
+        new_password: &str,
+        retry_key: bool,
     ) -> Result<(), ClientError> {
         let token = token.trim();
         if token.is_empty() {
@@ -227,7 +234,13 @@ impl AuthClient {
             return Ok(());
         }
         let body = resp.text().await.unwrap_or_default();
-        Err(http_err(status, body))
+        let err = http_err(status, body);
+        if retry_key && err.is_password_key_id_mismatch() {
+            self.invalidate_seal_cache().await;
+            return Box::pin(self.change_password_inner(token, old_password, new_password, false))
+                .await;
+        }
+        Err(err)
     }
 
     async fn post_auth(
@@ -235,6 +248,7 @@ impl AuthClient {
         path: &str,
         account: &str,
         password: &str,
+        retry_key: bool,
     ) -> Result<AuthSession, ClientError> {
         let account = valid_account(account)?;
         let password = valid_password(password)?;
@@ -274,7 +288,12 @@ impl AuthClient {
             .map_err(|e| ClientError::other(e.to_string()))?;
         if !status.is_success() {
             let text = String::from_utf8_lossy(&buf).into_owned();
-            return Err(http_err(status, text));
+            let err = http_err(status, text);
+            if retry_key && err.is_password_key_id_mismatch() {
+                self.invalidate_seal_cache().await;
+                return Box::pin(self.post_auth(path, account, password, false)).await;
+            }
+            return Err(err);
         }
         let decoded =
             AuthResp::decode(buf.as_ref()).map_err(|e| ClientError::other(e.to_string()))?;
@@ -291,6 +310,10 @@ impl AuthClient {
             exp: decoded.exp,
             account,
         })
+    }
+
+    async fn invalidate_seal_cache(&self) {
+        *self.seal_cache.lock().await = None;
     }
 
     async fn seal_key(&self) -> Result<Option<PasswordSealPublic>, ClientError> {
@@ -591,6 +614,8 @@ mod tests {
         assert!(require_secure_auth_origin("http://127.0.0.1:8080").is_ok());
         assert!(require_secure_auth_origin("http://localhost:8080").is_ok());
         assert!(require_secure_auth_origin("http://[::1]:8080").is_ok());
+        assert!(require_secure_auth_origin("http://localhost.evil.com").is_err());
+        assert!(require_secure_auth_origin("http://user@localhost:8080").is_ok());
         assert!(AuthClient::new("http://evil.example", DEFAULT_CLIENT_USER_AGENT).is_err());
     }
 
@@ -634,6 +659,88 @@ mod tests {
         assert_eq!(req.key_id, "k-test");
         assert!(!req.password_sealed.is_empty());
         let opened = key.unseal(&req.password_sealed).expect("unseal");
+        assert_eq!(opened, b"secret123");
+    }
+
+    #[tokio::test]
+    async fn login_refetches_seal_key_on_key_id_mismatch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use axum::routing::get;
+        use kim_protocol::{PasswordSealKey, PASSWORD_KEY_ID_MISMATCH};
+
+        let key_old = PasswordSealKey::generate(Some("old".into()));
+        let key_new = PasswordSealKey::generate(Some("new".into()));
+        let old_resp = PasswordKeyResp {
+            key_id: key_old.key_id().to_string(),
+            alg: key_old.alg().to_string(),
+            public_key_b64: key_old.public_key_b64(),
+        }
+        .encode_to_vec();
+        let new_resp = PasswordKeyResp {
+            key_id: key_new.key_id().to_string(),
+            alg: key_new.alg().to_string(),
+            public_key_b64: key_new.public_key_b64(),
+        }
+        .encode_to_vec();
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let fetches_key = fetches.clone();
+        let app = Router::new()
+            .route(
+                "/api/v1/auth/password-key",
+                get(move || {
+                    let n = fetches_key.fetch_add(1, Ordering::SeqCst);
+                    let body = if n == 0 {
+                        old_resp.clone()
+                    } else {
+                        new_resp.clone()
+                    };
+                    async move { (StatusCode::OK, Bytes::from(body)) }
+                }),
+            )
+            .route(
+                "/api/v1/auth/login",
+                post(
+                    |State(seen): State<Arc<Mutex<Seen>>>, body: Bytes| async move {
+                        let req = AuthReq::decode(body.as_ref()).expect("pb");
+                        {
+                            let mut g = seen.lock().unwrap_or_else(|e| e.into_inner());
+                            g.body = body.to_vec();
+                        }
+                        if req.key_id == "old" {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Bytes::from(PASSWORD_KEY_ID_MISMATCH),
+                            );
+                        }
+                        let resp = AuthResp {
+                            token: "tok.jwt".into(),
+                            exp: 99,
+                            account: "alice".into(),
+                            ..Default::default()
+                        };
+                        (StatusCode::OK, Bytes::from(resp.encode_to_vec()))
+                    },
+                ),
+            )
+            .with_state(seen.clone());
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let client =
+            AuthClient::new(format!("http://{addr}"), DEFAULT_CLIENT_USER_AGENT).expect("client");
+        let session = client.login("alice", "secret123").await.expect("login");
+        assert_eq!(session.token, "tok.jwt");
+        assert_eq!(fetches.load(Ordering::SeqCst), 2);
+        let g = seen.lock().unwrap_or_else(|e| e.into_inner());
+        let req = AuthReq::decode(g.body.as_slice()).expect("pb");
+        assert_eq!(req.key_id, "new");
+        let opened = key_new.unseal(&req.password_sealed).expect("unseal");
         assert_eq!(opened, b"secret123");
     }
 }
