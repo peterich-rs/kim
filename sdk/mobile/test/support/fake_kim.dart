@@ -11,6 +11,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   Object? error;
   Object? connectError;
   Object? talkError;
+  Duration? loginDelay;
   int logins = 0;
   int registers = 0;
   int logouts = 0;
@@ -51,6 +52,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   Future<KimAuthSession> _run() async {
+    final delay = loginDelay;
+    if (delay != null) {
+      await Future<void>.delayed(delay);
+    }
     if (error != null) {
       throw error!;
     }
@@ -239,6 +244,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
     eventsController.add(
       KimEvent(kind: KimEventKind.authExpired, error: error),
     );
+  }
+
+  void emitKick({String channelId = 'ch-1'}) {
+    eventsController.add(KimEvent(kind: KimEventKind.kick, dest: channelId));
   }
 
   void emitSyncPage({required int pageId, required List<KimEvent> talks}) {

@@ -27,7 +27,7 @@ class AuthNotifier extends Notifier<AuthState> {
     final settings = ref.watch(runtimeProvider).settings;
     final expired =
         settings.token.isNotEmpty && JwtPeek.isExpired(settings.token);
-    if (expired) {
+    if (expired && !settings.discardedExpiredToken) {
       settings.discardedExpiredToken = true;
       unawaited(settings.saveToken(''));
     }
@@ -63,9 +63,9 @@ class AuthNotifier extends Notifier<AuthState> {
             account: account,
             password: password,
           );
-    if (!ref.mounted) {
-      return;
-    }
+    // Persist before any mounted check. saveToken writes memory first, so a
+    // rebuild of [build] during I/O can already see a live session. Bailing
+    // out before persist is the "server ok, UI stuck on /login" dead zone.
     await runtime.settings.saveSession(
       token: session.token,
       account: session.account,
@@ -77,7 +77,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = AuthState(signedIn: true, account: session.account);
   }
 
-  Future<void> signOut({bool expired = false}) async {
+  Future<void> signOut({bool expired = false, String? notice}) async {
     final runtime = ref.read(runtimeProvider);
     final auth = ref.read(authPortProvider);
     final client = ref.read(clientPortProvider);
@@ -101,9 +101,10 @@ class AuthNotifier extends Notifier<AuthState> {
     if (!ref.mounted) {
       return;
     }
-    if (expired) {
+    final message = notice ?? (expired ? Copy.sessionExpired : null);
+    if (message != null) {
       await KimHaptics.error();
-      state = AuthState.signedOut(notice: Copy.sessionExpired);
+      state = AuthState.signedOut(notice: message);
       return;
     }
     await KimHaptics.success();

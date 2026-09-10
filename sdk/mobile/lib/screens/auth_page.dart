@@ -34,6 +34,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   late final TextEditingController _password;
   late final TextEditingController _confirm;
   late bool _register;
+  var _sending = false;
   String? _accountErr;
   String? _passwordErr;
   String? _confirmErr;
@@ -66,32 +67,49 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   Mutation<void> get _mutation => _register ? registerMutation : signInMutation;
 
   Future<void> _submit() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    await WidgetsBinding.instance.endOfFrame;
-    final account = _account.text.trim();
-    final password = sanitizePassword(_password.text);
-    final accountErr = validateAccount(account);
-    final passwordErr = validatePassword(password);
-    final confirmErr = _register
-        ? validateConfirm(password, sanitizePassword(_confirm.text))
-        : null;
-    setState(() {
-      _accountErr = accountErr;
-      _passwordErr = passwordErr;
-      _confirmErr = confirmErr;
-    });
-    if (accountErr != null || passwordErr != null || confirmErr != null) {
+    if (_sending) {
       return;
     }
-    _mutation.reset(ref);
+    _sending = true;
     try {
-      await _mutation.run(ref, (tsx) async {
-        await tsx
-            .get(authProvider.notifier)
-            .signIn(register: _register, account: account, password: password);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) {
+        return;
+      }
+      final account = _account.text.trim();
+      final password = sanitizePassword(_password.text);
+      final accountErr = validateAccount(account);
+      final passwordErr = validatePassword(password);
+      final confirmErr = _register
+          ? validateConfirm(password, sanitizePassword(_confirm.text))
+          : null;
+      setState(() {
+        _accountErr = accountErr;
+        _passwordErr = passwordErr;
+        _confirmErr = confirmErr;
       });
-    } catch (err) {
-      await KimHaptics.error();
+      if (accountErr != null || passwordErr != null || confirmErr != null) {
+        return;
+      }
+      _mutation.reset(ref);
+      try {
+        await _mutation.run(ref, (tsx) async {
+          await tsx
+              .get(authProvider.notifier)
+              .signIn(
+                register: _register,
+                account: account,
+                password: password,
+              );
+        });
+      } catch (err) {
+        await KimHaptics.error();
+      }
+    } finally {
+      if (mounted) {
+        _sending = false;
+      }
     }
   }
 
