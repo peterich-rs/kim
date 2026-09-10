@@ -79,16 +79,37 @@ class AgentSettings {
 
 class AgentSettingsNotifier extends Notifier<AgentSettings> {
   final _secure = SettingsStore.productionSecureStorage();
+  Future<void>? _load;
 
   @override
   AgentSettings build() {
-    Future.microtask(reload);
+    _load = _reload();
     return AgentSettings.defaults;
   }
 
+  /// First [build] returns empty defaults. Chat must wait for this before
+  /// treating a missing API key as "not configured".
+  Future<void> ensureLoaded() async {
+    await (_load ?? _reload());
+  }
+
   Future<void> reload() async {
+    final future = _reload();
+    _load = future;
+    await future;
+  }
+
+  Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = await _secure.read(key: _kApiKey) ?? '';
+    var key = '';
+    try {
+      key = await _secure.read(key: _kApiKey) ?? '';
+    } catch (_) {
+      // macOS ad-hoc Keychain (-34018): keep empty; save path still works.
+    }
+    if (!ref.mounted) {
+      return;
+    }
     state = AgentSettings(
       llmBackend: prefs.getString(_kMode) ?? AgentSettings.defaults.llmBackend,
       baseUrl: prefs.getString(_kBaseUrl) ?? AgentSettings.defaults.baseUrl,
@@ -101,16 +122,22 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
   }
 
   Future<void> save(AgentSettings next) async {
+    await ensureLoaded();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kMode, next.llmBackend);
     await prefs.setString(_kBaseUrl, next.baseUrl);
     await prefs.setString(_kModel, next.model);
     await prefs.setBool(_kFsTools, next.enableFsTools);
     await prefs.setBool(_kBash, next.bashEnabled);
-    if (next.apiKey.isEmpty) {
-      await _secure.delete(key: _kApiKey);
-    } else {
-      await _secure.write(key: _kApiKey, value: next.apiKey);
+    try {
+      if (next.apiKey.isEmpty) {
+        await _secure.delete(key: _kApiKey);
+      } else {
+        await _secure.write(key: _kApiKey, value: next.apiKey);
+      }
+    } catch (_) {
+      // Same Keychain miss as JWT: in-memory [state] still lets this session
+      // talk to the bot; next cold start retries the read.
     }
     state = next;
   }

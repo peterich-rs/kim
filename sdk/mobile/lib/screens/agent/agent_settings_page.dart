@@ -41,14 +41,22 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   }
 
   void _hydrate(AgentSettings s) {
-    if (_loaded) {
+    if (!_loaded) {
+      _apply(s);
+      _loaded = true;
       return;
     }
+    // First frame is empty defaults; fill in once reload lands.
+    if (_apiKey.text.isEmpty && s.apiKey.isNotEmpty) {
+      _apply(s);
+    }
+  }
+
+  void _apply(AgentSettings s) {
     _backend = s.llmBackend == 'anthropic' ? 'anthropic' : 'openai';
     _baseUrl.text = s.baseUrl;
     _model.text = s.model;
     _apiKey.text = s.apiKey;
-    _loaded = true;
   }
 
   Future<void> _save() async {

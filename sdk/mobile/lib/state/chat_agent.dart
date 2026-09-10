@@ -50,6 +50,7 @@ class ChatAgent {
   }
 
   Future<void> _prompt(String dest, String text) async {
+    await _ref.read(agentSettingsProvider.notifier).ensureLoaded();
     final settings = _ref.read(agentSettingsProvider);
     if (settings.apiKey.trim().isEmpty) {
       await _appendLocal(
