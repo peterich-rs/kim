@@ -31,6 +31,6 @@ weight = 0
 
 网关 `[[services]]`（无 Consul 时）的 chat 要带 `tags = ["zone:zone_local"]`，与 Chat `[self].zone` 一致。生产两套 Chat：`zone_local`（weight 100）与 `zone_gray`（weight 0 + account 白名单）。
 
-会话 Redis key 是 v2 前缀，仍不含 app：`login:loc:v2:{account}`、`login:sn:v2:{channel}`。心跳 `touch_session` 走同一套 key。loc cache 默认关（`KIM_LOC_CACHE=1` / `true` 才 wrap）；生产 compose 显式 `0`。
+会话 Redis key 是 v2 前缀，仍不含 app：`login:loc:v2:{account}`、`login:sn:v2:{channel}`。心跳 `touch_session` 走同一套 key。loc cache opt-in（`KIM_LOC_CACHE=1` / `true` 才 wrap，且必须订到 `kim:loc:inv`）；compose 显式 `0`。开缓存后跨实例失效靠 Redis Pub/Sub，见 [perf.md](perf.md)。
 
 滚动：Chat / Gateway / Royal **同一窗口**切到 v2 key（不双写），**然后再重启全部 Gateway**，断开仍持有旧 `login:sn:*` 的 TCP。新 Gateway 只挡住新的非 kim 登录；不排空则旧长连接的 session blob 仍可能被新 Chat `cache.get` 执行。回滚到旧镜像后新 key 不可见，全员需重登。

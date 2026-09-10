@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{OpCode, Server};
@@ -59,7 +60,10 @@ pub struct Container {
     identity: DefaultRegistration,
     dialer: Arc<dyn TcpDialer>,
     deps: Vec<String>,
-    clients: Arc<RwLock<HashMap<String, ClientMap>>>,
+    /// Read: atomic load. Write: `clients_w` then clone-modify-store so concurrent
+    /// dial/remove cannot drop each other's inserts.
+    clients: ArcSwap<HashMap<String, ClientMap>>,
+    clients_w: Mutex<()>,
     selector: Arc<dyn Selector>,
     adult_delay: Duration,
     after_downlink: Vec<Arc<dyn DownlinkHook>>,
@@ -81,7 +85,8 @@ impl Container {
             identity: opts.identity,
             dialer: opts.dialer,
             deps: opts.deps,
-            clients: Arc::new(RwLock::new(HashMap::new())),
+            clients: ArcSwap::from_pointee(HashMap::new()),
+            clients_w: Mutex::new(()),
             selector: opts.selector,
             adult_delay: opts.adult_delay,
             after_downlink: opts.after_downlink,
@@ -96,6 +101,21 @@ impl Container {
 
     pub fn attach_server(&self, server: Arc<dyn Server + Send + Sync>) {
         let _ = self.server.set(server);
+    }
+
+    fn clients_map(&self) -> arc_swap::Guard<Arc<HashMap<String, ClientMap>>> {
+        self.clients.load()
+    }
+
+    async fn update_clients<R, F>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut HashMap<String, ClientMap>) -> R,
+    {
+        let _g = self.clients_w.lock().await;
+        let mut next = (**self.clients.load()).clone();
+        let r = f(&mut next);
+        self.clients.store(Arc::new(next));
+        r
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<(), Error> {
@@ -158,16 +178,17 @@ impl Container {
         if let Some(srv) = self.server.get() {
             let _ = srv.shutdown().await;
         }
-        let outbound: Vec<Arc<TcpClient>> = {
-            let mut map = self.clients.write().await;
-            map.values_mut()
-                .flat_map(|cmap| {
-                    cmap.ids()
-                        .into_iter()
-                        .filter_map(|id| cmap.remove(&id).map(|s| s.client))
-                })
-                .collect()
-        };
+        let outbound: Vec<Arc<TcpClient>> = self
+            .update_clients(|map| {
+                map.values_mut()
+                    .flat_map(|cmap| {
+                        cmap.ids()
+                            .into_iter()
+                            .filter_map(|id| cmap.remove(&id).map(|s| s.client))
+                    })
+                    .collect()
+            })
+            .await;
         for client in outbound {
             let _ = client.shutdown().await;
         }
@@ -181,7 +202,7 @@ impl Container {
             return Err(Error::other("empty command or channel_id"));
         }
         pkt.set_meta(META_DEST_SERVER, &self.identity.service_id);
-        let map = self.clients.read().await;
+        let map = self.clients_map();
         let Some(cmap) = map.get(service_name) else {
             return Err(Error::other("no adult instances"));
         };
@@ -217,8 +238,8 @@ impl Container {
     }
 
     pub async fn slot_state(&self, service_name: &str, id: &str) -> Option<u8> {
-        let map = self.clients.read().await;
-        map.get(service_name)
+        self.clients_map()
+            .get(service_name)
             .and_then(|m| m.get(id))
             .map(|s| s.state.load(Ordering::SeqCst))
     }
@@ -326,7 +347,7 @@ impl Container {
             return;
         }
         let stale: Vec<(String, Arc<TcpClient>)> = {
-            let map = self.clients.read().await;
+            let map = self.clients_map();
             match map.get(service_name) {
                 Some(cmap) => cmap
                     .ids()
@@ -339,21 +360,22 @@ impl Container {
         };
         for (id, client) in stale {
             let _ = client.shutdown().await;
-            let mut w = self.clients.write().await;
-            if let Some(cmap) = w.get_mut(service_name) {
-                if cmap
-                    .get(&id)
-                    .is_some_and(|s| Arc::ptr_eq(&s.client, &client))
-                {
-                    cmap.remove(&id);
+            self.update_clients(|w| {
+                if let Some(cmap) = w.get_mut(service_name) {
+                    if cmap
+                        .get(&id)
+                        .is_some_and(|s| Arc::ptr_eq(&s.client, &client))
+                    {
+                        cmap.remove(&id);
+                    }
                 }
-            }
+            })
+            .await;
         }
     }
 
     async fn try_promote(&self, service_name: &str, id: &str) {
-        let map = self.clients.read().await;
-        if let Some(slot) = map.get(service_name).and_then(|m| m.get(id)) {
+        if let Some(slot) = self.clients_map().get(service_name).and_then(|m| m.get(id)) {
             let _ = slot
                 .state
                 .compare_exchange(YOUNG, ADULT, Ordering::SeqCst, Ordering::SeqCst);
@@ -361,8 +383,7 @@ impl Container {
     }
 
     async fn force_adult(&self, service_name: &str, id: &str) {
-        let map = self.clients.read().await;
-        if let Some(slot) = map.get(service_name).and_then(|m| m.get(id)) {
+        if let Some(slot) = self.clients_map().get(service_name).and_then(|m| m.get(id)) {
             slot.state.store(ADULT, Ordering::SeqCst);
         }
     }
@@ -373,7 +394,7 @@ impl Container {
 
     async fn claim_dial(&self, service: &str, id: &str) -> bool {
         {
-            let map = self.clients.read().await;
+            let map = self.clients_map();
             if map.get(service).is_some_and(|m| m.contains(id)) {
                 return false;
             }
@@ -417,7 +438,7 @@ impl Container {
     ) -> Result<bool, Error> {
         let id = reg.service_id.clone();
         {
-            let map = self.clients.read().await;
+            let map = self.clients_map();
             if map.get(service_name).is_some_and(|m| m.contains(&id)) {
                 return Ok(false);
             }
@@ -438,18 +459,25 @@ impl Container {
         tokio::spawn(async move {
             this.read_loop(c2).await;
         });
-        let mut w = self.clients.write().await;
-        let cmap = w.entry(service_name.to_string()).or_default();
-        if cmap.contains(&id) {
-            drop(w);
+        let inserted = self
+            .update_clients(|w| {
+                let cmap = w.entry(service_name.to_string()).or_default();
+                if cmap.contains(&id) {
+                    false
+                } else {
+                    cmap.insert(ClientSlot {
+                        reg,
+                        client: client.clone(),
+                        state: Arc::new(AtomicU8::new(YOUNG)),
+                    });
+                    true
+                }
+            })
+            .await;
+        if !inserted {
             let _ = client.shutdown().await;
             return Ok(false);
         }
-        cmap.insert(ClientSlot {
-            reg,
-            client,
-            state: Arc::new(AtomicU8::new(YOUNG)),
-        });
         info!(service = %service_name, id = %id, "dialed young");
         Ok(true)
     }
@@ -471,8 +499,7 @@ impl Container {
                 }
             }
         }
-        {
-            let mut w = self.clients.write().await;
+        self.update_clients(|w| {
             if let Some(cmap) = w.get_mut(&service) {
                 if cmap
                     .get(&id)
@@ -481,7 +508,8 @@ impl Container {
                     cmap.remove(&id);
                 }
             }
-        }
+        })
+        .await;
         self.wake.notify_waiters();
     }
 

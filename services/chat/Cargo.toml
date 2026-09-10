@@ -13,9 +13,11 @@ postgres = ["dep:sqlx"]
 consul = ["kim-naming/consul"]
 
 [dependencies]
+arc-swap.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 bytes.workspace = true
+dashmap.workspace = true
 http-body-util = "0.1"
 kim-container.workspace = true
 kim-core.workspace = true

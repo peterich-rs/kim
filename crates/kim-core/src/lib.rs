@@ -11,6 +11,7 @@ mod opcode;
 mod server;
 mod signal;
 mod socket;
+mod write_loop;
 
 pub use channel::{
     Channel, ChannelOpts, ChannelReadLoop, LaneKeyFn, MailboxFullHook, WriteFullPolicy,
@@ -25,6 +26,7 @@ pub use opcode::OpCode;
 pub use server::{Client, Server};
 pub use signal::wait_shutdown_signal;
 pub use socket::{apply_socket_opts, Keepalive, SocketOpts};
+pub use write_loop::WriteShared;
 
 use std::time::Duration;
 
@@ -40,5 +42,9 @@ pub const DEFAULT_HEARTBEAT: Duration = Duration::from_secs(30);
 pub const DEFAULT_DRAIN_WAIT: Duration = Duration::from_secs(15);
 /// Default write mailbox depth. Full + Disconnect fails Push instead of blocking.
 pub const DEFAULT_WRITE_QUEUE: usize = 64;
-/// Per-lane queue and process-wide in-flight handler budget.
+/// Per-lane queue and process-wide in-flight handler budget (client / default).
 pub const DEFAULT_MAX_IN_FLIGHT: usize = 64;
+/// Gateway / server process-wide in-flight handler budget.
+pub const DEFAULT_SERVER_MAX_IN_FLIGHT: usize = 512;
+/// Lane worker exits after this much idle time and is rebuilt on the next frame.
+pub const DEFAULT_LANE_IDLE: Duration = Duration::from_secs(30);

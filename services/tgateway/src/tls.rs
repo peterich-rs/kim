@@ -141,6 +141,10 @@ impl Server for TlsFrontend {
         self.state.set_on_mailbox_full(hook);
     }
 
+    fn set_max_in_flight(&mut self, n: usize) {
+        self.state.set_max_in_flight(n);
+    }
+
     async fn start(&self) -> Result<(), Error> {
         let listener = self
             .state

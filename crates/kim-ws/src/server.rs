@@ -20,7 +20,7 @@ use tracing::{info, warn};
 use kim_core::{
     Acceptor, Channel, ChannelHandle, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
     MailboxFullHook, MessageListener, OpCode, Server, StateListener, WriteFullPolicy,
-    DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_MAX_IN_FLIGHT,
+    DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_SERVER_MAX_IN_FLIGHT,
 };
 
 use crate::conn::WsConn;
@@ -53,7 +53,8 @@ impl WsServer {
             channels: ChannelMap::new(),
             login_wait: DEFAULT_LOGIN_WAIT,
             opts: ChannelOpts {
-                in_flight: Some(Arc::new(Semaphore::new(DEFAULT_MAX_IN_FLIGHT))),
+                max_in_flight: DEFAULT_SERVER_MAX_IN_FLIGHT,
+                in_flight: Some(Arc::new(Semaphore::new(DEFAULT_SERVER_MAX_IN_FLIGHT))),
                 ..ChannelOpts::default()
             },
             drain_wait: DEFAULT_DRAIN_WAIT,
@@ -110,6 +111,12 @@ impl Server for WsServer {
 
     fn set_on_mailbox_full(&mut self, hook: MailboxFullHook) {
         self.opts.on_mailbox_full = Some(hook);
+    }
+
+    fn set_max_in_flight(&mut self, n: usize) {
+        let n = n.max(1);
+        self.opts.max_in_flight = n;
+        self.opts.in_flight = Some(Arc::new(Semaphore::new(n)));
     }
 
     async fn start(&self) -> Result<(), Error> {
@@ -176,14 +183,14 @@ impl Server for WsServer {
     }
 
     async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id).await else {
+        let Some(ch) = self.channels.get(channel_id) else {
             return Err(Error::ChannelNotFound(channel_id.to_string()));
         };
         ch.push(payload).await
     }
 
     async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id).await else {
+        let Some(ch) = self.channels.get(channel_id) else {
             return Err(Error::ChannelNotFound(channel_id.to_string()));
         };
         ch.close().await;
@@ -207,7 +214,7 @@ impl Server for WsServer {
             }
         }
 
-        for ch in self.channels.all().await {
+        for ch in self.channels.all() {
             ch.close().await;
         }
 
@@ -317,34 +324,30 @@ where
             return Err(Error::HandshakeTimeout(ctx.login_wait));
         }
     };
-    if ctx.channels.contains(&id).await {
-        let _ = conn
-            .write_frame(OpCode::Close, Bytes::from_static(b"channelId is repeated"))
-            .await;
-        let _ = conn.shutdown().await;
-        ctx.acceptor.on_accept_abandoned(&id).await;
-        return Err(Error::ChannelExists(id));
-    }
     let (reader, writer) = conn.into_split();
     let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, ctx.opts);
-    ctx.channels.add(channel).await;
+    if let Err(err) = ctx.channels.add(channel.clone()) {
+        channel.close().await;
+        ctx.acceptor.on_accept_abandoned(&id).await;
+        return Err(err);
+    }
     let Some(messages) = ctx.messages else {
         ctx.acceptor.on_accept_abandoned(&id).await;
-        if let Some(ch) = ctx.channels.get(&id).await {
+        if let Some(ch) = ctx.channels.get(&id) {
             ch.close().await;
         }
-        ctx.channels.remove(&id).await;
+        ctx.channels.remove(&id);
         return Err(Error::other("MessageListener is not set"));
     };
     if let Err(err) = ctx.acceptor.on_channel_ready(&id).await {
-        if let Some(ch) = ctx.channels.get(&id).await {
+        if let Some(ch) = ctx.channels.get(&id) {
             ch.close().await;
         }
-        ctx.channels.remove(&id).await;
+        ctx.channels.remove(&id);
         return Err(err);
     }
     let read_result = read_loop.run(messages).await;
-    ctx.channels.remove(&id).await;
+    ctx.channels.remove(&id);
     if let Some(states) = ctx.states {
         let _ = states.disconnect(&id).await;
     }

@@ -4,10 +4,11 @@
 //! - `room:interest:{app}:{dest}:{kind}` → SET of `viewer#channel`
 //! - `room:viewing:{app}:{account}:{channel}` → SET of `dest:kind`
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -100,9 +101,9 @@ pub trait RoomInterestStore: Send + Sync {
 #[derive(Default)]
 pub struct MemoryRoomInterest {
     // interest_key → members
-    interest: Mutex<HashMap<String, HashSet<String>>>,
+    interest: DashMap<String, HashSet<String>>,
     // viewing_key → dest tokens
-    viewing: Mutex<HashMap<String, HashSet<String>>>,
+    viewing: DashMap<String, HashSet<String>>,
 }
 
 impl MemoryRoomInterest {
@@ -129,18 +130,8 @@ impl RoomInterestStore for MemoryRoomInterest {
         let ik = interest_key(app, dest, kind);
         let vk = viewing_key(app, viewer, channel);
         let token = dest_token(dest, kind);
-        self.interest
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .entry(ik)
-            .or_default()
-            .insert(member);
-        self.viewing
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .entry(vk)
-            .or_default()
-            .insert(token);
+        self.interest.entry(ik).or_default().insert(member);
+        self.viewing.entry(vk).or_default().insert(token);
         Ok(())
     }
 
@@ -161,21 +152,21 @@ impl RoomInterestStore for MemoryRoomInterest {
         let vk = viewing_key(app, viewer, channel);
         let token = dest_token(dest, kind);
         {
-            let mut interest = self.interest.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(set) = interest.get_mut(&ik) {
+            let empty = self.interest.get_mut(&ik).is_some_and(|mut set| {
                 set.remove(&member);
-                if set.is_empty() {
-                    interest.remove(&ik);
-                }
+                set.is_empty()
+            });
+            if empty {
+                self.interest.remove(&ik);
             }
         }
         {
-            let mut viewing = self.viewing.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(set) = viewing.get_mut(&vk) {
+            let empty = self.viewing.get_mut(&vk).is_some_and(|mut set| {
                 set.remove(&token);
-                if set.is_empty() {
-                    viewing.remove(&vk);
-                }
+                set.is_empty()
+            });
+            if empty {
+                self.viewing.remove(&vk);
             }
         }
         Ok(())
@@ -188,10 +179,7 @@ impl RoomInterestStore for MemoryRoomInterest {
         channel: &str,
     ) -> Result<(), InterestError> {
         let vk = viewing_key(app, viewer, channel);
-        let tokens = {
-            let mut viewing = self.viewing.lock().unwrap_or_else(|e| e.into_inner());
-            viewing.remove(&vk).unwrap_or_default()
-        };
+        let tokens = self.viewing.remove(&vk).map(|(_, v)| v).unwrap_or_default();
         if tokens.is_empty() {
             return Ok(());
         }
@@ -200,17 +188,17 @@ impl RoomInterestStore for MemoryRoomInterest {
             channel_id: channel.to_string(),
         }
         .encode();
-        let mut interest = self.interest.lock().unwrap_or_else(|e| e.into_inner());
         for token in tokens {
             let Some((dest, kind)) = parse_dest_token(&token) else {
                 continue;
             };
             let ik = interest_key(app, &dest, kind);
-            if let Some(set) = interest.get_mut(&ik) {
+            let empty = self.interest.get_mut(&ik).is_some_and(|mut set| {
                 set.remove(&member);
-                if set.is_empty() {
-                    interest.remove(&ik);
-                }
+                set.is_empty()
+            });
+            if empty {
+                self.interest.remove(&ik);
             }
         }
         Ok(())
@@ -223,8 +211,7 @@ impl RoomInterestStore for MemoryRoomInterest {
         kind: i32,
     ) -> Result<Vec<ViewerRef>, InterestError> {
         let ik = interest_key(app, dest, kind);
-        let interest = self.interest.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(set) = interest.get(&ik) else {
+        let Some(set) = self.interest.get(&ik) else {
             return Ok(Vec::new());
         };
         Ok(set.iter().filter_map(|m| ViewerRef::decode(m)).collect())

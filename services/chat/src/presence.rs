@@ -125,33 +125,36 @@ impl PresenceHub {
         let debounce = self.debounce;
         tokio::spawn(async move {
             tokio::time::sleep(debounce).await;
+            let key = format!("{app}:{account}");
             let still = {
                 let g = gens.lock().unwrap_or_else(|e| e.into_inner());
-                g.get(&format!("{app}:{account}")).copied().unwrap_or(0) == gen
+                g.get(&key).copied().unwrap_or(0) == gen
             };
-            if !still {
-                return;
-            }
-            let locs = match storage.list_locations(&account).await {
-                Ok(v) => v,
-                Err(SessionError::NotFound) => Vec::new(),
-                Err(err) => {
-                    warn!(%err, account, "presence debounce list_locations");
-                    return;
+            if still {
+                let locs = match storage.list_locations(&account).await {
+                    Ok(v) => v,
+                    Err(SessionError::NotFound) => Vec::new(),
+                    Err(err) => {
+                        warn!(%err, account, "presence debounce list_locations");
+                        Vec::new()
+                    }
+                };
+                if locs.is_empty() {
+                    let hub = PresenceHub {
+                        interest,
+                        storage,
+                        dispatcher,
+                        debounce,
+                        gens: gens.clone(),
+                    };
+                    hub.fanout(&app, &account, PresenceStatus::PresenceOffline, now_ms())
+                        .await;
                 }
-            };
-            if !locs.is_empty() {
-                return;
             }
-            let hub = PresenceHub {
-                interest,
-                storage,
-                dispatcher,
-                debounce,
-                gens,
-            };
-            hub.fanout(&app, &account, PresenceStatus::PresenceOffline, now_ms())
-                .await;
+            let mut g = gens.lock().unwrap_or_else(|e| e.into_inner());
+            if g.get(&key).copied() == Some(gen) {
+                g.remove(&key);
+            }
         });
     }
 
@@ -216,5 +219,69 @@ impl PresenceHub {
             status: Self::snapshot_status(locs) as i32,
             last_seen: 0,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn gens_len(&self) -> usize {
+        self.gens.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interest::MemoryRoomInterest;
+    use async_trait::async_trait;
+    use kim_protocol::pkt::Session;
+    use kim_protocol::LogicPkt;
+    use kim_router::{RouterError, SessionError, SessionStorage};
+    use kim_session::MemorySessionStore;
+
+    struct NoopDisp;
+
+    #[async_trait]
+    impl Dispatcher for NoopDisp {
+        async fn push(
+            &self,
+            _gateway: &str,
+            _channels: &[String],
+            _pkt: LogicPkt,
+        ) -> Result<(), RouterError> {
+            Ok(())
+        }
+    }
+
+    fn session(channel_id: &str, account: &str) -> Session {
+        Session {
+            channel_id: channel_id.into(),
+            gate_id: "g".into(),
+            account: account.into(),
+            app: "kim".into(),
+            ..Session::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn gens_do_not_grow_across_offline_cycles() {
+        let storage = Arc::new(MemorySessionStore::new());
+        let hub = PresenceHub::new(
+            Arc::new(MemoryRoomInterest::new()),
+            storage.clone(),
+            Arc::new(NoopDisp),
+            Duration::from_millis(30),
+        );
+        for i in 0..8 {
+            let ch = format!("c{i}");
+            storage.add(&session(&ch, "alice")).await.unwrap();
+            hub.on_location_added("kim", "alice").await;
+            storage.delete("alice", &ch).await.unwrap();
+            hub.on_location_removed("kim", "alice", &ch).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            hub.gens_len() <= 1,
+            "gens leaked across cycles: {}",
+            hub.gens_len()
+        );
     }
 }

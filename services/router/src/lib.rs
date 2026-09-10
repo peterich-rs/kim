@@ -226,16 +226,17 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
         regions: cfg
             .regions
             .into_iter()
-            .map(|r| Region {
-                id: r.id,
-                idcs: r
-                    .idcs
-                    .into_iter()
-                    .map(|i| Idc {
-                        id: i.id,
-                        weight: i.weight,
-                    })
-                    .collect(),
+            .map(|r| {
+                Region::new(
+                    r.id,
+                    r.idcs
+                        .into_iter()
+                        .map(|i| Idc {
+                            id: i.id,
+                            weight: i.weight,
+                        })
+                        .collect(),
+                )
             })
             .collect(),
         jwt_secret,

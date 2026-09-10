@@ -19,7 +19,7 @@
 
 ## 链路图（先看图）
 
-下面几张图说的都是**已经落地的服务端 Channel**。`TcpClient` 写侧还是 Mutex，不要对号入座。  
+下面几张图说的都是**已经落地的服务端 Channel**。内部 `TcpClient` 写侧共用同一套 `WriteShared` mailbox，不再握写半边 Mutex 跨 `write_frame`。  
 图是纯文本，打开文件就能看，不用渲染。
 
 ### 1. 这一层在整座楼里的位置
@@ -57,15 +57,14 @@ Alice 打字 ──► 网线 ──► 读专员（唯一 read）──► Bina
 ```text
 张三要发给 Alice
     │
-    ├─ 1. 拿 ChannelMap 读锁，get("alice")
-    ├─ 2. clone 出 Channel（里面是信箱）
-    ├─ 3. 立刻放掉表锁     ← 别人这时可以登录 / 断线 / 查表
-    ├─ 4. push 进写信箱    ← 短同步，只管入队顺序
-    └─ 5. 写专员按 FIFO 取出，独自 write 插座
+    ├─ 1. ChannelMap.get("alice")（DashMap 分片读，立刻 clone-out）
+    ├─ 2. 不持有分片守卫     ← 别人这时可以登录 / 断线 / 查表
+    ├─ 3. push 进写信箱      ← 短同步，只管入队顺序
+    └─ 4. 写专员按 FIFO 取出，独自 write 插座
 
-表锁 护字典
-信箱 护「发给 Alice 的顺序」
-专员 护插座
+分片锁 护字典（API 同步，禁止把 Ref 拿过 await）
+信箱   护「发给 Alice 的顺序」
+专员   护插座
 三件事不要握成一把大锁。
 ```
 
@@ -132,7 +131,7 @@ TcpServer::start
 
 业务插槽故意瘦：`ChannelHandle` 不暴露关连接，避免 Handler 误把别人踢下线。关连接是通信层的事。
 
-取 `ChannelMap` 时：**先 clone 出 Channel，再 await 写网络**，不要握着整张表的锁等 IO。
+取 `ChannelMap` 时：**先 clone 出 Channel，再 await 写网络**。方法全部同步；不要把 dashmap `Ref` 拿过 await，也不要用 `all()` 做热路径广播。
 
 ## 读写拆分：两专员，锁在桌子上（已落地）
 

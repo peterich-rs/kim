@@ -1,17 +1,21 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use dashmap::mapref::entry::Entry;
+use dashmap::DashMap;
 
-use crate::Channel;
+use crate::{Channel, Error};
 
 /// 当前进程里所有活着的连接。
 ///
-/// 取连接时先 clone 出 Channel（里面是 Sender），再 await 写网络，
-/// 不要把整张表的锁拿到网络等待里去。
+/// 取连接时先 clone 出 Channel（里面是 Sender），再 await 写网络。
+/// 不要把 dashmap `Ref` 拿过 await——持守卫再碰同分片会死锁。
+/// API 全部同步、全部 clone-out。
+///
+/// [`all`] 是弱一致快照：迭代期间其他分片的增删可见，不阻塞写入。
+/// 只给 shutdown drain 用，不要拿它做热路径广播。
 #[derive(Clone, Default)]
 pub struct ChannelMap {
-    inner: Arc<RwLock<HashMap<String, Channel>>>,
+    inner: Arc<DashMap<Arc<str>, Channel>>,
 }
 
 impl ChannelMap {
@@ -19,33 +23,43 @@ impl ChannelMap {
         Self::default()
     }
 
-    pub async fn add(&self, channel: Channel) {
-        let id = channel.id().to_string();
-        self.inner.write().await.insert(id, channel);
+    /// Occupies `channel.id()`. Returns [`Error::ChannelExists`] if that id is
+    /// already in the table; the caller still owns `channel` (via a prior clone)
+    /// and must close it.
+    pub fn add(&self, channel: Channel) -> Result<(), Error> {
+        let id = channel.id_arc();
+        match self.inner.entry(id.clone()) {
+            Entry::Occupied(_) => Err(Error::ChannelExists(id.to_string())),
+            Entry::Vacant(v) => {
+                v.insert(channel);
+                Ok(())
+            }
+        }
     }
 
-    pub async fn remove(&self, id: &str) -> Option<Channel> {
-        self.inner.write().await.remove(id)
+    pub fn remove(&self, id: &str) -> Option<Channel> {
+        self.inner.remove(id).map(|(_, v)| v)
     }
 
-    pub async fn get(&self, id: &str) -> Option<Channel> {
-        self.inner.read().await.get(id).cloned()
+    pub fn get(&self, id: &str) -> Option<Channel> {
+        self.inner.get(id).map(|r| r.value().clone())
     }
 
-    pub async fn contains(&self, id: &str) -> bool {
-        self.inner.read().await.contains_key(id)
+    pub fn contains(&self, id: &str) -> bool {
+        self.inner.contains_key(id)
     }
 
-    pub async fn all(&self) -> Vec<Channel> {
-        self.inner.read().await.values().cloned().collect()
+    /// Weakly consistent snapshot. Other shards may mutate while this iterates.
+    pub fn all(&self) -> Vec<Channel> {
+        self.inner.iter().map(|r| r.value().clone()).collect()
     }
 
-    pub async fn len(&self) -> usize {
-        self.inner.read().await.len()
+    pub fn len(&self) -> usize {
+        self.inner.len()
     }
 
-    pub async fn is_empty(&self) -> bool {
-        self.inner.read().await.is_empty()
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 }
 
@@ -82,15 +96,27 @@ mod tests {
     #[tokio::test]
     async fn add_get_remove() {
         let map = ChannelMap::new();
-        assert!(map.is_empty().await);
-        map.add(dummy_channel("a")).await;
-        map.add(dummy_channel("b")).await;
-        assert!(map.contains("a").await);
-        assert_eq!(map.len().await, 2);
-        assert!(!map.is_empty().await);
-        assert_eq!(map.get("a").await.unwrap().id(), "a");
-        map.remove("a").await;
-        assert!(!map.contains("a").await);
-        assert_eq!(map.len().await, 1);
+        assert!(map.is_empty());
+        map.add(dummy_channel("a")).unwrap();
+        map.add(dummy_channel("b")).unwrap();
+        assert!(map.contains("a"));
+        assert_eq!(map.len(), 2);
+        assert!(!map.is_empty());
+        assert_eq!(map.get("a").unwrap().id(), "a");
+        map.remove("a");
+        assert!(!map.contains("a"));
+        assert_eq!(map.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn add_same_id_fails_without_replacing() {
+        let map = ChannelMap::new();
+        map.add(dummy_channel("a")).unwrap();
+        let dup = dummy_channel("a");
+        let err = map.add(dup.clone()).unwrap_err();
+        assert!(matches!(err, Error::ChannelExists(id) if id == "a"));
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("a").unwrap().id(), "a");
+        dup.close().await;
     }
 }
