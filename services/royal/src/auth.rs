@@ -4,12 +4,14 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use argon2::Argon2;
 use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chat::users::UserError;
-use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq};
-use kim_protocol::{generate_with_device, parse, ProtocolError};
+use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
+use kim_protocol::{generate_with_device, parse, ProtocolError, PASSWORD_KEY_ID_MISMATCH};
 use serde::Serialize;
+use zeroize::Zeroizing;
 
 use crate::device::{hash_secret, new_device_id, new_secret};
 use crate::{decode, encode, now_ts, RoyalState};
@@ -47,7 +49,40 @@ fn valid_password(raw: &str) -> AuthResult<&str> {
     Ok(raw)
 }
 
-fn hash_password(password: String) -> AuthResult<String> {
+fn plaintext_allowed(st: &RoyalState) -> bool {
+    st.allow_plaintext_password || st.password_seal.is_none()
+}
+
+fn resolve_password_field(
+    st: &RoyalState,
+    plaintext: &str,
+    sealed: &[u8],
+    key_id: &str,
+) -> AuthResult<Zeroizing<String>> {
+    if !sealed.is_empty() {
+        let Some(key) = st.password_seal.as_ref() else {
+            return Err(bad_request("password seal not configured"));
+        };
+        key.ensure_key_id(key_id)
+            .map_err(|_| bad_request(PASSWORD_KEY_ID_MISMATCH))?;
+        let opened = key
+            .unseal(sealed)
+            .map_err(|_| bad_request("invalid sealed password"))?;
+        let raw = String::from_utf8(opened).map_err(|_| bad_request("invalid sealed password"))?;
+        valid_password(&raw)?;
+        return Ok(Zeroizing::new(raw));
+    }
+    if plaintext.is_empty() {
+        return Err(bad_request("password required"));
+    }
+    if !plaintext_allowed(st) {
+        return Err(bad_request("plaintext password not allowed"));
+    }
+    valid_password(plaintext)?;
+    Ok(Zeroizing::new(plaintext.to_string()))
+}
+
+fn hash_password(password: Zeroizing<String>) -> AuthResult<String> {
     let salt = SaltString::generate(&mut rand_core::OsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -172,7 +207,7 @@ async fn finish_auth(st: &RoyalState, account: &str, req: &AuthReq) -> AuthResul
 pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Bytes> {
     let req = decode::<AuthReq>(&body)?;
     let account = valid_account(&req.account)?.to_string();
-    let password = valid_password(&req.password)?.to_string();
+    let password = resolve_password_field(&st, &req.password, &req.password_sealed, &req.key_id)?;
     let hashed = tokio::task::spawn_blocking(move || hash_password(password))
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "hash".into()))??;
@@ -189,7 +224,7 @@ pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<B
 pub async fn login(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Bytes> {
     let req = decode::<AuthReq>(&body)?;
     let account = valid_account(&req.account)?.to_string();
-    let password = valid_password(&req.password)?.to_string();
+    let password = resolve_password_field(&st, &req.password, &req.password_sealed, &req.key_id)?;
     let stored = st
         .users
         .password_hash(&st.app, &account)
@@ -198,7 +233,7 @@ pub async fn login(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Byte
     let Some(hash) = stored else {
         return Err(unauthorized());
     };
-    let ok = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
+    let ok = tokio::task::spawn_blocking(move || verify_password(password.as_str(), &hash))
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "verify".into()))?;
     if !ok {
@@ -223,7 +258,7 @@ pub async fn logout(State(st): State<RoyalState>, headers: HeaderMap) -> AuthRes
 
 fn bearer_claims(st: &RoyalState, headers: &HeaderMap) -> AuthResult<kim_protocol::Claims> {
     let raw = headers
-        .get(axum::http::header::AUTHORIZATION)
+        .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     let token = raw
@@ -308,6 +343,23 @@ pub async fn me(State(st): State<RoyalState>, headers: HeaderMap) -> AuthResult<
     }))
 }
 
+pub async fn password_key(State(st): State<RoyalState>) -> AuthResult<Response> {
+    let Some(key) = st.password_seal.as_ref() else {
+        return Err((StatusCode::NOT_FOUND, "password seal not configured".into()));
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok((
+        headers,
+        encode(&PasswordKeyResp {
+            key_id: key.key_id().to_string(),
+            alg: key.alg().to_string(),
+            public_key_b64: key.public_key_b64(),
+        }),
+    )
+        .into_response())
+}
+
 pub async fn change_password(
     State(st): State<RoyalState>,
     headers: HeaderMap,
@@ -316,8 +368,18 @@ pub async fn change_password(
     let claims = live_claims(&st, &headers).await?;
     let account = claims.account;
     let req = decode::<PasswordChangeReq>(&body)?;
-    let old = valid_password(&req.old_password)?.to_string();
-    let new = valid_password(&req.new_password)?.to_string();
+    let old = resolve_password_field(
+        &st,
+        &req.old_password,
+        &req.old_password_sealed,
+        &req.key_id,
+    )?;
+    let new = resolve_password_field(
+        &st,
+        &req.new_password,
+        &req.new_password_sealed,
+        &req.key_id,
+    )?;
     let stored = st
         .users
         .password_hash(&st.app, &account)
@@ -328,7 +390,7 @@ pub async fn change_password(
     };
     let old_ok = tokio::task::spawn_blocking({
         let hash = hash.clone();
-        move || verify_password(&old, &hash)
+        move || verify_password(old.as_str(), &hash)
     })
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "verify".into()))?;

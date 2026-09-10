@@ -28,6 +28,10 @@ pub enum ClientError {
     InvalidAccount,
     #[error("invalid password")]
     InvalidPassword,
+    #[error("auth origin must be https (or http://127.0.0.1 / localhost for local dev)")]
+    InsecureOrigin,
+    #[error("password seal unavailable")]
+    PasswordSeal,
     #[error("http {status}: {body}")]
     Http { status: u16, body: String },
     #[error("{0}")]
@@ -44,5 +48,13 @@ impl ClientError {
     /// Login will not succeed with this token; do not reconnect.
     pub fn is_fatal_auth(&self) -> bool {
         matches!(self, Self::Unauthorized | Self::InvalidToken)
+    }
+
+    pub fn is_password_key_id_mismatch(&self) -> bool {
+        matches!(
+            self,
+            Self::Http { status: 400, body }
+                if body.contains(kim_protocol::PASSWORD_KEY_ID_MISMATCH)
+        )
     }
 }

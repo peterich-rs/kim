@@ -103,6 +103,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get authFailed => '登录失败，请稍后重试';
 
   @override
+  String get insecureAuthOrigin => '生产环境请使用 HTTPS（本地可用 http://127.0.0.1）';
+
+  @override
   String get sessionExpired => '登录已过期，请重新登录';
 
   @override

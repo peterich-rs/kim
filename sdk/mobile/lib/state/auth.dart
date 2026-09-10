@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../copy.dart';
 import '../core/haptics.dart';
+import '../core/secure_origin.dart';
 import '../core/jwt.dart';
 import '../core/user_agent.dart';
 import 'providers.dart';
@@ -50,6 +51,10 @@ class AuthNotifier extends Notifier<AuthState> {
     final auth = ref.read(authPortProvider);
     final ua = kimUserAgent(runtime);
     final origin = runtime.settings.httpOrigin;
+    final insecure = insecureAuthOriginReason(origin);
+    if (insecure != null) {
+      throw StateError(Copy.insecureAuthOrigin);
+    }
     final session = register
         ? await auth.register(
             origin: origin,
@@ -116,6 +121,10 @@ class AuthNotifier extends Notifier<AuthState> {
     required String newPassword,
   }) async {
     final runtime = ref.read(runtimeProvider);
+    final insecure = insecureAuthOriginReason(runtime.settings.httpOrigin);
+    if (insecure != null) {
+      throw StateError(Copy.insecureAuthOrigin);
+    }
     await ref
         .read(authPortProvider)
         .changePassword(

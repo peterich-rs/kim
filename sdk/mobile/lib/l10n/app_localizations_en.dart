@@ -104,6 +104,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authFailed => 'Sign-in failed, try again later';
 
   @override
+  String get insecureAuthOrigin =>
+      'Use HTTPS in production (http://127.0.0.1 is allowed locally)';
+
+  @override
   String get sessionExpired => 'Session expired, please sign in again';
 
   @override

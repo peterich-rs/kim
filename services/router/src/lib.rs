@@ -206,6 +206,7 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
             redis_url: None,
             require_redis: false,
             consul_addr: consul.as_deref(),
+            ..StrictCheck::default()
         })?;
         open_naming(consul.as_deref(), vec![])?
     } else {

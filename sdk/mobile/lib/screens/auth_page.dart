@@ -103,6 +103,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                 password: password,
               );
         });
+        _password.clear();
+        _confirm.clear();
       } catch (err) {
         await KimHaptics.error();
       }
@@ -174,6 +176,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                 label: Copy.password,
                 errorText: _passwordErr,
                 obscureable: true,
+                keyboardType: TextInputType.visiblePassword,
                 maxLength: 128,
                 textInputAction: isRegister
                     ? TextInputAction.next
@@ -197,6 +200,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                         label: Copy.confirmPassword,
                         errorText: _confirmErr,
                         obscureable: true,
+                        keyboardType: TextInputType.visiblePassword,
                         maxLength: 128,
                         textInputAction: TextInputAction.done,
                         onEditingComplete: _submit,

@@ -3,6 +3,7 @@ mod error;
 mod internal_hmac;
 mod logic;
 mod magic;
+mod password_seal;
 mod token;
 mod wire;
 
@@ -22,6 +23,10 @@ pub use internal_hmac::{
 };
 pub use logic::LogicPkt;
 pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
+pub use password_seal::{
+    PasswordSealError, PasswordSealKey, PasswordSealPublic, PASSWORD_KEY_ID_MISMATCH,
+    PASSWORD_SEAL_ALG,
+};
 pub use token::{
     device_hot_key, generate, generate_with_device, generate_with_jti, generate_with_session,
     parse, token_epoch_key, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,

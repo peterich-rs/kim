@@ -7,10 +7,13 @@ rust-version.workspace = true
 description = "KIM 业务包：Magic、BasicPkt、LogicPkt"
 
 [dependencies]
+base64 = "0.22"
 bytes.workspace = true
+crypto_box = { version = "0.9", features = ["seal"] }
 hmac.workspace = true
 jsonwebtoken.workspace = true
 prost.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"] }
 serde.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

@@ -74,6 +74,9 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       if (!mounted) {
         return;
       }
+      _old.clear();
+      _next.clear();
+      _confirm.clear();
       toastification.show(
         context: context,
         type: ToastificationType.success,
@@ -108,6 +111,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
               label: Copy.oldPassword,
               errorText: _oldErr,
               obscureable: true,
+              keyboardType: TextInputType.visiblePassword,
               maxLength: 128,
               autofocus: true,
               autofillHints: const [AutofillHints.password],
@@ -117,6 +121,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
               label: Copy.newPassword,
               errorText: _nextErr,
               obscureable: true,
+              keyboardType: TextInputType.visiblePassword,
               maxLength: 128,
               autofillHints: const [AutofillHints.newPassword],
             ),
@@ -125,6 +130,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
               label: Copy.confirmPassword,
               errorText: _confirmErr,
               obscureable: true,
+              keyboardType: TextInputType.visiblePassword,
               maxLength: 128,
               textInputAction: TextInputAction.done,
               onEditingComplete: _save,

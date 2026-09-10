@@ -80,6 +80,10 @@ pub struct RoyalState {
     nonce: Arc<dyn HmacNonceGuard>,
     pending_receipt: bool,
     metrics: Option<Arc<KimMetrics>>,
+    /// X25519 password envelope; when set, sealed passwords are accepted.
+    pub(crate) password_seal: Option<kim_protocol::PasswordSealKey>,
+    /// When true (or no seal key), plaintext password fields are accepted.
+    pub(crate) allow_plaintext_password: bool,
 }
 
 impl RoyalState {
@@ -116,6 +120,8 @@ impl RoyalState {
             nonce: Arc::new(MemoryHmacNonceGuard::new()),
             pending_receipt,
             metrics: None,
+            password_seal: None,
+            allow_plaintext_password: true,
         }
     }
 
@@ -184,6 +190,8 @@ impl RoyalState {
             nonce: Arc::new(MemoryHmacNonceGuard::new()),
             pending_receipt: false,
             metrics: None,
+            password_seal: None,
+            allow_plaintext_password: true,
         }
     }
 
@@ -196,6 +204,23 @@ impl RoyalState {
     #[must_use]
     pub fn with_device_hot(mut self, hot: Arc<dyn DeviceHot>) -> Self {
         self.device_hot = hot;
+        self
+    }
+
+    #[must_use]
+    pub fn with_password_seal(
+        mut self,
+        key: kim_protocol::PasswordSealKey,
+        allow_plaintext_password: bool,
+    ) -> Self {
+        self.password_seal = Some(key);
+        self.allow_plaintext_password = allow_plaintext_password;
+        self
+    }
+
+    #[must_use]
+    pub fn with_allow_plaintext_password(mut self, allow: bool) -> Self {
+        self.allow_plaintext_password = allow;
         self
     }
 
@@ -260,6 +285,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/auth/password", post(auth::change_password))
         .route("/api/v1/auth/me", get(auth::me))
+        .route("/api/v1/auth/password-key", get(auth::password_key))
         .with_state(state)
 }
 
@@ -1300,6 +1326,7 @@ mod tests {
                 kim_protocol::pkt::PasswordChangeReq {
                     old_password: "secret123".into(),
                     new_password: "secret456".into(),
+                    ..Default::default()
                 }
                 .encode_to_vec(),
             )
@@ -1378,6 +1405,7 @@ mod tests {
                 kim_protocol::pkt::PasswordChangeReq {
                     old_password: "secret123".into(),
                     new_password: "secret456".into(),
+                    ..Default::default()
                 }
                 .encode_to_vec(),
             )
@@ -1993,5 +2021,110 @@ mod tests {
             chat::store::StoreError::Http { status, .. } => assert_eq!(status, 503),
             other => panic!("{other}"),
         }
+    }
+
+    #[tokio::test]
+    async fn register_login_with_sealed_password() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "seal-secret".into(),
+            ttl_secs: 60,
+        };
+        let key = kim_protocol::PasswordSealKey::generate(Some("k1".into()));
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt)
+            .with_password_seal(key.clone(), false);
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+
+        let key_resp = http
+            .get(format!("http://{addr}/api/v1/auth/password-key"))
+            .send()
+            .await
+            .unwrap();
+        assert!(key_resp.status().is_success());
+        assert_eq!(
+            key_resp
+                .headers()
+                .get("cache-control")
+                .and_then(|v| v.to_str().ok()),
+            Some("no-store")
+        );
+        let key_buf = key_resp.bytes().await.unwrap();
+        let published = kim_protocol::pkt::PasswordKeyResp::decode(key_buf.as_ref()).unwrap();
+        assert_eq!(published.key_id, "k1");
+        assert_eq!(published.alg, kim_protocol::PASSWORD_SEAL_ALG);
+
+        let sealed = key.seal(b"secret123").unwrap();
+        let body = kim_protocol::pkt::AuthReq {
+            account: "sealuser".into(),
+            password: String::new(),
+            password_sealed: sealed,
+            key_id: "k1".into(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let created = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert!(created.status().is_success(), "{}", created.status());
+
+        let sealed_login = key.seal(b"secret123").unwrap();
+        let login_body = kim_protocol::pkt::AuthReq {
+            account: "sealuser".into(),
+            password_sealed: sealed_login,
+            key_id: "k1".into(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let logged = http
+            .post(format!("http://{addr}/api/v1/auth/login"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(login_body)
+            .send()
+            .await
+            .unwrap();
+        assert!(logged.status().is_success());
+    }
+
+    #[tokio::test]
+    async fn plaintext_rejected_when_allow_flag_off() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let jwt = JwtConfig {
+            secret: "seal-secret".into(),
+            ttl_secs: 60,
+        };
+        let key = kim_protocol::PasswordSealKey::generate(Some("k1".into()));
+        let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt)
+            .with_password_seal(key, false);
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let http = reqwest::Client::new();
+        let body = kim_protocol::pkt::AuthReq {
+            account: "plainuser".into(),
+            password: "secret123".into(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let resp = http
+            .post(format!("http://{addr}/api/v1/auth/register"))
+            .header("Content-Type", "application/x-protobuf")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let msg = resp.text().await.unwrap();
+        assert!(msg.contains("plaintext"), "{msg}");
     }
 }

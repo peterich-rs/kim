@@ -6,6 +6,7 @@ use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::open_uncached_session_store;
 use chat::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
+use kim_protocol::PasswordSealKey;
 use kim_protocol::{
     check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
     ALLOWED_APP,
@@ -200,12 +201,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if is_demo_internal_hmac(&hmac) {
         tracing::warn!(secret = "demo-default-hmac", "do not use in production");
     }
+    let password_seal = match env_nonempty("KIM_AUTH_PASSWORD_SEAL_PRIVATE") {
+        Some(raw) => {
+            let key_id = env_nonempty("KIM_AUTH_PASSWORD_SEAL_KEY_ID");
+            Some(
+                PasswordSealKey::from_private_b64(&raw, key_id)
+                    .map_err(|e| format!("KIM_AUTH_PASSWORD_SEAL_PRIVATE: {e}"))?,
+            )
+        }
+        None => None,
+    };
+    let allow_plaintext = env_nonempty("KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(password_seal.is_none());
     check_strict_runtime(StrictCheck {
         hmac: Some(&hmac),
         jwt: Some(&jwt.secret),
         redis_url: redis.as_deref(),
         require_redis: true,
         consul_addr: consul.as_deref(),
+        password_seal_configured: Some(password_seal.is_some()),
+        allow_plaintext_password: Some(allow_plaintext),
     })?;
 
     let revoke: Arc<dyn TokenRevocation> = match redis.as_deref() {
@@ -269,13 +285,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(url) => open_device_hot(url).await?,
         None => Arc::new(MemoryDeviceHot::new()),
     };
-    let state = state
+
+    let mut state = state
         .with_app(app)
         .with_chat_url(chat_url)
         .with_hmac_secret(hmac)
         .with_nonce(nonce)
         .with_devices(devices)
         .with_device_hot(device_hot);
+    if let Some(key) = password_seal {
+        tracing::info!(key_id = %key.key_id(), "password envelope enabled");
+        state = state.with_password_seal(key, allow_plaintext);
+    } else {
+        state = state.with_allow_plaintext_password(true);
+    }
     state.start_maintenance();
     #[cfg(feature = "redis")]
     if let Some(url) = redis.as_deref() {
