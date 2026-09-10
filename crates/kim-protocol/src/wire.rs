@@ -49,6 +49,23 @@ pub const CMD_RECEIPT_READ: &str = "chat.receipt.read";
 pub const INBOX_KIND_USER: i32 = 0;
 pub const INBOX_KIND_GROUP: i32 = 1;
 
+/// `UserProfile.kind`. Distinct from inbox `kind` (user vs group).
+/// Stored values are 1 (human) and 2 (bot). Proto3 0 means "field absent"
+/// and [`profile_kind`] maps it to human.
+pub const PROFILE_KIND_USER: i32 = 1;
+pub const PROFILE_KIND_BOT: i32 = 2;
+
+/// Coerce a wire `UserProfile.kind` to a stored kind. 2 is bot; anything
+/// else (including proto3 default 0) is human.
+#[must_use]
+pub fn profile_kind(kind: i32) -> i32 {
+    if kind == PROFILE_KIND_BOT {
+        PROFILE_KIND_BOT
+    } else {
+        PROFILE_KIND_USER
+    }
+}
+
 pub const MESSAGE_TYPE_TEXT: i32 = 1;
 pub const MESSAGE_TYPE_IMAGE: i32 = 2;
 pub const MESSAGE_TYPE_VOICE: i32 = 3;
@@ -65,6 +82,14 @@ pub fn service_name(command: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_kind_maps_absent_wire_to_human() {
+        assert_eq!(profile_kind(0), PROFILE_KIND_USER);
+        assert_eq!(profile_kind(PROFILE_KIND_USER), PROFILE_KIND_USER);
+        assert_eq!(profile_kind(PROFILE_KIND_BOT), PROFILE_KIND_BOT);
+        assert_eq!(profile_kind(99), PROFILE_KIND_USER);
+    }
 
     #[test]
     fn splits_on_first_dot() {

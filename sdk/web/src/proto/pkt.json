@@ -770,6 +770,10 @@
                 "bio": {
                   "type": "string",
                   "id": 4
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 5
                 }
               }
             },

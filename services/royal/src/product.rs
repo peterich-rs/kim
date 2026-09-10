@@ -40,6 +40,7 @@ fn to_pb(p: UserProfile) -> PbProfile {
         nickname: p.nickname,
         avatar: p.avatar,
         bio: p.bio,
+        kind: p.kind,
     }
 }
 

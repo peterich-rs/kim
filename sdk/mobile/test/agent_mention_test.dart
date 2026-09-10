@@ -13,6 +13,7 @@ void main() {
     expect(isGooseAgentDest(kGooseAgentId), isTrue);
     expect(isGooseAgentDest('alice'), isFalse);
     expect(withGooseAgent(const []).single.account, kGooseAgentId);
+    expect(withGooseAgent(const []).single.isBot, isTrue);
     expect(withGooseAgent(const [kGooseAgentPerson]).length, 1);
   });
 }

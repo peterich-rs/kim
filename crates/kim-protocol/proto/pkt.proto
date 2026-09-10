@@ -297,6 +297,7 @@ message UserProfile {
   string nickname = 2;
   string avatar = 3;
   string bio = 4;
+  int32 kind = 5; // 1 human, 2 bot (0 on the wire = absent, treat as human)
 }
 
 message UserProfileUpdate {

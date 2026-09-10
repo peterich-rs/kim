@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
+use kim_protocol::{PROFILE_KIND_BOT, PROFILE_KIND_USER};
 
 pub const NICKNAME_MAX_CHARS: usize = 32;
 pub const BIO_MAX_CHARS: usize = 160;
@@ -28,6 +29,8 @@ pub struct UserProfile {
     pub nickname: String,
     pub avatar: String,
     pub bio: String,
+    /// `PROFILE_KIND_USER` (1) or `PROFILE_KIND_BOT` (2).
+    pub kind: i32,
 }
 
 impl UserProfile {
@@ -37,7 +40,12 @@ impl UserProfile {
             nickname: account.to_string(),
             avatar: String::new(),
             bio: String::new(),
+            kind: PROFILE_KIND_USER,
         }
+    }
+
+    pub fn is_bot(&self) -> bool {
+        self.kind == PROFILE_KIND_BOT
     }
 
     pub fn display_name(&self) -> &str {
@@ -101,6 +109,30 @@ struct UserRecord {
     avatar: String,
     bio: String,
     token_epoch: u32,
+    kind: i32,
+    /// Creator account for bots. Wired when create-bot lands.
+    #[allow(dead_code)]
+    owner_account: String,
+}
+
+fn human_record(account: &str, password_hash: Option<String>) -> UserRecord {
+    UserRecord {
+        password_hash,
+        nickname: account.to_string(),
+        avatar: String::new(),
+        bio: String::new(),
+        token_epoch: 0,
+        kind: PROFILE_KIND_USER,
+        owner_account: String::new(),
+    }
+}
+
+pub fn kind_from_db(raw: &str) -> i32 {
+    if raw == "bot" {
+        PROFILE_KIND_BOT
+    } else {
+        PROFILE_KIND_USER
+    }
 }
 
 pub struct MemoryUserDirectory {
@@ -139,6 +171,7 @@ fn record_to_profile(account: &str, rec: &UserRecord) -> UserProfile {
         },
         avatar: rec.avatar.clone(),
         bio: rec.bio.clone(),
+        kind: rec.kind,
     }
 }
 
@@ -165,13 +198,7 @@ impl UserDirectory for MemoryUserDirectory {
     async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
         self.write()
             .entry((app.to_string(), account.to_string()))
-            .or_insert_with(|| UserRecord {
-                password_hash: None,
-                nickname: account.to_string(),
-                avatar: String::new(),
-                bio: String::new(),
-                token_epoch: 0,
-            });
+            .or_insert_with(|| human_record(account, None));
         Ok(())
     }
 
@@ -181,16 +208,7 @@ impl UserDirectory for MemoryUserDirectory {
         if inner.contains_key(&key) {
             return Err(UserError::Conflict);
         }
-        inner.insert(
-            key,
-            UserRecord {
-                password_hash: Some(password_hash.to_string()),
-                nickname: account.to_string(),
-                avatar: String::new(),
-                bio: String::new(),
-                token_epoch: 0,
-            },
-        );
+        inner.insert(key, human_record(account, Some(password_hash.to_string())));
         Ok(())
     }
 
@@ -263,7 +281,10 @@ impl UserDirectory for MemoryUserDirectory {
         let inner = self.read();
         let mut out = Vec::new();
         for ((row_app, account), rec) in inner.iter() {
-            if row_app != app || exclude.iter().any(|e| e == account) {
+            if row_app != app
+                || rec.kind == PROFILE_KIND_BOT
+                || exclude.iter().any(|e| e == account)
+            {
                 continue;
             }
             let nick = if rec.nickname.is_empty() {
@@ -349,7 +370,13 @@ fn pg_err(e: sqlx::Error) -> UserError {
 }
 
 #[cfg(feature = "postgres")]
-fn row_profile(account: String, nickname: String, avatar: String, bio: String) -> UserProfile {
+fn row_profile(
+    account: String,
+    nickname: String,
+    avatar: String,
+    bio: String,
+    kind: String,
+) -> UserProfile {
     UserProfile {
         nickname: if nickname.is_empty() {
             account.clone()
@@ -359,6 +386,7 @@ fn row_profile(account: String, nickname: String, avatar: String, bio: String) -
         account,
         avatar,
         bio,
+        kind: kind_from_db(&kind),
     }
 }
 
@@ -419,8 +447,8 @@ impl UserDirectory for PostgresUserDirectory {
     }
 
     async fn profile(&self, app: &str, account: &str) -> Result<Option<UserProfile>, UserError> {
-        let row: Option<(String, String, String, String)> = sqlx::query_as(
-            "SELECT account, nickname, avatar, bio FROM users
+        let row: Option<(String, String, String, String, String)> = sqlx::query_as(
+            "SELECT account, nickname, avatar, bio, kind FROM users
              WHERE app = $1 AND account = $2",
         )
         .bind(app)
@@ -428,7 +456,9 @@ impl UserDirectory for PostgresUserDirectory {
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_err)?;
-        Ok(row.map(|(account, nickname, avatar, bio)| row_profile(account, nickname, avatar, bio)))
+        Ok(row.map(|(account, nickname, avatar, bio, kind)| {
+            row_profile(account, nickname, avatar, bio, kind)
+        }))
     }
 
     async fn update_profile(
@@ -438,10 +468,10 @@ impl UserDirectory for PostgresUserDirectory {
         patch: &ProfilePatch,
     ) -> Result<UserProfile, UserError> {
         let patch = validate_patch(patch)?;
-        let row: Option<(String, String, String, String)> = sqlx::query_as(
+        let row: Option<(String, String, String, String, String)> = sqlx::query_as(
             "UPDATE users SET nickname = $3, avatar = $4, bio = $5
              WHERE app = $1 AND account = $2
-             RETURNING account, nickname, avatar, bio",
+             RETURNING account, nickname, avatar, bio, kind",
         )
         .bind(app)
         .bind(account)
@@ -451,8 +481,10 @@ impl UserDirectory for PostgresUserDirectory {
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_err)?;
-        row.map(|(account, nickname, avatar, bio)| row_profile(account, nickname, avatar, bio))
-            .ok_or(UserError::NotFound)
+        row.map(|(account, nickname, avatar, bio, kind)| {
+            row_profile(account, nickname, avatar, bio, kind)
+        })
+        .ok_or(UserError::NotFound)
     }
 
     async fn profiles(
@@ -463,8 +495,8 @@ impl UserDirectory for PostgresUserDirectory {
         if accounts.is_empty() {
             return Ok(Vec::new());
         }
-        let rows: Vec<(String, String, String, String)> = sqlx::query_as(
-            "SELECT account, nickname, avatar, bio FROM users
+        let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+            "SELECT account, nickname, avatar, bio, kind FROM users
              WHERE app = $1 AND account = ANY($2)",
         )
         .bind(app)
@@ -473,8 +505,11 @@ impl UserDirectory for PostgresUserDirectory {
         .await
         .map_err(pg_err)?;
         let mut by_acc = HashMap::with_capacity(rows.len());
-        for (account, nickname, avatar, bio) in rows {
-            by_acc.insert(account.clone(), row_profile(account, nickname, avatar, bio));
+        for (account, nickname, avatar, bio, kind) in rows {
+            by_acc.insert(
+                account.clone(),
+                row_profile(account, nickname, avatar, bio, kind),
+            );
         }
         Ok(accounts.iter().filter_map(|a| by_acc.remove(a)).collect())
     }
@@ -492,9 +527,10 @@ impl UserDirectory for PostgresUserDirectory {
         }
         let cap = i64::try_from(if limit == 0 { SEARCH_LIMIT } else { limit }).unwrap_or(20);
         let prefix = format!("{}%", q.to_lowercase());
-        let rows: Vec<(String, String, String, String)> = sqlx::query_as(
-            "SELECT account, nickname, avatar, bio FROM users
+        let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+            "SELECT account, nickname, avatar, bio, kind FROM users
              WHERE app = $1
+               AND kind = 'user'
                AND NOT (account = ANY($4))
                AND (lower(account) = lower($2) OR lower(nickname) LIKE $3)
              ORDER BY account ASC
@@ -510,7 +546,9 @@ impl UserDirectory for PostgresUserDirectory {
         .map_err(pg_err)?;
         Ok(rows
             .into_iter()
-            .map(|(account, nickname, avatar, bio)| row_profile(account, nickname, avatar, bio))
+            .map(|(account, nickname, avatar, bio, kind)| {
+                row_profile(account, nickname, avatar, bio, kind)
+            })
             .collect())
     }
 
@@ -596,6 +634,36 @@ mod tests {
         assert_eq!(dir.token_epoch("kim", "alice").await.unwrap(), 0);
         let p = dir.profile("kim", "alice").await.unwrap().unwrap();
         assert_eq!(p.nickname, "alice");
+        assert_eq!(p.kind, PROFILE_KIND_USER);
+        assert!(!p.is_bot());
+    }
+
+    #[tokio::test]
+    async fn memory_profile_exposes_bot_kind() {
+        let dir = MemoryUserDirectory::new();
+        dir.write().insert(
+            ("kim".into(), "bot_x".into()),
+            UserRecord {
+                password_hash: None,
+                nickname: "助手".into(),
+                avatar: String::new(),
+                bio: String::new(),
+                token_epoch: 0,
+                kind: PROFILE_KIND_BOT,
+                owner_account: "alice".into(),
+            },
+        );
+        let p = dir.profile("kim", "bot_x").await.unwrap().unwrap();
+        assert_eq!(p.kind, PROFILE_KIND_BOT);
+        assert!(p.is_bot());
+        assert_eq!(
+            dir.read()
+                .get(&("kim".into(), "bot_x".into()))
+                .map(|r| r.owner_account.as_str()),
+            Some("alice")
+        );
+        let hits = dir.search("kim", "bot", &[], 10).await.unwrap();
+        assert!(hits.is_empty());
     }
 
     #[tokio::test]

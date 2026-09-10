@@ -9,7 +9,7 @@ use kim_protocol::pkt::{
 use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_BLOCK_ADD, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
     CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, PROFILE_KIND_USER,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -41,6 +41,7 @@ async fn profile_search_friends_and_talk_gate() {
             assert_eq!(p.header.status, Status::Success as i32);
             let got: UserProfile = p.read_body().expect("profile");
             assert_eq!(got.nickname, "Ali");
+            assert_eq!(got.kind, PROFILE_KIND_USER);
         }
         _ => panic!("expected profile"),
     }

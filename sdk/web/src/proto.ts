@@ -485,11 +485,16 @@ export function decodeAuthResp(buf: Uint8Array): {
   };
 }
 
+/** UserProfile.kind: 1 human, 2 bot. Wire 0 / missing is treated as human. */
+export const PROFILE_KIND_USER = 1;
+export const PROFILE_KIND_BOT = 2;
+
 export interface WireProfile {
   account: string;
   nickname: string;
   avatar: string;
   bio: string;
+  kind: number;
 }
 
 function toProfile(o: {
@@ -497,12 +502,14 @@ function toProfile(o: {
   nickname?: string;
   avatar?: string;
   bio?: string;
+  kind?: number;
 }): WireProfile {
   return {
     account: o.account ?? "",
     nickname: o.nickname ?? "",
     avatar: o.avatar ?? "",
     bio: o.bio ?? "",
+    kind: o.kind === PROFILE_KIND_BOT ? PROFILE_KIND_BOT : PROFILE_KIND_USER,
   };
 }
 

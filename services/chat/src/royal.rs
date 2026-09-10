@@ -833,6 +833,7 @@ fn from_pb_profile(p: PbProfile) -> UserProfile {
         nickname: p.nickname,
         avatar: p.avatar,
         bio: p.bio,
+        kind: kim_protocol::profile_kind(p.kind),
     }
 }
 

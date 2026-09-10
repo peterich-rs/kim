@@ -264,6 +264,7 @@ fn decode_profile_updated_push() {
         nickname: "Ali".into(),
         avatar: "https://cdn/a.png".into(),
         bio: "x".into(),
+        kind: kim_protocol::PROFILE_KIND_USER,
     });
     let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
     match ev {
@@ -271,6 +272,8 @@ fn decode_profile_updated_push() {
             assert_eq!(profile.account, "alice");
             assert_eq!(profile.nickname, "Ali");
             assert_eq!(profile.avatar, "https://cdn/a.png");
+            assert_eq!(profile.kind, kim_protocol::PROFILE_KIND_USER);
+            assert!(!profile.is_bot());
         }
         other => panic!("expected ProfileUpdated, got {other:?}"),
     }
@@ -362,6 +365,7 @@ async fn friend_list_returns_profiles() {
             nickname: "Bobby".into(),
             avatar: String::new(),
             bio: String::new(),
+            kind: kim_protocol::PROFILE_KIND_USER,
         }],
     });
     let client = logged_in(
@@ -373,6 +377,7 @@ async fn friend_list_returns_profiles() {
     assert_eq!(users[0].account, "bob");
     assert_eq!(users[0].nickname, "Bobby");
     assert_eq!(users[0].avatar, "");
+    assert_eq!(users[0].kind, kim_protocol::PROFILE_KIND_USER);
 }
 
 #[tokio::test]
@@ -386,6 +391,7 @@ async fn profile_and_update_round_trip() {
         nickname: "Ali".into(),
         avatar: "https://media.kim.ainexc.com/alice/a.jpg".into(),
         bio: String::new(),
+        kind: kim_protocol::PROFILE_KIND_USER,
     });
     let mut upd = LogicPkt::new(CMD_USER_UPDATE, 3, Bytes::new());
     upd.header.flag = Flag::Response as i32;
@@ -394,6 +400,7 @@ async fn profile_and_update_round_trip() {
         nickname: "Ali".into(),
         avatar: "https://media.kim.ainexc.com/alice/b.jpg".into(),
         bio: String::new(),
+        kind: kim_protocol::PROFILE_KIND_USER,
     });
     let client = logged_in(
         mint("alice"),
