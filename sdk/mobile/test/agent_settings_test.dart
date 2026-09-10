@@ -37,26 +37,29 @@ void main() {
     expect(s.isLive, isTrue);
   });
 
-  test('first read is empty defaults; ensureLoaded hydrates keychain', () async {
-    SharedPreferences.setMockInitialValues({
-      'agent.llm_backend': 'anthropic',
-      'agent.base_url': 'https://api.anthropic.com',
-      'agent.model': 'claude-sonnet-4-5',
-    });
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-live',
-    });
-    final container = ProviderContainer.test();
-    addTearDown(container.dispose);
+  test(
+    'first read is empty defaults; ensureLoaded hydrates keychain',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'agent.llm_backend': 'anthropic',
+        'agent.base_url': 'https://api.anthropic.com',
+        'agent.model': 'claude-sonnet-4-5',
+      });
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-live',
+      });
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
 
-    expect(container.read(agentSettingsProvider).apiKey, isEmpty);
-    expect(container.read(agentSettingsProvider).llmBackend, 'openai');
+      expect(container.read(agentSettingsProvider).apiKey, isEmpty);
+      expect(container.read(agentSettingsProvider).llmBackend, 'openai');
 
-    await container.read(agentSettingsProvider.notifier).ensureLoaded();
-    final loaded = container.read(agentSettingsProvider);
-    expect(loaded.apiKey, 'sk-live');
-    expect(loaded.llmBackend, 'anthropic');
-    expect(loaded.baseUrl, 'https://api.anthropic.com');
-    expect(loaded.model, 'claude-sonnet-4-5');
-  });
+      await container.read(agentSettingsProvider.notifier).ensureLoaded();
+      final loaded = container.read(agentSettingsProvider);
+      expect(loaded.apiKey, 'sk-live');
+      expect(loaded.llmBackend, 'anthropic');
+      expect(loaded.baseUrl, 'https://api.anthropic.com');
+      expect(loaded.model, 'claude-sonnet-4-5');
+    },
+  );
 }
