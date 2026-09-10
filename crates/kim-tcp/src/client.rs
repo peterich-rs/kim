@@ -9,11 +9,11 @@ use tokio::task::JoinHandle;
 use tracing::debug;
 
 use kim_core::{
-    Conn, DialerContext, Error, Frame, OpCode, DEFAULT_HEARTBEAT, DEFAULT_LOGIN_WAIT,
-    DEFAULT_WRITE_WAIT,
+    Conn, DialerContext, Error, Frame, OpCode, WriteFullPolicy, WriteShared, DEFAULT_HEARTBEAT,
+    DEFAULT_LOGIN_WAIT, DEFAULT_WRITE_QUEUE, DEFAULT_WRITE_WAIT,
 };
 
-use crate::conn::{PlainTcpConn, PlainTcpReadHalf, PlainTcpWriteHalf, TcpConn};
+use crate::conn::{PlainTcpConn, PlainTcpReadHalf, TcpConn};
 
 /// TCP 客户端专用拨号器：必须返回可拆分的明文 [`TcpConn`]。
 #[async_trait]
@@ -43,7 +43,7 @@ pub struct TcpClient {
     name: String,
     dialer: Option<Arc<dyn TcpDialer>>,
     reader: Option<Mutex<PlainTcpReadHalf>>,
-    writer: Option<Arc<Mutex<PlainTcpWriteHalf>>>,
+    write: Option<WriteShared>,
     connected: Arc<AtomicBool>,
     options: ClientOptions,
     heartbeat: Mutex<Option<JoinHandle<()>>>,
@@ -56,7 +56,7 @@ impl TcpClient {
             name: name.into(),
             dialer: None,
             reader: None,
-            writer: None,
+            write: None,
             connected: Arc::new(AtomicBool::new(false)),
             options,
             heartbeat: Mutex::new(None),
@@ -102,12 +102,17 @@ impl TcpClient {
         };
 
         let (reader, writer) = conn.into_split();
-        let writer = Arc::new(Mutex::new(writer));
+        let write = WriteShared::spawn(
+            writer,
+            DEFAULT_WRITE_QUEUE,
+            self.options.write_wait,
+            WriteFullPolicy::Block,
+            None,
+        );
         self.reader = Some(Mutex::new(reader));
-        self.writer = Some(writer.clone());
+        self.write = Some(write.clone());
 
         if let Some(interval) = self.options.heartbeat {
-            let write_wait = self.options.write_wait;
             let id = self.id.clone();
             let connected = self.connected.clone();
             let handle = tokio::spawn(async move {
@@ -119,16 +124,7 @@ impl TcpClient {
                         break;
                     }
                     debug!(client = %id, "send ping");
-                    let mut guard = writer.lock().await;
-                    let ping = tokio::time::timeout(
-                        write_wait,
-                        guard.write_frame(OpCode::Ping, Bytes::new()),
-                    )
-                    .await;
-                    if ping.is_err() || matches!(ping, Ok(Err(_))) {
-                        break;
-                    }
-                    if guard.flush().await.is_err() {
+                    if write.push_frame(OpCode::Ping, Bytes::new()).await.is_err() {
                         break;
                     }
                 }
@@ -139,15 +135,8 @@ impl TcpClient {
     }
 
     pub async fn send(&self, payload: Bytes) -> Result<(), Error> {
-        let writer = self.writer.as_ref().ok_or(Error::NotConnected)?;
-        let mut guard = writer.lock().await;
-        tokio::time::timeout(
-            self.options.write_wait,
-            guard.write_frame(OpCode::Binary, payload),
-        )
-        .await
-        .map_err(|_| Error::other("write timeout"))??;
-        guard.flush().await
+        let write = self.write.as_ref().ok_or(Error::NotConnected)?;
+        write.push_frame(OpCode::Binary, payload).await
     }
 
     pub async fn read(&self) -> Result<Frame, Error> {
@@ -162,10 +151,8 @@ impl TcpClient {
             match frame.opcode {
                 OpCode::Close => return Err(Error::Closed),
                 OpCode::Ping => {
-                    if let Some(writer) = &self.writer {
-                        let mut guard = writer.lock().await;
-                        let _ = guard.write_frame(OpCode::Pong, Bytes::new()).await;
-                        let _ = guard.flush().await;
+                    if let Some(write) = &self.write {
+                        let _ = write.push_frame(OpCode::Pong, Bytes::new()).await;
                     }
                 }
                 OpCode::Pong => {
@@ -190,10 +177,8 @@ impl TcpClient {
             h.abort();
             let _ = h.await;
         }
-        if let Some(writer) = &self.writer {
-            let mut guard = writer.lock().await;
-            let _ = guard.write_frame(OpCode::Close, Bytes::new()).await;
-            let _ = guard.shutdown().await;
+        if let Some(write) = &self.write {
+            write.close().await;
         }
         Ok(())
     }

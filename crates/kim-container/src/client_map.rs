@@ -8,13 +8,14 @@ use kim_tcp::TcpClient;
 pub const YOUNG: u8 = 0;
 pub const ADULT: u8 = 1;
 
+#[derive(Clone)]
 pub struct ClientSlot {
     pub reg: DefaultRegistration,
     pub client: Arc<TcpClient>,
     pub state: Arc<AtomicU8>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ClientMap {
     inner: HashMap<String, ClientSlot>,
 }

@@ -1,16 +1,17 @@
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ::redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use ::redis::Client;
 use async_trait::async_trait;
+use futures::StreamExt;
 use kim_protocol::pkt::Session;
 use kim_router::{Location, SessionError, SessionStorage};
 use prost::Message;
 use tracing::warn;
 
-use crate::keys::{key_location, key_session};
-use crate::SESSION_TTL;
+use crate::keys::{key_location, key_session, LOC_INV_CHANNEL};
+use crate::{CachedSessionStore, SESSION_TTL};
 
 /// HASH login:loc:v2:{account} field=channel_id value=Location blob; always DEL sn.
 /// Pre-hash leftovers were a STRING Location blob; drop them instead of WRONGTYPE.
@@ -159,6 +160,90 @@ impl RedisSessionStore {
         }
         Ok(scan)
     }
+
+    async fn publish_inv(&self, account: &str) {
+        if account.is_empty() {
+            return;
+        }
+        let mut conn = self.conn.clone();
+        if let Err(err) = ::redis::cmd("PUBLISH")
+            .arg(LOC_INV_CHANNEL)
+            .arg(account)
+            .query_async::<i32>(&mut conn)
+            .await
+        {
+            warn!(%err, account, "loc inv publish failed");
+        }
+    }
+}
+
+/// Wrap `inner` with [`CachedSessionStore`] and subscribe to [`LOC_INV_CHANNEL`].
+/// Fails if the first subscribe cannot complete — `KIM_LOC_CACHE=1` must not
+/// start without a live invalidation bus.
+pub(crate) async fn listen_cached(
+    inner: Arc<dyn SessionStorage>,
+    url: &str,
+) -> Result<Arc<dyn SessionStorage>, SessionError> {
+    let cache = CachedSessionStore::wrap(inner);
+    let pubsub = subscribe_loc_inv(url).await?;
+    spawn_loc_inv_loop(cache.clone(), url.to_string(), pubsub);
+    Ok(cache)
+}
+
+fn loc_inv_subscribe_err(detail: impl std::fmt::Display) -> SessionError {
+    SessionError::Other(format!(
+        "KIM_LOC_CACHE=1 requires a live {LOC_INV_CHANNEL} subscription: {detail}"
+    ))
+}
+
+async fn subscribe_loc_inv(url: &str) -> Result<::redis::aio::PubSub, SessionError> {
+    let client = Client::open(url).map_err(loc_inv_subscribe_err)?;
+    let mut pubsub = tokio::time::timeout(Duration::from_secs(3), client.get_async_pubsub())
+        .await
+        .map_err(|_| loc_inv_subscribe_err("connect timeout"))?
+        .map_err(loc_inv_subscribe_err)?;
+    tokio::time::timeout(Duration::from_secs(3), pubsub.subscribe(LOC_INV_CHANNEL))
+        .await
+        .map_err(|_| loc_inv_subscribe_err("subscribe timeout"))?
+        .map_err(loc_inv_subscribe_err)?;
+    Ok(pubsub)
+}
+
+fn spawn_loc_inv_loop(cache: Arc<CachedSessionStore>, url: String, first: ::redis::aio::PubSub) {
+    tokio::spawn(async move {
+        let mut pending = Some(first);
+        let mut backoff = Duration::from_millis(100);
+        loop {
+            let mut pubsub = match pending.take() {
+                Some(p) => p,
+                None => match subscribe_loc_inv(&url).await {
+                    Ok(p) => {
+                        backoff = Duration::from_millis(100);
+                        p
+                    }
+                    Err(err) => {
+                        warn!(%err, "loc inv resubscribe failed");
+                        cache.invalidate_all();
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(Duration::from_secs(5));
+                        continue;
+                    }
+                },
+            };
+            {
+                let mut stream = pubsub.on_message();
+                while let Some(msg) = stream.next().await {
+                    match msg.get_payload::<String>() {
+                        Ok(account) if !account.is_empty() => cache.invalidate_account(&account),
+                        Ok(_) => {}
+                        Err(err) => warn!(%err, "loc inv payload"),
+                    }
+                }
+            }
+            warn!("loc inv subscription dropped; flushing cache");
+            cache.invalidate_all();
+        }
+    });
 }
 
 pub(crate) fn note_location_blob(scan: &mut crate::LocationScan, bytes: &[u8]) {
@@ -206,7 +291,10 @@ impl SessionStorage for RedisSessionStore {
             )
             .await
         {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.publish_inv(&session.account).await;
+                Ok(())
+            }
             Err(err) if is_wrong_type(&err) => {
                 warn!(key = %loc_key, "replacing incompatible location key");
                 let mut conn = self.conn.clone();
@@ -224,7 +312,9 @@ impl SessionStorage for RedisSessionStore {
                     ttl,
                 )
                 .await
-                .map_err(redis_err)
+                .map_err(redis_err)?;
+                self.publish_inv(&session.account).await;
+                Ok(())
             }
             Err(err) => Err(redis_err(err)),
         }
@@ -241,6 +331,7 @@ impl SessionStorage for RedisSessionStore {
             .invoke_async(&mut conn)
             .await
             .map_err(redis_err)?;
+        self.publish_inv(account).await;
         Ok(())
     }
 
@@ -374,6 +465,16 @@ mod tests {
             Err(e) => panic!("expected Other, got {e}"),
             Ok(_) => panic!("invalid URL must not fall back to Memory"),
         }
+    }
+
+    #[tokio::test]
+    async fn listen_cached_bad_url_is_error() {
+        let inner = Arc::new(crate::MemorySessionStore::new());
+        let err = match listen_cached(inner, "not-a-redis-url").await {
+            Err(e) => e,
+            Ok(_) => panic!("cache must not start without pubsub"),
+        };
+        assert!(err.to_string().contains("kim:loc:inv"), "{err}");
     }
 
     #[tokio::test]

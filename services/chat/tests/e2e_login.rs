@@ -53,7 +53,7 @@ async fn login_channel_id_echo_and_login_resp_does_not_close() {
     }
 
     assert!(
-        stack.gw_server.channel_map().contains(&channel_id).await,
+        stack.gw_server.channel_map().contains(&channel_id),
         "LoginResp must not close_channel"
     );
 
@@ -137,8 +137,8 @@ async fn two_web_logins_stay_online() {
     assert_ne!(id1, id2);
 
     timeout_no_packet(&first, Duration::from_millis(400)).await;
-    assert!(stack.gw_server.channel_map().contains(&id1).await);
-    assert!(stack.gw_server.channel_map().contains(&id2).await);
+    assert!(stack.gw_server.channel_map().contains(&id1));
+    assert!(stack.gw_server.channel_map().contains(&id2));
     let locs = stack.cache.list_locations("alice").await.expect("locs");
     assert_eq!(locs.len(), 2);
 
@@ -168,7 +168,7 @@ async fn bad_token_unauthorized_or_close_not_added() {
         "expected closed or Unauthorized status=105, got: {msg}"
     );
     assert!(
-        stack.gw_server.channel_map().is_empty().await,
+        stack.gw_server.channel_map().is_empty(),
         "bad token must not add channel"
     );
 

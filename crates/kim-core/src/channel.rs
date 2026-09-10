@@ -1,23 +1,16 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, Notify, OwnedSemaphorePermit, Semaphore};
-use tokio::task::JoinHandle;
+use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tracing::debug;
 
+use crate::write_loop::WriteShared;
 use crate::{ChannelHandle, Conn, Error, MessageListener, OpCode};
-
-/// 写协程接收的任务。业务 Push、心跳 Pong、关闭全部走这里，
-/// 避免读循环和写循环同时写同一条 TCP 流。
-enum WriteOp {
-    Frame { opcode: OpCode, payload: Bytes },
-    Close,
-}
 
 /// Full write mailbox: block (internal TcpClient/Chat uplink) or fail + disconnect (gateway downlink).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -54,6 +47,8 @@ pub struct ChannelOpts {
     pub in_flight: Option<Arc<Semaphore>>,
     pub lane_key: Option<LaneKeyFn>,
     pub on_mailbox_full: Option<MailboxFullHook>,
+    /// Worker exits after this idle timeout; the next frame rebuilds the lane.
+    pub lane_idle: Duration,
 }
 
 impl Default for ChannelOpts {
@@ -67,63 +62,7 @@ impl Default for ChannelOpts {
             in_flight: None,
             lane_key: None,
             on_mailbox_full: None,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct WriteShared {
-    tx: mpsc::Sender<WriteOp>,
-    closed: Arc<AtomicBool>,
-    aborted: Arc<AtomicBool>,
-    abort: Arc<Notify>,
-    write_full: WriteFullPolicy,
-    on_mailbox_full: Option<MailboxFullHook>,
-}
-
-impl WriteShared {
-    async fn push_frame(&self, opcode: OpCode, payload: Bytes) -> Result<(), Error> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(Error::Closed);
-        }
-        let op = WriteOp::Frame { opcode, payload };
-        match self.write_full {
-            WriteFullPolicy::Block => self.tx.send(op).await.map_err(|_| Error::Closed),
-            WriteFullPolicy::Disconnect => match self.tx.try_send(op) {
-                Ok(()) => Ok(()),
-                Err(TrySendError::Full(_)) => {
-                    self.trip_full();
-                    Err(Error::MailboxFull)
-                }
-                Err(TrySendError::Closed(_)) => Err(Error::Closed),
-            },
-        }
-    }
-
-    fn trip_full(&self) {
-        if let Some(hook) = &self.on_mailbox_full {
-            hook();
-        }
-        self.closed.store(true, Ordering::SeqCst);
-        self.aborted.store(true, Ordering::SeqCst);
-        let _ = self.tx.try_send(WriteOp::Close);
-        self.abort.notify_waiters();
-    }
-
-    async fn close(&self) {
-        if self.closed.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        match self.write_full {
-            WriteFullPolicy::Block => {
-                let _ = self.tx.send(WriteOp::Close).await;
-            }
-            WriteFullPolicy::Disconnect => {
-                if self.tx.try_send(WriteOp::Close).is_err() {
-                    self.aborted.store(true, Ordering::SeqCst);
-                    self.abort.notify_waiters();
-                }
-            }
+            lane_idle: crate::DEFAULT_LANE_IDLE,
         }
     }
 }
@@ -141,78 +80,13 @@ impl Channel {
         W: Conn + 'static,
     {
         let id = id.into();
-        let write_queue = opts.write_queue.max(1);
-        let (tx, mut rx) = mpsc::channel(write_queue);
-        let closed = Arc::new(AtomicBool::new(false));
-        let aborted = Arc::new(AtomicBool::new(false));
-        let abort = Arc::new(Notify::new());
-        let write_wait = opts.write_wait;
-        let write = WriteShared {
-            tx: tx.clone(),
-            closed: closed.clone(),
-            aborted: aborted.clone(),
-            abort: abort.clone(),
-            write_full: opts.write_full,
-            on_mailbox_full: opts.on_mailbox_full.clone(),
-        };
-
-        let mut writer = writer;
-        let writer_closed = closed.clone();
-        let writer_aborted = aborted.clone();
-        tokio::spawn(async move {
-            loop {
-                if writer_aborted.load(Ordering::SeqCst) {
-                    let _ = writer.shutdown().await;
-                    break;
-                }
-                tokio::select! {
-                    _ = abort.notified() => {
-                        let _ = writer.shutdown().await;
-                        break;
-                    }
-                    first = rx.recv() => {
-                        let Some(first) = first else {
-                            let _ = writer.shutdown().await;
-                            break;
-                        };
-                        let mut batch = vec![first];
-                        while let Ok(more) = rx.try_recv() {
-                            batch.push(more);
-                        }
-                        let mut saw_close = false;
-                        let mut frames = Vec::new();
-                        for op in batch {
-                            match op {
-                                WriteOp::Frame { opcode, payload } => frames.push((opcode, payload)),
-                                WriteOp::Close => saw_close = true,
-                            }
-                        }
-                        let write_batch = async {
-                            for (opcode, payload) in frames {
-                                writer.write_frame(opcode, payload).await?;
-                            }
-                            writer.flush().await?;
-                            if saw_close {
-                                writer.shutdown().await?;
-                            }
-                            Ok::<(), Error>(())
-                        };
-                        match tokio::time::timeout(write_wait, write_batch).await {
-                            Ok(Ok(())) => {
-                                if saw_close {
-                                    break;
-                                }
-                            }
-                            _ => {
-                                let _ = writer.shutdown().await;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            writer_closed.store(true, Ordering::SeqCst);
-        });
+        let write = WriteShared::spawn(
+            writer,
+            opts.write_queue,
+            opts.write_wait,
+            opts.write_full,
+            opts.on_mailbox_full.clone(),
+        );
 
         let max_in_flight = opts.max_in_flight.max(1);
         let in_flight = opts
@@ -230,6 +104,7 @@ impl Channel {
             max_in_flight,
             in_flight,
             lane_key: opts.lane_key,
+            lane_idle: opts.lane_idle,
         };
         (channel, read_loop)
     }
@@ -238,8 +113,14 @@ impl Channel {
         &self.id
     }
 
+    /// Cheap clone of the connection id. `ChannelMap` keys off this so insert
+    /// does not allocate a second `String`.
+    pub fn id_arc(&self) -> Arc<str> {
+        self.id.clone()
+    }
+
     pub fn is_closed(&self) -> bool {
-        self.write.closed.load(Ordering::SeqCst)
+        self.write.is_closed()
     }
 
     pub async fn close(&self) {
@@ -267,6 +148,7 @@ pub struct ChannelReadLoop<R> {
     max_in_flight: usize,
     in_flight: Arc<Semaphore>,
     lane_key: Option<LaneKeyFn>,
+    lane_idle: Duration,
 }
 
 struct LaneJob {
@@ -275,10 +157,11 @@ struct LaneJob {
 }
 
 struct LaneSet {
-    txs: Mutex<HashMap<String, mpsc::Sender<LaneJob>>>,
-    workers: Mutex<Vec<JoinHandle<()>>>,
+    txs: Arc<Mutex<HashMap<Arc<str>, mpsc::Sender<LaneJob>>>>,
+    live: Arc<AtomicUsize>,
     in_flight: Arc<Semaphore>,
     lane_cap: usize,
+    lane_idle: Duration,
     listener: Arc<dyn MessageListener>,
     handle: PushHandle,
 }
@@ -287,61 +170,125 @@ impl LaneSet {
     fn new(
         in_flight: Arc<Semaphore>,
         lane_cap: usize,
+        lane_idle: Duration,
         listener: Arc<dyn MessageListener>,
         handle: PushHandle,
     ) -> Self {
         Self {
-            txs: Mutex::new(HashMap::new()),
-            workers: Mutex::new(Vec::new()),
+            txs: Arc::new(Mutex::new(HashMap::new())),
+            live: Arc::new(AtomicUsize::new(0)),
             in_flight,
             lane_cap,
+            lane_idle,
             listener,
             handle,
         }
     }
 
-    async fn enqueue(&self, key: String, payload: Bytes) -> Result<(), Error> {
+    #[cfg(test)]
+    fn lane_len(&self) -> usize {
+        self.txs.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+
+    fn spawn_lane(
+        &self,
+        map: &mut HashMap<Arc<str>, mpsc::Sender<LaneJob>>,
+        key: Arc<str>,
+    ) -> mpsc::Sender<LaneJob> {
+        let (tx, rx) = mpsc::channel(self.lane_cap);
+        map.insert(key.clone(), tx.clone());
+        let listener = self.listener.clone();
+        let handle = self.handle.clone();
+        let txs = self.txs.clone();
+        let live = self.live.clone();
+        let idle = self.lane_idle;
+        // Weak identity only: a strong `mine` sender would keep rx open after
+        // drain() clears `txs`, delaying disconnect until lane_idle / drain wait.
+        let mine = tx.downgrade();
+        live.fetch_add(1, Ordering::SeqCst);
+        tokio::spawn(async move {
+            let mut rx = rx;
+            loop {
+                match tokio::time::timeout(idle, rx.recv()).await {
+                    Ok(Some(job)) => listener.receive(&handle, job.payload).await,
+                    Ok(None) => break,
+                    Err(_) => {
+                        let mut map = txs.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Ok(job) = rx.try_recv() {
+                            drop(map);
+                            listener.receive(&handle, job.payload).await;
+                            continue;
+                        }
+                        if map
+                            .get(&key)
+                            .is_some_and(|s| mine.upgrade().is_some_and(|u| u.same_channel(s)))
+                        {
+                            map.remove(&key);
+                        }
+                        break;
+                    }
+                }
+            }
+            live.fetch_sub(1, Ordering::SeqCst);
+        });
+        tx
+    }
+
+    async fn enqueue(&self, key: Arc<str>, payload: Bytes) -> Result<(), Error> {
         let permit = self
             .in_flight
             .clone()
             .acquire_owned()
             .await
             .map_err(|_| Error::Closed)?;
-        let tx = {
-            let mut map = self.txs.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(tx) = map.get(&key) {
-                tx.clone()
-            } else {
-                let (tx, rx) = mpsc::channel(self.lane_cap);
-                map.insert(key, tx.clone());
-                let listener = self.listener.clone();
-                let handle = self.handle.clone();
-                let worker = tokio::spawn(async move {
-                    let mut rx = rx;
-                    while let Some(job) = rx.recv().await {
-                        listener.receive(&handle, job.payload).await;
-                    }
-                });
-                self.workers
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .push(worker);
-                tx
-            }
-        };
-        tx.send(LaneJob {
+        enum Admit {
+            Sent,
+            Retry(LaneJob),
+            Wait(mpsc::Sender<LaneJob>, LaneJob),
+        }
+        let mut job = LaneJob {
             payload,
             _permit: permit,
-        })
-        .await
-        .map_err(|_| Error::Closed)
+        };
+        loop {
+            // try_send while holding the map lock so an idle worker cannot
+            // retire a lane whose sender was already cloned for this enqueue.
+            let admit = {
+                let mut map = self.txs.lock().unwrap_or_else(|e| e.into_inner());
+                let tx = match map.get(&key) {
+                    Some(tx) => tx.clone(),
+                    None => self.spawn_lane(&mut map, key.clone()),
+                };
+                match tx.try_send(job) {
+                    Ok(()) => Admit::Sent,
+                    Err(TrySendError::Full(j)) => Admit::Wait(tx, j),
+                    Err(TrySendError::Closed(j)) => {
+                        if map.get(&key).is_some_and(|s| s.same_channel(&tx)) {
+                            map.remove(&key);
+                        }
+                        Admit::Retry(j)
+                    }
+                }
+            };
+            match admit {
+                Admit::Sent => return Ok(()),
+                Admit::Retry(j) => job = j,
+                Admit::Wait(tx, j) => match tx.send(j).await {
+                    Ok(()) => return Ok(()),
+                    Err(returned) => job = returned.0,
+                },
+            }
+        }
     }
 
     async fn drain(self) {
         self.txs.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        let workers = std::mem::take(&mut *self.workers.lock().unwrap_or_else(|e| e.into_inner()));
-        for h in workers {
-            let _ = h.await;
+        let deadline = Instant::now() + crate::DEFAULT_DRAIN_WAIT;
+        while self.live.load(Ordering::SeqCst) > 0 {
+            if Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
         }
     }
 }
@@ -352,27 +299,33 @@ impl<R: Conn> ChannelReadLoop<R> {
             id: self.id.clone(),
             write: self.write.clone(),
         };
-        let lanes = LaneSet::new(self.in_flight.clone(), self.max_in_flight, listener, handle);
+        let lanes = LaneSet::new(
+            self.in_flight.clone(),
+            self.max_in_flight,
+            self.lane_idle,
+            listener,
+            handle,
+        );
         let result = self.read_until_err(&lanes).await;
         lanes.drain().await;
         self.write.close().await;
         result
     }
 
-    fn lane_id(&self, payload: &[u8]) -> String {
+    fn lane_id(&self, payload: &[u8]) -> Arc<str> {
         if let Some(f) = &self.lane_key {
             if let Some(k) = f(payload) {
                 if !k.is_empty() {
-                    return k;
+                    return Arc::from(k);
                 }
             }
         }
-        self.id.to_string()
+        self.id.clone()
     }
 
     async fn read_until_err(&mut self, lanes: &LaneSet) -> Result<(), Error> {
         loop {
-            if self.write.closed.load(Ordering::SeqCst) {
+            if self.write.is_closed() {
                 return Err(Error::Closed);
             }
             // Timeout around the whole read_frame. kim-ws read_frame is not cancel-safe:
@@ -430,7 +383,7 @@ mod tests {
     use crate::{Error, Frame};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
-    use tokio::sync::mpsc;
+    use tokio::sync::{mpsc, Notify, Semaphore};
     use tokio::time::{timeout, Duration};
 
     struct NullConn;
@@ -961,5 +914,158 @@ mod tests {
         );
         gate.notify_waiters();
         let _ = timeout(Duration::from_secs(2), b_started.notified()).await;
+    }
+
+    #[tokio::test]
+    async fn idle_lane_retires() {
+        struct RecvOnce {
+            saw: Arc<AtomicUsize>,
+            gate: Arc<Notify>,
+        }
+        #[async_trait]
+        impl MessageListener for RecvOnce {
+            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+                self.saw.fetch_add(1, Ordering::SeqCst);
+                self.gate.notify_waiters();
+            }
+        }
+        let write = WriteShared::spawn(
+            NullConn,
+            8,
+            Duration::from_secs(2),
+            WriteFullPolicy::Block,
+            None,
+        );
+        let handle = PushHandle {
+            id: Arc::from("c1"),
+            write,
+        };
+        let saw = Arc::new(AtomicUsize::new(0));
+        let gate = Arc::new(Notify::new());
+        let lanes = LaneSet::new(
+            Arc::new(Semaphore::new(8)),
+            8,
+            Duration::from_millis(50),
+            Arc::new(RecvOnce {
+                saw: saw.clone(),
+                gate: gate.clone(),
+            }),
+            handle,
+        );
+        lanes
+            .enqueue(Arc::from("k"), Bytes::from_static(b"x"))
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), gate.notified())
+            .await
+            .expect("handler ran");
+        assert_eq!(lanes.lane_len(), 1);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(lanes.lane_len(), 0);
+        assert_eq!(saw.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn drain_unblocks_before_idle_timeout() {
+        struct RecvOnce {
+            saw: Arc<AtomicUsize>,
+            gate: Arc<Notify>,
+        }
+        #[async_trait]
+        impl MessageListener for RecvOnce {
+            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+                self.saw.fetch_add(1, Ordering::SeqCst);
+                self.gate.notify_waiters();
+            }
+        }
+        let write = WriteShared::spawn(
+            NullConn,
+            8,
+            Duration::from_secs(2),
+            WriteFullPolicy::Block,
+            None,
+        );
+        let handle = PushHandle {
+            id: Arc::from("c1"),
+            write,
+        };
+        let saw = Arc::new(AtomicUsize::new(0));
+        let gate = Arc::new(Notify::new());
+        let lanes = LaneSet::new(
+            Arc::new(Semaphore::new(8)),
+            8,
+            Duration::from_secs(30),
+            Arc::new(RecvOnce {
+                saw: saw.clone(),
+                gate: gate.clone(),
+            }),
+            handle,
+        );
+        lanes
+            .enqueue(Arc::from("k"), Bytes::from_static(b"x"))
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), gate.notified())
+            .await
+            .expect("handler ran");
+        timeout(Duration::from_secs(2), lanes.drain())
+            .await
+            .expect("drain must observe sender closure instead of waiting out idle");
+        assert_eq!(saw.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enqueue_during_idle_retirement_delivers() {
+        struct CountRecv {
+            saw: Arc<AtomicUsize>,
+        }
+        #[async_trait]
+        impl MessageListener for CountRecv {
+            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+                self.saw.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let write = WriteShared::spawn(
+            NullConn,
+            8,
+            Duration::from_secs(2),
+            WriteFullPolicy::Block,
+            None,
+        );
+        let handle = PushHandle {
+            id: Arc::from("c1"),
+            write,
+        };
+        let saw = Arc::new(AtomicUsize::new(0));
+        let lanes = LaneSet::new(
+            Arc::new(Semaphore::new(32)),
+            8,
+            Duration::from_millis(5),
+            Arc::new(CountRecv { saw: saw.clone() }),
+            handle,
+        );
+        const N: usize = 200;
+        for i in 0..N {
+            lanes
+                .enqueue(Arc::from("k"), Bytes::from_static(b"x"))
+                .await
+                .unwrap();
+            if i % 15 == 14 {
+                tokio::time::sleep(Duration::from_millis(8)).await;
+            }
+        }
+        timeout(Duration::from_secs(2), async {
+            loop {
+                if saw.load(Ordering::SeqCst) >= N {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("every enqueued frame must be delivered across idle retirement");
+        timeout(Duration::from_secs(2), lanes.drain())
+            .await
+            .expect("drain after retirement stress");
     }
 }

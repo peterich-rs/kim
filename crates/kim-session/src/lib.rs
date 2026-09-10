@@ -18,7 +18,7 @@ use kim_router::{SessionError, SessionStorage};
 
 pub use cache::CachedSessionStore;
 pub use dual::DualWriteStore;
-pub use keys::{key_location, key_session};
+pub use keys::{key_location, key_session, LOC_INV_CHANNEL};
 pub use memory::MemorySessionStore;
 #[cfg(feature = "redis")]
 pub use redis::{open_connection_manager, RedisSessionStore};
@@ -72,8 +72,9 @@ pub async fn open_session_store(
 }
 
 /// Redis session store that **never** wraps [`CachedSessionStore`].
-/// Royal insert lists locations inside a transaction; a cache would hide
-/// another machine's delete until TTL.
+/// Royal insert lists locations inside a transaction; a local cache would hide
+/// another machine's delete until TTL. Redis `add`/`delete` still `PUBLISH`
+/// [`LOC_INV_CHANNEL`] so Chat loc caches drop the account.
 pub async fn open_uncached_session_store(
     url: &str,
 ) -> Result<Arc<dyn SessionStorage>, SessionError> {
@@ -91,15 +92,6 @@ fn loc_cache_enabled() -> bool {
 }
 
 #[cfg(feature = "redis")]
-fn wrap_cache(store: Arc<dyn SessionStorage>) -> Arc<dyn SessionStorage> {
-    if loc_cache_enabled() {
-        CachedSessionStore::wrap(store)
-    } else {
-        store
-    }
-}
-
-#[cfg(feature = "redis")]
 async fn open_redis_primary(url: &str) -> Result<Arc<dyn SessionStorage>, SessionError> {
     let primary = Arc::new(RedisSessionStore::open(url).await?);
     let store: Arc<dyn SessionStorage> = match std::env::var("REDIS_MIRROR_URL") {
@@ -114,7 +106,12 @@ async fn open_redis_primary(url: &str) -> Result<Arc<dyn SessionStorage>, Sessio
 
 #[cfg(feature = "redis")]
 async fn open_redis_store(url: &str) -> Result<Arc<dyn SessionStorage>, SessionError> {
-    Ok(wrap_cache(open_redis_primary(url).await?))
+    let inner = open_redis_primary(url).await?;
+    if loc_cache_enabled() {
+        redis::listen_cached(inner, url).await
+    } else {
+        Ok(inner)
+    }
 }
 
 #[cfg(feature = "redis")]
@@ -254,6 +251,8 @@ mod tests {
         }
     }
 
+    /// Memory wrap has no invalidation bus. Redis `KIM_LOC_CACHE=1` starts a
+    /// `kim:loc:inv` subscriber so this hole does not exist across Chat processes.
     #[tokio::test]
     async fn cached_store_hides_delete_that_uncached_inner_sees() {
         let inner = Arc::new(MemorySessionStore::new());

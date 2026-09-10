@@ -8,12 +8,14 @@ description = "KIM 会话存储：Memory 默认，可选 Redis 适配器"
 
 [features]
 default = []
-redis = ["dep:redis", "dep:tokio", "dep:prost"]
+redis = ["dep:redis", "dep:tokio", "dep:prost", "dep:futures"]
 
 [dependencies]
 async-trait.workspace = true
+futures = { workspace = true, optional = true }
 kim-protocol.workspace = true
 kim-router.workspace = true
+moka.workspace = true
 prost = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }

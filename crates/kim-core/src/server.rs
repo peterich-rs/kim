@@ -14,6 +14,7 @@ pub trait Server: Send {
     fn set_read_wait(&mut self, wait: Duration);
     fn set_write_full(&mut self, _policy: WriteFullPolicy) {}
     fn set_on_mailbox_full(&mut self, _hook: MailboxFullHook) {}
+    fn set_max_in_flight(&mut self, _n: usize) {}
 
     async fn start(&self) -> Result<(), Error>;
     async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error>;

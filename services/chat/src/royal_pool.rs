@@ -1,9 +1,10 @@
 //! Royal instance pool: round-robin, per-instance circuit breaker, Consul refresh.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use arc_swap::ArcSwap;
 use bytes::Bytes;
 use kim_metrics::KimMetrics;
 use kim_naming::{DefaultRegistration, Naming};
@@ -37,21 +38,13 @@ impl RpcCause {
 }
 
 pub struct RoyalPool {
-    clients: RwLock<Vec<Arc<RoyalClient>>>,
+    clients: ArcSwap<Vec<Arc<RoyalClient>>>,
     rr: AtomicUsize,
     bootstrap: Option<Arc<RoyalClient>>,
     naming: Option<Arc<dyn Naming>>,
     hmac: String,
     refresh: Duration,
     metrics: Option<Arc<KimMetrics>>,
-}
-
-fn lock_read<T>(m: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
-    m.read().unwrap_or_else(|e| e.into_inner())
-}
-
-fn lock_write<T>(m: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
-    m.write().unwrap_or_else(|e| e.into_inner())
 }
 
 impl RoyalPool {
@@ -85,7 +78,7 @@ impl RoyalPool {
             None => Vec::new(),
         };
         Ok(Self {
-            clients: RwLock::new(clients),
+            clients: ArcSwap::from_pointee(clients),
             rr: AtomicUsize::new(0),
             bootstrap,
             naming,
@@ -124,11 +117,11 @@ impl RoyalPool {
     fn replace_with(&self, bases: Vec<String>) -> Result<(), StoreError> {
         if bases.is_empty() {
             if let Some(boot) = &self.bootstrap {
-                *lock_write(&self.clients) = vec![boot.clone()];
+                self.clients.store(Arc::new(vec![boot.clone()]));
             }
             return Ok(());
         }
-        let current = lock_read(&self.clients).clone();
+        let current = self.clients.load();
         let mut next = Vec::with_capacity(bases.len());
         for base in bases {
             if let Some(existing) = current.iter().find(|c| c.base == base) {
@@ -137,12 +130,12 @@ impl RoyalPool {
                 next.push(Arc::new(RoyalClient::with_hmac(&base, &self.hmac)?));
             }
         }
-        *lock_write(&self.clients) = next;
+        self.clients.store(Arc::new(next));
         Ok(())
     }
 
     pub fn pick(&self) -> Result<Arc<RoyalClient>, StoreError> {
-        let clients = lock_read(&self.clients);
+        let clients = self.clients.load();
         // Probe opened clients first so a recovered backend can re-enter rotation
         // even while other instances are still healthy.
         for c in clients.iter() {
@@ -445,7 +438,9 @@ mod tests {
         let bad = spawn_status(StatusCode::SERVICE_UNAVAILABLE).await;
         let pool = Arc::new(RoyalPool::new(Some(&good), None, "test-hmac").unwrap());
         let bad_c = Arc::new(RoyalClient::with_hmac(&bad, "test-hmac").unwrap());
-        lock_write(&pool.clients).push(bad_c.clone());
+        let mut cur = (**pool.clients.load()).clone();
+        cur.push(bad_c.clone());
+        pool.clients.store(Arc::new(cur));
 
         let body = kim_protocol::pkt::AccountPair {
             account: "a".into(),
@@ -499,7 +494,9 @@ mod tests {
         }
         assert!(recovering_c.is_open());
         recovering_c.half_open_at_for_test(0);
-        lock_write(&pool.clients).push(recovering_c.clone());
+        let mut cur = (**pool.clients.load()).clone();
+        cur.push(recovering_c.clone());
+        pool.clients.store(Arc::new(cur));
 
         let recovering_base = recovering.trim_end_matches('/');
         let good_base = good.trim_end_matches('/');
@@ -514,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn no_instance_is_backend() {
         let pool = RoyalPool {
-            clients: RwLock::new(Vec::new()),
+            clients: ArcSwap::from_pointee(Vec::new()),
             rr: AtomicUsize::new(0),
             bootstrap: None,
             naming: None,
@@ -647,7 +644,7 @@ mod tests {
     async fn rpc_no_instance_records_no_client() {
         let metrics = KimMetrics::new("t", "chat").unwrap();
         let pool = RoyalPool {
-            clients: RwLock::new(Vec::new()),
+            clients: ArcSwap::from_pointee(Vec::new()),
             rr: AtomicUsize::new(0),
             bootstrap: None,
             naming: None,

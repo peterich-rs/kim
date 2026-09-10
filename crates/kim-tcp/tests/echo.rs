@@ -118,6 +118,46 @@ async fn send_while_read_pending() {
 }
 
 #[tokio::test]
+async fn heartbeat_ping_does_not_block_send() {
+    let handler = Arc::new(EchoHandler);
+    let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let mut client = TcpClient::new(
+        "erin",
+        "test",
+        ClientOptions {
+            heartbeat: Some(Duration::from_millis(15)),
+            ..ClientOptions::default()
+        },
+    );
+    client.set_dialer(Arc::new(IdentityDialer));
+    client.connect(&addr.to_string()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    client
+        .send(Bytes::from_static(b"hello"))
+        .await
+        .expect("send must succeed while heartbeat pings enqueue");
+    let frame = tokio::time::timeout(Duration::from_secs(2), client.read())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&frame.payload[..], b"hello from server");
+    client.close().await.unwrap();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
 async fn push_then_close_channel_emits_binary_then_close() {
     let handler = Arc::new(EchoHandler);
     let mut server = TcpServer::bind("127.0.0.1:0").await.unwrap();
@@ -145,7 +185,7 @@ async fn push_then_close_channel_emits_binary_then_close() {
     client.connect(&addr.to_string()).await.unwrap();
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
-            if server.channel_map().contains("dave").await {
+            if server.channel_map().contains("dave") {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -305,7 +345,7 @@ async fn duplicate_id_abandons_without_ready() {
     let _first = connect_named(&addr, "dup").await;
     wait_until(|| {
         let server = server.clone();
-        async move { server.channel_map().contains("dup").await }
+        async move { server.channel_map().contains("dup") }
     })
     .await;
     wait_until(|| {
@@ -354,7 +394,7 @@ async fn missing_listener_abandons_without_ready() {
     .await;
     wait_until(|| {
         let server = server.clone();
-        async move { !server.channel_map().contains("solo").await }
+        async move { !server.channel_map().contains("solo") }
     })
     .await;
 
@@ -393,7 +433,7 @@ async fn ready_err_closes_without_abandon() {
     .await;
     wait_until(|| {
         let server = server.clone();
-        async move { !server.channel_map().contains("fail").await }
+        async move { !server.channel_map().contains("fail") }
     })
     .await;
 

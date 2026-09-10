@@ -54,6 +54,19 @@ pub struct Idc {
 pub struct Region {
     pub id: String,
     pub idcs: Vec<Idc>,
+    /// Precomputed weight copies of IDC indices. Empty if all weights are 0.
+    pub slots: Vec<usize>,
+}
+
+impl Region {
+    pub fn new(id: impl Into<String>, idcs: Vec<Idc>) -> Self {
+        let slots = build_slots(&idcs.iter().map(|i| i.weight).collect::<Vec<_>>());
+        Self {
+            id: id.into(),
+            idcs,
+            slots,
+        }
+    }
 }
 
 pub struct Lookup {
@@ -162,12 +175,11 @@ pub fn claims_hash_key(claims: &Claims) -> String {
 }
 
 fn pick_idc(region: &Region, key: &str) -> Option<String> {
-    let slots = build_slots(&region.idcs.iter().map(|i| i.weight).collect::<Vec<_>>());
-    if slots.is_empty() {
+    if region.slots.is_empty() {
         return region.idcs.first().map(|i| i.id.clone());
     }
-    let i = crc32fast::hash(key.as_bytes()) as usize % slots.len();
-    Some(region.idcs[slots[i]].id.clone())
+    let i = crc32fast::hash(key.as_bytes()) as usize % region.slots.len();
+    Some(region.idcs[region.slots[i]].id.clone())
 }
 
 fn pick_one(list: &[kim_naming::DefaultRegistration], key: &str) -> String {

@@ -55,6 +55,8 @@ struct SelfSection {
     hmac_secret: String,
     #[serde(default)]
     token_ttl_secs: i64,
+    #[serde(default)]
+    max_in_flight: usize,
 }
 
 #[derive(Deserialize)]
@@ -86,6 +88,7 @@ pub struct GatewayConfig {
     pub royal_url: String,
     pub hmac_secret: String,
     pub token_ttl_secs: i64,
+    pub max_in_flight: usize,
     pub services: Vec<DefaultRegistration>,
     pub route: Option<RouteFile>,
 }
@@ -127,6 +130,11 @@ pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Err
         royal_url: cfg.this.royal_url,
         hmac_secret: cfg.this.hmac_secret,
         token_ttl_secs: cfg.this.token_ttl_secs,
+        max_in_flight: if cfg.this.max_in_flight == 0 {
+            kim_core::DEFAULT_SERVER_MAX_IN_FLIGHT
+        } else {
+            cfg.this.max_in_flight
+        },
         services,
         route: cfg.route,
     })
@@ -295,6 +303,7 @@ where
         }
     }
     server.set_write_full(WriteFullPolicy::Disconnect);
+    server.set_max_in_flight(cfg.max_in_flight);
     if let Some(m) = &metrics {
         let mm = m.clone();
         server.set_on_mailbox_full(Arc::new(move || mm.on_mailbox_full()));

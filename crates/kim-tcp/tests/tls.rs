@@ -202,11 +202,11 @@ async fn max_connections_rejects_second() {
     .await;
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert!(
-        server.channel_map().contains("first").await,
+        server.channel_map().contains("first"),
         "first connection keeps the only permit"
     );
     assert!(
-        !server.channel_map().contains("second").await,
+        !server.channel_map().contains("second"),
         "second connection must be closed before handshake when max=1"
     );
     first.close().await.unwrap();

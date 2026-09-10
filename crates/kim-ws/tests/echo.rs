@@ -104,7 +104,7 @@ async fn push_then_close_channel_emits_binary_then_close() {
     client.connect(&format!("ws://{addr}/")).await.unwrap();
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
-            if server.channel_map().contains("dave").await {
+            if server.channel_map().contains("dave") {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(5)).await;

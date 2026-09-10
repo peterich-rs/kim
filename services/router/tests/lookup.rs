@@ -53,13 +53,13 @@ fn local_lookup(regs: Vec<DefaultRegistration>) -> Lookup {
             country: "default".into(),
             region: "local".into(),
         }],
-        regions: vec![Region {
-            id: "local".into(),
-            idcs: vec![Idc {
+        regions: vec![Region::new(
+            "local",
+            vec![Idc {
                 id: "local".into(),
                 weight: 100,
             }],
-        }],
+        )],
         jwt_secret: jwt_secret(),
     }
 }
@@ -138,20 +138,20 @@ async fn ip_map_hk() {
             },
         ],
         regions: vec![
-            Region {
-                id: "local".into(),
-                idcs: vec![Idc {
+            Region::new(
+                "local",
+                vec![Idc {
                     id: "local".into(),
                     weight: 100,
                 }],
-            },
-            Region {
-                id: "hk".into(),
-                idcs: vec![Idc {
+            ),
+            Region::new(
+                "hk",
+                vec![Idc {
                     id: "hk".into(),
                     weight: 100,
                 }],
-            },
+            ),
         ],
         jwt_secret: jwt_secret(),
     };
