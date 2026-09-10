@@ -57,7 +57,7 @@ dependencies:
   collection: ^1.19.1
   flutter_localizations:
     sdk: flutter
-  lucide_icons_flutter: ^3.1.17
+  lucide_icons_flutter: ^3.1.19
   kim_media_picker:
     path: plugins/kim_media_picker
   sqlite3: ^3.5.2
