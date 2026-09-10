@@ -89,12 +89,52 @@ impl PresenceHub {
                 return;
             }
         };
-        // Only announce when transitioning OFFLINE→ONLINE (sole location).
-        if locs.len() != 1 {
+        if locs.len() == 1 {
+            self.fanout(app, account, PresenceStatus::PresenceOnline, 0)
+                .await;
             return;
         }
-        self.fanout(app, account, PresenceStatus::PresenceOnline, 0)
-            .await;
+        if locs.len() < 2 {
+            return;
+        }
+        // Login often wins the race against the dying channel's logout, so we
+        // briefly see old+new locations and would skip ONLINE. Spawn a short
+        // poll (must not await here — that would block the chat handler and
+        // prevent the logout from running). If we settle on one location,
+        // announce ONLINE. Keep the window short so a later multi-device leave
+        // cannot be mistaken for this reconnect edge.
+        let app = app.to_string();
+        let account = account.to_string();
+        let interest = self.interest.clone();
+        let storage = self.storage.clone();
+        let dispatcher = self.dispatcher.clone();
+        let gens = self.gens.clone();
+        let debounce = self.debounce;
+        tokio::spawn(async move {
+            for _ in 0..10 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                match storage.list_locations(&account).await {
+                    Ok(locs) if locs.len() == 1 => {
+                        let hub = PresenceHub {
+                            interest,
+                            storage,
+                            dispatcher,
+                            debounce,
+                            gens,
+                        };
+                        hub.fanout(&app, &account, PresenceStatus::PresenceOnline, 0)
+                            .await;
+                        return;
+                    }
+                    Ok(locs) if locs.len() > 1 => continue,
+                    Ok(_) | Err(SessionError::NotFound) => return,
+                    Err(err) => {
+                        warn!(%err, account, "presence reconnect list_locations");
+                        return;
+                    }
+                }
+            }
+        });
     }
 
     /// After a location was removed: clear this channel's room interest, then
@@ -280,6 +320,64 @@ mod tests {
             hub.gens_len() <= 1,
             "gens leaked across cycles: {}",
             hub.gens_len()
+        );
+    }
+
+    #[tokio::test]
+    async fn reconnect_race_still_announces_online() {
+        use kim_protocol::INBOX_KIND_USER;
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+        struct RecDisp {
+            pushes: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl Dispatcher for RecDisp {
+            async fn push(
+                &self,
+                _gateway: &str,
+                _channels: &[String],
+                _pkt: LogicPkt,
+            ) -> Result<(), RouterError> {
+                self.pushes.fetch_add(1, AtomicOrdering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let storage = Arc::new(MemorySessionStore::new());
+        let interest = Arc::new(MemoryRoomInterest::new());
+        interest
+            .enter("kim", "viewer", "ch-v", "alice", INBOX_KIND_USER)
+            .await
+            .unwrap();
+        storage.add(&session("ch-v", "viewer")).await.unwrap();
+        storage.add(&session("ch-old", "alice")).await.unwrap();
+
+        let pushes = Arc::new(AtomicUsize::new(0));
+        let hub = PresenceHub::new(
+            interest,
+            storage.clone(),
+            Arc::new(RecDisp {
+                pushes: pushes.clone(),
+            }),
+            Duration::from_millis(500),
+        );
+
+        // Login wins: new location added while old still present.
+        storage.add(&session("ch-new", "alice")).await.unwrap();
+        hub.on_location_added("kim", "alice").await;
+        assert_eq!(pushes.load(AtomicOrdering::SeqCst), 0);
+
+        // Dying channel logout lands shortly after.
+        storage.delete("alice", "ch-old").await.unwrap();
+        hub.on_location_removed("kim", "alice", "ch-old").await;
+
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(
+            pushes.load(AtomicOrdering::SeqCst),
+            1,
+            "reconnect race must still fanout ONLINE once old location is gone"
         );
     }
 
