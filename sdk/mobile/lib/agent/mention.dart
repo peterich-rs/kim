@@ -9,6 +9,7 @@ const kGooseAgentName = '助手';
 const kGooseAgentPerson = KimPerson(
   account: kGooseAgentId,
   nickname: kGooseAgentName,
+  kind: ProfileKind.bot,
 );
 
 bool isGooseAgentDest(String dest) => dest == kGooseAgentId;

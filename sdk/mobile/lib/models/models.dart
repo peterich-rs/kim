@@ -2,18 +2,28 @@ library;
 
 enum ThreadKind { user, group }
 
+/// `UserProfile.kind`: 1 human, 2 bot. Missing/0 on the wire is human.
+class ProfileKind {
+  static const user = 1;
+  static const bot = 2;
+}
+
 class KimPerson {
   const KimPerson({
     required this.account,
     required this.nickname,
     this.avatar = '',
+    this.kind = ProfileKind.user,
   });
 
   final String account;
   final String nickname;
   final String avatar;
+  final int kind;
 
   String get title => nickname.isEmpty ? account : nickname;
+
+  bool get isBot => kind == ProfileKind.bot;
 }
 
 enum ConnStatus { connecting, online, reconnecting, offline }

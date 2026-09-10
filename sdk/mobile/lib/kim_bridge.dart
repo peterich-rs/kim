@@ -533,6 +533,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
             account: '${item['account'] ?? ''}',
             nickname: '${item['nickname'] ?? ''}',
             avatar: '${item['avatar'] ?? ''}',
+            kind: _profileKind(item['kind']),
           ),
     ].where((p) => p.account.isNotEmpty).toList();
   }
@@ -580,7 +581,17 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
       nickname: '${decoded['nickname'] ?? ''}',
       avatar: '${decoded['avatar'] ?? ''}',
+      kind: _profileKind(decoded['kind']),
     );
+  }
+
+  int _profileKind(Object? raw) {
+    final n = raw is int
+        ? raw
+        : raw is num
+        ? raw.toInt()
+        : ProfileKind.user;
+    return n == ProfileKind.bot ? ProfileKind.bot : ProfileKind.user;
   }
 
   @override

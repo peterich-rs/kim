@@ -13,10 +13,13 @@ pub struct Profile {
     pub nickname: String,
     #[serde(default)]
     pub avatar: String,
+    /// `PROFILE_KIND_USER` (1) or `PROFILE_KIND_BOT` (2).
+    #[serde(default)]
+    pub kind: i32,
 }
 
 impl Profile {
-    pub fn from_wire(account: String, nickname: String, avatar: String) -> Self {
+    pub fn from_wire(account: String, nickname: String, avatar: String, kind: i32) -> Self {
         let nickname = if nickname.is_empty() {
             account.clone()
         } else {
@@ -26,7 +29,12 @@ impl Profile {
             account,
             nickname,
             avatar,
+            kind: kim_protocol::profile_kind(kind),
         }
+    }
+
+    pub fn is_bot(&self) -> bool {
+        self.kind == kim_protocol::PROFILE_KIND_BOT
     }
 
     pub fn encode_list(users: &[Self]) -> Result<String, String> {

@@ -8,7 +8,9 @@
 
 ## 人
 
-`users` 增加 `nickname` / `avatar` / `bio`。注册与 upsert 时昵称默认等于账号。昵称 1–32 字，简介 ≤160，头像 URL ≤512。
+`users` 有 `nickname` / `avatar` / `bio` / `kind` / `owner_account`。注册与 upsert 时昵称默认等于账号，`kind=user`。昵称 1–32 字，简介 ≤160，头像 URL ≤512。
+
+`UserProfile.kind`（与 inbox 的 user/group `kind` 不是同一个字段）：库里只有 `user` / `bot` 两档，现有行加列时 `DEFAULT 'user'`。线上 `1` 人、`2` 助手；proto3 缺字段是 `0`，读入时当成 `1`。搜索不加助手账号。
 
 | command | dest | 行为 |
 |---|---|---|

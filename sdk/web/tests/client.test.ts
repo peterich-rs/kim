@@ -301,6 +301,7 @@ describe("KIMClient", () => {
         nickname: "Ali",
         avatar: "a.png",
         bio: "x",
+        kind: 1,
       }),
       12,
     );

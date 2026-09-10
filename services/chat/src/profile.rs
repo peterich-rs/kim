@@ -17,6 +17,7 @@ pub(crate) fn to_pb(p: &UserProfile) -> PbProfile {
         nickname: p.nickname.clone(),
         avatar: p.avatar.clone(),
         bio: p.bio.clone(),
+        kind: p.kind,
     }
 }
 
