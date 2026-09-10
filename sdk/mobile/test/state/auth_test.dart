@@ -70,6 +70,17 @@ void main() {
     await env.container.read(authProvider.notifier).signOut();
     expect(env.fake.logouts, 1);
     expect(env.container.read(authProvider).signedIn, isFalse);
+    expect(env.container.read(authProvider).notice, isNull);
+    expect(env.runtime.settings.token, isEmpty);
+  });
+
+  test('signOut(notice) keeps the kicked copy on the login screen', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await env.container
+        .read(authProvider.notifier)
+        .signOut(notice: Copy.kicked);
+    expect(env.container.read(authProvider).signedIn, isFalse);
+    expect(env.container.read(authProvider).notice, Copy.kicked);
     expect(env.runtime.settings.token, isEmpty);
   });
 }

@@ -229,7 +229,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
           ),
         );
       case KimEventKind.kick:
-        unawaited(ref.read(authProvider.notifier).signOut());
+        unawaited(ref.read(authProvider.notifier).signOut(notice: Copy.kicked));
       case KimEventKind.authExpired:
         unawaited(ref.read(authProvider.notifier).signOut(expired: true));
       case KimEventKind.friend:

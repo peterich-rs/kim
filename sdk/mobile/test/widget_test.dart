@@ -168,6 +168,41 @@ void main() {
     expect(fake.connects, greaterThan(0));
   });
 
+  testWidgets('kick returns to the login form with a notice', (tester) async {
+    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+    final fake = FakeKim();
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+    expect(find.byType(KimDock), findsOneWidget);
+    expect(fake.connects, greaterThan(0));
+
+    fake.emitKick();
+    await pumpUi(tester);
+    expect(find.text(Copy.loginTitle), findsWidgets);
+    expect(find.text(Copy.kicked), findsOneWidget);
+    expect(find.byType(KimDock), findsNothing);
+    expect(env.runtime.settings.token, isEmpty);
+  });
+
+  testWidgets('login IME done and button do not double-submit', (tester) async {
+    final env = await testRuntime();
+    final fake = FakeKim()..loginDelay = const Duration(milliseconds: 80);
+    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await pumpUi(tester);
+
+    await tester.enterText(find.byType(TextField).first, 'alice');
+    await tester.enterText(find.byType(TextField).at(1), 'secret123');
+    tester
+        .widget<TextField>(find.byType(TextField).at(1))
+        .onEditingComplete
+        ?.call();
+    await tester.tap(find.byKey(const Key('auth-submit')));
+    await pumpUi(tester);
+
+    expect(fake.logins, 1);
+    expect(find.byType(KimDock), findsOneWidget);
+  });
+
   testWidgets('keychain entitlement error is not bad credentials', (
     tester,
   ) async {

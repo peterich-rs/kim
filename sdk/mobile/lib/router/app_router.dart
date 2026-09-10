@@ -30,6 +30,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final path = state.uri.path;
       Future<void>.microtask(() {
+        if (!ref.mounted) {
+          return;
+        }
         ref.read(locationProvider.notifier).setPath(path);
       });
       final signedIn = ref.read(sessionProvider).signedIn;

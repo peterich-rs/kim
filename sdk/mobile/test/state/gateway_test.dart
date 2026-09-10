@@ -91,13 +91,14 @@ void main() {
     expect(env.runtime.settings.token, isEmpty);
   });
 
-  test('kick signs out without session-expired notice', () async {
+  test('kick signs out with kicked notice', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.container.read(linkProvider);
     await _tick();
-    env.fake.eventsController.add(const KimEvent(kind: KimEventKind.kick));
+    env.fake.emitKick();
     await _waitSignedOut(env);
-    expect(env.container.read(authProvider).notice, isNull);
+    expect(env.container.read(authProvider).notice, Copy.kicked);
+    expect(env.runtime.settings.token, isEmpty);
   });
 
   test('401 connect failure stays offline', () async {
