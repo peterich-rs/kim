@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
@@ -31,6 +32,7 @@ Future<KimHarness> kimHarness({
   String token = '',
   String account = '',
   bool online = true,
+  List<Override> overrides = const [],
 }) async {
   SharedPreferences.setMockInitialValues({});
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
@@ -57,13 +59,16 @@ Future<KimHarness> kimHarness({
   addTearDown(store.close);
   final container = ProviderContainer.test(
     retry: kimRetry,
-    overrides: kimProviderOverrides(
-      runtime: runtime,
-      auth: fake,
-      client: fake,
-      store: store,
-      media: FakeKimMedia(),
-    ),
+    overrides: [
+      ...kimProviderOverrides(
+        runtime: runtime,
+        auth: fake,
+        client: fake,
+        store: store,
+        media: FakeKimMedia(),
+      ),
+      ...overrides,
+    ],
   );
   return KimHarness(
     container: container,
