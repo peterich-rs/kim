@@ -25,7 +25,7 @@ kim-ws.workspace = true
 redis.workspace = true
 reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

@@ -18,7 +18,7 @@ serde = { workspace = true }
 socket2 = { version = "0.6", features = ["all"] }
 tokio.workspace = true
 tokio-rustls = "0.26"
-toml = "0.8"
+toml = "1.1"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
