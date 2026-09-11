@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/rust_agent/api/session.dart';
 import 'src/rust_agent/frb_generated.dart';
@@ -53,6 +54,8 @@ class NativeAgentSession implements AgentSessionPort {
   SessionSnapshotDto snapshot() => _inner.snapshot();
 }
 
+final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
+
 class AgentBridge {
   static bool _inited = false;
 
@@ -78,5 +81,20 @@ class AgentBridge {
       opts: opts,
     );
     return NativeAgentSession(session);
+  }
+
+  Future<List<String>> fetchModels(SessionOpenOpts opts) async {
+    await ensure();
+    return fetchSupportedModels(opts: opts);
+  }
+
+  Future<List<String>> builtinProfiles() async {
+    await ensure();
+    return listBuiltinProfiles();
+  }
+
+  Future<List<String>> bundledProviders() async {
+    await ensure();
+    return listBundledProviders();
   }
 }

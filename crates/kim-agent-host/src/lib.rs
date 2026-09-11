@@ -31,7 +31,10 @@ pub use profile::{
     builtin_templates, AgentProfile, ExtensionSpec, LegacyOpenOpts, ModelSpec, PermissionConfig,
     PermissionDefault, ProviderSpec, ResolvedProfile, SandboxMode, SandboxPolicy, ToolSet,
 };
-pub use provider::{ProviderConfig, ProviderKind};
+pub use provider::{
+    bundled_declarative_json, bundled_provider_summaries, fetch_models, BundledProviderSummary,
+    ProviderConfig, ProviderKind, SessionKeyResolver,
+};
 
 pub(crate) use events::HostEffect;
 

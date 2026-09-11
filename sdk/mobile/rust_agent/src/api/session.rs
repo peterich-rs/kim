@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kim_agent_host::{
-    AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ResolvedProfile,
+    AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ProviderSpec, ResolvedProfile,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -345,6 +345,41 @@ impl AgentSession {
         let _ = self.abort();
         Ok(())
     }
+}
+
+pub fn fetch_supported_models(opts: SessionOpenOpts) -> Result<Vec<String>, String> {
+    let _guard = rt().enter();
+    let spec = ProviderSpec {
+        kind: opts.llm_backend.clone(),
+        base_url: opts.base_url.clone(),
+        key_ref: String::new(),
+    };
+    rt().block_on(async {
+        kim_agent_host::fetch_models(&spec, &opts.api_key)
+            .await
+            .map_err(|e| e.to_string())
+    })
+}
+
+pub fn list_builtin_profiles() -> Result<Vec<String>, String> {
+    kim_agent_host::builtin_templates()
+        .into_iter()
+        .map(|p| serde_json::to_string(&p).map_err(|e| e.to_string()))
+        .collect()
+}
+
+pub fn list_bundled_providers() -> Result<Vec<String>, String> {
+    Ok(kim_agent_host::bundled_provider_summaries()
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name,
+                "display_name": s.display_name,
+                "mobile": s.mobile,
+            })
+            .to_string()
+        })
+        .collect())
 }
 
 fn map_host_err(err: HostError) -> String {

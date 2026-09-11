@@ -37,6 +37,30 @@ void main() {
     expect(s.isLive, isTrue);
   });
 
+  test('thinking effort is written to prefs', () async {
+    SharedPreferences.setMockInitialValues({});
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+      {},
+    );
+    final container = ProviderContainer.test();
+    addTearDown(container.dispose);
+    await container.read(agentSettingsProvider.notifier).save(
+      const AgentSettings(
+        llmBackend: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o',
+        apiKey: 'sk-test',
+        enableFsTools: false,
+        bashEnabled: false,
+        thinkingEffort: 'high',
+      ),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('agent.thinking_effort'), 'high');
+    await container.read(agentSettingsProvider.notifier).reload();
+    expect(container.read(agentSettingsProvider).thinkingEffort, 'high');
+  });
+
   test(
     'first read is empty defaults; ensureLoaded hydrates keychain',
     () async {

@@ -137,8 +137,6 @@ class ChatAgent {
   }
 }
 
-final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
-
 final chatAgentProvider = Provider<ChatAgent>((ref) {
   final agent = ChatAgent(ref);
   ref.onDispose(() {

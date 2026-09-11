@@ -489,6 +489,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'The assistant in Contacts and Chats is on-device Goose. Open it to talk, or @助手 in other threads.';
 
   @override
+  String get agentProviderCompatible => 'OpenAI compatible';
+
+  @override
+  String get agentFetchModels => 'Fetch models';
+
+  @override
+  String get agentReasoning => 'Reasoning';
+
+  @override
+  String get agentReasoningOff => 'Off';
+
+  @override
+  String get agentReasoningLow => 'Low';
+
+  @override
+  String get agentReasoningMedium => 'Med';
+
+  @override
+  String get agentReasoningHigh => 'High';
+
+  @override
+  String get agentReasoningMax => 'Max';
+
+  @override
+  String get agentFsLater => 'Workspace files (later)';
+
+  @override
+  String get agentBashLater => 'Shell (later)';
+
+  @override
+  String get agentMoreComing => 'More agents coming soon';
+
+  @override
+  String get agentNeedsEnv => 'desktop / needs env';
+
+  @override
   String get agentComposerHint => 'Send a message, or @助手';
 
   @override

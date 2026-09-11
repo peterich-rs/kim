@@ -21,6 +21,15 @@ Future<AgentSession> sessionOpen({
   opts: opts,
 );
 
+Future<List<String>> fetchSupportedModels({required SessionOpenOpts opts}) =>
+    AgentRustLib.instance.api.crateApiSessionFetchSupportedModels(opts: opts);
+
+Future<List<String>> listBuiltinProfiles() =>
+    AgentRustLib.instance.api.crateApiSessionListBuiltinProfiles();
+
+Future<List<String>> listBundledProviders() =>
+    AgentRustLib.instance.api.crateApiSessionListBundledProviders();
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
 abstract class AgentSession implements RustOpaqueInterface {
   Future<void> abort();

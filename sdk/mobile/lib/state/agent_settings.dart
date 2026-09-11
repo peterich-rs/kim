@@ -11,6 +11,7 @@ const _kBaseUrl = 'agent.base_url';
 const _kModel = 'agent.model';
 const _kFsTools = 'agent.enable_fs_tools';
 const _kBash = 'agent.bash_enabled';
+const _kThinking = 'agent.thinking_effort';
 const _kApiKey = 'agent.api_key';
 
 class AgentSettings {
@@ -21,6 +22,7 @@ class AgentSettings {
     required this.apiKey,
     required this.enableFsTools,
     required this.bashEnabled,
+    this.thinkingEffort = '',
   });
 
   final String llmBackend;
@@ -29,13 +31,16 @@ class AgentSettings {
   final String apiKey;
   final bool enableFsTools;
   final bool bashEnabled;
+  final String thinkingEffort;
 
   bool get isLive =>
       llmBackend == 'openai' ||
       llmBackend == 'anthropic' ||
+      llmBackend == 'openai_compatible' ||
       llmBackend == 'responses_http' ||
       llmBackend == 'live' ||
-      llmBackend == 'responses';
+      llmBackend == 'responses' ||
+      llmBackend.isNotEmpty;
 
   AgentSettings copyWith({
     String? llmBackend,
@@ -44,6 +49,7 @@ class AgentSettings {
     String? apiKey,
     bool? enableFsTools,
     bool? bashEnabled,
+    String? thinkingEffort,
   }) {
     return AgentSettings(
       llmBackend: llmBackend ?? this.llmBackend,
@@ -52,6 +58,7 @@ class AgentSettings {
       apiKey: apiKey ?? this.apiKey,
       enableFsTools: enableFsTools ?? this.enableFsTools,
       bashEnabled: bashEnabled ?? this.bashEnabled,
+      thinkingEffort: thinkingEffort ?? this.thinkingEffort,
     );
   }
 
@@ -66,7 +73,7 @@ class AgentSettings {
       bashEnabled: bashEnabled,
       profileId: 'goose',
       profileJson: '',
-      thinkingEffort: '',
+      thinkingEffort: thinkingEffort,
       gooseMode: '',
       enableKimTools: false,
       enableApprovals: false,
@@ -80,6 +87,7 @@ class AgentSettings {
     apiKey: '',
     enableFsTools: false,
     bashEnabled: false,
+    thinkingEffort: '',
   );
 }
 
@@ -124,6 +132,8 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
       enableFsTools:
           prefs.getBool(_kFsTools) ?? AgentSettings.defaults.enableFsTools,
       bashEnabled: prefs.getBool(_kBash) ?? AgentSettings.defaults.bashEnabled,
+      thinkingEffort:
+          prefs.getString(_kThinking) ?? AgentSettings.defaults.thinkingEffort,
     );
   }
 
@@ -135,6 +145,7 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
     await prefs.setString(_kModel, next.model);
     await prefs.setBool(_kFsTools, next.enableFsTools);
     await prefs.setBool(_kBash, next.bashEnabled);
+    await prefs.setString(_kThinking, next.thinkingEffort);
     try {
       if (next.apiKey.isEmpty) {
         await _secure.delete(key: _kApiKey);

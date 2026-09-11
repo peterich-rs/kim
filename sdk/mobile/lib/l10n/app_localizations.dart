@@ -1034,6 +1034,78 @@ abstract class AppLocalizations {
   /// **'通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。'**
   String get agentGooseHint;
 
+  /// No description provided for @agentProviderCompatible.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 兼容'**
+  String get agentProviderCompatible;
+
+  /// No description provided for @agentFetchModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉取模型'**
+  String get agentFetchModels;
+
+  /// No description provided for @agentReasoning.
+  ///
+  /// In zh, this message translates to:
+  /// **'推理强度'**
+  String get agentReasoning;
+
+  /// No description provided for @agentReasoningOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关'**
+  String get agentReasoningOff;
+
+  /// No description provided for @agentReasoningLow.
+  ///
+  /// In zh, this message translates to:
+  /// **'低'**
+  String get agentReasoningLow;
+
+  /// No description provided for @agentReasoningMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'中'**
+  String get agentReasoningMedium;
+
+  /// No description provided for @agentReasoningHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高'**
+  String get agentReasoningHigh;
+
+  /// No description provided for @agentReasoningMax.
+  ///
+  /// In zh, this message translates to:
+  /// **'最高'**
+  String get agentReasoningMax;
+
+  /// No description provided for @agentFsLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区文件（后续版本）'**
+  String get agentFsLater;
+
+  /// No description provided for @agentBashLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'命令行（后续版本）'**
+  String get agentBashLater;
+
+  /// No description provided for @agentMoreComing.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多 Agent（即将推出）'**
+  String get agentMoreComing;
+
+  /// No description provided for @agentNeedsEnv.
+  ///
+  /// In zh, this message translates to:
+  /// **'桌面/需环境变量'**
+  String get agentNeedsEnv;
+
   /// No description provided for @agentComposerHint.
   ///
   /// In zh, this message translates to:

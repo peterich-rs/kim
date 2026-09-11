@@ -71,7 +71,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1139561179;
+  int get rustContentHash => 1973494284;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -109,7 +109,15 @@ abstract class AgentRustLibApi extends BaseApi {
     required AgentSession that,
   });
 
+  Future<List<String>> crateApiSessionFetchSupportedModels({
+    required SessionOpenOpts opts,
+  });
+
   Future<void> crateApiSimpleInitApp();
+
+  Future<List<String>> crateApiSessionListBuiltinProfiles();
+
+  Future<List<String>> crateApiSessionListBundledProviders();
 
   Future<AgentSession> crateApiSessionSessionOpen({
     required String sqlitePath,
@@ -374,6 +382,39 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       );
 
   @override
+  Future<List<String>> crateApiSessionFetchSupportedModels({
+    required SessionOpenOpts opts,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_session_open_opts(opts, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionFetchSupportedModelsConstMeta,
+        argValues: [opts],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionFetchSupportedModelsConstMeta =>
+      const TaskConstMeta(
+        debugName: "fetch_supported_models",
+        argNames: ["opts"],
+      );
+
+  @override
   Future<void> crateApiSimpleInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -382,7 +423,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -401,6 +442,60 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
+  Future<List<String>> crateApiSessionListBuiltinProfiles() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionListBuiltinProfilesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionListBuiltinProfilesConstMeta =>
+      const TaskConstMeta(debugName: "list_builtin_profiles", argNames: []);
+
+  @override
+  Future<List<String>> crateApiSessionListBundledProviders() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionListBundledProvidersConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionListBundledProvidersConstMeta =>
+      const TaskConstMeta(debugName: "list_bundled_providers", argNames: []);
+
+  @override
   Future<AgentSession> crateApiSessionSessionOpen({
     required String sqlitePath,
     required String projectRoot,
@@ -416,7 +511,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 12,
             port: port_,
           );
         },
@@ -446,7 +541,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 13,
             port: port_,
           );
         },

@@ -480,6 +480,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentGooseHint => '通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。';
 
   @override
+  String get agentProviderCompatible => 'OpenAI 兼容';
+
+  @override
+  String get agentFetchModels => '拉取模型';
+
+  @override
+  String get agentReasoning => '推理强度';
+
+  @override
+  String get agentReasoningOff => '关';
+
+  @override
+  String get agentReasoningLow => '低';
+
+  @override
+  String get agentReasoningMedium => '中';
+
+  @override
+  String get agentReasoningHigh => '高';
+
+  @override
+  String get agentReasoningMax => '最高';
+
+  @override
+  String get agentFsLater => '工作区文件（后续版本）';
+
+  @override
+  String get agentBashLater => '命令行（后续版本）';
+
+  @override
+  String get agentMoreComing => '更多 Agent（即将推出）';
+
+  @override
+  String get agentNeedsEnv => '桌面/需环境变量';
+
+  @override
   String get agentComposerHint => '发消息，或 @助手';
 
   @override
