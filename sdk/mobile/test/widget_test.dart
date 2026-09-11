@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -162,10 +163,31 @@ void main() {
     expect(fake.lastUserAgent, contains('KIM/1.0.0'));
     expect(find.byType(KimDock), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text(kGooseAgentName), findsWidgets);
-    expect(find.text(Copy.noConversations), findsNothing);
+    expect(find.text(kGooseAgentName), findsNothing);
     expect(env.runtime.settings.token, 'tok.jwt');
     expect(fake.connects, greaterThan(0));
+  });
+
+  testWidgets('desktop login shows local Goose in the conversation list', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final env = await testRuntime();
+      final fake = FakeKim();
+      await tester.pumpWidget(host(env.runtime, fake, env.store));
+      await pumpUi(tester);
+
+      await tester.enterText(find.byType(TextField).first, 'alice');
+      await tester.enterText(find.byType(TextField).at(1), 'secret123');
+      await tapKey(tester, const Key('auth-submit'));
+
+      expect(find.byType(KimDock), findsOneWidget);
+      expect(find.text(kGooseAgentName), findsWidgets);
+      expect(find.text(Copy.noConversations), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('kick returns to the login form with a notice', (tester) async {
