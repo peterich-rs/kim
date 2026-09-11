@@ -19,6 +19,14 @@ export 'src/rust_agent/api/session.dart'
 abstract class AgentSessionPort {
   Stream<AgentUiEvent> listen();
   Future<String> prompt({required String text});
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  });
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  });
   Future<void> close();
   Future<void> abort();
   Future<void> reconfigure({required SessionOpenOpts opts});
@@ -36,6 +44,18 @@ class NativeAgentSession implements AgentSessionPort {
 
   @override
   Future<String> prompt({required String text}) => _inner.prompt(text: text);
+
+  @override
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  }) => _inner.promptWithContext(text: text, contextJson: contextJson);
+
+  @override
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  }) => _inner.completeTool(callId: callId, outputJson: outputJson);
 
   @override
   Future<void> close() => _inner.close();

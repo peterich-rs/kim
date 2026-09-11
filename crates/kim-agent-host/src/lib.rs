@@ -26,7 +26,7 @@ use goose_provider_types::model::ModelConfig;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-pub use events::{HostError, HostEvent};
+pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
 pub use machine::MachineFactory;
 pub use profile::{
     builtin_templates, AgentProfile, ExtensionSpec, LegacyOpenOpts, ModelSpec, PermissionConfig,
@@ -66,7 +66,6 @@ impl MachineSession for HostSession {
 
 struct Store {
     conversations: HashMap<String, Conversation>,
-    busy: HashMap<String, bool>,
 }
 
 struct Inner {
@@ -101,7 +100,6 @@ impl AgentHost {
                 project_root,
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
-                    busy: HashMap::new(),
                 }),
             }),
         })
@@ -128,7 +126,6 @@ impl AgentHost {
                 project_root: resolved.project_root,
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
-                    busy: HashMap::new(),
                 }),
             }),
         })
@@ -140,7 +137,19 @@ impl AgentHost {
         text: &str,
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
-    ) -> Result<String, HostError> {
+    ) -> Result<TurnOutcome, HostError> {
+        self.prompt_with_context(session_id, text, None, events, cancel)
+            .await
+    }
+
+    pub async fn prompt_with_context(
+        &self,
+        session_id: &str,
+        text: &str,
+        context_json: Option<&str>,
+        events: mpsc::Sender<HostEvent>,
+        cancel: CancellationToken,
+    ) -> Result<TurnOutcome, HostError> {
         let text = text.trim();
         if text.is_empty() {
             return Err(HostError::Failed("empty prompt".into()));
@@ -148,26 +157,102 @@ impl AgentHost {
 
         {
             let mut store = self.inner.store.lock().await;
-            if store.busy.get(session_id).copied().unwrap_or(false) {
-                return Err(HostError::Busy(session_id.to_string()));
-            }
-            store.busy.insert(session_id.to_string(), true);
             let conversation = store
                 .conversations
                 .entry(session_id.to_string())
                 .or_insert_with(Conversation::empty);
+            if let Some(ctx) = context_json.map(str::trim).filter(|s| !s.is_empty()) {
+                let preview = truncate_chars(ctx, 8 * 1024);
+                conversation.push(
+                    Message::user()
+                        .with_text(preview)
+                        .with_visibility(false, true),
+                );
+            }
             conversation.push(Message::user().with_text(text));
         }
 
         tracing::info!(session_id, "agent turn start");
-        let result = self.run_loop(session_id, events, cancel).await;
+        self.run_loop(session_id, events, cancel).await
+    }
 
+    pub async fn complete_tool(
+        &self,
+        session_id: &str,
+        call_id: &str,
+        output_json: &str,
+        events: mpsc::Sender<HostEvent>,
+        cancel: CancellationToken,
+    ) -> Result<TurnOutcome, HostError> {
         {
             let mut store = self.inner.store.lock().await;
-            store.busy.insert(session_id.to_string(), false);
+            let conversation = store
+                .conversations
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::UnknownSession(session_id.to_string()))?;
+            let pending = kim_pending(conversation, &self.inner.profile.tools);
+            if !pending.iter().any(|p| p.call_id == call_id) {
+                return Err(HostError::UnknownToolCall(call_id.to_string()));
+            }
+            let result = parse_tool_output(output_json);
+            let message = Message::user().with_tool_response(call_id.to_string(), Ok(result));
+            conversation.push(message);
         }
+        let remaining = self.pending_yields(session_id).await;
+        if !remaining.is_empty() {
+            let first = &remaining[0];
+            return Ok(TurnOutcome::Yielded {
+                kind: YieldKind::ToolRequest,
+                call_id: first.call_id.clone(),
+                name: first.name.clone(),
+            });
+        }
+        self.run_loop(session_id, events, cancel).await
+    }
 
-        result
+    pub async fn pending_yields(&self, session_id: &str) -> Vec<PendingYield> {
+        let store = self.inner.store.lock().await;
+        store
+            .conversations
+            .get(session_id)
+            .map(|c| kim_pending(c, &self.inner.profile.tools))
+            .unwrap_or_default()
+    }
+
+    pub async fn cancel_pending_tools(&self, session_id: &str) {
+        let mut store = self.inner.store.lock().await;
+        let Some(conversation) = store.conversations.get_mut(session_id) else {
+            return;
+        };
+        let pending = kim_pending(conversation, &self.inner.profile.tools);
+        if pending.is_empty() {
+            return;
+        }
+        let mut message = Message::user();
+        for p in pending {
+            message.add_tool_response_with_metadata(
+                p.call_id,
+                Ok(rmcp::model::CallToolResult::error(vec![
+                    rmcp::model::ContentBlock::text("cancelled"),
+                ])),
+                None,
+            );
+        }
+        conversation.push(message);
+    }
+
+    pub fn kim_tool_names(&self) -> Vec<&'static str> {
+        self.inner.profile.tools.kim_world_names()
+    }
+
+    #[cfg(test)]
+    async fn conversation_for_test(&self, session_id: &str) -> Conversation {
+        let store = self.inner.store.lock().await;
+        store
+            .conversations
+            .get(session_id)
+            .cloned()
+            .unwrap_or_else(Conversation::empty)
     }
 }
 
@@ -177,13 +262,14 @@ impl AgentHost {
         session_id: &str,
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
-    ) -> Result<String, HostError> {
+    ) -> Result<TurnOutcome, HostError> {
         let (tx, mut rx) = mpsc::channel(64);
         let emit = Emitter::new(tx, cancel.clone());
+        let events_for_pump = events.clone();
         let pump = tokio::spawn(async move {
             while let Some(ev) = rx.recv().await {
                 if let goose_agent::events::AgentEvent::Message(message) = ev {
-                    pump_message(&events, &message).await;
+                    pump_message(&events_for_pump, &message).await;
                 }
             }
         });
@@ -202,9 +288,22 @@ impl AgentHost {
 
         match outcome {
             Ok(session) => {
-                let text = last_assistant_text(&session.conversation);
-                tracing::info!(session_id, outcome = "finished", "agent turn end");
-                Ok(text)
+                let pending = kim_pending(&session.conversation, &self.inner.profile.tools);
+                if let Some(first) = pending.first() {
+                    tracing::info!(session_id, outcome = "yielded", "agent turn end");
+                    Ok(TurnOutcome::Yielded {
+                        kind: YieldKind::ToolRequest,
+                        call_id: first.call_id.clone(),
+                        name: first.name.clone(),
+                    })
+                } else {
+                    let text = last_assistant_text(&session.conversation);
+                    let _ = events
+                        .send(HostEvent::Finished { text: text.clone() })
+                        .await;
+                    tracing::info!(session_id, outcome = "finished", "agent turn end");
+                    Ok(TurnOutcome::Finished { text })
+                }
             }
             Err(err) => {
                 tracing::info!(session_id, outcome = "failed", "agent turn end");
@@ -327,6 +426,15 @@ async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
     for block in &message.content {
         match block {
             MessageContent::ToolRequest(req) => {
+                let name = req
+                    .tool_call
+                    .as_ref()
+                    .ok()
+                    .map(|c| c.name.to_string())
+                    .unwrap_or_default();
+                if is_kim_world_tool(&name) {
+                    continue;
+                }
                 let (name, arguments_json) = match req.tool_call.as_ref() {
                     Ok(call) => (
                         call.name.to_string(),
@@ -368,6 +476,64 @@ async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
             _ => {}
         }
     }
+}
+
+fn is_kim_world_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "search_contacts"
+            | "search_messages"
+            | "get_conversation_context"
+            | "list_profiles"
+            | "send_message"
+            | "read_clipboard"
+    )
+}
+
+fn kim_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
+    let names = tools.kim_world_names();
+    ops::unanswered_tool_requests(conversation)
+        .into_iter()
+        .filter_map(|req| {
+            let call = req.tool_call.as_ref().ok()?;
+            let name = call.name.as_ref();
+            if !names.contains(&name) {
+                return None;
+            }
+            let arguments_json = call
+                .arguments
+                .as_ref()
+                .map(|a| serde_json::to_string(a).unwrap_or_else(|_| "{}".into()))
+                .unwrap_or_else(|| "{}".into());
+            Some(PendingYield {
+                call_id: req.id,
+                name: name.to_string(),
+                arguments_json,
+            })
+        })
+        .collect()
+}
+
+fn parse_tool_output(raw: &str) -> rmcp::model::CallToolResult {
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(value) if value.is_object() || value.is_array() || value.is_string() => {
+            rmcp::model::CallToolResult::structured(value)
+        }
+        _ => rmcp::model::CallToolResult::error(vec![rmcp::model::ContentBlock::text(
+            raw.to_string(),
+        )]),
+    }
+}
+
+fn truncate_chars(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
 }
 
 fn last_assistant_text(conversation: &Conversation) -> String {
@@ -438,16 +604,120 @@ mod tests {
         )
         .unwrap();
         let (tx, mut rx) = mpsc::channel(32);
-        let text = host
+        let outcome = host
             .prompt("s", "read the note", tx, CancellationToken::new())
             .await
             .unwrap();
+        assert!(matches!(outcome, TurnOutcome::Finished { .. }));
         let mut saw_tool = false;
         while let Ok(ev) = rx.try_recv() {
             if let HostEvent::ToolResult { ok, .. } = ev {
                 saw_tool = ok;
             }
         }
-        assert!(saw_tool, "fs tool should succeed, last text={text}");
+        assert!(saw_tool, "fs tool should succeed");
+    }
+
+    fn kim_search_call(id: &str, query: &str) -> Message {
+        let mut args = rmcp::model::JsonObject::new();
+        args.insert("query".into(), serde_json::json!(query));
+        let mut call = rmcp::model::CallToolRequestParams::new("search_contacts");
+        call.arguments = Some(args);
+        Message::assistant().with_tool_request(id, Ok(call))
+    }
+
+    fn kim_host(messages: Vec<Message>) -> AgentHost {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::new(messages)),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn search_contacts_yields_then_complete_finishes() {
+        let host = kim_host(vec![kim_search_call("c1", "bob")]);
+        let (tx, mut rx) = mpsc::channel(32);
+        let outcome = host
+            .prompt("s", "find bob", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        match outcome {
+            TurnOutcome::Yielded { call_id, name, .. } => {
+                assert_eq!(call_id, "c1");
+                assert_eq!(name, "search_contacts");
+            }
+            other => panic!("expected yield, got {other:?}"),
+        }
+        let pending = host.pending_yields("s").await;
+        assert_eq!(pending.len(), 1);
+        while let Ok(ev) = rx.try_recv() {
+            assert!(!matches!(ev, HostEvent::ToolRequest { .. }));
+        }
+        let (tx2, _rx2) = mpsc::channel(32);
+        let done = host
+            .complete_tool("s", "c1", r#"{"people":[]}"#, tx2, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(matches!(done, TurnOutcome::Finished { .. }));
+    }
+
+    #[tokio::test]
+    async fn two_tool_requests_first_complete_stays_yielded() {
+        let mut args = rmcp::model::JsonObject::new();
+        args.insert("query".into(), serde_json::json!("a"));
+        let mut c1 = rmcp::model::CallToolRequestParams::new("search_contacts");
+        c1.arguments = Some(args.clone());
+        let mut c2 = rmcp::model::CallToolRequestParams::new("search_contacts");
+        c2.arguments = Some(args);
+        let assistant = Message::assistant()
+            .with_tool_request("c1", Ok(c1))
+            .with_tool_request("c2", Ok(c2));
+        let host = kim_host(vec![assistant]);
+        let (tx, _rx) = mpsc::channel(32);
+        let outcome = host
+            .prompt("s", "find", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(matches!(outcome, TurnOutcome::Yielded { .. }));
+        assert_eq!(host.pending_yields("s").await.len(), 2);
+        let (tx2, _rx2) = mpsc::channel(32);
+        let mid = host
+            .complete_tool("s", "c1", r#"{"people":[]}"#, tx2, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(matches!(mid, TurnOutcome::Yielded { call_id, .. } if call_id == "c2"));
+        let (tx3, _rx3) = mpsc::channel(32);
+        let done = host
+            .complete_tool("s", "c2", r#"{"people":[]}"#, tx3, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(matches!(done, TurnOutcome::Finished { .. }));
+    }
+
+    #[tokio::test]
+    async fn context_injection_does_not_replace_kickoff() {
+        let host = kim_host(vec![Message::assistant().with_text("ok")]);
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt_with_context(
+            "s",
+            "real question",
+            Some("old line 1\nold line 2"),
+            tx,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        let conv = host.conversation_for_test("s").await;
+        let kickoff = goose_agent::operation::messages_since_kickoff(&conv).unwrap();
+        assert_eq!(kickoff[0].as_concat_text(), "real question");
+        assert!(kickoff[0].is_user_visible());
     }
 }

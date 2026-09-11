@@ -41,6 +41,14 @@ impl MachineFactory {
         }
         let chat_only = !profile.tools.has_any() && profile.extensions.is_empty();
         if !chat_only {
+            let kim = profile.tools.kim_world_names();
+            if !kim.is_empty() {
+                steps.push(Step::Operation(Arc::new(
+                    crate::ops::deferred_kim::DeferredKimToolOp {
+                        names: kim.into_iter().map(str::to_string).collect(),
+                    },
+                )));
+            }
             let mut tools = ToolOperation::new();
             if profile.tools.fs || profile.tools.fs_write {
                 tools = tools.with_provider(Arc::new(FsToolProvider {

@@ -5,6 +5,7 @@ use goose_provider_types::conversation::message::{Message, MessageContent, ToolR
 use goose_provider_types::conversation::Conversation;
 
 pub mod chat_guard;
+pub mod deferred_kim;
 pub mod fs;
 pub mod max_turns;
 pub mod system_prompt;

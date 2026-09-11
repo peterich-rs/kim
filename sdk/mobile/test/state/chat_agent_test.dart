@@ -46,6 +46,18 @@ class _OneShotSession implements AgentSessionPort {
   Stream<AgentUiEvent> listen() => _ctrl.stream;
 
   @override
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  }) => prompt(text: text);
+
+  @override
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  }) async => 'op';
+
+  @override
   Future<String> prompt({required String text}) async {
     _ctrl.add(
       AgentUiEvent(
@@ -81,8 +93,12 @@ class _OneShotSession implements AgentSessionPort {
       const ResumeReportDto(resumedOps: [], statuses: []);
 
   @override
-  SessionSnapshotDto snapshot() =>
-      const SessionSnapshotDto(busy: false, lastOperationId: '');
+  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
+    busy: false,
+    lastOperationId: '',
+    phase: 'idle',
+    pendingCallIds: [],
+  );
 }
 
 void main() {

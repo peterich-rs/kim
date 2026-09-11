@@ -7,10 +7,12 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../agent/capability_host.dart';
 import '../agent/mention.dart';
 import '../agent_bridge.dart';
 import '../core/paths.dart';
 import '../models/models.dart';
+import 'agent_profiles.dart';
 import 'agent_settings.dart';
 import 'auth.dart';
 import 'inbox.dart';
@@ -25,6 +27,8 @@ class ChatAgent {
   AgentSessionPort? _session;
   String? _sessionDest;
   StreamSubscription<AgentUiEvent>? _sub;
+  final _seenToolCalls = <String>{};
+  Timer? _toolTimeout;
 
   /// Direct DM with the local Goose contact — every line is a prompt.
   Future<void> sendDirect({required String dest, required String text}) async {
@@ -66,6 +70,13 @@ class ChatAgent {
       if (session == null) {
         return;
       }
+      if (!isGooseAgentDest(dest)) {
+        final ctx = _contextJson(dest);
+        if (ctx.isNotEmpty) {
+          await session.promptWithContext(text: text, contextJson: ctx);
+          return;
+        }
+      }
       await session.prompt(text: text);
     } catch (e) {
       await _appendLocal(dest, 'Goose 调用失败：$e');
@@ -86,7 +97,7 @@ class ChatAgent {
     final session = await bridge.open(
       sqlitePath: dest,
       projectRoot: paths.agentWorkspace.path,
-      opts: settings.toOpts(resumeOnOpen: true),
+      opts: await _openOpts(settings),
     );
     _session = session;
     _sessionDest = dest;
@@ -103,9 +114,108 @@ class ChatAgent {
         case 'tool_started':
         case 'tool_finished':
           unawaited(_upsertToolCard(dest, ev));
+        case 'tool_request':
+          unawaited(_onToolRequest(dest, ev));
         default:
           break;
       }
+    });
+  }
+
+  Future<SessionOpenOpts> _openOpts(AgentSettings settings) async {
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    final goose = _ref.read(agentProfilesProvider.notifier).goose;
+    final base = settings.toOpts(resumeOnOpen: true);
+    if (goose == null) {
+      return SessionOpenOpts(
+        model: base.model,
+        llmBackend: base.llmBackend,
+        resumeOnOpen: base.resumeOnOpen,
+        baseUrl: base.baseUrl,
+        apiKey: base.apiKey,
+        enableFsTools: base.enableFsTools,
+        bashEnabled: base.bashEnabled,
+        profileId: base.profileId,
+        profileJson: '',
+        thinkingEffort: base.thinkingEffort,
+        gooseMode: base.gooseMode,
+        enableKimTools: true,
+        enableApprovals: false,
+      );
+    }
+    return SessionOpenOpts(
+      model: goose.model,
+      llmBackend: goose.providerKind,
+      resumeOnOpen: true,
+      baseUrl: goose.baseUrl,
+      apiKey: settings.apiKey,
+      enableFsTools: goose.tools.fs,
+      bashEnabled: false,
+      profileId: goose.id,
+      profileJson: jsonEncode(goose.toJson()),
+      thinkingEffort: goose.thinkingEffort,
+      gooseMode: goose.mode,
+      enableKimTools: true,
+      enableApprovals: false,
+    );
+  }
+
+  String _contextJson(String dest) {
+    final account = _ref.read(authProvider).account;
+    if (account.isEmpty) {
+      return '';
+    }
+    final items = _ref.read(threadMessagesProvider(dest)).items;
+    const cap = 8 * 1024;
+    final buf = StringBuffer();
+    for (final m in items.reversed) {
+      if (m.kind != KimMsgKind.text || m.sys) {
+        continue;
+      }
+      final line = '${m.sender}: ${m.body}\n';
+      if (buf.length + line.length > cap) {
+        break;
+      }
+      buf.write(line);
+    }
+    return buf.toString();
+  }
+
+  Future<void> _onToolRequest(String dest, AgentUiEvent ev) async {
+    final callId = ev.callId.trim();
+    if (callId.isEmpty || !_seenToolCalls.add(callId)) {
+      return;
+    }
+    _armToolTimeout(dest, callId);
+    final host = KimCapabilityHost(_ref);
+    final out = await host.execute(
+      name: ev.name,
+      argumentsJson: ev.argumentsJson.isEmpty ? '{}' : ev.argumentsJson,
+      sessionDest: dest,
+      profileId: 'goose',
+    );
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    try {
+      await session.completeTool(callId: callId, outputJson: out);
+    } catch (_) {}
+  }
+
+  void _armToolTimeout(String dest, String callId) {
+    _toolTimeout?.cancel();
+    _toolTimeout = Timer(const Duration(minutes: 10), () {
+      final session = _session;
+      if (session == null) {
+        return;
+      }
+      unawaited(
+        session.completeTool(
+          callId: callId,
+          outputJson: '{"ok":false,"error":"timeout"}',
+        ),
+      );
     });
   }
 
@@ -186,6 +296,7 @@ class ChatAgent {
   }
 
   Future<void> dispose() async {
+    _toolTimeout?.cancel();
     await _sub?.cancel();
     _sub = null;
     await _session?.close();

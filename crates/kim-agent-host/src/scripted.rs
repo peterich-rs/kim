@@ -20,6 +20,18 @@ impl ScriptedProvider {
             queue: Mutex::new(VecDeque::from(messages)),
         }
     }
+
+    pub fn kim_search_contacts(calls: &[(&str, &str)]) -> Self {
+        let mut message = Message::assistant();
+        for (id, query) in calls {
+            let mut args = rmcp::model::JsonObject::new();
+            args.insert("query".into(), serde_json::json!(query));
+            let mut call = rmcp::model::CallToolRequestParams::new("search_contacts");
+            call.arguments = Some(args);
+            message = message.with_tool_request((*id).to_string(), Ok(call));
+        }
+        Self::new(vec![message])
+    }
 }
 
 #[async_trait]

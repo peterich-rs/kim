@@ -1,12 +1,12 @@
 //! Thin FFI over `kim-agent-host` (Goose). Isolated from `kim_client_ffi`.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kim_agent_host::{
     AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ProviderSpec, ResolvedProfile,
+    TurnOutcome,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -126,6 +126,20 @@ impl AgentUiEvent {
         e
     }
 
+    fn tool_request(
+        operation_id: String,
+        call_id: String,
+        name: String,
+        arguments_json: String,
+    ) -> Self {
+        let mut e = Self::base("tool_request");
+        e.operation_id = operation_id;
+        e.call_id = call_id;
+        e.name = name;
+        e.arguments_json = arguments_json;
+        e
+    }
+
     fn tool_started(operation_id: String, call_id: String, name: String) -> Self {
         let mut e = Self::base("tool_started");
         e.operation_id = operation_id;
@@ -159,13 +173,34 @@ pub struct ResumeReportDto {
 pub struct SessionSnapshotDto {
     pub busy: bool,
     pub last_operation_id: String,
+    pub phase: String,
+    pub pending_call_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SessionPhase {
+    Idle,
+    Running,
+    Yielded,
+}
+
+impl SessionPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Running => "running",
+            Self::Yielded => "yielded",
+        }
+    }
 }
 
 struct Shared {
     host: RwLock<AgentHost>,
     session_id: String,
     events: broadcast::Sender<AgentUiEvent>,
-    busy: AtomicBool,
+    phase: Mutex<SessionPhase>,
+    replay: Mutex<Vec<AgentUiEvent>>,
+    complete_gate: tokio::sync::Mutex<()>,
     cancel: Mutex<Option<CancellationToken>>,
 }
 
@@ -229,114 +264,129 @@ pub fn session_open(
             host: RwLock::new(host),
             session_id,
             events: tx,
-            busy: AtomicBool::new(false),
+            phase: Mutex::new(SessionPhase::Idle),
+            replay: Mutex::new(Vec::new()),
+            complete_gate: tokio::sync::Mutex::new(()),
             cancel: Mutex::new(None),
         }),
     })
 }
 
 impl AgentSession {
-    pub fn prompt(&self, text: String) -> Result<String, String> {
-        if self.inner.busy.swap(true, Ordering::SeqCst) {
-            return Err("agent busy".into());
+    fn begin_run(&self) -> Result<CancellationToken, String> {
+        let mut phase = self
+            .inner
+            .phase
+            .lock()
+            .map_err(|_| "phase lock".to_string())?;
+        match *phase {
+            SessionPhase::Running => return Err("agent busy".into()),
+            SessionPhase::Yielded => return Err("agent waiting for tool".into()),
+            SessionPhase::Idle => {}
         }
-        let text = text.trim().to_string();
-        if text.is_empty() {
-            self.inner.busy.store(false, Ordering::SeqCst);
-            return Err("empty prompt".into());
-        }
-
-        let inner = self.inner.clone();
-        let (op_tx, op_rx) = std::sync::mpsc::channel();
+        *phase = SessionPhase::Running;
         let cancel = CancellationToken::new();
-        if let Ok(mut g) = inner.cancel.lock() {
+        if let Ok(mut g) = self.inner.cancel.lock() {
             *g = Some(cancel.clone());
         }
+        Ok(cancel)
+    }
 
+    pub fn prompt(&self, text: String) -> Result<String, String> {
+        self.start_prompt(text, None)
+    }
+
+    pub fn prompt_with_context(&self, text: String, context_json: String) -> Result<String, String> {
+        self.start_prompt(text, Some(context_json))
+    }
+
+    fn start_prompt(&self, text: String, context: Option<String>) -> Result<String, String> {
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return Err("empty prompt".into());
+        }
+        let cancel = self.begin_run()?;
+        let inner = self.inner.clone();
+        let (op_tx, op_rx) = std::sync::mpsc::channel();
         rt().spawn(async move {
             let op = uuid::Uuid::new_v4().to_string();
             let _ = inner
                 .events
                 .send(AgentUiEvent::operation_started(op.clone()));
             let _ = op_tx.send(Ok(op.clone()));
-
-            let (tx, mut rx) = mpsc::channel(64);
-            let events = inner.events.clone();
-            let op_for_pump = op.clone();
-            let pump = tokio::spawn(async move {
-                while let Some(ev) = rx.recv().await {
-                    match ev {
-                        HostEvent::TextDelta { delta } => {
-                            let _ =
-                                events.send(AgentUiEvent::text_delta(op_for_pump.clone(), delta));
-                        }
-                        HostEvent::Finished { text } => {
-                            let _ = events.send(AgentUiEvent::completed(op_for_pump.clone(), text));
-                        }
-                        HostEvent::Failed { message } => {
-                            let _ = events.send(AgentUiEvent::failed(op_for_pump.clone(), message));
-                        }
-                        HostEvent::ToolRequest {
-                            call_id,
-                            name,
-                            ..
-                        } => {
-                            let _ = events.send(AgentUiEvent::tool_started(
-                                op_for_pump.clone(),
-                                call_id,
-                                name,
-                            ));
-                        }
-                        HostEvent::ToolResult {
-                            call_id,
-                            name,
-                            output_preview,
-                            ok,
-                        } => {
-                            let _ = events.send(AgentUiEvent::tool_finished(
-                                op_for_pump.clone(),
-                                call_id,
-                                name,
-                                output_preview,
-                                ok,
-                            ));
-                        }
-                        HostEvent::ActionRequired { .. } | HostEvent::Usage { .. } => {}
-                    }
-                }
-            });
-
+            let (tx, rx) = mpsc::channel(64);
+            let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
             let host = inner.host.read().await;
-            let result = host.prompt(&inner.session_id, &text, tx, cancel).await;
+            let result = host
+                .prompt_with_context(
+                    &inner.session_id,
+                    &text,
+                    context.as_deref(),
+                    tx,
+                    cancel,
+                )
+                .await;
             drop(host);
             let _ = pump.await;
-
-            match result {
-                Ok(reply) => {
-                    let _ = inner.events.send(AgentUiEvent::completed(op, reply));
-                }
-                Err(HostError::Failed(msg)) if msg.contains("cancel") => {
-                    let _ = inner.events.send(AgentUiEvent::aborted(op));
-                }
-                Err(err) => {
-                    let _ = inner
-                        .events
-                        .send(AgentUiEvent::failed(op, map_host_err(err)));
-                }
-            }
-            inner.busy.store(false, Ordering::SeqCst);
+            finish_turn(&inner, op, result).await;
         });
-
         op_rx
             .recv_timeout(Duration::from_secs(30))
             .map_err(|_| "prompt start timeout".to_string())?
     }
 
+    pub fn complete_tool(&self, call_id: String, output_json: String) -> Result<String, String> {
+        {
+            let phase = self
+                .inner
+                .phase
+                .lock()
+                .map_err(|_| "phase lock".to_string())?;
+            if *phase != SessionPhase::Yielded {
+                return Err("unknown tool call".into());
+            }
+        }
+        let inner = self.inner.clone();
+        let (op_tx, op_rx) = std::sync::mpsc::channel();
+        let cancel = CancellationToken::new();
+        if let Ok(mut g) = inner.cancel.lock() {
+            *g = Some(cancel.clone());
+        }
+        rt().spawn(async move {
+            let _gate = inner.complete_gate.lock().await;
+            let op = uuid::Uuid::new_v4().to_string();
+            let _ = op_tx.send(Ok(op.clone()));
+            let (tx, rx) = mpsc::channel(64);
+            let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
+            let host = inner.host.read().await;
+            let result = host
+                .complete_tool(&inner.session_id, &call_id, &output_json, tx, cancel)
+                .await;
+            drop(host);
+            let _ = pump.await;
+            finish_turn(&inner, op, result).await;
+        });
+        op_rx
+            .recv_timeout(Duration::from_secs(30))
+            .map_err(|_| "complete_tool start timeout".to_string())?
+    }
+
     #[flutter_rust_bridge::frb(sync)]
     pub fn listen(&self, sink: StreamSink<AgentUiEvent>) -> Result<(), String> {
         let _guard = rt().enter();
+        let replay = self
+            .inner
+            .replay
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
         let mut rx = self.inner.events.subscribe();
         rt().spawn(async move {
+            for ev in replay {
+                if sink.add(ev).is_err() {
+                    return;
+                }
+            }
             loop {
                 match rx.recv().await {
                     Ok(ev) => {
@@ -344,7 +394,10 @@ impl AgentSession {
                             break;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        // Pending yield events live in `replay`; skip dropped live ticks.
+                        continue;
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -358,6 +411,25 @@ impl AgentSession {
                 token.cancel();
             }
         }
+        let inner = self.inner.clone();
+        rt().block_on(async move {
+            let yielded = inner
+                .phase
+                .lock()
+                .map(|g| *g == SessionPhase::Yielded)
+                .unwrap_or(false);
+            if yielded {
+                let host = inner.host.read().await;
+                host.cancel_pending_tools(&inner.session_id).await;
+            }
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Idle;
+            }
+            if let Ok(mut g) = inner.replay.lock() {
+                g.clear();
+            }
+            let _ = inner.events.send(AgentUiEvent::aborted(String::new()));
+        });
         Ok(())
     }
 
@@ -370,9 +442,22 @@ impl AgentSession {
 
     #[flutter_rust_bridge::frb(sync)]
     pub fn snapshot(&self) -> Result<SessionSnapshotDto, String> {
+        let _guard = rt().enter();
+        let phase = self
+            .inner
+            .phase
+            .lock()
+            .map(|g| *g)
+            .unwrap_or(SessionPhase::Idle);
+        let pending = rt().block_on(async {
+            let host = self.inner.host.read().await;
+            host.pending_yields(&self.inner.session_id).await
+        });
         Ok(SessionSnapshotDto {
-            busy: self.inner.busy.load(Ordering::SeqCst),
+            busy: phase == SessionPhase::Running,
             last_operation_id: String::new(),
+            phase: phase.as_str().to_string(),
+            pending_call_ids: pending.into_iter().map(|p| p.call_id).collect(),
         })
     }
 
@@ -390,6 +475,93 @@ impl AgentSession {
     pub fn close(&self) -> Result<(), String> {
         let _ = self.abort();
         Ok(())
+    }
+}
+
+fn spawn_host_pump(
+    events: broadcast::Sender<AgentUiEvent>,
+    op: String,
+    mut rx: mpsc::Receiver<HostEvent>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            match ev {
+                HostEvent::TextDelta { delta } => {
+                    let _ = events.send(AgentUiEvent::text_delta(op.clone(), delta));
+                }
+                HostEvent::Finished { text } => {
+                    let _ = events.send(AgentUiEvent::completed(op.clone(), text));
+                }
+                HostEvent::Failed { message } => {
+                    let _ = events.send(AgentUiEvent::failed(op.clone(), message));
+                }
+                HostEvent::ToolRequest { call_id, name, .. } => {
+                    let _ = events.send(AgentUiEvent::tool_started(op.clone(), call_id, name));
+                }
+                HostEvent::ToolResult {
+                    call_id,
+                    name,
+                    output_preview,
+                    ok,
+                } => {
+                    let _ = events.send(AgentUiEvent::tool_finished(
+                        op.clone(),
+                        call_id,
+                        name,
+                        output_preview,
+                        ok,
+                    ));
+                }
+                HostEvent::ActionRequired { .. } | HostEvent::Usage { .. } => {}
+            }
+        }
+    })
+}
+
+async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, HostError>) {
+    match result {
+        Ok(TurnOutcome::Finished { .. }) => {
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Idle;
+            }
+            if let Ok(mut g) = inner.replay.lock() {
+                g.clear();
+            }
+        }
+        Ok(TurnOutcome::Yielded { .. }) => {
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Yielded;
+            }
+            let host = inner.host.read().await;
+            let pending = host.pending_yields(&inner.session_id).await;
+            drop(host);
+            let mut replayed = Vec::new();
+            for p in pending {
+                let ev = AgentUiEvent::tool_request(
+                    op.clone(),
+                    p.call_id,
+                    p.name,
+                    p.arguments_json,
+                );
+                let _ = inner.events.send(ev.clone());
+                replayed.push(ev);
+            }
+            if let Ok(mut g) = inner.replay.lock() {
+                *g = replayed;
+            }
+        }
+        Err(HostError::Failed(msg)) if msg.contains("cancel") => {
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Idle;
+            }
+            let _ = inner.events.send(AgentUiEvent::aborted(op));
+        }
+        Err(err) => {
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Idle;
+            }
+            let _ = inner.events.send(AgentUiEvent::failed(op, map_host_err(err)));
+        }
     }
 }
 
@@ -430,4 +602,109 @@ pub fn list_bundled_providers() -> Result<Vec<String>, String> {
 
 fn map_host_err(err: HostError) -> String {
     err.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kim_agent_host::{AgentProfile, LegacyOpenOpts, ScriptedProvider};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
+
+    fn session_from_host(session_id: String, host: AgentHost) -> AgentSession {
+        let (tx, _) = broadcast::channel(256);
+        AgentSession {
+            inner: Arc::new(Shared {
+                host: RwLock::new(host),
+                session_id,
+                events: tx,
+                phase: Mutex::new(SessionPhase::Idle),
+                replay: Mutex::new(Vec::new()),
+                complete_gate: tokio::sync::Mutex::new(()),
+                cancel: Mutex::new(None),
+            }),
+        }
+    }
+
+    fn wait_phase(session: &AgentSession, want: &str) {
+        for _ in 0..100 {
+            let snap = session.snapshot().unwrap();
+            if snap.phase == want {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!(
+            "timed out waiting for phase {want}, got {}",
+            session.snapshot().unwrap().phase
+        );
+    }
+
+    #[test]
+    fn search_contacts_yields_before_tool_request() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_search_contacts(&[("c1", "bob")])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        session.prompt("find bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        let snap = session.snapshot().unwrap();
+        assert!(!snap.busy);
+        assert_eq!(snap.pending_call_ids, vec!["c1".to_string()]);
+        let mut saw_request = false;
+        while let Ok(ev) = rx.try_recv() {
+            if ev.kind == "tool_request" {
+                saw_request = true;
+                assert_eq!(ev.call_id, "c1");
+            }
+        }
+        assert!(saw_request);
+        session
+            .complete_tool("c1".into(), r#"{"people":[]}"#.into())
+            .unwrap();
+        wait_phase(&session, "idle");
+    }
+
+    #[test]
+    fn two_tool_requests_serial_complete() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_search_contacts(&[
+                ("c1", "a"),
+                ("c2", "b"),
+            ])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        session.prompt("find".into()).unwrap();
+        wait_phase(&session, "yielded");
+        assert_eq!(session.snapshot().unwrap().pending_call_ids.len(), 2);
+        session
+            .complete_tool("c1".into(), r#"{"people":[]}"#.into())
+            .unwrap();
+        wait_phase(&session, "yielded");
+        assert_eq!(session.snapshot().unwrap().pending_call_ids, vec!["c2".to_string()]);
+        session
+            .complete_tool("c2".into(), r#"{"people":[]}"#.into())
+            .unwrap();
+        wait_phase(&session, "idle");
+    }
 }

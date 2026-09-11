@@ -7,9 +7,9 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `aborted`, `base`, `completed`, `failed`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `text_delta`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Shared`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
+// These functions are ignored because they are not marked as `pub`: `aborted`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SessionPhase`, `Shared`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`
 
 Future<AgentSession> sessionOpen({
   required String sqlitePath,
@@ -36,9 +36,19 @@ abstract class AgentSession implements RustOpaqueInterface {
 
   Future<void> close();
 
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  });
+
   Stream<AgentUiEvent> listen();
 
   Future<String> prompt({required String text});
+
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  });
 
   Future<void> reconfigure({required SessionOpenOpts opts});
 
@@ -205,11 +215,22 @@ class SessionOpenOpts {
 class SessionSnapshotDto {
   final bool busy;
   final String lastOperationId;
+  final String phase;
+  final List<String> pendingCallIds;
 
-  const SessionSnapshotDto({required this.busy, required this.lastOperationId});
+  const SessionSnapshotDto({
+    required this.busy,
+    required this.lastOperationId,
+    required this.phase,
+    required this.pendingCallIds,
+  });
 
   @override
-  int get hashCode => busy.hashCode ^ lastOperationId.hashCode;
+  int get hashCode =>
+      busy.hashCode ^
+      lastOperationId.hashCode ^
+      phase.hashCode ^
+      pendingCallIds.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -217,5 +238,7 @@ class SessionSnapshotDto {
       other is SessionSnapshotDto &&
           runtimeType == other.runtimeType &&
           busy == other.busy &&
-          lastOperationId == other.lastOperationId;
+          lastOperationId == other.lastOperationId &&
+          phase == other.phase &&
+          pendingCallIds == other.pendingCallIds;
 }

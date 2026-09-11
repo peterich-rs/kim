@@ -3,6 +3,31 @@ use goose_provider_types::conversation::message::Message;
 use goose_provider_types::conversation::token_usage::ProviderUsage;
 
 #[derive(Debug, Clone)]
+pub enum TurnOutcome {
+    Finished {
+        text: String,
+    },
+    Yielded {
+        kind: YieldKind,
+        call_id: String,
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YieldKind {
+    ToolRequest,
+    ActionRequired,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingYield {
+    pub call_id: String,
+    pub name: String,
+    pub arguments_json: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum HostEvent {
     TextDelta {
         delta: String,
