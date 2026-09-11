@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -90,12 +91,67 @@ class ChatAgent {
     _session = session;
     _sessionDest = dest;
     _sub = session.listen().listen((ev) {
-      if (ev.kind == 'assistant_finished' && ev.message.trim().isNotEmpty) {
-        unawaited(_appendLocal(dest, ev.message.trim()));
-      } else if (ev.kind == 'failed' && ev.message.trim().isNotEmpty) {
-        unawaited(_appendLocal(dest, ev.message.trim()));
+      switch (ev.kind) {
+        case 'assistant_finished':
+          if (ev.message.trim().isNotEmpty) {
+            unawaited(_appendLocal(dest, ev.message.trim()));
+          }
+        case 'failed':
+          if (ev.message.trim().isNotEmpty) {
+            unawaited(_appendLocal(dest, ev.message.trim()));
+          }
+        case 'tool_started':
+        case 'tool_finished':
+          unawaited(_upsertToolCard(dest, ev));
+        default:
+          break;
       }
     });
+  }
+
+  Future<void> _upsertToolCard(String dest, AgentUiEvent ev) async {
+    final callId = ev.callId.trim();
+    if (callId.isEmpty) {
+      return;
+    }
+    final account = _ref.read(authProvider).account;
+    if (account.isEmpty) {
+      return;
+    }
+    final running = ev.kind == 'tool_started';
+    final card = {
+      'v': 1,
+      'type': 'tool',
+      'call_id': callId,
+      'name': ev.name,
+      'state': running ? 'running' : (ev.ok ? 'ok' : 'error'),
+      'preview': ev.outputPreview,
+      'ok': !running && ev.ok,
+    };
+    final key = 'agent-card-$callId';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = _ref
+        .read(threadMessagesProvider(dest))
+        .items
+        .where((m) => m.key == key)
+        .toList();
+    final msg = existing.isEmpty
+        ? KimChatMsg(
+            key: key,
+            dest: dest,
+            sender: kGooseAgentName,
+            body: jsonEncode(card),
+            at: now,
+            kind: KimMsgKind.agentCard,
+          )
+        : existing.first.copyWith(body: jsonEncode(card));
+    await _ref.read(messageRepositoryProvider).applyLive(account, [
+      msg,
+    ], viewingDest: dest);
+    if (!_ref.mounted) {
+      return;
+    }
+    _ref.read(threadMessagesProvider(dest).notifier).receive(msg);
   }
 
   Future<void> _appendLocal(

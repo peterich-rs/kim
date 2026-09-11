@@ -125,6 +125,30 @@ impl AgentUiEvent {
         e.stop_reason = "aborted".into();
         e
     }
+
+    fn tool_started(operation_id: String, call_id: String, name: String) -> Self {
+        let mut e = Self::base("tool_started");
+        e.operation_id = operation_id;
+        e.call_id = call_id;
+        e.name = name;
+        e
+    }
+
+    fn tool_finished(
+        operation_id: String,
+        call_id: String,
+        name: String,
+        output_preview: String,
+        ok: bool,
+    ) -> Self {
+        let mut e = Self::base("tool_finished");
+        e.operation_id = operation_id;
+        e.call_id = call_id;
+        e.name = name;
+        e.output_preview = output_preview;
+        e.ok = ok;
+        e
+    }
 }
 
 pub struct ResumeReportDto {
@@ -252,10 +276,32 @@ impl AgentSession {
                         HostEvent::Failed { message } => {
                             let _ = events.send(AgentUiEvent::failed(op_for_pump.clone(), message));
                         }
-                        HostEvent::ToolRequest { .. }
-                        | HostEvent::ToolResult { .. }
-                        | HostEvent::ActionRequired { .. }
-                        | HostEvent::Usage { .. } => {}
+                        HostEvent::ToolRequest {
+                            call_id,
+                            name,
+                            ..
+                        } => {
+                            let _ = events.send(AgentUiEvent::tool_started(
+                                op_for_pump.clone(),
+                                call_id,
+                                name,
+                            ));
+                        }
+                        HostEvent::ToolResult {
+                            call_id,
+                            name,
+                            output_preview,
+                            ok,
+                        } => {
+                            let _ = events.send(AgentUiEvent::tool_finished(
+                                op_for_pump.clone(),
+                                call_id,
+                                name,
+                                output_preview,
+                                ok,
+                            ));
+                        }
+                        HostEvent::ActionRequired { .. } | HostEvent::Usage { .. } => {}
                     }
                 }
             });

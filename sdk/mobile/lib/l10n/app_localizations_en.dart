@@ -516,6 +516,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentFsLater => 'Workspace files (later)';
 
   @override
+  String get agentFsReadonly => 'Workspace read-only files';
+
+  @override
   String get agentBashLater => 'Shell (later)';
 
   @override

@@ -9,6 +9,7 @@ import '../copy.dart';
 import '../core/format.dart';
 import '../models/models.dart';
 import '../theme/kim_theme.dart';
+import 'agent_action_bubble.dart';
 import 'kim_avatar.dart';
 import 'kim_hairline.dart';
 import 'kim_image_viewer.dart';
@@ -81,6 +82,9 @@ class KimMessageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (message.isAgentCard) {
+      return AgentActionBubble(message: message);
+    }
     if (message.sys) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),

@@ -1088,6 +1088,12 @@ abstract class AppLocalizations {
   /// **'工作区文件（后续版本）'**
   String get agentFsLater;
 
+  /// No description provided for @agentFsReadonly.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区只读文件'**
+  String get agentFsReadonly;
+
   /// No description provided for @agentBashLater.
   ///
   /// In zh, this message translates to:

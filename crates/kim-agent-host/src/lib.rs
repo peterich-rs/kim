@@ -9,6 +9,7 @@ mod machine;
 mod ops;
 mod profile;
 mod provider;
+mod scripted;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,6 +36,7 @@ pub use provider::{
     bundled_declarative_json, bundled_provider_summaries, fetch_models, BundledProviderSummary,
     ProviderConfig, ProviderKind, SessionKeyResolver,
 };
+pub use scripted::ScriptedProvider;
 
 pub(crate) use events::HostEffect;
 
@@ -83,6 +85,26 @@ pub struct AgentHost {
 impl AgentHost {
     pub fn new(config: ProviderConfig) -> Result<Self, HostError> {
         Self::from_resolved(ResolvedProfile::from_provider_config(config)?)
+    }
+
+    pub fn from_provider_for_test(
+        profile: AgentProfile,
+        provider: Arc<dyn Provider>,
+        project_root: PathBuf,
+    ) -> Result<Self, HostError> {
+        let model = machine::model_config(&profile.model)?;
+        Ok(Self {
+            inner: Arc::new(Inner {
+                profile,
+                provider,
+                model,
+                project_root,
+                store: Mutex::new(Store {
+                    conversations: HashMap::new(),
+                    busy: HashMap::new(),
+                }),
+            }),
+        })
     }
 
     pub fn from_resolved(resolved: ResolvedProfile) -> Result<Self, HostError> {
@@ -161,10 +183,7 @@ impl AgentHost {
         let pump = tokio::spawn(async move {
             while let Some(ev) = rx.recv().await {
                 if let goose_agent::events::AgentEvent::Message(message) = ev {
-                    let delta = message_text(&message);
-                    if !delta.is_empty() {
-                        let _ = events.send(HostEvent::TextDelta { delta }).await;
-                    }
+                    pump_message(&events, &message).await;
                 }
             }
         });
@@ -300,6 +319,57 @@ fn set_visibility(
     anyhow::bail!("message {message_id} not found")
 }
 
+async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
+    let delta = message_text(message);
+    if !delta.is_empty() {
+        let _ = events.send(HostEvent::TextDelta { delta }).await;
+    }
+    for block in &message.content {
+        match block {
+            MessageContent::ToolRequest(req) => {
+                let (name, arguments_json) = match req.tool_call.as_ref() {
+                    Ok(call) => (
+                        call.name.to_string(),
+                        call.arguments
+                            .as_ref()
+                            .map(|a| serde_json::to_string(a).unwrap_or_else(|_| "{}".into()))
+                            .unwrap_or_else(|| "{}".into()),
+                    ),
+                    Err(_) => (String::new(), String::new()),
+                };
+                let _ = events
+                    .send(HostEvent::ToolRequest {
+                        call_id: req.id.clone(),
+                        name,
+                        arguments_json,
+                    })
+                    .await;
+            }
+            MessageContent::ToolResponse(res) => {
+                let preview = block
+                    .as_tool_response_text()
+                    .unwrap_or_default()
+                    .chars()
+                    .take(80)
+                    .collect::<String>();
+                let ok = match &res.tool_result {
+                    Ok(result) => result.is_error != Some(true),
+                    Err(_) => false,
+                };
+                let _ = events
+                    .send(HostEvent::ToolResult {
+                        call_id: res.id.clone(),
+                        name: String::new(),
+                        output_preview: preview,
+                        ok,
+                    })
+                    .await;
+            }
+            _ => {}
+        }
+    }
+}
+
 fn last_assistant_text(conversation: &Conversation) -> String {
     conversation
         .messages()
@@ -342,5 +412,42 @@ mod tests {
     fn missing_key_is_explicit() {
         let result = AgentHost::new(ProviderConfig::openai("", "gpt-4o"));
         assert!(matches!(result, Err(HostError::MissingApiKey)));
+    }
+
+    #[tokio::test]
+    async fn scripted_fs_read_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("ws");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("note.txt"), "hello workspace").unwrap();
+        let mut args = rmcp::model::JsonObject::new();
+        args.insert("path".into(), serde_json::json!("note.txt"));
+        let mut call = rmcp::model::CallToolRequestParams::new("read_file");
+        call.arguments = Some(args);
+        let assistant = Message::assistant().with_tool_request("c1", Ok(call));
+        let profile = AgentProfile::from_legacy(&crate::profile::LegacyOpenOpts {
+            enable_fs_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..crate::profile::LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::new(vec![assistant])),
+            root,
+        )
+        .unwrap();
+        let (tx, mut rx) = mpsc::channel(32);
+        let text = host
+            .prompt("s", "read the note", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        let mut saw_tool = false;
+        while let Ok(ev) = rx.try_recv() {
+            if let HostEvent::ToolResult { ok, .. } = ev {
+                saw_tool = ok;
+            }
+        }
+        assert!(saw_tool, "fs tool should succeed, last text={text}");
     }
 }

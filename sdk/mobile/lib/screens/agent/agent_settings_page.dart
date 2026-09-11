@@ -30,6 +30,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   late final TextEditingController _apiKey;
   late String _backend;
   var _thinking = 'off';
+  var _fs = false;
   var _loaded = false;
   var _fetching = false;
   List<String> _models = const [];
@@ -99,6 +100,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _thinking = _kEfforts.contains(s.thinkingEffort)
         ? s.thinkingEffort
         : 'off';
+    _fs = s.enableFsTools;
   }
 
   Future<void> _fetchModels() async {
@@ -169,6 +171,17 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           ? (_backend == 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4o')
           : _model.text.trim(),
       thinkingEffort: _thinking == 'off' ? '' : _thinking,
+      tools: AgentToolSet(
+        sendMessage: existing.tools.sendMessage,
+        searchContacts: existing.tools.searchContacts,
+        searchMessages: existing.tools.searchMessages,
+        getConversationContext: existing.tools.getConversationContext,
+        readClipboard: existing.tools.readClipboard,
+        listProfiles: existing.tools.listProfiles,
+        fs: _fs,
+        fsWrite: existing.tools.fsWrite,
+        bash: existing.tools.bash,
+      ),
     );
     await ref
         .read(agentProfilesProvider.notifier)
@@ -394,9 +407,9 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                 KimGroupCard(
                   children: [
                     SwitchListTile(
-                      title: Text(l10n.agentFsLater),
-                      value: false,
-                      onChanged: null,
+                      title: Text(l10n.agentFsReadonly),
+                      value: _fs,
+                      onChanged: (next) => setState(() => _fs = next),
                     ),
                     const Divider(height: 1),
                     SwitchListTile(

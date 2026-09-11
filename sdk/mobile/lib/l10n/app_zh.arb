@@ -170,6 +170,7 @@
   "agentReasoningHigh": "高",
   "agentReasoningMax": "最高",
   "agentFsLater": "工作区文件（后续版本）",
+  "agentFsReadonly": "工作区只读文件",
   "agentBashLater": "命令行（后续版本）",
   "agentMoreComing": "更多 Agent（即将推出）",
   "agentNeedsEnv": "桌面/需环境变量",

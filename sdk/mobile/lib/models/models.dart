@@ -278,7 +278,20 @@ class KimThread {
   }
 }
 
-enum KimMsgKind { text, image, video }
+enum KimMsgKind { text, image, video, agentCard }
+
+KimMsgKind kimMsgKindFromName(String? raw) {
+  switch (raw) {
+    case 'video':
+      return KimMsgKind.video;
+    case 'image':
+      return KimMsgKind.image;
+    case 'agentCard':
+      return KimMsgKind.agentCard;
+    default:
+      return KimMsgKind.text;
+  }
+}
 
 enum KimSendStatus { sending, sent, failed }
 
@@ -327,6 +340,8 @@ class KimChatMsg {
   }
 
   bool get isVideo => kind == KimMsgKind.video;
+
+  bool get isAgentCard => kind == KimMsgKind.agentCard;
 
   bool get isFailed => failed || status == KimSendStatus.failed;
 
@@ -411,11 +426,7 @@ class KimChatMsg {
       at: _jsonInt(json['at']),
       sys: json['sys'] == true,
       failed: status == KimSendStatus.failed,
-      kind: json['kind'] == 'video'
-          ? KimMsgKind.video
-          : json['kind'] == 'image'
-          ? KimMsgKind.image
-          : KimMsgKind.text,
+      kind: kimMsgKindFromName(json['kind'] is String ? json['kind'] as String : null),
       width: _jsonInt(json['width']),
       height: _jsonInt(json['height']),
       messageId: _jsonInt(json['messageId']),

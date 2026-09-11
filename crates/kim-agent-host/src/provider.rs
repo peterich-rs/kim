@@ -63,7 +63,7 @@ pub fn build_provider_from_spec(
             Ok(Arc::new(build_openai(spec, api_key)?))
         }
         "anthropic" | "messages" => Ok(Arc::new(build_anthropic(spec, api_key)?)),
-        "scripted" => Err(HostError::UnknownProvider("scripted outside tests".into())),
+        "scripted" => Ok(Arc::new(crate::scripted::ScriptedProvider::new(Vec::new()))),
         other => {
             let json = bundled_declarative_json(other)?;
             let cfg = goose_providers::declarative::deserialize_provider_config(json)
@@ -290,17 +290,13 @@ mod tests {
     }
 
     #[test]
-    fn spec_scripted_is_unknown_outside_tests() {
+    fn spec_scripted_builds() {
         let spec = ProviderSpec {
             kind: "scripted".into(),
             base_url: String::new(),
             key_ref: "agent.api_key.goose".into(),
         };
-        match build_provider_from_spec(&spec, "sk-dummy") {
-            Err(HostError::UnknownProvider(_)) => {}
-            Err(_) => panic!("expected UnknownProvider"),
-            Ok(_) => panic!("expected UnknownProvider"),
-        }
+        assert!(build_provider_from_spec(&spec, "sk-dummy").is_ok());
     }
 
     #[test]

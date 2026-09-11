@@ -170,6 +170,7 @@
   "agentReasoningHigh": "High",
   "agentReasoningMax": "Max",
   "agentFsLater": "Workspace files (later)",
+  "agentFsReadonly": "Workspace read-only files",
   "agentBashLater": "Shell (later)",
   "agentMoreComing": "More agents coming soon",
   "agentNeedsEnv": "desktop / needs env",

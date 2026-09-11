@@ -507,6 +507,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentFsLater => '工作区文件（后续版本）';
 
   @override
+  String get agentFsReadonly => '工作区只读文件';
+
+  @override
   String get agentBashLater => '命令行（后续版本）';
 
   @override

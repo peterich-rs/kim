@@ -26,3 +26,35 @@ fn scripted_session_opens_idle_and_closes() {
     assert!(!session.snapshot().unwrap().busy);
     session.close().unwrap();
 }
+
+#[test]
+fn scripted_prompt_completes_without_network() {
+    use std::thread;
+    use std::time::Duration;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("workspace");
+    std::fs::create_dir_all(&root).unwrap();
+    let session = session_open(
+        "scripted-prompt".into(),
+        root.to_string_lossy().into(),
+        SessionOpenOpts {
+            resume_on_open: false,
+            api_key: "sk-dummy".into(),
+            llm_backend: "scripted".into(),
+            model: "scripted".into(),
+            ..SessionOpenOpts::default()
+        },
+    )
+    .unwrap();
+    let op = session.prompt("hello".into()).unwrap();
+    assert!(!op.is_empty());
+    for _ in 0..100 {
+        if !session.snapshot().unwrap().busy {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!session.snapshot().unwrap().busy);
+    session.close().unwrap();
+}

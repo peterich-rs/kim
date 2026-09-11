@@ -8,7 +8,11 @@ use goose_provider_types::base::Provider;
 use goose_provider_types::model::ModelConfig;
 
 use crate::events::HostEffect;
+use crate::ops::chat_guard::ChatGuardOp;
+use crate::ops::fs::FsToolProvider;
+use crate::ops::max_turns::MaxTurnsOp;
 use crate::ops::system_prompt::SystemPromptOp;
+use crate::ops::unknown_tool::UnknownToolOp;
 use crate::profile::{AgentProfile, ModelSpec};
 use crate::{HostError, HostSession};
 
@@ -19,13 +23,35 @@ impl MachineFactory {
         profile: &AgentProfile,
         provider: Arc<dyn Provider>,
         model: ModelConfig,
-        _project_root: &Path,
+        project_root: &Path,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
         let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp {
             prompt: profile.system_prompt.clone(),
         }))];
-        if profile.tools.fs {
-            steps.push(Step::Operation(Arc::new(ToolOperation::new())));
+        if let Some(max) = profile.max_turns {
+            steps.push(Step::Operation(Arc::new(MaxTurnsOp { max })));
+        }
+        if profile.mode == goose_provider_types::goose_mode::GooseMode::Chat
+            && profile.tools.has_any()
+        {
+            tracing::warn!(
+                profile_id = %profile.id,
+                "GooseMode::Chat ignored because ToolSet is non-empty"
+            );
+        }
+        let chat_only = !profile.tools.has_any() && profile.extensions.is_empty();
+        if !chat_only {
+            let mut tools = ToolOperation::new();
+            if profile.tools.fs || profile.tools.fs_write {
+                tools = tools.with_provider(Arc::new(FsToolProvider {
+                    root: project_root.to_path_buf(),
+                    writable: profile.tools.fs_write,
+                }));
+            }
+            steps.push(Step::Operation(Arc::new(tools)));
+            steps.push(Step::Operation(Arc::new(UnknownToolOp)));
+        } else {
+            steps.push(Step::Operation(Arc::new(ChatGuardOp)));
         }
         steps.push(Step::Inference(Arc::new(InferenceRunner::new(
             provider, model,
@@ -122,7 +148,8 @@ mod tests {
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
         );
-        assert_eq!(steps.len(), 2);
+        // system + max_turns + chat_guard + inference
+        assert_eq!(steps.len(), 4);
     }
 
     #[test]
@@ -138,6 +165,7 @@ mod tests {
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
         );
-        assert_eq!(steps.len(), 3);
+        // system + max_turns + tools + unknown + inference
+        assert_eq!(steps.len(), 5);
     }
 }
