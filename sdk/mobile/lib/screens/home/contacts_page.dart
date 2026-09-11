@@ -223,9 +223,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                 ),
             ]),
             _sectionLabel(theme, Copy.recentContacts),
-            if (social.friends
-                .where((p) => !isAgentDest(p.account))
-                .isEmpty)
+            if (social.friends.where((p) => !isAgentDest(p.account)).isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 24),

@@ -103,9 +103,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _baseUrl.text = s.baseUrl;
     _model.text = s.model;
     _apiKey.text = s.apiKey;
-    _thinking = _kEfforts.contains(s.thinkingEffort)
-        ? s.thinkingEffort
-        : 'off';
+    _thinking = _kEfforts.contains(s.thinkingEffort) ? s.thinkingEffort : 'off';
     _fs = s.enableFsTools;
     _bash = s.bashEnabled;
     final goose = ref.read(agentProfilesProvider.notifier).goose;
@@ -178,9 +176,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
       if (parts.length < 2) {
         continue;
       }
-      out.add(
-        AgentExtension(name: parts.first, command: parts.sublist(1)),
-      );
+      out.add(AgentExtension(name: parts.first, command: parts.sublist(1)));
     }
     return out;
   }
@@ -373,9 +369,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                             child: TextButton(
                               onPressed: _fetching ? null : _fetchModels,
                               child: Text(
-                                _fetching
-                                    ? '…'
-                                    : l10n.agentFetchModels,
+                                _fetching ? '…' : l10n.agentFetchModels,
                               ),
                             ),
                           ),
@@ -621,7 +615,10 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                                       .read(agentProfilesProvider.notifier)
                                       .delete(profile.id),
                                 ),
-                                icon: const Icon(Icons.delete_outline, size: 18),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                ),
                               ),
                           ],
                         ),

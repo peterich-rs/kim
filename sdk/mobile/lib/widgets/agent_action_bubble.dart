@@ -28,7 +28,9 @@ class AgentActionBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: scheme.surfaceContainer,
           borderRadius: BorderRadius.circular(KimTheme.radiusCard),
-          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.7),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -70,9 +72,8 @@ class AgentActionBubble extends ConsumerWidget {
                   card.preview,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
               ],
               if (confirmation) ...[

@@ -68,9 +68,7 @@ List<KimPerson> withGooseAgent(List<KimPerson> people) {
   ]);
 }
 
-final _mentionToken = RegExp(
-  r'@([^\s,，.。!！?？]+)',
-);
+final _mentionToken = RegExp(r'@([^\s,，.。!！?？]+)');
 
 AgentProfile? mentionedProfile(String text, List<AgentProfile> enabled) {
   final tokens = [

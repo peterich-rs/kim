@@ -426,7 +426,9 @@ class KimChatMsg {
       at: _jsonInt(json['at']),
       sys: json['sys'] == true,
       failed: status == KimSendStatus.failed,
-      kind: kimMsgKindFromName(json['kind'] is String ? json['kind'] as String : null),
+      kind: kimMsgKindFromName(
+        json['kind'] is String ? json['kind'] as String : null,
+      ),
       width: _jsonInt(json['width']),
       height: _jsonInt(json['height']),
       messageId: _jsonInt(json['messageId']),

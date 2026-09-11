@@ -45,7 +45,11 @@ void main() {
   test('mention prefers exact id over display name', () {
     final enabled = [
       _profile(id: 'goose', displayName: '助手', aliases: const ['助手']),
-      _profile(id: 'translator', displayName: '译者', aliases: const ['translator']),
+      _profile(
+        id: 'translator',
+        displayName: '译者',
+        aliases: const ['translator'],
+      ),
     ];
     expect(mentionedProfile('@translator hello', enabled)?.id, 'translator');
     expect(mentionedProfile('hey @译者', enabled)?.id, 'translator');
