@@ -31,7 +31,7 @@ impl PermissionConfig {
             GooseMode::Auto => PermissionDefault::AlwaysAllow,
             GooseMode::Approve | GooseMode::Chat => PermissionDefault::AskBefore,
             GooseMode::SmartApprove => match name {
-                "send_message" | "read_clipboard" | "write_file" | "bash" => {
+                "send_message" | "read_clipboard" | "write_file" | "bash" | "delegate" => {
                     PermissionDefault::AskBefore
                 }
                 n if n.contains("__") => PermissionDefault::AskBefore,

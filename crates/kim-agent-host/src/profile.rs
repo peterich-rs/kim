@@ -42,6 +42,8 @@ pub struct AgentProfile {
     pub extensions: Vec<ExtensionSpec>,
     #[serde(default = "enabled_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub steer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -229,6 +231,7 @@ impl AgentProfile {
             sandbox: SandboxPolicy::default(),
             extensions: Vec::new(),
             enabled: true,
+            steer: String::new(),
         }
     }
 }
@@ -266,6 +269,7 @@ impl ResolvedProfile {
                 sandbox: SandboxPolicy::default(),
                 extensions: Vec::new(),
                 enabled: true,
+                steer: String::new(),
             },
             api_key: config.api_key,
             project_root: PathBuf::new(),
@@ -325,6 +329,7 @@ fn goose_template() -> AgentProfile {
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
         enabled: true,
+        steer: String::new(),
     }
 }
 
@@ -352,6 +357,7 @@ fn translator_template() -> AgentProfile {
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
         enabled: false,
+        steer: String::new(),
     }
 }
 
@@ -385,6 +391,7 @@ fn coder_template() -> AgentProfile {
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
         enabled: false,
+        steer: String::new(),
     }
 }
 

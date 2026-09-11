@@ -138,6 +138,7 @@ class AgentProfile {
     this.permissionOverrides = const {},
     this.extensions = const [],
     this.enabled = true,
+    this.steer = '',
   });
 
   final String id;
@@ -155,6 +156,7 @@ class AgentProfile {
   final Map<String, String> permissionOverrides;
   final List<AgentExtension> extensions;
   final bool enabled;
+  final String steer;
 
   String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
 
@@ -171,6 +173,7 @@ class AgentProfile {
     Map<String, String>? permissionOverrides,
     List<AgentExtension>? extensions,
     bool? enabled,
+    String? steer,
   }) {
     return AgentProfile(
       id: id,
@@ -188,6 +191,7 @@ class AgentProfile {
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       extensions: extensions ?? this.extensions,
       enabled: enabled ?? this.enabled,
+      steer: steer ?? this.steer,
     );
   }
 
@@ -207,6 +211,7 @@ class AgentProfile {
     'permissions': {'tools': permissionOverrides},
     'extensions': [for (final e in extensions) e.toJson()],
     'enabled': enabled,
+    if (steer.isNotEmpty) 'steer': steer,
   };
 
   factory AgentProfile.fromJson(Map<String, Object?> json) {
@@ -261,6 +266,7 @@ class AgentProfile {
         ];
       }(),
       enabled: json['enabled'] != false,
+      steer: json['steer'] as String? ?? '',
     );
   }
 
@@ -451,6 +457,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       permissionOverrides: source.permissionOverrides,
       extensions: source.extensions,
       enabled: true,
+      steer: source.steer,
     );
     await _persist([...state, copy]);
   }

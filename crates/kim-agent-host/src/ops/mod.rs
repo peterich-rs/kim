@@ -12,6 +12,8 @@ pub mod fs;
 pub mod max_turns;
 pub mod mcp;
 pub mod permission;
+pub mod steer;
+pub mod subagent;
 pub mod system_prompt;
 pub mod unknown_tool;
 

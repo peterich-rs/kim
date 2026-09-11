@@ -15,6 +15,8 @@ use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
 use crate::ops::mcp::{McpHub, McpToolProvider};
 use crate::ops::permission::PermissionOp;
+use crate::ops::steer::SteerOp;
+use crate::ops::subagent::SubagentOp;
 use crate::ops::system_prompt::SystemPromptOp;
 use crate::ops::unknown_tool::UnknownToolOp;
 use crate::profile::{AgentProfile, ModelSpec};
@@ -33,6 +35,11 @@ impl MachineFactory {
         let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp {
             prompt: profile.system_prompt.clone(),
         }))];
+        if !profile.steer.trim().is_empty() {
+            steps.push(Step::Operation(Arc::new(SteerOp {
+                steer: profile.steer.clone(),
+            })));
+        }
         if let Some(max) = profile.max_turns {
             steps.push(Step::Operation(Arc::new(MaxTurnsOp { max })));
         }
@@ -77,6 +84,10 @@ impl MachineFactory {
             if !profile.extensions.is_empty() {
                 tools = tools.with_provider(Arc::new(McpToolProvider { hub: mcp }));
             }
+            tools = tools.with_provider(Arc::new(SubagentOp {
+                provider: Arc::clone(&provider),
+                model: model.clone(),
+            }));
             steps.push(Step::Operation(Arc::new(tools)));
             steps.push(Step::Operation(Arc::new(UnknownToolOp)));
         } else {
@@ -165,6 +176,7 @@ mod tests {
             sandbox: crate::profile::SandboxPolicy::default(),
             extensions: Vec::new(),
             enabled: true,
+            steer: String::new(),
         }
     }
 
