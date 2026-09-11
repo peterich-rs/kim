@@ -65,14 +65,18 @@ fn resolve_in_root_for_write(root: &Path, raw: &str) -> Result<PathBuf, String> 
     if file_name == "." || file_name == ".." {
         return Err("path escapes workspace".into());
     }
-    let canon = if candidate.exists() {
-        std::fs::canonicalize(&candidate).map_err(|e| e.to_string())?
-    } else {
-        let parent = candidate
-            .parent()
-            .ok_or_else(|| "invalid path".to_string())?;
-        let parent_canon = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
-        parent_canon.join(file_name)
+    // WHY: Path::exists follows links, so a dangling workspace symlink looks
+    // like a new file and write() would create the outside target.
+    let canon = match std::fs::symlink_metadata(&candidate) {
+        Ok(_) => std::fs::canonicalize(&candidate).map_err(|e| e.to_string())?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let parent = candidate
+                .parent()
+                .ok_or_else(|| "invalid path".to_string())?;
+            let parent_canon = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+            parent_canon.join(file_name)
+        }
+        Err(e) => return Err(e.to_string()),
     };
     if !canon.starts_with(&root_canon) {
         return Err("path escapes workspace".into());
@@ -299,5 +303,31 @@ mod tests {
         let result = provider.call(&session, "1", call, &emit()).await.unwrap();
         assert_eq!(result.is_error, Some(true));
         assert!(!dir.path().join("secret.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn write_file_dangling_symlink_does_not_create_outside() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("ws");
+        std::fs::create_dir_all(&root).unwrap();
+        let outside = dir.path().join("outside");
+        std::os::unix::fs::symlink(&outside, root.join("evil.txt")).unwrap();
+        let provider = FsToolProvider {
+            root: root.clone(),
+            writable: true,
+        };
+        let session = crate::HostSession {
+            id: "s".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let mut call = CallToolRequestParams::new("write_file");
+        let mut args = JsonObject::new();
+        args.insert("path".into(), json!("evil.txt"));
+        args.insert("contents".into(), json!("pwned"));
+        call.arguments = Some(args);
+        let result = provider.call(&session, "1", call, &emit()).await.unwrap();
+        assert_eq!(result.is_error, Some(true));
+        assert!(!outside.exists());
     }
 }

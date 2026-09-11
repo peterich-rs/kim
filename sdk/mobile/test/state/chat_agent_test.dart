@@ -362,6 +362,59 @@ void main() {
     expect(gooseSession.permissions, isEmpty);
   });
 
+  test('respondPermission no-ops when keyed live is gone', () async {
+    final gooseSession = _RecordingSession();
+    final copySession = _RecordingSession();
+    final bridge = _RecordingAgentBridge()
+      ..sessions['goose'] = gooseSession
+      ..session = gooseSession;
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent.multi_profile', true);
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.duplicate(store.goose!);
+    final copy = env.container
+        .read(agentProfilesProvider)
+        .firstWhere((p) => p.id != kGooseAgentId);
+    bridge.sessions[copy.id] = copySession;
+    await env.container
+        .read(chatAgentProvider)
+        .onOutgoingText(dest: 'bob', text: '@助手 ping');
+    await env.container
+        .read(chatAgentProvider)
+        .onOutgoingText(dest: 'bob', text: '@${copy.id} ping');
+    await Future<void>.delayed(Duration.zero);
+    gooseSession.emit(_actionRequired('c-goose'));
+    await Future<void>.delayed(Duration.zero);
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: 'd1', text: 'hi');
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: 'd2', text: 'hi');
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: 'd3', text: 'hi');
+    await env.container
+        .read(chatAgentProvider)
+        .respondPermission(
+          dest: 'bob',
+          callId: 'c-goose',
+          permission: 'allow_once',
+          toolName: 'send_message',
+        );
+    expect(copySession.permissions, isEmpty);
+    expect(gooseSession.permissions, isEmpty);
+  });
+
   test('AlwaysAllow persists onto the acting profile', () async {
     final session = _RecordingSession();
     final bridge = _RecordingAgentBridge()..session = session;

@@ -47,16 +47,6 @@ class ChatAgent {
 
   String _key(String dest, String profileId) => '$dest::$profileId';
 
-  _Live? _liveForDest(String dest) {
-    for (final key in _lru.reversed) {
-      final live = _lives[key];
-      if (live?.threadDest == dest) {
-        return live;
-      }
-    }
-    return null;
-  }
-
   /// Direct DM with a local agent contact — every line is a prompt.
   Future<void> sendDirect({required String dest, required String text}) async {
     final body = text.trim();
@@ -149,10 +139,8 @@ class ChatAgent {
       return existing;
     }
     while (_lru.length >= _lruLimit) {
-      final evict = _lru.removeAt(0);
-      final old = _lives.remove(evict);
-      await old?.sub?.cancel();
-      await old?.session.close();
+      // WHY: _closeLive also cancels the evicted key's tool-timeout timer.
+      await _closeLive(_lru.first);
     }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
@@ -259,14 +247,19 @@ class ChatAgent {
       profileId: profile.id,
       callId: callId,
     );
-    final live = _lives[_key(dest, profile.id)] ?? _liveForDest(dest);
+    // WHY: keyed miss must no-op; another persona on this dest is the wrong live.
+    final live = _lives[_key(dest, profile.id)];
     if (live == null) {
+      _clearToolCall(dest, profile.id, callId);
       return;
     }
     try {
       await live.session.completeTool(callId: callId, outputJson: out);
       _clearToolCall(dest, profile.id, callId);
-    } catch (_) {}
+    } catch (_) {
+      // WHY: a failed complete must not leave this round's timeout armed.
+      _clearToolCall(dest, profile.id, callId);
+    }
   }
 
   void _armToolTimeout(String dest, String profileId, String callId) {
@@ -398,7 +391,8 @@ class ChatAgent {
     if (permission == 'always_allow') {
       await _rememberAlwaysAllow(toolName, profileId);
     }
-    final live = _lives[_key(dest, profileId)] ?? _liveForDest(dest);
+    // WHY: keyed miss must no-op; another persona on this dest is the wrong live.
+    final live = _lives[_key(dest, profileId)];
     if (live == null) {
       return;
     }
