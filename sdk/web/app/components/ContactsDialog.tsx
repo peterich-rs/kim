@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { COPY } from "../copy.ts";
 import { useChat, type Person } from "../state/ChatProvider.tsx";
+import { BotBadge } from "./BotBadge.tsx";
 import { Modal, UserAvatar } from "./ui.tsx";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -141,7 +142,10 @@ export function ContactsDialog({
                     <UserAvatar name={p.nickname} />
                   </ItemMedia>
                   <ItemContent>
-                    <ItemTitle>{p.nickname}</ItemTitle>
+                    <ItemTitle>
+                      {p.nickname}
+                      <BotBadge kind={p.kind} />
+                    </ItemTitle>
                     <ItemDescription>@{p.account}</ItemDescription>
                   </ItemContent>
                   <ItemActions>

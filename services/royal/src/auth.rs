@@ -215,9 +215,12 @@ pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<B
         Ok(()) => finish_auth(&st, &account, &req).await,
         Err(UserError::Conflict) => Err((StatusCode::CONFLICT, "账号已存在".into())),
         Err(UserError::Backend(e)) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
-        Err(UserError::NotFound | UserError::InvalidProfile) => {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, "create".into()))
-        }
+        Err(
+            UserError::NotFound
+            | UserError::InvalidProfile
+            | UserError::Limit
+            | UserError::NotBotOwner,
+        ) => Err((StatusCode::INTERNAL_SERVER_ERROR, "create".into())),
     }
 }
 
@@ -225,6 +228,11 @@ pub async fn login(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Byte
     let req = decode::<AuthReq>(&body)?;
     let account = valid_account(&req.account)?.to_string();
     let password = resolve_password_field(&st, &req.password, &req.password_sealed, &req.key_id)?;
+    if let Ok(Some(p)) = st.users.lookup(&st.app, &account).await {
+        if p.kind == kim_protocol::PROFILE_KIND_BOT {
+            return Err(unauthorized());
+        }
+    }
     let stored = st
         .users
         .password_hash(&st.app, &account)

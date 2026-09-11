@@ -12,6 +12,7 @@ use kim_protocol::pkt::{
     HistoryQuery, HistoryResp, InboxItem, InboxQuery, InboxResp, ProfileUpdateReq, UserListResp,
     UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
+use kim_protocol::PROFILE_KIND_BOT;
 use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};
 
 use crate::{backend, decode, encode, RoyalState};
@@ -20,6 +21,7 @@ fn social_http(err: SocialError) -> (StatusCode, String) {
     match err {
         SocialError::SelfOp => (StatusCode::BAD_REQUEST, "self".into()),
         SocialError::Blocked => (StatusCode::FORBIDDEN, "blocked".into()),
+        SocialError::BotSocialDenied => (StatusCode::FORBIDDEN, "bot-social-denied".into()),
         SocialError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
         SocialError::Backend(e) => backend(e),
     }
@@ -29,12 +31,32 @@ fn user_http(err: UserError) -> (StatusCode, String) {
     match err {
         UserError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
         UserError::InvalidProfile => (StatusCode::BAD_REQUEST, "invalid profile".into()),
+        UserError::Limit => (StatusCode::BAD_REQUEST, "limit".into()),
+        UserError::NotBotOwner => (StatusCode::FORBIDDEN, "not bot owner".into()),
         UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
         UserError::Backend(e) => backend(e),
     }
 }
 
-fn to_pb(p: UserProfile) -> PbProfile {
+async fn reject_bot_social(
+    st: &RoyalState,
+    account: &str,
+    peer: &str,
+) -> Result<(), (StatusCode, String)> {
+    match st.users.lookup(&st.app, peer).await {
+        Ok(Some(p)) if p.kind == PROFILE_KIND_BOT => {
+            if p.owner_account == account {
+                Err((StatusCode::FORBIDDEN, "bot-social-denied".into()))
+            } else {
+                Err((StatusCode::NOT_FOUND, "not found".into()))
+            }
+        }
+        Ok(_) => Ok(()),
+        Err(err) => Err(user_http(err)),
+    }
+}
+
+pub(crate) fn to_pb(p: UserProfile) -> PbProfile {
     PbProfile {
         account: p.account,
         nickname: p.nickname,
@@ -108,6 +130,7 @@ pub async fn friend_request(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
+    reject_bot_social(&st, &req.account, &req.peer).await?;
     let outcome = st
         .social
         .request(&st.app, &req.account, &req.peer)
@@ -118,6 +141,8 @@ pub async fn friend_request(
             outcome,
             FriendRequestOutcome::AutoAccepted | FriendRequestOutcome::AlreadyFriends
         ),
+        kind: 0,
+        owner_account: String::new(),
     }))
 }
 
@@ -126,6 +151,7 @@ pub async fn friend_accept(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
+    reject_bot_social(&st, &req.account, &req.peer).await?;
     st.social
         .accept(&st.app, &req.account, &req.peer)
         .await
@@ -150,6 +176,7 @@ pub async fn friend_remove(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
+    reject_bot_social(&st, &req.account, &req.peer).await?;
     st.social
         .remove(&st.app, &req.account, &req.peer)
         .await
@@ -193,7 +220,11 @@ pub async fn friend_check(
         .is_friend(&st.app, &req.account, &req.peer)
         .await
         .map_err(social_http)?;
-    Ok(encode(&AccountExists { exists }))
+    Ok(encode(&AccountExists {
+        exists,
+        kind: 0,
+        owner_account: String::new(),
+    }))
 }
 
 pub async fn block_add(
@@ -201,6 +232,7 @@ pub async fn block_add(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
+    reject_bot_social(&st, &req.account, &req.peer).await?;
     st.social
         .block(&st.app, &req.account, &req.peer)
         .await
@@ -213,6 +245,7 @@ pub async fn block_remove(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
+    reject_bot_social(&st, &req.account, &req.peer).await?;
     st.social
         .unblock(&st.app, &req.account, &req.peer)
         .await
@@ -243,7 +276,11 @@ pub async fn block_check(
         .is_blocked_either(&st.app, &req.account, &req.peer)
         .await
         .map_err(social_http)?;
-    Ok(encode(&AccountExists { exists }))
+    Ok(encode(&AccountExists {
+        exists,
+        kind: 0,
+        owner_account: String::new(),
+    }))
 }
 
 fn inbox_kind(kind: chat::store::MessageKind) -> i32 {

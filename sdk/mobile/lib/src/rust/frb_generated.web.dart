@@ -96,6 +96,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  KimBotPendingItem dco_decode_kim_bot_pending_item(dynamic raw);
+
+  @protected
   KimHistoryItem dco_decode_kim_history_item(dynamic raw);
 
   @protected
@@ -112,6 +115,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<KimBotPendingItem> dco_decode_list_kim_bot_pending_item(dynamic raw);
 
   @protected
   List<KimHistoryItem> dco_decode_list_kim_history_item(dynamic raw);
@@ -202,6 +208,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  KimBotPendingItem sse_decode_kim_bot_pending_item(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   KimHistoryItem sse_decode_kim_history_item(SseDeserializer deserializer);
 
   @protected
@@ -220,6 +231,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<KimBotPendingItem> sse_decode_list_kim_bot_pending_item(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<KimHistoryItem> sse_decode_list_kim_history_item(
@@ -325,6 +341,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_kim_bot_pending_item(
+    KimBotPendingItem self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_kim_history_item(
     KimHistoryItem self,
     SseSerializer serializer,
@@ -350,6 +372,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_kim_bot_pending_item(
+    List<KimBotPendingItem> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_kim_history_item(

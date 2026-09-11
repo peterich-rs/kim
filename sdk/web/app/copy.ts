@@ -134,6 +134,7 @@ export const COPY = {
   addFriendToChat: "加为好友后即可发送消息",
   requested: "已申请",
   chatAction: "发消息",
+  botBadge: "助手",
   searchEmpty: "没有找到相关用户",
   pickFriends: "从通讯录选择成员",
 

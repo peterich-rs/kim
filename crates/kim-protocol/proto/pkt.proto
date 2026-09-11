@@ -23,6 +23,8 @@ enum Status {
   NotFriends = 109;      // 1:1 talk without an accepted friendship
   Blocked = 110;         // blocked either direction
   IdempotencyConflict = 111; // same clientId, different dest/type/body/extra/kind
+  NotBotOwner = 112;
+  BotSocialDenied = 113; // only the owner misusing friend/block on their bot
   NoDestination = 300;   // Header.dest empty
   SessionNotFound = 404;
 }
@@ -259,6 +261,8 @@ message AccountQuery {
 
 message AccountExists {
   bool exists = 1;
+  int32 kind = 2;           // 0 absent → treat as user; 1 user; 2 bot
+  string ownerAccount = 3;  // bots only; never sent on UserProfile
 }
 
 message KickAccount {
@@ -395,6 +399,56 @@ message ReadReceiptPush {
 message FriendRequestNotify {
   string fromAccount = 1;
   string fromNickname = 2;
+}
+
+message BotCreateReq {
+  string clientProfileId = 1;
+  string nickname = 2;
+  string avatar = 3;
+  string bio = 4;
+}
+message BotCreateResp { UserProfile profile = 1; }
+
+message BotReplyReq {
+  MessageReq message = 1;
+  int64 inReplyTo = 2; // must be > 0
+}
+
+message BotPendingItem {
+  int64 messageId = 1;
+  string body = 2;
+  int64 sendTime = 3;
+}
+message BotPendingResp { repeated BotPendingItem items = 1; }
+
+// Chat ↔ Royal HMAC bodies.
+message InternalBotCreate {
+  string owner = 1;
+  string clientProfileId = 2;
+  string nickname = 3;
+  string avatar = 4;
+  string bio = 5;
+}
+
+message InternalBotUpdate {
+  string owner = 1;
+  string account = 2;
+  string nickname = 3;
+  string avatar = 4;
+  string bio = 5;
+}
+
+message BotReplyStoreReq {
+  string owner = 1;
+  string botAccount = 2;
+  int64 inReplyTo = 3;
+  InsertMessageReq insert = 4;
+}
+
+message BotPendingQuery {
+  string owner = 1;
+  string botAccount = 2;
+  int32 limit = 3;
 }
 
 message InboxReq {

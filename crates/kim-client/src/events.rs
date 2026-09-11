@@ -1,4 +1,4 @@
-/// Result of a `chat.user.talk` / `chat.group.talk` Response.
+/// Result of a `chat.user.talk` / `chat.group.talk` / `chat.bot.reply` Response.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TalkResult {
     pub message_id: i64,
@@ -106,6 +106,10 @@ pub enum Event {
     Pong,
     Talk(IncomingTalk),
     TalkResp(TalkResult),
+    BotPending {
+        sequence: u32,
+        items: Vec<BotPendingItem>,
+    },
     Kickout {
         channel_id: String,
     },
@@ -194,6 +198,13 @@ pub struct PresenceEntry {
     pub account: String,
     pub status: i32,
     pub last_seen: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BotPendingItem {
+    pub message_id: i64,
+    pub body: String,
+    pub send_time: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -1,26 +1,28 @@
 use bytes::Bytes;
 use kim_core::Frame;
 use kim_protocol::pkt::{
-    AuthResp, ConversationReadReq, Flag, FriendRequestNotify, GroupCreateNotify, HistoryReq,
-    HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq, MessageAckReq, MessageContentReq,
-    MessageContentResp, MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp,
-    PresencePush, ReadReceiptPush, RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, TypingPush,
-    TypingReq, UserListResp, UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
+    AuthResp, BotCreateReq, BotCreateResp, BotPendingResp, BotReplyReq, ConversationReadReq, Flag,
+    FriendRequestNotify, GroupCreateNotify, HistoryReq, HistoryResp, InboxReq, InboxResp,
+    KickoutNotify, LoginReq, MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq,
+    MessageIndexResp, MessagePush, MessageReq, MessageResp, PresencePush, ReadReceiptPush,
+    RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, TypingPush, TypingReq, UserListResp,
+    UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
-    marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
-    CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ,
-    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE,
-    CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP,
-    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
+    marshal, read, BasicPkt, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
+    CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
+    CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING,
+    CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG,
+    INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO,
+    MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
 use crate::events::{
-    Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex, OutgoingContent, Profile,
-    TalkResult,
+    BotPendingItem, Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex,
+    OutgoingContent, Profile, TalkResult,
 };
 use crate::ClientError;
 
@@ -208,6 +210,52 @@ pub fn encode_user_update(seq: u32, nickname: &str, avatar: &str, bio: &str) -> 
     marshal(&Packet::Logic(pkt))
 }
 
+pub fn encode_bot_create(
+    seq: u32,
+    client_profile_id: &str,
+    nickname: &str,
+    avatar: &str,
+    bio: &str,
+) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_BOT_CREATE, seq, Bytes::new());
+    pkt.write_body(&BotCreateReq {
+        client_profile_id: client_profile_id.to_string(),
+        nickname: nickname.to_string(),
+        avatar: avatar.to_string(),
+        bio: bio.to_string(),
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_bot_reply(
+    seq: u32,
+    dest: &str,
+    body: &str,
+    extra: &str,
+    client_id: &str,
+    in_reply_to: i64,
+) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_BOT_REPLY, seq, Bytes::new());
+    pkt.set_dest(dest);
+    pkt.write_body(&BotReplyReq {
+        message: Some(MessageReq {
+            r#type: MESSAGE_TYPE_TEXT,
+            body: body.to_string(),
+            extra: extra.to_string(),
+            client_id: client_id.to_string(),
+        }),
+        in_reply_to,
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_bot_pending(seq: u32, dest: &str, limit: i32) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_BOT_PENDING, seq, Bytes::new());
+    pkt.set_dest(dest);
+    pkt.write_body(&InboxReq { limit });
+    marshal(&Packet::Logic(pkt))
+}
+
 pub fn encode_user_search(seq: u32, query: &str) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_USER_SEARCH, seq, Bytes::new());
     pkt.write_body(&UserSearchReq {
@@ -254,15 +302,15 @@ pub fn is_kickout(pkt: &LogicPkt) -> Option<KickoutNotify> {
     pkt.read_body().ok()
 }
 
-pub fn decode_event(frame: &Frame) -> Result<Event, ClientError> {
+pub fn decode_event(frame: &Frame, me: &str) -> Result<Event, ClientError> {
     match read(&frame.payload)? {
         Packet::Basic(p) if p.code == CODE_PONG => Ok(Event::Pong),
         Packet::Basic(_) => Err(ClientError::other("unexpected basic packet")),
-        Packet::Logic(p) => decode_logic(p),
+        Packet::Logic(p) => decode_logic(p, me),
     }
 }
 
-fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
+fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
     if let Some(notify) = is_kickout(&p) {
         return Ok(Event::Kickout {
             channel_id: notify.channel_id,
@@ -373,7 +421,7 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
         let command = p.header.command.clone();
         let header_dest = p.header.dest.clone();
         let push: MessagePush = p.read_body()?;
-        let dest = if command == CMD_CHAT_GROUP_TALK {
+        let dest = if command == CMD_CHAT_GROUP_TALK || (!me.is_empty() && push.sender == me) {
             header_dest
         } else {
             push.sender.clone()
@@ -390,7 +438,9 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
         }));
     }
     if p.header.flag == Flag::Response as i32
-        && (p.header.command == CMD_CHAT_USER_TALK || p.header.command == CMD_CHAT_GROUP_TALK)
+        && (p.header.command == CMD_CHAT_USER_TALK
+            || p.header.command == CMD_CHAT_GROUP_TALK
+            || p.header.command == CMD_BOT_REPLY)
     {
         if p.header.status != Status::Success as i32 {
             return Ok(Event::Status {
@@ -434,8 +484,47 @@ fn decode_logic(p: LogicPkt) -> Result<Event, ClientError> {
                 .collect(),
         });
     }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_BOT_CREATE {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: BotCreateResp = p.read_body()?;
+        let u = resp.profile.unwrap_or_default();
+        return Ok(Event::Profile {
+            sequence: p.header.sequence,
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.kind),
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_BOT_PENDING {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: BotPendingResp = p.read_body()?;
+        return Ok(Event::BotPending {
+            sequence: p.header.sequence,
+            items: resp
+                .items
+                .into_iter()
+                .map(|i| BotPendingItem {
+                    message_id: i.message_id,
+                    body: i.body,
+                    send_time: i.send_time,
+                })
+                .collect(),
+        });
+    }
     if p.header.flag == Flag::Response as i32
-        && (p.header.command == CMD_USER_PROFILE || p.header.command == CMD_USER_UPDATE)
+        && (p.header.command == CMD_USER_PROFILE
+            || p.header.command == CMD_USER_UPDATE
+            || p.header.command == CMD_BOT_UPDATE)
     {
         if p.header.status != Status::Success as i32 {
             return Ok(Event::Status {

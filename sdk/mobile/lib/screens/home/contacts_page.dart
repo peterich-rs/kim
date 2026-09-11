@@ -219,14 +219,21 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                     subtitle: Text(Copy.agentLocalSubtitle),
                     trailing: Text(Copy.chatAction),
                     onTap: () => _open(
-                      canonicalAgentDest(profile.dest),
+                      personForProfile(profile).account,
                       profile.displayName,
                     ),
                   ),
               ]),
             ],
             _sectionLabel(theme, Copy.recentContacts),
-            if (social.friends.where((p) => !isAgentDest(p.account)).isEmpty)
+            if (social.friends
+                .where(
+                  (p) => !isOwnedAgentAccount(
+                    p.account,
+                    ref.watch(agentProfilesProvider),
+                  ),
+                )
+                .isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 24),
@@ -240,7 +247,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             else
               _groupSliver([
                 for (final friend in social.friends.where(
-                  (p) => !isAgentDest(p.account),
+                  (p) => !isOwnedAgentAccount(
+                    p.account,
+                    ref.watch(agentProfilesProvider),
+                  ),
                 ))
                   ListTile(
                     leading: KimAvatar(name: friend.title, url: friend.avatar),

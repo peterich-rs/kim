@@ -45,6 +45,11 @@ pub const CMD_ROOM_LEAVE: &str = "chat.room.leave";
 pub const CMD_PRESENCE: &str = "chat.presence";
 pub const CMD_TYPING: &str = "chat.typing";
 pub const CMD_RECEIPT_READ: &str = "chat.receipt.read";
+pub const CMD_BOT_CREATE: &str = "chat.bot.create";
+pub const CMD_BOT_DELETE: &str = "chat.bot.delete";
+pub const CMD_BOT_UPDATE: &str = "chat.bot.update";
+pub const CMD_BOT_REPLY: &str = "chat.bot.reply";
+pub const CMD_BOT_PENDING: &str = "chat.bot.pending";
 
 pub const INBOX_KIND_USER: i32 = 0;
 pub const INBOX_KIND_GROUP: i32 = 1;

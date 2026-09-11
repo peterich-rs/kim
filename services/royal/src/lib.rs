@@ -1,6 +1,7 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
 mod auth;
+mod bot;
 mod device;
 mod product;
 mod revoke;
@@ -14,7 +15,7 @@ use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use chat::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
 use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
@@ -105,11 +106,17 @@ impl RoyalState {
         } else {
             Arc::new(MemoryMessageStore::new(idgen.clone()))
         };
+        let social: Arc<dyn SocialDirectory> = Arc::new(MemorySocialDirectory::new());
+        let users = Arc::new(
+            MemoryUserDirectory::new()
+                .with_social(social.clone())
+                .with_idgen(idgen.clone()),
+        );
         Self {
             store,
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
-            users: Arc::new(MemoryUserDirectory::new()),
-            social: Arc::new(MemorySocialDirectory::new()),
+            users,
+            social,
             jwt,
             revoke: Arc::new(MemoryRevocation::new()),
             devices: Arc::new(MemoryDeviceDirectory::new()),
@@ -278,6 +285,11 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/inbox", post(product::inbox_list))
         .route("/api/v1/history", post(product::history))
         .route("/api/v1/inbox/read", post(product::inbox_read))
+        .route("/api/v1/bot", post(bot::bot_create))
+        .route("/api/v1/bot", delete(bot::bot_delete))
+        .route("/api/v1/bot/update", post(bot::bot_update))
+        .route("/api/v1/bot/reply", post(bot::bot_reply))
+        .route("/api/v1/bot/pending", post(bot::bot_pending))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_hmac))
         .route("/health", get(health))
         .route("/api/v1/auth/register", post(auth::register))
@@ -425,7 +437,7 @@ fn is_new_index(req: &OfflineIndexReq) -> bool {
     !req.target_id.is_empty() || req.resume || !req.app.is_empty()
 }
 
-fn insert_from_req(req: InsertMessageReq) -> InsertMessage {
+pub(crate) fn insert_from_req(req: InsertMessageReq) -> InsertMessage {
     let msg = req.message.unwrap_or_default();
     InsertMessage {
         sender: req.sender,
@@ -486,7 +498,7 @@ async fn insert_group(
     Ok(encode(&encode_insert(&inserted)))
 }
 
-fn encode_insert(inserted: &InsertResult) -> InsertMessageResp {
+pub(crate) fn encode_insert(inserted: &InsertResult) -> InsertMessageResp {
     InsertMessageResp {
         message_id: inserted.message_id,
         send_time: inserted.send_time,
@@ -738,17 +750,26 @@ async fn user_lookup(
     if req.account.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "empty account".into()));
     }
-    let exists = st
+    let presence = st
         .users
-        .exists(&st.app, &req.account)
+        .lookup(&st.app, &req.account)
         .await
         .map_err(|e| match e {
             UserError::Backend(s) => backend(s),
             UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
             UserError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
             UserError::InvalidProfile => (StatusCode::BAD_REQUEST, "invalid profile".into()),
+            UserError::Limit => (StatusCode::BAD_REQUEST, "limit".into()),
+            UserError::NotBotOwner => (StatusCode::FORBIDDEN, "not bot owner".into()),
         })?;
-    Ok(encode(&AccountExists { exists }))
+    Ok(encode(&AccountExists {
+        exists: presence.as_ref().is_some_and(|p| p.exists),
+        kind: presence.as_ref().map(|p| p.kind).unwrap_or(0),
+        owner_account: presence
+            .as_ref()
+            .map(|p| p.owner_account.clone())
+            .unwrap_or_default(),
+    }))
 }
 
 async fn user_upsert(
@@ -767,6 +788,8 @@ async fn user_upsert(
             UserError::Conflict => (StatusCode::CONFLICT, "conflict".into()),
             UserError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
             UserError::InvalidProfile => (StatusCode::BAD_REQUEST, "invalid profile".into()),
+            UserError::Limit => (StatusCode::BAD_REQUEST, "limit".into()),
+            UserError::NotBotOwner => (StatusCode::FORBIDDEN, "not bot owner".into()),
         })?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2126,5 +2149,70 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let msg = resp.text().await.unwrap();
         assert!(msg.contains("plaintext"), "{msg}");
+    }
+
+    #[tokio::test]
+    async fn bot_reply_same_in_reply_to_one_content() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let state = RoyalState::memory(Arc::new(SequenceIdGen::default()));
+        tokio::spawn(async move {
+            let _ = serve(listener, state).await;
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let base = format!("http://{addr}");
+        let (store, _, users, _) = chat::http_backends(&base).unwrap();
+        users.upsert("kim", "alice").await.unwrap();
+        let bot = users
+            .create_bot(
+                "kim",
+                &chat::users::CreateBot {
+                    owner: "alice".into(),
+                    client_profile_id: "goose".into(),
+                    nickname: "助手".into(),
+                    avatar: String::new(),
+                    bio: String::new(),
+                },
+            )
+            .await
+            .unwrap();
+        let user_msg = store
+            .insert_user(
+                "kim",
+                &InsertMessage {
+                    sender: "alice".into(),
+                    dest: bot.account.clone(),
+                    send_time: 1,
+                    msg_type: MESSAGE_TYPE_TEXT,
+                    body: "hi".into(),
+                    extra: String::new(),
+                    client_id: "u1".into(),
+                    online_targets: Vec::new(),
+                },
+            )
+            .await
+            .unwrap();
+        let mut reply = InsertMessage {
+            sender: bot.account.clone(),
+            dest: "alice".into(),
+            send_time: 2,
+            msg_type: MESSAGE_TYPE_TEXT,
+            body: "hello".into(),
+            extra: String::new(),
+            client_id: "r1".into(),
+            online_targets: Vec::new(),
+        };
+        let first = store
+            .insert_bot_reply("kim", "alice", &bot.account, user_msg.message_id, &reply)
+            .await
+            .unwrap();
+        assert!(!first.duplicate);
+        reply.client_id = "r2".into();
+        let second = store
+            .insert_bot_reply("kim", "alice", &bot.account, user_msg.message_id, &reply)
+            .await
+            .unwrap();
+        assert!(second.duplicate);
+        assert_eq!(second.message_id, first.message_id);
     }
 }

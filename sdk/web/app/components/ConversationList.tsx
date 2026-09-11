@@ -6,6 +6,7 @@ import { COPY } from "../copy.ts";
 import { formatListTime } from "../lib/format.ts";
 import { cn } from "../lib/utils.ts";
 import { useChat } from "../state/ChatProvider.tsx";
+import { BotBadge } from "./BotBadge.tsx";
 import { GhostIconButton, UserAvatar } from "./ui.tsx";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -42,6 +43,7 @@ export function ConversationList({
     incomingCount,
     inboxReady,
     muteThread,
+    people,
   } = useChat();
   const [query, setQuery] = useState("");
   const [debounced] = useDebounceValue(query, 120);
@@ -207,6 +209,7 @@ export function ConversationList({
                         <div className="flex items-baseline justify-between gap-2">
                           <ItemTitle className={cn("truncate", t.unread > 0 && "font-bold")}>
                             {t.title}
+                            <BotBadge kind={people.find((p) => p.account === t.id)?.kind} />
                           </ItemTitle>
                           {t.lastAt ? (
                             <span className="shrink-0 text-[11px] text-muted-foreground">

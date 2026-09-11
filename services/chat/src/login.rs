@@ -37,6 +37,22 @@ pub async fn do_sys_login_with_zone(
         body.zone = zone.to_string();
     }
     info!(account = %body.account, channel = %body.channel_id, zone = %body.zone, "do login");
+    match users.lookup(&body.app, &body.account).await {
+        Ok(Some(p)) if p.kind == kim_protocol::PROFILE_KIND_BOT => {
+            if let Err(e) = ctx.resp_bytes(Status::Unauthorized, Bytes::new()).await {
+                warn!(%e, "resp failed");
+            }
+            return;
+        }
+        Ok(_) => {}
+        Err(err) => {
+            error!(%err, "user lookup failed");
+            if let Err(e) = ctx.resp_bytes(Status::SystemException, Bytes::new()).await {
+                warn!(%e, "resp failed");
+            }
+            return;
+        }
+    }
     if let Err(err) = users.upsert(&body.app, &body.account).await {
         error!(%err, "user upsert failed");
         if let Err(e) = ctx.resp_bytes(Status::SystemException, Bytes::new()).await {
@@ -461,6 +477,25 @@ mod tests {
             _: i64,
         ) -> Result<(), crate::store::StoreError> {
             Ok(())
+        }
+        async fn insert_bot_reply(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: i64,
+            _: &crate::store::InsertMessage,
+        ) -> Result<crate::store::InsertResult, crate::store::StoreError> {
+            Err(crate::store::StoreError::Backend("unused".into()))
+        }
+        async fn bot_pending(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: i32,
+        ) -> Result<Vec<crate::store::BotPendingItem>, crate::store::StoreError> {
+            Ok(Vec::new())
         }
     }
 

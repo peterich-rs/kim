@@ -1,4 +1,5 @@
 use kim_protocol::pkt::{FriendRequestNotify, Status, UserListResp};
+use kim_protocol::PROFILE_KIND_BOT;
 use kim_router::Context;
 use tracing::warn;
 
@@ -31,7 +32,27 @@ fn social_status(err: &SocialError) -> Status {
         SocialError::SelfOp => Status::InvalidPacketBody,
         SocialError::NotFound => Status::UserNotFound,
         SocialError::Blocked => Status::Blocked,
+        SocialError::BotSocialDenied => Status::BotSocialDenied,
         SocialError::Backend(_) => Status::SystemException,
+    }
+}
+
+async fn reject_bot_social(
+    users: &dyn UserDirectory,
+    app: &str,
+    session: &str,
+    peer: &str,
+) -> Result<(), Status> {
+    match users.lookup(app, peer).await {
+        Ok(Some(p)) if p.kind == PROFILE_KIND_BOT => {
+            if p.owner_account == session {
+                Err(Status::BotSocialDenied)
+            } else {
+                Err(Status::UserNotFound)
+            }
+        }
+        Ok(_) => Ok(()),
+        Err(_) => Err(Status::SystemException),
     }
 }
 
@@ -68,6 +89,13 @@ pub async fn do_friend_request(
             return;
         }
     };
+    match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
+        Ok(()) => {}
+        Err(status) => {
+            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
+            return;
+        }
+    }
     match require_user(users, &ctx.session().app, peer).await {
         Ok(true) => {}
         Ok(false) => {
@@ -203,7 +231,11 @@ pub async fn do_friend_reject(ctx: Context, social: &dyn SocialDirectory) {
     }
 }
 
-pub async fn do_friend_remove(ctx: Context, social: &dyn SocialDirectory) {
+pub async fn do_friend_remove(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+    users: &dyn UserDirectory,
+) {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
@@ -219,6 +251,13 @@ pub async fn do_friend_remove(ctx: Context, social: &dyn SocialDirectory) {
             return;
         }
     };
+    match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
+        Ok(()) => {}
+        Err(status) => {
+            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
+            return;
+        }
+    }
     match social
         .remove(&ctx.session().app, &ctx.session().account, peer)
         .await
@@ -296,6 +335,13 @@ pub async fn do_block_add(ctx: Context, social: &dyn SocialDirectory, users: &dy
             return;
         }
     };
+    match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
+        Ok(()) => {}
+        Err(status) => {
+            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
+            return;
+        }
+    }
     match require_user(users, &ctx.session().app, peer).await {
         Ok(true) => {}
         Ok(false) => {
@@ -322,7 +368,11 @@ pub async fn do_block_add(ctx: Context, social: &dyn SocialDirectory, users: &dy
     }
 }
 
-pub async fn do_block_remove(ctx: Context, social: &dyn SocialDirectory) {
+pub async fn do_block_remove(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+    users: &dyn UserDirectory,
+) {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
@@ -338,6 +388,13 @@ pub async fn do_block_remove(ctx: Context, social: &dyn SocialDirectory) {
             return;
         }
     };
+    match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
+        Ok(()) => {}
+        Err(status) => {
+            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
+            return;
+        }
+    }
     match social
         .unblock(&ctx.session().app, &ctx.session().account, peer)
         .await

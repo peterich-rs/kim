@@ -17,11 +17,11 @@ use kim_protocol::pkt::{
     MessageResp, Presence, PresencePush, Status, UserListResp, UserProfile,
 };
 use kim_protocol::{
-    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
-    CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_HISTORY,
-    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    CMD_PRESENCE, CMD_ROOM_ENTER, CMD_USER_UPDATED, CODE_PING, DEMO_DEFAULT_SECRET,
-    INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    generate, marshal, read, BasicPkt, LogicPkt, Packet, CMD_BOT_REPLY, CMD_CHAT_GROUP_TALK,
+    CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST,
+    CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_ROOM_ENTER, CMD_USER_UPDATED, CODE_PING,
+    DEMO_DEFAULT_SECRET, INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::WsServer;
 
@@ -245,7 +245,7 @@ fn decode_friend_accept_push() {
         from_account: "bob".into(),
         from_nickname: "Bobby".into(),
     });
-    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap();
     match ev {
         Event::FriendAccepted { from, nickname } => {
             assert_eq!(from, "bob");
@@ -266,7 +266,7 @@ fn decode_profile_updated_push() {
         bio: "x".into(),
         kind: kim_protocol::PROFILE_KIND_USER,
     });
-    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap();
     match ev {
         Event::ProfileUpdated { profile } => {
             assert_eq!(profile.account, "alice");
@@ -290,7 +290,7 @@ fn decode_presence_push() {
             last_seen: 0,
         }],
     });
-    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap();
     match ev {
         Event::PresenceUpdated {
             account,
@@ -317,7 +317,7 @@ fn decode_room_enter_resp() {
             last_seen: 0,
         }],
     });
-    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap();
+    let ev = decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap();
     match ev {
         Event::RoomEnter { sequence, presence } => {
             assert_eq!(sequence, 13);
@@ -465,12 +465,52 @@ fn decode_talk_push() {
         sender: "bob".into(),
         send_time: 9,
     });
-    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap() {
+    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap() {
         Event::Talk(t) => {
             assert_eq!(t.sender, "bob");
             assert_eq!(t.dest, "bob");
             assert_eq!(t.body, "hi");
             assert_eq!(t.message_id, 42);
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn decode_talk_push_echo_uses_header_dest() {
+    let mut pkt = LogicPkt::new(CMD_CHAT_USER_TALK, 0, Bytes::new());
+    pkt.header.flag = Flag::Push as i32;
+    pkt.header.dest = "bob".into();
+    pkt.write_body(&MessagePush {
+        message_id: 42,
+        r#type: MESSAGE_TYPE_TEXT,
+        body: "hi".into(),
+        extra: String::new(),
+        sender: "alice".into(),
+        send_time: 9,
+    });
+    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "alice").unwrap() {
+        Event::Talk(t) => {
+            assert_eq!(t.sender, "alice");
+            assert_eq!(t.dest, "bob");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn decode_bot_reply_success_is_talk_resp() {
+    let mut pkt = LogicPkt::new(CMD_BOT_REPLY, 7, Bytes::new());
+    pkt.header.flag = Flag::Response as i32;
+    pkt.header.status = Status::Success as i32;
+    pkt.write_body(&MessageResp {
+        message_id: 99,
+        send_time: 1,
+    });
+    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "alice").unwrap() {
+        Event::TalkResp(r) => {
+            assert_eq!(r.message_id, 99);
+            assert_eq!(r.sequence, 7);
         }
         other => panic!("{other:?}"),
     }
@@ -490,7 +530,7 @@ fn decode_group_talk_push_uses_header_dest() {
         sender: "bob".into(),
         send_time: 1,
     });
-    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt)))).unwrap() {
+    match decode_event(&Frame::binary(marshal(&Packet::Logic(pkt))), "").unwrap() {
         Event::Talk(t) => {
             assert_eq!(t.dest, "g1");
             assert_eq!(t.sender, "bob");
@@ -594,6 +634,18 @@ impl MessageListener for FakeGw {
                     send_time: 3_000,
                 });
                 let _ = handle.push(marshal(&Packet::Logic(push))).await;
+                let mut echo = LogicPkt::new(CMD_CHAT_USER_TALK, 0, Bytes::new());
+                echo.header.flag = Flag::Push as i32;
+                echo.header.dest = "b_BOT".into();
+                echo.write_body(&MessagePush {
+                    message_id: 20002,
+                    r#type: MESSAGE_TYPE_TEXT,
+                    body: "hello bot".into(),
+                    extra: String::new(),
+                    sender: "alice".into(),
+                    send_time: 3_001,
+                });
+                let _ = handle.push(marshal(&Packet::Logic(echo))).await;
             }
             _ => {}
         }
@@ -656,6 +708,57 @@ async fn loopback_ws_login_ping_talk() {
         }
         other => panic!("{other:?}"),
     }
+
+    client.disconnect().await.unwrap();
+    let _ = server.shutdown().await;
+}
+
+#[tokio::test]
+async fn loopback_login_echo_push_uses_header_dest() {
+    let handler = Arc::new(FakeGw {
+        seq: StdMutex::new(0),
+        pings: AtomicU32::new(0),
+    });
+    let mut server = WsServer::bind("127.0.0.1:0").await.unwrap();
+    server.set_drain_wait(Duration::from_millis(50));
+    server.set_acceptor(handler.clone());
+    server.set_message_listener(handler.clone());
+    server.set_state_listener(handler);
+    let addr = server.local_addr();
+    let server = Arc::new(server);
+    let running = server.clone();
+    tokio::spawn(async move {
+        running.start().await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let token = mint("alice");
+    let url = format!("ws://{addr}/");
+    let client = Arc::new(KimClient::new(ClientConfig::new(url, token)));
+    client.connect().await.unwrap();
+    client.login().await.unwrap();
+
+    let waiting = client.clone();
+    let recv_task = tokio::spawn(async move {
+        let first = waiting.recv().await?;
+        let second = waiting.recv().await?;
+        Ok::<_, ClientError>((first, second))
+    });
+    tokio::task::yield_now().await;
+
+    client.talk_to_user("bob", "hello").await.unwrap();
+    let (first, second) = tokio::time::timeout(Duration::from_secs(2), recv_task)
+        .await
+        .expect("recv timed out")
+        .expect("recv task")
+        .expect("recv events");
+    let echo = match (&first, &second) {
+        (Event::Talk(t), _) if t.sender == "alice" => t,
+        (_, Event::Talk(t)) if t.sender == "alice" => t,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(echo.dest, "b_BOT");
+    assert_eq!(echo.body, "hello bot");
 
     client.disconnect().await.unwrap();
     let _ = server.shutdown().await;

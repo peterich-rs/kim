@@ -45,6 +45,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastClientId = '';
   final List<String> clientIds = [];
   KimLinkState _link = const KimLinkState();
+  Completer<void>? sendHold;
 
   KimAuthSession _ok() {
     return session ??
@@ -182,6 +183,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
     }
     if (talkError != null) {
       throw talkError!;
+    }
+    final hold = sendHold;
+    if (hold != null) {
+      await hold.future;
     }
     return KimTalkResult(messageId: 1, sendTime: talkSendTime);
   }
@@ -351,6 +356,80 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastAvatar = avatar;
     me = KimPerson(account: me.account, nickname: nickname, avatar: avatar);
     return me;
+  }
+
+  int botCreates = 0;
+  String lastBotCreateId = '';
+  String lastBotCreateNickname = '';
+  final botReplies = <({String dest, String body, int inReplyTo})>[];
+  var botReplyInFlight = 0;
+  var botReplyMaxInFlight = 0;
+  int botPendings = 0;
+  List<KimBotPendingItem> pendingItems = const [];
+  Duration? botReplyDelay;
+
+  @override
+  Future<KimPerson> botCreate({
+    required String clientProfileId,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  }) async {
+    botCreates += 1;
+    lastBotCreateId = clientProfileId;
+    lastBotCreateNickname = nickname;
+    return KimPerson(
+      account: 'b_$clientProfileId',
+      nickname: nickname,
+      kind: ProfileKind.bot,
+    );
+  }
+
+  @override
+  Future<void> botDelete(String dest) async {}
+
+  @override
+  Future<KimPerson> botUpdate({
+    required String dest,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  }) async {
+    return KimPerson(
+      account: dest,
+      nickname: nickname,
+      avatar: avatar,
+      kind: ProfileKind.bot,
+    );
+  }
+
+  @override
+  Future<KimTalkResult> botReply({
+    required String dest,
+    required String body,
+    required int inReplyTo,
+    required String clientId,
+  }) async {
+    botReplyInFlight += 1;
+    if (botReplyInFlight > botReplyMaxInFlight) {
+      botReplyMaxInFlight = botReplyInFlight;
+    }
+    final delay = botReplyDelay;
+    if (delay != null) {
+      await Future<void>.delayed(delay);
+    }
+    botReplies.add((dest: dest, body: body, inReplyTo: inReplyTo));
+    botReplyInFlight -= 1;
+    return KimTalkResult(messageId: 100 + botReplies.length, sendTime: 1);
+  }
+
+  @override
+  Future<List<KimBotPendingItem>> botPending(
+    String dest, {
+    int limit = 20,
+  }) async {
+    botPendings += 1;
+    return pendingItems.take(limit).toList();
   }
 }
 

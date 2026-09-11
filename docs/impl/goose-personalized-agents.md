@@ -226,11 +226,11 @@ alpha.9：`goose-agent` 源码与 alpha.8 **逐文件相同**；`rmcp` 3.0.0 →
 
 | 路径 | 原因 |
 |---|---|
-| `crates/kim-client/**` | IM 客户端；Agent 经 Dart 调用现有方法 |
-| `sdk/mobile/rust/**`（`kim_client_ffi`） | 与 agent FFI 隔离 |
-| `services/chat` / `gateway` / `royal` / `router` | 服务端不参与本地 Agent |
+| `sdk/mobile/rust/**`（`kim_client_ffi`） | 与 agent FFI 隔离；Goose 仍只经 `kim_agent_ffi`，代发走 Dart → `kim_client_ffi` |
 | `sdk/mobile/lib/src/rust/**` | IM FRB 生成物 |
 | `crates/kim-core` 等传输层 | 无关 |
+
+1:1 用户↔已注册 Agent 消息现在经过 WGateway（见 `docs/impl/goose-bot-first-class.md`）。群 `@mention` 仍本机。`gateway` / `router` 转发不变。
 
 ---
 

@@ -404,7 +404,11 @@ mod tests {
 
     async fn spawn_status(status: StatusCode) -> String {
         async fn ok() -> (StatusCode, Vec<u8>) {
-            let body = AccountExists { exists: true }.encode_to_vec();
+            let body = AccountExists {
+                exists: true,
+                ..Default::default()
+            }
+            .encode_to_vec();
             (StatusCode::OK, body)
         }
         async fn svc() -> StatusCode {

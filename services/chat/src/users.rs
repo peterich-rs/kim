@@ -1,15 +1,20 @@
 //! Account directory for Royal register / login and product profiles.
 
 use std::collections::HashMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use kim_protocol::{PROFILE_KIND_BOT, PROFILE_KIND_USER};
+
+use crate::directory::base36_upper;
+use crate::idgen::IdGenerator;
+use crate::social::SocialDirectory;
 
 pub const NICKNAME_MAX_CHARS: usize = 32;
 pub const BIO_MAX_CHARS: usize = 160;
 pub const AVATAR_MAX_CHARS: usize = 512;
 pub const SEARCH_LIMIT: usize = 20;
+pub const BOT_MAX_PER_OWNER: u32 = 20;
 
 #[derive(Debug, thiserror::Error)]
 pub enum UserError {
@@ -19,8 +24,34 @@ pub enum UserError {
     NotFound,
     #[error("invalid profile")]
     InvalidProfile,
+    #[error("limit")]
+    Limit,
+    #[error("not bot owner")]
+    NotBotOwner,
     #[error("{0}")]
     Backend(String),
+}
+
+impl From<crate::idgen::IdError> for UserError {
+    fn from(e: crate::idgen::IdError) -> Self {
+        UserError::Backend(e.to_string())
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CreateBot {
+    pub owner: String,
+    pub client_profile_id: String,
+    pub nickname: String,
+    pub avatar: String,
+    pub bio: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserPresence {
+    pub exists: bool,
+    pub kind: i32,
+    pub owner_account: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +131,11 @@ pub trait UserDirectory: Send + Sync {
         account: &str,
         password_hash: &str,
     ) -> Result<u32, UserError>;
+    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<UserProfile, UserError>;
+    async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError>;
+    async fn delete_bot(&self, app: &str, owner: &str, account: &str) -> Result<(), UserError>;
+    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError>;
+    async fn lookup(&self, app: &str, account: &str) -> Result<Option<UserPresence>, UserError>;
 }
 
 #[derive(Clone)]
@@ -110,9 +146,8 @@ struct UserRecord {
     bio: String,
     token_epoch: u32,
     kind: i32,
-    /// Creator account for bots. Wired when create-bot lands.
-    #[allow(dead_code)]
     owner_account: String,
+    client_profile_id: String,
 }
 
 fn human_record(account: &str, password_hash: Option<String>) -> UserRecord {
@@ -124,6 +159,23 @@ fn human_record(account: &str, password_hash: Option<String>) -> UserRecord {
         token_epoch: 0,
         kind: PROFILE_KIND_USER,
         owner_account: String::new(),
+        client_profile_id: String::new(),
+    }
+}
+
+pub fn valid_client_profile_id(raw: &str) -> bool {
+    let n = raw.len();
+    (1..=64).contains(&n)
+        && raw
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn presence_from_record(rec: &UserRecord) -> UserPresence {
+    UserPresence {
+        exists: true,
+        kind: rec.kind,
+        owner_account: rec.owner_account.clone(),
     }
 }
 
@@ -137,13 +189,29 @@ pub fn kind_from_db(raw: &str) -> i32 {
 
 pub struct MemoryUserDirectory {
     inner: RwLock<HashMap<(String, String), UserRecord>>,
+    social: Option<Arc<dyn SocialDirectory>>,
+    idgen: Option<Arc<dyn IdGenerator>>,
 }
 
 impl MemoryUserDirectory {
     pub fn new() -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),
+            social: None,
+            idgen: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_social(mut self, social: Arc<dyn SocialDirectory>) -> Self {
+        self.social = Some(social);
+        self
+    }
+
+    #[must_use]
+    pub fn with_idgen(mut self, idgen: Arc<dyn IdGenerator>) -> Self {
+        self.idgen = Some(idgen);
+        self
     }
 
     fn read(&self) -> RwLockReadGuard<'_, HashMap<(String, String), UserRecord>> {
@@ -152,6 +220,25 @@ impl MemoryUserDirectory {
 
     fn write(&self) -> RwLockWriteGuard<'_, HashMap<(String, String), UserRecord>> {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn find_bot_by_profile(
+        inner: &HashMap<(String, String), UserRecord>,
+        app: &str,
+        owner: &str,
+        client_profile_id: &str,
+    ) -> Option<(String, UserRecord)> {
+        inner.iter().find_map(|((row_app, account), rec)| {
+            if row_app == app
+                && rec.kind == PROFILE_KIND_BOT
+                && rec.owner_account == owner
+                && rec.client_profile_id == client_profile_id
+            {
+                Some((account.clone(), rec.clone()))
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -350,17 +437,169 @@ impl UserDirectory for MemoryUserDirectory {
         rec.token_epoch = rec.token_epoch.saturating_add(1);
         Ok(rec.token_epoch)
     }
+
+    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
+        let social = self
+            .social
+            .as_ref()
+            .ok_or_else(|| UserError::Backend("create_bot requires social".into()))?;
+        let idgen = self
+            .idgen
+            .as_ref()
+            .ok_or_else(|| UserError::Backend("create_bot requires idgen".into()))?;
+        if !valid_client_profile_id(&req.client_profile_id) {
+            return Err(UserError::InvalidProfile);
+        }
+        if req.owner.is_empty() {
+            return Err(UserError::InvalidProfile);
+        }
+        let existing = {
+            let inner = self.read();
+            Self::find_bot_by_profile(&inner, app, &req.owner, &req.client_profile_id)
+        };
+        if let Some((account, rec)) = existing {
+            social
+                .ensure_friends(app, &req.owner, &account)
+                .await
+                .map_err(|e| UserError::Backend(e.to_string()))?;
+            return Ok(record_to_profile(&account, &rec));
+        }
+        let count = self.count_bots(app, &req.owner).await?;
+        if count >= BOT_MAX_PER_OWNER {
+            return Err(UserError::Limit);
+        }
+        let account = format!("b_{}", base36_upper(idgen.next_id()?));
+        let nickname = if req.nickname.trim().is_empty() {
+            account.clone()
+        } else {
+            validate_patch(&ProfilePatch {
+                nickname: req.nickname.clone(),
+                avatar: req.avatar.clone(),
+                bio: req.bio.clone(),
+            })?
+            .nickname
+        };
+        let avatar = req.avatar.trim().to_string();
+        let bio = req.bio.trim().to_string();
+        if avatar.chars().count() > AVATAR_MAX_CHARS || bio.chars().count() > BIO_MAX_CHARS {
+            return Err(UserError::InvalidProfile);
+        }
+        let raced = {
+            let mut inner = self.write();
+            if let Some((existing, rec)) =
+                Self::find_bot_by_profile(&inner, app, &req.owner, &req.client_profile_id)
+            {
+                Some((existing, rec))
+            } else {
+                let key = (app.to_string(), account.clone());
+                if inner.contains_key(&key) {
+                    return Err(UserError::Conflict);
+                }
+                inner.insert(
+                    key,
+                    UserRecord {
+                        password_hash: None,
+                        nickname: nickname.clone(),
+                        avatar: avatar.clone(),
+                        bio: bio.clone(),
+                        token_epoch: 0,
+                        kind: PROFILE_KIND_BOT,
+                        owner_account: req.owner.clone(),
+                        client_profile_id: req.client_profile_id.clone(),
+                    },
+                );
+                None
+            }
+        };
+        if let Some((existing, rec)) = raced {
+            social
+                .ensure_friends(app, &req.owner, &existing)
+                .await
+                .map_err(|e| UserError::Backend(e.to_string()))?;
+            return Ok(record_to_profile(&existing, &rec));
+        }
+        social
+            .ensure_friends(app, &req.owner, &account)
+            .await
+            .map_err(|e| UserError::Backend(e.to_string()))?;
+        Ok(UserProfile {
+            account,
+            nickname,
+            avatar,
+            bio,
+            kind: PROFILE_KIND_BOT,
+        })
+    }
+
+    async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        Ok(self.lookup(app, account).await?.and_then(|p| {
+            if p.kind == PROFILE_KIND_BOT && !p.owner_account.is_empty() {
+                Some(p.owner_account)
+            } else {
+                None
+            }
+        }))
+    }
+
+    async fn delete_bot(&self, app: &str, owner: &str, account: &str) -> Result<(), UserError> {
+        let rec = {
+            let inner = self.read();
+            inner
+                .get(&(app.to_string(), account.to_string()))
+                .cloned()
+                .ok_or(UserError::NotFound)?
+        };
+        if rec.kind != PROFILE_KIND_BOT {
+            return Err(UserError::NotFound);
+        }
+        if rec.owner_account != owner {
+            return Err(UserError::NotBotOwner);
+        }
+        self.write().remove(&(app.to_string(), account.to_string()));
+        if let Some(social) = &self.social {
+            let _ = social.remove(app, owner, account).await;
+        }
+        Ok(())
+    }
+
+    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
+        let n = self
+            .read()
+            .iter()
+            .filter(|((row_app, _), rec)| {
+                row_app.as_str() == app
+                    && rec.kind == PROFILE_KIND_BOT
+                    && rec.owner_account == owner
+            })
+            .count();
+        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
+    }
+
+    async fn lookup(&self, app: &str, account: &str) -> Result<Option<UserPresence>, UserError> {
+        Ok(self
+            .read()
+            .get(&(app.to_string(), account.to_string()))
+            .map(presence_from_record))
+    }
 }
 
 #[cfg(feature = "postgres")]
 pub struct PostgresUserDirectory {
     pool: sqlx::PgPool,
+    idgen: Option<Arc<dyn IdGenerator>>,
 }
 
 #[cfg(feature = "postgres")]
 impl PostgresUserDirectory {
     pub fn from_pool(pool: sqlx::PgPool) -> Self {
-        Self { pool }
+        Self { pool, idgen: None }
+    }
+
+    pub fn from_pool_with_idgen(pool: sqlx::PgPool, idgen: Arc<dyn IdGenerator>) -> Self {
+        Self {
+            pool,
+            idgen: Some(idgen),
+        }
     }
 }
 
@@ -618,6 +857,212 @@ impl UserDirectory for PostgresUserDirectory {
         let n = row.ok_or(UserError::NotFound)?;
         u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
     }
+
+    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
+        let idgen = self
+            .idgen
+            .as_ref()
+            .ok_or_else(|| UserError::Backend("create_bot requires idgen".into()))?;
+        if !valid_client_profile_id(&req.client_profile_id) {
+            return Err(UserError::InvalidProfile);
+        }
+        if req.owner.is_empty() {
+            return Err(UserError::InvalidProfile);
+        }
+        let mut tx = self.pool.begin().await.map_err(pg_err)?;
+        let existing: Option<(String, String, String, String, String)> = sqlx::query_as(
+            "SELECT account, nickname, avatar, bio, kind FROM users
+             WHERE app = $1 AND owner_account = $2 AND client_profile_id = $3 AND kind = 'bot'",
+        )
+        .bind(app)
+        .bind(&req.owner)
+        .bind(&req.client_profile_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if let Some((account, nickname, avatar, bio, kind)) = existing {
+            let (a, b) = crate::social::ordered_pair(&req.owner, &account);
+            sqlx::query(
+                "INSERT INTO friendships (app, account_a, account_b)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(app)
+            .bind(a)
+            .bind(b)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            tx.commit().await.map_err(pg_err)?;
+            return Ok(row_profile(account, nickname, avatar, bio, kind));
+        }
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE app = $1 AND owner_account = $2 AND kind = 'bot'",
+        )
+        .bind(app)
+        .bind(&req.owner)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if count >= i64::from(BOT_MAX_PER_OWNER) {
+            return Err(UserError::Limit);
+        }
+        let account = format!("b_{}", base36_upper(idgen.next_id()?));
+        let nickname = if req.nickname.trim().is_empty() {
+            account.clone()
+        } else {
+            validate_patch(&ProfilePatch {
+                nickname: req.nickname.clone(),
+                avatar: req.avatar.clone(),
+                bio: req.bio.clone(),
+            })?
+            .nickname
+        };
+        let avatar = req.avatar.trim().to_string();
+        let bio = req.bio.trim().to_string();
+        if avatar.chars().count() > AVATAR_MAX_CHARS || bio.chars().count() > BIO_MAX_CHARS {
+            return Err(UserError::InvalidProfile);
+        }
+        sqlx::query(
+            "INSERT INTO users (app, account, nickname, avatar, bio, kind, owner_account, client_profile_id)
+             VALUES ($1, $2, $3, $4, $5, 'bot', $6, $7)",
+        )
+        .bind(app)
+        .bind(&account)
+        .bind(&nickname)
+        .bind(&avatar)
+        .bind(&bio)
+        .bind(&req.owner)
+        .bind(&req.client_profile_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        let (a, b) = crate::social::ordered_pair(&req.owner, &account);
+        sqlx::query(
+            "INSERT INTO friendships (app, account_a, account_b)
+             VALUES ($1, $2, $3)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(app)
+        .bind(a)
+        .bind(b)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        tx.commit().await.map_err(pg_err)?;
+        Ok(UserProfile {
+            account,
+            nickname,
+            avatar,
+            bio,
+            kind: PROFILE_KIND_BOT,
+        })
+    }
+
+    async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        Ok(self.lookup(app, account).await?.and_then(|p| {
+            if p.kind == PROFILE_KIND_BOT && !p.owner_account.is_empty() {
+                Some(p.owner_account)
+            } else {
+                None
+            }
+        }))
+    }
+
+    async fn delete_bot(&self, app: &str, owner: &str, account: &str) -> Result<(), UserError> {
+        let mut tx = self.pool.begin().await.map_err(pg_err)?;
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT kind, owner_account FROM users WHERE app = $1 AND account = $2")
+                .bind(app)
+                .bind(account)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(pg_err)?;
+        let (kind, owner_account) = row.ok_or(UserError::NotFound)?;
+        if kind != "bot" {
+            return Err(UserError::NotFound);
+        }
+        if owner_account != owner {
+            return Err(UserError::NotBotOwner);
+        }
+        let (a, b) = crate::social::ordered_pair(owner, account);
+        sqlx::query("DELETE FROM friendships WHERE app = $1 AND account_a = $2 AND account_b = $3")
+            .bind(app)
+            .bind(a)
+            .bind(b)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        sqlx::query(
+            "DELETE FROM friend_requests
+             WHERE app = $1 AND (
+               (from_account = $2 AND to_account = $3)
+               OR (from_account = $3 AND to_account = $2)
+             )",
+        )
+        .bind(app)
+        .bind(owner)
+        .bind(account)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        sqlx::query(
+            "DELETE FROM blocks
+             WHERE app = $1 AND (
+               (account = $2 AND blocked = $3) OR (account = $3 AND blocked = $2)
+             )",
+        )
+        .bind(app)
+        .bind(owner)
+        .bind(account)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        sqlx::query("DELETE FROM bot_turns WHERE app = $1 AND bot_account = $2")
+            .bind(app)
+            .bind(account)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        sqlx::query(
+            "DELETE FROM users WHERE app = $1 AND account = $2 AND kind = 'bot' AND owner_account = $3",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(owner)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        tx.commit().await.map_err(pg_err)?;
+        Ok(())
+    }
+
+    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE app = $1 AND owner_account = $2 AND kind = 'bot'",
+        )
+        .bind(app)
+        .bind(owner)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
+    }
+
+    async fn lookup(&self, app: &str, account: &str) -> Result<Option<UserPresence>, UserError> {
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT kind, owner_account FROM users WHERE app = $1 AND account = $2")
+                .bind(app)
+                .bind(account)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(pg_err)?;
+        Ok(row.map(|(kind, owner_account)| UserPresence {
+            exists: true,
+            kind: kind_from_db(&kind),
+            owner_account,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -651,6 +1096,7 @@ mod tests {
                 token_epoch: 0,
                 kind: PROFILE_KIND_BOT,
                 owner_account: "alice".into(),
+                client_profile_id: "goose".into(),
             },
         );
         let p = dir.profile("kim", "bot_x").await.unwrap().unwrap();
@@ -767,5 +1213,52 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(missing, UserError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn memory_create_bot_friends_and_idempotent() {
+        use crate::idgen::SequenceIdGen;
+        use crate::social::{MemorySocialDirectory, SocialDirectory};
+
+        let social = Arc::new(MemorySocialDirectory::new());
+        let dir = MemoryUserDirectory::new()
+            .with_social(social.clone())
+            .with_idgen(Arc::new(SequenceIdGen::new(1)));
+        dir.upsert("kim", "alice").await.unwrap();
+        let req = CreateBot {
+            owner: "alice".into(),
+            client_profile_id: "goose".into(),
+            nickname: "助手".into(),
+            avatar: String::new(),
+            bio: String::new(),
+        };
+        let first = dir.create_bot("kim", &req).await.unwrap();
+        assert_eq!(first.kind, PROFILE_KIND_BOT);
+        assert!(first.account.starts_with("b_"));
+        assert!(social
+            .is_friend("kim", "alice", &first.account)
+            .await
+            .unwrap());
+        let second = dir.create_bot("kim", &req).await.unwrap();
+        assert_eq!(second.account, first.account);
+        assert_eq!(dir.count_bots("kim", "alice").await.unwrap(), 1);
+        let p = dir.lookup("kim", &first.account).await.unwrap().unwrap();
+        assert_eq!(p.kind, PROFILE_KIND_BOT);
+        assert_eq!(p.owner_account, "alice");
+        assert_eq!(
+            dir.bot_owner("kim", &first.account)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("alice")
+        );
+        assert!(dir.search("kim", "助手", &[], 10).await.unwrap().is_empty());
+        assert!(matches!(
+            MemoryUserDirectory::new()
+                .create_bot("kim", &req)
+                .await
+                .unwrap_err(),
+            UserError::Backend(_)
+        ));
     }
 }

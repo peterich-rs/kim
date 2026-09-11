@@ -43,6 +43,7 @@ export type MsgStatus = "sending" | "sent" | "failed";
 export interface Person {
   account: string;
   nickname: string;
+  kind?: number;
 }
 
 export interface ChatMsg {
@@ -916,8 +917,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "membersOpen", open: !stateRef.current.membersOpen });
   }, []);
 
-  const asPeople = (rows: { account: string; nickname?: string }[]): Person[] =>
-    rows.map((p) => ({ account: p.account, nickname: p.nickname || p.account }));
+  const asPeople = (
+    rows: { account: string; nickname?: string; kind?: number }[],
+  ): Person[] =>
+    rows.map((p) => ({
+      account: p.account,
+      nickname: p.nickname || p.account,
+      kind: p.kind,
+    }));
 
   const refreshSocial = useCallback(async () => {
     const session = sessionRef.current;

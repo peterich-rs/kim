@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use kim_client::{
-    device_for_target_os, ClientConfig, HistoryItem, InboxItem, IncomingTalk, LinkState,
-    OutgoingContent, SessionEvent, SessionSupervisor, TalkResult,
+    device_for_target_os, BotPendingItem, ClientConfig, HistoryItem, InboxItem, IncomingTalk,
+    LinkState, OutgoingContent, SessionEvent, SessionSupervisor, TalkResult,
 };
 
 use super::rt;
@@ -40,6 +40,12 @@ pub struct KimHistoryItem {
     pub sender: String,
     pub send_time: i64,
     pub direction: i32,
+}
+
+pub struct KimBotPendingItem {
+    pub message_id: i64,
+    pub body: String,
+    pub send_time: i64,
 }
 
 /// Supervisor events. `kind` is link/inbox/talk/sync_progress/sync_done/sync_failed/kick/token/friend/group.
@@ -331,6 +337,63 @@ impl KimApi {
         rt().block_on(client.send_typing(&dest, kind, active))
             .map_err(|e| e.to_string())
     }
+
+    pub fn bot_create(
+        &self,
+        client_profile_id: String,
+        nickname: String,
+        avatar: String,
+        bio: String,
+    ) -> Result<String, String> {
+        let client = self.supervisor.client();
+        let p = rt()
+            .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio))
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_one(&p)
+    }
+
+    pub fn bot_delete(&self, dest: String) -> Result<String, String> {
+        let client = self.supervisor.client();
+        rt().block_on(client.bot_delete(&dest))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
+    pub fn bot_update(
+        &self,
+        dest: String,
+        nickname: String,
+        avatar: String,
+        bio: String,
+    ) -> Result<String, String> {
+        let client = self.supervisor.client();
+        let p = rt()
+            .block_on(client.bot_update(&dest, &nickname, &avatar, &bio))
+            .map_err(|e| e.to_string())?;
+        kim_client::Profile::encode_one(&p)
+    }
+
+    pub fn bot_reply(
+        &self,
+        dest: String,
+        body: String,
+        in_reply_to: i64,
+        client_id: String,
+    ) -> Result<KimTalkResult, String> {
+        let client = self.supervisor.client();
+        let result = rt()
+            .block_on(client.bot_reply(&dest, &body, in_reply_to, &client_id))
+            .map_err(|e| e.to_string())?;
+        Ok(KimTalkResult::from(result))
+    }
+
+    pub fn bot_pending(&self, dest: String, limit: i32) -> Result<Vec<KimBotPendingItem>, String> {
+        let client = self.supervisor.client();
+        let items = rt()
+            .block_on(client.bot_pending(&dest, limit))
+            .map_err(|e| e.to_string())?;
+        Ok(items.into_iter().map(KimBotPendingItem::from).collect())
+    }
 }
 
 fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {
@@ -528,6 +591,16 @@ impl From<HistoryItem> for KimHistoryItem {
             sender: h.sender,
             send_time: h.send_time,
             direction: h.direction,
+        }
+    }
+}
+
+impl From<BotPendingItem> for KimBotPendingItem {
+    fn from(i: BotPendingItem) -> Self {
+        Self {
+            message_id: i.message_id,
+            body: i.body,
+            send_time: i.send_time,
         }
     }
 }

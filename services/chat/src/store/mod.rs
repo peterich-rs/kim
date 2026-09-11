@@ -90,6 +90,10 @@ pub enum StoreError {
     Id(#[from] IdError),
     #[error("royal http {status}: {msg}")]
     Http { status: u16, msg: String },
+    #[error("invalid: {0}")]
+    Invalid(String),
+    #[error("not found")]
+    NotFound,
     #[error("{0}")]
     Backend(String),
 }
@@ -283,6 +287,13 @@ pub struct HistoryEntry {
     pub direction: i32,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BotPendingItem {
+    pub message_id: i64,
+    pub body: String,
+    pub send_time: i64,
+}
+
 pub fn clamp_page(requested: i32, default: usize, max: usize) -> usize {
     if requested <= 0 {
         default
@@ -361,6 +372,21 @@ pub trait MessageStore: Send + Sync {
         kind: MessageKind,
         message_id: i64,
     ) -> Result<(), StoreError>;
+    async fn insert_bot_reply(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        in_reply_to: i64,
+        req: &InsertMessage,
+    ) -> Result<InsertResult, StoreError>;
+    async fn bot_pending(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        limit: i32,
+    ) -> Result<Vec<BotPendingItem>, StoreError>;
 }
 
 #[async_trait]
@@ -456,6 +482,8 @@ struct Inner {
     /// (app, account, peer, group_id) -> last_read_id
     reads: HashMap<(String, String, String, String), i64>,
     pending: HashMap<(String, String, String, i64), PendingEntry>,
+    /// (app, bot_account, in_reply_to) -> reply_message_id
+    bot_turns: HashMap<(String, String, i64), i64>,
 }
 
 impl Inner {
@@ -1171,6 +1199,173 @@ impl MessageStore for MemoryMessageStore {
         }
         Ok(())
     }
+
+    async fn insert_bot_reply(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        in_reply_to: i64,
+        req: &InsertMessage,
+    ) -> Result<InsertResult, StoreError> {
+        if req.sender != bot || req.dest != owner {
+            return Err(StoreError::Invalid(
+                "sender must be bot, dest must be owner".into(),
+            ));
+        }
+        if in_reply_to <= 0 {
+            return Err(StoreError::Invalid("in_reply_to".into()));
+        }
+        let mut inner = self.write();
+        let orig = inner
+            .contents
+            .get(&in_reply_to)
+            .ok_or_else(|| StoreError::Invalid("in_reply_to".into()))?;
+        if orig.app != app
+            || orig.kind != MessageKind::User
+            || orig.sender != owner
+            || orig.dest != bot
+        {
+            return Err(StoreError::Invalid("in_reply_to".into()));
+        }
+        let send_ok = inner
+            .indexes_by_message
+            .get(&in_reply_to)
+            .into_iter()
+            .flatten()
+            .any(|r| {
+                r.account_a == owner
+                    && r.account_b == bot
+                    && r.direction == DIRECTION_SEND
+                    && r.group_id.is_empty()
+            });
+        if !send_ok {
+            return Err(StoreError::Invalid("in_reply_to".into()));
+        }
+        let turn_key = (app.to_string(), bot.to_string(), in_reply_to);
+        if let Some(&reply_id) = inner.bot_turns.get(&turn_key) {
+            let fanout = Self::fanout_from_memory(&inner, reply_id)?;
+            let send_time = inner
+                .contents
+                .get(&reply_id)
+                .map(|c| c.send_time)
+                .unwrap_or(0);
+            return Ok(InsertResult {
+                message_id: reply_id,
+                send_time,
+                duplicate: true,
+                fanout,
+            });
+        }
+        if !req.client_id.is_empty() {
+            let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
+            if let Some(&(message_id, send_time)) = inner.idempotency.get(&key) {
+                inner.bot_turns.insert(turn_key, message_id);
+                if self.pending_receipt {
+                    Self::upsert_receipts(&mut inner, app, message_id, req, None);
+                }
+                return Ok(InsertResult {
+                    message_id,
+                    send_time,
+                    duplicate: true,
+                    fanout: Self::fanout_from_memory(&inner, message_id)?,
+                });
+            }
+        }
+        let message_id = self.idgen.next_id()?;
+        let content = StoredMessage {
+            message_id,
+            app: app.to_string(),
+            kind: MessageKind::User,
+            sender: req.sender.clone(),
+            dest: req.dest.clone(),
+            send_time: req.send_time,
+            msg_type: req.msg_type,
+            body: req.body.clone(),
+            extra: req.extra.clone(),
+        };
+        let indexes = [
+            InboxRow {
+                app: app.to_string(),
+                account_a: req.sender.clone(),
+                account_b: req.dest.clone(),
+                direction: DIRECTION_SEND,
+                message_id,
+                group_id: String::new(),
+                send_time: req.send_time,
+            },
+            InboxRow {
+                app: app.to_string(),
+                account_a: req.dest.clone(),
+                account_b: req.sender.clone(),
+                direction: DIRECTION_RECV,
+                message_id,
+                group_id: String::new(),
+                send_time: req.send_time,
+            },
+        ];
+        if !req.client_id.is_empty() {
+            inner.idempotency.insert(
+                (app.to_string(), req.sender.clone(), req.client_id.clone()),
+                (message_id, req.send_time),
+            );
+        }
+        inner.contents.insert(message_id, content);
+        for row in indexes {
+            inner.push_index(row);
+        }
+        inner.bot_turns.insert(turn_key, message_id);
+        if self.pending_receipt {
+            Self::upsert_receipts(&mut inner, app, message_id, req, None);
+        }
+        Ok(InsertResult {
+            message_id,
+            send_time: req.send_time,
+            duplicate: false,
+            fanout: fanout_from_write(MessageKind::User, req, &[]),
+        })
+    }
+
+    async fn bot_pending(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        limit: i32,
+    ) -> Result<Vec<BotPendingItem>, StoreError> {
+        let cap = clamp_page(limit, 20, 50);
+        let inner = self.read();
+        let mut items: Vec<BotPendingItem> = inner
+            .account_rows(app, owner)
+            .iter()
+            .filter(|r| {
+                r.account_b == bot
+                    && r.direction == DIRECTION_SEND
+                    && r.group_id.is_empty()
+                    && !inner.bot_turns.contains_key(&(
+                        app.to_string(),
+                        bot.to_string(),
+                        r.message_id,
+                    ))
+            })
+            .filter_map(|r| {
+                inner.contents.get(&r.message_id).and_then(|c| {
+                    if c.sender == owner {
+                        Some(BotPendingItem {
+                            message_id: r.message_id,
+                            body: c.body.clone(),
+                            send_time: r.send_time,
+                        })
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        items.sort_by_key(|i| i.message_id);
+        items.truncate(cap);
+        Ok(items)
+    }
 }
 
 /// Postgres backends for Royal. Migrates once via `connect_pool`.
@@ -1298,10 +1493,11 @@ async fn open_pg_backends_inner(
         ack_observer,
     ));
     let groups: Arc<dyn GroupDirectory> = Arc::new(
-        crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen),
+        crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen.clone()),
     );
-    let users: Arc<dyn UserDirectory> =
-        Arc::new(crate::users::PostgresUserDirectory::from_pool(pg.clone()));
+    let users: Arc<dyn UserDirectory> = Arc::new(
+        crate::users::PostgresUserDirectory::from_pool_with_idgen(pg.clone(), idgen),
+    );
     let social: Arc<dyn crate::social::SocialDirectory> =
         Arc::new(crate::social::PostgresSocialDirectory::from_pool(pg));
     Ok(PgBackends {
@@ -2031,5 +2227,42 @@ mod tests {
             Err(e) => assert_eq!(e.to_string(), "rebuild with --features redis"),
             Ok(_) => panic!("expected feature error"),
         }
+    }
+
+    #[tokio::test]
+    async fn memory_bot_reply_idempotent_turn() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let user = store
+            .insert_user("kim", &sample("alice", "bot_x", 10, "hi"))
+            .await
+            .unwrap();
+        let mut reply = sample("bot_x", "alice", 11, "hello");
+        reply.client_id = "r1".into();
+        let first = store
+            .insert_bot_reply("kim", "alice", "bot_x", user.message_id, &reply)
+            .await
+            .unwrap();
+        assert!(!first.duplicate);
+        reply.client_id = "r2".into();
+        let second = store
+            .insert_bot_reply("kim", "alice", "bot_x", user.message_id, &reply)
+            .await
+            .unwrap();
+        assert!(second.duplicate);
+        assert_eq!(second.message_id, first.message_id);
+        let pending = store
+            .bot_pending("kim", "alice", "bot_x", 20)
+            .await
+            .unwrap();
+        assert!(pending.is_empty());
+        let bad = match store
+            .insert_bot_reply("kim", "alice", "bot_x", 0, &reply)
+            .await
+        {
+            Err(e) => e,
+            Ok(_) => panic!("expected invalid in_reply_to"),
+        };
+        assert!(matches!(bad, StoreError::Invalid(_)));
     }
 }

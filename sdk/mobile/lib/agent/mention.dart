@@ -27,11 +27,34 @@ String canonicalAgentDest(String dest) {
 }
 
 KimPerson personForProfile(AgentProfile profile) {
+  final account = profile.serverAccount.isNotEmpty
+      ? profile.serverAccount
+      : canonicalAgentDest(profile.dest);
   return KimPerson(
-    account: canonicalAgentDest(profile.dest),
+    account: account,
     nickname: profile.displayName,
     kind: ProfileKind.bot,
   );
+}
+
+/// Server bot accounts are IM dests, not local `goose` / `agent:` dests.
+bool isOwnedRegisteredBot(String dest, List<AgentProfile> profiles) {
+  if (dest.isEmpty || isAgentDest(dest)) {
+    return false;
+  }
+  for (final profile in profiles) {
+    if (profile.serverAccount.isNotEmpty && profile.serverAccount == dest) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isOwnedAgentAccount(String account, List<AgentProfile> profiles) {
+  if (isAgentDest(account)) {
+    return true;
+  }
+  return isOwnedRegisteredBot(account, profiles);
 }
 
 List<KimPerson> withLocalAgents(

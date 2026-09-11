@@ -10,7 +10,7 @@
 
 `users` 有 `nickname` / `avatar` / `bio` / `kind` / `owner_account`。注册与 upsert 时昵称默认等于账号，`kind=user`。昵称 1–32 字，简介 ≤160，头像 URL ≤512。
 
-`UserProfile.kind`（与 inbox 的 user/group `kind` 不是同一个字段）：库里只有 `user` / `bot` 两档，现有行加列时 `DEFAULT 'user'`。线上 `1` 人、`2` 助手；proto3 缺字段是 `0`，读入时当成 `1`。搜索不加助手账号。
+`UserProfile.kind`（与 inbox 的 user/group `kind` 不是同一个字段）：库里只有 `user` / `bot` 两档，现有行加列时 `DEFAULT 'user'`。线上 `1` 人、`2` 助手（`PROFILE_KIND_BOT`）；proto3 缺字段是 `0`，读入时当成 `1`。`owner_account` 只在 bot 行写入（创建者账号），**不**进 `UserProfile` proto。搜索 SQL 仍 `kind = 'user'`，不含 bot。
 
 | command | dest | 行为 |
 |---|---|---|
@@ -37,7 +37,9 @@
 | `chat.friend.list` / `chat.friend.incoming` | 空 | `UserListResp` |
 | `chat.block.add` / `remove` / `list` | 对方 / 空 | 拉黑会拆好友并取消双方申请 |
 
-`chat.user.talk`：dest 未注册仍是 `UserNotFound=108`。拉黑 `Blocked=110`。非好友 `NotFriends=109`。自己给自己仍可发。群聊不查好友。
+`chat.user.talk`：dest 未注册仍是 `UserNotFound=108`。拉黑 `Blocked=110`。非好友 `NotFriends=109`。自己给自己仍可发。群聊不查好友。非 owner 对 bot 的 talk / profile / request / remove / block 一律 `UserNotFound=108`（不泄露「这是 bot」）。owner 误用 `friend.remove` / `block` / `friend.request` dest=自家 bot → `BotSocialDenied=113`（应走 `chat.bot.delete`）。`chat.bot.reply` / `delete` / `update` / `pending` 非 owner → `NotBotOwner=112`。
+
+`chat.bot.create` 在同一事务写入 `users(kind=bot)` 与 `friendships(owner, bot)`（自动成友，不走 `chat.friend.request`）。幂等键 `(app, owner_account, client_profile_id)`。`chat.friend.list` 对 owner 含自家 bot 且 `kind=2`。
 
 ---
 
@@ -59,4 +61,4 @@
 
 ## Status
 
-已落地号不改。新增 `NotFriends=109`、`Blocked=110`，都在 1xx：SDK 不重试、不关连接。
+已落地号不改。新增 `NotFriends=109`、`Blocked=110`、`NotBotOwner=112`、`BotSocialDenied=113`，都在 1xx：SDK 不重试、不关连接。

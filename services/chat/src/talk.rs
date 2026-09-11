@@ -33,7 +33,7 @@ pub enum TalkError {
     DirectoryTimeout,
 }
 
-fn unix_nano() -> i64 {
+pub(crate) fn unix_nano() -> i64 {
     i64::try_from(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -83,16 +83,25 @@ pub async fn do_user_talk(
     let receiver = ctx.header().dest.as_str();
     const DIRECTORY_BUDGET: Duration = Duration::from_millis(800);
     let directory = crate::royal::with_rpc_deadline(DIRECTORY_BUDGET, async {
-        match users.exists(&ctx.session().app, receiver).await {
-            Ok(true) => {}
-            Ok(false) => {
+        match users.lookup(&ctx.session().app, receiver).await {
+            Ok(Some(p)) if p.exists => {
+                if p.kind == kim_protocol::PROFILE_KIND_BOT
+                    && p.owner_account != ctx.session().account
+                {
+                    let _ = ctx
+                        .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
+                        .await;
+                    return Err(());
+                }
+            }
+            Ok(_) => {
                 let _ = ctx
                     .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
                     .await;
                 return Err(());
             }
             Err(err) => {
-                warn!(%err, account = %receiver, "user exists failed");
+                warn!(%err, account = %receiver, "user lookup failed");
                 let _ = ctx.resp_with_error(Status::SystemException, &err).await;
                 return Err(());
             }
@@ -181,7 +190,15 @@ pub async fn do_user_talk(
             .await;
         return;
     }
-    persist_then_push(&ctx, &inserted, "user", metrics, push_budget).await;
+    persist_then_push(
+        &ctx,
+        &inserted,
+        "user",
+        metrics,
+        push_budget,
+        ctx.header().command.as_str(),
+    )
+    .await;
 }
 
 pub async fn do_group_talk(
@@ -277,10 +294,23 @@ pub async fn do_group_talk(
             .await;
         return;
     }
-    persist_then_push(&ctx, &inserted, "group", metrics, push_budget).await;
+    persist_then_push(
+        &ctx,
+        &inserted,
+        "group",
+        metrics,
+        push_budget,
+        ctx.header().command.as_str(),
+    )
+    .await;
 }
 
-fn fanout_matches_req(kind: MessageKind, dest: &str, req: &MessageReq, f: &Fanout) -> bool {
+pub(crate) fn fanout_matches_req(
+    kind: MessageKind,
+    dest: &str,
+    req: &MessageReq,
+    f: &Fanout,
+) -> bool {
     f.kind == kind
         && f.dest == dest
         && f.msg_type == req.r#type
@@ -288,7 +318,7 @@ fn fanout_matches_req(kind: MessageKind, dest: &str, req: &MessageReq, f: &Fanou
         && f.extra == req.extra
 }
 
-async fn fallback_targets(ctx: &Context, accounts: &[String]) -> Vec<DeliveryTarget> {
+pub(crate) async fn fallback_targets(ctx: &Context, accounts: &[String]) -> Vec<DeliveryTarget> {
     let collect = async {
         let mut out = Vec::new();
         for account in accounts {
@@ -311,12 +341,13 @@ async fn fallback_targets(ctx: &Context, accounts: &[String]) -> Vec<DeliveryTar
         .unwrap_or_default()
 }
 
-async fn persist_then_push(
+pub(crate) async fn persist_then_push(
     ctx: &Context,
     inserted: &InsertResult,
     kind_label: &str,
     metrics: Option<&KimMetrics>,
     push_budget: Duration,
+    push_command: &str,
 ) {
     let resp = MessageResp {
         message_id: inserted.message_id,
@@ -360,7 +391,7 @@ async fn persist_then_push(
         if locs.is_empty() {
             return;
         }
-        if let Err(err) = ctx.dispatch(&push, &locs).await {
+        if let Err(err) = ctx.dispatch_cmd(push_command, &push, &locs).await {
             warn!(%err, "dispatch failed");
             if let Some(m) = metrics {
                 m.on_dispatch_fail(kind_label);
@@ -514,6 +545,9 @@ mod tests {
             b: &str,
         ) -> Result<bool, SocialError> {
             self.inner.is_blocked_either(app, a, b).await
+        }
+        async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError> {
+            self.inner.ensure_friends(app, a, b).await
         }
     }
 
@@ -720,6 +754,25 @@ mod tests {
             _message_id: i64,
         ) -> Result<(), StoreError> {
             Ok(())
+        }
+        async fn insert_bot_reply(
+            &self,
+            _app: &str,
+            _owner: &str,
+            _bot: &str,
+            _in_reply_to: i64,
+            _req: &InsertMessage,
+        ) -> Result<InsertResult, StoreError> {
+            Err(StoreError::Backend("insert failed".into()))
+        }
+        async fn bot_pending(
+            &self,
+            _app: &str,
+            _owner: &str,
+            _bot: &str,
+            _limit: i32,
+        ) -> Result<Vec<crate::store::BotPendingItem>, StoreError> {
+            Ok(Vec::new())
         }
     }
 

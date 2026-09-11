@@ -29,6 +29,7 @@ pub(crate) struct PumpOpts {
     pub read_idle: Duration,
     pub probe_timeout: Duration,
     pub token_sink: TokenSink,
+    pub me: String,
 }
 
 pub(crate) enum WriteCmd {
@@ -218,10 +219,11 @@ pub(crate) fn start_split_pump(
     let last_read_r = last_read.clone();
     let death_r = death.clone();
     let token_sink = opts.token_sink.clone();
+    let me = opts.me;
     let reader = tokio::spawn(async move {
         loop {
             match read_data_pumped(&mut *read, &writes_r, &last_read_r).await {
-                Ok(frame) => match decode_event(&frame) {
+                Ok(frame) => match decode_event(&frame, &me) {
                     Ok(event) => {
                         let closed = matches!(event, Event::Closed);
                         if closed {
