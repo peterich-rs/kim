@@ -89,6 +89,37 @@ class AgentToolSet {
   }
 }
 
+class AgentExtension {
+  const AgentExtension({
+    required this.name,
+    this.transport = 'stdio',
+    this.command = const [],
+    this.url = '',
+  });
+
+  final String name;
+  final String transport;
+  final List<String> command;
+  final String url;
+
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'transport': transport,
+    'command': command,
+    'url': url,
+  };
+
+  factory AgentExtension.fromJson(Map<String, Object?> json) {
+    final cmd = json['command'];
+    return AgentExtension(
+      name: '${json['name'] ?? ''}',
+      transport: '${json['transport'] ?? 'stdio'}',
+      command: cmd is List ? [for (final c in cmd) '$c'] : const [],
+      url: '${json['url'] ?? ''}',
+    );
+  }
+}
+
 class AgentProfile {
   const AgentProfile({
     required this.id,
@@ -104,6 +135,7 @@ class AgentProfile {
     this.thinkingEffort = '',
     this.tools = const AgentToolSet(),
     this.permissionOverrides = const {},
+    this.extensions = const [],
     this.enabled = true,
   });
 
@@ -120,6 +152,7 @@ class AgentProfile {
   final String thinkingEffort;
   final AgentToolSet tools;
   final Map<String, String> permissionOverrides;
+  final List<AgentExtension> extensions;
   final bool enabled;
 
   String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
@@ -135,6 +168,7 @@ class AgentProfile {
     String? thinkingEffort,
     AgentToolSet? tools,
     Map<String, String>? permissionOverrides,
+    List<AgentExtension>? extensions,
     bool? enabled,
   }) {
     return AgentProfile(
@@ -151,6 +185,7 @@ class AgentProfile {
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
       tools: tools ?? this.tools,
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
+      extensions: extensions ?? this.extensions,
       enabled: enabled ?? this.enabled,
     );
   }
@@ -169,6 +204,7 @@ class AgentProfile {
     'max_turns': maxTurns,
     'tools': tools.toJson(),
     'permissions': {'tools': permissionOverrides},
+    'extensions': [for (final e in extensions) e.toJson()],
     'enabled': enabled,
   };
 
@@ -212,6 +248,17 @@ class AgentProfile {
           ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
           : const AgentToolSet(),
       permissionOverrides: overrides,
+      extensions: () {
+        final raw = json['extensions'];
+        if (raw is! List) {
+          return const <AgentExtension>[];
+        }
+        return [
+          for (final item in raw)
+            if (item is Map)
+              AgentExtension.fromJson(Map<String, Object?>.from(item)),
+        ];
+      }(),
       enabled: json['enabled'] != false,
     );
   }

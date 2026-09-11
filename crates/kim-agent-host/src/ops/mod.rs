@@ -9,6 +9,7 @@ pub mod chat_guard;
 pub mod deferred_kim;
 pub mod fs;
 pub mod max_turns;
+pub mod mcp;
 pub mod permission;
 pub mod system_prompt;
 pub mod unknown_tool;

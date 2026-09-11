@@ -173,6 +173,8 @@
   "agentFsReadonly": "工作区只读文件",
   "agentBashLater": "命令行（后续版本）",
   "agentBashDanger": "命令行（危险，默认关闭）",
+  "agentMcp": "MCP 扩展",
+  "agentMcpHint": "高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。",
   "agentAllow": "允许",
   "agentAlwaysAllow": "总是允许",
   "agentDeny": "拒绝",

@@ -1106,6 +1106,18 @@ abstract class AppLocalizations {
   /// **'命令行（危险，默认关闭）'**
   String get agentBashDanger;
 
+  /// No description provided for @agentMcp.
+  ///
+  /// In zh, this message translates to:
+  /// **'MCP 扩展'**
+  String get agentMcp;
+
+  /// No description provided for @agentMcpHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。'**
+  String get agentMcpHint;
+
   /// No description provided for @agentAllow.
   ///
   /// In zh, this message translates to:

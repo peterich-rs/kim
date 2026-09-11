@@ -13,7 +13,7 @@ futures.workspace = true
 goose-agent = "0.1.0-alpha.9"
 goose-provider-types = { version = "0.1.0-alpha.9", default-features = false }
 goose-providers = { version = "0.1.0-alpha.9", default-features = false, features = ["rustls-tls"] }
-rmcp = { version = "3.2", default-features = false }
+rmcp = { version = "3.2", default-features = false, features = ["client", "transport-child-process"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

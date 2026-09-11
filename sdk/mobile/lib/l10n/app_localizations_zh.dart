@@ -516,6 +516,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentBashDanger => '命令行（危险，默认关闭）';
 
   @override
+  String get agentMcp => 'MCP 扩展';
+
+  @override
+  String get agentMcpHint => '高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。';
+
+  @override
   String get agentAllow => '允许';
 
   @override

@@ -525,6 +525,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentBashDanger => 'Shell commands (dangerous, default off)';
 
   @override
+  String get agentMcp => 'MCP extensions';
+
+  @override
+  String get agentMcpHint =>
+      'Advanced. One per line: name command arg… Default empty. Tools require confirmation.';
+
+  @override
   String get agentAllow => 'Allow';
 
   @override

@@ -173,6 +173,8 @@
   "agentFsReadonly": "Workspace read-only files",
   "agentBashLater": "Shell (later)",
   "agentBashDanger": "Shell commands (dangerous, default off)",
+  "agentMcp": "MCP extensions",
+  "agentMcpHint": "Advanced. One per line: name command arg… Default empty. Tools require confirmation.",
   "agentAllow": "Allow",
   "agentAlwaysAllow": "Always",
   "agentDeny": "Deny",

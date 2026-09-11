@@ -274,6 +274,8 @@ pub fn session_open(
     };
     let host = AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?)
         .map_err(map_host_err)?;
+    rt().block_on(host.connect_extensions())
+        .map_err(map_host_err)?;
     let (tx, _) = broadcast::channel(256);
     let _ = tx.send(AgentUiEvent::session_ready());
     Ok(AgentSession {
@@ -519,15 +521,24 @@ impl AgentSession {
         let _guard = rt().enter();
         let host = AgentHost::from_resolved(resolved_from_opts(&opts, String::new())?)
             .map_err(map_host_err)?;
+        rt().block_on(host.connect_extensions())
+            .map_err(map_host_err)?;
         let inner = self.inner.clone();
         rt().block_on(async move {
-            *inner.host.write().await = host;
+            let mut slot = inner.host.write().await;
+            slot.disconnect_extensions().await;
+            *slot = host;
         });
         Ok(())
     }
 
     pub fn close(&self) -> Result<(), String> {
         let _ = self.abort();
+        let inner = self.inner.clone();
+        rt().block_on(async move {
+            let host = inner.host.read().await;
+            host.disconnect_extensions().await;
+        });
         Ok(())
     }
 }

@@ -28,6 +28,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
+  late final TextEditingController _mcp;
   late String _backend;
   var _thinking = 'off';
   var _fs = false;
@@ -44,6 +45,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _baseUrl = TextEditingController();
     _model = TextEditingController();
     _apiKey = TextEditingController();
+    _mcp = TextEditingController();
     _backend = 'openai';
     unawaited(_loadBundled());
   }
@@ -53,6 +55,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _baseUrl.dispose();
     _model.dispose();
     _apiKey.dispose();
+    _mcp.dispose();
     super.dispose();
   }
 
@@ -107,6 +110,11 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     final goose = ref.read(agentProfilesProvider.notifier).goose;
     if (goose != null) {
       _permissions = Map<String, String>.from(goose.permissionOverrides);
+      _mcp.text = [
+        for (final e in goose.extensions)
+          if (e.name.isNotEmpty && e.command.isNotEmpty)
+            '${e.name} ${e.command.join(' ')}',
+      ].join('\n');
     }
   }
 
@@ -155,6 +163,24 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         setState(() => _fetching = false);
       }
     }
+  }
+
+  List<AgentExtension> _parseMcp(String raw) {
+    final out = <AgentExtension>[];
+    for (final line in raw.split('\n')) {
+      final parts = line
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((p) => p.isNotEmpty)
+          .toList();
+      if (parts.length < 2) {
+        continue;
+      }
+      out.add(
+        AgentExtension(name: parts.first, command: parts.sublist(1)),
+      );
+    }
+    return out;
   }
 
   String _permissionValue(String tool) {
@@ -207,6 +233,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         bash: _bash,
       ),
       permissionOverrides: _permissions,
+      extensions: _parseMcp(_mcp.text),
     );
     await ref
         .read(agentProfilesProvider.notifier)
@@ -447,6 +474,29 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                           _permissions['bash'] = 'ask_before';
                         }
                       }),
+                    ),
+                  ],
+                ),
+                const Gap(18),
+                Text(
+                  l10n.agentMcp,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const Gap(8),
+                KimGroupCard(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: TextField(
+                        controller: _mcp,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          hintText: l10n.agentMcpHint,
+                        ),
+                      ),
                     ),
                   ],
                 ),

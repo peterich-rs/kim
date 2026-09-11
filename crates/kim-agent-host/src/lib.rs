@@ -77,6 +77,7 @@ struct Inner {
     model: ModelConfig,
     project_root: PathBuf,
     store: Mutex<Store>,
+    mcp: Arc<ops::mcp::McpHub>,
 }
 
 #[derive(Clone)]
@@ -104,6 +105,7 @@ impl AgentHost {
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
                 }),
+                mcp: Arc::new(ops::mcp::McpHub::new()),
             }),
         })
     }
@@ -130,8 +132,20 @@ impl AgentHost {
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
                 }),
+                mcp: Arc::new(ops::mcp::McpHub::new()),
             }),
         })
+    }
+
+    pub async fn connect_extensions(&self) -> Result<(), HostError> {
+        self.inner
+            .mcp
+            .connect(&self.inner.profile.extensions, &self.inner.project_root)
+            .await
+    }
+
+    pub async fn disconnect_extensions(&self) {
+        self.inner.mcp.disconnect().await;
     }
 
     pub async fn prompt(
@@ -333,6 +347,7 @@ impl AgentHost {
             Arc::clone(&self.inner.provider),
             self.inner.model.clone(),
             &self.inner.project_root,
+            Arc::clone(&self.inner.mcp),
         );
         let machine = StateMachine::new(steps, cancel);
 

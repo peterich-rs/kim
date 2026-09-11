@@ -12,6 +12,7 @@ use crate::ops::bash::BashToolProvider;
 use crate::ops::chat_guard::ChatGuardOp;
 use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
+use crate::ops::mcp::{McpHub, McpToolProvider};
 use crate::ops::permission::PermissionOp;
 use crate::ops::system_prompt::SystemPromptOp;
 use crate::ops::unknown_tool::UnknownToolOp;
@@ -26,6 +27,7 @@ impl MachineFactory {
         provider: Arc<dyn Provider>,
         model: ModelConfig,
         project_root: &Path,
+        mcp: Arc<McpHub>,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
         let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp {
             prompt: profile.system_prompt.clone(),
@@ -66,6 +68,9 @@ impl MachineFactory {
                 tools = tools.with_provider(Arc::new(BashToolProvider {
                     root: project_root.to_path_buf(),
                 }));
+            }
+            if !profile.extensions.is_empty() {
+                tools = tools.with_provider(Arc::new(McpToolProvider { hub: mcp }));
             }
             steps.push(Step::Operation(Arc::new(tools)));
             steps.push(Step::Operation(Arc::new(UnknownToolOp)));
@@ -166,6 +171,7 @@ mod tests {
             provider,
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
+            Arc::new(McpHub::new()),
         );
         // system + max_turns + chat_guard + inference
         assert_eq!(steps.len(), 4);
@@ -183,6 +189,7 @@ mod tests {
             provider,
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
+            Arc::new(McpHub::new()),
         );
         // system + max_turns + permission + tools + unknown + inference
         assert_eq!(steps.len(), 6);
@@ -201,6 +208,7 @@ mod tests {
             provider,
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
+            Arc::new(McpHub::new()),
         );
         // system + max_turns + permission + deferred + tools + unknown + inference
         assert_eq!(steps.len(), 7);
