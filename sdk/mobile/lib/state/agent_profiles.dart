@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../core/settings.dart';
 import 'agent_settings.dart';
@@ -321,6 +322,9 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   List<AgentProfile> get visibleAgents {
+    if (!agentHostSupported) {
+      return const [];
+    }
     if (!multiProfile) {
       final g = goose;
       return g == null ? const [] : [g];

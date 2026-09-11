@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../core/format.dart';
 import 'agent_profiles.dart';
@@ -102,7 +103,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     final loaded = store.loadThreads(account);
     return ThreadsState(
-      threads: agents.isEmpty
+      threads: !agentHostSupported
+          ? loaded
+          : agents.isEmpty
           ? withGooseThread(loaded)
           : withLocalThreads(loaded, agents),
     );

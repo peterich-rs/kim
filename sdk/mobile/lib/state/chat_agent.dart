@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../agent/capability_host.dart';
+import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../agent_bridge.dart';
 import '../core/paths.dart';
@@ -49,6 +50,9 @@ class ChatAgent {
 
   /// Direct DM with a local agent contact — every line is a prompt.
   Future<void> sendDirect({required String dest, required String text}) async {
+    if (!agentHostSupported) {
+      return;
+    }
     final body = text.trim();
     if (body.isEmpty) {
       return;
@@ -62,6 +66,9 @@ class ChatAgent {
     required String dest,
     required String text,
   }) async {
+    if (!agentHostSupported) {
+      return;
+    }
     if (isAgentDest(dest)) {
       await sendDirect(dest: dest, text: text);
       return;
