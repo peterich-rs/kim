@@ -138,6 +138,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           gooseMode: '',
           enableKimTools: false,
           enableApprovals: false,
+          sessionId: '',
         ),
       );
       if (!mounted) {

@@ -161,6 +161,7 @@ class SessionOpenOpts {
   final String gooseMode;
   final bool enableKimTools;
   final bool enableApprovals;
+  final String sessionId;
 
   const SessionOpenOpts({
     required this.model,
@@ -176,6 +177,7 @@ class SessionOpenOpts {
     required this.gooseMode,
     required this.enableKimTools,
     required this.enableApprovals,
+    required this.sessionId,
   });
 
   static Future<SessionOpenOpts> default_() =>
@@ -195,7 +197,8 @@ class SessionOpenOpts {
       thinkingEffort.hashCode ^
       gooseMode.hashCode ^
       enableKimTools.hashCode ^
-      enableApprovals.hashCode;
+      enableApprovals.hashCode ^
+      sessionId.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -214,7 +217,8 @@ class SessionOpenOpts {
           thinkingEffort == other.thinkingEffort &&
           gooseMode == other.gooseMode &&
           enableKimTools == other.enableKimTools &&
-          enableApprovals == other.enableApprovals;
+          enableApprovals == other.enableApprovals &&
+          sessionId == other.sessionId;
 }
 
 class SessionSnapshotDto {

@@ -28,6 +28,7 @@ pub struct SessionOpenOpts {
     pub goose_mode: String,
     pub enable_kim_tools: bool,
     pub enable_approvals: bool,
+    pub session_id: String,
 }
 
 impl Default for SessionOpenOpts {
@@ -46,6 +47,7 @@ impl Default for SessionOpenOpts {
             goose_mode: String::new(),
             enable_kim_tools: false,
             enable_approvals: false,
+            session_id: String::new(),
         }
     }
 }
@@ -267,15 +269,21 @@ pub fn session_open(
     opts: SessionOpenOpts,
 ) -> Result<AgentSession, String> {
     let _guard = rt().enter();
-    let session_id = if sqlite_path.trim().is_empty() {
+    let disk = kim_agent_host::session_file_from_sqlite_path(&sqlite_path);
+    let session_id = if !opts.session_id.trim().is_empty() {
+        opts.session_id.clone()
+    } else if sqlite_path.trim().is_empty() {
         uuid::Uuid::new_v4().to_string()
     } else {
         sqlite_path
     };
     let host = AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?)
         .map_err(map_host_err)?;
-    rt().block_on(host.connect_extensions())
-        .map_err(map_host_err)?;
+    rt().block_on(async {
+        host.configure_persist(disk, opts.resume_on_open).await;
+        host.connect_extensions().await
+    })
+    .map_err(map_host_err)?;
     let (tx, _) = broadcast::channel(256);
     let _ = tx.send(AgentUiEvent::session_ready());
     Ok(AgentSession {

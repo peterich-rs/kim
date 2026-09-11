@@ -909,6 +909,7 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
         let mut var_gooseMode = <String>::sse_decode(deserializer);
         let mut var_enableKimTools = <bool>::sse_decode(deserializer);
         let mut var_enableApprovals = <bool>::sse_decode(deserializer);
+        let mut var_sessionId = <String>::sse_decode(deserializer);
         return crate::api::session::SessionOpenOpts {
             model: var_model,
             llm_backend: var_llmBackend,
@@ -923,6 +924,7 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
             goose_mode: var_gooseMode,
             enable_kim_tools: var_enableKimTools,
             enable_approvals: var_enableApprovals,
+            session_id: var_sessionId,
         };
     }
 }
@@ -1141,6 +1143,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::session::SessionOpenOpts {
             self.goose_mode.into_into_dart().into_dart(),
             self.enable_kim_tools.into_into_dart().into_dart(),
             self.enable_approvals.into_into_dart().into_dart(),
+            self.session_id.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1291,6 +1294,7 @@ impl SseEncode for crate::api::session::SessionOpenOpts {
         <String>::sse_encode(self.goose_mode, serializer);
         <bool>::sse_encode(self.enable_kim_tools, serializer);
         <bool>::sse_encode(self.enable_approvals, serializer);
+        <String>::sse_encode(self.session_id, serializer);
     }
 }
 

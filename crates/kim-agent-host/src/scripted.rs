@@ -12,13 +12,20 @@ use rmcp::model::Tool;
 
 pub struct ScriptedProvider {
     queue: Mutex<VecDeque<Message>>,
+    context_limit: Option<usize>,
 }
 
 impl ScriptedProvider {
     pub fn new(messages: Vec<Message>) -> Self {
         Self {
             queue: Mutex::new(VecDeque::from(messages)),
+            context_limit: None,
         }
+    }
+
+    pub fn with_context_limit(mut self, limit: usize) -> Self {
+        self.context_limit = Some(limit);
+        self
     }
 
     pub fn kim_search_contacts(calls: &[(&str, &str)]) -> Self {
@@ -65,5 +72,15 @@ impl Provider for ScriptedProvider {
         .unwrap_or_else(|| Message::assistant().with_text("scripted: empty queue"));
         let usage = ProviderUsage::new(model_config.model_name.clone(), Usage::default());
         Ok(stream_from_single_message(next, usage))
+    }
+
+    async fn get_context_limit(&self, _model: &str, override_limit: Option<usize>) -> usize {
+        if let Some(n) = override_limit {
+            return n;
+        }
+        if let Some(n) = self.context_limit {
+            return n;
+        }
+        128_000
     }
 }

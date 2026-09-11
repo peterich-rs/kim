@@ -94,10 +94,14 @@ class ChatAgent {
     await paths.ensureAgentDirs();
     final bridge = _ref.read(agentBridgeProvider);
     await bridge.ensure();
+    final opts = await _openOpts(settings, dest);
+    final fileDest = dest.replaceAll('/', '_').replaceAll('\\', '_');
+    final sessionFile =
+        '${paths.agentSessions.path}/${fileDest}__${opts.profileId.isEmpty ? 'goose' : opts.profileId}.json';
     final session = await bridge.open(
-      sqlitePath: dest,
+      sqlitePath: sessionFile,
       projectRoot: paths.agentWorkspace.path,
-      opts: await _openOpts(settings),
+      opts: opts,
     );
     _session = session;
     _sessionDest = dest;
@@ -124,7 +128,7 @@ class ChatAgent {
     });
   }
 
-  Future<SessionOpenOpts> _openOpts(AgentSettings settings) async {
+  Future<SessionOpenOpts> _openOpts(AgentSettings settings, String dest) async {
     await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
     final goose = _ref.read(agentProfilesProvider.notifier).goose;
     final base = settings.toOpts(resumeOnOpen: true);
@@ -143,6 +147,7 @@ class ChatAgent {
         gooseMode: base.gooseMode,
         enableKimTools: true,
         enableApprovals: true,
+        sessionId: '$dest::goose',
       );
     }
     return SessionOpenOpts(
@@ -159,6 +164,7 @@ class ChatAgent {
       gooseMode: goose.mode,
       enableKimTools: true,
       enableApprovals: true,
+      sessionId: '$dest::${goose.id}',
     );
   }
 

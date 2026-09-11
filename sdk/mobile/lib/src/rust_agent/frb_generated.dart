@@ -815,8 +815,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   SessionOpenOpts dco_decode_session_open_opts(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 13)
-      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    if (arr.length != 14)
+      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
     return SessionOpenOpts(
       model: dco_decode_String(arr[0]),
       llmBackend: dco_decode_String(arr[1]),
@@ -831,6 +831,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       gooseMode: dco_decode_String(arr[10]),
       enableKimTools: dco_decode_bool(arr[11]),
       enableApprovals: dco_decode_bool(arr[12]),
+      sessionId: dco_decode_String(arr[13]),
     );
   }
 
@@ -1020,6 +1021,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     var var_gooseMode = sse_decode_String(deserializer);
     var var_enableKimTools = sse_decode_bool(deserializer);
     var var_enableApprovals = sse_decode_bool(deserializer);
+    var var_sessionId = sse_decode_String(deserializer);
     return SessionOpenOpts(
       model: var_model,
       llmBackend: var_llmBackend,
@@ -1034,6 +1036,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       gooseMode: var_gooseMode,
       enableKimTools: var_enableKimTools,
       enableApprovals: var_enableApprovals,
+      sessionId: var_sessionId,
     );
   }
 
@@ -1235,6 +1238,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_String(self.gooseMode, serializer);
     sse_encode_bool(self.enableKimTools, serializer);
     sse_encode_bool(self.enableApprovals, serializer);
+    sse_encode_String(self.sessionId, serializer);
   }
 
   @protected

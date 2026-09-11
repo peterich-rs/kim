@@ -77,6 +77,7 @@ class AgentSettings {
       gooseMode: '',
       enableKimTools: false,
       enableApprovals: false,
+      sessionId: '',
     );
   }
 

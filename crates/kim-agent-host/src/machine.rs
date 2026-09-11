@@ -10,6 +10,7 @@ use goose_provider_types::model::ModelConfig;
 use crate::events::HostEffect;
 use crate::ops::bash::BashToolProvider;
 use crate::ops::chat_guard::ChatGuardOp;
+use crate::ops::compaction::CompactionOp;
 use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
 use crate::ops::mcp::{McpHub, McpToolProvider};
@@ -35,6 +36,10 @@ impl MachineFactory {
         if let Some(max) = profile.max_turns {
             steps.push(Step::Operation(Arc::new(MaxTurnsOp { max })));
         }
+        steps.push(Step::Operation(Arc::new(CompactionOp {
+            provider: Arc::clone(&provider),
+            model: model.model_name.clone(),
+        })));
         if profile.mode == goose_provider_types::goose_mode::GooseMode::Chat
             && profile.tools.has_any()
         {
@@ -173,8 +178,8 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + chat_guard + inference
-        assert_eq!(steps.len(), 4);
+        // system + max_turns + compaction + chat_guard + inference
+        assert_eq!(steps.len(), 5);
     }
 
     #[test]
@@ -191,8 +196,8 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + permission + tools + unknown + inference
-        assert_eq!(steps.len(), 6);
+        // system + max_turns + compaction + permission + tools + unknown + inference
+        assert_eq!(steps.len(), 7);
     }
 
     #[test]
@@ -210,7 +215,7 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + permission + deferred + tools + unknown + inference
-        assert_eq!(steps.len(), 7);
+        // system + max_turns + compaction + permission + deferred + tools + unknown + inference
+        assert_eq!(steps.len(), 8);
     }
 }

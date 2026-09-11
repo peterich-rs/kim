@@ -12,7 +12,7 @@ mod provider;
 mod scripted;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -69,6 +69,8 @@ impl MachineSession for HostSession {
 
 struct Store {
     conversations: HashMap<String, Conversation>,
+    session_path: Option<PathBuf>,
+    resume_on_open: bool,
 }
 
 struct Inner {
@@ -104,6 +106,8 @@ impl AgentHost {
                 project_root,
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
+                    session_path: None,
+                    resume_on_open: true,
                 }),
                 mcp: Arc::new(ops::mcp::McpHub::new()),
             }),
@@ -131,10 +135,18 @@ impl AgentHost {
                 project_root: resolved.project_root,
                 store: Mutex::new(Store {
                     conversations: HashMap::new(),
+                    session_path: None,
+                    resume_on_open: true,
                 }),
                 mcp: Arc::new(ops::mcp::McpHub::new()),
             }),
         })
+    }
+
+    pub async fn configure_persist(&self, path: Option<PathBuf>, resume_on_open: bool) {
+        let mut store = self.inner.store.lock().await;
+        store.session_path = path;
+        store.resume_on_open = resume_on_open;
     }
 
     pub async fn connect_extensions(&self) -> Result<(), HostError> {
@@ -174,10 +186,7 @@ impl AgentHost {
 
         {
             let mut store = self.inner.store.lock().await;
-            let conversation = store
-                .conversations
-                .entry(session_id.to_string())
-                .or_insert_with(Conversation::empty);
+            let conversation = ensure_conversation(&mut store, session_id);
             if let Some(ctx) = context_json.map(str::trim).filter(|s| !s.is_empty()) {
                 let preview = truncate_chars(ctx, 8 * 1024);
                 conversation.push(
@@ -187,6 +196,7 @@ impl AgentHost {
                 );
             }
             conversation.push(Message::user().with_text(text));
+            persist_session(&store, session_id)?;
         }
 
         tracing::info!(session_id, "agent turn start");
@@ -217,6 +227,7 @@ impl AgentHost {
             let result = parse_tool_output(output_json);
             let message = Message::user().with_tool_response(call_id.to_string(), Ok(result));
             conversation.push(message);
+            persist_session(&store, session_id)?;
         }
         let remaining = self.pending_yields(session_id).await;
         if !remaining.is_empty() {
@@ -251,6 +262,7 @@ impl AgentHost {
             conversation.push(ops::permission::confirmation_response_message(
                 call_id, permission,
             ));
+            persist_session(&store, session_id)?;
         }
         let remaining = self.pending_yields(session_id).await;
         if let Some(first) = remaining
@@ -307,6 +319,7 @@ impl AgentHost {
             );
         }
         conversation.push(message);
+        let _ = persist_session(&store, session_id);
     }
 
     pub fn kim_tool_names(&self) -> Vec<&'static str> {
@@ -390,12 +403,8 @@ impl AgentHost {
 #[async_trait]
 impl SessionLoader<HostSession> for AgentHost {
     async fn load(&self, session_id: &str) -> Result<HostSession> {
-        let store = self.inner.store.lock().await;
-        let conversation = store
-            .conversations
-            .get(session_id)
-            .cloned()
-            .unwrap_or_else(Conversation::empty);
+        let mut store = self.inner.store.lock().await;
+        let conversation = ensure_conversation(&mut store, session_id).clone();
         Ok(HostSession {
             id: session_id.to_string(),
             conversation,
@@ -440,6 +449,7 @@ impl EffectHandler<HostSession, HostEffect> for AgentHost {
                 }
             }
         }
+        persist_session(&store, &session.id)?;
         Ok(())
     }
 }
@@ -562,6 +572,59 @@ fn is_kim_world_tool(name: &str) -> bool {
             | "send_message"
             | "read_clipboard"
     )
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SessionDisk {
+    v: u32,
+    messages: Vec<Message>,
+}
+
+fn ensure_conversation<'a>(store: &'a mut Store, session_id: &str) -> &'a mut Conversation {
+    let path = store.session_path.clone();
+    let resume = store.resume_on_open;
+    store
+        .conversations
+        .entry(session_id.to_string())
+        .or_insert_with(|| match (path.as_ref(), resume) {
+            (Some(p), true) if p.exists() => read_session(p),
+            _ => Conversation::empty(),
+        })
+}
+
+fn persist_session(store: &Store, session_id: &str) -> Result<(), HostError> {
+    let Some(path) = store.session_path.as_ref() else {
+        return Ok(());
+    };
+    let Some(conversation) = store.conversations.get(session_id) else {
+        return Ok(());
+    };
+    write_session(path, conversation)
+}
+
+fn write_session(path: &Path, conversation: &Conversation) -> Result<(), HostError> {
+    let disk = SessionDisk {
+        v: 1,
+        messages: conversation.messages().clone(),
+    };
+    let bytes = serde_json::to_vec(&disk).map_err(|e| HostError::Failed(e.to_string()))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| HostError::Failed(e.to_string()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &bytes).map_err(|e| HostError::Failed(e.to_string()))?;
+    std::fs::rename(&tmp, path).map_err(|e| HostError::Failed(e.to_string()))?;
+    Ok(())
+}
+
+fn read_session(path: &Path) -> Conversation {
+    let Ok(bytes) = std::fs::read(path) else {
+        return Conversation::empty();
+    };
+    let Ok(disk) = serde_json::from_slice::<SessionDisk>(&bytes) else {
+        return Conversation::empty();
+    };
+    Conversation::new_unvalidated(disk.messages)
 }
 
 fn session_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
@@ -914,5 +977,98 @@ mod tests {
             dump.contains("user-rejected"),
             "conversation should record the rejection: {dump}"
         );
+    }
+
+    #[tokio::test]
+    async fn session_json_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        let host = kim_host(vec![Message::assistant().with_text("hello")]);
+        host.configure_persist(Some(path.clone()), true).await;
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt("s", "hi", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(path.exists());
+        let host2 = kim_host(vec![Message::assistant().with_text("again")]);
+        host2.configure_persist(Some(path.clone()), true).await;
+        let (tx2, _rx2) = mpsc::channel(32);
+        host2
+            .prompt("s", "next", tx2, CancellationToken::new())
+            .await
+            .unwrap();
+        let conv = host2.conversation_for_test("s").await;
+        let texts: Vec<_> = conv.messages().iter().map(|m| m.as_concat_text()).collect();
+        assert!(texts.iter().any(|t| t == "hi"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "next"), "{texts:?}");
+    }
+
+    #[tokio::test]
+    async fn path_without_slash_does_not_write() {
+        let host = kim_host(vec![Message::assistant().with_text("ok")]);
+        host.configure_persist(None, true).await;
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt("goose", "hi", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(!Path::new("goose").exists());
+        assert!(!Path::new("goose.json").exists());
+    }
+
+    #[tokio::test]
+    async fn compaction_replaces_oversized_conversation() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(
+                ScriptedProvider::new(vec![Message::assistant().with_text("ok")])
+                    .with_context_limit(8),
+            ),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt_with_context(
+            "s",
+            "q",
+            Some(&"x".repeat(400)),
+            tx,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        let conv = host.conversation_for_test("s").await;
+        let blob: String = conv.messages().iter().map(|m| m.as_concat_text()).collect();
+        assert!(blob.contains("conversation summary"), "{blob}");
+        assert!(blob.contains("q"), "{blob}");
+        assert!(
+            blob.matches('x').count() < 400,
+            "summary should truncate older context: {blob}"
+        );
+    }
+
+    #[test]
+    fn sqlite_path_without_slash_is_not_a_file() {
+        assert!(session_file_from_sqlite_path("goose").is_none());
+        assert!(session_file_from_sqlite_path("thread-1").is_none());
+        assert!(session_file_from_sqlite_path("/tmp/s.json").is_some());
+        assert!(session_file_from_sqlite_path("agent/sessions/s.json").is_some());
+    }
+}
+
+pub fn session_file_from_sqlite_path(sqlite_path: &str) -> Option<PathBuf> {
+    let trimmed = sqlite_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = Path::new(trimmed);
+    if path.is_absolute() || trimmed.contains('/') || trimmed.contains('\\') {
+        Some(path.to_path_buf())
+    } else {
+        None
     }
 }
