@@ -2,10 +2,11 @@
 
 KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host**:
 
-- Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine
+- Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine, assembled per `AgentProfile` by `MachineFactory`
 - Providers: [`goose-providers`](https://crates.io/crates/goose-providers) (OpenAI Completions/Responses, Anthropic Messages)
-- Host: `crates/kim-agent-host` (session map, @mention helper, system prompt)
+- Host: `crates/kim-agent-host` (profile, session map, @mention helper, system prompt)
 - FFI: `sdk/mobile/rust_agent` (`kim_agent_ffi`) — still isolated from `kim_client_ffi`
+- Dest: default persona is `goose` (alias of `agent:goose`). Extra personas use `agent:<profile_id>` (later).
 
 ## Product
 
@@ -18,10 +19,12 @@ KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host*
 
 ```
 Flutter composer  --talk-->  kim_client_ffi (IM)
-                 --@助手-->  kim_agent_ffi  --> kim-agent-host --> Goose
+                 --@助手 / dest=goose-->  kim_agent_ffi
+                      --> kim-agent-host
+                           AgentProfile → MachineFactory → Goose
 ```
 
-Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients.
+Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients. `kim_agent_ffi` must not depend on `kim-client`.
 
 ## Build / test
 

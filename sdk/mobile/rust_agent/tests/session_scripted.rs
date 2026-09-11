@@ -1,46 +1,54 @@
 use kim_agent_ffi::api::session::{session_open, SessionOpenOpts};
-use std::thread;
-use std::time::Duration;
+use std::fs;
 
+// Scripted prompt loops land in PR1 (host) / PR3 (FFI). This test only
+// proves session_open with a dummy key, snapshot idle, and close.
 #[test]
-fn scripted_prompt_completes() {
+fn scripted_session_opens_idle_and_closes() {
     let dir = tempfile::tempdir().unwrap();
     let sqlite = dir.path().join("s.sqlite");
     let root = dir.path().join("workspace");
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("AGENTS.md"), "# Agent workspace\nBe helpful.\n").unwrap();
-    std::fs::create_dir_all(root.join(".agents/skills")).unwrap();
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("AGENTS.md"), "# Agent workspace\nBe helpful.\n").unwrap();
+    fs::create_dir_all(root.join(".agents/skills")).unwrap();
 
     let session = session_open(
         sqlite.to_string_lossy().into(),
         root.to_string_lossy().into(),
         SessionOpenOpts {
             resume_on_open: false,
+            api_key: "sk-dummy".into(),
             ..SessionOpenOpts::default()
         },
     )
     .unwrap();
 
-    let op = session.prompt("hello".into()).unwrap();
-    assert!(!op.is_empty());
-
-    for _ in 0..100 {
-        let snap = session.snapshot().unwrap();
-        if !snap.busy {
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
     assert!(!session.snapshot().unwrap().busy);
-    assert!(sqlite.exists());
-    session
-        .reconfigure(SessionOpenOpts {
-            model: "scripted".into(),
-            llm_backend: "scripted".into(),
+    session.close().unwrap();
+}
+
+#[test]
+fn scripted_backend_is_unknown_on_session_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("workspace");
+    std::fs::create_dir_all(&root).unwrap();
+    let result = session_open(
+        "scripted-prompt".into(),
+        root.to_string_lossy().into(),
+        SessionOpenOpts {
             resume_on_open: false,
+            api_key: "sk-dummy".into(),
+            llm_backend: "scripted".into(),
+            model: "scripted".into(),
             ..SessionOpenOpts::default()
-        })
-        .unwrap();
-    assert!(sqlite.exists());
-    session.close();
+        },
+    );
+    let err = match result {
+        Ok(_) => panic!("scripted should be unknown outside host tests"),
+        Err(e) => e,
+    };
+    assert!(
+        err.to_lowercase().contains("unknown") && err.contains("scripted"),
+        "{err}"
+    );
 }

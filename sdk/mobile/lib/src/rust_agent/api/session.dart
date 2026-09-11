@@ -7,9 +7,9 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `_keep_scripted`, `aborted`, `base`, `build_harness`, `build_llm`, `build_tools`, `completed`, `demo_script_after_tool`, `demo_script_text`, `demo_script_tool`, `failed`, `map_resume`, `map_stream_event`, `operation_started`, `preview`, `session_ready`, `sqlite_url`, `text_delta`, `tool_args`, `tool_finished`, `tool_result`, `tool_started`, `usage`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `EchoTool`, `RefillingScripted`, `Shared`, `TeeingEffects`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `call_tool`, `call`, `clone`, `complete_llm`, `description`, `name`, `parameters_schema`, `stream`
+// These functions are ignored because they are not marked as `pub`: `aborted`, `action_required`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SessionPhase`, `Shared`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`
 
 Future<AgentSession> sessionOpen({
   required String sqlitePath,
@@ -21,25 +21,47 @@ Future<AgentSession> sessionOpen({
   opts: opts,
 );
 
+Future<List<String>> fetchSupportedModels({required SessionOpenOpts opts}) =>
+    AgentRustLib.instance.api.crateApiSessionFetchSupportedModels(opts: opts);
+
+Future<List<String>> listBuiltinProfiles() =>
+    AgentRustLib.instance.api.crateApiSessionListBuiltinProfiles();
+
+Future<List<String>> listBundledProviders() =>
+    AgentRustLib.instance.api.crateApiSessionListBundledProviders();
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
 abstract class AgentSession implements RustOpaqueInterface {
   Future<void> abort();
 
   Future<void> close();
 
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  });
+
   Stream<AgentUiEvent> listen();
 
   Future<String> prompt({required String text});
 
-  /// Rebuild harness/client; SQLite session tree is preserved.
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  });
+
   Future<void> reconfigure({required SessionOpenOpts opts});
+
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  });
 
   Future<ResumeReportDto> resume();
 
   SessionSnapshotDto snapshot();
 }
 
-/// Flat UI event (same shape as IM KimSessionEvent — avoids freezed enums).
 class AgentUiEvent {
   final String kind;
   final String operationId;
@@ -125,7 +147,6 @@ class ResumeReportDto {
           statuses == other.statuses;
 }
 
-/// `llm_backend`: "scripted" | "responses_http"
 class SessionOpenOpts {
   final String model;
   final String llmBackend;
@@ -134,6 +155,13 @@ class SessionOpenOpts {
   final String apiKey;
   final bool enableFsTools;
   final bool bashEnabled;
+  final String profileId;
+  final String profileJson;
+  final String thinkingEffort;
+  final String gooseMode;
+  final bool enableKimTools;
+  final bool enableApprovals;
+  final String sessionId;
 
   const SessionOpenOpts({
     required this.model,
@@ -143,6 +171,13 @@ class SessionOpenOpts {
     required this.apiKey,
     required this.enableFsTools,
     required this.bashEnabled,
+    required this.profileId,
+    required this.profileJson,
+    required this.thinkingEffort,
+    required this.gooseMode,
+    required this.enableKimTools,
+    required this.enableApprovals,
+    required this.sessionId,
   });
 
   static Future<SessionOpenOpts> default_() =>
@@ -156,7 +191,14 @@ class SessionOpenOpts {
       baseUrl.hashCode ^
       apiKey.hashCode ^
       enableFsTools.hashCode ^
-      bashEnabled.hashCode;
+      bashEnabled.hashCode ^
+      profileId.hashCode ^
+      profileJson.hashCode ^
+      thinkingEffort.hashCode ^
+      gooseMode.hashCode ^
+      enableKimTools.hashCode ^
+      enableApprovals.hashCode ^
+      sessionId.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -169,17 +211,35 @@ class SessionOpenOpts {
           baseUrl == other.baseUrl &&
           apiKey == other.apiKey &&
           enableFsTools == other.enableFsTools &&
-          bashEnabled == other.bashEnabled;
+          bashEnabled == other.bashEnabled &&
+          profileId == other.profileId &&
+          profileJson == other.profileJson &&
+          thinkingEffort == other.thinkingEffort &&
+          gooseMode == other.gooseMode &&
+          enableKimTools == other.enableKimTools &&
+          enableApprovals == other.enableApprovals &&
+          sessionId == other.sessionId;
 }
 
 class SessionSnapshotDto {
   final bool busy;
   final String lastOperationId;
+  final String phase;
+  final List<String> pendingCallIds;
 
-  const SessionSnapshotDto({required this.busy, required this.lastOperationId});
+  const SessionSnapshotDto({
+    required this.busy,
+    required this.lastOperationId,
+    required this.phase,
+    required this.pendingCallIds,
+  });
 
   @override
-  int get hashCode => busy.hashCode ^ lastOperationId.hashCode;
+  int get hashCode =>
+      busy.hashCode ^
+      lastOperationId.hashCode ^
+      phase.hashCode ^
+      pendingCallIds.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -187,5 +247,7 @@ class SessionSnapshotDto {
       other is SessionSnapshotDto &&
           runtimeType == other.runtimeType &&
           busy == other.busy &&
-          lastOperationId == other.lastOperationId;
+          lastOperationId == other.lastOperationId &&
+          phase == other.phase &&
+          pendingCallIds == other.pendingCallIds;
 }

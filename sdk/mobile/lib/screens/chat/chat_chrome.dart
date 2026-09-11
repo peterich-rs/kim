@@ -36,7 +36,8 @@ Future<void> showChatMessageSheet({
     return;
   }
   final l10n = AppLocalizations.of(context);
-  final text = message.sys || message.isImage || message.isVideo
+  final text =
+      message.sys || message.isImage || message.isVideo || message.isAgentCard
       ? ''
       : message.body;
   final stamp = formatMessageStamp(message.at);

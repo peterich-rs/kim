@@ -1034,6 +1034,186 @@ abstract class AppLocalizations {
   /// **'通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。'**
   String get agentGooseHint;
 
+  /// No description provided for @agentProviderCompatible.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 兼容'**
+  String get agentProviderCompatible;
+
+  /// No description provided for @agentFetchModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉取模型'**
+  String get agentFetchModels;
+
+  /// No description provided for @agentReasoning.
+  ///
+  /// In zh, this message translates to:
+  /// **'推理强度'**
+  String get agentReasoning;
+
+  /// No description provided for @agentReasoningOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关'**
+  String get agentReasoningOff;
+
+  /// No description provided for @agentReasoningLow.
+  ///
+  /// In zh, this message translates to:
+  /// **'低'**
+  String get agentReasoningLow;
+
+  /// No description provided for @agentReasoningMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'中'**
+  String get agentReasoningMedium;
+
+  /// No description provided for @agentReasoningHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高'**
+  String get agentReasoningHigh;
+
+  /// No description provided for @agentReasoningMax.
+  ///
+  /// In zh, this message translates to:
+  /// **'最高'**
+  String get agentReasoningMax;
+
+  /// No description provided for @agentFsLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区文件（后续版本）'**
+  String get agentFsLater;
+
+  /// No description provided for @agentFsReadonly.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区只读文件'**
+  String get agentFsReadonly;
+
+  /// No description provided for @agentBashLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'命令行（后续版本）'**
+  String get agentBashLater;
+
+  /// No description provided for @agentBashDanger.
+  ///
+  /// In zh, this message translates to:
+  /// **'命令行（危险，默认关闭）'**
+  String get agentBashDanger;
+
+  /// No description provided for @agentMcp.
+  ///
+  /// In zh, this message translates to:
+  /// **'MCP 扩展'**
+  String get agentMcp;
+
+  /// No description provided for @agentMcpHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。'**
+  String get agentMcpHint;
+
+  /// No description provided for @agentAllow.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许'**
+  String get agentAllow;
+
+  /// No description provided for @agentAlwaysAllow.
+  ///
+  /// In zh, this message translates to:
+  /// **'总是允许'**
+  String get agentAlwaysAllow;
+
+  /// No description provided for @agentDeny.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝'**
+  String get agentDeny;
+
+  /// No description provided for @agentPermissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'工具权限'**
+  String get agentPermissions;
+
+  /// No description provided for @agentPermissionAlways.
+  ///
+  /// In zh, this message translates to:
+  /// **'总是'**
+  String get agentPermissionAlways;
+
+  /// No description provided for @agentPermissionAsk.
+  ///
+  /// In zh, this message translates to:
+  /// **'询问'**
+  String get agentPermissionAsk;
+
+  /// No description provided for @agentPermissionNever.
+  ///
+  /// In zh, this message translates to:
+  /// **'禁止'**
+  String get agentPermissionNever;
+
+  /// No description provided for @agentToolSendMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'代发消息'**
+  String get agentToolSendMessage;
+
+  /// No description provided for @agentToolClipboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'剪贴板'**
+  String get agentToolClipboard;
+
+  /// No description provided for @agentToolSearchContacts.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索联系人'**
+  String get agentToolSearchContacts;
+
+  /// No description provided for @agentToolSearchMessages.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索消息'**
+  String get agentToolSearchMessages;
+
+  /// No description provided for @agentMoreComing.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多 Agent（即将推出）'**
+  String get agentMoreComing;
+
+  /// No description provided for @agentMultiProfile.
+  ///
+  /// In zh, this message translates to:
+  /// **'在通讯录展示多个本地 Agent'**
+  String get agentMultiProfile;
+
+  /// No description provided for @agentDuplicate.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get agentDuplicate;
+
+  /// No description provided for @agentDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get agentDelete;
+
+  /// No description provided for @agentNeedsEnv.
+  ///
+  /// In zh, this message translates to:
+  /// **'桌面/需环境变量'**
+  String get agentNeedsEnv;
+
   /// No description provided for @agentComposerHint.
   ///
   /// In zh, this message translates to:

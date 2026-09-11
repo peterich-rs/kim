@@ -40,7 +40,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   ThreadKind get kind =>
       ref.read(threadsProvider).thread(dest)?.kind ?? ThreadKind.user;
 
-  bool get isAgent => isGooseAgentDest(dest);
+  bool get isAgent => isAgentDest(dest);
 
   bool get isUserThread => kind == ThreadKind.user && !isAgent;
 

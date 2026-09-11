@@ -480,6 +480,96 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentGooseHint => '通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。';
 
   @override
+  String get agentProviderCompatible => 'OpenAI 兼容';
+
+  @override
+  String get agentFetchModels => '拉取模型';
+
+  @override
+  String get agentReasoning => '推理强度';
+
+  @override
+  String get agentReasoningOff => '关';
+
+  @override
+  String get agentReasoningLow => '低';
+
+  @override
+  String get agentReasoningMedium => '中';
+
+  @override
+  String get agentReasoningHigh => '高';
+
+  @override
+  String get agentReasoningMax => '最高';
+
+  @override
+  String get agentFsLater => '工作区文件（后续版本）';
+
+  @override
+  String get agentFsReadonly => '工作区只读文件';
+
+  @override
+  String get agentBashLater => '命令行（后续版本）';
+
+  @override
+  String get agentBashDanger => '命令行（危险，默认关闭）';
+
+  @override
+  String get agentMcp => 'MCP 扩展';
+
+  @override
+  String get agentMcpHint => '高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。';
+
+  @override
+  String get agentAllow => '允许';
+
+  @override
+  String get agentAlwaysAllow => '总是允许';
+
+  @override
+  String get agentDeny => '拒绝';
+
+  @override
+  String get agentPermissions => '工具权限';
+
+  @override
+  String get agentPermissionAlways => '总是';
+
+  @override
+  String get agentPermissionAsk => '询问';
+
+  @override
+  String get agentPermissionNever => '禁止';
+
+  @override
+  String get agentToolSendMessage => '代发消息';
+
+  @override
+  String get agentToolClipboard => '剪贴板';
+
+  @override
+  String get agentToolSearchContacts => '搜索联系人';
+
+  @override
+  String get agentToolSearchMessages => '搜索消息';
+
+  @override
+  String get agentMoreComing => '更多 Agent（即将推出）';
+
+  @override
+  String get agentMultiProfile => '在通讯录展示多个本地 Agent';
+
+  @override
+  String get agentDuplicate => '复制';
+
+  @override
+  String get agentDelete => '删除';
+
+  @override
+  String get agentNeedsEnv => '桌面/需环境变量';
+
+  @override
   String get agentComposerHint => '发消息，或 @助手';
 
   @override

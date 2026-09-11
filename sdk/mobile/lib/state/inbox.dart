@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../agent/mention.dart';
 import '../core/format.dart';
+import 'agent_profiles.dart';
 import '../core/image_extra.dart';
 import '../data/conversation_store.dart';
 import '../models/models.dart';
@@ -53,18 +54,40 @@ class ThreadsState {
   }
 }
 
-List<KimThread> withGooseThread(List<KimThread> threads) {
-  if (threads.any((t) => t.id == kGooseAgentId)) {
+List<KimThread> withLocalThreads(
+  List<KimThread> threads,
+  List<AgentProfile> enabled,
+) {
+  final existing = {for (final t in threads) t.id};
+  final extras = <KimThread>[];
+  for (final profile in enabled) {
+    final id = canonicalAgentDest(profile.dest);
+    if (existing.contains(id)) {
+      continue;
+    }
+    extras.add(
+      KimThread(id: id, kind: ThreadKind.user, title: profile.displayName),
+    );
+    existing.add(id);
+  }
+  if (extras.isEmpty) {
     return threads;
   }
-  return [
-    const KimThread(
+  return [...extras, ...threads];
+}
+
+List<KimThread> withGooseThread(List<KimThread> threads) {
+  return withLocalThreads(threads, const [
+    AgentProfile(
       id: kGooseAgentId,
-      kind: ThreadKind.user,
-      title: kGooseAgentName,
+      displayName: kGooseAgentName,
+      providerKind: 'openai',
+      baseUrl: '',
+      model: 'gpt-4o',
+      keyRef: 'agent.api_key.goose',
+      systemPrompt: '',
     ),
-    ...threads,
-  ];
+  ]);
 }
 
 class ThreadsNotifier extends Notifier<ThreadsState> {
@@ -75,7 +98,14 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
       return ThreadsState.empty();
     }
     final store = ref.watch(conversationStoreProvider);
-    return ThreadsState(threads: withGooseThread(store.loadThreads(account)));
+    ref.watch(agentProfilesProvider);
+    final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
+    final loaded = store.loadThreads(account);
+    return ThreadsState(
+      threads: agents.isEmpty
+          ? withGooseThread(loaded)
+          : withLocalThreads(loaded, agents),
+    );
   }
 
   void setQuery(String value) {

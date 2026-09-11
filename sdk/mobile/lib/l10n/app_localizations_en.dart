@@ -489,6 +489,97 @@ class AppLocalizationsEn extends AppLocalizations {
       'The assistant in Contacts and Chats is on-device Goose. Open it to talk, or @助手 in other threads.';
 
   @override
+  String get agentProviderCompatible => 'OpenAI compatible';
+
+  @override
+  String get agentFetchModels => 'Fetch models';
+
+  @override
+  String get agentReasoning => 'Reasoning';
+
+  @override
+  String get agentReasoningOff => 'Off';
+
+  @override
+  String get agentReasoningLow => 'Low';
+
+  @override
+  String get agentReasoningMedium => 'Med';
+
+  @override
+  String get agentReasoningHigh => 'High';
+
+  @override
+  String get agentReasoningMax => 'Max';
+
+  @override
+  String get agentFsLater => 'Workspace files (later)';
+
+  @override
+  String get agentFsReadonly => 'Workspace read-only files';
+
+  @override
+  String get agentBashLater => 'Shell (later)';
+
+  @override
+  String get agentBashDanger => 'Shell commands (dangerous, default off)';
+
+  @override
+  String get agentMcp => 'MCP extensions';
+
+  @override
+  String get agentMcpHint =>
+      'Advanced. One per line: name command arg… Default empty. Tools require confirmation.';
+
+  @override
+  String get agentAllow => 'Allow';
+
+  @override
+  String get agentAlwaysAllow => 'Always';
+
+  @override
+  String get agentDeny => 'Deny';
+
+  @override
+  String get agentPermissions => 'Tool permissions';
+
+  @override
+  String get agentPermissionAlways => 'Always';
+
+  @override
+  String get agentPermissionAsk => 'Ask';
+
+  @override
+  String get agentPermissionNever => 'Never';
+
+  @override
+  String get agentToolSendMessage => 'Send message';
+
+  @override
+  String get agentToolClipboard => 'Clipboard';
+
+  @override
+  String get agentToolSearchContacts => 'Search contacts';
+
+  @override
+  String get agentToolSearchMessages => 'Search messages';
+
+  @override
+  String get agentMoreComing => 'More agents coming soon';
+
+  @override
+  String get agentMultiProfile => 'Show multiple local agents';
+
+  @override
+  String get agentDuplicate => 'Duplicate';
+
+  @override
+  String get agentDelete => 'Delete';
+
+  @override
+  String get agentNeedsEnv => 'desktop / needs env';
+
+  @override
   String get agentComposerHint => 'Send a message, or @助手';
 
   @override

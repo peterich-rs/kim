@@ -41,12 +41,19 @@ class OutboxNotifier extends Notifier<int> {
     String dest,
     KimOutgoingContent content, {
     String? batchId,
+    String? clientId,
     ThreadKind kind = ThreadKind.user,
   }) async {
     _assertCanQueue(dest, kind);
     final session = ref.read(sessionProvider);
     ref.read(threadsProvider.notifier).ensureThread(id: dest, kind: kind);
-    final msg = _draft(dest, session.account, content, batchId: batchId);
+    final msg = _draft(
+      dest,
+      session.account,
+      content,
+      batchId: batchId,
+      clientId: clientId,
+    );
     await _persist(msg);
     unawaited(_pump());
     return msg;
@@ -69,12 +76,12 @@ class OutboxNotifier extends Notifier<int> {
     return out;
   }
 
-  Future<KimChatMsg> sendText(String dest, String text) {
+  Future<KimChatMsg> sendText(String dest, String text, {String? clientId}) {
     final body = text.trim();
     if (body.isEmpty) {
       throw StateError(Copy.required);
     }
-    return enqueue(dest, KimOutgoingContent.text(body));
+    return enqueue(dest, KimOutgoingContent.text(body), clientId: clientId);
   }
 
   Future<List<KimChatMsg>> sendImages(
@@ -271,11 +278,15 @@ class OutboxNotifier extends Notifier<int> {
     String account,
     KimOutgoingContent content, {
     String? batchId,
+    String? clientId,
   }) {
     final now = DateTime.now().millisecondsSinceEpoch;
+    final key = (clientId != null && clientId.isNotEmpty)
+        ? clientId
+        : _uuid.v4();
     return switch (content) {
       KimTextContent(:final text) => KimChatMsg(
-        key: _uuid.v4(),
+        key: key,
         dest: dest,
         sender: account,
         body: text,
@@ -284,7 +295,7 @@ class OutboxNotifier extends Notifier<int> {
         batchId: batchId,
       ),
       KimImageContent(:final url, :final width, :final height) => KimChatMsg(
-        key: _uuid.v4(),
+        key: key,
         dest: dest,
         sender: account,
         body: url,
@@ -297,7 +308,7 @@ class OutboxNotifier extends Notifier<int> {
         localPath: isRemoteUrl(url) ? null : url,
       ),
       KimVideoContent(:final url) => KimChatMsg(
-        key: _uuid.v4(),
+        key: key,
         dest: dest,
         sender: account,
         body: url,
@@ -327,7 +338,7 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   void _assertCanQueue(String dest, ThreadKind kind) {
-    if (isGooseAgentDest(dest)) {
+    if (isAgentDest(dest)) {
       throw StateError(Copy.agentLocalOnly);
     }
     final accountErr = validateAccount(dest);

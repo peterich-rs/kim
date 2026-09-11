@@ -65,7 +65,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final me = ref.watch(profileProvider);
     final thread = ref.watch(threadMessagesProvider(widget.id));
     final kind = _session.kind;
-    final agentChat = isGooseAgentDest(widget.id);
+    final agentChat = isAgentDest(widget.id);
     final userThread = kind == ThreadKind.user && !agentChat;
     final peerTyping = userThread
         ? ref.watch(peerTypingProvider(widget.id))

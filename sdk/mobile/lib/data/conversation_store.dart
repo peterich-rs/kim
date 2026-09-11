@@ -485,11 +485,7 @@ class ConversationStore {
       at: row['at'] as int,
       sys: (row['sys'] as int) == 1,
       failed: failed,
-      kind: kindRaw == 'video'
-          ? KimMsgKind.video
-          : kindRaw == 'image'
-          ? KimMsgKind.image
-          : KimMsgKind.text,
+      kind: kimMsgKindFromName(kindRaw),
       width: row['width'] as int,
       height: row['height'] as int,
       messageId: row['message_id'] as int? ?? 0,
