@@ -234,6 +234,7 @@ fn resolved_from_opts(
             llm_backend: opts.llm_backend.clone(),
             base_url: opts.base_url.clone(),
             enable_fs_tools: opts.enable_fs_tools,
+            bash_enabled: opts.bash_enabled,
             enable_kim_tools: opts.enable_kim_tools,
             enable_approvals: opts.enable_approvals,
             thinking_effort: opts.thinking_effort.clone(),

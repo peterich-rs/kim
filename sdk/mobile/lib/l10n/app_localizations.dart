@@ -1100,6 +1100,12 @@ abstract class AppLocalizations {
   /// **'命令行（后续版本）'**
   String get agentBashLater;
 
+  /// No description provided for @agentBashDanger.
+  ///
+  /// In zh, this message translates to:
+  /// **'命令行（危险，默认关闭）'**
+  String get agentBashDanger;
+
   /// No description provided for @agentAllow.
   ///
   /// In zh, this message translates to:

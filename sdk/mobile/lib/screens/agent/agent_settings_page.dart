@@ -31,6 +31,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   late String _backend;
   var _thinking = 'off';
   var _fs = false;
+  var _bash = false;
   var _loaded = false;
   var _fetching = false;
   List<String> _models = const [];
@@ -102,6 +103,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         ? s.thinkingEffort
         : 'off';
     _fs = s.enableFsTools;
+    _bash = s.bashEnabled;
     final goose = ref.read(agentProfilesProvider.notifier).goose;
     if (goose != null) {
       _permissions = Map<String, String>.from(goose.permissionOverrides);
@@ -157,6 +159,12 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
 
   String _permissionValue(String tool) {
     final raw = _permissions[tool];
+    if (tool == 'bash') {
+      if (raw == 'never_allow') {
+        return raw!;
+      }
+      return 'ask_before';
+    }
     if (raw == 'always_allow' || raw == 'ask_before' || raw == 'never_allow') {
       return raw!;
     }
@@ -196,7 +204,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         listProfiles: existing.tools.listProfiles,
         fs: _fs,
         fsWrite: existing.tools.fsWrite,
-        bash: existing.tools.bash,
+        bash: _bash,
       ),
       permissionOverrides: _permissions,
     );
@@ -430,9 +438,15 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                     ),
                     const Divider(height: 1),
                     SwitchListTile(
-                      title: Text(l10n.agentBashLater),
-                      value: false,
-                      onChanged: null,
+                      title: Text(l10n.agentBashDanger),
+                      subtitle: Text(l10n.agentBashLater),
+                      value: _bash,
+                      onChanged: (next) => setState(() {
+                        _bash = next;
+                        if (next) {
+                          _permissions['bash'] = 'ask_before';
+                        }
+                      }),
                     ),
                   ],
                 ),
@@ -451,6 +465,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                       ('read_clipboard', l10n.agentToolClipboard),
                       ('search_contacts', l10n.agentToolSearchContacts),
                       ('search_messages', l10n.agentToolSearchMessages),
+                      ('bash', l10n.agentBashDanger),
                     ]) ...[
                       if (entry.$1 != 'send_message') const Divider(height: 1),
                       ListTile(
@@ -458,10 +473,11 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                         trailing: DropdownButton<String>(
                           value: _permissionValue(entry.$1),
                           items: [
-                            DropdownMenuItem(
-                              value: 'always_allow',
-                              child: Text(l10n.agentPermissionAlways),
-                            ),
+                            if (entry.$1 != 'bash')
+                              DropdownMenuItem(
+                                value: 'always_allow',
+                                child: Text(l10n.agentPermissionAlways),
+                              ),
                             DropdownMenuItem(
                               value: 'ask_before',
                               child: Text(l10n.agentPermissionAsk),
@@ -473,6 +489,9 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                           ],
                           onChanged: (next) {
                             if (next == null) {
+                              return;
+                            }
+                            if (entry.$1 == 'bash' && next == 'always_allow') {
                               return;
                             }
                             setState(() => _permissions[entry.$1] = next);

@@ -172,6 +172,7 @@
   "agentFsLater": "Workspace files (later)",
   "agentFsReadonly": "Workspace read-only files",
   "agentBashLater": "Shell (later)",
+  "agentBashDanger": "Shell commands (dangerous, default off)",
   "agentAllow": "Allow",
   "agentAlwaysAllow": "Always",
   "agentDeny": "Deny",

@@ -8,6 +8,7 @@ use goose_provider_types::base::Provider;
 use goose_provider_types::model::ModelConfig;
 
 use crate::events::HostEffect;
+use crate::ops::bash::BashToolProvider;
 use crate::ops::chat_guard::ChatGuardOp;
 use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
@@ -59,6 +60,11 @@ impl MachineFactory {
                 tools = tools.with_provider(Arc::new(FsToolProvider {
                     root: project_root.to_path_buf(),
                     writable: profile.tools.fs_write,
+                }));
+            }
+            if profile.tools.bash {
+                tools = tools.with_provider(Arc::new(BashToolProvider {
+                    root: project_root.to_path_buf(),
                 }));
             }
             steps.push(Step::Operation(Arc::new(tools)));

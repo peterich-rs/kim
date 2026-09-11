@@ -168,6 +168,7 @@ pub struct LegacyOpenOpts {
     pub llm_backend: String,
     pub base_url: String,
     pub enable_fs_tools: bool,
+    pub bash_enabled: bool,
     pub enable_kim_tools: bool,
     pub enable_approvals: bool,
     pub thinking_effort: String,
@@ -180,7 +181,7 @@ impl AgentProfile {
         let tools = ToolSet {
             fs: opts.enable_fs_tools,
             fs_write: false,
-            bash: false,
+            bash: opts.bash_enabled,
             search_contacts: opts.enable_kim_tools,
             search_messages: opts.enable_kim_tools,
             get_conversation_context: opts.enable_kim_tools,
@@ -451,6 +452,18 @@ mod tests {
         assert!(profile.tools.fs);
         assert!(!profile.tools.bash);
         assert_eq!(profile.mode, GooseMode::SmartApprove);
+    }
+
+    #[test]
+    fn from_legacy_bash_only_when_enabled() {
+        let off = AgentProfile::from_legacy(&LegacyOpenOpts::default());
+        assert!(!off.tools.bash);
+        let on = AgentProfile::from_legacy(&LegacyOpenOpts {
+            bash_enabled: true,
+            ..LegacyOpenOpts::default()
+        });
+        assert!(on.tools.bash);
+        assert_eq!(on.mode, GooseMode::SmartApprove);
     }
 
     #[test]

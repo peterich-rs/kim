@@ -513,6 +513,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentBashLater => '命令行（后续版本）';
 
   @override
+  String get agentBashDanger => '命令行（危险，默认关闭）';
+
+  @override
   String get agentAllow => '允许';
 
   @override

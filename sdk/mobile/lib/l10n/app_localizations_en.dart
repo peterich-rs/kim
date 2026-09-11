@@ -522,6 +522,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentBashLater => 'Shell (later)';
 
   @override
+  String get agentBashDanger => 'Shell commands (dangerous, default off)';
+
+  @override
   String get agentAllow => 'Allow';
 
   @override

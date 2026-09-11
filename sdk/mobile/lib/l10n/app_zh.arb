@@ -172,6 +172,7 @@
   "agentFsLater": "工作区文件（后续版本）",
   "agentFsReadonly": "工作区只读文件",
   "agentBashLater": "命令行（后续版本）",
+  "agentBashDanger": "命令行（危险，默认关闭）",
   "agentAllow": "允许",
   "agentAlwaysAllow": "总是允许",
   "agentDeny": "拒绝",
