@@ -40,7 +40,8 @@ class ChatAgent {
   final _lives = <String, _Live>{};
   final _lru = <String>[];
   final _seenToolCalls = <String>{};
-  Timer? _toolTimeout;
+  final _toolTimeouts = <String, Timer>{};
+  final _pendingToolCalls = <String, Set<String>>{};
 
   static const _lruLimit = 4;
 
@@ -90,8 +91,10 @@ class ChatAgent {
     required AgentProfile profile,
   }) async {
     await _ref.read(agentSettingsProvider.notifier).ensureLoaded();
-    final settings = _ref.read(agentSettingsProvider);
-    if (settings.apiKey.trim().isEmpty) {
+    final apiKey = await _ref
+        .read(agentProfilesProvider.notifier)
+        .readApiKey(profile);
+    if (apiKey.trim().isEmpty) {
       await _appendLocal(
         dest,
         '未配置 API Key。打开「我 → Agent 设置」填入 OpenAI 或 Anthropic 密钥。',
@@ -100,7 +103,7 @@ class ChatAgent {
       return;
     }
     try {
-      final live = await _ensureSession(dest, settings, profile);
+      final live = await _ensureSession(dest, profile, apiKey: apiKey);
       if (!isAgentDest(dest)) {
         final ctx = _contextJson(dest);
         if (ctx.isNotEmpty) {
@@ -119,7 +122,8 @@ class ChatAgent {
     final store = _ref.read(agentProfilesProvider.notifier);
     final canon = canonicalAgentDest(dest);
     if (canon == kGooseAgentId) {
-      return store.goose ?? AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
+      return store.goose ??
+          AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
     }
     if (canon.startsWith('agent:')) {
       final id = canon.substring('agent:'.length);
@@ -129,14 +133,15 @@ class ChatAgent {
         }
       }
     }
-    return store.goose ?? AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
+    return store.goose ??
+        AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
   }
 
   Future<_Live> _ensureSession(
     String dest,
-    AgentSettings settings,
-    AgentProfile profile,
-  ) async {
+    AgentProfile profile, {
+    required String apiKey,
+  }) async {
     final key = _key(dest, profile.id);
     final existing = _lives[key];
     if (existing != null) {
@@ -153,7 +158,7 @@ class ChatAgent {
     await paths.ensureAgentDirs();
     final bridge = _ref.read(agentBridgeProvider);
     await bridge.ensure();
-    final opts = _openOpts(settings, dest, profile);
+    final opts = _openOpts(dest, profile, apiKey);
     final fileDest = dest.replaceAll('/', '_').replaceAll('\\', '_');
     final sessionFile =
         '${paths.agentSessions.path}/${fileDest}__${profile.id}.json';
@@ -167,15 +172,11 @@ class ChatAgent {
       switch (ev.kind) {
         case 'assistant_finished':
           if (ev.message.trim().isNotEmpty) {
-            unawaited(
-              _appendLocal(dest, ev.message.trim(), profile: profile),
-            );
+            unawaited(_appendLocal(dest, ev.message.trim(), profile: profile));
           }
         case 'failed':
           if (ev.message.trim().isNotEmpty) {
-            unawaited(
-              _appendLocal(dest, ev.message.trim(), profile: profile),
-            );
+            unawaited(_appendLocal(dest, ev.message.trim(), profile: profile));
           }
         case 'tool_started':
         case 'tool_finished':
@@ -183,7 +184,7 @@ class ChatAgent {
         case 'tool_request':
           unawaited(_onToolRequest(dest, ev, profile: profile));
         case 'action_required':
-          unawaited(_appendActionCard(dest, ev));
+          unawaited(_appendActionCard(dest, ev, profile: profile));
         default:
           break;
       }
@@ -198,17 +199,13 @@ class ChatAgent {
     _lru.add(key);
   }
 
-  SessionOpenOpts _openOpts(
-    AgentSettings settings,
-    String dest,
-    AgentProfile profile,
-  ) {
+  SessionOpenOpts _openOpts(String dest, AgentProfile profile, String apiKey) {
     return SessionOpenOpts(
       model: profile.model,
       llmBackend: profile.providerKind,
       resumeOnOpen: true,
       baseUrl: profile.baseUrl,
-      apiKey: settings.apiKey,
+      apiKey: apiKey,
       enableFsTools: profile.tools.fs,
       bashEnabled: profile.tools.bash,
       profileId: profile.id,
@@ -228,18 +225,20 @@ class ChatAgent {
     }
     final items = _ref.read(threadMessagesProvider(dest)).items;
     const cap = 8 * 1024;
-    final buf = StringBuffer();
+    final lines = <String>[];
+    var used = 0;
     for (final m in items.reversed) {
       if (m.kind != KimMsgKind.text || m.sys) {
         continue;
       }
       final line = '${m.sender}: ${m.body}\n';
-      if (buf.length + line.length > cap) {
+      if (used + line.length > cap) {
         break;
       }
-      buf.write(line);
+      used += line.length;
+      lines.add(line);
     }
-    return buf.toString();
+    return lines.reversed.join();
   }
 
   Future<void> _onToolRequest(
@@ -251,7 +250,7 @@ class ChatAgent {
     if (callId.isEmpty || !_seenToolCalls.add(callId)) {
       return;
     }
-    _armToolTimeout(dest, callId);
+    _armToolTimeout(dest, profile.id, callId);
     final host = KimCapabilityHost(_ref);
     final out = await host.execute(
       name: ev.name,
@@ -266,23 +265,40 @@ class ChatAgent {
     }
     try {
       await live.session.completeTool(callId: callId, outputJson: out);
+      _clearToolCall(dest, profile.id, callId);
     } catch (_) {}
   }
 
-  void _armToolTimeout(String dest, String callId) {
-    _toolTimeout?.cancel();
-    _toolTimeout = Timer(const Duration(minutes: 10), () {
-      final live = _liveForDest(dest);
+  void _armToolTimeout(String dest, String profileId, String callId) {
+    final key = _key(dest, profileId);
+    _pendingToolCalls.putIfAbsent(key, () => <String>{}).add(callId);
+    _toolTimeouts[key]?.cancel();
+    _toolTimeouts[key] = Timer(const Duration(minutes: 10), () {
+      final ids = _pendingToolCalls.remove(key) ?? {};
+      _toolTimeouts.remove(key);
+      final live = _lives[key];
       if (live == null) {
         return;
       }
-      unawaited(
-        live.session.completeTool(
-          callId: callId,
-          outputJson: '{"ok":false,"error":"timeout"}',
-        ),
-      );
+      for (final id in ids) {
+        unawaited(
+          live.session.completeTool(
+            callId: id,
+            outputJson: '{"ok":false,"error":"timeout"}',
+          ),
+        );
+      }
     });
+  }
+
+  void _clearToolCall(String dest, String profileId, String callId) {
+    final key = _key(dest, profileId);
+    final pending = _pendingToolCalls[key];
+    pending?.remove(callId);
+    if (pending == null || pending.isEmpty) {
+      _toolTimeouts.remove(key)?.cancel();
+      _pendingToolCalls.remove(key);
+    }
   }
 
   Future<void> _upsertToolCard(
@@ -304,10 +320,15 @@ class ChatAgent {
       preview: ev.outputPreview,
       ok: !running && ev.ok,
       sender: profile?.displayName ?? kGooseAgentName,
+      profileId: profile?.id,
     );
   }
 
-  Future<void> _appendActionCard(String dest, AgentUiEvent ev) async {
+  Future<void> _appendActionCard(
+    String dest,
+    AgentUiEvent ev, {
+    required AgentProfile profile,
+  }) async {
     final callId = ev.callId.trim();
     if (callId.isEmpty) {
       return;
@@ -321,7 +342,8 @@ class ChatAgent {
       state: 'pending',
       preview: preview,
       ok: false,
-      sender: kGooseAgentName,
+      sender: profile.displayName,
+      profileId: profile.id,
     );
   }
 
@@ -346,6 +368,20 @@ class ChatAgent {
     required String permission,
     required String toolName,
   }) async {
+    var profileId = kGooseAgentId;
+    final existing = _ref
+        .read(threadMessagesProvider(dest))
+        .items
+        .where((m) => m.key == 'agent-card-$callId')
+        .toList();
+    if (existing.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existing.first.body);
+        if (prev is Map && prev['profile_id'] != null) {
+          profileId = '${prev['profile_id']}';
+        }
+      } catch (_) {}
+    }
     await _upsertCard(
       dest,
       callId: callId,
@@ -353,12 +389,16 @@ class ChatAgent {
       type: 'action_required',
       state: 'resolved',
       preview: '',
-      ok: permission != 'deny_once' && permission != 'always_deny' && permission != 'cancel',
+      ok:
+          permission != 'deny_once' &&
+          permission != 'always_deny' &&
+          permission != 'cancel',
+      profileId: profileId,
     );
     if (permission == 'always_allow') {
-      await _rememberAlwaysAllow(toolName);
+      await _rememberAlwaysAllow(toolName, profileId);
     }
-    final live = _liveForDest(dest);
+    final live = _lives[_key(dest, profileId)] ?? _liveForDest(dest);
     if (live == null) {
       return;
     }
@@ -376,24 +416,31 @@ class ChatAgent {
         state: 'pending',
         preview: '',
         ok: false,
+        profileId: profileId,
       );
     }
   }
 
-  Future<void> _rememberAlwaysAllow(String toolName) async {
+  Future<void> _rememberAlwaysAllow(String toolName, String profileId) async {
     await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
-    await _ref.read(agentSettingsProvider.notifier).ensureLoaded();
     final store = _ref.read(agentProfilesProvider.notifier);
-    final goose = store.goose;
-    if (goose == null || toolName.trim().isEmpty) {
+    if (toolName.trim().isEmpty) {
       return;
     }
-    final next = Map<String, String>.from(goose.permissionOverrides);
+    AgentProfile? profile;
+    for (final p in _ref.read(agentProfilesProvider)) {
+      if (p.id == profileId) {
+        profile = p;
+        break;
+      }
+    }
+    profile ??= store.goose;
+    if (profile == null) {
+      return;
+    }
+    final next = Map<String, String>.from(profile.permissionOverrides);
     next[toolName] = 'always_allow';
-    await store.saveGoose(
-      goose.copyWith(permissionOverrides: next),
-      apiKey: _ref.read(agentSettingsProvider).apiKey,
-    );
+    await store.saveProfile(profile.copyWith(permissionOverrides: next));
   }
 
   Future<void> _upsertCard(
@@ -405,6 +452,7 @@ class ChatAgent {
     required String preview,
     required bool ok,
     String sender = kGooseAgentName,
+    String? profileId,
   }) async {
     final account = _ref.read(authProvider).account;
     if (account.isEmpty) {
@@ -425,6 +473,7 @@ class ChatAgent {
       'state': state,
       'preview': preview,
       'ok': ok,
+      'profile_id': ?profileId,
     };
     if (existing.isNotEmpty) {
       try {
@@ -490,19 +539,73 @@ class ChatAgent {
     _ref.read(threadsProvider.notifier).applyTalk(msg, fromSelf: !fromAgent);
   }
 
-  Future<void> dispose() async {
-    _toolTimeout?.cancel();
-    for (final live in _lives.values) {
-      await live.sub?.cancel();
-      await live.session.close();
+  bool _machineChanged(AgentProfile a, AgentProfile b) {
+    return a.model != b.model ||
+        a.providerKind != b.providerKind ||
+        a.baseUrl != b.baseUrl ||
+        a.keyRef != b.keyRef ||
+        a.systemPrompt != b.systemPrompt ||
+        a.mode != b.mode ||
+        a.maxTurns != b.maxTurns ||
+        a.thinkingEffort != b.thinkingEffort ||
+        a.steer != b.steer ||
+        jsonEncode(a.tools.toJson()) != jsonEncode(b.tools.toJson()) ||
+        jsonEncode([for (final e in a.extensions) e.toJson()]) !=
+            jsonEncode([for (final e in b.extensions) e.toJson()]);
+  }
+
+  Future<void> _closeLive(String key) async {
+    _lru.remove(key);
+    final live = _lives.remove(key);
+    _toolTimeouts.remove(key)?.cancel();
+    _pendingToolCalls.remove(key);
+    await live?.sub?.cancel();
+    await live?.session.close();
+  }
+
+  Future<void> _onProfilesChanged(List<AgentProfile> next) async {
+    final byId = {for (final p in next) p.id: p};
+    final stale = [
+      for (final e in _lives.entries)
+        if (byId[e.value.profile.id] == null ||
+            _machineChanged(e.value.profile, byId[e.value.profile.id]!))
+          e.key,
+    ];
+    for (final key in stale) {
+      await _closeLive(key);
     }
-    _lives.clear();
-    _lru.clear();
+  }
+
+  Future<void> _closeGooseLives() async {
+    final stale = [
+      for (final e in _lives.entries)
+        if (e.value.profile.id == kGooseAgentId) e.key,
+    ];
+    for (final key in stale) {
+      await _closeLive(key);
+    }
+  }
+
+  Future<void> _closeLives() async {
+    final keys = _lives.keys.toList();
+    for (final key in keys) {
+      await _closeLive(key);
+    }
+  }
+
+  Future<void> dispose() async {
+    await _closeLives();
   }
 }
 
 final chatAgentProvider = Provider<ChatAgent>((ref) {
   final agent = ChatAgent(ref);
+  ref.listen(agentProfilesProvider, (prev, next) {
+    unawaited(agent._onProfilesChanged(next));
+  });
+  ref.listen(agentSettingsProvider, (prev, next) {
+    unawaited(agent._closeGooseLives());
+  });
   ref.onDispose(() {
     unawaited(agent.dispose());
   });

@@ -1,6 +1,7 @@
 //! Thin FFI over `kim-agent-host` (Goose). Isolated from `kim_client_ffi`.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -220,6 +221,7 @@ struct Shared {
     replay: Mutex<Vec<AgentUiEvent>>,
     complete_gate: tokio::sync::Mutex<()>,
     cancel: Mutex<Option<CancellationToken>>,
+    generation: AtomicU64,
 }
 
 pub struct AgentSession {
@@ -230,7 +232,7 @@ fn resolved_from_opts(
     opts: &SessionOpenOpts,
     project_root: String,
 ) -> Result<ResolvedProfile, String> {
-    let profile = if opts.profile_json.trim().is_empty() {
+    let mut profile = if opts.profile_json.trim().is_empty() {
         AgentProfile::from_legacy(&LegacyOpenOpts {
             model: opts.model.clone(),
             llm_backend: opts.llm_backend.clone(),
@@ -250,6 +252,7 @@ fn resolved_from_opts(
     } else {
         serde_json::from_str(&opts.profile_json).map_err(|e| e.to_string())?
     };
+    profile.normalize_mode();
     tracing::info!(
         profile_id = %profile.id,
         provider = %profile.provider.kind,
@@ -295,12 +298,13 @@ pub fn session_open(
             replay: Mutex::new(Vec::new()),
             complete_gate: tokio::sync::Mutex::new(()),
             cancel: Mutex::new(None),
+            generation: AtomicU64::new(0),
         }),
     })
 }
 
 impl AgentSession {
-    fn begin_run(&self) -> Result<CancellationToken, String> {
+    fn begin_run(&self) -> Result<(CancellationToken, u64), String> {
         let mut phase = self
             .inner
             .phase
@@ -312,11 +316,12 @@ impl AgentSession {
             SessionPhase::Idle => {}
         }
         *phase = SessionPhase::Running;
+        let gen = self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
         let cancel = CancellationToken::new();
         if let Ok(mut g) = self.inner.cancel.lock() {
             *g = Some(cancel.clone());
         }
-        Ok(cancel)
+        Ok((cancel, gen))
     }
 
     pub fn prompt(&self, text: String) -> Result<String, String> {
@@ -332,7 +337,7 @@ impl AgentSession {
         if text.is_empty() {
             return Err("empty prompt".into());
         }
-        let cancel = self.begin_run()?;
+        let (cancel, gen) = self.begin_run()?;
         let inner = self.inner.clone();
         let (op_tx, op_rx) = std::sync::mpsc::channel();
         rt().spawn(async move {
@@ -355,7 +360,7 @@ impl AgentSession {
                 .await;
             drop(host);
             let _ = pump.await;
-            finish_turn(&inner, op, result).await;
+            finish_turn(&inner, op, result, gen).await;
         });
         op_rx
             .recv_timeout(Duration::from_secs(30))
@@ -374,6 +379,7 @@ impl AgentSession {
             }
         }
         let inner = self.inner.clone();
+        let gen = inner.generation.load(Ordering::SeqCst);
         let (op_tx, op_rx) = std::sync::mpsc::channel();
         let cancel = CancellationToken::new();
         if let Ok(mut g) = inner.cancel.lock() {
@@ -381,17 +387,39 @@ impl AgentSession {
         }
         rt().spawn(async move {
             let _gate = inner.complete_gate.lock().await;
+            if inner.generation.load(Ordering::SeqCst) != gen {
+                let _ = op_tx.send(Err("aborted".into()));
+                return;
+            }
+            {
+                let Ok(phase) = inner.phase.lock() else {
+                    let _ = op_tx.send(Err("phase lock".into()));
+                    return;
+                };
+                if *phase != SessionPhase::Yielded {
+                    let _ = op_tx.send(Err("unknown tool call".into()));
+                    return;
+                }
+            }
             let op = uuid::Uuid::new_v4().to_string();
             let _ = op_tx.send(Ok(op.clone()));
             let (tx, rx) = mpsc::channel(64);
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
             let host = inner.host.read().await;
+            let pending = host.pending_yields(&inner.session_id).await;
+            if pending.len() == 1 && pending[0].call_id == call_id {
+                if let Ok(mut g) = inner.phase.lock() {
+                    if *g == SessionPhase::Yielded {
+                        *g = SessionPhase::Running;
+                    }
+                }
+            }
             let result = host
                 .complete_tool(&inner.session_id, &call_id, &output_json, tx, cancel)
                 .await;
             drop(host);
             let _ = pump.await;
-            finish_turn(&inner, op, result).await;
+            finish_turn(&inner, op, result, gen).await;
         });
         op_rx
             .recv_timeout(Duration::from_secs(30))
@@ -411,6 +439,7 @@ impl AgentSession {
             }
         }
         let inner = self.inner.clone();
+        let gen = inner.generation.load(Ordering::SeqCst);
         let (op_tx, op_rx) = std::sync::mpsc::channel();
         let cancel = CancellationToken::new();
         if let Ok(mut g) = inner.cancel.lock() {
@@ -418,17 +447,39 @@ impl AgentSession {
         }
         rt().spawn(async move {
             let _gate = inner.complete_gate.lock().await;
+            if inner.generation.load(Ordering::SeqCst) != gen {
+                let _ = op_tx.send(Err("aborted".into()));
+                return;
+            }
+            {
+                let Ok(phase) = inner.phase.lock() else {
+                    let _ = op_tx.send(Err("phase lock".into()));
+                    return;
+                };
+                if *phase != SessionPhase::Yielded {
+                    let _ = op_tx.send(Err("unknown tool call".into()));
+                    return;
+                }
+            }
             let op = uuid::Uuid::new_v4().to_string();
             let _ = op_tx.send(Ok(op.clone()));
             let (tx, rx) = mpsc::channel(64);
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
             let host = inner.host.read().await;
+            let pending = host.pending_yields(&inner.session_id).await;
+            if pending.len() == 1 && pending[0].call_id == call_id {
+                if let Ok(mut g) = inner.phase.lock() {
+                    if *g == SessionPhase::Yielded {
+                        *g = SessionPhase::Running;
+                    }
+                }
+            }
             let result = host
                 .respond_permission(&inner.session_id, &call_id, parsed, tx, cancel)
                 .await;
             drop(host);
             let _ = pump.await;
-            finish_turn(&inner, op, result).await;
+            finish_turn(&inner, op, result, gen).await;
         });
         op_rx
             .recv_timeout(Duration::from_secs(30))
@@ -475,17 +526,13 @@ impl AgentSession {
                 token.cancel();
             }
         }
+        self.inner.generation.fetch_add(1, Ordering::SeqCst);
         let inner = self.inner.clone();
         rt().block_on(async move {
-            let yielded = inner
-                .phase
-                .lock()
-                .map(|g| *g == SessionPhase::Yielded)
-                .unwrap_or(false);
-            if yielded {
-                let host = inner.host.read().await;
-                host.cancel_pending_tools(&inner.session_id).await;
-            }
+            let _gate = inner.complete_gate.lock().await;
+            let host = inner.host.read().await;
+            host.cancel_pending_tools(&inner.session_id).await;
+            drop(host);
             if let Ok(mut g) = inner.phase.lock() {
                 *g = SessionPhase::Idle;
             }
@@ -591,25 +638,49 @@ fn spawn_host_pump(
     })
 }
 
-async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, HostError>) {
+fn turn_is_current(inner: &Shared, gen: u64) -> bool {
+    inner.generation.load(Ordering::SeqCst) == gen
+}
+
+fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
+    if !turn_is_current(inner, gen) {
+        return false;
+    }
+    let Ok(mut g) = inner.phase.lock() else {
+        return false;
+    };
+    if !turn_is_current(inner, gen) {
+        return false;
+    }
+    *g = next;
+    true
+}
+
+async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, HostError>, gen: u64) {
+    if !turn_is_current(inner, gen) {
+        return;
+    }
     match result {
         Ok(TurnOutcome::Finished { .. }) => {
-            if let Ok(mut g) = inner.phase.lock() {
-                *g = SessionPhase::Idle;
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
             }
             if let Ok(mut g) = inner.replay.lock() {
                 g.clear();
             }
         }
         Ok(TurnOutcome::Yielded { .. }) => {
-            if let Ok(mut g) = inner.phase.lock() {
-                *g = SessionPhase::Yielded;
-            }
             let host = inner.host.read().await;
             let pending = host.pending_yields(&inner.session_id).await;
             drop(host);
+            if !set_phase_if_current(inner, gen, SessionPhase::Yielded) {
+                return;
+            }
             let mut replayed = Vec::new();
             for p in pending {
+                if !turn_is_current(inner, gen) {
+                    return;
+                }
                 let ev = match p.kind {
                     YieldKind::ActionRequired => AgentUiEvent::action_required(
                         op.clone(),
@@ -628,19 +699,22 @@ async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, Hos
                 let _ = inner.events.send(ev.clone());
                 replayed.push(ev);
             }
+            if !turn_is_current(inner, gen) {
+                return;
+            }
             if let Ok(mut g) = inner.replay.lock() {
                 *g = replayed;
             }
         }
         Err(HostError::Failed(msg)) if msg.contains("cancel") => {
-            if let Ok(mut g) = inner.phase.lock() {
-                *g = SessionPhase::Idle;
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
             }
             let _ = inner.events.send(AgentUiEvent::aborted(op));
         }
         Err(err) => {
-            if let Ok(mut g) = inner.phase.lock() {
-                *g = SessionPhase::Idle;
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
             }
             let _ = inner.events.send(AgentUiEvent::failed(op, map_host_err(err)));
         }
@@ -705,6 +779,7 @@ mod tests {
                 replay: Mutex::new(Vec::new()),
                 complete_gate: tokio::sync::Mutex::new(()),
                 cancel: Mutex::new(None),
+                generation: AtomicU64::new(0),
             }),
         }
     }
@@ -720,6 +795,21 @@ mod tests {
         panic!(
             "timed out waiting for phase {want}, got {}",
             session.snapshot().unwrap().phase
+        );
+    }
+
+    fn wait_pending(session: &AgentSession, want: &[&str]) {
+        let want: Vec<String> = want.iter().map(|s| (*s).to_string()).collect();
+        for _ in 0..100 {
+            let snap = session.snapshot().unwrap();
+            if snap.pending_call_ids == want {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!(
+            "timed out waiting for pending {want:?}, got {:?}",
+            session.snapshot().unwrap().pending_call_ids
         );
     }
 
@@ -756,6 +846,10 @@ mod tests {
             .complete_tool("c1".into(), r#"{"people":[]}"#.into())
             .unwrap();
         wait_phase(&session, "idle");
+        session.prompt("thanks".into()).unwrap();
+        wait_phase(&session, "idle");
+        assert_eq!(session.snapshot().unwrap().phase, "idle");
+        assert!(!session.snapshot().unwrap().busy);
     }
 
     #[test]
@@ -783,7 +877,7 @@ mod tests {
             .complete_tool("c1".into(), r#"{"people":[]}"#.into())
             .unwrap();
         wait_phase(&session, "yielded");
-        assert_eq!(session.snapshot().unwrap().pending_call_ids, vec!["c2".to_string()]);
+        wait_pending(&session, &["c2"]);
         session
             .complete_tool("c2".into(), r#"{"people":[]}"#.into())
             .unwrap();
@@ -839,5 +933,39 @@ mod tests {
             thread::sleep(Duration::from_millis(20));
         }
         assert!(saw_tool);
+    }
+
+    #[test]
+    fn abort_keeps_idle_and_ignores_finish_turn() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_search_contacts(&[("c1", "bob")])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        session.prompt("find bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        while rx.try_recv().is_ok() {}
+        session.abort().unwrap();
+        assert_eq!(session.snapshot().unwrap().phase, "idle");
+        thread::sleep(Duration::from_millis(80));
+        assert_eq!(session.snapshot().unwrap().phase, "idle");
+        assert!(session
+            .complete_tool("c1".into(), r#"{"people":[]}"#.into())
+            .is_err());
+        while let Ok(ev) = rx.try_recv() {
+            assert_ne!(ev.kind, "tool_request");
+            assert_ne!(ev.kind, "assistant_finished");
+        }
+        session.prompt("again".into()).unwrap();
+        wait_phase(&session, "idle");
     }
 }

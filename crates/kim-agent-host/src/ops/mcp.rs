@@ -64,8 +64,11 @@ impl McpHub {
     }
 
     pub async fn disconnect(&self) {
-        let mut clients = self.clients.lock().await;
-        for mut ext in clients.drain(..) {
+        let drained: Vec<ConnectedExt> = {
+            let mut clients = self.clients.lock().await;
+            clients.drain(..).collect()
+        };
+        for mut ext in drained {
             let _ = ext.client.close().await;
         }
     }
@@ -86,12 +89,18 @@ fn split_prefixed(name: &str) -> Option<(&str, &str)> {
 #[async_trait]
 impl ToolProvider<HostSession> for McpToolProvider {
     async fn tools(&self, _session: &HostSession) -> Result<Vec<Tool>> {
-        let clients = self.hub.clients.lock().await;
+        let peers: Vec<(String, rmcp::service::Peer<RoleClient>)> = {
+            let clients = self.hub.clients.lock().await;
+            clients
+                .iter()
+                .map(|ext| (ext.name.clone(), ext.client.peer().clone()))
+                .collect()
+        };
         let mut out = Vec::new();
-        for ext in clients.iter() {
-            let listed = ext.client.list_all_tools().await.unwrap_or_default();
+        for (name, peer) in peers {
+            let listed = peer.list_all_tools().await.unwrap_or_default();
             for mut tool in listed {
-                tool.name = Cow::Owned(prefixed(&ext.name, tool.name.as_ref()));
+                tool.name = Cow::Owned(prefixed(&name, tool.name.as_ref()));
                 out.push(tool);
             }
         }
@@ -111,14 +120,20 @@ impl ToolProvider<HostSession> for McpToolProvider {
                 call.name
             ))]));
         };
-        let clients = self.hub.clients.lock().await;
-        let Some(ext) = clients.iter().find(|c| c.name == ext_name) else {
+        let peer = {
+            let clients = self.hub.clients.lock().await;
+            clients
+                .iter()
+                .find(|c| c.name == ext_name)
+                .map(|c| c.client.peer().clone())
+        };
+        let Some(peer) = peer else {
             return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "unknown mcp extension {ext_name}"
             ))]));
         };
         call.name = Cow::Owned(tool_name.to_string());
-        match ext.client.call_tool(call).await {
+        match peer.call_tool(call).await {
             Ok(result) => Ok(result),
             Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(
                 err.to_string(),

@@ -10,6 +10,7 @@ import '../models/models.dart';
 import '../state/agent_profiles.dart';
 import '../state/auth.dart';
 import '../state/contacts.dart';
+import '../state/inbox.dart';
 import '../state/outbox.dart';
 import '../state/providers.dart';
 
@@ -124,7 +125,9 @@ class KimCapabilityHost {
       return jsonEncode({'hits': <Object?>[]});
     }
     final needle = query.trim().toLowerCase();
-    final rows = ref.read(conversationStoreProvider).loadMessages(account, dest);
+    final rows = ref
+        .read(conversationStoreProvider)
+        .loadMessages(account, dest);
     final hits = <Map<String, Object?>>[];
     for (final m in rows.reversed) {
       if (m.kind != KimMsgKind.text || m.sys) {
@@ -150,12 +153,16 @@ class KimCapabilityHost {
     if (account.isEmpty) {
       return jsonEncode({'messages': <Object?>[]});
     }
-    final rows = ref.read(conversationStoreProvider).loadMessages(account, dest);
+    final rows = ref
+        .read(conversationStoreProvider)
+        .loadMessages(account, dest);
     final text = [
       for (final m in rows)
         if (m.kind == KimMsgKind.text && !m.sys) m,
     ];
-    final slice = text.length > limit ? text.sublist(text.length - limit) : text;
+    final slice = text.length > limit
+        ? text.sublist(text.length - limit)
+        : text;
     const cap = 8 * 1024;
     final out = <Map<String, Object?>>[];
     var used = 0;
@@ -189,6 +196,9 @@ class KimCapabilityHost {
     if (dest.contains('/')) {
       return 'group dest not supported';
     }
+    if (ref.read(threadsProvider).thread(dest)?.kind == ThreadKind.group) {
+      return 'group dest not supported';
+    }
     return null;
   }
 
@@ -219,5 +229,4 @@ class KimCapabilityHost {
       return _err('$e');
     }
   }
-
 }

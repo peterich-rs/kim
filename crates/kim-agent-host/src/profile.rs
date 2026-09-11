@@ -85,6 +85,9 @@ pub struct ToolSet {
     pub fs_write: bool,
     #[serde(default)]
     pub bash: bool,
+    /// Opt-in `delegate` tool. Default 助手 stays IM-only.
+    #[serde(default)]
+    pub subagent: bool,
 }
 
 impl ToolSet {
@@ -112,7 +115,7 @@ impl ToolSet {
     }
 
     pub fn has_in_process(&self) -> bool {
-        self.fs || self.fs_write || self.bash
+        self.fs || self.fs_write || self.bash || self.subagent
     }
 
     pub fn has_any(&self) -> bool {
@@ -190,11 +193,12 @@ impl AgentProfile {
             list_profiles: opts.enable_kim_tools,
             send_message: opts.enable_kim_tools && opts.enable_approvals,
             read_clipboard: opts.enable_kim_tools && opts.enable_approvals,
+            ..ToolSet::default()
         };
 
         let mode = if tools.has_any() {
             match parse_goose_mode(&opts.goose_mode) {
-                Some(GooseMode::Chat) | None => GooseMode::SmartApprove,
+                Some(GooseMode::Chat) | Some(GooseMode::Auto) | None => GooseMode::SmartApprove,
                 Some(mode) => mode,
             }
         } else {
@@ -233,6 +237,18 @@ impl AgentProfile {
             enabled: true,
             steer: String::new(),
         }
+    }
+
+    /// Untrusted JSON / `auto` must not silently AlwaysAllow send_message.
+    pub fn normalize_mode(&mut self) {
+        if self.mode != GooseMode::Auto {
+            return;
+        }
+        self.mode = if self.tools.has_any() || !self.extensions.is_empty() {
+            GooseMode::SmartApprove
+        } else {
+            GooseMode::Chat
+        };
     }
 }
 
@@ -458,6 +474,34 @@ mod tests {
         });
         assert!(profile.tools.fs);
         assert!(!profile.tools.bash);
+        assert_eq!(profile.mode, GooseMode::SmartApprove);
+    }
+
+    #[test]
+    fn from_legacy_auto_is_smart_approve() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_fs_tools: true,
+            goose_mode: "auto".into(),
+            ..LegacyOpenOpts::default()
+        });
+        assert_eq!(profile.mode, GooseMode::SmartApprove);
+        assert_ne!(profile.mode, GooseMode::Auto);
+    }
+
+    #[test]
+    fn json_auto_normalizes_to_smart_approve() {
+        let json = r#"{
+            "id": "goose",
+            "display_name": "助手",
+            "provider": {"kind": "openai", "key_ref": "agent.api_key.goose"},
+            "model": {"name": "gpt-4o"},
+            "system_prompt": "hi",
+            "mode": "auto",
+            "tools": {"send_message": true}
+        }"#;
+        let mut profile: AgentProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.mode, GooseMode::Auto);
+        profile.normalize_mode();
         assert_eq!(profile.mode, GooseMode::SmartApprove);
     }
 

@@ -28,14 +28,11 @@ fn scripted_session_opens_idle_and_closes() {
 }
 
 #[test]
-fn scripted_prompt_completes_without_network() {
-    use std::thread;
-    use std::time::Duration;
-
+fn scripted_backend_is_unknown_on_session_open() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("workspace");
     std::fs::create_dir_all(&root).unwrap();
-    let session = session_open(
+    let result = session_open(
         "scripted-prompt".into(),
         root.to_string_lossy().into(),
         SessionOpenOpts {
@@ -45,16 +42,13 @@ fn scripted_prompt_completes_without_network() {
             model: "scripted".into(),
             ..SessionOpenOpts::default()
         },
-    )
-    .unwrap();
-    let op = session.prompt("hello".into()).unwrap();
-    assert!(!op.is_empty());
-    for _ in 0..100 {
-        if !session.snapshot().unwrap().busy {
-            break;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    assert!(!session.snapshot().unwrap().busy);
-    session.close().unwrap();
+    );
+    let err = match result {
+        Ok(_) => panic!("scripted should be unknown outside host tests"),
+        Err(e) => e,
+    };
+    assert!(
+        err.to_lowercase().contains("unknown") && err.contains("scripted"),
+        "{err}"
+    );
 }

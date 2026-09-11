@@ -118,6 +118,8 @@ impl AgentHost {
         if resolved.api_key.trim().is_empty() {
             return Err(HostError::MissingApiKey);
         }
+        let mut resolved = resolved;
+        resolved.profile.normalize_mode();
         let provider =
             provider::build_provider_from_spec(&resolved.profile.provider, &resolved.api_key)?;
         let model = machine::model_config(&resolved.profile.model)?;

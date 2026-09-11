@@ -25,6 +25,7 @@ class AgentToolSet {
     this.fs = false,
     this.fsWrite = false,
     this.bash = false,
+    this.subagent = false,
   });
 
   final bool sendMessage;
@@ -36,6 +37,7 @@ class AgentToolSet {
   final bool fs;
   final bool fsWrite;
   final bool bash;
+  final bool subagent;
 
   Map<String, Object?> toJson() => {
     'send_message': sendMessage,
@@ -47,6 +49,7 @@ class AgentToolSet {
     'fs': fs,
     'fs_write': fsWrite,
     'bash': bash,
+    'subagent': subagent,
   };
 
   factory AgentToolSet.fromJson(Map<String, Object?> json) {
@@ -61,6 +64,7 @@ class AgentToolSet {
       fs: b('fs'),
       fsWrite: b('fs_write'),
       bash: b('bash'),
+      subagent: b('subagent'),
     );
   }
 
@@ -74,6 +78,7 @@ class AgentToolSet {
     bool? fs,
     bool? fsWrite,
     bool? bash,
+    bool? subagent,
   }) {
     return AgentToolSet(
       sendMessage: sendMessage ?? this.sendMessage,
@@ -86,6 +91,7 @@ class AgentToolSet {
       fs: fs ?? this.fs,
       fsWrite: fsWrite ?? this.fsWrite,
       bash: bash ?? this.bash,
+      subagent: subagent ?? this.subagent,
     );
   }
 }
@@ -319,7 +325,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       final g = goose;
       return g == null ? const [] : [g];
     }
-    return [for (final p in state) if (p.enabled) p];
+    return [
+      for (final p in state)
+        if (p.enabled) p,
+    ];
   }
 
   AgentProfile? get goose {
@@ -329,6 +338,44 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
     }
     return null;
+  }
+
+  Future<String> readApiKey(AgentProfile profile) async {
+    Future<String> read(String key) async {
+      try {
+        return await _secure.read(key: key) ?? '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    final keyed = await read(profile.keyRef);
+    if (keyed.isNotEmpty) {
+      return keyed;
+    }
+    if (profile.id == kGooseAgentId) {
+      final goose = await read(_kGooseKey);
+      if (goose.isNotEmpty) {
+        return goose;
+      }
+    }
+    final legacy = await read('agent.api_key');
+    if (legacy.isNotEmpty) {
+      return legacy;
+    }
+    return ref.read(agentSettingsProvider).apiKey;
+  }
+
+  Future<void> saveProfile(AgentProfile profile) async {
+    await ensureLoaded();
+    if (state.any((p) => p.id == profile.id)) {
+      await _persist([
+        for (final p in state)
+          if (p.id == profile.id) profile else p,
+      ]);
+    } else {
+      await _persist([...state, profile]);
+    }
   }
 
   Future<void> _reload() async {
@@ -381,10 +428,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> saveGoose(AgentProfile goose, {required String apiKey}) async {
     await ensureLoaded();
-    final next = [
-      goose,
-      ...state.where((p) => p.id != kGooseAgentId),
-    ];
+    final next = [goose, ...state.where((p) => p.id != kGooseAgentId)];
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _kProfiles,
@@ -459,6 +503,18 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       enabled: true,
       steer: source.steer,
     );
+    try {
+      var secret = await _secure.read(key: source.keyRef) ?? '';
+      if (secret.isEmpty) {
+        secret = await _secure.read(key: _kGooseKey) ?? '';
+      }
+      if (secret.isEmpty) {
+        secret = await _secure.read(key: 'agent.api_key') ?? '';
+      }
+      if (secret.isNotEmpty) {
+        await _secure.write(key: copy.keyRef, value: secret);
+      }
+    } catch (_) {}
     await _persist([...state, copy]);
   }
 
@@ -467,7 +523,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     if (id == kGooseAgentId) {
       return;
     }
-    await _persist([for (final p in state) if (p.id != id) p]);
+    await _persist([
+      for (final p in state)
+        if (p.id != id) p,
+    ]);
   }
 }
 

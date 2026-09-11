@@ -84,10 +84,12 @@ impl MachineFactory {
             if !profile.extensions.is_empty() {
                 tools = tools.with_provider(Arc::new(McpToolProvider { hub: mcp }));
             }
-            tools = tools.with_provider(Arc::new(SubagentOp {
-                provider: Arc::clone(&provider),
-                model: model.clone(),
-            }));
+            if profile.tools.subagent {
+                tools = tools.with_provider(Arc::new(SubagentOp {
+                    provider: Arc::clone(&provider),
+                    model: model.clone(),
+                }));
+            }
             steps.push(Step::Operation(Arc::new(tools)));
             steps.push(Step::Operation(Arc::new(UnknownToolOp)));
         } else {

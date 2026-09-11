@@ -13,6 +13,7 @@ const _kFsTools = 'agent.enable_fs_tools';
 const _kBash = 'agent.bash_enabled';
 const _kThinking = 'agent.thinking_effort';
 const _kApiKey = 'agent.api_key';
+const _kGooseApiKey = 'agent.api_key.goose';
 
 class AgentSettings {
   const AgentSettings({
@@ -122,6 +123,12 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
     } catch (_) {
       // macOS ad-hoc Keychain (-34018): keep empty; save path still works.
     }
+    try {
+      final goose = await _secure.read(key: _kGooseApiKey) ?? '';
+      if (goose.isEmpty && key.isNotEmpty) {
+        await _secure.write(key: _kGooseApiKey, value: key);
+      }
+    } catch (_) {}
     if (!ref.mounted) {
       return;
     }
@@ -150,8 +157,10 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
     try {
       if (next.apiKey.isEmpty) {
         await _secure.delete(key: _kApiKey);
+        await _secure.delete(key: _kGooseApiKey);
       } else {
         await _secure.write(key: _kApiKey, value: next.apiKey);
+        await _secure.write(key: _kGooseApiKey, value: next.apiKey);
       }
     } catch (_) {
       // Same Keychain miss as JWT: in-memory [state] still lets this session

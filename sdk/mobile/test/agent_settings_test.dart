@@ -44,17 +44,19 @@ void main() {
     );
     final container = ProviderContainer.test();
     addTearDown(container.dispose);
-    await container.read(agentSettingsProvider.notifier).save(
-      const AgentSettings(
-        llmBackend: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o',
-        apiKey: 'sk-test',
-        enableFsTools: false,
-        bashEnabled: false,
-        thinkingEffort: 'high',
-      ),
-    );
+    await container
+        .read(agentSettingsProvider.notifier)
+        .save(
+          const AgentSettings(
+            llmBackend: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-4o',
+            apiKey: 'sk-test',
+            enableFsTools: false,
+            bashEnabled: false,
+            thinkingEffort: 'high',
+          ),
+        );
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('agent.thinking_effort'), 'high');
     await container.read(agentSettingsProvider.notifier).reload();
@@ -84,6 +86,23 @@ void main() {
       expect(loaded.llmBackend, 'anthropic');
       expect(loaded.baseUrl, 'https://api.anthropic.com');
       expect(loaded.model, 'claude-sonnet-4-5');
+    },
+  );
+
+  test(
+    'ensureLoaded copies agent.api_key into agent.api_key.goose once',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final data = <String, String>{'agent.api_key': 'sk-live'};
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+        data,
+      );
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+      await container.read(agentSettingsProvider.notifier).ensureLoaded();
+      expect(container.read(agentSettingsProvider).apiKey, 'sk-live');
+      expect(data['agent.api_key'], 'sk-live');
+      expect(data['agent.api_key.goose'], 'sk-live');
     },
   );
 }

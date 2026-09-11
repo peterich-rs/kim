@@ -63,7 +63,16 @@ pub fn build_provider_from_spec(
             Ok(Arc::new(build_openai(spec, api_key)?))
         }
         "anthropic" | "messages" => Ok(Arc::new(build_anthropic(spec, api_key)?)),
-        "scripted" => Ok(Arc::new(crate::scripted::ScriptedProvider::new(Vec::new()))),
+        "scripted" => {
+            #[cfg(test)]
+            {
+                Ok(Arc::new(crate::scripted::ScriptedProvider::new(Vec::new())))
+            }
+            #[cfg(not(test))]
+            {
+                Err(HostError::UnknownProvider("scripted".into()))
+            }
+        }
         other => {
             let json = bundled_declarative_json(other)?;
             let cfg = goose_providers::declarative::deserialize_provider_config(json)

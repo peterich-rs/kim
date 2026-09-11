@@ -35,17 +35,45 @@ fn arg_string(call: &CallToolRequestParams, key: &str) -> Result<String, ErrorDa
         .ok_or_else(|| ErrorData::invalid_params(format!("missing {key}"), None))
 }
 
+fn candidate_in_root(root: &Path, raw: &str) -> PathBuf {
+    let p = Path::new(raw);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        root.join(p)
+    }
+}
+
 fn resolve_in_root(root: &Path, raw: &str) -> Result<PathBuf, String> {
     let root_canon = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let candidate = {
-        let p = Path::new(raw);
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            root.join(p)
-        }
-    };
+    let candidate = candidate_in_root(root, raw);
     let canon = std::fs::canonicalize(&candidate).map_err(|e| e.to_string())?;
+    if !canon.starts_with(&root_canon) {
+        return Err("path escapes workspace".into());
+    }
+    Ok(canon)
+}
+
+/// Canonicalize the existing parent, then join the final component so a missing
+/// target (new file) still resolves. Reject `..` / `.` as the leaf and symlink escape.
+fn resolve_in_root_for_write(root: &Path, raw: &str) -> Result<PathBuf, String> {
+    let root_canon = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let candidate = candidate_in_root(root, raw);
+    let file_name = candidate
+        .file_name()
+        .ok_or_else(|| "invalid path".to_string())?;
+    if file_name == "." || file_name == ".." {
+        return Err("path escapes workspace".into());
+    }
+    let canon = if candidate.exists() {
+        std::fs::canonicalize(&candidate).map_err(|e| e.to_string())?
+    } else {
+        let parent = candidate
+            .parent()
+            .ok_or_else(|| "invalid path".to_string())?;
+        let parent_canon = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+        parent_canon.join(file_name)
+    };
     if !canon.starts_with(&root_canon) {
         return Err("path escapes workspace".into());
     }
@@ -157,7 +185,7 @@ impl FsToolProvider {
     }
 
     fn write_file(&self, raw: &str, contents: &str) -> CallToolResult {
-        let path = match resolve_in_root(&self.root, raw) {
+        let path = match resolve_in_root_for_write(&self.root, raw) {
             Ok(p) => p,
             Err(e) => return error_result(e),
         };
@@ -222,5 +250,54 @@ mod tests {
         call.arguments = Some(args);
         let result = provider.call(&session, "1", call, &emit()).await.unwrap();
         assert_ne!(result.is_error, Some(true));
+    }
+
+    #[tokio::test]
+    async fn write_file_creates_new_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("ws");
+        std::fs::create_dir_all(&root).unwrap();
+        let provider = FsToolProvider {
+            root: root.clone(),
+            writable: true,
+        };
+        let session = crate::HostSession {
+            id: "s".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let mut call = CallToolRequestParams::new("write_file");
+        let mut args = JsonObject::new();
+        args.insert("path".into(), json!("fresh.txt"));
+        args.insert("contents".into(), json!("hello"));
+        call.arguments = Some(args);
+        let result = provider.call(&session, "1", call, &emit()).await.unwrap();
+        assert_ne!(result.is_error, Some(true));
+        assert_eq!(
+            std::fs::read_to_string(root.join("fresh.txt")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_file_escape_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("ws");
+        std::fs::create_dir_all(&root).unwrap();
+        let provider = FsToolProvider {
+            root: root.clone(),
+            writable: true,
+        };
+        let session = crate::HostSession {
+            id: "s".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let mut call = CallToolRequestParams::new("write_file");
+        let mut args = JsonObject::new();
+        args.insert("path".into(), json!("../secret.txt"));
+        args.insert("contents".into(), json!("nope"));
+        call.arguments = Some(args);
+        let result = provider.call(&session, "1", call, &emit()).await.unwrap();
+        assert_eq!(result.is_error, Some(true));
+        assert!(!dir.path().join("secret.txt").exists());
     }
 }
