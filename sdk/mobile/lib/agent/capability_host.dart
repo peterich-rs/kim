@@ -183,7 +183,7 @@ class KimCapabilityHost {
     if (dest.isEmpty) {
       return 'missing dest';
     }
-    if (isGooseAgentDest(dest) || dest.startsWith('agent:')) {
+    if (isAgentDest(dest)) {
       return 'refusing to message a local agent';
     }
     if (dest.contains('/')) {

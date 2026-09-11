@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/agent/mention.dart';
 import 'package:kim_mobile/agent_bridge.dart';
+import 'package:kim_mobile/state/agent_profiles.dart';
 import 'package:kim_mobile/state/chat_agent.dart';
 import 'package:kim_mobile/state/messages.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ import '../support/harness.dart';
 class _RecordingAgentBridge extends AgentBridge {
   SessionOpenOpts? lastOpts;
   var opens = 0;
+  final openedIds = <String>[];
   AgentSessionPort? session;
 
   @override
@@ -28,6 +30,7 @@ class _RecordingAgentBridge extends AgentBridge {
   }) async {
     opens += 1;
     lastOpts = opts;
+    openedIds.add(opts.sessionId);
     final next = session;
     if (next == null) {
       throw StateError('scripted: no live host');
@@ -219,5 +222,43 @@ void main() {
     expect(cards, hasLength(1));
     expect(cards.first.body, contains('action_required'));
     expect(cards.first.body, contains('pending'));
+  });
+
+  test('two profiles open two sessions on the same thread dest', () async {
+    final session = _OneShotSession('ok');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent.multi_profile', true);
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final goose = store.goose!;
+    await store.duplicate(goose);
+    final copy = env.container
+        .read(agentProfilesProvider)
+        .firstWhere((p) => p.id != kGooseAgentId);
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: copy.dest, text: 'hi');
+    expect(bridge.opens, 2);
+    expect(bridge.openedIds.toSet().length, 2);
+    await Future<void>.delayed(Duration.zero);
+    final senders = env.container
+        .read(threadMessagesProvider(copy.dest))
+        .items
+        .map((m) => m.sender)
+        .toSet();
+    expect(senders, contains(copy.displayName));
+    expect(senders, isNot(equals({kGooseAgentName})));
   });
 }

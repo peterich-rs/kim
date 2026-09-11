@@ -338,7 +338,7 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   void _assertCanQueue(String dest, ThreadKind kind) {
-    if (isGooseAgentDest(dest)) {
+    if (isAgentDest(dest)) {
       throw StateError(Copy.agentLocalOnly);
     }
     final accountErr = validateAccount(dest);

@@ -558,6 +558,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentMoreComing => '更多 Agent（即将推出）';
 
   @override
+  String get agentMultiProfile => '在通讯录展示多个本地 Agent';
+
+  @override
+  String get agentDuplicate => '复制';
+
+  @override
+  String get agentDelete => '删除';
+
+  @override
   String get agentNeedsEnv => '桌面/需环境变量';
 
   @override

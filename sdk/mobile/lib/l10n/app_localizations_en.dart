@@ -568,6 +568,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentMoreComing => 'More agents coming soon';
 
   @override
+  String get agentMultiProfile => 'Show multiple local agents';
+
+  @override
+  String get agentDuplicate => 'Duplicate';
+
+  @override
+  String get agentDelete => 'Delete';
+
+  @override
   String get agentNeedsEnv => 'desktop / needs env';
 
   @override

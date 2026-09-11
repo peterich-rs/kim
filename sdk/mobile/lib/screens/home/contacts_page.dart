@@ -8,6 +8,7 @@ import 'package:toastification/toastification.dart';
 
 import '../../agent/mention.dart';
 import '../../copy.dart';
+import '../../state/agent_profiles.dart';
 import '../../core/haptics.dart';
 import '../../models/models.dart';
 import '../../router/open_chat.dart';
@@ -208,17 +209,22 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             ],
             _sectionLabel(theme, Copy.agentLocalSection),
             _groupSliver([
-              ListTile(
-                leading: const KimAvatar(name: kGooseAgentName),
-                title: const Text(kGooseAgentName),
-                subtitle: Text(Copy.agentLocalSubtitle),
-                trailing: Text(Copy.chatAction),
-                onTap: () => _open(kGooseAgentId, kGooseAgentName),
-              ),
+              for (final profile
+                  in ref.watch(agentProfilesProvider.notifier).visibleAgents)
+                ListTile(
+                  leading: KimAvatar(name: profile.displayName),
+                  title: Text(profile.displayName),
+                  subtitle: Text(Copy.agentLocalSubtitle),
+                  trailing: Text(Copy.chatAction),
+                  onTap: () => _open(
+                    canonicalAgentDest(profile.dest),
+                    profile.displayName,
+                  ),
+                ),
             ]),
             _sectionLabel(theme, Copy.recentContacts),
             if (social.friends
-                .where((p) => !isGooseAgentDest(p.account))
+                .where((p) => !isAgentDest(p.account))
                 .isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -233,7 +239,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             else
               _groupSliver([
                 for (final friend in social.friends.where(
-                  (p) => !isGooseAgentDest(p.account),
+                  (p) => !isAgentDest(p.account),
                 ))
                   ListTile(
                     leading: KimAvatar(name: friend.title, url: friend.avatar),

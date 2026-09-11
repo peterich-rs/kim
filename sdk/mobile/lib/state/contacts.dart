@@ -8,6 +8,7 @@ import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/haptics.dart';
 import '../models/models.dart';
+import 'agent_profiles.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -36,20 +37,21 @@ class ContactsState {
   int get incomingCount => incoming.length;
 
   bool isFriend(String account) =>
-      isGooseAgentDest(account) || friends.any((p) => p.account == account);
+      isAgentDest(account) || friends.any((p) => p.account == account);
 
   bool isOutgoing(String account) => outgoing.contains(account);
 
   bool isIncoming(String account) => incoming.any((p) => p.account == account);
 
   KimPerson? person(String account) {
-    if (isGooseAgentDest(account)) {
-      return kGooseAgentPerson;
-    }
+    final canon = canonicalAgentDest(account);
     for (final p in friends) {
-      if (p.account == account) {
+      if (p.account == account || p.account == canon) {
         return p;
       }
+    }
+    if (isGooseAgentDest(account)) {
+      return kGooseAgentPerson;
     }
     for (final p in incoming) {
       if (p.account == account) {
@@ -101,8 +103,12 @@ class ContactsNotifier extends Notifier<ContactsState> {
         unawaited(refresh());
       }
     });
+    ref.watch(agentProfilesProvider);
+    final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     return ContactsState(
-      friends: withGooseAgent(const []),
+      friends: agents.isEmpty
+          ? withGooseAgent(const [])
+          : withLocalAgents(const [], agents),
       incoming: const [],
       outgoing: const {},
       hits: const [],
@@ -127,7 +133,12 @@ class ContactsNotifier extends Notifier<ContactsState> {
       }
       final friendIds = {for (final p in friends) p.account};
       state = state.copyWith(
-        friends: withGooseAgent(friends),
+        friends: () {
+          final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
+          return agents.isEmpty
+              ? withGooseAgent(friends)
+              : withLocalAgents(friends, agents);
+        }(),
         incoming: incoming,
         outgoing: {...state.outgoing}..removeWhere(friendIds.contains),
         ready: true,
@@ -152,13 +163,15 @@ class ContactsNotifier extends Notifier<ContactsState> {
       return;
     }
     final needle = q.toLowerCase();
-    final localHit =
-        kGooseAgentId.contains(needle) ||
-        kGooseAgentName.contains(q) ||
-        needle == '@goose' ||
-        q == '@助手';
+    final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
+    final localHit = agents.any(
+      (p) =>
+          p.id.toLowerCase().contains(needle) ||
+          p.displayName.contains(q) ||
+          p.aliases.any((a) => a.contains(q)),
+    );
     state = state.copyWith(
-      hits: localHit ? withGooseAgent(rows) : rows,
+      hits: localHit ? withLocalAgents(rows, agents) : rows,
       query: q,
     );
   }

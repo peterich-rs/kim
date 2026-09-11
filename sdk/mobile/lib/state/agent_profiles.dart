@@ -12,6 +12,7 @@ import 'agent_settings.dart';
 const _kProfiles = 'agent.profiles';
 const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';
+const _kMulti = 'agent.multi_profile';
 
 class AgentToolSet {
   const AgentToolSet({
@@ -295,6 +296,7 @@ class AgentProfile {
 class AgentProfileStore extends Notifier<List<AgentProfile>> {
   final _secure = SettingsStore.productionSecureStorage();
   Future<void>? _load;
+  var multiProfile = false;
 
   @override
   List<AgentProfile> build() {
@@ -304,6 +306,14 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> ensureLoaded() async {
     await (_load ?? _reload());
+  }
+
+  List<AgentProfile> get visibleAgents {
+    if (!multiProfile) {
+      final g = goose;
+      return g == null ? const [] : [g];
+    }
+    return [for (final p in state) if (p.enabled) p];
   }
 
   AgentProfile? get goose {
@@ -317,6 +327,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
+    multiProfile = prefs.getBool(_kMulti) ?? false;
     final raw = prefs.getString(_kProfiles);
     var profiles = <AgentProfile>[];
     if (raw != null && raw.isNotEmpty) {
@@ -392,6 +403,64 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
     } catch (_) {}
     state = next;
+  }
+
+  Future<void> _persist(List<AgentProfile> next) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kProfiles,
+      jsonEncode([for (final p in next) p.toJson()]),
+    );
+    state = next;
+  }
+
+  Future<void> setMultiProfile(bool value) async {
+    multiProfile = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kMulti, value);
+    state = [...state];
+  }
+
+  Future<void> setEnabled(String id, bool enabled) async {
+    await ensureLoaded();
+    if (id == kGooseAgentId) {
+      return;
+    }
+    await _persist([
+      for (final p in state)
+        if (p.id == id) p.copyWith(enabled: enabled) else p,
+    ]);
+  }
+
+  Future<void> duplicate(AgentProfile source) async {
+    await ensureLoaded();
+    final id = 'p-${DateTime.now().millisecondsSinceEpoch}';
+    final copy = AgentProfile(
+      id: id,
+      displayName: '${source.displayName} copy',
+      aliases: source.aliases,
+      providerKind: source.providerKind,
+      baseUrl: source.baseUrl,
+      model: source.model,
+      keyRef: 'agent.api_key.$id',
+      systemPrompt: source.systemPrompt,
+      mode: source.mode,
+      maxTurns: source.maxTurns,
+      thinkingEffort: source.thinkingEffort,
+      tools: source.tools,
+      permissionOverrides: source.permissionOverrides,
+      extensions: source.extensions,
+      enabled: true,
+    );
+    await _persist([...state, copy]);
+  }
+
+  Future<void> delete(String id) async {
+    await ensureLoaded();
+    if (id == kGooseAgentId) {
+      return;
+    }
+    await _persist([for (final p in state) if (p.id != id) p]);
   }
 }
 

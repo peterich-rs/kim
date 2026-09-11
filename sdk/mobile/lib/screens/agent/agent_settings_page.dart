@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/mention.dart';
 import '../../agent_bridge.dart';
 import '../../copy.dart';
 import '../../state/agent_profiles.dart';
@@ -565,6 +566,68 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
+                ),
+                const Gap(18),
+                KimGroupCard(
+                  children: [
+                    SwitchListTile(
+                      title: Text(l10n.agentMultiProfile),
+                      value: ref
+                          .watch(agentProfilesProvider.notifier)
+                          .multiProfile,
+                      onChanged: (next) => unawaited(
+                        ref
+                            .read(agentProfilesProvider.notifier)
+                            .setMultiProfile(next),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(8),
+                KimGroupCard(
+                  children: [
+                    for (final profile in ref.watch(agentProfilesProvider)) ...[
+                      if (profile != ref.watch(agentProfilesProvider).first)
+                        const Divider(height: 1),
+                      ListTile(
+                        title: Text(profile.displayName),
+                        subtitle: Text(profile.id),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (profile.id != kGooseAgentId)
+                              Switch(
+                                value: profile.enabled,
+                                onChanged: (next) => unawaited(
+                                  ref
+                                      .read(agentProfilesProvider.notifier)
+                                      .setEnabled(profile.id, next),
+                                ),
+                              ),
+                            IconButton(
+                              tooltip: l10n.agentDuplicate,
+                              onPressed: () => unawaited(
+                                ref
+                                    .read(agentProfilesProvider.notifier)
+                                    .duplicate(profile),
+                              ),
+                              icon: const Icon(Icons.copy, size: 18),
+                            ),
+                            if (profile.id != kGooseAgentId)
+                              IconButton(
+                                tooltip: l10n.agentDelete,
+                                onPressed: () => unawaited(
+                                  ref
+                                      .read(agentProfilesProvider.notifier)
+                                      .delete(profile.id),
+                                ),
+                                icon: const Icon(Icons.delete_outline, size: 18),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const Gap(20),
                 FilledButton(onPressed: _save, child: Text(Copy.save)),

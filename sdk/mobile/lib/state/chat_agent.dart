@@ -19,152 +19,205 @@ import 'inbox.dart';
 import 'messages.dart';
 import 'providers.dart';
 
+class _Live {
+  _Live({
+    required this.session,
+    required this.threadDest,
+    required this.profile,
+  });
+
+  final AgentSessionPort session;
+  final String threadDest;
+  final AgentProfile profile;
+  StreamSubscription<AgentUiEvent>? sub;
+}
+
 class ChatAgent {
   ChatAgent(this._ref);
 
   final Ref _ref;
   final _uuid = const Uuid();
-  AgentSessionPort? _session;
-  String? _sessionDest;
-  StreamSubscription<AgentUiEvent>? _sub;
+  final _lives = <String, _Live>{};
+  final _lru = <String>[];
   final _seenToolCalls = <String>{};
   Timer? _toolTimeout;
 
-  /// Direct DM with the local Goose contact — every line is a prompt.
+  static const _lruLimit = 4;
+
+  String _key(String dest, String profileId) => '$dest::$profileId';
+
+  _Live? _liveForDest(String dest) {
+    for (final key in _lru.reversed) {
+      final live = _lives[key];
+      if (live?.threadDest == dest) {
+        return live;
+      }
+    }
+    return null;
+  }
+
+  /// Direct DM with a local agent contact — every line is a prompt.
   Future<void> sendDirect({required String dest, required String text}) async {
     final body = text.trim();
     if (body.isEmpty) {
       return;
     }
-    await _appendLocal(dest, body, fromAgent: false);
-    await _prompt(dest, body);
+    final profile = await _profileForDest(dest);
+    await _appendLocal(dest, body, fromAgent: false, profile: profile);
+    await _prompt(dest, body, profile: profile);
   }
 
   Future<void> onOutgoingText({
     required String dest,
     required String text,
   }) async {
-    if (isGooseAgentDest(dest)) {
+    if (isAgentDest(dest)) {
       await sendDirect(dest: dest, text: text);
       return;
     }
-    if (!mentionsGooseAgent(text)) {
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    final enabled = _ref.read(agentProfilesProvider.notifier).visibleAgents;
+    final profile = mentionedProfile(text, enabled);
+    if (profile == null) {
       return;
     }
-    await _prompt(dest, text);
+    await _prompt(dest, text, profile: profile);
   }
 
-  Future<void> _prompt(String dest, String text) async {
+  Future<void> _prompt(
+    String dest,
+    String text, {
+    required AgentProfile profile,
+  }) async {
     await _ref.read(agentSettingsProvider.notifier).ensureLoaded();
     final settings = _ref.read(agentSettingsProvider);
     if (settings.apiKey.trim().isEmpty) {
       await _appendLocal(
         dest,
         '未配置 API Key。打开「我 → Agent 设置」填入 OpenAI 或 Anthropic 密钥。',
+        profile: profile,
       );
       return;
     }
     try {
-      await _ensureSession(dest, settings);
-      final session = _session;
-      if (session == null) {
-        return;
-      }
-      if (!isGooseAgentDest(dest)) {
+      final live = await _ensureSession(dest, settings, profile);
+      if (!isAgentDest(dest)) {
         final ctx = _contextJson(dest);
         if (ctx.isNotEmpty) {
-          await session.promptWithContext(text: text, contextJson: ctx);
+          await live.session.promptWithContext(text: text, contextJson: ctx);
           return;
         }
       }
-      await session.prompt(text: text);
+      await live.session.prompt(text: text);
     } catch (e) {
-      await _appendLocal(dest, 'Goose 调用失败：$e');
+      await _appendLocal(dest, 'Goose 调用失败：$e', profile: profile);
     }
   }
 
-  Future<void> _ensureSession(String dest, AgentSettings settings) async {
-    if (_sessionDest == dest && _session != null) {
-      return;
+  Future<AgentProfile> _profileForDest(String dest) async {
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    final store = _ref.read(agentProfilesProvider.notifier);
+    final canon = canonicalAgentDest(dest);
+    if (canon == kGooseAgentId) {
+      return store.goose ?? AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
     }
-    await _sub?.cancel();
-    await _session?.close();
-    _session = null;
+    if (canon.startsWith('agent:')) {
+      final id = canon.substring('agent:'.length);
+      for (final p in _ref.read(agentProfilesProvider)) {
+        if (p.id == id) {
+          return p;
+        }
+      }
+    }
+    return store.goose ?? AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
+  }
+
+  Future<_Live> _ensureSession(
+    String dest,
+    AgentSettings settings,
+    AgentProfile profile,
+  ) async {
+    final key = _key(dest, profile.id);
+    final existing = _lives[key];
+    if (existing != null) {
+      _touch(key);
+      return existing;
+    }
+    while (_lru.length >= _lruLimit) {
+      final evict = _lru.removeAt(0);
+      final old = _lives.remove(evict);
+      await old?.sub?.cancel();
+      await old?.session.close();
+    }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
     final bridge = _ref.read(agentBridgeProvider);
     await bridge.ensure();
-    final opts = await _openOpts(settings, dest);
+    final opts = _openOpts(settings, dest, profile);
     final fileDest = dest.replaceAll('/', '_').replaceAll('\\', '_');
     final sessionFile =
-        '${paths.agentSessions.path}/${fileDest}__${opts.profileId.isEmpty ? 'goose' : opts.profileId}.json';
+        '${paths.agentSessions.path}/${fileDest}__${profile.id}.json';
     final session = await bridge.open(
       sqlitePath: sessionFile,
       projectRoot: paths.agentWorkspace.path,
       opts: opts,
     );
-    _session = session;
-    _sessionDest = dest;
-    _sub = session.listen().listen((ev) {
+    final live = _Live(session: session, threadDest: dest, profile: profile);
+    live.sub = session.listen().listen((ev) {
       switch (ev.kind) {
         case 'assistant_finished':
           if (ev.message.trim().isNotEmpty) {
-            unawaited(_appendLocal(dest, ev.message.trim()));
+            unawaited(
+              _appendLocal(dest, ev.message.trim(), profile: profile),
+            );
           }
         case 'failed':
           if (ev.message.trim().isNotEmpty) {
-            unawaited(_appendLocal(dest, ev.message.trim()));
+            unawaited(
+              _appendLocal(dest, ev.message.trim(), profile: profile),
+            );
           }
         case 'tool_started':
         case 'tool_finished':
-          unawaited(_upsertToolCard(dest, ev));
+          unawaited(_upsertToolCard(dest, ev, profile: profile));
         case 'tool_request':
-          unawaited(_onToolRequest(dest, ev));
+          unawaited(_onToolRequest(dest, ev, profile: profile));
         case 'action_required':
           unawaited(_appendActionCard(dest, ev));
         default:
           break;
       }
     });
+    _lives[key] = live;
+    _touch(key);
+    return live;
   }
 
-  Future<SessionOpenOpts> _openOpts(AgentSettings settings, String dest) async {
-    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
-    final goose = _ref.read(agentProfilesProvider.notifier).goose;
-    final base = settings.toOpts(resumeOnOpen: true);
-    if (goose == null) {
-      return SessionOpenOpts(
-        model: base.model,
-        llmBackend: base.llmBackend,
-        resumeOnOpen: base.resumeOnOpen,
-        baseUrl: base.baseUrl,
-        apiKey: base.apiKey,
-        enableFsTools: base.enableFsTools,
-        bashEnabled: base.bashEnabled,
-        profileId: base.profileId,
-        profileJson: '',
-        thinkingEffort: base.thinkingEffort,
-        gooseMode: base.gooseMode,
-        enableKimTools: true,
-        enableApprovals: true,
-        sessionId: '$dest::goose',
-      );
-    }
+  void _touch(String key) {
+    _lru.remove(key);
+    _lru.add(key);
+  }
+
+  SessionOpenOpts _openOpts(
+    AgentSettings settings,
+    String dest,
+    AgentProfile profile,
+  ) {
     return SessionOpenOpts(
-      model: goose.model,
-      llmBackend: goose.providerKind,
+      model: profile.model,
+      llmBackend: profile.providerKind,
       resumeOnOpen: true,
-      baseUrl: goose.baseUrl,
+      baseUrl: profile.baseUrl,
       apiKey: settings.apiKey,
-      enableFsTools: goose.tools.fs,
-      bashEnabled: goose.tools.bash,
-      profileId: goose.id,
-      profileJson: jsonEncode(goose.toJson()),
-      thinkingEffort: goose.thinkingEffort,
-      gooseMode: goose.mode,
+      enableFsTools: profile.tools.fs,
+      bashEnabled: profile.tools.bash,
+      profileId: profile.id,
+      profileJson: jsonEncode(profile.toJson()),
+      thinkingEffort: profile.thinkingEffort,
+      gooseMode: profile.mode,
       enableKimTools: true,
       enableApprovals: true,
-      sessionId: '$dest::${goose.id}',
+      sessionId: '$dest::${profile.id}',
     );
   }
 
@@ -189,7 +242,11 @@ class ChatAgent {
     return buf.toString();
   }
 
-  Future<void> _onToolRequest(String dest, AgentUiEvent ev) async {
+  Future<void> _onToolRequest(
+    String dest,
+    AgentUiEvent ev, {
+    required AgentProfile profile,
+  }) async {
     final callId = ev.callId.trim();
     if (callId.isEmpty || !_seenToolCalls.add(callId)) {
       return;
@@ -200,27 +257,27 @@ class ChatAgent {
       name: ev.name,
       argumentsJson: ev.argumentsJson.isEmpty ? '{}' : ev.argumentsJson,
       sessionDest: dest,
-      profileId: 'goose',
+      profileId: profile.id,
       callId: callId,
     );
-    final session = _session;
-    if (session == null) {
+    final live = _lives[_key(dest, profile.id)] ?? _liveForDest(dest);
+    if (live == null) {
       return;
     }
     try {
-      await session.completeTool(callId: callId, outputJson: out);
+      await live.session.completeTool(callId: callId, outputJson: out);
     } catch (_) {}
   }
 
   void _armToolTimeout(String dest, String callId) {
     _toolTimeout?.cancel();
     _toolTimeout = Timer(const Duration(minutes: 10), () {
-      final session = _session;
-      if (session == null) {
+      final live = _liveForDest(dest);
+      if (live == null) {
         return;
       }
       unawaited(
-        session.completeTool(
+        live.session.completeTool(
           callId: callId,
           outputJson: '{"ok":false,"error":"timeout"}',
         ),
@@ -228,7 +285,11 @@ class ChatAgent {
     });
   }
 
-  Future<void> _upsertToolCard(String dest, AgentUiEvent ev) async {
+  Future<void> _upsertToolCard(
+    String dest,
+    AgentUiEvent ev, {
+    AgentProfile? profile,
+  }) async {
     final callId = ev.callId.trim();
     if (callId.isEmpty) {
       return;
@@ -242,6 +303,7 @@ class ChatAgent {
       state: running ? 'running' : (ev.ok ? 'ok' : 'error'),
       preview: ev.outputPreview,
       ok: !running && ev.ok,
+      sender: profile?.displayName ?? kGooseAgentName,
     );
   }
 
@@ -259,6 +321,7 @@ class ChatAgent {
       state: 'pending',
       preview: preview,
       ok: false,
+      sender: kGooseAgentName,
     );
   }
 
@@ -295,12 +358,15 @@ class ChatAgent {
     if (permission == 'always_allow') {
       await _rememberAlwaysAllow(toolName);
     }
-    final session = _session;
-    if (session == null) {
+    final live = _liveForDest(dest);
+    if (live == null) {
       return;
     }
     try {
-      await session.respondPermission(callId: callId, permission: permission);
+      await live.session.respondPermission(
+        callId: callId,
+        permission: permission,
+      );
     } catch (_) {
       await _upsertCard(
         dest,
@@ -338,6 +404,7 @@ class ChatAgent {
     required String state,
     required String preview,
     required bool ok,
+    String sender = kGooseAgentName,
   }) async {
     final account = _ref.read(authProvider).account;
     if (account.isEmpty) {
@@ -374,7 +441,7 @@ class ChatAgent {
         ? KimChatMsg(
             key: key,
             dest: dest,
-            sender: kGooseAgentName,
+            sender: sender,
             body: jsonEncode(body),
             at: now,
             kind: KimMsgKind.agentCard,
@@ -393,6 +460,7 @@ class ChatAgent {
     String dest,
     String body, {
     bool fromAgent = true,
+    AgentProfile? profile,
   }) async {
     if (body.isEmpty) {
       return;
@@ -402,7 +470,9 @@ class ChatAgent {
       return;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    final sender = fromAgent ? kGooseAgentName : account;
+    final sender = fromAgent
+        ? (profile?.displayName ?? kGooseAgentName)
+        : account;
     final msg = KimChatMsg(
       key: '${fromAgent ? 'agent' : 'me'}-${_uuid.v4()}',
       dest: dest,
@@ -422,10 +492,12 @@ class ChatAgent {
 
   Future<void> dispose() async {
     _toolTimeout?.cancel();
-    await _sub?.cancel();
-    _sub = null;
-    await _session?.close();
-    _session = null;
+    for (final live in _lives.values) {
+      await live.sub?.cancel();
+      await live.session.close();
+    }
+    _lives.clear();
+    _lru.clear();
   }
 }
 

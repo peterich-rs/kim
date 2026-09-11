@@ -1190,6 +1190,24 @@ abstract class AppLocalizations {
   /// **'更多 Agent（即将推出）'**
   String get agentMoreComing;
 
+  /// No description provided for @agentMultiProfile.
+  ///
+  /// In zh, this message translates to:
+  /// **'在通讯录展示多个本地 Agent'**
+  String get agentMultiProfile;
+
+  /// No description provided for @agentDuplicate.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get agentDuplicate;
+
+  /// No description provided for @agentDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get agentDelete;
+
   /// No description provided for @agentNeedsEnv.
   ///
   /// In zh, this message translates to:
