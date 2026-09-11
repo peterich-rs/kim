@@ -39,6 +39,12 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 
 剩余阶段合同：[next-stage.md](./next-stage.md)（后台轨与客户端轨分开，web / mobile 不挡后台）。
 
+## 进行中
+
+| 切片 | 覆盖 |
+|---|---|
+| Goose 个性化 Agent | [goose-personalized-agents.md](./goose-personalized-agents.md)：AgentProfile → MachineFactory；Dart IM 工具 + Rust 进程内工具；PR0–PR9 |
+
 ## 待写 / 待执行
 
 后台轨顺序与边界见 [next-stage.md](./next-stage.md)。不要把客户端优化写进后台 PR。
