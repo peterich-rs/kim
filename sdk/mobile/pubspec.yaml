@@ -35,6 +35,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_rust_bridge: 2.13.0
   flutter_rust_bridge_hooks: 2.13.0
+  code_assets: ^1.2.1
 
   # Foundation + product UI. Talk / auth stay in Rust; no Dart sockets.
   path_provider: ^2.1.6

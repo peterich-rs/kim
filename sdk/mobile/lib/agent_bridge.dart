@@ -1,9 +1,9 @@
 /// Dart shell around `kim_agent_ffi` (hard isolation from [KimBridge] / IM).
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'agent/host_support.dart';
 import 'src/rust_agent/api/session.dart';
 import 'src/rust_agent/frb_generated.dart';
 
@@ -90,7 +90,7 @@ class AgentBridge {
   static bool _inited = false;
 
   Future<void> ensure() async {
-    if (_inited || kIsWeb) {
+    if (_inited || !agentHostSupported) {
       return;
     }
     await AgentRustLib.init();

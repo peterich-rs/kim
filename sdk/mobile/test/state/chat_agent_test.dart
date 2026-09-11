@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
@@ -120,10 +121,12 @@ void main() {
   late FlutterSecureStoragePlatform previousPlatform;
 
   setUp(() {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     previousPlatform = FlutterSecureStoragePlatform.instance;
   });
 
   tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
     FlutterSecureStoragePlatform.instance = previousPlatform;
   });
 

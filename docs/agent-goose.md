@@ -1,5 +1,8 @@
 # Local Goose agent in KIM
 
+Goose runs on the **desktop IM** (macOS / Windows / Linux). iOS and Android
+are IM clients only: they do not compile or ship `kim_agent_ffi`.
+
 KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host**:
 
 - Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine, assembled per `AgentProfile` by `MachineFactory`

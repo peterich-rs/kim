@@ -12,6 +12,7 @@ import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/host_support.dart';
 import '../../copy.dart';
 import '../../core/ota_info.dart';
 import '../../core/haptics.dart';
@@ -133,13 +134,18 @@ class MePage extends ConsumerWidget {
                 _SectionLabel(Copy.generalSection),
                 KimGroupCard(
                   children: [
-                    ListTile(
-                      leading: const Icon(LucideIcons.bot),
-                      title: Text(Copy.agentSettings),
-                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                      onTap: () => context.push('/agent/settings'),
-                    ),
-                    const Divider(indent: 56),
+                    if (agentHostSupported) ...[
+                      ListTile(
+                        leading: const Icon(LucideIcons.bot),
+                        title: Text(Copy.agentSettings),
+                        trailing: const Icon(
+                          LucideIcons.chevronRight,
+                          size: 18,
+                        ),
+                        onTap: () => context.push('/agent/settings'),
+                      ),
+                      const Divider(indent: 56),
+                    ],
                     ListTile(
                       leading: const Icon(LucideIcons.server),
                       title: Text(Copy.environment),

@@ -6,6 +6,7 @@ import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/host_support.dart';
 import '../../agent/mention.dart';
 import '../../copy.dart';
 import '../../state/agent_profiles.dart';
@@ -207,21 +208,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                 ],
               ]),
             ],
-            _sectionLabel(theme, Copy.agentLocalSection),
-            _groupSliver([
-              for (final profile
-                  in ref.watch(agentProfilesProvider.notifier).visibleAgents)
-                ListTile(
-                  leading: KimAvatar(name: profile.displayName),
-                  title: Text(profile.displayName),
-                  subtitle: Text(Copy.agentLocalSubtitle),
-                  trailing: Text(Copy.chatAction),
-                  onTap: () => _open(
-                    canonicalAgentDest(profile.dest),
-                    profile.displayName,
+            if (agentHostSupported) ...[
+              _sectionLabel(theme, Copy.agentLocalSection),
+              _groupSliver([
+                for (final profile
+                    in ref.watch(agentProfilesProvider.notifier).visibleAgents)
+                  ListTile(
+                    leading: KimAvatar(name: profile.displayName),
+                    title: Text(profile.displayName),
+                    subtitle: Text(Copy.agentLocalSubtitle),
+                    trailing: Text(Copy.chatAction),
+                    onTap: () => _open(
+                      canonicalAgentDest(profile.dest),
+                      profile.displayName,
+                    ),
                   ),
-                ),
-            ]),
+              ]),
+            ],
             _sectionLabel(theme, Copy.recentContacts),
             if (social.friends.where((p) => !isAgentDest(p.account)).isEmpty)
               SliverToBoxAdapter(

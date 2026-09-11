@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/haptics.dart';
@@ -106,7 +107,9 @@ class ContactsNotifier extends Notifier<ContactsState> {
     ref.watch(agentProfilesProvider);
     final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     return ContactsState(
-      friends: agents.isEmpty
+      friends: !agentHostSupported
+          ? const []
+          : agents.isEmpty
           ? withGooseAgent(const [])
           : withLocalAgents(const [], agents),
       incoming: const [],
@@ -134,6 +137,9 @@ class ContactsNotifier extends Notifier<ContactsState> {
       final friendIds = {for (final p in friends) p.account};
       state = state.copyWith(
         friends: () {
+          if (!agentHostSupported) {
+            return friends;
+          }
           final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
           return agents.isEmpty
               ? withGooseAgent(friends)
