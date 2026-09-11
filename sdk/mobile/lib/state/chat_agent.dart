@@ -21,7 +21,7 @@ class ChatAgent {
 
   final Ref _ref;
   final _uuid = const Uuid();
-  AgentSession? _session;
+  AgentSessionPort? _session;
   String? _sessionDest;
   StreamSubscription<AgentUiEvent>? _sub;
 

@@ -187,7 +187,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: null,
+          decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiSessionAgentSessionCloseConstMeta,
         argValues: [that],
@@ -582,8 +582,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   SessionOpenOpts dco_decode_session_open_opts(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return SessionOpenOpts(
       model: dco_decode_String(arr[0]),
       llmBackend: dco_decode_String(arr[1]),
@@ -592,6 +592,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       apiKey: dco_decode_String(arr[4]),
       enableFsTools: dco_decode_bool(arr[5]),
       bashEnabled: dco_decode_bool(arr[6]),
+      profileId: dco_decode_String(arr[7]),
+      profileJson: dco_decode_String(arr[8]),
+      thinkingEffort: dco_decode_String(arr[9]),
+      gooseMode: dco_decode_String(arr[10]),
+      enableKimTools: dco_decode_bool(arr[11]),
+      enableApprovals: dco_decode_bool(arr[12]),
     );
   }
 
@@ -773,6 +779,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     var var_apiKey = sse_decode_String(deserializer);
     var var_enableFsTools = sse_decode_bool(deserializer);
     var var_bashEnabled = sse_decode_bool(deserializer);
+    var var_profileId = sse_decode_String(deserializer);
+    var var_profileJson = sse_decode_String(deserializer);
+    var var_thinkingEffort = sse_decode_String(deserializer);
+    var var_gooseMode = sse_decode_String(deserializer);
+    var var_enableKimTools = sse_decode_bool(deserializer);
+    var var_enableApprovals = sse_decode_bool(deserializer);
     return SessionOpenOpts(
       model: var_model,
       llmBackend: var_llmBackend,
@@ -781,6 +793,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       apiKey: var_apiKey,
       enableFsTools: var_enableFsTools,
       bashEnabled: var_bashEnabled,
+      profileId: var_profileId,
+      profileJson: var_profileJson,
+      thinkingEffort: var_thinkingEffort,
+      gooseMode: var_gooseMode,
+      enableKimTools: var_enableKimTools,
+      enableApprovals: var_enableApprovals,
     );
   }
 
@@ -972,6 +990,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_String(self.apiKey, serializer);
     sse_encode_bool(self.enableFsTools, serializer);
     sse_encode_bool(self.bashEnabled, serializer);
+    sse_encode_String(self.profileId, serializer);
+    sse_encode_String(self.profileJson, serializer);
+    sse_encode_String(self.thinkingEffort, serializer);
+    sse_encode_String(self.gooseMode, serializer);
+    sse_encode_bool(self.enableKimTools, serializer);
+    sse_encode_bool(self.enableApprovals, serializer);
   }
 
   @protected
@@ -1047,7 +1071,6 @@ class AgentSessionImpl extends RustOpaque implements AgentSession {
   Future<String> prompt({required String text}) => AgentRustLib.instance.api
       .crateApiSessionAgentSessionPrompt(that: this, text: text);
 
-  /// Rebuild harness/client; SQLite session tree is preserved.
   Future<void> reconfigure({required SessionOpenOpts opts}) => AgentRustLib
       .instance
       .api

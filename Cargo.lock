@@ -1710,6 +1710,7 @@ dependencies = [
  "goose-agent",
  "goose-provider-types",
  "goose-providers",
+ "rmcp",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

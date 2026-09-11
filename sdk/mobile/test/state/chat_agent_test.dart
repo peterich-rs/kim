@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
@@ -13,20 +15,74 @@ import '../support/harness.dart';
 class _RecordingAgentBridge extends AgentBridge {
   SessionOpenOpts? lastOpts;
   var opens = 0;
+  AgentSessionPort? session;
 
   @override
   Future<void> ensure() async {}
 
   @override
-  Future<AgentSession> open({
+  Future<AgentSessionPort> open({
     required String sqlitePath,
     required String projectRoot,
     required SessionOpenOpts opts,
   }) async {
     opens += 1;
     lastOpts = opts;
-    throw StateError('scripted: no live host');
+    final next = session;
+    if (next == null) {
+      throw StateError('scripted: no live host');
+    }
+    return next;
   }
+}
+
+class _OneShotSession implements AgentSessionPort {
+  _OneShotSession(this.reply);
+
+  final String reply;
+  final _ctrl = StreamController<AgentUiEvent>.broadcast();
+
+  @override
+  Stream<AgentUiEvent> listen() => _ctrl.stream;
+
+  @override
+  Future<String> prompt({required String text}) async {
+    _ctrl.add(
+      AgentUiEvent(
+        kind: 'assistant_finished',
+        operationId: 'op1',
+        callId: '',
+        name: '',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '',
+        ok: true,
+        stopReason: 'completed',
+        message: reply,
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    return 'op1';
+  }
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> abort() async {}
+
+  @override
+  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+
+  @override
+  Future<ResumeReportDto> resume() async =>
+      const ResumeReportDto(resumedOps: [], statuses: []);
+
+  @override
+  SessionSnapshotDto snapshot() =>
+      const SessionSnapshotDto(busy: false, lastOperationId: '');
 }
 
 void main() {
@@ -70,5 +126,32 @@ void main() {
         .toList();
     expect(bodies, isNot(contains(contains('未配置 API Key'))));
     expect(bodies.last, contains('Goose 调用失败'));
+  });
+
+  test('one assistant_finished yields exactly one assistant bubble', () async {
+    final bridge = _RecordingAgentBridge()
+      ..session = _OneShotSession('hello from goose');
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    await Future<void>.delayed(Duration.zero);
+
+    final items = env.container
+        .read(threadMessagesProvider(kGooseAgentId))
+        .items;
+    final assistant = items
+        .where((m) => m.sender == kGooseAgentName)
+        .map((m) => m.body)
+        .toList();
+    expect(assistant, ['hello from goose']);
   });
 }

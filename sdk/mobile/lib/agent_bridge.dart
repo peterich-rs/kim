@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-import 'src/rust_agent/api/session.dart' as agent;
+import 'src/rust_agent/api/session.dart';
 import 'src/rust_agent/frb_generated.dart';
 
 export 'src/rust_agent/api/session.dart'
@@ -13,6 +13,45 @@ export 'src/rust_agent/api/session.dart'
         ResumeReportDto,
         SessionOpenOpts,
         SessionSnapshotDto;
+
+/// Production FFI session or a test double. ChatAgent is the only caller.
+abstract class AgentSessionPort {
+  Stream<AgentUiEvent> listen();
+  Future<String> prompt({required String text});
+  Future<void> close();
+  Future<void> abort();
+  Future<void> reconfigure({required SessionOpenOpts opts});
+  Future<ResumeReportDto> resume();
+  SessionSnapshotDto snapshot();
+}
+
+class NativeAgentSession implements AgentSessionPort {
+  NativeAgentSession(this._inner);
+
+  final AgentSession _inner;
+
+  @override
+  Stream<AgentUiEvent> listen() => _inner.listen();
+
+  @override
+  Future<String> prompt({required String text}) => _inner.prompt(text: text);
+
+  @override
+  Future<void> close() => _inner.close();
+
+  @override
+  Future<void> abort() => _inner.abort();
+
+  @override
+  Future<void> reconfigure({required SessionOpenOpts opts}) =>
+      _inner.reconfigure(opts: opts);
+
+  @override
+  Future<ResumeReportDto> resume() => _inner.resume();
+
+  @override
+  SessionSnapshotDto snapshot() => _inner.snapshot();
+}
 
 class AgentBridge {
   static bool _inited = false;
@@ -27,16 +66,17 @@ class AgentBridge {
 
   bool get isReady => _inited;
 
-  Future<agent.AgentSession> open({
+  Future<AgentSessionPort> open({
     required String sqlitePath,
     required String projectRoot,
-    required agent.SessionOpenOpts opts,
+    required SessionOpenOpts opts,
   }) async {
     await ensure();
-    return agent.sessionOpen(
+    final session = await sessionOpen(
       sqlitePath: sqlitePath,
       projectRoot: projectRoot,
       opts: opts,
     );
+    return NativeAgentSession(session);
   }
 }

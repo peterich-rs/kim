@@ -1,10 +1,13 @@
 //! Thin FFI over `kim-agent-host` (Goose). Isolated from `kim_client_ffi`.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use kim_agent_host::{AgentHost, HostError, HostEvent, ProviderConfig, ProviderKind};
+use kim_agent_host::{
+    AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ResolvedProfile,
+};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -19,6 +22,12 @@ pub struct SessionOpenOpts {
     pub api_key: String,
     pub enable_fs_tools: bool,
     pub bash_enabled: bool,
+    pub profile_id: String,
+    pub profile_json: String,
+    pub thinking_effort: String,
+    pub goose_mode: String,
+    pub enable_kim_tools: bool,
+    pub enable_approvals: bool,
 }
 
 impl Default for SessionOpenOpts {
@@ -31,6 +40,12 @@ impl Default for SessionOpenOpts {
             api_key: String::new(),
             enable_fs_tools: false,
             bash_enabled: false,
+            profile_id: String::new(),
+            profile_json: String::new(),
+            thinking_effort: String::new(),
+            goose_mode: String::new(),
+            enable_kim_tools: false,
+            enable_approvals: false,
         }
     }
 }
@@ -134,19 +149,45 @@ pub struct AgentSession {
     inner: Arc<Shared>,
 }
 
-fn config_from_opts(opts: &SessionOpenOpts) -> Result<ProviderConfig, String> {
-    let kind = ProviderKind::parse(&opts.llm_backend).map_err(|e| e.to_string())?;
-    Ok(ProviderConfig {
-        kind,
-        base_url: opts.base_url.clone(),
+fn resolved_from_opts(
+    opts: &SessionOpenOpts,
+    project_root: String,
+) -> Result<ResolvedProfile, String> {
+    let profile = if opts.profile_json.trim().is_empty() {
+        AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: opts.model.clone(),
+            llm_backend: opts.llm_backend.clone(),
+            base_url: opts.base_url.clone(),
+            enable_fs_tools: opts.enable_fs_tools,
+            enable_kim_tools: opts.enable_kim_tools,
+            enable_approvals: opts.enable_approvals,
+            thinking_effort: opts.thinking_effort.clone(),
+            goose_mode: opts.goose_mode.clone(),
+            profile_id: if opts.profile_id.trim().is_empty() {
+                "goose".into()
+            } else {
+                opts.profile_id.clone()
+            },
+        })
+    } else {
+        serde_json::from_str(&opts.profile_json).map_err(|e| e.to_string())?
+    };
+    tracing::info!(
+        profile_id = %profile.id,
+        provider = %profile.provider.kind,
+        model = %profile.model.name,
+        "session_open"
+    );
+    Ok(ResolvedProfile {
+        profile,
         api_key: opts.api_key.clone(),
-        model: opts.model.clone(),
+        project_root: PathBuf::from(project_root),
     })
 }
 
 pub fn session_open(
     sqlite_path: String,
-    _project_root: String,
+    project_root: String,
     opts: SessionOpenOpts,
 ) -> Result<AgentSession, String> {
     let _guard = rt().enter();
@@ -155,7 +196,8 @@ pub fn session_open(
     } else {
         sqlite_path
     };
-    let host = AgentHost::new(config_from_opts(&opts)?).map_err(map_host_err)?;
+    let host = AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?)
+        .map_err(map_host_err)?;
     let (tx, _) = broadcast::channel(256);
     let _ = tx.send(AgentUiEvent::session_ready());
     Ok(AgentSession {
@@ -210,6 +252,10 @@ impl AgentSession {
                         HostEvent::Failed { message } => {
                             let _ = events.send(AgentUiEvent::failed(op_for_pump.clone(), message));
                         }
+                        HostEvent::ToolRequest { .. }
+                        | HostEvent::ToolResult { .. }
+                        | HostEvent::ActionRequired { .. }
+                        | HostEvent::Usage { .. } => {}
                     }
                 }
             });
@@ -286,7 +332,8 @@ impl AgentSession {
 
     pub fn reconfigure(&self, opts: SessionOpenOpts) -> Result<(), String> {
         let _guard = rt().enter();
-        let host = AgentHost::new(config_from_opts(&opts)?).map_err(map_host_err)?;
+        let host = AgentHost::from_resolved(resolved_from_opts(&opts, String::new())?)
+            .map_err(map_host_err)?;
         let inner = self.inner.clone();
         rt().block_on(async move {
             *inner.host.write().await = host;

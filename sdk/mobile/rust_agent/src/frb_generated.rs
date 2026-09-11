@@ -124,7 +124,7 @@ fn wire__crate__api__session__AgentSession_close_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, ()>((move || {
+                transform_result_sse::<_, String>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -139,9 +139,7 @@ fn wire__crate__api__session__AgentSession_close_impl(
                         }
                     }
                     let api_that_guard = api_that_guard.unwrap();
-                    let output_ok = Ok::<_, ()>({
-                        crate::api::session::AgentSession::close(&*api_that_guard);
-                    })?;
+                    let output_ok = crate::api::session::AgentSession::close(&*api_that_guard)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -643,6 +641,12 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
         let mut var_apiKey = <String>::sse_decode(deserializer);
         let mut var_enableFsTools = <bool>::sse_decode(deserializer);
         let mut var_bashEnabled = <bool>::sse_decode(deserializer);
+        let mut var_profileId = <String>::sse_decode(deserializer);
+        let mut var_profileJson = <String>::sse_decode(deserializer);
+        let mut var_thinkingEffort = <String>::sse_decode(deserializer);
+        let mut var_gooseMode = <String>::sse_decode(deserializer);
+        let mut var_enableKimTools = <bool>::sse_decode(deserializer);
+        let mut var_enableApprovals = <bool>::sse_decode(deserializer);
         return crate::api::session::SessionOpenOpts {
             model: var_model,
             llm_backend: var_llmBackend,
@@ -651,6 +655,12 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
             api_key: var_apiKey,
             enable_fs_tools: var_enableFsTools,
             bash_enabled: var_bashEnabled,
+            profile_id: var_profileId,
+            profile_json: var_profileJson,
+            thinking_effort: var_thinkingEffort,
+            goose_mode: var_gooseMode,
+            enable_kim_tools: var_enableKimTools,
+            enable_approvals: var_enableApprovals,
         };
     }
 }
@@ -826,6 +836,12 @@ impl flutter_rust_bridge::IntoDart for crate::api::session::SessionOpenOpts {
             self.api_key.into_into_dart().into_dart(),
             self.enable_fs_tools.into_into_dart().into_dart(),
             self.bash_enabled.into_into_dart().into_dart(),
+            self.profile_id.into_into_dart().into_dart(),
+            self.profile_json.into_into_dart().into_dart(),
+            self.thinking_effort.into_into_dart().into_dart(),
+            self.goose_mode.into_into_dart().into_dart(),
+            self.enable_kim_tools.into_into_dart().into_dart(),
+            self.enable_approvals.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -968,6 +984,12 @@ impl SseEncode for crate::api::session::SessionOpenOpts {
         <String>::sse_encode(self.api_key, serializer);
         <bool>::sse_encode(self.enable_fs_tools, serializer);
         <bool>::sse_encode(self.bash_enabled, serializer);
+        <String>::sse_encode(self.profile_id, serializer);
+        <String>::sse_encode(self.profile_json, serializer);
+        <String>::sse_encode(self.thinking_effort, serializer);
+        <String>::sse_encode(self.goose_mode, serializer);
+        <bool>::sse_encode(self.enable_kim_tools, serializer);
+        <bool>::sse_encode(self.enable_approvals, serializer);
     }
 }
 

@@ -64,6 +64,12 @@ class AgentSettings {
       apiKey: apiKey,
       enableFsTools: enableFsTools,
       bashEnabled: bashEnabled,
+      profileId: 'goose',
+      profileJson: '',
+      thinkingEffort: '',
+      gooseMode: '',
+      enableKimTools: false,
+      enableApprovals: false,
     );
   }
 
