@@ -711,6 +711,19 @@ pub fn mentions_default_agent(text: &str) -> bool {
     })
 }
 
+pub fn session_file_from_sqlite_path(sqlite_path: &str) -> Option<PathBuf> {
+    let trimmed = sqlite_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = Path::new(trimmed);
+    if path.is_absolute() || trimmed.contains('/') || trimmed.contains('\\') {
+        Some(path.to_path_buf())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -740,11 +753,11 @@ mod tests {
         let mut call = rmcp::model::CallToolRequestParams::new("read_file");
         call.arguments = Some(args);
         let assistant = Message::assistant().with_tool_request("c1", Ok(call));
-        let profile = AgentProfile::from_legacy(&crate::profile::LegacyOpenOpts {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
             enable_fs_tools: true,
             model: "scripted".into(),
             llm_backend: "scripted".into(),
-            ..crate::profile::LegacyOpenOpts::default()
+            ..LegacyOpenOpts::default()
         });
         let host = AgentHost::from_provider_for_test(
             profile,
@@ -1059,18 +1072,5 @@ mod tests {
         assert!(session_file_from_sqlite_path("thread-1").is_none());
         assert!(session_file_from_sqlite_path("/tmp/s.json").is_some());
         assert!(session_file_from_sqlite_path("agent/sessions/s.json").is_some());
-    }
-}
-
-pub fn session_file_from_sqlite_path(sqlite_path: &str) -> Option<PathBuf> {
-    let trimmed = sqlite_path.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let path = Path::new(trimmed);
-    if path.is_absolute() || trimmed.contains('/') || trimmed.contains('\\') {
-        Some(path.to_path_buf())
-    } else {
-        None
     }
 }

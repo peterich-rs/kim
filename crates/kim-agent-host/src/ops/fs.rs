@@ -222,7 +222,7 @@ mod tests {
             root: root.clone(),
             writable: false,
         };
-        let session = crate::HostSession {
+        let session = HostSession {
             id: "s".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
         };
@@ -244,7 +244,7 @@ mod tests {
             root: root.clone(),
             writable: false,
         };
-        let session = crate::HostSession {
+        let session = HostSession {
             id: "s".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
         };
@@ -265,7 +265,7 @@ mod tests {
             root: root.clone(),
             writable: true,
         };
-        let session = crate::HostSession {
+        let session = HostSession {
             id: "s".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
         };
@@ -291,7 +291,7 @@ mod tests {
             root: root.clone(),
             writable: true,
         };
-        let session = crate::HostSession {
+        let session = HostSession {
             id: "s".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
         };
@@ -317,7 +317,7 @@ mod tests {
             root: root.clone(),
             writable: true,
         };
-        let session = crate::HostSession {
+        let session = HostSession {
             id: "s".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
         };
