@@ -665,9 +665,9 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "goose-agent"
-version = "0.1.0-alpha.8"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1f92f0d0ee616a916453c8380f1b1ac75f2e3ab5e706356a187e6135826bca5"
+checksum = "64bfe914cec6f669533e96f5d663e87aadcbffd822d5352ff03f0fc90b2ad931"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -684,9 +684,9 @@ dependencies = [
 
 [[package]]
 name = "goose-provider-types"
-version = "0.1.0-alpha.8"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9255f28eaecc7ed372342be59474e1663fc020f9e49a4d0c5dff72b7bd26a44e"
+checksum = "ad5d3f0084b94db6c26627c17d641665f1ed16b7879495a4c7a74b94daf355fd"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -711,9 +711,9 @@ dependencies = [
 
 [[package]]
 name = "goose-providers"
-version = "0.1.0-alpha.8"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98c91be32cad3116dc22fb20799603d169e42828d4e816017b23199e72787d2d"
+checksum = "0c6416d09ac9b86b35aff45f86d868358adb2879754b6a4900c59f6ddc693ca6"
 dependencies = [
  "anyhow",
  "async-stream",

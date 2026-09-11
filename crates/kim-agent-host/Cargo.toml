@@ -10,9 +10,9 @@ description = "Local Goose agent host for KIM desktop IM (@agent)"
 anyhow = "1"
 async-trait.workspace = true
 futures.workspace = true
-goose-agent = "0.1.0-alpha.8"
-goose-provider-types = { version = "0.1.0-alpha.8", default-features = false }
-goose-providers = { version = "0.1.0-alpha.8", default-features = false, features = ["rustls-tls"] }
+goose-agent = "0.1.0-alpha.9"
+goose-provider-types = { version = "0.1.0-alpha.9", default-features = false }
+goose-providers = { version = "0.1.0-alpha.9", default-features = false, features = ["rustls-tls"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
