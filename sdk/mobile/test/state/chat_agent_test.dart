@@ -42,6 +42,8 @@ class _OneShotSession implements AgentSessionPort {
   final String reply;
   final _ctrl = StreamController<AgentUiEvent>.broadcast();
 
+  void emit(AgentUiEvent ev) => _ctrl.add(ev);
+
   @override
   Stream<AgentUiEvent> listen() => _ctrl.stream;
 
@@ -55,6 +57,12 @@ class _OneShotSession implements AgentSessionPort {
   Future<String> completeTool({
     required String callId,
     required String outputJson,
+  }) async => 'op';
+
+  @override
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
   }) async => 'op';
 
   @override
@@ -169,5 +177,47 @@ void main() {
         .map((m) => m.body)
         .toList();
     expect(assistant, ['hello from goose']);
+  });
+
+  test('action_required upserts a confirmation card by call_id', () async {
+    final session = _OneShotSession('done');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    session.emit(
+      AgentUiEvent(
+        kind: 'action_required',
+        operationId: 'op1',
+        callId: 'c1',
+        name: 'send_message',
+        delta: '',
+        argumentsJson: '{"dest":"bob","text":"hi"}',
+        outputPreview: '',
+        ok: false,
+        stopReason: '',
+        message: 'Allow send_message?',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final cards = env.container
+        .read(threadMessagesProvider(kGooseAgentId))
+        .items
+        .where((m) => m.key == 'agent-card-c1')
+        .toList();
+    expect(cards, hasLength(1));
+    expect(cards.first.body, contains('action_required'));
+    expect(cards.first.body, contains('pending'));
   });
 }

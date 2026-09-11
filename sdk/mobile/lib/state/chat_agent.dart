@@ -116,6 +116,8 @@ class ChatAgent {
           unawaited(_upsertToolCard(dest, ev));
         case 'tool_request':
           unawaited(_onToolRequest(dest, ev));
+        case 'action_required':
+          unawaited(_appendActionCard(dest, ev));
         default:
           break;
       }
@@ -140,7 +142,7 @@ class ChatAgent {
         thinkingEffort: base.thinkingEffort,
         gooseMode: base.gooseMode,
         enableKimTools: true,
-        enableApprovals: false,
+        enableApprovals: true,
       );
     }
     return SessionOpenOpts(
@@ -150,13 +152,13 @@ class ChatAgent {
       baseUrl: goose.baseUrl,
       apiKey: settings.apiKey,
       enableFsTools: goose.tools.fs,
-      bashEnabled: false,
+      bashEnabled: goose.tools.bash,
       profileId: goose.id,
       profileJson: jsonEncode(goose.toJson()),
       thinkingEffort: goose.thinkingEffort,
       gooseMode: goose.mode,
       enableKimTools: true,
-      enableApprovals: false,
+      enableApprovals: true,
     );
   }
 
@@ -193,6 +195,7 @@ class ChatAgent {
       argumentsJson: ev.argumentsJson.isEmpty ? '{}' : ev.argumentsJson,
       sessionDest: dest,
       profileId: 'goose',
+      callId: callId,
     );
     final session = _session;
     if (session == null) {
@@ -224,20 +227,116 @@ class ChatAgent {
     if (callId.isEmpty) {
       return;
     }
+    final running = ev.kind == 'tool_started';
+    await _upsertCard(
+      dest,
+      callId: callId,
+      name: ev.name,
+      type: 'tool',
+      state: running ? 'running' : (ev.ok ? 'ok' : 'error'),
+      preview: ev.outputPreview,
+      ok: !running && ev.ok,
+    );
+  }
+
+  Future<void> _appendActionCard(String dest, AgentUiEvent ev) async {
+    final callId = ev.callId.trim();
+    if (callId.isEmpty) {
+      return;
+    }
+    final preview = _previewFor(ev.name, ev.argumentsJson, ev.message);
+    await _upsertCard(
+      dest,
+      callId: callId,
+      name: ev.name,
+      type: 'action_required',
+      state: 'pending',
+      preview: preview,
+      ok: false,
+    );
+  }
+
+  String _previewFor(String name, String argumentsJson, String prompt) {
+    if (prompt.trim().isNotEmpty) {
+      return prompt.trim();
+    }
+    try {
+      final raw = jsonDecode(argumentsJson);
+      if (raw is Map) {
+        if (name == 'send_message') {
+          return '${raw['dest'] ?? ''}: ${raw['text'] ?? ''}';
+        }
+      }
+    } catch (_) {}
+    return name;
+  }
+
+  Future<void> respondPermission({
+    required String dest,
+    required String callId,
+    required String permission,
+    required String toolName,
+  }) async {
+    await _upsertCard(
+      dest,
+      callId: callId,
+      name: toolName,
+      type: 'action_required',
+      state: 'resolved',
+      preview: '',
+      ok: permission != 'deny_once' && permission != 'always_deny' && permission != 'cancel',
+    );
+    if (permission == 'always_allow') {
+      await _rememberAlwaysAllow(toolName);
+    }
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    try {
+      await session.respondPermission(callId: callId, permission: permission);
+    } catch (_) {
+      await _upsertCard(
+        dest,
+        callId: callId,
+        name: toolName,
+        type: 'action_required',
+        state: 'pending',
+        preview: '',
+        ok: false,
+      );
+    }
+  }
+
+  Future<void> _rememberAlwaysAllow(String toolName) async {
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    await _ref.read(agentSettingsProvider.notifier).ensureLoaded();
+    final store = _ref.read(agentProfilesProvider.notifier);
+    final goose = store.goose;
+    if (goose == null || toolName.trim().isEmpty) {
+      return;
+    }
+    final next = Map<String, String>.from(goose.permissionOverrides);
+    next[toolName] = 'always_allow';
+    await store.saveGoose(
+      goose.copyWith(permissionOverrides: next),
+      apiKey: _ref.read(agentSettingsProvider).apiKey,
+    );
+  }
+
+  Future<void> _upsertCard(
+    String dest, {
+    required String callId,
+    required String name,
+    required String type,
+    required String state,
+    required String preview,
+    required bool ok,
+  }) async {
     final account = _ref.read(authProvider).account;
     if (account.isEmpty) {
       return;
     }
-    final running = ev.kind == 'tool_started';
-    final card = {
-      'v': 1,
-      'type': 'tool',
-      'call_id': callId,
-      'name': ev.name,
-      'state': running ? 'running' : (ev.ok ? 'ok' : 'error'),
-      'preview': ev.outputPreview,
-      'ok': !running && ev.ok,
-    };
     final key = 'agent-card-$callId';
     final now = DateTime.now().millisecondsSinceEpoch;
     final existing = _ref
@@ -245,16 +344,36 @@ class ChatAgent {
         .items
         .where((m) => m.key == key)
         .toList();
+    Map<String, Object?> body = {
+      'v': 1,
+      'type': type,
+      'call_id': callId,
+      'name': name,
+      'state': state,
+      'preview': preview,
+      'ok': ok,
+    };
+    if (existing.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existing.first.body);
+        if (prev is Map) {
+          body = {...Map<String, Object?>.from(prev), ...body};
+          if (preview.isEmpty && prev['preview'] != null) {
+            body['preview'] = prev['preview'];
+          }
+        }
+      } catch (_) {}
+    }
     final msg = existing.isEmpty
         ? KimChatMsg(
             key: key,
             dest: dest,
             sender: kGooseAgentName,
-            body: jsonEncode(card),
+            body: jsonEncode(body),
             at: now,
             kind: KimMsgKind.agentCard,
           )
-        : existing.first.copyWith(body: jsonEncode(card));
+        : existing.first.copyWith(body: jsonEncode(body));
     await _ref.read(messageRepositoryProvider).applyLive(account, [
       msg,
     ], viewingDest: dest);

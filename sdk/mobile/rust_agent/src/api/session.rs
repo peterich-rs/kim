@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kim_agent_host::{
-    AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ProviderSpec, ResolvedProfile,
-    TurnOutcome,
+    parse_permission, AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ProviderSpec,
+    ResolvedProfile, TurnOutcome, YieldKind,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -161,6 +161,22 @@ impl AgentUiEvent {
         e.name = name;
         e.output_preview = output_preview;
         e.ok = ok;
+        e
+    }
+
+    fn action_required(
+        operation_id: String,
+        call_id: String,
+        name: String,
+        arguments_json: String,
+        prompt: String,
+    ) -> Self {
+        let mut e = Self::base("action_required");
+        e.operation_id = operation_id;
+        e.call_id = call_id;
+        e.name = name;
+        e.arguments_json = arguments_json;
+        e.message = prompt;
         e
     }
 }
@@ -371,6 +387,43 @@ impl AgentSession {
             .map_err(|_| "complete_tool start timeout".to_string())?
     }
 
+    pub fn respond_permission(&self, call_id: String, permission: String) -> Result<String, String> {
+        let parsed = parse_permission(&permission)?;
+        {
+            let phase = self
+                .inner
+                .phase
+                .lock()
+                .map_err(|_| "phase lock".to_string())?;
+            if *phase != SessionPhase::Yielded {
+                return Err("unknown tool call".into());
+            }
+        }
+        let inner = self.inner.clone();
+        let (op_tx, op_rx) = std::sync::mpsc::channel();
+        let cancel = CancellationToken::new();
+        if let Ok(mut g) = inner.cancel.lock() {
+            *g = Some(cancel.clone());
+        }
+        rt().spawn(async move {
+            let _gate = inner.complete_gate.lock().await;
+            let op = uuid::Uuid::new_v4().to_string();
+            let _ = op_tx.send(Ok(op.clone()));
+            let (tx, rx) = mpsc::channel(64);
+            let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
+            let host = inner.host.read().await;
+            let result = host
+                .respond_permission(&inner.session_id, &call_id, parsed, tx, cancel)
+                .await;
+            drop(host);
+            let _ = pump.await;
+            finish_turn(&inner, op, result).await;
+        });
+        op_rx
+            .recv_timeout(Duration::from_secs(30))
+            .map_err(|_| "respond_permission start timeout".to_string())?
+    }
+
     #[flutter_rust_bridge::frb(sync)]
     pub fn listen(&self, sink: StreamSink<AgentUiEvent>) -> Result<(), String> {
         let _guard = rt().enter();
@@ -537,12 +590,21 @@ async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, Hos
             drop(host);
             let mut replayed = Vec::new();
             for p in pending {
-                let ev = AgentUiEvent::tool_request(
-                    op.clone(),
-                    p.call_id,
-                    p.name,
-                    p.arguments_json,
-                );
+                let ev = match p.kind {
+                    YieldKind::ActionRequired => AgentUiEvent::action_required(
+                        op.clone(),
+                        p.call_id,
+                        p.name,
+                        p.arguments_json,
+                        p.prompt,
+                    ),
+                    YieldKind::ToolRequest => AgentUiEvent::tool_request(
+                        op.clone(),
+                        p.call_id,
+                        p.name,
+                        p.arguments_json,
+                    ),
+                };
                 let _ = inner.events.send(ev.clone());
                 replayed.push(ev);
             }
@@ -706,5 +768,56 @@ mod tests {
             .complete_tool("c2".into(), r#"{"people":[]}"#.into())
             .unwrap();
         wait_phase(&session, "idle");
+    }
+
+    #[test]
+    fn send_message_action_required_after_yielded() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_send_message("c1", "bob", "hi")),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        session.prompt("ping bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        let snap = session.snapshot().unwrap();
+        assert!(!snap.busy);
+        assert_eq!(snap.pending_call_ids, vec!["c1".to_string()]);
+        let mut saw = false;
+        while let Ok(ev) = rx.try_recv() {
+            if ev.kind == "action_required" {
+                saw = true;
+                assert_eq!(ev.call_id, "c1");
+                assert_eq!(ev.name, "send_message");
+            }
+            assert_ne!(ev.kind, "tool_request");
+        }
+        assert!(saw);
+        session
+            .respond_permission("c1".into(), "allow_once".into())
+            .unwrap();
+        let mut saw_tool = false;
+        for _ in 0..100 {
+            while let Ok(ev) = rx.try_recv() {
+                if ev.kind == "tool_request" {
+                    saw_tool = true;
+                    assert_eq!(ev.call_id, "c1");
+                }
+            }
+            if saw_tool {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(saw_tool);
     }
 }

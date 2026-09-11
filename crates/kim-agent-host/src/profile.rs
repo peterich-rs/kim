@@ -316,6 +316,8 @@ fn goose_template() -> AgentProfile {
             search_messages: true,
             get_conversation_context: true,
             list_profiles: true,
+            send_message: true,
+            read_clipboard: true,
             ..ToolSet::default()
         },
         permissions: PermissionConfig::default(),
@@ -452,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_goose_has_read_im_tools_only() {
+    fn builtin_goose_has_write_im_tools() {
         let goose = builtin_templates()
             .into_iter()
             .find(|p| p.id == "goose")
@@ -461,8 +463,8 @@ mod tests {
         assert!(goose.tools.search_messages);
         assert!(goose.tools.get_conversation_context);
         assert!(goose.tools.list_profiles);
-        assert!(!goose.tools.send_message);
-        assert!(!goose.tools.read_clipboard);
+        assert!(goose.tools.send_message);
+        assert!(goose.tools.read_clipboard);
         assert!(!goose.tools.fs);
     }
 }

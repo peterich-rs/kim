@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `aborted`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`
+// These functions are ignored because they are not marked as `pub`: `aborted`, `action_required`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SessionPhase`, `Shared`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`
 
@@ -51,6 +51,11 @@ abstract class AgentSession implements RustOpaqueInterface {
   });
 
   Future<void> reconfigure({required SessionOpenOpts opts});
+
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  });
 
   Future<ResumeReportDto> resume();
 

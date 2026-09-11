@@ -35,6 +35,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   var _fetching = false;
   List<String> _models = const [];
   List<_Bundled> _bundled = const [];
+  Map<String, String> _permissions = {};
 
   @override
   void initState() {
@@ -101,6 +102,10 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         ? s.thinkingEffort
         : 'off';
     _fs = s.enableFsTools;
+    final goose = ref.read(agentProfilesProvider.notifier).goose;
+    if (goose != null) {
+      _permissions = Map<String, String>.from(goose.permissionOverrides);
+    }
   }
 
   Future<void> _fetchModels() async {
@@ -150,6 +155,17 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     }
   }
 
+  String _permissionValue(String tool) {
+    final raw = _permissions[tool];
+    if (raw == 'always_allow' || raw == 'ask_before' || raw == 'never_allow') {
+      return raw!;
+    }
+    if (tool == 'send_message' || tool == 'read_clipboard') {
+      return 'ask_before';
+    }
+    return 'always_allow';
+  }
+
   Future<void> _save() async {
     if (_apiKey.text.trim().isEmpty) {
       toastification.show(
@@ -172,16 +188,17 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           : _model.text.trim(),
       thinkingEffort: _thinking == 'off' ? '' : _thinking,
       tools: AgentToolSet(
-        sendMessage: existing.tools.sendMessage,
+        sendMessage: true,
         searchContacts: existing.tools.searchContacts,
         searchMessages: existing.tools.searchMessages,
         getConversationContext: existing.tools.getConversationContext,
-        readClipboard: existing.tools.readClipboard,
+        readClipboard: true,
         listProfiles: existing.tools.listProfiles,
         fs: _fs,
         fsWrite: existing.tools.fsWrite,
         bash: existing.tools.bash,
       ),
+      permissionOverrides: _permissions,
     );
     await ref
         .read(agentProfilesProvider.notifier)
@@ -417,6 +434,52 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                       value: false,
                       onChanged: null,
                     ),
+                  ],
+                ),
+                const Gap(18),
+                Text(
+                  l10n.agentPermissions,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const Gap(8),
+                KimGroupCard(
+                  children: [
+                    for (final entry in [
+                      ('send_message', l10n.agentToolSendMessage),
+                      ('read_clipboard', l10n.agentToolClipboard),
+                      ('search_contacts', l10n.agentToolSearchContacts),
+                      ('search_messages', l10n.agentToolSearchMessages),
+                    ]) ...[
+                      if (entry.$1 != 'send_message') const Divider(height: 1),
+                      ListTile(
+                        title: Text(entry.$2),
+                        trailing: DropdownButton<String>(
+                          value: _permissionValue(entry.$1),
+                          items: [
+                            DropdownMenuItem(
+                              value: 'always_allow',
+                              child: Text(l10n.agentPermissionAlways),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ask_before',
+                              child: Text(l10n.agentPermissionAsk),
+                            ),
+                            DropdownMenuItem(
+                              value: 'never_allow',
+                              child: Text(l10n.agentPermissionNever),
+                            ),
+                          ],
+                          onChanged: (next) {
+                            if (next == null) {
+                              return;
+                            }
+                            setState(() => _permissions[entry.$1] = next);
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const Gap(12),

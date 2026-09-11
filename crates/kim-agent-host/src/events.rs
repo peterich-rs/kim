@@ -25,6 +25,8 @@ pub struct PendingYield {
     pub call_id: String,
     pub name: String,
     pub arguments_json: String,
+    pub kind: YieldKind,
+    pub prompt: String,
 }
 
 #[derive(Debug, Clone)]

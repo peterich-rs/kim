@@ -27,6 +27,10 @@ abstract class AgentSessionPort {
     required String callId,
     required String outputJson,
   });
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  });
   Future<void> close();
   Future<void> abort();
   Future<void> reconfigure({required SessionOpenOpts opts});
@@ -56,6 +60,12 @@ class NativeAgentSession implements AgentSessionPort {
     required String callId,
     required String outputJson,
   }) => _inner.completeTool(callId: callId, outputJson: outputJson);
+
+  @override
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  }) => _inner.respondPermission(callId: callId, permission: permission);
 
   @override
   Future<void> close() => _inner.close();

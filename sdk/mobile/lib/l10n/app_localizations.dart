@@ -1100,6 +1100,72 @@ abstract class AppLocalizations {
   /// **'命令行（后续版本）'**
   String get agentBashLater;
 
+  /// No description provided for @agentAllow.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许'**
+  String get agentAllow;
+
+  /// No description provided for @agentAlwaysAllow.
+  ///
+  /// In zh, this message translates to:
+  /// **'总是允许'**
+  String get agentAlwaysAllow;
+
+  /// No description provided for @agentDeny.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝'**
+  String get agentDeny;
+
+  /// No description provided for @agentPermissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'工具权限'**
+  String get agentPermissions;
+
+  /// No description provided for @agentPermissionAlways.
+  ///
+  /// In zh, this message translates to:
+  /// **'总是'**
+  String get agentPermissionAlways;
+
+  /// No description provided for @agentPermissionAsk.
+  ///
+  /// In zh, this message translates to:
+  /// **'询问'**
+  String get agentPermissionAsk;
+
+  /// No description provided for @agentPermissionNever.
+  ///
+  /// In zh, this message translates to:
+  /// **'禁止'**
+  String get agentPermissionNever;
+
+  /// No description provided for @agentToolSendMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'代发消息'**
+  String get agentToolSendMessage;
+
+  /// No description provided for @agentToolClipboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'剪贴板'**
+  String get agentToolClipboard;
+
+  /// No description provided for @agentToolSearchContacts.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索联系人'**
+  String get agentToolSearchContacts;
+
+  /// No description provided for @agentToolSearchMessages.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索消息'**
+  String get agentToolSearchMessages;
+
   /// No description provided for @agentMoreComing.
   ///
   /// In zh, this message translates to:

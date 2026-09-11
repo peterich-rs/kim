@@ -71,7 +71,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1963970130;
+  int get rustContentHash => 1659189456;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -111,6 +111,12 @@ abstract class AgentRustLibApi extends BaseApi {
   Future<void> crateApiSessionAgentSessionReconfigure({
     required AgentSession that,
     required SessionOpenOpts opts,
+  });
+
+  Future<String> crateApiSessionAgentSessionRespondPermission({
+    required AgentSession that,
+    required String callId,
+    required String permission,
   });
 
   Future<ResumeReportDto> crateApiSessionAgentSessionResume({
@@ -410,6 +416,46 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       );
 
   @override
+  Future<String> crateApiSessionAgentSessionRespondPermission({
+    required AgentSession that,
+    required String callId,
+    required String permission,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(callId, serializer);
+          sse_encode_String(permission, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionAgentSessionRespondPermissionConstMeta,
+        argValues: [that, callId, permission],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAgentSessionRespondPermissionConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentSession_respond_permission",
+        argNames: ["that", "callId", "permission"],
+      );
+
+  @override
   Future<ResumeReportDto> crateApiSessionAgentSessionResume({
     required AgentSession that,
   }) {
@@ -424,7 +470,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -454,7 +500,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_session_snapshot_dto,
@@ -485,7 +531,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -515,7 +561,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -542,7 +588,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -569,7 +615,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -603,7 +649,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -633,7 +679,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -1288,6 +1334,15 @@ class AgentSessionImpl extends RustOpaque implements AgentSession {
       .instance
       .api
       .crateApiSessionAgentSessionReconfigure(that: this, opts: opts);
+
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  }) => AgentRustLib.instance.api.crateApiSessionAgentSessionRespondPermission(
+    that: this,
+    callId: callId,
+    permission: permission,
+  );
 
   Future<ResumeReportDto> resume() =>
       AgentRustLib.instance.api.crateApiSessionAgentSessionResume(that: this);

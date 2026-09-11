@@ -32,6 +32,17 @@ impl ScriptedProvider {
         }
         Self::new(vec![message])
     }
+
+    pub fn kim_send_message(id: &str, dest: &str, text: &str) -> Self {
+        let mut args = rmcp::model::JsonObject::new();
+        args.insert("dest".into(), serde_json::json!(dest));
+        args.insert("text".into(), serde_json::json!(text));
+        let mut call = rmcp::model::CallToolRequestParams::new("send_message");
+        call.arguments = Some(args);
+        Self::new(vec![
+            Message::assistant().with_tool_request(id.to_string(), Ok(call))
+        ])
+    }
 }
 
 #[async_trait]

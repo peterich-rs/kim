@@ -23,6 +23,7 @@ class KimCapabilityHost {
     required String argumentsJson,
     required String sessionDest,
     required String profileId,
+    String callId = '',
   }) async {
     try {
       final args = _decode(argumentsJson);
@@ -43,7 +44,11 @@ class KimCapabilityHost {
         case 'list_profiles':
           return await _listProfiles();
         case 'send_message':
-          return _sendMessageError('${args['dest'] ?? ''}');
+          return await _sendMessage(
+            dest: '${args['dest'] ?? ''}',
+            text: '${args['text'] ?? ''}',
+            callId: callId,
+          );
         case 'read_clipboard':
           return await _readClipboard();
         default:
@@ -174,14 +179,36 @@ class KimCapabilityHost {
     return jsonEncode({'profiles': rows});
   }
 
-  String _sendMessageError(String dest) {
+  String? _refuseDest(String dest) {
+    if (dest.isEmpty) {
+      return 'missing dest';
+    }
     if (isGooseAgentDest(dest) || dest.startsWith('agent:')) {
-      return _err('refusing to message a local agent');
+      return 'refusing to message a local agent';
     }
     if (dest.contains('/')) {
-      return _err('group dest not supported');
+      return 'group dest not supported';
     }
-    return _err('send_message is not enabled');
+    return null;
+  }
+
+  Future<String> _sendMessage({
+    required String dest,
+    required String text,
+    required String callId,
+  }) async {
+    final refuse = _refuseDest(dest);
+    if (refuse != null) {
+      return _err(refuse);
+    }
+    try {
+      await ref
+          .read(outboxProvider.notifier)
+          .sendText(dest, text, clientId: callId);
+      return _ok({'client_id': callId});
+    } catch (e) {
+      return _err('$e');
+    }
   }
 
   Future<String> _readClipboard() async {
@@ -193,16 +220,4 @@ class KimCapabilityHost {
     }
   }
 
-  /// Used by tests; production ChatAgent uses Outbox after PR5.
-  Future<String> sendMessageForTest(String dest, String text) async {
-    if (isGooseAgentDest(dest) || dest.startsWith('agent:') || dest.contains('/')) {
-      return _sendMessageError(dest);
-    }
-    try {
-      await ref.read(outboxProvider.notifier).sendText(dest, text);
-      return _ok({'client_id': 'test'});
-    } catch (e) {
-      return _err('$e');
-    }
-  }
 }

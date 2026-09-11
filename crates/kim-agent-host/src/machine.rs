@@ -11,6 +11,7 @@ use crate::events::HostEffect;
 use crate::ops::chat_guard::ChatGuardOp;
 use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
+use crate::ops::permission::PermissionOp;
 use crate::ops::system_prompt::SystemPromptOp;
 use crate::ops::unknown_tool::UnknownToolOp;
 use crate::profile::{AgentProfile, ModelSpec};
@@ -41,6 +42,10 @@ impl MachineFactory {
         }
         let chat_only = !profile.tools.has_any() && profile.extensions.is_empty();
         if !chat_only {
+            steps.push(Step::Operation(Arc::new(PermissionOp {
+                mode: profile.mode,
+                config: profile.permissions.clone(),
+            })));
             let kim = profile.tools.kim_world_names();
             if !kim.is_empty() {
                 steps.push(Step::Operation(Arc::new(
@@ -173,7 +178,25 @@ mod tests {
             ModelConfig::new("gpt-4o"),
             Path::new("/tmp"),
         );
-        // system + max_turns + tools + unknown + inference
-        assert_eq!(steps.len(), 5);
+        // system + max_turns + permission + tools + unknown + inference
+        assert_eq!(steps.len(), 6);
+    }
+
+    #[test]
+    fn kim_tools_include_permission_and_deferred() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            ..LegacyOpenOpts::default()
+        });
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+        );
+        // system + max_turns + permission + deferred + tools + unknown + inference
+        assert_eq!(steps.len(), 7);
     }
 }

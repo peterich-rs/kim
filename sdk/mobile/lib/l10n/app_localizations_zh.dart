@@ -513,6 +513,39 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentBashLater => '命令行（后续版本）';
 
   @override
+  String get agentAllow => '允许';
+
+  @override
+  String get agentAlwaysAllow => '总是允许';
+
+  @override
+  String get agentDeny => '拒绝';
+
+  @override
+  String get agentPermissions => '工具权限';
+
+  @override
+  String get agentPermissionAlways => '总是';
+
+  @override
+  String get agentPermissionAsk => '询问';
+
+  @override
+  String get agentPermissionNever => '禁止';
+
+  @override
+  String get agentToolSendMessage => '代发消息';
+
+  @override
+  String get agentToolClipboard => '剪贴板';
+
+  @override
+  String get agentToolSearchContacts => '搜索联系人';
+
+  @override
+  String get agentToolSearchMessages => '搜索消息';
+
+  @override
   String get agentMoreComing => '更多 Agent（即将推出）';
 
   @override

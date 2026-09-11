@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
 pub use machine::MachineFactory;
+pub use ops::permission::parse_permission;
 pub use profile::{
     builtin_templates, AgentProfile, ExtensionSpec, LegacyOpenOpts, ModelSpec, PermissionConfig,
     PermissionDefault, ProviderSpec, ResolvedProfile, SandboxMode, SandboxPolicy, ToolSet,
@@ -47,7 +48,9 @@ pub const DEFAULT_SYSTEM_PROMPT: &str =
     "You are 助手, a local desktop agent inside the KIM messenger. \
 You run on the user's machine (not a cloud bot). Reply in the user's language. \
 Be concise. You can see the current conversation because the host pasted it into this session. \
-Do not claim you have tools you were not given.";
+You have search_contacts, search_messages, get_conversation_context, list_profiles, \
+send_message, and read_clipboard. send_message and clipboard require user confirmation. \
+You do not have filesystem or shell access. Do not claim you have tools you were not given.";
 
 pub(crate) struct HostSession {
     pub id: String,
@@ -190,6 +193,9 @@ impl AgentHost {
                 .conversations
                 .get_mut(session_id)
                 .ok_or_else(|| HostError::UnknownSession(session_id.to_string()))?;
+            if !ops::permission::unanswered_confirmations(conversation).is_empty() {
+                return Err(HostError::UnknownToolCall(call_id.to_string()));
+            }
             let pending = kim_pending(conversation, &self.inner.profile.tools);
             if !pending.iter().any(|p| p.call_id == call_id) {
                 return Err(HostError::UnknownToolCall(call_id.to_string()));
@@ -210,12 +216,48 @@ impl AgentHost {
         self.run_loop(session_id, events, cancel).await
     }
 
+    pub async fn respond_permission(
+        &self,
+        session_id: &str,
+        call_id: &str,
+        permission: goose_provider_types::permission::Permission,
+        events: mpsc::Sender<HostEvent>,
+        cancel: CancellationToken,
+    ) -> Result<TurnOutcome, HostError> {
+        {
+            let mut store = self.inner.store.lock().await;
+            let conversation = store
+                .conversations
+                .get_mut(session_id)
+                .ok_or_else(|| HostError::UnknownSession(session_id.to_string()))?;
+            let pending = ops::permission::unanswered_confirmations(conversation);
+            if !pending.iter().any(|p| p.call_id == call_id) {
+                return Err(HostError::UnknownToolCall(call_id.to_string()));
+            }
+            conversation.push(ops::permission::confirmation_response_message(
+                call_id, permission,
+            ));
+        }
+        let remaining = self.pending_yields(session_id).await;
+        if let Some(first) = remaining
+            .iter()
+            .find(|p| p.kind == YieldKind::ActionRequired)
+        {
+            return Ok(TurnOutcome::Yielded {
+                kind: YieldKind::ActionRequired,
+                call_id: first.call_id.clone(),
+                name: first.name.clone(),
+            });
+        }
+        self.run_loop(session_id, events, cancel).await
+    }
+
     pub async fn pending_yields(&self, session_id: &str) -> Vec<PendingYield> {
         let store = self.inner.store.lock().await;
         store
             .conversations
             .get(session_id)
-            .map(|c| kim_pending(c, &self.inner.profile.tools))
+            .map(|c| session_pending(c, &self.inner.profile.tools))
             .unwrap_or_default()
     }
 
@@ -224,12 +266,24 @@ impl AgentHost {
         let Some(conversation) = store.conversations.get_mut(session_id) else {
             return;
         };
+        let confirmations = ops::permission::unanswered_confirmations(conversation);
         let pending = kim_pending(conversation, &self.inner.profile.tools);
-        if pending.is_empty() {
+        if confirmations.is_empty() && pending.is_empty() {
             return;
         }
         let mut message = Message::user();
-        for p in pending {
+        for p in &confirmations {
+            message =
+                message.with_content(MessageContent::action_required_tool_confirmation_response(
+                    p.call_id.clone(),
+                    goose_provider_types::permission::Permission::Cancel,
+                ));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for p in confirmations.into_iter().chain(pending) {
+            if !seen.insert(p.call_id.clone()) {
+                continue;
+            }
             message.add_tool_response_with_metadata(
                 p.call_id,
                 Ok(rmcp::model::CallToolResult::error(vec![
@@ -288,11 +342,16 @@ impl AgentHost {
 
         match outcome {
             Ok(session) => {
-                let pending = kim_pending(&session.conversation, &self.inner.profile.tools);
+                let pending = session_pending(&session.conversation, &self.inner.profile.tools);
                 if let Some(first) = pending.first() {
-                    tracing::info!(session_id, outcome = "yielded", "agent turn end");
+                    tracing::info!(
+                        session_id,
+                        outcome = "yielded",
+                        tool_name = %first.name,
+                        "agent turn end"
+                    );
                     Ok(TurnOutcome::Yielded {
-                        kind: YieldKind::ToolRequest,
+                        kind: first.kind,
                         call_id: first.call_id.clone(),
                         name: first.name.clone(),
                     })
@@ -490,6 +549,14 @@ fn is_kim_world_tool(name: &str) -> bool {
     )
 }
 
+fn session_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
+    let confirmations = ops::permission::unanswered_confirmations(conversation);
+    if !confirmations.is_empty() {
+        return confirmations;
+    }
+    kim_pending(conversation, tools)
+}
+
 fn kim_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
     let names = tools.kim_world_names();
     ops::unanswered_tool_requests(conversation)
@@ -509,6 +576,8 @@ fn kim_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield
                 call_id: req.id,
                 name: name.to_string(),
                 arguments_json,
+                kind: YieldKind::ToolRequest,
+                prompt: String::new(),
             })
         })
         .collect()
@@ -719,5 +788,116 @@ mod tests {
         let kickoff = goose_agent::operation::messages_since_kickoff(&conv).unwrap();
         assert_eq!(kickoff[0].as_concat_text(), "real question");
         assert!(kickoff[0].is_user_visible());
+    }
+
+    fn send_host(messages: Vec<Message>) -> AgentHost {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::new(messages)),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap()
+    }
+
+    fn send_call(id: &str, dest: &str, text: &str) -> Message {
+        let mut args = rmcp::model::JsonObject::new();
+        args.insert("dest".into(), serde_json::json!(dest));
+        args.insert("text".into(), serde_json::json!(text));
+        let mut call = rmcp::model::CallToolRequestParams::new("send_message");
+        call.arguments = Some(args);
+        Message::assistant().with_tool_request(id, Ok(call))
+    }
+
+    #[tokio::test]
+    async fn send_message_smart_approve_yields_action_required() {
+        let host = send_host(vec![send_call("c1", "bob", "hi")]);
+        let (tx, mut rx) = mpsc::channel(32);
+        let outcome = host
+            .prompt("s", "ping bob", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        match outcome {
+            TurnOutcome::Yielded {
+                kind: YieldKind::ActionRequired,
+                call_id,
+                name,
+            } => {
+                assert_eq!(call_id, "c1");
+                assert_eq!(name, "send_message");
+            }
+            other => panic!("expected action required, got {other:?}"),
+        }
+        while let Ok(ev) = rx.try_recv() {
+            assert!(!matches!(ev, HostEvent::ActionRequired { .. }));
+            assert!(!matches!(ev, HostEvent::ToolRequest { .. }));
+        }
+        let pending = host.pending_yields("s").await;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].kind, YieldKind::ActionRequired);
+    }
+
+    #[tokio::test]
+    async fn allow_once_then_deferred_kim_yields() {
+        let host = send_host(vec![send_call("c1", "bob", "hi")]);
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt("s", "ping bob", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        let (tx2, _rx2) = mpsc::channel(32);
+        let mid = host
+            .respond_permission(
+                "s",
+                "c1",
+                goose_provider_types::permission::Permission::AllowOnce,
+                tx2,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        match mid {
+            TurnOutcome::Yielded {
+                kind: YieldKind::ToolRequest,
+                call_id,
+                name,
+            } => {
+                assert_eq!(call_id, "c1");
+                assert_eq!(name, "send_message");
+            }
+            other => panic!("expected tool yield, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn deny_finishes_with_user_rejected() {
+        let host = send_host(vec![send_call("c1", "bob", "hi")]);
+        let (tx, _rx) = mpsc::channel(32);
+        host.prompt("s", "ping bob", tx, CancellationToken::new())
+            .await
+            .unwrap();
+        let (tx2, _rx2) = mpsc::channel(32);
+        let done = host
+            .respond_permission(
+                "s",
+                "c1",
+                goose_provider_types::permission::Permission::DenyOnce,
+                tx2,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(done, TurnOutcome::Finished { .. }));
+        let conv = host.conversation_for_test("s").await;
+        let dump = format!("{conv:?}");
+        assert!(
+            dump.contains("user-rejected"),
+            "conversation should record the rejection: {dump}"
+        );
     }
 }

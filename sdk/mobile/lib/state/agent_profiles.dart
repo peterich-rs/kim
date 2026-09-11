@@ -62,6 +62,31 @@ class AgentToolSet {
       bash: b('bash'),
     );
   }
+
+  AgentToolSet copyWith({
+    bool? sendMessage,
+    bool? searchContacts,
+    bool? searchMessages,
+    bool? getConversationContext,
+    bool? readClipboard,
+    bool? listProfiles,
+    bool? fs,
+    bool? fsWrite,
+    bool? bash,
+  }) {
+    return AgentToolSet(
+      sendMessage: sendMessage ?? this.sendMessage,
+      searchContacts: searchContacts ?? this.searchContacts,
+      searchMessages: searchMessages ?? this.searchMessages,
+      getConversationContext:
+          getConversationContext ?? this.getConversationContext,
+      readClipboard: readClipboard ?? this.readClipboard,
+      listProfiles: listProfiles ?? this.listProfiles,
+      fs: fs ?? this.fs,
+      fsWrite: fsWrite ?? this.fsWrite,
+      bash: bash ?? this.bash,
+    );
+  }
 }
 
 class AgentProfile {
@@ -109,6 +134,7 @@ class AgentProfile {
     int? maxTurns,
     String? thinkingEffort,
     AgentToolSet? tools,
+    Map<String, String>? permissionOverrides,
     bool? enabled,
   }) {
     return AgentProfile(
@@ -124,7 +150,7 @@ class AgentProfile {
       maxTurns: maxTurns ?? this.maxTurns,
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
       tools: tools ?? this.tools,
-      permissionOverrides: permissionOverrides,
+      permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       enabled: enabled ?? this.enabled,
     );
   }
@@ -208,9 +234,11 @@ class AgentProfile {
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,
       tools: const AgentToolSet(
+        sendMessage: true,
         searchContacts: true,
         searchMessages: true,
         getConversationContext: true,
+        readClipboard: true,
         listProfiles: true,
       ),
     );
@@ -270,6 +298,18 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
       profiles = [
         AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider)),
+      ];
+    } else {
+      profiles = [
+        for (final p in profiles)
+          if (p.id == kGooseAgentId &&
+              !p.tools.sendMessage &&
+              !p.tools.readClipboard)
+            p.copyWith(
+              tools: p.tools.copyWith(sendMessage: true, readClipboard: true),
+            )
+          else
+            p,
       ];
     }
     state = profiles;

@@ -522,6 +522,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentBashLater => 'Shell (later)';
 
   @override
+  String get agentAllow => 'Allow';
+
+  @override
+  String get agentAlwaysAllow => 'Always';
+
+  @override
+  String get agentDeny => 'Deny';
+
+  @override
+  String get agentPermissions => 'Tool permissions';
+
+  @override
+  String get agentPermissionAlways => 'Always';
+
+  @override
+  String get agentPermissionAsk => 'Ask';
+
+  @override
+  String get agentPermissionNever => 'Never';
+
+  @override
+  String get agentToolSendMessage => 'Send message';
+
+  @override
+  String get agentToolClipboard => 'Clipboard';
+
+  @override
+  String get agentToolSearchContacts => 'Search contacts';
+
+  @override
+  String get agentToolSearchMessages => 'Search messages';
+
+  @override
   String get agentMoreComing => 'More agents coming soon';
 
   @override

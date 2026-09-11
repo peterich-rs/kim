@@ -3,21 +3,25 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
+import '../copy.dart';
 import '../models/models.dart';
+import '../state/chat_agent.dart';
 import '../theme/kim_theme.dart';
 
-class AgentActionBubble extends StatelessWidget {
+class AgentActionBubble extends ConsumerWidget {
   const AgentActionBubble({super.key, required this.message});
 
   final KimChatMsg message;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final card = AgentToolCard.parse(message.body);
     final pending = card.state == 'pending' || card.state == 'running';
+    final confirmation = card.isConfirmation;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: DecoratedBox(
@@ -33,7 +37,7 @@ class AgentActionBubble extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (pending)
+                  if (pending && !confirmation)
                     const SizedBox(
                       width: 14,
                       height: 14,
@@ -41,9 +45,15 @@ class AgentActionBubble extends StatelessWidget {
                     )
                   else
                     Icon(
-                      card.ok ? Icons.check_circle_outline : Icons.error_outline,
+                      confirmation
+                          ? Icons.shield_outlined
+                          : (card.ok
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline),
                       size: 16,
-                      color: card.ok ? scheme.primary : scheme.error,
+                      color: confirmation
+                          ? scheme.primary
+                          : (card.ok ? scheme.primary : scheme.error),
                     ),
                   const Gap(8),
                   Expanded(
@@ -65,6 +75,52 @@ class AgentActionBubble extends StatelessWidget {
                   ),
                 ),
               ],
+              if (confirmation) ...[
+                const Gap(10),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: pending
+                          ? () => ref
+                                .read(chatAgentProvider)
+                                .respondPermission(
+                                  dest: message.dest,
+                                  callId: card.callId,
+                                  permission: 'allow_once',
+                                  toolName: card.name,
+                                )
+                          : null,
+                      child: Text(Copy.agentAllow),
+                    ),
+                    TextButton(
+                      onPressed: pending
+                          ? () => ref
+                                .read(chatAgentProvider)
+                                .respondPermission(
+                                  dest: message.dest,
+                                  callId: card.callId,
+                                  permission: 'always_allow',
+                                  toolName: card.name,
+                                )
+                          : null,
+                      child: Text(Copy.agentAlwaysAllow),
+                    ),
+                    TextButton(
+                      onPressed: pending
+                          ? () => ref
+                                .read(chatAgentProvider)
+                                .respondPermission(
+                                  dest: message.dest,
+                                  callId: card.callId,
+                                  permission: 'deny_once',
+                                  toolName: card.name,
+                                )
+                          : null,
+                      child: Text(Copy.agentDeny),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -80,6 +136,7 @@ class AgentToolCard {
     required this.state,
     required this.preview,
     required this.ok,
+    this.type = 'tool',
   });
 
   final String callId;
@@ -87,6 +144,9 @@ class AgentToolCard {
   final String state;
   final String preview;
   final bool ok;
+  final String type;
+
+  bool get isConfirmation => type == 'action_required';
 
   factory AgentToolCard.parse(String body) {
     try {
@@ -99,6 +159,7 @@ class AgentToolCard {
           state: state,
           preview: '${raw['preview'] ?? ''}',
           ok: raw['ok'] == true || state == 'ok',
+          type: '${raw['type'] ?? 'tool'}',
         );
       }
     } catch (_) {}
@@ -114,7 +175,7 @@ class AgentToolCard {
   String encode() {
     return jsonEncode({
       'v': 1,
-      'type': 'tool',
+      'type': type,
       'call_id': callId,
       'name': name,
       'state': state,
