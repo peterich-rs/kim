@@ -4,6 +4,7 @@
 //! assembles Goose's unrolled loop (`goose-agent`) with `goose-providers`
 //! (OpenAI Completions/Responses and Anthropic Messages).
 
+mod catalog;
 mod events;
 mod machine;
 mod ops;
@@ -26,6 +27,10 @@ use goose_provider_types::model::ModelConfig;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
+pub use catalog::{
+    catalog_surface_json, catalog_validate, catalog_vendors_json, normalize_vendor_id,
+    ReasoningChoice, ReasoningSurface, VendorSummary,
+};
 pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
 pub use machine::MachineFactory;
 pub use ops::permission::parse_permission;

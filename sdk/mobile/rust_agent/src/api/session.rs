@@ -280,8 +280,8 @@ pub fn session_open(
     } else {
         sqlite_path
     };
-    let host = AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?)
-        .map_err(map_host_err)?;
+    let host =
+        AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?).map_err(map_host_err)?;
     rt().block_on(async {
         host.configure_persist(disk, opts.resume_on_open).await;
         host.connect_extensions().await
@@ -328,7 +328,11 @@ impl AgentSession {
         self.start_prompt(text, None)
     }
 
-    pub fn prompt_with_context(&self, text: String, context_json: String) -> Result<String, String> {
+    pub fn prompt_with_context(
+        &self,
+        text: String,
+        context_json: String,
+    ) -> Result<String, String> {
         self.start_prompt(text, Some(context_json))
     }
 
@@ -350,13 +354,7 @@ impl AgentSession {
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
             let host = inner.host.read().await;
             let result = host
-                .prompt_with_context(
-                    &inner.session_id,
-                    &text,
-                    context.as_deref(),
-                    tx,
-                    cancel,
-                )
+                .prompt_with_context(&inner.session_id, &text, context.as_deref(), tx, cancel)
                 .await;
             drop(host);
             let _ = pump.await;
@@ -426,7 +424,11 @@ impl AgentSession {
             .map_err(|_| "complete_tool start timeout".to_string())?
     }
 
-    pub fn respond_permission(&self, call_id: String, permission: String) -> Result<String, String> {
+    pub fn respond_permission(
+        &self,
+        call_id: String,
+        permission: String,
+    ) -> Result<String, String> {
         let parsed = parse_permission(&permission)?;
         {
             let phase = self
@@ -689,12 +691,9 @@ async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, Hos
                         p.arguments_json,
                         p.prompt,
                     ),
-                    YieldKind::ToolRequest => AgentUiEvent::tool_request(
-                        op.clone(),
-                        p.call_id,
-                        p.name,
-                        p.arguments_json,
-                    ),
+                    YieldKind::ToolRequest => {
+                        AgentUiEvent::tool_request(op.clone(), p.call_id, p.name, p.arguments_json)
+                    }
                 };
                 let _ = inner.events.send(ev.clone());
                 replayed.push(ev);
@@ -716,7 +715,9 @@ async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, Hos
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
             }
-            let _ = inner.events.send(AgentUiEvent::failed(op, map_host_err(err)));
+            let _ = inner
+                .events
+                .send(AgentUiEvent::failed(op, map_host_err(err)));
         }
     }
 }
@@ -754,6 +755,18 @@ pub fn list_bundled_providers() -> Result<Vec<String>, String> {
             .to_string()
         })
         .collect())
+}
+
+pub fn catalog_vendors() -> Result<String, String> {
+    kim_agent_host::catalog_vendors_json().map_err(map_host_err)
+}
+
+pub fn catalog_surface(vendor: String, model: String) -> Result<String, String> {
+    kim_agent_host::catalog_surface_json(&vendor, &model).map_err(map_host_err)
+}
+
+pub fn catalog_validate(vendor: String, model: String, choice_json: String) -> Result<(), String> {
+    kim_agent_host::catalog_validate(&vendor, &model, &choice_json).map_err(map_host_err)
 }
 
 fn map_host_err(err: HostError) -> String {
