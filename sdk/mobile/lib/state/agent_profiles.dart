@@ -20,6 +20,37 @@ const _kGooseKey = 'agent.api_key.goose';
 const _kMulti = 'agent.multi_profile';
 const _kServerIdentity = 'agent.server_identity';
 
+/// Aligns with Chat `BOT_MAX_PER_OWNER`.
+const kMaxBotsPerOwner = 20;
+
+class AgentProfileCapExceeded implements Exception {
+  @override
+  String toString() => Copy.agentCapReached;
+}
+
+/// Profiles that have or will have a cloud bot when [serverIdentity] is on,
+/// including disabled rows.
+int cloudIdentitySlots(
+  Iterable<AgentProfile> profiles, {
+  required bool serverIdentity,
+}) {
+  var n = 0;
+  for (final p in profiles) {
+    if (p.serverAccount.isNotEmpty || serverIdentity) {
+      n++;
+    }
+  }
+  return n;
+}
+
+bool isBotAlreadyGone(Object err) {
+  final msg = err.toString().toLowerCase();
+  return msg.contains('status 108') ||
+      msg.contains('not_owner') ||
+      msg.contains('not owner') ||
+      msg.contains(Copy.userNotFound.toLowerCase());
+}
+
 String agentRegisterError(Object err) {
   final msg = err.toString();
   if (msg.contains('status 2')) {
@@ -512,6 +543,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     final isNew = !state.any((p) => p.id == next.id);
     if (isNew) {
+      _assertCanInsert();
       await _persist([...state, next]);
       await ensureBotIdentity(next);
     } else {
@@ -553,8 +585,14 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     return next;
   }
 
-  /// Register enabled desktop personas. Idempotent. Desktop-online seam so
-  /// mobile can see the bot without opening each 1:1 first.
+  void _assertCanInsert() {
+    if (cloudIdentitySlots(state, serverIdentity: serverIdentity) >=
+        kMaxBotsPerOwner) {
+      throw AgentProfileCapExceeded();
+    }
+  }
+
+  /// Explicit user action (`setServerIdentity(true)`), not login / online.
   Future<void> ensureVisibleIdentities() async {
     await ensureLoaded();
     if (!serverIdentity || !ref.read(authProvider).signedIn) {
@@ -591,7 +629,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
-    multiProfile = prefs.getBool(_kMulti) ?? false;
+    multiProfile = prefs.getBool(_kMulti) ?? agentHostSupported;
     serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
     final raw = prefs.getString(_kProfiles);
     var profiles = <AgentProfile>[];
@@ -738,6 +776,51 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     state = next;
   }
 
+  Future<void> saveEditor(
+    AgentProfile profile, {
+    required String apiKey,
+  }) async {
+    if (profile.id == kGooseAgentId) {
+      await saveGoose(profile, apiKey: apiKey);
+      return;
+    }
+    await ensureLoaded();
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    var accountId = profile.accountId;
+    if (accountId.isEmpty) {
+      final created = ProviderAccount.fromLegacyProfile(
+        profileId: profile.id,
+        providerKind: profile.providerKind,
+        baseUrl: profile.baseUrl,
+        keyRef: profile.keyRef,
+      );
+      await accounts.upsert(created);
+      accountId = created.id;
+    }
+    var account = accounts.byId(accountId);
+    if (account == null) {
+      throw MissingProviderAccount(accountId);
+    }
+    final vendorId = canonicalizeVendorId(profile.providerKind);
+    account = account.copyWith(vendorId: vendorId, baseUrl: profile.baseUrl);
+    await accounts.upsert(account);
+    try {
+      if (apiKey.isEmpty) {
+        await _secure.delete(key: account.keyRef);
+      } else {
+        await _secure.write(key: account.keyRef, value: apiKey);
+      }
+    } catch (_) {}
+    await saveProfile(
+      profile.copyWith(
+        accountId: account.id,
+        providerKind: vendorId,
+        baseUrl: profile.baseUrl,
+      ),
+    );
+  }
+
   Future<void> _persist(List<AgentProfile> next) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -767,6 +850,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> duplicate(AgentProfile source) async {
     await ensureLoaded();
+    _assertCanInsert();
     final accounts = ref.read(providerAccountsProvider.notifier);
     await accounts.ensureLoaded();
     var accountId = source.accountId;
@@ -809,6 +893,27 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await ensureLoaded();
     if (id == kGooseAgentId) {
       return;
+    }
+    AgentProfile? profile;
+    for (final p in state) {
+      if (p.id == id) {
+        profile = p;
+        break;
+      }
+    }
+    if (profile == null) {
+      return;
+    }
+    if (profile.serverAccount.isNotEmpty) {
+      try {
+        await ref.read(clientPortProvider).botDelete(profile.serverAccount);
+      } catch (err) {
+        if (!isBotAlreadyGone(err)) {
+          identityError = agentRegisterError(err);
+          state = [...state];
+          rethrow;
+        }
+      }
     }
     await _persist([
       for (final p in state)

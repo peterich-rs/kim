@@ -910,6 +910,120 @@ void main() {
       throwsA(isA<MissingProviderAccount>()),
     );
   });
+
+  Future<void> addProfile(AgentProfileStore store, String id) {
+    return store.saveProfile(
+      AgentProfile(
+        id: id,
+        displayName: id,
+        providerKind: 'openai',
+        baseUrl: '',
+        model: 'gpt-4o',
+        keyRef: 'agent.api_key.$id',
+        systemPrompt: '',
+      ),
+    );
+  }
+
+  test('new profile immediately botCreate; goose is not deletable', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    await addProfile(store, 'coder');
+    expect(env.fake.botCreates, 1);
+    expect(env.fake.lastBotCreateId, 'coder');
+    await store.delete(kGooseAgentId);
+    expect(store.goose, isNotNull);
+    expect(env.fake.botDeletes, 0);
+  });
+
+  test(
+    'delete registered calls botDelete and 108 still clears local',
+    () async {
+      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.setServerIdentity(true);
+      await addProfile(store, 'translator');
+      expect(
+        env.container
+            .read(agentProfilesProvider)
+            .any((p) => p.id == 'translator'),
+        isTrue,
+      );
+      env.fake.botDeletes = 0;
+      await store.delete('translator');
+      expect(env.fake.botDeletes, 1);
+      expect(env.fake.lastBotDeleteDest, 'b_translator');
+      expect(
+        env.container
+            .read(agentProfilesProvider)
+            .any((p) => p.id == 'translator'),
+        isFalse,
+      );
+
+      await addProfile(store, 'gone');
+      env.fake.botDeleteError = StateError('status 108');
+      await store.delete('gone');
+      expect(
+        env.container.read(agentProfilesProvider).any((p) => p.id == 'gone'),
+        isFalse,
+      );
+
+      env.fake.botDeleteError = null;
+      await addProfile(store, 'keep');
+      env.fake.botDeleteError = StateError('status 2');
+      await expectLater(store.delete('keep'), throwsA(isA<Object>()));
+      expect(store.identityError, isNotEmpty);
+      expect(
+        env.container.read(agentProfilesProvider).any((p) => p.id == 'keep'),
+        isTrue,
+      );
+    },
+  );
+
+  test('disabled profiles count toward the 20-cap', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    for (var i = 0; i < 18; i++) {
+      await addProfile(store, 'p$i');
+    }
+    await addProfile(store, 'disabled');
+    await store.setEnabled('disabled', false);
+    expect(
+      cloudIdentitySlots(
+        env.container.read(agentProfilesProvider),
+        serverIdentity: true,
+      ),
+      kMaxBotsPerOwner,
+    );
+    expect(
+      addProfile(store, 'overflow'),
+      throwsA(isA<AgentProfileCapExceeded>()),
+    );
+    expect(
+      env.container.read(agentProfilesProvider).any((p) => p.id == 'overflow'),
+      isFalse,
+    );
+  });
+
+  test('login/online does not batch-ensure bot identities', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    store.serverIdentity = true;
+    env.fake.botCreates = 0;
+    env.container.read(linkProvider);
+    await _until(
+      () => env.container.read(linkProvider).status == ConnStatus.online,
+    );
+    expect(env.fake.botCreates, 0);
+    expect(store.goose!.serverAccount, isEmpty);
+  });
 }
 
 AgentUiEvent _finished(String message) => AgentUiEvent(

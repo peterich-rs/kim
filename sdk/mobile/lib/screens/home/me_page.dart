@@ -142,7 +142,7 @@ class MePage extends ConsumerWidget {
                           LucideIcons.chevronRight,
                           size: 18,
                         ),
-                        onTap: () => context.push('/agent/settings'),
+                        onTap: () => context.push('/agent'),
                       ),
                       const Divider(indent: 56),
                     ],

@@ -17,14 +17,22 @@ import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 import 'reasoning_controls.dart';
 
-class AgentSettingsPage extends ConsumerStatefulWidget {
-  const AgentSettingsPage({super.key});
+class AgentEditorPage extends ConsumerStatefulWidget {
+  const AgentEditorPage({super.key, this.profileId = kGooseAgentId});
+
+  final String profileId;
 
   @override
-  ConsumerState<AgentSettingsPage> createState() => _AgentSettingsPageState();
+  ConsumerState<AgentEditorPage> createState() => _AgentEditorPageState();
 }
 
-class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
+class AgentSettingsPage extends AgentEditorPage {
+  const AgentSettingsPage({super.key}) : super(profileId: kGooseAgentId);
+}
+
+class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
+  late final TextEditingController _displayName;
+  late final TextEditingController _aliases;
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
@@ -44,6 +52,8 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   @override
   void initState() {
     super.initState();
+    _displayName = TextEditingController();
+    _aliases = TextEditingController();
     _baseUrl = TextEditingController();
     _model = TextEditingController();
     _apiKey = TextEditingController();
@@ -55,12 +65,24 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
 
   @override
   void dispose() {
+    _displayName.dispose();
+    _aliases.dispose();
     _baseUrl.dispose();
     _model.dispose();
     _apiKey.dispose();
     _mcp.dispose();
     _advanced.dispose();
     super.dispose();
+  }
+
+  AgentProfile? get _profile {
+    final id = widget.profileId;
+    for (final p in ref.read(agentProfilesProvider)) {
+      if (p.id == id) {
+        return p;
+      }
+    }
+    return ref.read(agentProfilesProvider.notifier).goose;
   }
 
   VendorSummaryDto? get _vendor {
@@ -111,49 +133,70 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
 
   void _hydrate(AgentSettings s) {
     if (!_loaded) {
-      _apply(s);
+      unawaited(_applyFromStore(s));
       _loaded = true;
-      unawaited(_reloadSurface(toastDropped: false));
       return;
     }
-    if (_apiKey.text.isEmpty && s.apiKey.isNotEmpty) {
-      _apply(s);
+    if (_apiKey.text.isEmpty &&
+        s.apiKey.isNotEmpty &&
+        widget.profileId == kGooseAgentId) {
+      _apiKey.text = s.apiKey;
     }
   }
 
-  void _apply(AgentSettings s) {
-    _backend = s.llmBackend.isEmpty ? 'openai' : s.llmBackend;
-    _baseUrl.text = s.baseUrl;
-    _model.text = s.model;
-    _apiKey.text = s.apiKey;
-    _fs = s.enableFsTools;
-    _bash = s.bashEnabled;
-    final goose = ref.read(agentProfilesProvider.notifier).goose;
-    if (goose != null) {
-      _permissions = Map<String, String>.from(goose.permissionOverrides);
-      _mcp.text = [
-        for (final e in goose.extensions)
-          if (e.name.isNotEmpty && e.command.isNotEmpty)
-            '${e.name} ${e.command.join(' ')}',
-      ].join('\n');
-      if (goose.accountId.isNotEmpty) {
-        _backend = goose.providerKind.isEmpty ? _backend : goose.providerKind;
-        if (goose.baseUrl.isNotEmpty) {
-          _baseUrl.text = goose.baseUrl;
-        }
-        if (goose.model.isNotEmpty) {
-          _model.text = goose.model;
-        }
-      }
-      _choice =
-          goose.reasoning ??
-          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
-          const ReasoningChoice(kind: 'none');
-    } else {
-      _choice =
-          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
-          const ReasoningChoice(kind: 'none');
+  Future<void> _applyFromStore(AgentSettings s) async {
+    await ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    if (!mounted) {
+      return;
     }
+    final profile = _profile;
+    if (profile == null) {
+      _backend = s.llmBackend.isEmpty ? 'openai' : s.llmBackend;
+      _baseUrl.text = s.baseUrl;
+      _model.text = s.model;
+      _apiKey.text = s.apiKey;
+      _displayName.text = kGooseAgentName;
+      _fs = s.enableFsTools;
+      _bash = s.bashEnabled;
+      _choice =
+          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
+          const ReasoningChoice(kind: 'none');
+      await _reloadSurface(toastDropped: false);
+      return;
+    }
+    _displayName.text = profile.displayName;
+    _aliases.text = profile.aliases.join(', ');
+    _backend = profile.providerKind.isEmpty ? 'openai' : profile.providerKind;
+    _baseUrl.text = profile.baseUrl.isNotEmpty ? profile.baseUrl : s.baseUrl;
+    _model.text = profile.model.isNotEmpty ? profile.model : s.model;
+    _fs = profile.tools.fs;
+    _bash = profile.tools.bash;
+    _permissions = Map<String, String>.from(profile.permissionOverrides);
+    _mcp.text = [
+      for (final e in profile.extensions)
+        if (e.name.isNotEmpty && e.command.isNotEmpty)
+          '${e.name} ${e.command.join(' ')}',
+    ].join('\n');
+    _choice =
+        profile.reasoning ??
+        ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
+        const ReasoningChoice(kind: 'none');
+    try {
+      final key = await ref
+          .read(agentProfilesProvider.notifier)
+          .readApiKey(profile);
+      if (mounted && key.isNotEmpty) {
+        _apiKey.text = key;
+      }
+    } catch (_) {
+      if (widget.profileId == kGooseAgentId && s.apiKey.isNotEmpty) {
+        _apiKey.text = s.apiKey;
+      }
+    }
+    if (mounted) {
+      setState(() {});
+    }
+    await _reloadSurface(toastDropped: false);
   }
 
   Future<void> _reloadSurface({required bool toastDropped}) async {
@@ -231,7 +274,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           apiKey: _apiKey.text.trim(),
           enableFsTools: false,
           bashEnabled: false,
-          profileId: 'goose',
+          profileId: widget.profileId,
           profileJson: '',
           thinkingEffort: _choice.value ?? '',
           gooseMode: '',
@@ -324,14 +367,23 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     }
     await ref.read(agentProfilesProvider.notifier).ensureLoaded();
     final existing =
-        ref.read(agentProfilesProvider.notifier).goose ??
+        _profile ??
         AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider));
     final model = _model.text.trim().isEmpty
         ? (_vendor?.defaultModel.isNotEmpty == true
               ? _vendor!.defaultModel
               : 'gpt-4o')
         : _model.text.trim();
-    final goose = existing.copyWith(
+    final aliases = [
+      for (final part in _aliases.text.split(RegExp(r'[,，\s]+')))
+        if (part.trim().isNotEmpty) part.trim(),
+    ];
+    final name = _displayName.text.trim().isEmpty
+        ? existing.displayName
+        : _displayName.text.trim();
+    final next = existing.copyWith(
+      displayName: name,
+      aliases: aliases,
       providerKind: _backend,
       baseUrl: _baseUrl.text.trim(),
       model: model,
@@ -353,7 +405,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     );
     await ref
         .read(agentProfilesProvider.notifier)
-        .saveGoose(goose, apiKey: _apiKey.text.trim());
+        .saveEditor(next, apiKey: _apiKey.text.trim());
     if (!mounted) {
       return;
     }
@@ -411,11 +463,42 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          KimSliverHeader(title: Copy.agentSettings),
+          KimSliverHeader(
+            title: _displayName.text.isEmpty
+                ? Copy.agentSettings
+                : _displayName.text,
+          ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverList.list(
               children: [
+                KimGroupCard(
+                  children: [
+                    ListTile(
+                      title: Text(l10n.agentDisplayName),
+                      subtitle: TextField(
+                        controller: _displayName,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          hintText: kGooseAgentName,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      title: Text(l10n.agentAliases),
+                      subtitle: TextField(
+                        controller: _aliases,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          hintText: l10n.agentAliasesHint,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(18),
                 Text(
                   Copy.agentMode,
                   style: theme.textTheme.labelLarge?.copyWith(
@@ -676,106 +759,6 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
-                ),
-                const Gap(8),
-                Text(
-                  l10n.agentMoreComing,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const Gap(18),
-                KimGroupCard(
-                  children: [
-                    SwitchListTile(
-                      title: Text(l10n.agentServerIdentity),
-                      subtitle: Text(() {
-                        final store = ref.watch(agentProfilesProvider.notifier);
-                        ref.watch(agentProfilesProvider);
-                        if (store.identityError != null) {
-                          return store.identityError!;
-                        }
-                        final acc = store.goose?.serverAccount ?? '';
-                        if (acc.isNotEmpty) {
-                          return acc;
-                        }
-                        return l10n.agentServerIdentityHint;
-                      }()),
-                      value: ref
-                          .watch(agentProfilesProvider.notifier)
-                          .serverIdentity,
-                      onChanged: (next) => unawaited(
-                        ref
-                            .read(agentProfilesProvider.notifier)
-                            .setServerIdentity(next),
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      title: Text(l10n.agentMultiProfile),
-                      value: ref
-                          .watch(agentProfilesProvider.notifier)
-                          .multiProfile,
-                      onChanged: (next) => unawaited(
-                        ref
-                            .read(agentProfilesProvider.notifier)
-                            .setMultiProfile(next),
-                      ),
-                    ),
-                  ],
-                ),
-                const Gap(8),
-                KimGroupCard(
-                  children: [
-                    for (final profile in ref.watch(agentProfilesProvider)) ...[
-                      if (profile != ref.watch(agentProfilesProvider).first)
-                        const Divider(height: 1),
-                      ListTile(
-                        title: Text(profile.displayName),
-                        subtitle: Text(
-                          profile.serverAccount.isEmpty
-                              ? profile.id
-                              : '${profile.id} · ${profile.serverAccount}',
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (profile.id != kGooseAgentId)
-                              Switch(
-                                value: profile.enabled,
-                                onChanged: (next) => unawaited(
-                                  ref
-                                      .read(agentProfilesProvider.notifier)
-                                      .setEnabled(profile.id, next),
-                                ),
-                              ),
-                            IconButton(
-                              tooltip: l10n.agentDuplicate,
-                              onPressed: () => unawaited(
-                                ref
-                                    .read(agentProfilesProvider.notifier)
-                                    .duplicate(profile),
-                              ),
-                              icon: const Icon(Icons.copy, size: 18),
-                            ),
-                            if (profile.id != kGooseAgentId)
-                              IconButton(
-                                tooltip: l10n.agentDelete,
-                                onPressed: () => unawaited(
-                                  ref
-                                      .read(agentProfilesProvider.notifier)
-                                      .delete(profile.id),
-                                ),
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
                 const Gap(20),
                 FilledButton(onPressed: _save, child: Text(Copy.save)),

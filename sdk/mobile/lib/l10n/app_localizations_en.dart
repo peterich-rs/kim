@@ -623,6 +623,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentDelete => 'Delete';
 
   @override
+  String get agentListTitle => 'Agents';
+
+  @override
+  String get agentAccounts => 'Provider accounts';
+
+  @override
+  String get agentDisplayName => 'Name';
+
+  @override
+  String get agentAliases => 'Aliases';
+
+  @override
+  String get agentAliasesHint => 'Comma separated';
+
+  @override
+  String get agentCapReached => 'At most 20 registered assistants';
+
+  @override
+  String get agentAccountInUse => 'Agents still use this account';
+
+  @override
+  String get agentAddAccount => 'Add account';
+
+  @override
   String get agentNeedsEnv => 'desktop / needs env';
 
   @override

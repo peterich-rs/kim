@@ -611,6 +611,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentDelete => '删除';
 
   @override
+  String get agentListTitle => 'Agent';
+
+  @override
+  String get agentAccounts => '厂商账号';
+
+  @override
+  String get agentDisplayName => '名称';
+
+  @override
+  String get agentAliases => '别名';
+
+  @override
+  String get agentAliasesHint => '逗号分隔';
+
+  @override
+  String get agentCapReached => '最多 20 个已注册助手';
+
+  @override
+  String get agentAccountInUse => '仍有 Agent 使用此账号';
+
+  @override
+  String get agentAddAccount => '添加账号';
+
+  @override
   String get agentNeedsEnv => '桌面/需环境变量';
 
   @override

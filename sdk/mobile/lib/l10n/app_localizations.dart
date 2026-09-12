@@ -1292,6 +1292,54 @@ abstract class AppLocalizations {
   /// **'删除'**
   String get agentDelete;
 
+  /// No description provided for @agentListTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'Agent'**
+  String get agentListTitle;
+
+  /// No description provided for @agentAccounts.
+  ///
+  /// In zh, this message translates to:
+  /// **'厂商账号'**
+  String get agentAccounts;
+
+  /// No description provided for @agentDisplayName.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称'**
+  String get agentDisplayName;
+
+  /// No description provided for @agentAliases.
+  ///
+  /// In zh, this message translates to:
+  /// **'别名'**
+  String get agentAliases;
+
+  /// No description provided for @agentAliasesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'逗号分隔'**
+  String get agentAliasesHint;
+
+  /// No description provided for @agentCapReached.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多 20 个已注册助手'**
+  String get agentCapReached;
+
+  /// No description provided for @agentAccountInUse.
+  ///
+  /// In zh, this message translates to:
+  /// **'仍有 Agent 使用此账号'**
+  String get agentAccountInUse;
+
+  /// No description provided for @agentAddAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加账号'**
+  String get agentAddAccount;
+
   /// No description provided for @agentNeedsEnv.
   ///
   /// In zh, this message translates to:
