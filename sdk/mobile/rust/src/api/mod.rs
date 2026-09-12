@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod client;
 pub mod simple;
+pub mod types;
 
 use std::sync::OnceLock;
 

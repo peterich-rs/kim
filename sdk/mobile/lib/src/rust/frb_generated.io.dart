@@ -6,6 +6,7 @@
 import 'api/auth.dart';
 import 'api/client.dart';
 import 'api/simple.dart';
+import 'api/types.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -76,6 +77,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SessionUpdateDto> dco_decode_StreamSink_session_update_dto_Sse(
+    dynamic raw,
+  );
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -131,6 +141,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  SessionUpdateDto dco_decode_session_update_dto(dynamic raw);
+
+  @protected
+  TimelineUpdateDto dco_decode_timeline_update_dto(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -190,6 +209,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustStreamSink<KimSessionEvent> sse_decode_StreamSink_kim_session_event_Sse(
     SseDeserializer deserializer,
   );
+
+  @protected
+  RustStreamSink<SessionUpdateDto> sse_decode_StreamSink_session_update_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer);
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -263,6 +291,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer);
+
+  @protected
+  TimelineUpdateDto sse_decode_timeline_update_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
@@ -328,6 +367,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_kim_session_event_Sse(
     RustStreamSink<KimSessionEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_session_update_dto_Sse(
+    RustStreamSink<SessionUpdateDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_timeline_update_dto_Sse(
+    RustStreamSink<TimelineUpdateDto> self,
     SseSerializer serializer,
   );
 
@@ -418,6 +469,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_session_update_dto(
+    SessionUpdateDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_timeline_update_dto(
+    TimelineUpdateDto self,
     SseSerializer serializer,
   );
 

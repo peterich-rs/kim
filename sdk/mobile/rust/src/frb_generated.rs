@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1641521222;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1253638466;
 
 // Section: executor
 
@@ -2074,6 +2074,114 @@ fn wire__crate__api__client__KimSdkHandle_update_profile_impl(
         },
     )
 }
+fn wire__crate__api__client__KimSdkHandle_watch_session_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimSdkHandle_watch_session",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::api::types::SessionUpdateDto,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok =
+                    crate::api::client::KimSdkHandle::watch_session(&*api_that_guard, api_sink)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__client__KimSdkHandle_watch_timeline_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimSdkHandle_watch_timeline",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_dest = <String>::sse_decode(&mut deserializer);
+            let api_limit = <i32>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::api::types::TimelineUpdateDto,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = crate::api::client::KimSdkHandle::watch_timeline(
+                    &*api_that_guard,
+                    api_dest,
+                    api_limit,
+                    api_sink,
+                )?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__simple__greet_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2229,6 +2337,32 @@ impl SseDecode
 impl SseDecode
     for StreamSink<
         crate::api::client::KimSessionEvent,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<
+        crate::api::types::SessionUpdateDto,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<
+        crate::api::types::TimelineUpdateDto,
         flutter_rust_bridge::for_generated::SseCodec,
     >
 {
@@ -2518,6 +2652,71 @@ impl SseDecode for Vec<u8> {
     }
 }
 
+impl SseDecode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for crate::api::types::SessionUpdateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <String>::sse_decode(deserializer);
+        let mut var_channelId = <String>::sse_decode(deserializer);
+        let mut var_reason = <String>::sse_decode(deserializer);
+        let mut var_token = <String>::sse_decode(deserializer);
+        let mut var_exp = <i64>::sse_decode(deserializer);
+        let mut var_from = <String>::sse_decode(deserializer);
+        let mut var_nickname = <String>::sse_decode(deserializer);
+        let mut var_pulled = <u64>::sse_decode(deserializer);
+        let mut var_catchingUp = <bool>::sse_decode(deserializer);
+        let mut var_lastError = <Option<String>>::sse_decode(deserializer);
+        let mut var_inboxCount = <i32>::sse_decode(deserializer);
+        return crate::api::types::SessionUpdateDto {
+            kind: var_kind,
+            channel_id: var_channelId,
+            reason: var_reason,
+            token: var_token,
+            exp: var_exp,
+            from: var_from,
+            nickname: var_nickname,
+            pulled: var_pulled,
+            catching_up: var_catchingUp,
+            last_error: var_lastError,
+            inbox_count: var_inboxCount,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::TimelineUpdateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <String>::sse_decode(deserializer);
+        let mut var_dest = <String>::sse_decode(deserializer);
+        let mut var_version = <u64>::sse_decode(deserializer);
+        let mut var_fromVersion = <u64>::sse_decode(deserializer);
+        let mut var_toVersion = <u64>::sse_decode(deserializer);
+        let mut var_unread = <i32>::sse_decode(deserializer);
+        let mut var_hasMore = <bool>::sse_decode(deserializer);
+        let mut var_reason = <String>::sse_decode(deserializer);
+        return crate::api::types::TimelineUpdateDto {
+            kind: var_kind,
+            dest: var_dest,
+            version: var_version,
+            from_version: var_fromVersion,
+            to_version: var_toVersion,
+            unread: var_unread,
+            has_more: var_hasMore,
+            reason: var_reason,
+        };
+    }
+}
+
 impl SseDecode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2713,7 +2912,7 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        41 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2735,8 +2934,14 @@ fn pde_ffi_dispatcher_sync_impl(
         36 => {
             wire__crate__api__client__KimSdkHandle_store_attached_impl(ptr, rust_vec_len, data_len)
         }
-        39 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
+        39 => {
+            wire__crate__api__client__KimSdkHandle_watch_session_impl(ptr, rust_vec_len, data_len)
+        }
+        40 => {
+            wire__crate__api__client__KimSdkHandle_watch_timeline_impl(ptr, rust_vec_len, data_len)
+        }
+        41 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2976,6 +3181,63 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::client::KimTalkResult>
         self
     }
 }
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::types::SessionUpdateDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.kind.into_into_dart().into_dart(),
+            self.channel_id.into_into_dart().into_dart(),
+            self.reason.into_into_dart().into_dart(),
+            self.token.into_into_dart().into_dart(),
+            self.exp.into_into_dart().into_dart(),
+            self.from.into_into_dart().into_dart(),
+            self.nickname.into_into_dart().into_dart(),
+            self.pulled.into_into_dart().into_dart(),
+            self.catching_up.into_into_dart().into_dart(),
+            self.last_error.into_into_dart().into_dart(),
+            self.inbox_count.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::types::SessionUpdateDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::types::SessionUpdateDto>
+    for crate::api::types::SessionUpdateDto
+{
+    fn into_into_dart(self) -> crate::api::types::SessionUpdateDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::types::TimelineUpdateDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.kind.into_into_dart().into_dart(),
+            self.dest.into_into_dart().into_dart(),
+            self.version.into_into_dart().into_dart(),
+            self.from_version.into_into_dart().into_dart(),
+            self.to_version.into_into_dart().into_dart(),
+            self.unread.into_into_dart().into_dart(),
+            self.has_more.into_into_dart().into_dart(),
+            self.reason.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::types::TimelineUpdateDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::types::TimelineUpdateDto>
+    for crate::api::types::TimelineUpdateDto
+{
+    fn into_into_dart(self) -> crate::api::types::TimelineUpdateDto {
+        self
+    }
+}
 
 impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3021,6 +3283,30 @@ impl SseEncode
 impl SseEncode
     for StreamSink<
         crate::api::client::KimSessionEvent,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
+    for StreamSink<
+        crate::api::types::SessionUpdateDto,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
+    for StreamSink<
+        crate::api::types::TimelineUpdateDto,
         flutter_rust_bridge::for_generated::SseCodec,
     >
 {
@@ -3217,6 +3503,47 @@ impl SseEncode for Vec<u8> {
         for item in self {
             <u8>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for crate::api::types::SessionUpdateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.channel_id, serializer);
+        <String>::sse_encode(self.reason, serializer);
+        <String>::sse_encode(self.token, serializer);
+        <i64>::sse_encode(self.exp, serializer);
+        <String>::sse_encode(self.from, serializer);
+        <String>::sse_encode(self.nickname, serializer);
+        <u64>::sse_encode(self.pulled, serializer);
+        <bool>::sse_encode(self.catching_up, serializer);
+        <Option<String>>::sse_encode(self.last_error, serializer);
+        <i32>::sse_encode(self.inbox_count, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::TimelineUpdateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.dest, serializer);
+        <u64>::sse_encode(self.version, serializer);
+        <u64>::sse_encode(self.from_version, serializer);
+        <u64>::sse_encode(self.to_version, serializer);
+        <i32>::sse_encode(self.unread, serializer);
+        <bool>::sse_encode(self.has_more, serializer);
+        <String>::sse_encode(self.reason, serializer);
     }
 }
 

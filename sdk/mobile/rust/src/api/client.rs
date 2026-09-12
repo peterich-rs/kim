@@ -7,6 +7,7 @@ use kim_client::{
 use kim_sdk::{KimSdk, StartSession, UnreadPolicy};
 
 use super::rt;
+use super::types::{SessionUpdateDto, TimelineUpdateDto};
 use crate::frb_generated::StreamSink;
 
 pub struct KimTalkResult {
@@ -131,6 +132,45 @@ impl KimSdkHandle {
     #[flutter_rust_bridge::frb(sync)]
     pub fn store_attached(&self) -> bool {
         self.inner.store_attached()
+    }
+
+    /// FFI reads the session mpsc so Kickout/token/friend are not coalesced.
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), String> {
+        let mut rx = self.inner.subscribe_session();
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            while let Some(ev) = rx.recv().await {
+                if sink.add(SessionUpdateDto::from(ev)).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_timeline(
+        &self,
+        dest: String,
+        limit: i32,
+        sink: StreamSink<TimelineUpdateDto>,
+    ) -> Result<(), String> {
+        let rx = self.inner.subscribe_timeline(kim_sdk::TimelineQuery { dest, limit });
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            let mut rx = rx;
+            loop {
+                let update = rx.borrow().clone();
+                if sink.add(TimelineUpdateDto::from(update)).is_err() {
+                    break;
+                }
+                if rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
     }
 
     pub async fn start_session(

@@ -7,6 +7,8 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+import 'types.dart';
+
 // These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`, `supervisor`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
@@ -128,6 +130,14 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String nickname,
     required String avatar,
     required String bio,
+  });
+
+  /// FFI reads the session mpsc so Kickout/token/friend are not coalesced.
+  Stream<SessionUpdateDto> watchSession();
+
+  Stream<TimelineUpdateDto> watchTimeline({
+    required String dest,
+    required int limit,
   });
 }
 

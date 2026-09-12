@@ -6,6 +6,7 @@
 import 'api/auth.dart';
 import 'api/client.dart';
 import 'api/simple.dart';
+import 'api/types.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -71,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1641521222;
+  int get rustContentHash => 1253638466;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -286,6 +287,16 @@ abstract class RustLibApi extends BaseApi {
     required String nickname,
     required String avatar,
     required String bio,
+  });
+
+  Stream<SessionUpdateDto> crateApiClientKimSdkHandleWatchSession({
+    required KimSdkHandle that,
+  });
+
+  Stream<TimelineUpdateDto> crateApiClientKimSdkHandleWatchTimeline({
+    required KimSdkHandle that,
+    required String dest,
+    required int limit,
   });
 
   String crateApiSimpleGreet({required String name});
@@ -1764,13 +1775,85 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Stream<SessionUpdateDto> crateApiClientKimSdkHandleWatchSession({
+    required KimSdkHandle that,
+  }) {
+    final sink = RustStreamSink<SessionUpdateDto>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_StreamSink_session_update_dto_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleWatchSessionConstMeta,
+        argValues: [that, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleWatchSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_watch_session",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Stream<TimelineUpdateDto> crateApiClientKimSdkHandleWatchTimeline({
+    required KimSdkHandle that,
+    required String dest,
+    required int limit,
+  }) {
+    final sink = RustStreamSink<TimelineUpdateDto>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(limit, serializer);
+          sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleWatchTimelineConstMeta,
+        argValues: [that, dest, limit, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleWatchTimelineConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_watch_timeline",
+        argNames: ["that", "dest", "limit", "sink"],
+      );
+
+  @override
   String crateApiSimpleGreet({required String name}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 41)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1793,7 +1876,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 42)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1821,7 +1904,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1919,6 +2002,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   RustStreamSink<KimSessionEvent> dco_decode_StreamSink_kim_session_event_Sse(
     dynamic raw,
   ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<SessionUpdateDto> dco_decode_StreamSink_session_update_dto_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -2124,6 +2222,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  String? dco_decode_opt_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  SessionUpdateDto dco_decode_session_update_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 11)
+      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    return SessionUpdateDto(
+      kind: dco_decode_String(arr[0]),
+      channelId: dco_decode_String(arr[1]),
+      reason: dco_decode_String(arr[2]),
+      token: dco_decode_String(arr[3]),
+      exp: dco_decode_i_64(arr[4]),
+      from: dco_decode_String(arr[5]),
+      nickname: dco_decode_String(arr[6]),
+      pulled: dco_decode_u_64(arr[7]),
+      catchingUp: dco_decode_bool(arr[8]),
+      lastError: dco_decode_opt_String(arr[9]),
+      inboxCount: dco_decode_i_32(arr[10]),
+    );
+  }
+
+  @protected
+  TimelineUpdateDto dco_decode_timeline_update_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return TimelineUpdateDto(
+      kind: dco_decode_String(arr[0]),
+      dest: dco_decode_String(arr[1]),
+      version: dco_decode_u_64(arr[2]),
+      fromVersion: dco_decode_u_64(arr[3]),
+      toVersion: dco_decode_u_64(arr[4]),
+      unread: dco_decode_i_32(arr[5]),
+      hasMore: dco_decode_bool(arr[6]),
+      reason: dco_decode_String(arr[7]),
+    );
+  }
+
+  @protected
   int dco_decode_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -2236,6 +2379,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   RustStreamSink<KimSessionEvent> sse_decode_StreamSink_kim_session_event_Sse(
     SseDeserializer deserializer,
   ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<SessionUpdateDto> sse_decode_StreamSink_session_update_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -2506,6 +2664,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_String(deserializer);
+    var var_channelId = sse_decode_String(deserializer);
+    var var_reason = sse_decode_String(deserializer);
+    var var_token = sse_decode_String(deserializer);
+    var var_exp = sse_decode_i_64(deserializer);
+    var var_from = sse_decode_String(deserializer);
+    var var_nickname = sse_decode_String(deserializer);
+    var var_pulled = sse_decode_u_64(deserializer);
+    var var_catchingUp = sse_decode_bool(deserializer);
+    var var_lastError = sse_decode_opt_String(deserializer);
+    var var_inboxCount = sse_decode_i_32(deserializer);
+    return SessionUpdateDto(
+      kind: var_kind,
+      channelId: var_channelId,
+      reason: var_reason,
+      token: var_token,
+      exp: var_exp,
+      from: var_from,
+      nickname: var_nickname,
+      pulled: var_pulled,
+      catchingUp: var_catchingUp,
+      lastError: var_lastError,
+      inboxCount: var_inboxCount,
+    );
+  }
+
+  @protected
+  TimelineUpdateDto sse_decode_timeline_update_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_String(deserializer);
+    var var_dest = sse_decode_String(deserializer);
+    var var_version = sse_decode_u_64(deserializer);
+    var var_fromVersion = sse_decode_u_64(deserializer);
+    var var_toVersion = sse_decode_u_64(deserializer);
+    var var_unread = sse_decode_i_32(deserializer);
+    var var_hasMore = sse_decode_bool(deserializer);
+    var var_reason = sse_decode_String(deserializer);
+    return TimelineUpdateDto(
+      kind: var_kind,
+      dest: var_dest,
+      version: var_version,
+      fromVersion: var_fromVersion,
+      toVersion: var_toVersion,
+      unread: var_unread,
+      hasMore: var_hasMore,
+      reason: var_reason,
+    );
+  }
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
@@ -2631,6 +2854,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       self.setupAndSerialize(
         codec: SseCodec(
           decodeSuccessData: sse_decode_kim_session_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_session_update_dto_Sse(
+    RustStreamSink<SessionUpdateDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_session_update_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_timeline_update_dto_Sse(
+    RustStreamSink<TimelineUpdateDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_timeline_update_dto,
           decodeErrorData: sse_decode_AnyhowException,
         ),
       ),
@@ -2848,6 +3105,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_session_update_dto(
+    SessionUpdateDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.kind, serializer);
+    sse_encode_String(self.channelId, serializer);
+    sse_encode_String(self.reason, serializer);
+    sse_encode_String(self.token, serializer);
+    sse_encode_i_64(self.exp, serializer);
+    sse_encode_String(self.from, serializer);
+    sse_encode_String(self.nickname, serializer);
+    sse_encode_u_64(self.pulled, serializer);
+    sse_encode_bool(self.catchingUp, serializer);
+    sse_encode_opt_String(self.lastError, serializer);
+    sse_encode_i_32(self.inboxCount, serializer);
+  }
+
+  @protected
+  void sse_encode_timeline_update_dto(
+    TimelineUpdateDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.kind, serializer);
+    sse_encode_String(self.dest, serializer);
+    sse_encode_u_64(self.version, serializer);
+    sse_encode_u_64(self.fromVersion, serializer);
+    sse_encode_u_64(self.toVersion, serializer);
+    sse_encode_i_32(self.unread, serializer);
+    sse_encode_bool(self.hasMore, serializer);
+    sse_encode_String(self.reason, serializer);
   }
 
   @protected
@@ -3151,5 +3453,18 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     nickname: nickname,
     avatar: avatar,
     bio: bio,
+  );
+
+  /// FFI reads the session mpsc so Kickout/token/friend are not coalesced.
+  Stream<SessionUpdateDto> watchSession() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleWatchSession(that: this);
+
+  Stream<TimelineUpdateDto> watchTimeline({
+    required String dest,
+    required int limit,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleWatchTimeline(
+    that: this,
+    dest: dest,
+    limit: limit,
   );
 }
