@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use crate::config::ClientConfig;
 use crate::events::{InboxItem, IncomingTalk};
 use crate::link::{machine, DropReason, ProbeSource};
+use crate::persist::PersistHook;
 use crate::sync::ConfirmGate;
 use crate::KimClient;
 
@@ -95,6 +96,8 @@ pub(crate) struct Inner {
     pub attempt: AtomicU32,
     pub last_drop_reason: StdMutex<Option<DropReason>>,
     pub task: StdMutex<Option<JoinHandle<()>>>,
+    pub persist: StdMutex<Option<Arc<dyn PersistHook>>>,
+    pub live_persist: StdMutex<Option<tokio::sync::mpsc::Sender<IncomingTalk>>>,
 }
 
 pub(crate) enum SessionEnd {
@@ -130,8 +133,36 @@ impl SessionSupervisor {
                 attempt: AtomicU32::new(0),
                 last_drop_reason: StdMutex::new(None),
                 task: StdMutex::new(None),
+                persist: StdMutex::new(None),
+                live_persist: StdMutex::new(None),
             }),
         }
+    }
+
+    /// Install persist-then-ack. Live Talk is `try_send`; full queue does not ACK or stall the reader.
+    pub fn with_persist(self, hook: Arc<dyn PersistHook>) -> Self {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<IncomingTalk>(64);
+        *self.inner.persist.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook.clone());
+        *self
+            .inner
+            .live_persist
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        let client = self.inner.client.clone();
+        tokio::spawn(async move {
+            while let Some(talk) = rx.recv().await {
+                let id = talk.message_id;
+                if hook
+                    .persist_talks(&[talk], crate::persist::UnreadPolicy::IfInserted)
+                    .await
+                    .is_ok()
+                    && id != 0
+                {
+                    let _ = client.ack(id).await;
+                }
+            }
+        });
+        self
     }
 
     /// start = loop { connect → login → sync → recv }, reconnect with backoff.
@@ -214,6 +245,11 @@ impl SessionSupervisor {
 
     pub fn client(&self) -> Arc<KimClient> {
         self.inner.client.clone()
+    }
+
+    /// Push a session event to subscribers. Used by tests to drive the SDK bridge.
+    pub fn inject_event(&self, event: SessionEvent) {
+        let _ = self.inner.events.send(event);
     }
 
     pub fn last_drop_reason(&self) -> Option<DropReason> {

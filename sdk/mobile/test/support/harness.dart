@@ -20,21 +20,27 @@ class KimHarness {
     required this.fake,
     required this.runtime,
     required this.store,
+    required this.media,
   });
 
   final ProviderContainer container;
   final FakeKim fake;
   final KimRuntime runtime;
   final ConversationStore store;
+  final FakeKimMedia media;
 }
 
 Future<KimHarness> kimHarness({
   String token = '',
   String account = '',
   bool online = true,
+  bool rustStore = false,
   List<Override> overrides = const [],
 }) async {
-  SharedPreferences.setMockInitialValues({'agent.server_identity': false});
+  SharedPreferences.setMockInitialValues({
+    'agent.server_identity': false,
+    if (rustStore) KimFlags.rustStorePref: true,
+  });
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
   addTearDown(() {
     if (tmp.existsSync()) {
@@ -57,6 +63,7 @@ Future<KimHarness> kimHarness({
   final fake = FakeKim();
   final store = ConversationStore.memory();
   addTearDown(store.close);
+  final media = FakeKimMedia();
   final container = ProviderContainer.test(
     retry: kimRetry,
     overrides: [
@@ -65,7 +72,7 @@ Future<KimHarness> kimHarness({
         auth: fake,
         client: fake,
         store: store,
-        media: FakeKimMedia(),
+        media: media,
       ),
       ...overrides,
     ],
@@ -75,5 +82,6 @@ Future<KimHarness> kimHarness({
     fake: fake,
     runtime: runtime,
     store: store,
+    media: media,
   );
 }

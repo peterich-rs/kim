@@ -2,6 +2,7 @@
 /// Session / login / talk / Royal HTTP stay in Rust. Do not expand FFI here.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -10,13 +11,31 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
 
 import 'core/format.dart';
+import 'data/conversation_store.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
 import 'core/jwt.dart';
 import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
 import 'src/rust/api/client.dart' as rust;
+import 'src/rust/api/types.dart' as rust_types;
 import 'src/rust/frb_generated.dart';
+
+class KimCommandReceipt {
+  const KimCommandReceipt({
+    required this.requestId,
+    required this.clientId,
+    required this.dest,
+    required this.acceptedAt,
+    required this.sendStatus,
+  });
+
+  final String requestId;
+  final String clientId;
+  final String dest;
+  final int acceptedAt;
+  final String sendStatus;
+}
 
 class KimAuthSession {
   const KimAuthSession({
@@ -56,6 +75,24 @@ abstract class KimClientPort {
     KimOutgoingContent content, {
     required String clientId,
   });
+
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required ThreadKind kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    String localPath = '',
+    String mime = '',
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  });
+
+  Future<void> cancelSend(String clientId);
+
+  Future<KimCommandReceipt> retrySend(String clientId);
+
+  Future<void> deleteThread(String dest);
 
   Future<List<KimHistoryMsg>> history(
     String dest,
@@ -122,6 +159,17 @@ abstract class KimClientPort {
   });
 
   Future<List<KimBotPendingItem>> botPending(String dest, {int limit = 20});
+
+  Future<void> attachStore(String dbPath);
+
+  bool get rustStoreAttached;
+
+  Future<void> persistTalks(
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+  });
+
+  Future<void> persistInboxThreads(List<KimThread> threads);
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -162,7 +210,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   static const ffiReady = true;
 
   static bool _inited = false;
-  rust.KimApi? _api;
+  rust.KimSdkHandle? _api;
   Stream<KimEvent>? _events;
   String? _account;
 
@@ -208,7 +256,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     );
   }
 
-  rust.KimApi _require() {
+  rust.KimSdkHandle _require() {
     final api = _api;
     if (api == null) {
       throw StateError('startSession first');
@@ -294,26 +342,75 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _ensure();
     lastUrl = url;
     final account = JwtPeek.account(token) ?? '';
-    if (_api != null && _account == account && account.isNotEmpty) {
+    _api ??= rust.KimSdkHandle.create();
+    if (_account == account && account.isNotEmpty) {
       try {
         await _api!.notifyRadioUp();
       } catch (_) {}
       return;
     }
-    final prev = _api;
-    if (prev != null) {
-      try {
-        await prev.stop();
-      } catch (_) {}
-    }
-    final api = rust.KimApi.start(url: url, token: token, userAgent: userAgent);
-    _api = api;
+    await _api!.startSession(
+      url: url,
+      token: token,
+      userAgent: userAgent,
+      account: account,
+    );
     _account = account;
-    _events = api
+    // Fat session_events is the Dart inbox. watch_session is Kickout/token/friend
+    // only; it does not replace Lagged on the fat stream.
+    final fat = _api!
         .sessionEvents()
         .map(_event)
         .where((event) => event != null)
         .map((event) => event!);
+    final watch = _api!.watchSession().map(_fromWatch);
+    _events = _mergeEvents(fat, watch);
+  }
+
+  Stream<KimEvent> _mergeEvents(Stream<KimEvent> a, Stream<KimEvent> b) {
+    late StreamController<KimEvent> controller;
+    StreamSubscription<KimEvent>? sa;
+    StreamSubscription<KimEvent>? sb;
+    controller = StreamController<KimEvent>.broadcast(
+      onListen: () {
+        sa = a.listen(controller.add, onError: controller.addError);
+        sb = b.listen(controller.add, onError: controller.addError);
+      },
+      onCancel: () {
+        unawaited(sa?.cancel());
+        unawaited(sb?.cancel());
+      },
+    );
+    return controller.stream;
+  }
+
+  KimEvent _fromWatch(rust_types.SessionUpdateDto dto) {
+    return switch (dto.kind) {
+      'kickout' => KimEvent(kind: KimEventKind.kick, dest: dto.channelId),
+      'auth_expired' => KimEvent(
+        kind: KimEventKind.authExpired,
+        error: dto.reason,
+      ),
+      'token' => KimEvent(
+        kind: KimEventKind.token,
+        token: dto.token,
+        exp: dto.exp.toInt(),
+      ),
+      'friend' => KimEvent(
+        kind: KimEventKind.friend,
+        dest: dto.from,
+        sender: dto.from,
+        nickname: dto.nickname,
+      ),
+      'friend_accepted' => KimEvent(
+        kind: KimEventKind.friendAccepted,
+        dest: dto.from,
+        sender: dto.from,
+        nickname: dto.nickname,
+      ),
+      'link' => KimEvent(kind: KimEventKind.link, error: dto.lastError ?? ''),
+      _ => const KimEvent(kind: KimEventKind.closed),
+    };
   }
 
   @override
@@ -450,11 +547,71 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   @override
   Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
-    await _require().markRead(
+    final api = _require();
+    final wireKind = kind == ThreadKind.group ? 1 : 0;
+    if (rustStoreAttached) {
+      await api.markThreadRead(
+        dest: dest,
+        kind: wireKind,
+        messageId: messageId,
+      );
+      return;
+    }
+    await api.markRead(dest: dest, kind: wireKind, messageId: messageId);
+  }
+
+  @override
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required ThreadKind kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    String localPath = '',
+    String mime = '',
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  }) async {
+    final receipt = await _require().enqueueMessage(
       dest: dest,
       kind: kind == ThreadKind.group ? 1 : 0,
-      messageId: messageId,
+      content: _wire(content),
+      clientId: clientId,
+      localPath: localPath,
+      mime: mime,
+      width: width,
+      height: height,
+      byteSize: byteSize,
     );
+    return KimCommandReceipt(
+      requestId: receipt.requestId,
+      clientId: receipt.clientId,
+      dest: receipt.dest,
+      acceptedAt: receipt.acceptedAt.toInt(),
+      sendStatus: receipt.sendStatus,
+    );
+  }
+
+  @override
+  Future<void> cancelSend(String clientId) async {
+    await _require().cancelSend(clientId: clientId);
+  }
+
+  @override
+  Future<KimCommandReceipt> retrySend(String clientId) async {
+    final receipt = await _require().retrySend(clientId: clientId);
+    return KimCommandReceipt(
+      requestId: receipt.requestId,
+      clientId: receipt.clientId,
+      dest: receipt.dest,
+      acceptedAt: receipt.acceptedAt.toInt(),
+      sendStatus: receipt.sendStatus,
+    );
+  }
+
+  @override
+  Future<void> deleteThread(String dest) async {
+    await _require().deleteThread(dest: dest);
   }
 
   KimEvent? _event(rust.KimSessionEvent push) {
@@ -754,5 +911,61 @@ class KimBridge implements KimAuthPort, KimClientPort {
           sendTime: item.sendTime.toInt(),
         ),
     ];
+  }
+
+  @override
+  Future<void> attachStore(String dbPath) async {
+    await _ensure();
+    _api ??= rust.KimSdkHandle.create();
+    await _api!.attachStore(dbPath: dbPath);
+  }
+
+  @override
+  bool get rustStoreAttached => _api?.storeAttached() ?? false;
+
+  @override
+  Future<void> persistTalks(
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+  }) async {
+    await _require().persistTalks(
+      talks: [
+        for (final m in msgs)
+          rust.KimIncomingTalk(
+            dest: m.dest,
+            sender: m.sender,
+            body: m.body,
+            extra: '',
+            messageId: m.messageId,
+            sendTime: m.at,
+            msgType: switch (m.kind) {
+              KimMsgKind.image => 2,
+              KimMsgKind.video => 4,
+              _ => 1,
+            },
+          ),
+      ],
+      policy: policy == UnreadPolicy.ifInserted ? 'ifInserted' : 'keep',
+    );
+  }
+
+  @override
+  Future<void> persistInboxThreads(List<KimThread> threads) async {
+    await _require().persistInbox(
+      items: [
+        for (final t in threads)
+          rust.KimInboxItem(
+            dest: t.id,
+            kind: t.kind == ThreadKind.group ? 1 : 0,
+            title: t.title,
+            avatar: t.avatar,
+            lastBody: t.lastBody,
+            lastSender: '',
+            lastMessageId: 0,
+            lastSendTime: t.lastAt,
+            unread: t.unread,
+          ),
+      ],
+    );
   }
 }

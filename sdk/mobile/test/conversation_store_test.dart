@@ -314,6 +314,48 @@ void main() {
     expect(db.loadFailed('alice').single.key, 'f');
   });
 
+  test('prune keeps oldest sending and failed beyond maxMessages', () async {
+    final db = store();
+    const dest = 'bob';
+    final msgs = <KimChatMsg>[
+      const KimChatMsg(
+        key: 'pending-send',
+        dest: dest,
+        sender: 'alice',
+        body: 'still sending',
+        at: 0,
+        status: KimSendStatus.sending,
+      ),
+      const KimChatMsg(
+        key: 'pending-fail',
+        dest: dest,
+        sender: 'alice',
+        body: 'still failed',
+        at: 1,
+        failed: true,
+        status: KimSendStatus.failed,
+      ),
+      for (var i = 0; i < ConversationStore.maxMessages + 1; i++)
+        KimChatMsg(
+          key: 'sent-$i',
+          dest: dest,
+          sender: 'bob',
+          body: '$i',
+          at: i + 2,
+          messageId: i + 1,
+          status: KimSendStatus.sent,
+        ),
+    ];
+    await db.applyMessages('alice', msgs, policy: UnreadPolicy.keep);
+    expect(db.loadPending('alice').single.key, 'pending-send');
+    expect(db.loadFailed('alice').single.key, 'pending-fail');
+    final kept = db.loadMessages('alice', dest);
+    expect(kept.length, ConversationStore.maxMessages + 2);
+    expect(kept.any((m) => m.key == 'pending-send'), isTrue);
+    expect(kept.any((m) => m.key == 'pending-fail'), isTrue);
+    expect(kept.any((m) => m.key == 'sent-0'), isFalse);
+  });
+
   test(
     'own send and history with same messageId collapse to one row',
     () async {

@@ -11,6 +11,7 @@ members = [
     "crates/kim-session",
     "crates/kim-metrics",
     "crates/kim-client",
+    "crates/kim-sdk",
     "crates/kim-agent-host",
     "services/gateway",
     "services/chat",

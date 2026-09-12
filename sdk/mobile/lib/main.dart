@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
@@ -18,6 +19,13 @@ import 'theme/kim_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _enableMaxRefreshRate();
+  const dsn = String.fromEnvironment('SENTRY_DSN');
+  if (dsn.isNotEmpty) {
+    await SentryFlutter.init((options) {
+      options.dsn = dsn;
+    }, appRunner: () => runApp(const KimBoot()));
+    return;
+  }
   runApp(const KimBoot());
 }
 
@@ -51,9 +59,12 @@ class _KimBootState extends State<KimBoot> {
   Future<void> _start() async {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
-    final store = await ConversationStore.open(
+    final prefs = await SharedPreferences.getInstance();
+    final store = await ConversationStore.openForRuntime(
       support: runtime.paths.support,
-      prefs: await SharedPreferences.getInstance(),
+      rustStore: runtime.rustStore,
+      attachStore: bridge.attachStore,
+      prefs: prefs,
     );
     final account = runtime.settings.account;
     if (account.isNotEmpty) {

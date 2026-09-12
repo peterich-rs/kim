@@ -1,16 +1,28 @@
 use std::sync::Arc;
 
 use kim_client::{
-    device_for_target_os, BotPendingItem, ClientConfig, HistoryItem, InboxItem, IncomingTalk,
-    LinkState, OutgoingContent, SessionEvent, SessionSupervisor, TalkResult,
+    BotPendingItem, HistoryItem, InboxItem, IncomingTalk, LinkState, OutgoingContent, SessionEvent,
+    SessionSupervisor, TalkResult,
+};
+use kim_sdk::{
+    KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession, UnreadPolicy,
 };
 
 use super::rt;
+use super::types::{SdkErrorDto, SessionUpdateDto, TimelineUpdateDto};
 use crate::frb_generated::StreamSink;
 
 pub struct KimTalkResult {
     pub message_id: i64,
     pub send_time: i64,
+}
+
+pub struct KimCommandReceipt {
+    pub request_id: String,
+    pub client_id: String,
+    pub dest: String,
+    pub accepted_at: i64,
+    pub send_status: String,
 }
 
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
@@ -30,6 +42,16 @@ pub struct KimInboxItem {
     pub last_message_id: i64,
     pub last_send_time: i64,
     pub unread: i32,
+}
+
+pub struct KimIncomingTalk {
+    pub dest: String,
+    pub sender: String,
+    pub body: String,
+    pub extra: String,
+    pub message_id: i64,
+    pub send_time: i64,
+    pub msg_type: i32,
 }
 
 pub struct KimHistoryItem {
@@ -99,30 +121,242 @@ impl KimSessionEvent {
     }
 }
 
-/// Opaque handle. SessionSupervisor owns connect/login/sync/reconnect.
-pub struct KimApi {
-    supervisor: Arc<SessionSupervisor>,
+/// Opaque handle. Always owns protocol; store attach is opt-in.
+pub struct KimSdkHandle {
+    inner: Arc<KimSdk>,
 }
 
-impl KimApi {
+impl KimSdkHandle {
+    /// Always callable. Does not open SQLite.
     #[flutter_rust_bridge::frb(sync)]
-    pub fn start(url: String, token: String, user_agent: String) -> Self {
+    pub fn create() -> Self {
         Self {
-            supervisor: Arc::new(SessionSupervisor::new(
-                ClientConfig::new(url, token)
-                    .with_user_agent(user_agent)
-                    .with_device(device_for_target_os(std::env::consts::OS)),
-            )),
+            inner: KimSdk::protocol_only(),
         }
     }
 
+    pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .attach_store(db_path)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn store_attached(&self) -> bool {
+        self.inner.store_attached()
+    }
+
+    /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
+    /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), String> {
+        let mut rx = self.inner.subscribe_session();
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            while let Some(ev) = rx.recv().await {
+                if sink.add(SessionUpdateDto::from(ev)).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_timeline(
+        &self,
+        dest: String,
+        limit: i32,
+        sink: StreamSink<TimelineUpdateDto>,
+    ) -> Result<(), String> {
+        let rx = self
+            .inner
+            .subscribe_timeline(kim_sdk::TimelineQuery { dest, limit });
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            let mut rx = rx;
+            loop {
+                let update = rx.borrow().clone();
+                if sink.add(TimelineUpdateDto::from(update)).is_err() {
+                    break;
+                }
+                if rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    pub async fn start_session(
+        &self,
+        url: String,
+        token: String,
+        user_agent: String,
+        account: String,
+    ) -> Result<(), String> {
+        let account = if account.is_empty() {
+            kim_client::account_from_token(&token).unwrap_or_default()
+        } else {
+            account
+        };
+        self.inner
+            .start_session(StartSession {
+                url,
+                token,
+                user_agent,
+                account,
+            })
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn persist_talks(
+        &self,
+        talks: Vec<KimIncomingTalk>,
+        policy: String,
+    ) -> Result<(), SdkErrorDto> {
+        let policy = if policy == "ifInserted" {
+            UnreadPolicy::IfInserted
+        } else {
+            UnreadPolicy::Keep
+        };
+        let talks = talks.into_iter().map(IncomingTalk::from).collect();
+        self.inner
+            .persist_talks(talks, policy)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn persist_inbox(&self, items: Vec<KimInboxItem>) -> Result<(), SdkErrorDto> {
+        let items = items.into_iter().map(InboxItem::from).collect();
+        self.inner
+            .persist_inbox(items)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(())
+    }
+
+    pub async fn enqueue_message(
+        &self,
+        dest: String,
+        kind: i32,
+        content: KimOutgoingContent,
+        client_id: String,
+        local_path: String,
+        mime: String,
+        width: i32,
+        height: i32,
+        byte_size: i64,
+    ) -> Result<KimCommandReceipt, SdkErrorDto> {
+        let payload = match content.kind {
+            2 => OutgoingPayload::Image {
+                media: MediaRef {
+                    path: if local_path.is_empty() {
+                        content.body
+                    } else {
+                        local_path
+                    },
+                    mime,
+                    width,
+                    height,
+                    byte_size,
+                },
+            },
+            4 => OutgoingPayload::Video {
+                url: content.body,
+                extra: content.extra,
+            },
+            _ => OutgoingPayload::Text { body: content.body },
+        };
+        let receipt = self
+            .inner
+            .enqueue_message(SendMessageCommand {
+                dest,
+                kind,
+                payload,
+                client_id: if client_id.is_empty() {
+                    None
+                } else {
+                    Some(client_id)
+                },
+                batch_id: None,
+            })
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(KimCommandReceipt {
+            request_id: receipt.request_id,
+            client_id: receipt.client_id,
+            dest: receipt.dest,
+            accepted_at: receipt.accepted_at,
+            send_status: receipt.send_status.as_str().into(),
+        })
+    }
+
+    pub async fn cancel_send(&self, client_id: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .cancel_send(client_id)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn retry_send(&self, client_id: String) -> Result<KimCommandReceipt, SdkErrorDto> {
+        let receipt = self
+            .inner
+            .retry_send(client_id)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(KimCommandReceipt {
+            request_id: receipt.request_id,
+            client_id: receipt.client_id,
+            dest: receipt.dest,
+            accepted_at: receipt.accepted_at,
+            send_status: receipt.send_status.as_str().into(),
+        })
+    }
+
+    pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .delete_thread(dest)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn mark_thread_read(
+        &self,
+        dest: String,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .mark_read(ReadMarker {
+                dest,
+                kind,
+                visible_message_id: message_id,
+            })
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    fn supervisor(&self) -> Result<Arc<SessionSupervisor>, String> {
+        self.inner.supervisor().map_err(|e| e.to_string())
+    }
+
     pub fn stop(&self) {
-        self.supervisor.stop();
+        if let Ok(sup) = self.supervisor() {
+            sup.stop();
+        }
+        let inner = self.inner.clone();
+        let _ = rt().block_on(inner.stop_session());
     }
 
     #[flutter_rust_bridge::frb(sync)]
     pub fn link_state(&self) -> String {
-        match self.supervisor.state() {
+        let Ok(supervisor) = self.supervisor() else {
+            return "Offline".into();
+        };
+        match supervisor.state() {
             LinkState::Connecting => "Connecting".into(),
             LinkState::Online => "Online".into(),
             LinkState::Reconnecting { .. } => "Reconnecting".into(),
@@ -130,14 +364,16 @@ impl KimApi {
         }
     }
 
-    /// Supervisor event stream. Replaces `listen` / `KimPush`.
+    /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
+    /// watch_session is Kickout/token/friend, not a replacement inbox.
     #[flutter_rust_bridge::frb(sync)]
     pub fn session_events(&self, sink: StreamSink<KimSessionEvent>) -> Result<(), String> {
+        let supervisor = self.supervisor()?;
         let _guard = rt().enter();
-        let mut rx = self.supervisor.events();
-        self.supervisor.ensure_running();
-        let _ = sink.add(map_link(&self.supervisor));
-        let supervisor = self.supervisor.clone();
+        let mut rx = supervisor.events();
+        supervisor.ensure_running();
+        let _ = sink.add(map_link(&supervisor));
+        let supervisor = supervisor.clone();
         rt().spawn(async move {
             loop {
                 match rx.recv().await {
@@ -161,18 +397,18 @@ impl KimApi {
     }
 
     pub fn sync_confirm(&self, cursor: i64) -> Result<(), String> {
-        self.supervisor.sync_confirm(cursor);
+        self.supervisor()?.sync_confirm(cursor);
         Ok(())
     }
 
     pub fn notify_radio_up(&self) -> Result<(), String> {
-        self.supervisor.notify_radio_up();
-        Ok(())
+        rt().block_on(self.inner.notify_radio_up())
+            .map_err(|e| e.to_string())
     }
 
     pub fn notify_foreground(&self) -> Result<(), String> {
-        self.supervisor.notify_foreground();
-        Ok(())
+        rt().block_on(self.inner.notify_foreground())
+            .map_err(|e| e.to_string())
     }
 
     pub fn send_message(
@@ -197,7 +433,7 @@ impl KimApi {
             },
             _ => OutgoingContent::Text(content.body),
         };
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let result = rt()
             .block_on(client.send_message(&dest, kind, outgoing, &client_id))
             .map_err(|e| e.to_string())?;
@@ -211,7 +447,7 @@ impl KimApi {
         before_id: i64,
         limit: i32,
     ) -> Result<Vec<KimHistoryItem>, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let items = rt()
             .block_on(client.history(&dest, kind, before_id, limit))
             .map_err(|e| e.to_string())?;
@@ -219,7 +455,7 @@ impl KimApi {
     }
 
     pub fn inbox(&self, limit: i32) -> Result<Vec<KimInboxItem>, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let items = rt()
             .block_on(client.inbox_list(limit))
             .map_err(|e| e.to_string())?;
@@ -227,40 +463,40 @@ impl KimApi {
     }
 
     pub fn mark_read(&self, dest: String, kind: i32, message_id: i64) -> Result<(), String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.mark_read(&dest, kind, message_id))
             .map_err(|e| e.to_string())
     }
 
     pub fn ack(&self, message_id: i64) -> Result<(), String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.ack(message_id))
             .map_err(|e| e.to_string())
     }
 
     pub fn friend_request(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.friend_request(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
     pub fn friend_accept(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.friend_accept(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
     pub fn friend_reject(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.friend_reject(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
     pub fn friend_list(&self) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.friend_list())
             .map_err(|e| e.to_string())?;
@@ -268,7 +504,7 @@ impl KimApi {
     }
 
     pub fn friend_incoming(&self) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.friend_incoming())
             .map_err(|e| e.to_string())?;
@@ -276,7 +512,7 @@ impl KimApi {
     }
 
     pub fn profile(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.profile(&dest))
             .map_err(|e| e.to_string())?;
@@ -289,7 +525,7 @@ impl KimApi {
         avatar: String,
         bio: String,
     ) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.update_profile(&nickname, &avatar, &bio))
             .map_err(|e| e.to_string())?;
@@ -297,7 +533,7 @@ impl KimApi {
     }
 
     pub fn search_users(&self, query: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.search_users(&query))
             .map_err(|e| e.to_string())?;
@@ -306,7 +542,7 @@ impl KimApi {
 
     /// Returns JSON array of `{account,status,last_seen}`.
     pub fn room_enter(&self, dest: String, kind: i32) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let rows = rt()
             .block_on(client.room_enter(&dest, kind))
             .map_err(|e| e.to_string())?;
@@ -326,14 +562,14 @@ impl KimApi {
     }
 
     pub fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.room_leave(&dest, kind))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
     pub fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.send_typing(&dest, kind, active))
             .map_err(|e| e.to_string())
     }
@@ -345,7 +581,7 @@ impl KimApi {
         avatar: String,
         bio: String,
     ) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio))
             .map_err(|e| e.to_string())?;
@@ -353,7 +589,7 @@ impl KimApi {
     }
 
     pub fn bot_delete(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         rt().block_on(client.bot_delete(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
@@ -366,7 +602,7 @@ impl KimApi {
         avatar: String,
         bio: String,
     ) -> Result<String, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.bot_update(&dest, &nickname, &avatar, &bio))
             .map_err(|e| e.to_string())?;
@@ -380,7 +616,7 @@ impl KimApi {
         in_reply_to: i64,
         client_id: String,
     ) -> Result<KimTalkResult, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let result = rt()
             .block_on(client.bot_reply(&dest, &body, in_reply_to, &client_id))
             .map_err(|e| e.to_string())?;
@@ -388,7 +624,7 @@ impl KimApi {
     }
 
     pub fn bot_pending(&self, dest: String, limit: i32) -> Result<Vec<KimBotPendingItem>, String> {
-        let client = self.supervisor.client();
+        let client = self.supervisor()?.client();
         let items = rt()
             .block_on(client.bot_pending(&dest, limit))
             .map_err(|e| e.to_string())?;
@@ -577,6 +813,37 @@ impl From<InboxItem> for KimInboxItem {
             last_message_id: i.last_message_id,
             last_send_time: i.last_send_time,
             unread: i.unread,
+        }
+    }
+}
+
+impl From<KimInboxItem> for InboxItem {
+    fn from(i: KimInboxItem) -> Self {
+        Self {
+            dest: i.dest,
+            kind: i.kind,
+            title: i.title,
+            avatar: i.avatar,
+            last_body: i.last_body,
+            last_sender: i.last_sender,
+            last_message_id: i.last_message_id,
+            last_send_time: i.last_send_time,
+            unread: i.unread,
+        }
+    }
+}
+
+impl From<KimIncomingTalk> for IncomingTalk {
+    fn from(t: KimIncomingTalk) -> Self {
+        Self {
+            command: String::new(),
+            dest: t.dest,
+            message_id: t.message_id,
+            sender: t.sender,
+            msg_type: t.msg_type,
+            body: t.body,
+            extra: t.extra,
+            send_time: t.send_time,
         }
     }
 }

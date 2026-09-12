@@ -37,6 +37,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   var _askedNotes = false;
   var _radioWasUp = false;
   StreamSubscription<KimEvent>? _events;
+  Future<void> _eventChain = Future<void>.value();
   var _disposeBound = false;
   var _lifecycleBound = false;
   KimLinkState _snapshot = const KimLinkState();
@@ -172,9 +173,16 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
 
   void _listen(int gen) {
     unawaited(_events?.cancel());
+    _eventChain = Future<void>.value();
     final client = ref.read(clientPortProvider);
     _events = client.sessionEvents().listen(
-      (event) => unawaited(_onEvent(event, gen)),
+      (event) {
+        _eventChain = _eventChain.then((_) async {
+          try {
+            await _onEvent(event, gen);
+          } catch (_) {}
+        });
+      },
       onError: (_) {
         if (ref.mounted && gen == _sessionGen) {
           _set(const KimLinkState(status: ConnStatus.reconnecting));
@@ -227,9 +235,13 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       case KimEventKind.inbox:
         ref.read(threadsProvider.notifier).mergeInbox(event.inbox);
       case KimEventKind.talk:
-        await _onTalk(event, ack: !_syncing);
+        await _onTalk(
+          event,
+          gen,
+          ack: !_syncing && !ref.read(runtimeProvider).rustStore,
+        );
       case KimEventKind.syncPage:
-        await _onSyncPage(event);
+        await _onSyncPage(event, gen);
       case KimEventKind.syncProgress:
         _syncing = event.pagePending;
       case KimEventKind.syncDone:
@@ -320,7 +332,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         );
   }
 
-  Future<void> _onSyncPage(KimEvent event) async {
+  Future<void> _onSyncPage(KimEvent event, int gen) async {
     _syncing = true;
     final account = ref.read(authProvider).account;
     final viewing = chatIdFromPath(ref.read(locationProvider));
@@ -338,8 +350,23 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         ),
     ].where((m) => m.dest.isNotEmpty && m.body.isNotEmpty).toList();
     if (msgs.isNotEmpty) {
+      if (ref.read(runtimeProvider).rustStore) {
+        if (!ref.mounted || gen != _sessionGen) {
+          return;
+        }
+        final byDest = <String, List<KimChatMsg>>{};
+        for (final m in msgs) {
+          byDest.putIfAbsent(m.dest, () => []).add(m);
+        }
+        for (final entry in byDest.entries) {
+          ref
+              .read(threadMessagesProvider(entry.key).notifier)
+              .receiveAll(entry.value);
+        }
+        return;
+      }
       final results = await repo.applySync(account, msgs, viewingDest: viewing);
-      if (!ref.mounted) {
+      if (!ref.mounted || gen != _sessionGen) {
         return;
       }
       ref.read(threadsProvider.notifier).ingestAll(results);
@@ -358,7 +385,10 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         }
       }
     }
-    if (!ref.mounted) {
+    if (!ref.mounted || gen != _sessionGen) {
+      return;
+    }
+    if (ref.read(runtimeProvider).rustStore) {
       return;
     }
     if (event.pageId != 0) {
@@ -368,7 +398,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _onTalk(KimEvent event, {required bool ack}) async {
+  Future<void> _onTalk(KimEvent event, int gen, {required bool ack}) async {
     final dest = event.dest.isNotEmpty ? event.dest : event.sender;
     if (dest.isEmpty || event.body.isEmpty) {
       return;
@@ -388,8 +418,34 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       sendTime: event.sendTime,
       msgType: event.msgType,
     );
+    if (ref.read(runtimeProvider).rustStore) {
+      if (!ref.mounted || gen != _sessionGen) {
+        return;
+      }
+      ref.read(threadMessagesProvider(dest).notifier).receiveAll([msg]);
+      if (event.sender == account &&
+          event.messageId != 0 &&
+          kindFromWire(
+                body: event.body,
+                extra: event.extra,
+                type: event.msgType,
+              ) ==
+              KimMsgKind.text) {
+        unawaited(
+          ref
+              .read(chatAgentProvider)
+              .onIncomingEcho(
+                dest: dest,
+                sender: event.sender,
+                text: event.body,
+                messageId: event.messageId,
+              ),
+        );
+      }
+      return;
+    }
     final results = await repo.applyLive(account, [msg], viewingDest: viewing);
-    if (!ref.mounted) {
+    if (!ref.mounted || gen != _sessionGen) {
       return;
     }
     ref.read(threadsProvider.notifier).ingestAll(results);

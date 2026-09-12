@@ -6,6 +6,7 @@
 import 'api/auth.dart';
 import 'api/client.dart';
 import 'api/simple.dart';
+import 'api/types.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -24,21 +25,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_KimApiPtr => wire
-      ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApiPtr;
-
-  CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_KimAuthPtr => wire
       ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuthPtr;
 
-  @protected
-  AnyhowException dco_decode_AnyhowException(dynamic raw);
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_KimSdkHandlePtr => wire
+      ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandlePtr;
 
   @protected
-  KimApi
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    dynamic raw,
-  );
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
   KimAuth
@@ -47,8 +42,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimApi
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     dynamic raw,
   );
 
@@ -59,8 +54,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimApi
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     dynamic raw,
   );
 
@@ -71,9 +66,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  KimSdkHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<KimSessionEvent> dco_decode_StreamSink_kim_session_event_Sse(
     dynamic raw,
   );
+
+  @protected
+  RustStreamSink<SessionUpdateDto> dco_decode_StreamSink_session_update_dto_Sse(
+    dynamic raw,
+  );
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw);
 
   @protected
   String dco_decode_String(dynamic raw);
@@ -97,10 +107,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimBotPendingItem dco_decode_kim_bot_pending_item(dynamic raw);
 
   @protected
+  KimCommandReceipt dco_decode_kim_command_receipt(dynamic raw);
+
+  @protected
   KimHistoryItem dco_decode_kim_history_item(dynamic raw);
 
   @protected
   KimInboxItem dco_decode_kim_inbox_item(dynamic raw);
+
+  @protected
+  KimIncomingTalk dco_decode_kim_incoming_talk(dynamic raw);
 
   @protected
   KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw);
@@ -124,7 +140,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<KimInboxItem> dco_decode_list_kim_inbox_item(dynamic raw);
 
   @protected
+  List<KimIncomingTalk> dco_decode_list_kim_incoming_talk(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  SdkErrorDto dco_decode_sdk_error_dto(dynamic raw);
+
+  @protected
+  SessionUpdateDto dco_decode_session_update_dto(dynamic raw);
+
+  @protected
+  TimelineUpdateDto dco_decode_timeline_update_dto(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -145,20 +176,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
-  KimApi
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   KimAuth
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     SseDeserializer deserializer,
   );
 
   @protected
-  KimApi
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     SseDeserializer deserializer,
   );
 
@@ -169,8 +194,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimApi
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     SseDeserializer deserializer,
   );
 
@@ -181,9 +206,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  KimSdkHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<KimSessionEvent> sse_decode_StreamSink_kim_session_event_Sse(
     SseDeserializer deserializer,
   );
+
+  @protected
+  RustStreamSink<SessionUpdateDto> sse_decode_StreamSink_session_update_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<TimelineUpdateDto>
+  sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer);
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -211,10 +251,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  KimCommandReceipt sse_decode_kim_command_receipt(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   KimHistoryItem sse_decode_kim_history_item(SseDeserializer deserializer);
 
   @protected
   KimInboxItem sse_decode_kim_inbox_item(SseDeserializer deserializer);
+
+  @protected
+  KimIncomingTalk sse_decode_kim_incoming_talk(SseDeserializer deserializer);
 
   @protected
   KimOutgoingContent sse_decode_kim_outgoing_content(
@@ -246,7 +294,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<KimIncomingTalk> sse_decode_list_kim_incoming_talk(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  SdkErrorDto sse_decode_sdk_error_dto(SseDeserializer deserializer);
+
+  @protected
+  SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer);
+
+  @protected
+  TimelineUpdateDto sse_decode_timeline_update_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -271,13 +338,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     KimAuth self,
     SseSerializer serializer,
@@ -285,8 +345,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
     SseSerializer serializer,
   );
 
@@ -299,8 +359,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
     SseSerializer serializer,
   );
 
@@ -312,8 +372,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_kim_session_event_Sse(
     RustStreamSink<KimSessionEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_session_update_dto_Sse(
+    RustStreamSink<SessionUpdateDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_timeline_update_dto_Sse(
+    RustStreamSink<TimelineUpdateDto> self,
     SseSerializer serializer,
   );
 
@@ -345,6 +424,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_kim_command_receipt(
+    KimCommandReceipt self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_kim_history_item(
     KimHistoryItem self,
     SseSerializer serializer,
@@ -352,6 +437,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_kim_inbox_item(KimInboxItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_kim_incoming_talk(
+    KimIncomingTalk self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_kim_outgoing_content(
@@ -390,8 +481,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_kim_incoming_talk(
+    List<KimIncomingTalk> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sdk_error_dto(SdkErrorDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_session_update_dto(
+    SessionUpdateDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_timeline_update_dto(
+    TimelineUpdateDto self,
     SseSerializer serializer,
   );
 
@@ -426,40 +541,6 @@ class RustLibWire implements BaseWire {
     : _lookup = dynamicLibrary.lookup;
 
   void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    ffi.Pointer<ffi.Void> ptr,
-  ) {
-    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-      ptr,
-    );
-  }
-
-  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApiPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-        'frbgen_kim_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi',
-      );
-  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi =
-      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApiPtr
-          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    ffi.Pointer<ffi.Void> ptr,
-  ) {
-    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-      ptr,
-    );
-  }
-
-  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApiPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-        'frbgen_kim_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi',
-      );
-  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi =
-      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApiPtr
-          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-
-  void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     ffi.Pointer<ffi.Void> ptr,
   ) {
@@ -491,5 +572,39 @@ class RustLibWire implements BaseWire {
       );
   late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth =
       _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuthPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandlePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kim_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle',
+      );
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle =
+      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandlePtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandlePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kim_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle',
+      );
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle =
+      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandlePtr
           .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 }

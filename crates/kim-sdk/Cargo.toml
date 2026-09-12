@@ -1,0 +1,34 @@
+[package]
+name = "kim-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KIM mobile business core: store, outbox, persist-then-ack"
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+kim-client.workspace = true
+kim-protocol.workspace = true
+reqwest = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+tokio-util = { workspace = true, features = ["io"] }
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+agent = []

@@ -2,13 +2,13 @@
 
 对照 Web SDK（[web-sdk.md](web-sdk.md)）：桌面仍是 `sdk/web`。App 长连接本里程碑走 **WGateway WSS/WS**，不是 TGateway TCP / 自定义 TLS 端口 / QUIC。
 
-`kim-client` 是 TDLib 形：session / login / talk / ack 在 Rust。Flutter 只是壳。
+`kim-client` 仍是协议层（session / login / talk / ack）。本地业务状态的唯一写入者是 workspace crate **`kim-sdk`**：store、outbox、未读、persist-then-ack。Flutter 是壳 + 平台适配。FFI 唯一 opaque 对象是 `KimSdkHandle`（`create` 始终拥有协议；`attach_store` 仅 runtime flag `kim.rustStore` 开时打开 `kim-cache.db`）。
 
-`kim-client` 有 `inbox_list` / `history` / `offline_index` / `offline_content`、统一 `send_message(dest, kind, content, client_id)`，以及 `SessionSupervisor`（重连退避 + `SyncEngine` 分页补拉，persist-then-ack）。Flutter FFI `KimApi` 持 supervisor：`start/stop/link_state/session_events/sync_confirm/notify_radio_up/send_message/history/inbox`。Dart `outbox` 入队即落库并用稳定 `client_id` 上行；文本 / 图片 / 视频失败重试都走 outbox。聊天页是自研 reverse `ChatList`（已去掉 `flutter_chat_ui` / `flutter_chat_core`）。Web `isRetryable` 对 `ServiceUnavailable=3` 与 3xx 重试，99 / 1xx / 111 不重试。Flutter outbox 持稳定 `client_id`。漏 Push 补偿见 G-03。
+`kim-client` 有 `inbox_list` / `history` / `offline_index` / `offline_content`、统一 `send_message(dest, kind, content, client_id)`，以及 `SessionSupervisor`（重连退避 + `SyncEngine`）。有 `PersistHook` 时 SyncEngine 在自己的 task 上 persist(Keep) 后 `ack_batch`（空页仍 ack）；Live Talk `try_send`，满则不 ACK、不停读循环。无 hook 时仍 ConfirmGate。Flutter FFI `KimSdkHandle`：`create/start_session/stop/link_state/session_events/watch_session/watch_timeline/sync_confirm/notify_radio_up/send_message/history/inbox`。`rustStore` 关时 Dart isolate 仍拥有 SQLite。聊天页是自研 reverse `ChatList`。Web `isRetryable` 对 `ServiceUnavailable=3` 与 3xx 重试。漏 Push 补偿仍是 G-03；G-13 客户端凭证持久化另项。
 
 ## Crate
 
-`crates/kim-client`。业务只碰 [`kim_core::Conn`]。本 PR 的 Conn 实现是 `kim_ws::connect_ws`（`ws://` 明文 Upgrade，`wss://` 先 TLS）。
+`crates/kim-client` 协议；`crates/kim-sdk` 业务核心（sqlx 0.8 sqlite-only，不进 workspace postgres feature）。FFI crate `sdk/mobile/rust` 仍在 workspace 外。业务只碰 [`kim_core::Conn`]。Conn 实现是 `kim_ws::connect_ws`（`ws://` 明文 Upgrade，`wss://` 先 TLS）。
 
 ```rust
 let mut cli = KimClient::new(ClientConfig::local(token)); // ws://127.0.0.1:8001/
@@ -68,14 +68,14 @@ flutter run
 
 CI（`.github/workflows/ci.yml` `sdk-mobile`）：`dart format --output=none --set-exit-if-changed lib test hook`、`flutter analyze --fatal-infos --fatal-warnings`、`cargo fmt --manifest-path rust/Cargo.toml -- --check`、`flutter test`。Flutter 钉 `.fvmrc`（3.47.2）。`flutter test` 会走 Native Assets hook 编 `kim_client_ffi`，所以 job 里装 host Rust 1.95.0（`RUSTUP_TOOLCHAIN` 避免 rust-toolchain.toml 里那些 cross target）。
 
-FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-client`。`KimBridge.ffiReady == true`。账号 HTTP 走 `KimAuth`（`register/login/logout/change_password`），长连接走 `KimApi.start`（SessionSupervisor）/ `sessionEvents` / `sendMessage` / `syncConfirm` / `stop`。编译走 `sdk/mobile/hook/build.dart`（`flutter_rust_bridge_hooks` / native_toolchain_rust），不是 `rust_builder` + cargokit / ffiPlugin。`rust/rust-toolchain.toml` 钉具体 toolchain。本仓库 workspace **不**收这个 crate（`unsafe` 生成代码），避免 `unsafe_code = deny`。
+FFI：`sdk/mobile/rust`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-sdk` / `kim-client`。`KimBridge.ffiReady == true`。账号 HTTP 走 `KimAuth`（`register/login/logout/change_password`），长连接走 `KimSdkHandle.create` + `startSession` / `sessionEvents` / `watchSession` / `sendMessage` / `syncConfirm` / `stop`。`attachStore` 仅 `kim.rustStore` 开。编译走 `sdk/mobile/hook/build.dart`。本仓库 workspace **不**收 FFI crate（`unsafe` 生成代码），避免 `unsafe_code = deny`。`kim-sdk` 是 workspace 成员。
 
-`KimApi` 另有 `friendRequest` / `friendAccept` / `friendReject` / `friendList` / `friendIncoming` / `searchUsers`（列表为 JSON）。没有 NDK / Xcode 时仍可用 CLI 验证协议。
+`KimSdkHandle` 另有 `friendRequest` / `friendAccept` / `friendReject` / `friendList` / `friendIncoming` / `searchUsers`（列表为 JSON）。没有 NDK / Xcode 时仍可用 CLI 验证协议。
 
 ### Flutter 壳现在有什么
 
 - `path_provider` → `KimPaths`（documents / support / cache / temp）。`support/kim-cache.db` 是会话 + 消息 SQLite（`package:sqlite3` 3.x 自带 native lib）。第一次打开会把旧的 `shared_preferences` JSON 导进去。**没有**把 data-dir 传进 FFI。
-- 登录后 `KimApi.start` 拉起 `SessionSupervisor`（connect → login → sync ∥ recv，断线退避）。`Live` 每 30s fire-and-forget `CODE_PING`；90s 读空闲看门狗；`notify_radio_up` / `notify_foreground` 探测活连接。`connect_ws*` 设 `TCP_NODELAY` + TCP keepalive。Dart `linkProvider` 镜像 `LinkState`，电台只做横幅。见 [impl/07-mobile-link-control.md](impl/07-mobile-link-control.md)。
+- 登录后 `KimSdkHandle.create` + `startSession` 拉起 `SessionSupervisor`（connect → login → sync ∥ recv，断线退避）。`Live` 每 30s fire-and-forget `CODE_PING`；90s 读空闲看门狗；`notify_radio_up` / `notify_foreground` 探测活连接。`connect_ws*` 设 `TCP_NODELAY` + TCP keepalive。Dart `linkProvider` 镜像 `LinkState`，电台只做横幅。见 [impl/07-mobile-link-control.md](impl/07-mobile-link-control.md)。`kim-sdk` 所有权切片见 [impl/08-kim-sdk-ownership.md](impl/08-kim-sdk-ownership.md)。
 - 登录 / 注册 / 退出 / 改密：Rust `kim_client::AuthClient` 发 uncompressed protobuf，`User-Agent` / `Accept` / `Content-Type` / `Accept-Language` 由客户端设置。reqwest `gzip` 只解压响应（`Accept-Encoding: gzip`）；**不**给请求体加 `Content-Encoding`。Caddy `encode gzip zstd` 压的是响应；Royal/axum 没有 `CompressionLayer`，也不解压请求 gzip。
 - `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 存 WGateway URL、Royal HTTP origin、account、dest；token 不进 prefs。
 - `connectivity_plus`：离线横幅。不是 Dart socket。

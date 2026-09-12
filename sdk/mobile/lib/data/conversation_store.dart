@@ -73,6 +73,20 @@ class ConversationStore {
     return ConversationStore._(_openAndMigrate(sqlite3.openInMemory()));
   }
 
+  static Future<ConversationStore> openForRuntime({
+    required Directory support,
+    required bool rustStore,
+    required Future<void> Function(String dbPath) attachStore,
+    SharedPreferences? prefs,
+  }) async {
+    if (rustStore) {
+      await attachStore(p.join(support.path, _dbName));
+      // UI-only cache. kim-cache.db is owned by kim-sdk; this is not the writer.
+      return ConversationStore.memory();
+    }
+    return open(support: support, prefs: prefs);
+  }
+
   static Future<ConversationStore> open({
     required Directory support,
     SharedPreferences? prefs,
@@ -879,8 +893,10 @@ class ConversationStore {
 
   void _pruneThread(String account, String dest) {
     _engine.execute(
-      'DELETE FROM messages WHERE account = ? AND dest = ? AND key NOT IN ('
+      'DELETE FROM messages WHERE account = ? AND dest = ? '
+      'AND status NOT IN (\'sending\', \'failed\') AND key NOT IN ('
       'SELECT key FROM messages WHERE account = ? AND dest = ? '
+      'AND status NOT IN (\'sending\', \'failed\') '
       'ORDER BY at DESC, key DESC LIMIT ?)',
       [account, dest, account, dest, maxMessages],
     );

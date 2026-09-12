@@ -8,6 +8,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'jwt.dart';
 
+class KimFlags {
+  static const rustStorePref = 'kim.rustStore';
+
+  /// Compile-time `KIM_RUST_STORE` wins for CI shards. Otherwise prefs, default off.
+  static bool rustStore(SharedPreferences prefs) {
+    const defined = bool.hasEnvironment('KIM_RUST_STORE');
+    if (defined) {
+      return const bool.fromEnvironment('KIM_RUST_STORE');
+    }
+    return prefs.getBool(rustStorePref) ?? false;
+  }
+}
+
 class SettingsStore {
   SettingsStore({required this._prefs, this._secure});
 
@@ -30,6 +43,8 @@ class SettingsStore {
 
   final SharedPreferences _prefs;
   final FlutterSecureStorage? _secure;
+
+  SharedPreferences get prefs => _prefs;
   final Map<String, String> _memorySecure = {};
 
   String url = defaultUrl;

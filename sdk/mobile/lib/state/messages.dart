@@ -229,7 +229,10 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       return;
     }
     ref.read(threadsProvider.notifier).markRead(dest);
-    await ref.read(conversationStoreProvider).markThreadRead(account, dest);
+    final rustStore = ref.read(runtimeProvider).rustStore;
+    if (!rustStore) {
+      await ref.read(conversationStoreProvider).markThreadRead(account, dest);
+    }
     var messageId = 0;
     for (final m in state.items.reversed) {
       if (m.messageId != 0) {

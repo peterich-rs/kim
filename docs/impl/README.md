@@ -56,5 +56,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 | — | 运行时 | ChannelMap / 锁粒度 / 读写分离 / 通知缝 | **不挡 B0，也不插到 B0 前面**；不改 ACK、不改 `sdk/*` | [hot-path-concurrency.md](./hot-path-concurrency.md) |
 | — | 客户端 | Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
 | — | 客户端 | 链接控制域（keepalive / CODE_PING / 看门狗 / 退避复位） | 不改 gateway ACK | [07-mobile-link-control.md](./07-mobile-link-control.md) |
+| — | 客户端 | kim-sdk 所有权下沉：store / outbox / persist-then-ack | 不改服务端 ACK；先 PR 1 保护 pending；推翻 06 Decision 2/4 | [08-kim-sdk-ownership.md](./08-kim-sdk-ownership.md) |
 
 G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。
