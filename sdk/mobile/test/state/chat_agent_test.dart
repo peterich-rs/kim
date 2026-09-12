@@ -17,6 +17,9 @@ import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/messages.dart';
 import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/outbox.dart';
+import 'package:kim_mobile/state/providers.dart';
+import 'package:kim_mobile/state/retry.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
@@ -907,6 +910,60 @@ void main() {
     await env.container.read(providerAccountsProvider.notifier).delete(id);
     expect(
       () => store.readApiKey(store.goose!),
+      throwsA(isA<MissingProviderAccount>()),
+    );
+  });
+
+  test('reload does not resurrect a missing account as OpenAI', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key.acct.acct-ds': 'sk-ds',
+    });
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-ds',
+        vendorId: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        keyRef: 'agent.api_key.acct.acct-ds',
+        displayName: 'DeepSeek',
+      ),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveGoose(
+      store.goose!.copyWith(
+        accountId: 'acct-ds',
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-flash',
+      ),
+      apiKey: 'sk-ds',
+    );
+    final prefs = await SharedPreferences.getInstance();
+    final disk = jsonDecode(prefs.getString('agent.profiles')!) as List;
+    expect(disk.first['account_id'], 'acct-ds');
+    expect(disk.first['provider'], isNull);
+    await prefs.setString(kProviderAccountsPref, '[]');
+
+    final container2 = ProviderContainer.test(
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: env.runtime,
+        auth: env.fake,
+        client: env.fake,
+        store: env.store,
+        media: env.media,
+      ),
+    );
+    addTearDown(container2.dispose);
+    final store2 = container2.read(agentProfilesProvider.notifier);
+    await store2.ensureLoaded();
+    expect(store2.goose!.accountId, 'acct-ds');
+    expect(container2.read(providerAccountsProvider), isEmpty);
+    expect(
+      () => store2.readApiKey(store2.goose!),
       throwsA(isA<MissingProviderAccount>()),
     );
   });

@@ -321,11 +321,20 @@ pub fn catalog_surface_json(vendor: &str, model: &str) -> Result<String, HostErr
         .map_err(|e| HostError::Failed(e.to_string()))
 }
 
-pub fn catalog_validate(vendor: &str, model: &str, choice_json: &str) -> Result<(), HostError> {
+/// Fortify then validate. Ok JSON is `{"choice":…,"dropped":[names]}` — names only.
+pub fn catalog_validate(vendor: &str, model: &str, choice_json: &str) -> Result<String, HostError> {
     let choice: ReasoningChoice = serde_json::from_str(choice_json)
         .map_err(|e| HostError::Profile(format!("reasoning: {e}")))?;
     let surface = surface_for(vendor, model)?;
-    validate_choice(&surface, &choice)
+    let (choice, dropped) = fortify_choice(&choice);
+    if !matches!(choice.body, ReasoningChoiceBody::Advanced { .. }) {
+        validate_choice(&surface, &choice)?;
+    }
+    serde_json::to_string(&json!({
+        "choice": choice,
+        "dropped": dropped,
+    }))
+    .map_err(|e| HostError::Failed(e.to_string()))
 }
 
 fn validate_choice(surface: &ReasoningSurface, choice: &ReasoningChoice) -> Result<(), HostError> {
@@ -627,6 +636,9 @@ fn map_anthropic(choice: &ReasoningChoice) -> ModelApply {
                 ThinkingEffort::Low | ThinkingEffort::High | ThinkingEffort::Max
             )
         });
+        if apply.thinking_effort.is_some() {
+            apply.reasoning = Some(true);
+        }
     }
     apply
 }
@@ -805,7 +817,20 @@ mod tests {
             surface_kind("openrouter", "deepseek/deepseek-flash"),
             "effort_enum"
         );
+        assert_eq!(
+            surface_kind("openrouter", "moonshotai/kimi-k2.7-code"),
+            "always_on"
+        );
+        assert_eq!(
+            surface_kind("openrouter", "moonshotai/kimi-k2.6-nightly"),
+            "toggle"
+        );
+        assert_eq!(
+            surface_kind("openrouter", "moonshotai/kimi-k3-preview"),
+            "effort_enum"
+        );
         assert_eq!(surface_kind("siliconflow", "Qwen/Qwen3-8B"), "toggle");
+        assert_eq!(surface_kind("siliconflow", "glm-5.3-air"), "effort_enum");
         assert_eq!(surface_kind("openai_compatible", "anything"), "none");
         assert_eq!(surface_kind("unknown-vendor", "x"), "none");
     }
@@ -848,6 +873,21 @@ mod tests {
             r#"{"v":1,"kind":"effort_enum","value":"medium"}"#,
         );
         assert!(bad.is_err());
+    }
+
+    #[test]
+    fn catalog_validate_fortifies_advanced_and_returns_dropped_names() {
+        let raw = catalog_validate(
+            "openai_compatible",
+            "local-model",
+            r#"{"v":1,"kind":"advanced","json":{"enable_thinking":true,"api_key":"sk-secret"}}"#,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["dropped"], json!(["api_key"]));
+        assert_eq!(v["choice"]["json"]["enable_thinking"], true);
+        assert!(v["choice"]["json"].get("api_key").is_none());
+        assert!(!raw.contains("sk-secret"));
     }
 
     #[test]
@@ -971,6 +1011,19 @@ mod tests {
         let budget = body["thinking"]["budget_tokens"].as_u64().unwrap();
         assert_eq!(budget, 16_000);
         assert!(body.get("output_config").is_none());
+        let custom: ReasoningChoice =
+            serde_json::from_str(r#"{"v":1,"kind":"effort_enum","value":"high"}"#).unwrap();
+        let apply = to_model_spec("anthropic", "claude-opus-4-9", &custom).unwrap();
+        assert_eq!(apply.reasoning, Some(true));
+        assert!(apply.thinking_effort.is_some());
+        assert!(!apply.extra_params.contains_key("budget_tokens"));
+        let cfg = cfg_from(
+            "anthropic",
+            "claude-opus-4-9",
+            r#"{"v":1,"kind":"effort_enum","value":"high"}"#,
+        );
+        let body = anthropic_body("anthropic", &cfg);
+        assert!(body.get("thinking").is_some(), "{body}");
     }
 
     #[test]

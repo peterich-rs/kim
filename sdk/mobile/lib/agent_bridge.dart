@@ -141,12 +141,16 @@ class AgentBridge {
     return catalogSurface(vendor: vendor, model: model);
   }
 
-  Future<void> catalogValidateChoice({
+  Future<String> catalogValidateChoice({
     required String vendor,
     required String model,
     required String choiceJson,
   }) async {
     await ensure();
-    await catalogValidate(vendor: vendor, model: model, choiceJson: choiceJson);
+    return catalogValidate(
+      vendor: vendor,
+      model: model,
+      choiceJson: choiceJson,
+    );
   }
 }

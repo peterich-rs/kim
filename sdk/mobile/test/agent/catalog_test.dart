@@ -85,6 +85,17 @@ void main() {
     expect(isAllowedAgentBaseUrl('not-a-url'), isFalse);
   });
 
+  test('catalog_validate result drops secret keys from Advanced JSON', () {
+    const raw =
+        '{"choice":{"v":1,"kind":"advanced","json":{"enable_thinking":true}},"dropped":["api_key"]}';
+    final result = CatalogValidateResult.fromJsonString(raw);
+    expect(result.dropped, ['api_key']);
+    expect(result.choice.kind, 'advanced');
+    expect(result.choice.advanced!['enable_thinking'], isTrue);
+    expect(result.choice.advanced!.containsKey('api_key'), isFalse);
+    expect(raw.contains('sk-'), isFalse);
+  });
+
   test('fetch model cache roundtrips under agent.catalog_cache', () async {
     SharedPreferences.setMockInitialValues({});
     await saveCatalogModelCache('deepseek', const [

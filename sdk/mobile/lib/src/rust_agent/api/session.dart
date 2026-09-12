@@ -41,7 +41,7 @@ Future<String> catalogSurface({
   model: model,
 );
 
-Future<void> catalogValidate({
+Future<String> catalogValidate({
   required String vendor,
   required String model,
   required String choiceJson,

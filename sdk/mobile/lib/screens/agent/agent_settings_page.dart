@@ -271,6 +271,15 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   Future<void> _fetchModels() async {
+    if (!isAllowedAgentBaseUrl(_baseUrl.text)) {
+      toastification.show(
+        context: context,
+        type: ToastificationType.error,
+        title: Text(Copy.agentInvalidUrl),
+        autoCloseDuration: const Duration(seconds: 3),
+      );
+      return;
+    }
     setState(() => _fetching = true);
     try {
       final bridge = ref.read(agentBridgeProvider);
@@ -360,8 +369,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       );
       return;
     }
-    if (_backend == 'openai_compatible' &&
-        !isAllowedAgentBaseUrl(_baseUrl.text)) {
+    if (!isAllowedAgentBaseUrl(_baseUrl.text)) {
       toastification.show(
         context: context,
         type: ToastificationType.error,
@@ -372,13 +380,17 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     }
     var choice = _choice;
     try {
-      await ref
+      final result = await ref
           .read(catalogRepositoryProvider)
           .validate(
             vendor: _backend,
             model: _model.text.trim(),
             choice: choice,
           );
+      choice = result.choice;
+      if (result.dropped.isNotEmpty) {
+        _toastDropped();
+      }
     } catch (_) {
       final aligned = alignChoice(_surface, choice);
       choice = aligned.choice;
@@ -410,17 +422,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       model: model,
       thinkingEffort: choice.value ?? '',
       reasoning: choice,
-      tools: AgentToolSet(
-        sendMessage: true,
-        searchContacts: existing.tools.searchContacts,
-        searchMessages: existing.tools.searchMessages,
-        getConversationContext: existing.tools.getConversationContext,
-        readClipboard: true,
-        listProfiles: existing.tools.listProfiles,
-        fs: _fs,
-        fsWrite: existing.tools.fsWrite,
-        bash: _bash,
-      ),
+      tools: existing.tools.copyWith(fs: _fs, bash: _bash),
       permissionOverrides: _permissions,
       extensions: _parseMcp(_mcp.text),
     );

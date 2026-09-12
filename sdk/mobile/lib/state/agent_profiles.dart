@@ -423,7 +423,7 @@ class AgentProfile {
       baseUrl: s.baseUrl,
       model: s.model,
       keyRef: _kGooseKey,
-      accountId: kGooseAccountId,
+      accountId: '',
       systemPrompt:
           'You are 助手, a local desktop agent inside the KIM messenger. '
           'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
@@ -688,31 +688,33 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     var changed = false;
     final next = <AgentProfile>[];
     for (var p in profiles) {
-      var account = p.accountId.isNotEmpty ? accounts.byId(p.accountId) : null;
-      if (account == null) {
-        account = ProviderAccount.fromLegacyProfile(
-          profileId: p.id,
-          providerKind: p.providerKind,
-          baseUrl: p.baseUrl,
-          keyRef: p.keyRef,
-        );
-        if (p.accountId.isNotEmpty) {
-          account = ProviderAccount(
-            id: p.accountId,
-            vendorId: canonicalizeVendorId(p.providerKind),
-            baseUrl: p.baseUrl,
-            keyRef: p.keyRef.isNotEmpty ? p.keyRef : account.keyRef,
-            displayName: canonicalizeVendorId(p.providerKind),
-          );
+      if (p.accountId.isNotEmpty) {
+        final account = accounts.byId(p.accountId);
+        if (account == null) {
+          // Keep the dangling account_id so readApiKey / open throw.
+          next.add(p);
+          continue;
         }
-        await accounts.upsert(account);
-        p = p.copyWith(accountId: account.id);
-        changed = true;
+        p = p.copyWith(
+          providerKind: canonicalizeVendorId(account.vendorId),
+          baseUrl: account.baseUrl,
+        );
+        next.add(p);
+        continue;
       }
+      final account = ProviderAccount.fromLegacyProfile(
+        profileId: p.id,
+        providerKind: p.providerKind,
+        baseUrl: p.baseUrl,
+        keyRef: p.keyRef,
+      );
+      await accounts.upsert(account);
       p = p.copyWith(
+        accountId: account.id,
         providerKind: canonicalizeVendorId(account.vendorId),
         baseUrl: account.baseUrl,
       );
+      changed = true;
       next.add(p);
     }
     if (changed) {

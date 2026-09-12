@@ -190,7 +190,7 @@ class _AccountSheetState extends State<_AccountSheet> {
   }
 
   Future<void> _save() async {
-    if (_vendor == 'openai_compatible' && !isAllowedAgentBaseUrl(_url.text)) {
+    if (!isAllowedAgentBaseUrl(_url.text)) {
       toastification.show(
         context: context,
         type: ToastificationType.error,

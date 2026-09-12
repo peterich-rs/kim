@@ -771,7 +771,11 @@ pub fn catalog_surface(vendor: String, model: String) -> Result<String, String> 
     kim_agent_host::catalog_surface_json(&vendor, &model).map_err(map_host_err)
 }
 
-pub fn catalog_validate(vendor: String, model: String, choice_json: String) -> Result<(), String> {
+pub fn catalog_validate(
+    vendor: String,
+    model: String,
+    choice_json: String,
+) -> Result<String, String> {
     kim_agent_host::catalog_validate(&vendor, &model, &choice_json).map_err(map_host_err)
 }
 

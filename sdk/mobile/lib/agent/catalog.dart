@@ -250,6 +250,31 @@ AlignedChoice alignChoice(
   return AlignedChoice(choice: current, dropped: false);
 }
 
+class CatalogValidateResult {
+  const CatalogValidateResult({required this.choice, this.dropped = const []});
+
+  final ReasoningChoice choice;
+  final List<String> dropped;
+
+  factory CatalogValidateResult.fromJsonString(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      return const CatalogValidateResult(choice: ReasoningChoice(kind: 'none'));
+    }
+    final map = Map<String, Object?>.from(decoded);
+    final choiceRaw = map['choice'];
+    final droppedRaw = map['dropped'];
+    return CatalogValidateResult(
+      choice: choiceRaw is Map
+          ? ReasoningChoice.fromJson(Map<String, Object?>.from(choiceRaw))
+          : const ReasoningChoice(kind: 'none'),
+      dropped: droppedRaw is List
+          ? [for (final n in droppedRaw) '$n']
+          : const [],
+    );
+  }
+}
+
 class CatalogRepository {
   CatalogRepository(this._bridge);
 
@@ -273,16 +298,17 @@ class CatalogRepository {
     return ReasoningSurfaceDto.fromJsonString(raw);
   }
 
-  Future<void> validate({
+  Future<CatalogValidateResult> validate({
     required String vendor,
     required String model,
     required ReasoningChoice choice,
-  }) {
-    return _bridge.catalogValidateChoice(
+  }) async {
+    final raw = await _bridge.catalogValidateChoice(
       vendor: vendor,
       model: model,
       choiceJson: jsonEncode(choice.toJson()),
     );
+    return CatalogValidateResult.fromJsonString(raw);
   }
 }
 

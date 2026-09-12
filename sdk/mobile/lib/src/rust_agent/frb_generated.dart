@@ -132,7 +132,7 @@ abstract class AgentRustLibApi extends BaseApi {
     required String model,
   });
 
-  Future<void> crateApiSessionCatalogValidate({
+  Future<String> crateApiSessionCatalogValidate({
     required String vendor,
     required String model,
     required String choiceJson,
@@ -568,7 +568,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       );
 
   @override
-  Future<void> crateApiSessionCatalogValidate({
+  Future<String> crateApiSessionCatalogValidate({
     required String vendor,
     required String model,
     required String choiceJson,
@@ -588,7 +588,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
+          decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiSessionCatalogValidateConstMeta,

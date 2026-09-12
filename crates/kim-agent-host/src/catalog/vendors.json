@@ -480,6 +480,56 @@
           }
         },
         {
+          "prefix": "*kimi-k2.7-code*",
+          "surface": {
+            "kind": "always_on",
+            "note": "Kimi K2.7 Code always thinks"
+          }
+        },
+        {
+          "prefix": "*kimi-k2.6*",
+          "surface": {
+            "kind": "toggle",
+            "param": "thinking.type",
+            "default_on": true
+          }
+        },
+        {
+          "prefix": "*kimi-k2.5*",
+          "surface": {
+            "kind": "toggle",
+            "param": "thinking.type",
+            "default_on": true
+          }
+        },
+        {
+          "prefix": "*kimi-k3*",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high", "max"],
+            "default": "max"
+          }
+        },
+        {
+          "prefix": "*glm-5.3*",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high", "max"],
+            "default": "max"
+          }
+        },
+        {
+          "prefix": "*glm-5.2*",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high", "max"],
+            "default": "max"
+          }
+        },
+        {
           "prefix": "*glm*",
           "surface": {
             "kind": "effort_enum",
@@ -525,6 +575,38 @@
             "kind": "toggle",
             "param": "enable_thinking",
             "default_on": true
+          }
+        },
+        {
+          "prefix": "moonshotai/kimi-k2.7-code*",
+          "surface": {
+            "kind": "always_on",
+            "note": "Kimi K2.7 Code always thinks"
+          }
+        },
+        {
+          "prefix": "moonshotai/kimi-k2.6*",
+          "surface": {
+            "kind": "toggle",
+            "param": "thinking.type",
+            "default_on": true
+          }
+        },
+        {
+          "prefix": "moonshotai/kimi-k2.5*",
+          "surface": {
+            "kind": "toggle",
+            "param": "thinking.type",
+            "default_on": true
+          }
+        },
+        {
+          "prefix": "moonshotai/kimi-k3*",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high", "max"],
+            "default": "max"
           }
         },
         {
