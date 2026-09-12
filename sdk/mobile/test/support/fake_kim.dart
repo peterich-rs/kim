@@ -442,8 +442,14 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return pendingItems.take(limit).toList();
   }
 
+  int attachStores = 0;
+  String lastAttachPath = '';
+
   @override
-  Future<void> attachStore(String dbPath) async {}
+  Future<void> attachStore(String dbPath) async {
+    attachStores += 1;
+    lastAttachPath = dbPath;
+  }
 
   @override
   bool get rustStoreAttached => false;

@@ -73,6 +73,19 @@ class ConversationStore {
     return ConversationStore._(_openAndMigrate(sqlite3.openInMemory()));
   }
 
+  static Future<ConversationStore> openForRuntime({
+    required Directory support,
+    required bool rustStore,
+    required Future<void> Function(String dbPath) attachStore,
+    SharedPreferences? prefs,
+  }) async {
+    if (rustStore) {
+      await attachStore(p.join(support.path, _dbName));
+      return ConversationStore.memory();
+    }
+    return open(support: support, prefs: prefs);
+  }
+
   static Future<ConversationStore> open({
     required Directory support,
     SharedPreferences? prefs,

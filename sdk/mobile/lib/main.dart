@@ -51,9 +51,12 @@ class _KimBootState extends State<KimBoot> {
   Future<void> _start() async {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
-    final store = await ConversationStore.open(
+    final prefs = await SharedPreferences.getInstance();
+    final store = await ConversationStore.openForRuntime(
       support: runtime.paths.support,
-      prefs: await SharedPreferences.getInstance(),
+      rustStore: runtime.rustStore,
+      attachStore: bridge.attachStore,
+      prefs: prefs,
     );
     final account = runtime.settings.account;
     if (account.isNotEmpty) {
