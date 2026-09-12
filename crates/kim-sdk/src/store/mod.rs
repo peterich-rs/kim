@@ -49,6 +49,31 @@ enum WriteOp {
         items: Vec<kim_client::InboxItem>,
         reply: oneshot::Sender<Result<Vec<ThreadView>, SdkError>>,
     },
+    Cancel {
+        epoch: u64,
+        account: String,
+        client_id: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    DeleteThread {
+        epoch: u64,
+        account: String,
+        dest: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    MarkSent {
+        epoch: u64,
+        account: String,
+        client_id: String,
+        message_id: i64,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    MarkFailed {
+        epoch: u64,
+        account: String,
+        client_id: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
 }
 
 pub(crate) fn connect_options(path: &PathBuf) -> SqliteConnectOptions {
@@ -172,6 +197,100 @@ impl Store {
     pub(crate) async fn load_threads(&self, account: &str) -> Result<Vec<ThreadView>, SdkError> {
         threads::load_all(&self.pool, account).await
     }
+
+    pub(crate) async fn load_due(&self, account: &str) -> Result<Vec<outbox::OutboxRow>, SdkError> {
+        outbox::load_due(&self.pool, account).await
+    }
+
+    pub(crate) async fn cancel(
+        &self,
+        epoch: u64,
+        account: String,
+        client_id: String,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::Cancel {
+                epoch,
+                account,
+                client_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn delete_thread(
+        &self,
+        epoch: u64,
+        account: String,
+        dest: String,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::DeleteThread {
+                epoch,
+                account,
+                dest,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn mark_sent(
+        &self,
+        epoch: u64,
+        account: String,
+        client_id: String,
+        message_id: i64,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::MarkSent {
+                epoch,
+                account,
+                client_id,
+                message_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn mark_failed(
+        &self,
+        epoch: u64,
+        account: String,
+        client_id: String,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::MarkFailed {
+                epoch,
+                account,
+                client_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
 }
 
 async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Receiver<WriteOp>) {
@@ -229,6 +348,120 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 };
                 let _ = reply.send(result);
             }
+            WriteOp::Cancel {
+                epoch: op_epoch,
+                account,
+                client_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    cancel_tx(&pool, &account, &client_id).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::DeleteThread {
+                epoch: op_epoch,
+                account,
+                dest,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    delete_thread_tx(&pool, &account, &dest).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::MarkSent {
+                epoch: op_epoch,
+                account,
+                client_id,
+                message_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    mark_sent_tx(&pool, &account, &client_id, message_id).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::MarkFailed {
+                epoch: op_epoch,
+                account,
+                client_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    mark_failed_tx(&pool, &account, &client_id).await
+                };
+                let _ = reply.send(result);
+            }
+        }
+    }
+}
+
+async fn cancel_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+    let mut tx = pool.begin().await.map_err(map_sqlx)?;
+    let result = outbox::cancel(&mut tx, account, client_id).await;
+    finish_tx(tx, result).await
+}
+
+async fn delete_thread_tx(pool: &SqlitePool, account: &str, dest: &str) -> Result<(), SdkError> {
+    let mut tx = pool.begin().await.map_err(map_sqlx)?;
+    let result = outbox::delete_thread(&mut tx, account, dest).await;
+    finish_tx(tx, result).await
+}
+
+async fn mark_sent_tx(
+    pool: &SqlitePool,
+    account: &str,
+    client_id: &str,
+    message_id: i64,
+) -> Result<(), SdkError> {
+    let mut tx = pool.begin().await.map_err(map_sqlx)?;
+    let result = outbox::mark_sent(&mut tx, account, client_id, message_id, now_ms()).await;
+    finish_tx(tx, result).await
+}
+
+async fn mark_failed_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+    let mut tx = pool.begin().await.map_err(map_sqlx)?;
+    let result = outbox::mark_failed(&mut tx, account, client_id, now_ms()).await;
+    finish_tx(tx, result).await
+}
+
+async fn finish_tx(
+    tx: sqlx::Transaction<'_, sqlx::Sqlite>,
+    result: Result<(), SdkError>,
+) -> Result<(), SdkError> {
+    match result {
+        Ok(()) => {
+            tx.commit().await.map_err(map_sqlx)?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            Err(e)
         }
     }
 }

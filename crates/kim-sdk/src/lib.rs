@@ -48,6 +48,7 @@ struct Inner {
     session: Mutex<Option<StartSession>>,
     store: Mutex<Option<Arc<Store>>>,
     supervisor: Mutex<Option<Arc<kim_client::SessionSupervisor>>>,
+    protocol: Mutex<Option<Arc<dyn ProtocolClient>>>,
     session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
     timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
     session_snapshot: watch::Sender<SessionSnapshot>,
@@ -71,6 +72,7 @@ impl KimSdk {
                 session: Mutex::new(None),
                 store: Mutex::new(None),
                 supervisor: Mutex::new(None),
+                protocol: Mutex::new(None),
                 session_subs: Mutex::new(Vec::new()),
                 timelines: Mutex::new(HashMap::new()),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
@@ -179,7 +181,57 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store.enqueue(epoch, session.account, cmd).await
+        let receipt = store.enqueue(epoch, session.account, cmd).await?;
+        let sdk = self.clone();
+        tokio::spawn(async move {
+            let _ = outbox::pump::run_once(&sdk).await;
+        });
+        Ok(receipt)
+    }
+
+    pub async fn cancel_send(&self, id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        store.cancel(epoch, session.account, id).await
+    }
+
+    pub async fn retry_send(&self, id: String) -> Result<CommandReceipt, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let due = store.load_due(&session.account).await?;
+        let row =
+            due.into_iter()
+                .find(|r| r.client_id == id)
+                .ok_or_else(|| SdkError::NotFound {
+                    what: "outbox".into(),
+                })?;
+        let _ = outbox::pump::run_once(self).await;
+        Ok(CommandReceipt {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            client_id: row.client_id,
+            dest: row.dest,
+            accepted_at: store::now_ms(),
+            send_status: SendStatus::Pending,
+        })
+    }
+
+    pub async fn delete_thread(&self, dest: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        store.delete_thread(epoch, session.account, dest).await
+    }
+
+    pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
+        *lock(&self.inner.protocol) = Some(protocol);
+    }
+
+    pub(crate) fn protocol(&self) -> Result<Arc<dyn ProtocolClient>, SdkError> {
+        if let Some(p) = lock(&self.inner.protocol).clone() {
+            return Ok(p);
+        }
+        Err(SdkError::NotConnected)
     }
 
     pub async fn load_older(&self, cursor: PageCursor) -> Result<MessagePage, SdkError> {
@@ -265,7 +317,7 @@ impl KimSdk {
         Ok(())
     }
 
-    fn store(&self) -> Result<Arc<Store>, SdkError> {
+    pub(crate) fn store(&self) -> Result<Arc<Store>, SdkError> {
         lock(&self.inner.store)
             .clone()
             .ok_or(SdkError::InvalidArgument {

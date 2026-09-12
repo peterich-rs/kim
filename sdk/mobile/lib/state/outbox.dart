@@ -58,7 +58,9 @@ class OutboxNotifier extends Notifier<int> {
       clientId: clientId,
     );
     await _persist(msg);
-    unawaited(_pump());
+    if (!ref.read(runtimeProvider).rustStore) {
+      unawaited(_pump());
+    }
     return msg;
   }
 
@@ -131,7 +133,9 @@ class OutboxNotifier extends Notifier<int> {
     }
     final next = target.copyWith(failed: false, status: KimSendStatus.sending);
     await _persist(next);
-    unawaited(_pump());
+    if (!ref.read(runtimeProvider).rustStore) {
+      unawaited(_pump());
+    }
   }
 
   Future<void> replay() async {
@@ -148,7 +152,9 @@ class OutboxNotifier extends Notifier<int> {
         );
       }
     }
-    unawaited(_pump());
+    if (!ref.read(runtimeProvider).rustStore) {
+      unawaited(_pump());
+    }
   }
 
   Future<void> _pump() async {

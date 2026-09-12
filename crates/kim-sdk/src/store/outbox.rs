@@ -69,3 +69,158 @@ pub(crate) async fn insert(
     .map_err(map_sqlx)?;
     Ok(())
 }
+
+pub(crate) struct OutboxRow {
+    pub client_id: String,
+    pub dest: String,
+    pub kind: i32,
+    pub payload_type: i32,
+    pub body: String,
+    pub extra: String,
+    #[allow(dead_code)]
+    pub status: String,
+}
+
+pub(crate) async fn load_due(
+    pool: &sqlx::SqlitePool,
+    account: &str,
+) -> Result<Vec<OutboxRow>, SdkError> {
+    let rows = sqlx::query(
+        r"
+        SELECT client_id, dest, kind, payload_type, body, extra, status
+        FROM outbox
+        WHERE account = ? AND status IN ('pending', 'failed')
+        ORDER BY created_at ASC, client_id ASC
+        ",
+    )
+    .bind(account)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        use sqlx::Row;
+        out.push(OutboxRow {
+            client_id: row.try_get("client_id").map_err(map_sqlx)?,
+            dest: row.try_get("dest").map_err(map_sqlx)?,
+            kind: row.try_get("kind").map_err(map_sqlx)?,
+            payload_type: row.try_get("payload_type").map_err(map_sqlx)?,
+            body: row.try_get("body").map_err(map_sqlx)?,
+            extra: row.try_get("extra").map_err(map_sqlx)?,
+            status: row.try_get("status").map_err(map_sqlx)?,
+        });
+    }
+    Ok(out)
+}
+
+pub(crate) async fn mark_sent(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+    message_id: i64,
+    now: i64,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        "UPDATE outbox SET status = 'sent', message_id = ?, updated_at = ? WHERE account = ? AND client_id = ?",
+    )
+    .bind(message_id)
+    .bind(now)
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    sqlx::query(
+        "UPDATE messages SET status = 'sent', failed = 0, message_id = CASE WHEN ? != 0 THEN ? ELSE message_id END WHERE account = ? AND key = ?",
+    )
+    .bind(message_id)
+    .bind(message_id)
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn mark_failed(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+    now: i64,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        "UPDATE outbox SET status = 'failed', updated_at = ? WHERE account = ? AND client_id = ?",
+    )
+    .bind(now)
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    sqlx::query("UPDATE messages SET status = 'failed', failed = 1 WHERE account = ? AND key = ?")
+        .bind(account)
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn cancel(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+) -> Result<(), SdkError> {
+    sqlx::query("DELETE FROM outbox WHERE account = ? AND client_id = ?")
+        .bind(account)
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM messages WHERE account = ? AND key = ?")
+        .bind(account)
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn delete_thread(
+    tx: &mut SqliteConnection,
+    account: &str,
+    dest: &str,
+) -> Result<(), SdkError> {
+    sqlx::query("DELETE FROM outbox WHERE account = ? AND dest = ?")
+        .bind(account)
+        .bind(dest)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM messages WHERE account = ? AND dest = ?")
+        .bind(account)
+        .bind(dest)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM threads WHERE account = ? AND id = ?")
+        .bind(account)
+        .bind(dest)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM read_watermarks WHERE account = ? AND dest = ?")
+        .bind(account)
+        .bind(dest)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM timeline_meta WHERE account = ? AND dest = ?")
+        .bind(account)
+        .bind(dest)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
