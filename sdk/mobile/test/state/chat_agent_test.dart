@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
@@ -10,6 +11,7 @@ import 'package:kim_mobile/agent_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/agent_profiles.dart';
 import 'package:kim_mobile/state/chat_agent.dart';
+import 'package:kim_mobile/state/provider_accounts.dart';
 import 'package:kim_mobile/state/chat_session.dart';
 import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/messages.dart';
@@ -517,36 +519,34 @@ void main() {
     );
   });
 
-  test('opens with profile keyRef rather than only agent.api_key', () async {
-    final session = _OneShotSession('ok');
-    final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
-      token: 'tok.jwt',
-      account: 'alice',
-      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
-    );
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-legacy',
-      'agent.api_key.goose': 'sk-goose',
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('agent.multi_profile', true);
-    final store = env.container.read(agentProfilesProvider.notifier);
-    await store.ensureLoaded();
-    await store.duplicate(store.goose!);
-    final copy = env.container
-        .read(agentProfilesProvider)
-        .firstWhere((p) => p.id != kGooseAgentId);
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-legacy',
-      'agent.api_key.goose': 'sk-goose',
-      copy.keyRef: 'sk-persona',
-    });
-    await env.container
-        .read(chatAgentProvider)
-        .sendDirect(dest: copy.dest, text: 'hi');
-    expect(bridge.lastOpts?.apiKey, 'sk-persona');
-  });
+  test(
+    'opens with shared account key rather than only agent.api_key',
+    () async {
+      final session = _OneShotSession('ok');
+      final bridge = _RecordingAgentBridge()..session = session;
+      final env = await kimHarness(
+        token: 'tok.jwt',
+        account: 'alice',
+        overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+      );
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-legacy',
+        'agent.api_key.goose': 'sk-goose',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('agent.multi_profile', true);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.duplicate(store.goose!);
+      final copy = env.container
+          .read(agentProfilesProvider)
+          .firstWhere((p) => p.id != kGooseAgentId);
+      await env.container
+          .read(chatAgentProvider)
+          .sendDirect(dest: copy.dest, text: 'hi');
+      expect(bridge.lastOpts?.apiKey, 'sk-goose');
+    },
+  );
 
   test('profile save with tool change reopens the live session', () async {
     final session = _OneShotSession('ok');
@@ -574,7 +574,7 @@ void main() {
     expect(bridge.opens, 2);
   });
 
-  test('duplicate copies the source api key', () async {
+  test('duplicate shares account_id and does not copy the key', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
       'agent.api_key': 'sk-live',
@@ -586,6 +586,8 @@ void main() {
     final copy = env.container
         .read(agentProfilesProvider)
         .firstWhere((p) => p.id != kGooseAgentId);
+    expect(copy.accountId, store.goose!.accountId);
+    expect(copy.accountId, isNotEmpty);
     expect(await store.readApiKey(copy), 'sk-live');
   });
 
@@ -827,6 +829,87 @@ void main() {
       expect(env.fake.botReplies.single.inReplyTo, 2);
     },
   );
+
+  test('disk JSON without provider opens DeepSeek with catalog kind', () async {
+    final session = _OneShotSession('ok');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key.acct.acct-ds': 'sk-ds',
+    });
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-ds',
+        vendorId: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        keyRef: 'agent.api_key.acct.acct-ds',
+        displayName: 'DeepSeek',
+      ),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveGoose(
+      store.goose!.copyWith(
+        accountId: 'acct-ds',
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-flash',
+        reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
+      ),
+      apiKey: 'sk-ds',
+    );
+    final disk = jsonDecode(
+      (await SharedPreferences.getInstance()).getString('agent.profiles')!,
+    );
+    expect(disk.first['provider'], isNull);
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    expect(bridge.lastOpts?.llmBackend, 'deepseek');
+    expect(bridge.lastOpts?.apiKey, 'sk-ds');
+    final host = jsonDecode(bridge.lastOpts!.profileJson) as Map;
+    expect(host['provider']['kind'], 'deepseek');
+    expect(host['reasoning']['value'], 'high');
+    expect(host['model']['name'], 'deepseek-flash');
+  });
+
+  test('save ProviderAccount does not call botCreate', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-new',
+        vendorId: 'groq',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        keyRef: 'agent.api_key.acct.acct-new',
+        displayName: 'Groq',
+      ),
+    );
+    expect(env.fake.botCreates, 0);
+  });
+
+  test('missing account refuses open without stale kind fallback', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final id = store.goose!.accountId;
+    expect(id, isNotEmpty);
+    await env.container.read(providerAccountsProvider.notifier).delete(id);
+    expect(
+      () => store.readApiKey(store.goose!),
+      throwsA(isA<MissingProviderAccount>()),
+    );
+  });
 }
 
 AgentUiEvent _finished(String message) => AgentUiEvent(

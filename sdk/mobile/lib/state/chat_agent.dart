@@ -19,6 +19,7 @@ import '../models/models.dart';
 import 'agent_profiles.dart';
 import 'agent_settings.dart';
 import 'auth.dart';
+import 'provider_accounts.dart';
 import 'inbox.dart';
 import 'messages.dart';
 import 'providers.dart';
@@ -364,16 +365,22 @@ class ChatAgent {
   }
 
   SessionOpenOpts _openOpts(String dest, AgentProfile profile, String apiKey) {
+    final accounts = _ref.read(providerAccountsProvider.notifier);
+    final account = accounts.byId(profile.accountId);
+    if (account == null) {
+      throw MissingProviderAccount(profile.accountId);
+    }
+    final vendorId = canonicalizeVendorId(account.vendorId);
     return SessionOpenOpts(
       model: profile.model,
-      llmBackend: profile.providerKind,
+      llmBackend: vendorId,
       resumeOnOpen: true,
-      baseUrl: profile.baseUrl,
+      baseUrl: account.baseUrl,
       apiKey: apiKey,
       enableFsTools: profile.tools.fs,
       bashEnabled: profile.tools.bash,
       profileId: profile.id,
-      profileJson: jsonEncode(profile.toJson()),
+      profileJson: jsonEncode(profile.toHostJson(account)),
       thinkingEffort: profile.thinkingEffort,
       gooseMode: profile.mode,
       enableKimTools: true,
@@ -800,6 +807,7 @@ class ChatAgent {
 
   bool _machineChanged(AgentProfile a, AgentProfile b) {
     return a.model != b.model ||
+        a.accountId != b.accountId ||
         a.providerKind != b.providerKind ||
         a.baseUrl != b.baseUrl ||
         a.keyRef != b.keyRef ||
@@ -807,6 +815,8 @@ class ChatAgent {
         a.mode != b.mode ||
         a.maxTurns != b.maxTurns ||
         a.thinkingEffort != b.thinkingEffort ||
+        jsonEncode(a.reasoning?.toJson()) !=
+            jsonEncode(b.reasoning?.toJson()) ||
         a.steer != b.steer ||
         jsonEncode(a.tools.toJson()) != jsonEncode(b.tools.toJson()) ||
         jsonEncode([for (final e in a.extensions) e.toJson()]) !=
