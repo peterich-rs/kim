@@ -11,6 +11,8 @@ use crate::command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus,
 };
 use crate::error::{map_sqlx, SdkError};
+use crate::sync::UnreadPolicy;
+use crate::timeline::ThreadView;
 
 pub mod cursors;
 pub mod messages;
@@ -33,6 +35,19 @@ enum WriteOp {
         account: String,
         cmd: SendMessageCommand,
         reply: oneshot::Sender<Result<CommandReceipt, SdkError>>,
+    },
+    PersistTalks {
+        epoch: u64,
+        account: String,
+        talks: Vec<kim_client::IncomingTalk>,
+        policy: UnreadPolicy,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    PersistInbox {
+        epoch: u64,
+        account: String,
+        items: Vec<kim_client::InboxItem>,
+        reply: oneshot::Sender<Result<Vec<ThreadView>, SdkError>>,
     },
 }
 
@@ -107,6 +122,56 @@ impl Store {
             has_more,
         })
     }
+
+    pub(crate) async fn persist_talks(
+        &self,
+        epoch: u64,
+        account: String,
+        talks: Vec<kim_client::IncomingTalk>,
+        policy: UnreadPolicy,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::PersistTalks {
+                epoch,
+                account,
+                talks,
+                policy,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn persist_inbox(
+        &self,
+        epoch: u64,
+        account: String,
+        items: Vec<kim_client::InboxItem>,
+    ) -> Result<Vec<ThreadView>, SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::PersistInbox {
+                epoch,
+                account,
+                items,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn load_threads(&self, account: &str) -> Result<Vec<ThreadView>, SdkError> {
+        threads::load_all(&self.pool, account).await
+    }
 }
 
 async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Receiver<WriteOp>) {
@@ -126,6 +191,41 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                     })
                 } else {
                     persist_enqueue(&pool, &account, cmd).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::PersistTalks {
+                epoch: op_epoch,
+                account,
+                talks,
+                policy,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    persist_talks_tx(&pool, &account, &talks, policy).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::PersistInbox {
+                epoch: op_epoch,
+                account,
+                items,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    persist_inbox_tx(&pool, &account, &items).await
                 };
                 let _ = reply.send(result);
             }
@@ -253,4 +353,101 @@ pub(crate) fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or(0)
+}
+
+pub(crate) fn send_time_ms(send_time: i64) -> i64 {
+    if send_time <= 0 {
+        return now_ms();
+    }
+    if send_time > 10_000_000_000_000_000 {
+        send_time / 1_000_000
+    } else if send_time > 100_000_000_000_000 {
+        send_time / 1_000
+    } else if send_time > 100_000_000_000 {
+        send_time
+    } else {
+        send_time.saturating_mul(1000)
+    }
+}
+
+async fn persist_talks_tx(
+    pool: &SqlitePool,
+    account: &str,
+    talks: &[kim_client::IncomingTalk],
+    policy: UnreadPolicy,
+) -> Result<(), SdkError> {
+    if talks.is_empty() {
+        return Ok(());
+    }
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    let result = async {
+        let mut dests = Vec::new();
+        for talk in talks {
+            if let Some(out) = messages::apply_talk(&mut tx, account, talk, policy).await? {
+                threads::apply_incoming(
+                    &mut tx,
+                    account,
+                    &out.dest,
+                    &out.msg.body,
+                    out.msg.at,
+                    out.unread_delta,
+                    out.msg.thread_kind,
+                )
+                .await?;
+                dests.push(out.dest);
+            }
+        }
+        dests.sort();
+        dests.dedup();
+        for dest in dests {
+            messages::prune(&mut tx, account, &dest).await?;
+        }
+        Ok::<(), SdkError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => tx.commit().await.map_err(map_sqlx)?,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+async fn persist_inbox_tx(
+    pool: &SqlitePool,
+    account: &str,
+    items: &[kim_client::InboxItem],
+) -> Result<Vec<ThreadView>, SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    let result = async {
+        let mut views = Vec::with_capacity(items.len());
+        for item in items {
+            let t = threads::persist_inbox_item(&mut tx, account, item).await?;
+            views.push(ThreadView {
+                id: t.id,
+                kind: t.kind,
+                title: t.title,
+                avatar: t.avatar,
+                last_body: t.last_body,
+                last_at: t.last_at,
+                unread: t.unread,
+            });
+        }
+        Ok::<Vec<ThreadView>, SdkError>(views)
+    }
+    .await;
+    match result {
+        Ok(views) => {
+            tx.commit().await.map_err(map_sqlx)?;
+            Ok(views)
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            Err(e)
+        }
+    }
 }

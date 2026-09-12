@@ -13,10 +13,12 @@ mod timeline;
 pub mod outbox;
 pub mod sync;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 pub use agent::{AgentPort, NoopAgent};
@@ -31,6 +33,7 @@ pub use ids::{
 };
 pub use media::{image_mime_ok, MediaRef, MAX_IMAGE_BYTES};
 pub use proto::ProtocolClient;
+pub use sync::UnreadPolicy;
 pub use timeline::{
     LinkStateView, MessageView, SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta,
     TimelineSnapshot, TimelineUpdate,
@@ -44,6 +47,9 @@ struct Inner {
     cancel: Mutex<CancellationToken>,
     session: Mutex<Option<StartSession>>,
     store: Mutex<Option<Arc<Store>>>,
+    session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
+    timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
+    session_snapshot: watch::Sender<SessionSnapshot>,
     #[allow(dead_code)]
     agent: Arc<dyn AgentPort>,
 }
@@ -62,6 +68,9 @@ impl KimSdk {
                 cancel: Mutex::new(CancellationToken::new()),
                 session: Mutex::new(None),
                 store: Mutex::new(None),
+                session_subs: Mutex::new(Vec::new()),
+                timelines: Mutex::new(HashMap::new()),
+                session_snapshot: watch::channel(SessionSnapshot::default()).0,
                 agent: Arc::new(NoopAgent),
             }),
         })
@@ -142,6 +151,73 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         store.load_older(&session.account, cursor).await
+    }
+
+    pub async fn persist_talks(
+        &self,
+        talks: Vec<kim_client::IncomingTalk>,
+        policy: UnreadPolicy,
+    ) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        store
+            .persist_talks(epoch, session.account, talks, policy)
+            .await
+    }
+
+    pub async fn persist_inbox(
+        &self,
+        items: Vec<kim_client::InboxItem>,
+    ) -> Result<Vec<ThreadView>, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        let views = store.persist_inbox(epoch, session.account, items).await?;
+        self.emit_session(SessionUpdate::Inbox {
+            threads: views.clone(),
+        });
+        Ok(views)
+    }
+
+    pub async fn load_threads(&self) -> Result<Vec<ThreadView>, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store.load_threads(&session.account).await
+    }
+
+    /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
+    pub fn subscribe_session(&self) -> mpsc::Receiver<SessionUpdate> {
+        let (tx, rx) = mpsc::channel(64);
+        lock(&self.inner.session_subs).push(tx);
+        rx
+    }
+
+    pub fn emit_session(&self, update: SessionUpdate) {
+        let mut subs = lock(&self.inner.session_subs);
+        subs.retain(|tx| tx.try_send(update.clone()).is_ok());
+    }
+
+    pub fn subscribe_session_snapshot(&self) -> watch::Receiver<SessionSnapshot> {
+        self.inner.session_snapshot.subscribe()
+    }
+
+    pub fn subscribe_timeline(&self, query: TimelineQuery) -> watch::Receiver<TimelineUpdate> {
+        let dest = if query.dest.is_empty() {
+            String::new()
+        } else {
+            query.dest.clone()
+        };
+        let init = TimelineUpdate::Resync {
+            dest: dest.clone(),
+            reason: "subscribe".into(),
+        };
+        let mut map = lock(&self.inner.timelines);
+        let tx = map
+            .entry(dest)
+            .or_insert_with(|| watch::channel(init).0)
+            .clone();
+        tx.subscribe()
     }
 
     pub fn notify_radio_up(&self) -> Result<(), SdkError> {

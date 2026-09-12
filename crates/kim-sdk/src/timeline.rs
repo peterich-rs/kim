@@ -172,7 +172,6 @@ pub fn thread_kind_name(kind: i32) -> &'static str {
 }
 
 #[must_use]
-#[allow(dead_code)]
 pub fn thread_kind_from_name(name: &str) -> i32 {
     if name == "group" {
         kim_protocol::INBOX_KIND_GROUP
