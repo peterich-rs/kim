@@ -1,11 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use goose_provider_types::goose_mode::GooseMode;
 use goose_provider_types::thinking::ThinkingEffort;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
+use crate::catalog::ReasoningChoice;
 use crate::provider::ProviderConfig;
 use crate::{HostError, DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_SYSTEM_PROMPT};
 
@@ -18,14 +20,17 @@ fn default_smart_approve() -> GooseMode {
 }
 
 /// Stable id. Default persona is "goose" (IM dest alias too).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentProfile {
     pub id: String,
     pub display_name: String,
     #[serde(default)]
     pub aliases: Vec<String>,
+    #[serde(default)]
     pub provider: ProviderSpec,
     pub model: ModelSpec,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningChoice>,
     pub system_prompt: String,
     /// Missing JSON → SmartApprove. Never GooseMode::Auto (enum Default).
     #[serde(default = "default_smart_approve")]
@@ -46,16 +51,19 @@ pub struct AgentProfile {
     pub steer: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProviderSpec {
+    #[serde(default)]
     pub kind: String,
     #[serde(default)]
     pub base_url: String,
+    #[serde(default)]
     pub key_ref: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ModelSpec {
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub thinking_effort: Option<ThinkingEffort>,
@@ -63,6 +71,10 @@ pub struct ModelSpec {
     pub temperature: Option<String>,
     #[serde(default)]
     pub max_tokens: Option<i32>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra_params: HashMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -224,9 +236,9 @@ impl AgentProfile {
             model: ModelSpec {
                 name: opts.model.clone(),
                 thinking_effort: parse_thinking_effort(&opts.thinking_effort),
-                temperature: None,
-                max_tokens: None,
+                ..Default::default()
             },
+            reasoning: None,
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             mode,
             max_turns: Some(16),
@@ -249,6 +261,28 @@ impl AgentProfile {
         } else {
             GooseMode::Chat
         };
+    }
+
+    /// Map persisted `reasoning` onto Goose `ModelSpec` (effort + extra_params).
+    /// Old `model.thinking_effort` is left alone when `reasoning` is absent.
+    pub fn apply_reasoning(&mut self) -> Result<(), HostError> {
+        let Some(choice) = self.reasoning.clone() else {
+            return Ok(());
+        };
+        let apply = crate::catalog::to_model_spec(&self.provider.kind, &self.model.name, &choice)?;
+        self.model.thinking_effort = apply.thinking_effort;
+        self.model.extra_params = apply.extra_params;
+        self.model.reasoning = apply.reasoning;
+        Ok(())
+    }
+
+    pub fn fill_provider_from_legacy(&mut self, opts: &LegacyOpenOpts) {
+        if self.provider.kind.trim().is_empty() {
+            self.provider.kind = opts.llm_backend.clone();
+        }
+        if self.provider.base_url.trim().is_empty() {
+            self.provider.base_url = opts.base_url.clone();
+        }
     }
 }
 
@@ -273,10 +307,9 @@ impl ResolvedProfile {
                 },
                 model: ModelSpec {
                     name: config.model,
-                    thinking_effort: None,
-                    temperature: None,
-                    max_tokens: None,
+                    ..Default::default()
                 },
+                reasoning: None,
                 system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
                 mode: GooseMode::Chat,
                 max_turns: Some(16),
@@ -325,10 +358,9 @@ fn goose_template() -> AgentProfile {
         },
         model: ModelSpec {
             name: "gpt-4o".into(),
-            thinking_effort: None,
-            temperature: None,
-            max_tokens: None,
+            ..Default::default()
         },
+        reasoning: None,
         system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
         mode: GooseMode::SmartApprove,
         max_turns: Some(16),
@@ -361,10 +393,9 @@ fn translator_template() -> AgentProfile {
         },
         model: ModelSpec {
             name: "gpt-4o".into(),
-            thinking_effort: None,
-            temperature: None,
-            max_tokens: None,
+            ..Default::default()
         },
+        reasoning: None,
         system_prompt: "You are 译者. Translate between the user's languages. Do not chat. Do not claim you can send messages.".into(),
         mode: GooseMode::Chat,
         max_turns: Some(16),
@@ -389,10 +420,9 @@ fn coder_template() -> AgentProfile {
         },
         model: ModelSpec {
             name: "gpt-4o".into(),
-            thinking_effort: None,
-            temperature: None,
-            max_tokens: None,
+            ..Default::default()
         },
+        reasoning: None,
         system_prompt:
             "You are a software assistant. The workspace is project_root. Do not send messages."
                 .into(),
@@ -530,5 +560,20 @@ mod tests {
         assert!(goose.tools.send_message);
         assert!(goose.tools.read_clipboard);
         assert!(!goose.tools.fs);
+    }
+
+    #[test]
+    fn profile_without_provider_deserializes() {
+        let json = r#"{
+            "id": "goose",
+            "display_name": "助手",
+            "model": {"name": "deepseek-flash"},
+            "reasoning": {"v": 1, "kind": "effort_enum", "value": "high"},
+            "system_prompt": "hi"
+        }"#;
+        let profile: AgentProfile = serde_json::from_str(json).unwrap();
+        assert!(profile.provider.kind.is_empty());
+        assert_eq!(profile.model.name, "deepseek-flash");
+        assert!(profile.reasoning.is_some());
     }
 }

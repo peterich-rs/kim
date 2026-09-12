@@ -112,6 +112,12 @@ pub fn model_config(spec: &ModelSpec) -> Result<ModelConfig, HostError> {
     if let Some(effort) = spec.thinking_effort {
         cfg = cfg.with_thinking_effort(effort);
     }
+    if !spec.extra_params.is_empty() {
+        cfg = cfg.with_merged_request_params(spec.extra_params.clone());
+    }
+    if spec.reasoning.is_some() {
+        cfg.reasoning = spec.reasoning;
+    }
     if let Some(max) = spec.max_tokens {
         cfg = cfg.with_max_tokens(Some(max));
     }
@@ -166,10 +172,9 @@ mod tests {
             },
             model: ModelSpec {
                 name: "gpt-4o".into(),
-                thinking_effort: None,
-                temperature: None,
-                max_tokens: None,
+                ..Default::default()
             },
+            reasoning: None,
             system_prompt: DEFAULT_SYSTEM_PROMPT.into(),
             mode: goose_provider_types::goose_mode::GooseMode::Chat,
             max_turns: Some(16),

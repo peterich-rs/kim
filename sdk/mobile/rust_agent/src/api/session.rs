@@ -252,7 +252,13 @@ fn resolved_from_opts(
     } else {
         serde_json::from_str(&opts.profile_json).map_err(|e| e.to_string())?
     };
+    profile.fill_provider_from_legacy(&LegacyOpenOpts {
+        llm_backend: opts.llm_backend.clone(),
+        base_url: opts.base_url.clone(),
+        ..LegacyOpenOpts::default()
+    });
     profile.normalize_mode();
+    profile.apply_reasoning().map_err(map_host_err)?;
     tracing::info!(
         profile_id = %profile.id,
         provider = %profile.provider.kind,

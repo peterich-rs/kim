@@ -98,10 +98,11 @@ impl AgentHost {
     }
 
     pub fn from_provider_for_test(
-        profile: AgentProfile,
+        mut profile: AgentProfile,
         provider: Arc<dyn Provider>,
         project_root: PathBuf,
     ) -> Result<Self, HostError> {
+        profile.apply_reasoning()?;
         let model = machine::model_config(&profile.model)?;
         Ok(Self {
             inner: Arc::new(Inner {
@@ -125,6 +126,7 @@ impl AgentHost {
         }
         let mut resolved = resolved;
         resolved.profile.normalize_mode();
+        resolved.profile.apply_reasoning()?;
         let provider =
             provider::build_provider_from_spec(&resolved.profile.provider, &resolved.api_key)?;
         let model = machine::model_config(&resolved.profile.model)?;
