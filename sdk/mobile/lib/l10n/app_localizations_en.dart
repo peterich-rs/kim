@@ -647,6 +647,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentAddAccount => 'Add account';
 
   @override
+  String get agentNew => 'New';
+
+  @override
+  String get agentWizardBlank => 'Blank';
+
+  @override
+  String get agentWizardTranslator => 'Translator';
+
+  @override
+  String get agentWizardCoder => 'Coder';
+
+  @override
+  String get agentInvalidUrl =>
+      'Use an https URL (http://127.0.0.1 is allowed locally)';
+
+  @override
   String get agentNeedsEnv => 'desktop / needs env';
 
   @override

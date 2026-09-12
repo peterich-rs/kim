@@ -5,9 +5,53 @@ library;
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent_bridge.dart';
 import '../state/agent_profiles.dart';
+
+const kCatalogCachePrefix = 'agent.catalog_cache.';
+
+bool isAllowedAgentBaseUrl(String raw) {
+  final uri = Uri.tryParse(raw.trim());
+  if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    return false;
+  }
+  if (uri.scheme == 'https') {
+    return true;
+  }
+  if (uri.scheme == 'http') {
+    final host = uri.host.toLowerCase();
+    return host == '127.0.0.1' || host == 'localhost';
+  }
+  return false;
+}
+
+Future<List<String>> loadCatalogModelCache(String vendor) async {
+  if (vendor.isEmpty) {
+    return const [];
+  }
+  final prefs = await SharedPreferences.getInstance();
+  final raw = prefs.getString('$kCatalogCachePrefix$vendor');
+  if (raw == null || raw.isEmpty) {
+    return const [];
+  }
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return [for (final m in decoded) '$m'];
+    }
+  } catch (_) {}
+  return const [];
+}
+
+Future<void> saveCatalogModelCache(String vendor, List<String> models) async {
+  if (vendor.isEmpty) {
+    return;
+  }
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('$kCatalogCachePrefix$vendor', jsonEncode(models));
+}
 
 class VendorSummaryDto {
   const VendorSummaryDto({

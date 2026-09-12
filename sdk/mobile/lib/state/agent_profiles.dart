@@ -889,6 +889,109 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await ensureBotIdentity(copy);
   }
 
+  static const templateBlank = 'blank';
+  static const templateTranslator = 'translator';
+  static const templateCoder = 'coder';
+
+  Future<String> _accountForVendor({
+    required String vendorId,
+    required String baseUrl,
+  }) async {
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    for (final a in ref.read(providerAccountsProvider)) {
+      if (a.vendorId == vendorId) {
+        return a.id;
+      }
+    }
+    final id = 'acct-${DateTime.now().microsecondsSinceEpoch}';
+    await accounts.upsert(
+      ProviderAccount(
+        id: id,
+        vendorId: vendorId,
+        baseUrl: baseUrl,
+        keyRef: '$kAccountKeyPrefix$id',
+        displayName: vendorId,
+      ),
+    );
+    return id;
+  }
+
+  /// Product wizard. Host `translator_template` / `coder_template` stay fixtures.
+  Future<AgentProfile> createFromTemplate(String template) async {
+    await ensureLoaded();
+    _assertCanInsert();
+    final id = 'p-${DateTime.now().microsecondsSinceEpoch}';
+    late final AgentProfile profile;
+    switch (template) {
+      case templateTranslator:
+        final accountId = await _accountForVendor(
+          vendorId: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+        );
+        profile = AgentProfile(
+          id: id,
+          displayName: '译者',
+          aliases: const ['译者'],
+          providerKind: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'deepseek-flash',
+          keyRef: '',
+          accountId: accountId,
+          systemPrompt: 'You are 译者. Translate faithfully. Do not use tools. Reply in the target language only.',
+          mode: 'chat',
+          reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'none'),
+          thinkingEffort: 'none',
+        );
+      case templateCoder:
+        final accountId = await _accountForVendor(
+          vendorId: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+        );
+        profile = AgentProfile(
+          id: id,
+          displayName: '编码',
+          aliases: const ['编码'],
+          providerKind: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-sonnet-4-5',
+          keyRef: '',
+          accountId: accountId,
+          systemPrompt: 'You are 编码, a local coding assistant. Prefer small, correct patches.',
+          mode: 'approve',
+          reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
+          thinkingEffort: 'high',
+          tools: const AgentToolSet(
+            sendMessage: true,
+            readClipboard: true,
+            fs: true,
+          ),
+        );
+      default:
+        final goose = this.goose;
+        final accountId = goose != null && goose.accountId.isNotEmpty
+            ? goose.accountId
+            : await _accountForVendor(
+                vendorId: 'openai',
+                baseUrl: 'https://api.openai.com/v1',
+              );
+        profile = AgentProfile(
+          id: id,
+          displayName: 'Agent',
+          aliases: const ['Agent'],
+          providerKind: goose?.providerKind ?? 'openai',
+          baseUrl: goose?.baseUrl ?? 'https://api.openai.com/v1',
+          model: goose?.model ?? 'gpt-4o',
+          keyRef: goose?.keyRef ?? '',
+          accountId: accountId,
+          systemPrompt: '',
+          tools: const AgentToolSet(sendMessage: true, readClipboard: true),
+        );
+    }
+    await saveProfile(profile);
+    return profile;
+  }
+
   Future<void> delete(String id) async {
     await ensureLoaded();
     if (id == kGooseAgentId) {

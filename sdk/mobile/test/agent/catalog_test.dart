@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/agent/catalog.dart';
 import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const vendorsJson = '''
 [
   {"id":"openrouter","display_name":"OpenRouter","group":"gateway","sort_rank":100,"default_base_url":"https://openrouter.ai/api/v1","alt_base_urls":[],"dynamic_models":true,"custom_model":true,"default_model":"","models":[]},
@@ -72,6 +75,28 @@ void main() {
     );
     expect(aligned.dropped, isFalse);
     expect(aligned.choice.value, 'none');
+  });
+
+  test('custom endpoint URL allows https and loopback http only', () {
+    expect(isAllowedAgentBaseUrl('https://vllm.example/v1'), isTrue);
+    expect(isAllowedAgentBaseUrl('http://127.0.0.1:8000/v1'), isTrue);
+    expect(isAllowedAgentBaseUrl('http://localhost:8080/v1'), isTrue);
+    expect(isAllowedAgentBaseUrl('http://evil.example/v1'), isFalse);
+    expect(isAllowedAgentBaseUrl('not-a-url'), isFalse);
+  });
+
+  test('fetch model cache roundtrips under agent.catalog_cache', () async {
+    SharedPreferences.setMockInitialValues({});
+    await saveCatalogModelCache('deepseek', const [
+      'deepseek-flash',
+      'deepseek-v4-pro',
+    ]);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('agent.catalog_cache.deepseek'), isNotEmpty);
+    expect(await loadCatalogModelCache('deepseek'), [
+      'deepseek-flash',
+      'deepseek-v4-pro',
+    ]);
   });
 
   test('Claude surface has no Off or Medium', () {

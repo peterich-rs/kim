@@ -190,6 +190,15 @@ class _AccountSheetState extends State<_AccountSheet> {
   }
 
   Future<void> _save() async {
+    if (_vendor == 'openai_compatible' && !isAllowedAgentBaseUrl(_url.text)) {
+      toastification.show(
+        context: context,
+        type: ToastificationType.error,
+        title: Text(Copy.agentInvalidUrl),
+        autoCloseDuration: const Duration(seconds: 3),
+      );
+      return;
+    }
     final account = widget.account.copyWith(
       vendorId: canonicalizeVendorId(_vendor),
       baseUrl: _url.text.trim(),

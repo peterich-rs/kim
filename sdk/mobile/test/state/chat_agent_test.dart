@@ -1011,6 +1011,44 @@ void main() {
     );
   });
 
+  test('translator and coder templates do not use host fixtures', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    final translator = await store.createFromTemplate(
+      AgentProfileStore.templateTranslator,
+    );
+    expect(translator.model, 'deepseek-flash');
+    expect(translator.providerKind, 'deepseek');
+    expect(translator.reasoning?.value, 'none');
+    expect(translator.tools.fs, isFalse);
+    expect(translator.tools.sendMessage, isFalse);
+    expect(env.fake.botCreates, 1);
+    final accounts = env.container.read(providerAccountsProvider);
+    expect(accounts.any((a) => a.vendorId == 'deepseek'), isTrue);
+    env.fake.botCreates = 0;
+    await env.container
+        .read(providerAccountsProvider.notifier)
+        .upsert(
+          const ProviderAccount(
+            id: 'acct-custom',
+            vendorId: 'openai_compatible',
+            baseUrl: 'https://127.0.0.1:8000/v1',
+            keyRef: 'agent.api_key.acct.acct-custom',
+          ),
+        );
+    expect(env.fake.botCreates, 0);
+    final coder = await store.createFromTemplate(
+      AgentProfileStore.templateCoder,
+    );
+    expect(coder.model, 'claude-sonnet-4-5');
+    expect(coder.providerKind, 'anthropic');
+    expect(coder.reasoning?.value, 'high');
+    expect(coder.tools.fs, isTrue);
+  });
+
   test('login/online does not batch-ensure bot identities', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);

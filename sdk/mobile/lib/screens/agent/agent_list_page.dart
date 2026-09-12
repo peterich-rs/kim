@@ -38,6 +38,11 @@ class AgentListPage extends ConsumerWidget {
             title: l10n.agentListTitle,
             actions: [
               IconButton(
+                tooltip: l10n.agentNew,
+                onPressed: () => unawaited(_wizard(context, ref)),
+                icon: const Icon(Icons.add),
+              ),
+              IconButton(
                 tooltip: l10n.agentAccounts,
                 onPressed: () => context.push('/agent/accounts'),
                 icon: const Icon(Icons.key_outlined),
@@ -134,6 +139,58 @@ class AgentListPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+Future<void> _wizard(BuildContext context, WidgetRef ref) async {
+  final l10n = AppLocalizations.of(context);
+  final template = await showModalBottomSheet<String>(
+    context: context,
+    builder: (ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(l10n.agentWizardBlank),
+              onTap: () => Navigator.pop(ctx, AgentProfileStore.templateBlank),
+            ),
+            ListTile(
+              title: Text(l10n.agentWizardTranslator),
+              subtitle: const Text('DeepSeek · deepseek-flash'),
+              onTap: () =>
+                  Navigator.pop(ctx, AgentProfileStore.templateTranslator),
+            ),
+            ListTile(
+              title: Text(l10n.agentWizardCoder),
+              subtitle: const Text('Claude · high · fs'),
+              onTap: () => Navigator.pop(ctx, AgentProfileStore.templateCoder),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  if (template == null || !context.mounted) {
+    return;
+  }
+  try {
+    final created = await ref
+        .read(agentProfilesProvider.notifier)
+        .createFromTemplate(template);
+    if (context.mounted) {
+      context.push('/agent/${created.id}');
+    }
+  } catch (err) {
+    if (!context.mounted) {
+      return;
+    }
+    toastification.show(
+      context: context,
+      type: ToastificationType.error,
+      title: Text(err.toString()),
+      autoCloseDuration: const Duration(seconds: 3),
     );
   }
 }

@@ -127,6 +127,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         return;
       }
       setState(() => _vendors = vendors);
+      await _loadModelCache();
       await _reloadSurface(toastDropped: false);
     } catch (_) {}
   }
@@ -257,7 +258,16 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         }
       }
     });
+    unawaited(_loadModelCache());
     unawaited(_reloadSurface(toastDropped: true));
+  }
+
+  Future<void> _loadModelCache() async {
+    final cached = await loadCatalogModelCache(_backend);
+    if (!mounted || cached.isEmpty) {
+      return;
+    }
+    setState(() => _fetchedModels = cached);
   }
 
   Future<void> _fetchModels() async {
@@ -292,6 +302,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
           _model.text = list.first;
         }
       });
+      await saveCatalogModelCache(_backend, list);
       await _reloadSurface(toastDropped: true);
     } catch (_) {
       if (!mounted) {
@@ -345,6 +356,16 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         context: context,
         type: ToastificationType.error,
         title: Text(Copy.agentKeyMissing),
+        autoCloseDuration: const Duration(seconds: 3),
+      );
+      return;
+    }
+    if (_backend == 'openai_compatible' &&
+        !isAllowedAgentBaseUrl(_baseUrl.text)) {
+      toastification.show(
+        context: context,
+        type: ToastificationType.error,
+        title: Text(Copy.agentInvalidUrl),
         autoCloseDuration: const Duration(seconds: 3),
       );
       return;

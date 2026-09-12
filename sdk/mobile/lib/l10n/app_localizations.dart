@@ -1340,6 +1340,36 @@ abstract class AppLocalizations {
   /// **'添加账号'**
   String get agentAddAccount;
 
+  /// No description provided for @agentNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建'**
+  String get agentNew;
+
+  /// No description provided for @agentWizardBlank.
+  ///
+  /// In zh, this message translates to:
+  /// **'空白'**
+  String get agentWizardBlank;
+
+  /// No description provided for @agentWizardTranslator.
+  ///
+  /// In zh, this message translates to:
+  /// **'译者'**
+  String get agentWizardTranslator;
+
+  /// No description provided for @agentWizardCoder.
+  ///
+  /// In zh, this message translates to:
+  /// **'编码'**
+  String get agentWizardCoder;
+
+  /// No description provided for @agentInvalidUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'请使用 https 地址（本机可用 http://127.0.0.1）'**
+  String get agentInvalidUrl;
+
   /// No description provided for @agentNeedsEnv.
   ///
   /// In zh, this message translates to:

@@ -635,6 +635,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentAddAccount => '添加账号';
 
   @override
+  String get agentNew => '新建';
+
+  @override
+  String get agentWizardBlank => '空白';
+
+  @override
+  String get agentWizardTranslator => '译者';
+
+  @override
+  String get agentWizardCoder => '编码';
+
+  @override
+  String get agentInvalidUrl => '请使用 https 地址（本机可用 http://127.0.0.1）';
+
+  @override
   String get agentNeedsEnv => '桌面/需环境变量';
 
   @override
