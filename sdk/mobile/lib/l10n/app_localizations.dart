@@ -1088,6 +1088,66 @@ abstract class AppLocalizations {
   /// **'最高'**
   String get agentReasoningMax;
 
+  /// No description provided for @agentReasoningNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'无'**
+  String get agentReasoningNone;
+
+  /// No description provided for @agentReasoningAlwaysOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'始终开启'**
+  String get agentReasoningAlwaysOn;
+
+  /// No description provided for @agentReasoningMinimal.
+  ///
+  /// In zh, this message translates to:
+  /// **'最低'**
+  String get agentReasoningMinimal;
+
+  /// No description provided for @agentReasoningXhigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'极高'**
+  String get agentReasoningXhigh;
+
+  /// No description provided for @agentReasoningDropped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已忽略不受支持的推理参数'**
+  String get agentReasoningDropped;
+
+  /// No description provided for @agentAdvancedJson.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级 JSON'**
+  String get agentAdvancedJson;
+
+  /// No description provided for @agentVendorPrimary.
+  ///
+  /// In zh, this message translates to:
+  /// **'常用'**
+  String get agentVendorPrimary;
+
+  /// No description provided for @agentVendorGateway.
+  ///
+  /// In zh, this message translates to:
+  /// **'网关'**
+  String get agentVendorGateway;
+
+  /// No description provided for @agentVendorOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get agentVendorOther;
+
+  /// No description provided for @agentAltUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'备选地址'**
+  String get agentAltUrl;
+
   /// No description provided for @agentFsLater.
   ///
   /// In zh, this message translates to:
@@ -1193,7 +1253,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentMoreComing.
   ///
   /// In zh, this message translates to:
-  /// **'更多 Agent（即将推出）'**
+  /// **'打开「多个本地 Agent」后可管理列表'**
   String get agentMoreComing;
 
   /// No description provided for @agentMultiProfile.

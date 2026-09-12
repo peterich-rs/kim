@@ -1,13 +1,13 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/catalog.dart';
 import '../../agent/mention.dart';
 import '../../agent_bridge.dart';
 import '../../copy.dart';
@@ -15,8 +15,7 @@ import '../../state/agent_profiles.dart';
 import '../../state/agent_settings.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
-
-const _kEfforts = ['off', 'low', 'medium', 'high', 'max'];
+import 'reasoning_controls.dart';
 
 class AgentSettingsPage extends ConsumerStatefulWidget {
   const AgentSettingsPage({super.key});
@@ -30,14 +29,16 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
   late final TextEditingController _mcp;
+  late final TextEditingController _advanced;
   late String _backend;
-  var _thinking = 'off';
+  ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
+  ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
   var _fs = false;
   var _bash = false;
   var _loaded = false;
   var _fetching = false;
-  List<String> _models = const [];
-  List<_Bundled> _bundled = const [];
+  List<String> _fetchedModels = const [];
+  List<VendorSummaryDto> _vendors = const [];
   Map<String, String> _permissions = {};
 
   @override
@@ -47,8 +48,9 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _model = TextEditingController();
     _apiKey = TextEditingController();
     _mcp = TextEditingController();
+    _advanced = TextEditingController();
     _backend = 'openai';
-    unawaited(_loadBundled());
+    unawaited(_loadCatalog());
   }
 
   @override
@@ -57,33 +59,53 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _model.dispose();
     _apiKey.dispose();
     _mcp.dispose();
+    _advanced.dispose();
     super.dispose();
   }
 
-  Future<void> _loadBundled() async {
-    try {
-      final bridge = ref.read(agentBridgeProvider);
-      await bridge.ensure();
-      final raw = await bridge.bundledProviders();
-      final parsed = <_Bundled>[];
-      for (final s in raw) {
-        try {
-          final m = jsonDecode(s);
-          if (m is Map) {
-            parsed.add(
-              _Bundled(
-                name: '${m['name'] ?? ''}',
-                displayName: '${m['display_name'] ?? m['name'] ?? ''}',
-                mobile: m['mobile'] == true,
-              ),
-            );
-          }
-        } catch (_) {}
+  VendorSummaryDto? get _vendor {
+    for (final v in _vendors) {
+      if (v.id == _backend) {
+        return v;
       }
+    }
+    return null;
+  }
+
+  List<String> get _modelOptions {
+    final seen = <String>{};
+    final out = <String>[];
+    void add(String m) {
+      final id = m.trim();
+      if (id.isEmpty || !seen.add(id)) {
+        return;
+      }
+      out.add(id);
+    }
+
+    final vendor = _vendor;
+    if (vendor != null) {
+      for (final m in vendor.models) {
+        add(m);
+      }
+      add(vendor.defaultModel);
+    }
+    for (final m in _fetchedModels) {
+      add(m);
+    }
+    add(_model.text);
+    return out;
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final catalog = ref.read(catalogRepositoryProvider);
+      final vendors = await catalog.ensureVendors();
       if (!mounted) {
         return;
       }
-      setState(() => _bundled = parsed);
+      setState(() => _vendors = vendors);
+      await _reloadSurface(toastDropped: false);
     } catch (_) {}
   }
 
@@ -91,6 +113,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     if (!_loaded) {
       _apply(s);
       _loaded = true;
+      unawaited(_reloadSurface(toastDropped: false));
       return;
     }
     if (_apiKey.text.isEmpty && s.apiKey.isNotEmpty) {
@@ -103,7 +126,6 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     _baseUrl.text = s.baseUrl;
     _model.text = s.model;
     _apiKey.text = s.apiKey;
-    _thinking = _kEfforts.contains(s.thinkingEffort) ? s.thinkingEffort : 'off';
     _fs = s.enableFsTools;
     _bash = s.bashEnabled;
     final goose = ref.read(agentProfilesProvider.notifier).goose;
@@ -114,7 +136,85 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           if (e.name.isNotEmpty && e.command.isNotEmpty)
             '${e.name} ${e.command.join(' ')}',
       ].join('\n');
+      if (goose.accountId.isNotEmpty) {
+        _backend = goose.providerKind.isEmpty ? _backend : goose.providerKind;
+        if (goose.baseUrl.isNotEmpty) {
+          _baseUrl.text = goose.baseUrl;
+        }
+        if (goose.model.isNotEmpty) {
+          _model.text = goose.model;
+        }
+      }
+      _choice =
+          goose.reasoning ??
+          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
+          const ReasoningChoice(kind: 'none');
+    } else {
+      _choice =
+          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
+          const ReasoningChoice(kind: 'none');
     }
+  }
+
+  Future<void> _reloadSurface({required bool toastDropped}) async {
+    if (_vendors.isEmpty) {
+      return;
+    }
+    try {
+      final catalog = ref.read(catalogRepositoryProvider);
+      final surface = await catalog.surface(
+        vendor: _backend,
+        model: _model.text.trim(),
+      );
+      if (!mounted) {
+        return;
+      }
+      final aligned = alignChoice(surface, _choice);
+      setState(() {
+        _surface = surface;
+        _choice = aligned.choice;
+      });
+      if (toastDropped && aligned.dropped) {
+        _toastDropped();
+      }
+    } catch (_) {}
+  }
+
+  void _toastDropped() {
+    if (!mounted) {
+      return;
+    }
+    toastification.show(
+      context: context,
+      type: ToastificationType.info,
+      title: Text(Copy.agentReasoningDropped),
+      autoCloseDuration: const Duration(seconds: 3),
+    );
+  }
+
+  void _selectVendor(String id) {
+    VendorSummaryDto? next;
+    for (final v in _vendors) {
+      if (v.id == id) {
+        next = v;
+        break;
+      }
+    }
+    setState(() {
+      _backend = id;
+      if (next != null) {
+        if (next.defaultBaseUrl.isNotEmpty) {
+          _baseUrl.text = next.defaultBaseUrl;
+        }
+        final model = _model.text.trim();
+        final known = {...next.models, next.defaultModel};
+        if (model.isEmpty ||
+            (next.defaultModel.isNotEmpty && !known.contains(model))) {
+          _model.text = next.defaultModel;
+        }
+      }
+    });
+    unawaited(_reloadSurface(toastDropped: true));
   }
 
   Future<void> _fetchModels() async {
@@ -133,7 +233,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
           bashEnabled: false,
           profileId: 'goose',
           profileJson: '',
-          thinkingEffort: _thinking == 'off' ? '' : _thinking,
+          thinkingEffort: _choice.value ?? '',
           gooseMode: '',
           enableKimTools: false,
           enableApprovals: false,
@@ -144,20 +244,18 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
         return;
       }
       setState(() {
-        _models = list;
+        _fetchedModels = list;
         if (_model.text.trim().isEmpty && list.isNotEmpty) {
           _model.text = list.first;
         }
       });
+      await _reloadSurface(toastDropped: true);
     } catch (_) {
       if (!mounted) {
         return;
       }
-      setState(() {
-        _models = _backend == 'anthropic'
-            ? const ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5']
-            : const ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'];
-      });
+      final fallback = _vendor?.models ?? const <String>[];
+      setState(() => _fetchedModels = fallback);
     } finally {
       if (mounted) {
         setState(() => _fetching = false);
@@ -208,17 +306,37 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
       );
       return;
     }
+    var choice = _choice;
+    try {
+      await ref
+          .read(catalogRepositoryProvider)
+          .validate(
+            vendor: _backend,
+            model: _model.text.trim(),
+            choice: choice,
+          );
+    } catch (_) {
+      final aligned = alignChoice(_surface, choice);
+      choice = aligned.choice;
+      if (aligned.dropped) {
+        _toastDropped();
+      }
+    }
     await ref.read(agentProfilesProvider.notifier).ensureLoaded();
     final existing =
         ref.read(agentProfilesProvider.notifier).goose ??
         AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider));
+    final model = _model.text.trim().isEmpty
+        ? (_vendor?.defaultModel.isNotEmpty == true
+              ? _vendor!.defaultModel
+              : 'gpt-4o')
+        : _model.text.trim();
     final goose = existing.copyWith(
       providerKind: _backend,
       baseUrl: _baseUrl.text.trim(),
-      model: _model.text.trim().isEmpty
-          ? (_backend == 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4o')
-          : _model.text.trim(),
-      thinkingEffort: _thinking == 'off' ? '' : _thinking,
+      model: model,
+      thinkingEffort: choice.value ?? '',
+      reasoning: choice,
       tools: AgentToolSet(
         sendMessage: true,
         searchContacts: existing.tools.searchContacts,
@@ -239,12 +357,41 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     if (!mounted) {
       return;
     }
+    setState(() => _choice = choice);
     toastification.show(
       context: context,
       type: ToastificationType.success,
       title: Text(Copy.agentSaved),
       autoCloseDuration: const Duration(seconds: 2),
     );
+  }
+
+  List<DropdownMenuItem<String>> _vendorItems(AppLocalizations l10n) {
+    final items = <DropdownMenuItem<String>>[];
+    void section(String group, String label) {
+      final rows = vendorsInGroup(_vendors, group);
+      if (rows.isEmpty) {
+        return;
+      }
+      items.add(
+        DropdownMenuItem(
+          value: '__hdr_$group',
+          enabled: false,
+          child: Text(label),
+        ),
+      );
+      for (final v in rows) {
+        items.add(DropdownMenuItem(value: v.id, child: Text(v.displayName)));
+      }
+    }
+
+    section('primary', l10n.agentVendorPrimary);
+    section('gateway', l10n.agentVendorGateway);
+    section('other', l10n.agentVendorOther);
+    if (_vendors.every((v) => v.id != _backend) && _backend.isNotEmpty) {
+      items.add(DropdownMenuItem(value: _backend, child: Text(_backend)));
+    }
+    return items;
   }
 
   @override
@@ -254,16 +401,12 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
-
-    final engines = <String>{
-      'openai',
-      'anthropic',
-      'openai_compatible',
-      for (final b in _bundled.where((b) => b.mobile)) b.name,
-    };
-    if (!engines.contains(_backend)) {
-      engines.add(_backend);
-    }
+    final vendor = _vendor;
+    final urlChoices = <String>{
+      if (vendor != null && vendor.defaultBaseUrl.isNotEmpty)
+        vendor.defaultBaseUrl,
+      if (vendor != null) ...vendor.altBaseUrls,
+    }.toList();
 
     return Scaffold(
       body: CustomScrollView(
@@ -285,47 +428,26 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: DropdownButton<String>(
-                        value: engines.contains(_backend) ? _backend : 'openai',
+                        value: _backend,
                         isExpanded: true,
-                        items: [
-                          DropdownMenuItem(
-                            value: 'openai',
-                            child: Text(Copy.agentProviderOpenAi),
-                          ),
-                          DropdownMenuItem(
-                            value: 'anthropic',
-                            child: Text(Copy.agentProviderAnthropic),
-                          ),
-                          DropdownMenuItem(
-                            value: 'openai_compatible',
-                            child: Text(l10n.agentProviderCompatible),
-                          ),
-                          for (final b in _bundled)
+                        items: () {
+                          final items = _vendorItems(l10n);
+                          if (items.any((i) => i.value == _backend)) {
+                            return items;
+                          }
+                          return [
                             DropdownMenuItem(
-                              value: b.name,
-                              enabled: b.mobile,
-                              child: Text(
-                                b.mobile
-                                    ? b.displayName
-                                    : '${b.displayName} (${l10n.agentNeedsEnv})',
-                              ),
+                              value: _backend,
+                              child: Text(_backend),
                             ),
-                        ],
+                            ...items,
+                          ];
+                        }(),
                         onChanged: (next) {
-                          if (next == null) {
+                          if (next == null || next.startsWith('__hdr_')) {
                             return;
                           }
-                          setState(() {
-                            _backend = next;
-                            if (_backend == 'anthropic' &&
-                                _baseUrl.text.contains('openai.com')) {
-                              _baseUrl.text = 'https://api.anthropic.com';
-                            }
-                            if (_backend == 'openai' &&
-                                _baseUrl.text.contains('anthropic.com')) {
-                              _baseUrl.text = 'https://api.openai.com/v1';
-                            }
-                          });
+                          _selectVendor(next);
                         },
                       ),
                     ),
@@ -345,12 +467,37 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                       title: Text(Copy.agentBaseUrl),
                       subtitle: TextField(
                         controller: _baseUrl,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: 'https://api.openai.com/v1',
+                          hintText: vendor?.defaultBaseUrl.isNotEmpty == true
+                              ? vendor!.defaultBaseUrl
+                              : 'https://api.openai.com/v1',
                         ),
                       ),
                     ),
+                    if (urlChoices.length > 1) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: DropdownButton<String>(
+                          value: urlChoices.contains(_baseUrl.text)
+                              ? _baseUrl.text
+                              : null,
+                          hint: Text(l10n.agentAltUrl),
+                          isExpanded: true,
+                          items: [
+                            for (final u in urlChoices)
+                              DropdownMenuItem(value: u, child: Text(u)),
+                          ],
+                          onChanged: (next) {
+                            if (next == null) {
+                              return;
+                            }
+                            setState(() => _baseUrl.text = next);
+                          },
+                        ),
+                      ),
+                    ],
                     const Divider(height: 1),
                     ListTile(
                       title: Text(Copy.agentModel),
@@ -359,10 +506,14 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                         children: [
                           TextField(
                             controller: _model,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               border: InputBorder.none,
-                              hintText: 'gpt-4o / claude-sonnet-4-5',
+                              hintText: vendor?.defaultModel.isNotEmpty == true
+                                  ? vendor!.defaultModel
+                                  : 'gpt-4o / claude-sonnet-4-5',
                             ),
+                            onEditingComplete: () =>
+                                unawaited(_reloadSurface(toastDropped: true)),
                           ),
                           Align(
                             alignment: Alignment.centerLeft,
@@ -373,15 +524,15 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                               ),
                             ),
                           ),
-                          if (_models.isNotEmpty)
+                          if (_modelOptions.isNotEmpty)
                             DropdownButton<String>(
-                              value: _models.contains(_model.text)
-                                  ? _model.text
+                              value: _modelOptions.contains(_model.text.trim())
+                                  ? _model.text.trim()
                                   : null,
                               hint: Text(l10n.agentFetchModels),
                               isExpanded: true,
                               items: [
-                                for (final m in _models)
+                                for (final m in _modelOptions)
                                   DropdownMenuItem(value: m, child: Text(m)),
                               ],
                               onChanged: (next) {
@@ -389,6 +540,7 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                                   return;
                                 }
                                 setState(() => _model.text = next);
+                                unawaited(_reloadSurface(toastDropped: true));
                               },
                             ),
                         ],
@@ -416,40 +568,11 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                   ),
                 ),
                 const Gap(8),
-                KimGroupCard(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                      child: SegmentedButton<String>(
-                        segments: [
-                          ButtonSegment(
-                            value: 'off',
-                            label: Text(l10n.agentReasoningOff),
-                          ),
-                          ButtonSegment(
-                            value: 'low',
-                            label: Text(l10n.agentReasoningLow),
-                          ),
-                          ButtonSegment(
-                            value: 'medium',
-                            label: Text(l10n.agentReasoningMedium),
-                          ),
-                          ButtonSegment(
-                            value: 'high',
-                            label: Text(l10n.agentReasoningHigh),
-                          ),
-                          ButtonSegment(
-                            value: 'max',
-                            label: Text(l10n.agentReasoningMax),
-                          ),
-                        ],
-                        selected: {_thinking},
-                        onSelectionChanged: (next) {
-                          setState(() => _thinking = next.first);
-                        },
-                      ),
-                    ),
-                  ],
+                ReasoningControls(
+                  surface: _surface,
+                  choice: _choice,
+                  onChanged: (next) => setState(() => _choice = next),
+                  advancedController: _advanced,
                 ),
                 const Gap(18),
                 KimGroupCard(
@@ -663,16 +786,4 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
       ),
     );
   }
-}
-
-class _Bundled {
-  const _Bundled({
-    required this.name,
-    required this.displayName,
-    required this.mobile,
-  });
-
-  final String name;
-  final String displayName;
-  final bool mobile;
 }

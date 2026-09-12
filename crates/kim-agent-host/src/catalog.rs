@@ -175,6 +175,7 @@ pub struct VendorSummary {
     pub dynamic_models: bool,
     pub custom_model: bool,
     pub default_model: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -281,6 +282,7 @@ pub fn vendor_summaries() -> Result<Vec<VendorSummary>, HostError> {
                 dynamic_models: v.dynamic_models,
                 custom_model: v.custom_model,
                 default_model,
+                models: v.models.iter().map(|m| m.id.clone()).collect(),
             }
         })
         .collect();
@@ -756,6 +758,7 @@ mod tests {
         let ds = sums.iter().find(|s| s.id == "deepseek").unwrap();
         assert_eq!(ds.group, VendorGroup::Primary);
         assert_eq!(ds.default_model, "deepseek-flash");
+        assert!(ds.models.iter().any(|m| m == "deepseek-flash"));
         let or = sums.iter().find(|s| s.id == "openrouter").unwrap();
         assert_eq!(or.group, VendorGroup::Gateway);
         let ranks: Vec<_> = sums.iter().map(|s| s.sort_rank).collect();

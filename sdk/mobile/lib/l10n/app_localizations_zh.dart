@@ -507,6 +507,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentReasoningMax => '最高';
 
   @override
+  String get agentReasoningNone => '无';
+
+  @override
+  String get agentReasoningAlwaysOn => '始终开启';
+
+  @override
+  String get agentReasoningMinimal => '最低';
+
+  @override
+  String get agentReasoningXhigh => '极高';
+
+  @override
+  String get agentReasoningDropped => '已忽略不受支持的推理参数';
+
+  @override
+  String get agentAdvancedJson => '高级 JSON';
+
+  @override
+  String get agentVendorPrimary => '常用';
+
+  @override
+  String get agentVendorGateway => '网关';
+
+  @override
+  String get agentVendorOther => '其他';
+
+  @override
+  String get agentAltUrl => '备选地址';
+
+  @override
   String get agentFsLater => '工作区文件（后续版本）';
 
   @override
@@ -558,7 +588,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentToolSearchMessages => '搜索消息';
 
   @override
-  String get agentMoreComing => '更多 Agent（即将推出）';
+  String get agentMoreComing => '打开「多个本地 Agent」后可管理列表';
 
   @override
   String get agentMultiProfile => '在通讯录展示多个本地 Agent';

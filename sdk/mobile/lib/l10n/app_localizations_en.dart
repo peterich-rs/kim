@@ -516,6 +516,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentReasoningMax => 'Max';
 
   @override
+  String get agentReasoningNone => 'None';
+
+  @override
+  String get agentReasoningAlwaysOn => 'Always on';
+
+  @override
+  String get agentReasoningMinimal => 'Min';
+
+  @override
+  String get agentReasoningXhigh => 'xHigh';
+
+  @override
+  String get agentReasoningDropped =>
+      'Ignored unsupported reasoning parameters';
+
+  @override
+  String get agentAdvancedJson => 'Advanced JSON';
+
+  @override
+  String get agentVendorPrimary => 'Providers';
+
+  @override
+  String get agentVendorGateway => 'Gateways';
+
+  @override
+  String get agentVendorOther => 'Other';
+
+  @override
+  String get agentAltUrl => 'Alternate URL';
+
+  @override
   String get agentFsLater => 'Workspace files (later)';
 
   @override
@@ -568,7 +599,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentToolSearchMessages => 'Search messages';
 
   @override
-  String get agentMoreComing => 'More agents coming soon';
+  String get agentMoreComing =>
+      'Turn on multiple local agents to manage the list';
 
   @override
   String get agentMultiProfile => 'Show multiple local agents';
