@@ -494,6 +494,12 @@ abstract class AppLocalizations {
   /// **'对方还不是你好友'**
   String get notFriends;
 
+  /// No description provided for @botSocialDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'助手已是好友，不能再发申请'**
+  String get botSocialDenied;
+
   /// No description provided for @blocked.
   ///
   /// In zh, this message translates to:
@@ -1195,6 +1201,24 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'在通讯录展示多个本地 Agent'**
   String get agentMultiProfile;
+
+  /// No description provided for @agentServerIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步助手会话到其它设备'**
+  String get agentServerIdentity;
+
+  /// No description provided for @agentServerIdentityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开后桌面一上线就会向服务器注册。设置里出现 b_ 账号即成功；之后发的消息才会进手机。本机旧历史不会上传。'**
+  String get agentServerIdentityHint;
+
+  /// No description provided for @agentRegisterFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法在服务器注册助手。若刚部署，确认 Chat 已滚动到含 chat.bot 的镜像。'**
+  String get agentRegisterFailed;
 
   /// No description provided for @agentDuplicate.
   ///

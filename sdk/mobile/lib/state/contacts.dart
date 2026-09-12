@@ -38,7 +38,9 @@ class ContactsState {
   int get incomingCount => incoming.length;
 
   bool isFriend(String account) =>
-      isAgentDest(account) || friends.any((p) => p.account == account);
+      isAgentDest(account) ||
+      isServerBotAccount(account) ||
+      friends.any((p) => p.account == account);
 
   bool isOutgoing(String account) => outgoing.contains(account);
 
@@ -300,6 +302,9 @@ String socialError(Object err) {
   }
   if (msg.contains('status 109')) {
     return Copy.notFriends;
+  }
+  if (msg.contains('status 113')) {
+    return Copy.botSocialDenied;
   }
   return Copy.sendFailed;
 }

@@ -361,6 +361,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int botCreates = 0;
   String lastBotCreateId = '';
   String lastBotCreateNickname = '';
+  Object? botCreateError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
   var botReplyInFlight = 0;
   var botReplyMaxInFlight = 0;
@@ -378,11 +379,19 @@ class FakeKim implements KimAuthPort, KimClientPort {
     botCreates += 1;
     lastBotCreateId = clientProfileId;
     lastBotCreateNickname = nickname;
-    return KimPerson(
+    final fail = botCreateError;
+    if (fail != null) {
+      throw fail;
+    }
+    final person = KimPerson(
       account: 'b_$clientProfileId',
       nickname: nickname,
       kind: ProfileKind.bot,
     );
+    if (!friends.any((p) => p.account == person.account)) {
+      friends = [...friends, person];
+    }
+    return person;
   }
 
   @override

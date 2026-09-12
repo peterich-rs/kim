@@ -22,6 +22,7 @@ class ConversationTile extends StatelessWidget {
     this.avatarUrl = '',
     this.presence = PeerPresenceStatus.unknown,
     this.selected = false,
+    this.displayTitle = '',
   });
 
   final KimThread thread;
@@ -30,6 +31,9 @@ class ConversationTile extends StatelessWidget {
   final String avatarUrl;
   final PeerPresenceStatus presence;
   final bool selected;
+  final String displayTitle;
+
+  String get _title => displayTitle.isEmpty ? thread.title : displayTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +73,7 @@ class ConversationTile extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     KimAvatar(
-                      name: thread.title,
+                      name: _title,
                       url: avatarUrl,
                       size: KimAvatarSize.md,
                       shape: KimAvatarShape.squircle,
@@ -92,7 +96,7 @@ class ConversationTile extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              thread.title,
+                              _title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -185,6 +189,7 @@ class ConversationRailAvatar extends StatelessWidget {
     this.avatarUrl = '',
     this.presence = PeerPresenceStatus.unknown,
     this.selected = false,
+    this.displayTitle = '',
   });
 
   final KimThread thread;
@@ -192,16 +197,19 @@ class ConversationRailAvatar extends StatelessWidget {
   final String avatarUrl;
   final PeerPresenceStatus presence;
   final bool selected;
+  final String displayTitle;
+
+  String get _title => displayTitle.isEmpty ? thread.title : displayTitle;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Tooltip(
-      message: thread.title,
+      message: _title,
       child: Semantics(
         button: true,
         selected: selected,
-        label: thread.title,
+        label: _title,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Material(
@@ -221,7 +229,7 @@ class ConversationRailAvatar extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     KimAvatar(
-                      name: thread.title,
+                      name: _title,
                       url: avatarUrl,
                       size: KimAvatarSize.md,
                       shape: KimAvatarShape.squircle,

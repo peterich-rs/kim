@@ -114,3 +114,18 @@ String avatarFor(ProfileState me, ContactsState social, String account) {
   }
   return social.person(account)?.avatar ?? '';
 }
+
+/// List/header title: nickname when we have it, never prefer a raw account id.
+String threadDisplayTitle(KimThread thread, ContactsState social) {
+  if (thread.kind == ThreadKind.group) {
+    return thread.title.isEmpty ? thread.id : thread.title;
+  }
+  final nick = social.person(thread.id)?.nickname ?? '';
+  if (nick.isNotEmpty) {
+    return nick;
+  }
+  if (thread.title.isNotEmpty && thread.title != thread.id) {
+    return thread.title;
+  }
+  return thread.title.isEmpty ? thread.id : thread.title;
+}
