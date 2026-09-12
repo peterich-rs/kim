@@ -10,7 +10,11 @@ import 'package:kim_mobile/agent_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/agent_profiles.dart';
 import 'package:kim_mobile/state/chat_agent.dart';
+import 'package:kim_mobile/state/chat_session.dart';
+import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/messages.dart';
+import 'package:kim_mobile/state/link.dart';
+import 'package:kim_mobile/state/outbox.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
@@ -113,6 +117,15 @@ class _OneShotSession implements AgentSessionPort {
     phase: 'idle',
     pendingCallIds: [],
   );
+}
+
+Future<void> _until(bool Function() ok, {int ticks = 80}) async {
+  for (var i = 0; i < ticks; i++) {
+    if (ok()) {
+      return;
+    }
+    await Future<void>.delayed(Duration.zero);
+  }
 }
 
 void main() {
@@ -575,7 +588,226 @@ void main() {
         .firstWhere((p) => p.id != kGooseAgentId);
     expect(await store.readApiKey(copy), 'sk-live');
   });
+
+  test('new profile save registers on the server when flag is on', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    final created = AgentProfile(
+      id: 'translator',
+      displayName: '译者',
+      providerKind: 'openai',
+      baseUrl: '',
+      model: 'gpt-4o',
+      keyRef: 'agent.api_key.translator',
+      systemPrompt: '',
+    );
+    await store.saveProfile(created);
+    expect(env.fake.botCreates, 1);
+    expect(env.fake.lastBotCreateId, 'translator');
+    expect(
+      env.container
+          .read(agentProfilesProvider)
+          .firstWhere((p) => p.id == 'translator')
+          .serverAccount,
+      'b_translator',
+    );
+    await store.saveProfile(
+      created.copyWith(model: 'gpt-4.1', serverAccount: 'b_translator'),
+    );
+    expect(env.fake.botCreates, 1);
+  });
+
+  test('existing goose registers on first 1:1 open, not on login', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    expect(env.fake.botCreates, 0);
+    env.container.read(chatSessionProvider(kGooseAgentId));
+    await Future<void>.delayed(Duration.zero);
+    expect(env.fake.botCreates, 1);
+    expect(env.fake.lastBotCreateId, kGooseAgentId);
+    expect(
+      env.container.read(chatSessionProvider(kGooseAgentId)).redirectDest,
+      'b_goose',
+    );
+  });
+
+  test('profileForDest matches serverAccount', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_XXX'));
+    final hit = await env.container
+        .read(chatAgentProvider)
+        .profileForDest('b_XXX');
+    expect(hit.id, kGooseAgentId);
+    expect(hit.serverAccount, 'b_XXX');
+  });
+
+  test('flag on registered: enqueue does not prompt until TalkResp', () async {
+    final bridge = _RecordingAgentBridge()..session = _OneShotSession('ok');
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+      'agent.api_key.goose': 'sk-live',
+    });
+    env.container.read(linkProvider);
+    await Future<void>.delayed(Duration.zero);
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+    env.fake.friends = const [
+      KimPerson(account: 'b_bot', nickname: '助手', kind: ProfileKind.bot),
+    ];
+    await env.container.read(contactsProvider.notifier).refresh();
+    env.fake.sendHold = Completer<void>();
+    final sent = env.container
+        .read(outboxProvider.notifier)
+        .sendText('b_bot', 'hello');
+    await Future<void>.delayed(Duration.zero);
+    expect(bridge.opens, 0);
+    env.fake.sendHold!.complete();
+    await sent;
+    await _until(() => bridge.opens == 1);
+    expect(bridge.opens, 1);
+    expect(env.fake.botReplies, hasLength(1));
+    expect(env.fake.botReplies.single.inReplyTo, 1);
+    final localAgent = env.container
+        .read(threadMessagesProvider('b_bot'))
+        .items
+        .where((m) => m.key.startsWith('agent-'));
+    expect(localAgent, isEmpty);
+  });
+
+  test(
+    'FIFO: two TalkResp plus overlapping pending yield three serial bot_reply',
+    () async {
+      final session = _HoldSession();
+      final bridge = _RecordingAgentBridge()..session = session;
+      final env = await kimHarness(
+        token: 'tok.jwt',
+        account: 'alice',
+        overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+      );
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-live',
+        'agent.api_key.goose': 'sk-live',
+      });
+      env.container.read(linkProvider);
+      await Future<void>.delayed(Duration.zero);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.setServerIdentity(true);
+      await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+      expect(store.serverIdentity, isTrue);
+      expect(store.goose!.serverAccount, 'b_bot');
+      final agent = env.container.read(chatAgentProvider);
+      expect(agent.enqueueTurn('b_bot', 'one', 1), isTrue);
+      expect(agent.enqueueTurn('b_bot', 'two', 2), isTrue);
+      env.fake.pendingItems = const [
+        KimBotPendingItem(messageId: 1, body: 'one', sendTime: 1),
+        KimBotPendingItem(messageId: 2, body: 'two', sendTime: 2),
+        KimBotPendingItem(messageId: 3, body: 'three', sendTime: 3),
+      ];
+      await agent.catchUpPending();
+      await _until(() => session.prompts.length == 1);
+      expect(session.prompts, ['one']);
+      expect(agent.promptMaxInFlight, 1);
+      session.release();
+      await _until(() => session.prompts.length == 2);
+      expect(session.prompts, ['one', 'two']);
+      expect(agent.promptMaxInFlight, 1);
+      session.release();
+      await _until(() => session.prompts.length == 3);
+      expect(session.prompts, ['one', 'two', 'three']);
+      expect(agent.promptMaxInFlight, 1);
+      session.release();
+      await _until(() => env.fake.botReplies.length == 3);
+      expect(env.fake.botReplies.map((r) => r.inReplyTo), [1, 2, 3]);
+      expect(env.fake.botReplyMaxInFlight, 1);
+    },
+  );
+
+  test(
+    'empty finished does not complete; late finished does not steal next turn',
+    () async {
+      final session = _HoldSession();
+      final bridge = _RecordingAgentBridge()..session = session;
+      final env = await kimHarness(
+        token: 'tok.jwt',
+        account: 'alice',
+        overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+      );
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-live',
+        'agent.api_key.goose': 'sk-live',
+      });
+      env.container.read(linkProvider);
+      await Future<void>.delayed(Duration.zero);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.setServerIdentity(true);
+      await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+      final agent = env.container.read(chatAgentProvider);
+      expect(agent.enqueueTurn('b_bot', 'one', 1), isTrue);
+      expect(agent.enqueueTurn('b_bot', 'two', 2), isTrue);
+      await _until(() => session.prompts.length == 1);
+      session.emit(_finished(''));
+      await Future<void>.delayed(Duration.zero);
+      expect(env.fake.botReplies, isEmpty);
+      expect(session.prompts, ['one']);
+      session.emit(_failed('boom'));
+      await _until(() => session.prompts.length == 2);
+      expect(env.fake.botReplies, isEmpty);
+      session.emit(_finished('late'));
+      await Future<void>.delayed(Duration.zero);
+      expect(env.fake.botReplies, isEmpty);
+      session.release();
+      await _until(() => env.fake.botReplies.length == 1);
+      expect(env.fake.botReplies.single.inReplyTo, 2);
+    },
+  );
 }
+
+AgentUiEvent _finished(String message) => AgentUiEvent(
+  kind: 'assistant_finished',
+  operationId: 'op1',
+  callId: '',
+  name: '',
+  delta: '',
+  argumentsJson: '',
+  outputPreview: '',
+  ok: true,
+  stopReason: 'completed',
+  message: message,
+  inputTokens: BigInt.zero,
+  outputTokens: BigInt.zero,
+  resumedOps: const [],
+);
+
+AgentUiEvent _failed(String message) => AgentUiEvent(
+  kind: 'failed',
+  operationId: 'op1',
+  callId: '',
+  name: '',
+  delta: '',
+  argumentsJson: '',
+  outputPreview: '',
+  ok: false,
+  stopReason: 'error',
+  message: message,
+  inputTokens: BigInt.zero,
+  outputTokens: BigInt.zero,
+  resumedOps: const [],
+);
 
 class _RecordingSession implements AgentSessionPort {
   final permissions = <String>[];
@@ -613,6 +845,87 @@ class _RecordingSession implements AgentSessionPort {
 
   @override
   Future<String> prompt({required String text}) async => 'op1';
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> abort() async {}
+
+  @override
+  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+
+  @override
+  Future<ResumeReportDto> resume() async =>
+      const ResumeReportDto(resumedOps: [], statuses: []);
+
+  @override
+  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
+    busy: false,
+    lastOperationId: '',
+    phase: 'idle',
+    pendingCallIds: [],
+  );
+}
+
+class _HoldSession implements AgentSessionPort {
+  final prompts = <String>[];
+  Completer<void>? _gate;
+  final _ctrl = StreamController<AgentUiEvent>.broadcast();
+
+  void emit(AgentUiEvent ev) => _ctrl.add(ev);
+
+  void release() {
+    final gate = _gate;
+    _gate = Completer<void>();
+    gate?.complete();
+  }
+
+  @override
+  Stream<AgentUiEvent> listen() => _ctrl.stream;
+
+  @override
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  }) => prompt(text: text);
+
+  @override
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  }) async => 'op';
+
+  @override
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  }) async => 'op';
+
+  @override
+  Future<String> prompt({required String text}) async {
+    prompts.add(text);
+    _gate ??= Completer<void>();
+    await _gate!.future;
+    _ctrl.add(
+      AgentUiEvent(
+        kind: 'assistant_finished',
+        operationId: 'op1',
+        callId: '',
+        name: '',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '',
+        ok: true,
+        stopReason: 'completed',
+        message: 'reply:$text',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    return 'op1';
+  }
 
   @override
   Future<void> close() async {}

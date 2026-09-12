@@ -2,6 +2,7 @@ use kim_protocol::pkt::{
     Status, UserProfile as PbProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::CMD_USER_UPDATED;
+use kim_protocol::PROFILE_KIND_BOT;
 use kim_router::Context;
 use tracing::warn;
 
@@ -37,6 +38,24 @@ pub async fn do_user_profile(ctx: Context, users: &dyn UserDirectory) {
     } else {
         dest
     };
+    if !dest.is_empty() && dest != ctx.session().account {
+        match users.lookup(&ctx.session().app, dest).await {
+            Ok(Some(p))
+                if p.kind == PROFILE_KIND_BOT && p.owner_account != ctx.session().account =>
+            {
+                let _ = ctx
+                    .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                    .await;
+                return;
+            }
+            Ok(_) => {}
+            Err(err) => {
+                warn!(%err, "profile lookup failed");
+                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                return;
+            }
+        }
+    }
     match users.profile(&ctx.session().app, account).await {
         Ok(Some(p)) => {
             let _ = ctx.resp(Status::Success, Some(&to_pb(&p))).await;

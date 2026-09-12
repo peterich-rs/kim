@@ -6,10 +6,11 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use kim_protocol::pkt::{
-    AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, ConversationRead,
-    DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail,
-    GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery,
-    InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp, InternalGroupCreate,
+    AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, BotCreateResp,
+    BotPendingQuery, BotPendingResp, BotReplyStoreReq, ConversationRead, DeliveryBackfillReq,
+    DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail, GroupListReq, GroupListResp,
+    GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertFanout,
+    InsertMessageReq, InsertMessageResp, InternalBotCreate, InternalGroupCreate,
     InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
     MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
     UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
@@ -23,10 +24,10 @@ use crate::inbox::parse_kind;
 use crate::royal_pool::RoyalPool;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
 use crate::store::{
-    Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult, MessageContentRow,
-    MessageIndexRow, MessageKind, MessageStore, StoreError,
+    BotPendingItem, Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult,
+    MessageContentRow, MessageIndexRow, MessageKind, MessageStore, StoreError,
 };
-use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
+use crate::users::{CreateBot, ProfilePatch, UserDirectory, UserError, UserPresence, UserProfile};
 
 pub(crate) const RETRIES: usize = 3;
 const PER_ATTEMPT: Duration = Duration::from_millis(400);
@@ -529,6 +530,79 @@ impl MessageStore for HttpMessageStore {
             .post_maybe_empty("/api/v1/inbox/read", &body)
             .await
     }
+
+    async fn insert_bot_reply(
+        &self,
+        _app: &str,
+        owner: &str,
+        bot: &str,
+        in_reply_to: i64,
+        req: &InsertMessage,
+    ) -> Result<InsertResult, StoreError> {
+        let body = BotReplyStoreReq {
+            owner: owner.to_string(),
+            bot_account: bot.to_string(),
+            in_reply_to,
+            insert: Some(InsertMessageReq {
+                sender: req.sender.clone(),
+                dest: req.dest.clone(),
+                send_time: req.send_time,
+                message: Some(MessageReq {
+                    r#type: req.msg_type,
+                    body: req.body.clone(),
+                    extra: req.extra.clone(),
+                    client_id: req.client_id.clone(),
+                }),
+                members: Vec::new(),
+                client_id: req.client_id.clone(),
+                online_targets: req
+                    .online_targets
+                    .iter()
+                    .map(|t| PbDeliveryTarget {
+                        account: t.account.clone(),
+                        target_id: t.target_id.clone(),
+                    })
+                    .collect(),
+            }),
+        };
+        let resp: InsertMessageResp = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/bot/reply", Some(&body))
+            .await?;
+        Ok(InsertResult {
+            message_id: resp.message_id,
+            send_time: resp.send_time,
+            duplicate: resp.duplicate,
+            fanout: fanout_from_resp(resp.fanout),
+        })
+    }
+
+    async fn bot_pending(
+        &self,
+        _app: &str,
+        owner: &str,
+        bot: &str,
+        limit: i32,
+    ) -> Result<Vec<BotPendingItem>, StoreError> {
+        let body = BotPendingQuery {
+            owner: owner.to_string(),
+            bot_account: bot.to_string(),
+            limit,
+        };
+        let resp: BotPendingResp = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/bot/pending", Some(&body))
+            .await?;
+        Ok(resp
+            .items
+            .into_iter()
+            .map(|i| BotPendingItem {
+                message_id: i.message_id,
+                body: i.body,
+                send_time: i.send_time,
+            })
+            .collect())
+    }
 }
 
 pub struct HttpGroupDirectory {
@@ -552,7 +626,8 @@ fn group_err(e: StoreError) -> GroupError {
         StoreError::Http { status, msg } => {
             GroupError::Backend(format!("royal http {status}: {msg}"))
         }
-        StoreError::Backend(s) => GroupError::Backend(s),
+        StoreError::Backend(s) | StoreError::Invalid(s) => GroupError::Backend(s),
+        StoreError::NotFound => GroupError::NotFound,
         StoreError::Id(e) => GroupError::Id(e),
     }
 }
@@ -684,7 +759,17 @@ impl HttpUserDirectory {
 }
 
 fn user_err(e: StoreError) -> UserError {
-    UserError::Backend(e.to_string())
+    match e {
+        StoreError::Http { status: 404, .. } => UserError::NotFound,
+        StoreError::Http { status: 409, .. } => UserError::Conflict,
+        StoreError::Http { status: 403, .. } => UserError::NotBotOwner,
+        StoreError::Http {
+            status: 400,
+            ref msg,
+        } if msg.contains("limit") => UserError::Limit,
+        StoreError::Http { status: 400, .. } => UserError::InvalidProfile,
+        other => UserError::Backend(other.to_string()),
+    }
 }
 
 #[async_trait]
@@ -825,6 +910,72 @@ impl UserDirectory for HttpUserDirectory {
             "set_password_and_bump_epoch is royal-only".into(),
         ))
     }
+
+    async fn create_bot(&self, _app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
+        let body = InternalBotCreate {
+            owner: req.owner.clone(),
+            client_profile_id: req.client_profile_id.clone(),
+            nickname: req.nickname.clone(),
+            avatar: req.avatar.clone(),
+            bio: req.bio.clone(),
+        };
+        let resp: BotCreateResp = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/bot", Some(&body))
+            .await
+            .map_err(user_err)?;
+        match resp.profile {
+            Some(p) => Ok(from_pb_profile(p)),
+            None => Err(UserError::Backend("bot create missing profile".into())),
+        }
+    }
+
+    async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        Ok(self.lookup(app, account).await?.and_then(|p| {
+            if p.kind == kim_protocol::PROFILE_KIND_BOT && !p.owner_account.is_empty() {
+                Some(p.owner_account)
+            } else {
+                None
+            }
+        }))
+    }
+
+    async fn delete_bot(&self, _app: &str, owner: &str, account: &str) -> Result<(), UserError> {
+        let body = AccountPair {
+            account: owner.to_string(),
+            peer: account.to_string(),
+        };
+        let _: AccountExists = self
+            .pool
+            .send_pb(reqwest::Method::DELETE, "/api/v1/bot", Some(&body))
+            .await
+            .map_err(user_err)?;
+        Ok(())
+    }
+
+    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
+        let _ = (app, owner);
+        Err(UserError::Backend("count_bots is royal-only".into()))
+    }
+
+    async fn lookup(&self, _app: &str, account: &str) -> Result<Option<UserPresence>, UserError> {
+        let body = AccountQuery {
+            account: account.to_string(),
+        };
+        let resp: AccountExists = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/internal/user/lookup", Some(&body))
+            .await
+            .map_err(user_err)?;
+        if !resp.exists {
+            return Ok(None);
+        }
+        Ok(Some(UserPresence {
+            exists: true,
+            kind: kim_protocol::profile_kind(resp.kind),
+            owner_account: resp.owner_account,
+        }))
+    }
 }
 
 fn from_pb_profile(p: PbProfile) -> UserProfile {
@@ -866,6 +1017,10 @@ impl HttpSocialDirectory {
 
 fn social_err(e: StoreError) -> SocialError {
     match e {
+        StoreError::Http {
+            status: 403,
+            ref msg,
+        } if msg.contains("bot-social") => SocialError::BotSocialDenied,
         StoreError::Http { status: 403, .. } => SocialError::Blocked,
         StoreError::Http { status: 404, .. } => SocialError::NotFound,
         StoreError::Http { status: 400, .. } => SocialError::SelfOp,
@@ -984,6 +1139,10 @@ impl SocialDirectory for HttpSocialDirectory {
             .await
             .map_err(social_err)?;
         Ok(resp.exists)
+    }
+
+    async fn ensure_friends(&self, _app: &str, _a: &str, _b: &str) -> Result<(), SocialError> {
+        Ok(())
     }
 }
 

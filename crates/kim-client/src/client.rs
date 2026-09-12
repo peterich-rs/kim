@@ -9,21 +9,22 @@ use uuid::Uuid;
 
 use crate::config::ClientConfig;
 use crate::events::{
-    Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
+    BotPendingItem, Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile,
+    TalkResult,
 };
 use crate::login::{login_with_device, send_ping};
 use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
-    decode_event, encode_ack, encode_ack_batch, encode_dest_cmd, encode_empty_cmd, encode_history,
-    encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
-    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_typing,
-    encode_user_search, encode_user_update,
+    decode_event, encode_ack, encode_ack_batch, encode_bot_create, encode_bot_pending,
+    encode_bot_reply, encode_dest_cmd, encode_empty_cmd, encode_history, encode_inbox_list,
+    encode_inbox_read, encode_offline_content, encode_offline_index, encode_outgoing, encode_ping,
+    encode_room_enter, encode_room_leave, encode_typing, encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
-    CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST,
-    CMD_USER_PROFILE, INBOX_KIND_USER,
+    CMD_BOT_DELETE, CMD_BOT_UPDATE, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
+    CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, INBOX_KIND_USER,
 };
 
 enum Io {
@@ -113,9 +114,9 @@ impl KimClient {
                 .await
                 {
                     Ok(session) => {
+                        self.store_session(session.clone());
                         let (read, write) = ws.split_conn();
                         *io = Io::Live(start_split_pump(read, write, self.pump_opts()));
-                        self.store_session(session.clone());
                         Ok(session)
                     }
                     Err(err) => {
@@ -160,7 +161,7 @@ impl KimClient {
         send_ping(conn).await?;
         loop {
             let frame = read_data(conn).await?;
-            match decode_event(&frame)? {
+            match decode_event(&frame, self.session().account.as_str())? {
                 Event::Pong => return Ok(()),
                 Event::Closed => return Err(ClientError::from(CoreError::Closed)),
                 _ => self.buffered.lock().await.push_back(frame),
@@ -325,6 +326,115 @@ impl KimClient {
             Event::OfflineContent { sequence, messages } if *sequence == seq => {
                 Some(Ok(messages.clone()))
             }
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    pub async fn bot_create(
+        &self,
+        client_profile_id: &str,
+        nickname: &str,
+        avatar: &str,
+        bio: &str,
+    ) -> Result<Profile, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_bot_create(seq, client_profile_id, nickname, avatar, bio),
+            seq,
+            |ev| match ev {
+                Event::Profile { sequence, profile } if *sequence == seq => {
+                    Some(Ok(profile.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn bot_delete(&self, dest: &str) -> Result<(), ClientError> {
+        self.dest_status(CMD_BOT_DELETE, dest).await
+    }
+
+    pub async fn bot_update(
+        &self,
+        dest: &str,
+        nickname: &str,
+        avatar: &str,
+        bio: &str,
+    ) -> Result<Profile, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        let mut pkt = kim_protocol::LogicPkt::new(CMD_BOT_UPDATE, seq, bytes::Bytes::new());
+        pkt.set_dest(dest);
+        pkt.write_body(&kim_protocol::pkt::UserProfileUpdate {
+            nickname: nickname.to_string(),
+            avatar: avatar.to_string(),
+            bio: bio.to_string(),
+        });
+        self.write_wait(
+            kim_protocol::marshal(&kim_protocol::Packet::Logic(pkt)),
+            seq,
+            |ev| match ev {
+                Event::Profile { sequence, profile } if *sequence == seq => {
+                    Some(Ok(profile.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<TalkResult, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_bot_reply(seq, dest, body, "", client_id, in_reply_to),
+            seq,
+            |ev| match ev {
+                Event::TalkResp(r) if r.sequence == seq => Some(Ok(r.clone())),
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn bot_pending(
+        &self,
+        dest: &str,
+        limit: i32,
+    ) -> Result<Vec<BotPendingItem>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_bot_pending(seq, dest, limit), seq, |ev| match ev {
+            Event::BotPending { sequence, items } if *sequence == seq => Some(Ok(items.clone())),
             Event::Status {
                 status, sequence, ..
             } if *sequence == seq => Some(Err(ClientError::Status(*status))),
@@ -524,7 +634,7 @@ impl KimClient {
         conn.flush().await?;
         loop {
             let frame = read_data(conn).await?;
-            let event = decode_event(&frame)?;
+            let event = decode_event(&frame, self.session().account.as_str())?;
             if let Some(done) = take(&event) {
                 let _ = seq;
                 return done;
@@ -596,12 +706,12 @@ impl KimClient {
             return live.recv().await;
         }
         if let Some(frame) = self.buffered.lock().await.pop_front() {
-            return decode_event(&frame);
+            return decode_event(&frame, self.session().account.as_str());
         }
         let mut io = self.io.lock().await;
         let conn = conn_mut(&mut io)?;
         let frame = read_data(conn).await?;
-        decode_event(&frame)
+        decode_event(&frame, self.session().account.as_str())
     }
 
     pub(crate) async fn live(&self) -> Option<Arc<Live>> {
@@ -621,6 +731,7 @@ impl KimClient {
             read_idle: self.config.read_idle,
             probe_timeout: self.config.probe_timeout,
             token_sink,
+            me: lock_session(self.session.as_ref()).account.clone(),
         }
     }
 
@@ -726,6 +837,7 @@ impl KimClient {
                 read_idle: config.read_idle,
                 probe_timeout: config.probe_timeout,
                 token_sink,
+                me: String::new(),
             },
         );
         Self {

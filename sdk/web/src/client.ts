@@ -793,7 +793,7 @@ export class KIMClient implements ContentLoader {
         message.body = push.body;
         message.extra = push.extra;
         message.sender = push.sender;
-        message.receiver = this.account;
+        message.receiver = pkt.dest;
         message.contentLoaded = true;
         if (pkt.command === Command.ChatGroupTalk) {
           message.group = pkt.dest;

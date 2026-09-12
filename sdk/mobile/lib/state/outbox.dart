@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/format.dart';
@@ -15,6 +16,8 @@ import '../core/image_extra.dart';
 import '../core/media.dart';
 import '../core/validation.dart';
 import '../models/models.dart';
+import 'agent_profiles.dart';
+import 'chat_agent.dart';
 import 'contacts.dart';
 import 'inbox.dart';
 import 'link.dart';
@@ -229,6 +232,15 @@ class OutboxNotifier extends Notifier<int> {
       );
       await _persist(sent);
       await KimHaptics.light();
+      if (sent.messageId != 0 &&
+          agentHostSupported &&
+          ref.read(agentProfilesProvider.notifier).serverIdentity &&
+          sent.isText &&
+          isOwnedRegisteredBot(sent.dest, ref.read(agentProfilesProvider))) {
+        ref
+            .read(chatAgentProvider)
+            .enqueueTurn(sent.dest, sent.body, sent.messageId);
+      }
     } catch (_) {
       if (ref.mounted) {
         await _persist(

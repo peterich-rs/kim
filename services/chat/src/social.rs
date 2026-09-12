@@ -13,6 +13,8 @@ pub enum SocialError {
     NotFound,
     #[error("blocked")]
     Blocked,
+    #[error("bot social denied")]
+    BotSocialDenied,
     #[error("{0}")]
     Backend(String),
 }
@@ -50,6 +52,7 @@ pub trait SocialDirectory: Send + Sync {
     async fn unblock(&self, app: &str, account: &str, peer: &str) -> Result<(), SocialError>;
     async fn list_blocked(&self, app: &str, account: &str) -> Result<Vec<String>, SocialError>;
     async fn is_blocked_either(&self, app: &str, a: &str, b: &str) -> Result<bool, SocialError>;
+    async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError>;
 }
 
 #[derive(Default)]
@@ -233,6 +236,14 @@ impl SocialDirectory for MemorySocialDirectory {
         let inner = self.read();
         Ok(inner.blocks.contains(&(app.into(), a.into(), b.into()))
             || inner.blocks.contains(&(app.into(), b.into(), a.into())))
+    }
+
+    async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError> {
+        if a.is_empty() || b.is_empty() || a == b {
+            return Err(SocialError::SelfOp);
+        }
+        self.write().friends.insert(friend_key(app, a, b));
+        Ok(())
     }
 }
 
@@ -557,6 +568,25 @@ impl SocialDirectory for PostgresSocialDirectory {
         .await
         .map_err(pg_err)?;
         Ok(found.is_some())
+    }
+
+    async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError> {
+        if a.is_empty() || b.is_empty() || a == b {
+            return Err(SocialError::SelfOp);
+        }
+        let (x, y) = ordered_pair(a, b);
+        sqlx::query(
+            "INSERT INTO friendships (app, account_a, account_b)
+             VALUES ($1, $2, $3)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(app)
+        .bind(x)
+        .bind(y)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        Ok(())
     }
 }
 

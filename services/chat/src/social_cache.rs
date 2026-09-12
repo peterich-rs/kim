@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use tokio::sync::oneshot;
 
 use crate::social::{ordered_pair, FriendRequestOutcome, SocialDirectory, SocialError};
-use crate::users::{ProfilePatch, UserDirectory, UserError, UserProfile};
+use crate::users::{CreateBot, ProfilePatch, UserDirectory, UserError, UserPresence, UserProfile};
 
 const DEFAULT_TTL: Duration = Duration::from_secs(30);
 const DEFAULT_CAP: usize = 10_000;
@@ -252,14 +252,26 @@ impl SocialDirectory for CachedSocial {
         self.cached_bool(key, || self.inner.is_blocked_either(app, a, b))
             .await
     }
+
+    async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError> {
+        self.inner.ensure_friends(app, a, b).await?;
+        self.evict_pair(app, a, b);
+        Ok(())
+    }
 }
 
 type UserKey = (String, String);
+type UserInflightWaiters = Vec<oneshot::Sender<Result<UserPresence, String>>>;
+
+struct UserEntry {
+    value: UserPresence,
+    expire: Instant,
+}
 
 pub struct CachedUserDirectory {
     inner: Arc<dyn UserDirectory>,
-    entries: Mutex<HashMap<UserKey, Entry>>,
-    inflight: Mutex<HashMap<UserKey, InflightWaiters>>,
+    entries: Mutex<HashMap<UserKey, UserEntry>>,
+    inflight: Mutex<HashMap<UserKey, UserInflightWaiters>>,
     ttl: Duration,
     cap: usize,
 }
@@ -275,14 +287,18 @@ impl CachedUserDirectory {
         })
     }
 
-    fn lookup(&self, key: &UserKey) -> Option<bool> {
+    fn evict(&self, app: &str, account: &str) {
+        lock(&self.entries).remove(&(app.to_string(), account.to_string()));
+    }
+
+    fn lookup_entry(&self, key: &UserKey) -> Option<UserPresence> {
         if self.ttl.is_zero() {
             return None;
         }
         let now = Instant::now();
         let mut map = lock(&self.entries);
         match map.get(key) {
-            Some(e) if e.expire > now => Some(e.value),
+            Some(e) if e.expire > now => Some(e.value.clone()),
             Some(_) => {
                 map.remove(key);
                 None
@@ -291,7 +307,7 @@ impl CachedUserDirectory {
         }
     }
 
-    fn store(&self, key: UserKey, value: bool) {
+    fn store_presence(&self, key: UserKey, value: UserPresence) {
         if self.ttl.is_zero() {
             return;
         }
@@ -307,20 +323,27 @@ impl CachedUserDirectory {
         }
         map.insert(
             key,
-            Entry {
+            UserEntry {
                 value,
                 expire: Instant::now() + jittered_ttl(self.ttl),
             },
         );
     }
 
-    async fn cached_exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
+    async fn cached_presence(&self, app: &str, account: &str) -> Result<UserPresence, UserError> {
         let key = (app.to_string(), account.to_string());
-        if let Some(v) = self.lookup(&key) {
+        if let Some(v) = self.lookup_entry(&key) {
             return Ok(v);
         }
         if self.ttl.is_zero() {
-            return self.inner.exists(app, account).await;
+            return match self.inner.lookup(app, account).await? {
+                Some(p) => Ok(p),
+                None => Ok(UserPresence {
+                    exists: false,
+                    kind: 0,
+                    owner_account: String::new(),
+                }),
+            };
         }
         let rx = {
             let mut inflight = lock(&self.inflight);
@@ -340,13 +363,21 @@ impl CachedUserDirectory {
                 Err(_) => Err(UserError::Backend("inflight dropped".into())),
             };
         }
-        let result = self.inner.exists(app, account).await;
+        let fetched = match self.inner.lookup(app, account).await {
+            Ok(Some(p)) => Ok(p),
+            Ok(None) => Ok(UserPresence {
+                exists: false,
+                kind: 0,
+                owner_account: String::new(),
+            }),
+            Err(e) => Err(e),
+        };
         let waiters = lock(&self.inflight).remove(&key).unwrap_or_default();
-        match &result {
+        match &fetched {
             Ok(v) => {
-                self.store(key, *v);
+                self.store_presence(key, v.clone());
                 for tx in waiters {
-                    let _ = tx.send(Ok(*v));
+                    let _ = tx.send(Ok(v.clone()));
                 }
             }
             Err(e) => {
@@ -356,7 +387,7 @@ impl CachedUserDirectory {
                 }
             }
         }
-        result
+        fetched
     }
 }
 
@@ -364,19 +395,19 @@ impl CachedUserDirectory {
 impl UserDirectory for CachedUserDirectory {
     async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
         self.inner.upsert(app, account).await?;
-        lock(&self.entries).remove(&(app.to_string(), account.to_string()));
+        self.evict(app, account);
         Ok(())
     }
     async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
         self.inner.create(app, account, password_hash).await?;
-        lock(&self.entries).remove(&(app.to_string(), account.to_string()));
+        self.evict(app, account);
         Ok(())
     }
     async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
         self.inner.password_hash(app, account).await
     }
     async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
-        self.cached_exists(app, account).await
+        Ok(self.cached_presence(app, account).await?.exists)
     }
     async fn profile(&self, app: &str, account: &str) -> Result<Option<UserProfile>, UserError> {
         self.inner.profile(app, account).await
@@ -428,6 +459,40 @@ impl UserDirectory for CachedUserDirectory {
         self.inner
             .set_password_and_bump_epoch(app, account, password_hash)
             .await
+    }
+
+    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
+        let profile = self.inner.create_bot(app, req).await?;
+        self.evict(app, &profile.account);
+        Ok(profile)
+    }
+
+    async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+        let p = self.cached_presence(app, account).await?;
+        if p.exists && p.kind == kim_protocol::PROFILE_KIND_BOT && !p.owner_account.is_empty() {
+            Ok(Some(p.owner_account))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn delete_bot(&self, app: &str, owner: &str, account: &str) -> Result<(), UserError> {
+        self.inner.delete_bot(app, owner, account).await?;
+        self.evict(app, account);
+        Ok(())
+    }
+
+    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
+        self.inner.count_bots(app, owner).await
+    }
+
+    async fn lookup(&self, app: &str, account: &str) -> Result<Option<UserPresence>, UserError> {
+        let p = self.cached_presence(app, account).await?;
+        if p.exists {
+            Ok(Some(p))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -501,6 +566,9 @@ mod tests {
         ) -> Result<bool, SocialError> {
             self.blocked.fetch_add(1, Ordering::SeqCst);
             self.inner.is_blocked_either(app, a, b).await
+        }
+        async fn ensure_friends(&self, app: &str, a: &str, b: &str) -> Result<(), SocialError> {
+            self.inner.ensure_friends(app, a, b).await
         }
     }
 
@@ -694,6 +762,39 @@ mod tests {
                 self.inner
                     .set_password_and_bump_epoch(app, account, password_hash)
                     .await
+            }
+            async fn create_bot(
+                &self,
+                app: &str,
+                req: &CreateBot,
+            ) -> Result<UserProfile, UserError> {
+                self.inner.create_bot(app, req).await
+            }
+            async fn bot_owner(
+                &self,
+                app: &str,
+                account: &str,
+            ) -> Result<Option<String>, UserError> {
+                self.inner.bot_owner(app, account).await
+            }
+            async fn delete_bot(
+                &self,
+                app: &str,
+                owner: &str,
+                account: &str,
+            ) -> Result<(), UserError> {
+                self.inner.delete_bot(app, owner, account).await
+            }
+            async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
+                self.inner.count_bots(app, owner).await
+            }
+            async fn lookup(
+                &self,
+                app: &str,
+                account: &str,
+            ) -> Result<Option<UserPresence>, UserError> {
+                self.hits.fetch_add(1, Ordering::SeqCst);
+                self.inner.lookup(app, account).await
             }
         }
         let inner = Arc::new(CountExists {

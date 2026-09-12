@@ -52,6 +52,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     ref.listen(chatSessionProvider(widget.id), (prev, next) {
+      final to = next.redirectDest;
+      if (to != null && to.isNotEmpty && to != widget.id) {
+        context.replace('/chat/$to');
+        return;
+      }
       final toast = next.toast;
       if (toast == null || toast == prev?.toast) {
         return;

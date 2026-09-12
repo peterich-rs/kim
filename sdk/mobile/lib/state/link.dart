@@ -5,13 +5,16 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/host_support.dart';
 import '../copy.dart';
 import '../core/connectivity.dart';
 import '../core/haptics.dart';
+import '../core/image_extra.dart';
 import '../core/permissions.dart';
 import '../core/user_agent.dart';
 import '../models/models.dart';
 import 'auth.dart';
+import 'chat_agent.dart';
 import 'contacts.dart';
 import 'presence.dart';
 import 'receipts.dart';
@@ -209,6 +212,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         );
         if (_snapshot.status == ConnStatus.online) {
           _askNotifications();
+          if (agentHostSupported) {
+            unawaited(ref.read(chatAgentProvider).catchUpPending());
+          }
         }
       case KimEventKind.inbox:
         ref.read(threadsProvider.notifier).mergeInbox(event.inbox);
@@ -384,6 +390,25 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     ]);
     if (viewing == dest) {
       unawaited(ref.read(threadMessagesProvider(dest).notifier).markRead());
+    }
+    if (event.sender == account &&
+        event.messageId != 0 &&
+        kindFromWire(
+              body: event.body,
+              extra: event.extra,
+              type: event.msgType,
+            ) ==
+            KimMsgKind.text) {
+      unawaited(
+        ref
+            .read(chatAgentProvider)
+            .onIncomingEcho(
+              dest: dest,
+              sender: event.sender,
+              text: event.body,
+              messageId: event.messageId,
+            ),
+      );
     }
     if (!ack || event.messageId == 0) {
       return;

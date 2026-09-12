@@ -42,6 +42,17 @@ void main() {
     expect(canonicalAgentDest('agent:translator'), 'agent:translator');
   });
 
+  test('serverAccount is IM dest and not a local agent dest', () {
+    final profile = _profile(
+      id: 'goose',
+      displayName: '助手',
+    ).copyWith(serverAccount: 'b_ABC');
+    expect(personForProfile(profile).account, 'b_ABC');
+    expect(isAgentDest('b_ABC'), isFalse);
+    expect(isOwnedRegisteredBot('b_ABC', [profile]), isTrue);
+    expect(isOwnedRegisteredBot('goose', [profile]), isFalse);
+  });
+
   test('mention prefers exact id over display name', () {
     final enabled = [
       _profile(id: 'goose', displayName: '助手', aliases: const ['助手']),

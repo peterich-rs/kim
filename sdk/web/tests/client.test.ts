@@ -337,6 +337,31 @@ describe("KIMClient", () => {
     expect(seen).toEqual([99n]);
   });
 
+  it("1:1 push sets receiver to pkt.dest for echo", async () => {
+    const gw = new LoopbackGw();
+    const cli = client(gw);
+    const seen: string[] = [];
+    cli.onmessage((m) => seen.push(`${m.sender}:${m.receiver}`));
+    await cli.login();
+    const push = LogicPkt.build(
+      Command.ChatUserTalk,
+      "bob",
+      encodeMessagePush({
+        messageId: 7n,
+        type: 1,
+        body: "echo",
+        extra: "",
+        sender: "alice",
+        sendTime: 1n,
+      }),
+      8,
+    );
+    push.flag = Flag.Push;
+    gw.lastSocket().deliver(push.bytes());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen).toEqual(["alice:bob"]);
+  });
+
 
   it("online messageAckLoop batches every id received in the window", async () => {
     const gw = new LoopbackGw();

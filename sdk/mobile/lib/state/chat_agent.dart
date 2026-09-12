@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,9 @@ import '../agent/capability_host.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../agent_bridge.dart';
+import '../core/format.dart';
 import '../core/paths.dart';
+import '../data/message_identity.dart';
 import '../models/models.dart';
 import 'agent_profiles.dart';
 import 'agent_settings.dart';
@@ -33,6 +36,19 @@ class _Live {
   StreamSubscription<AgentUiEvent>? sub;
 }
 
+class _QueuedTurn {
+  _QueuedTurn(this.text, this.inReplyTo);
+  final String text;
+  final int inReplyTo;
+}
+
+class _DestQueue {
+  final queue = ListQueue<_QueuedTurn>();
+  var pumping = false;
+  Completer<void>? turnGate;
+  _QueuedTurn? active;
+}
+
 class ChatAgent {
   ChatAgent(this._ref);
 
@@ -43,10 +59,23 @@ class ChatAgent {
   final _seenToolCalls = <String>{};
   final _toolTimeouts = <String, Timer>{};
   final _pendingToolCalls = <String, Set<String>>{};
+  final _queues = <String, _DestQueue>{};
+  var _promptInFlight = 0;
+  var promptMaxInFlight = 0;
 
   static const _lruLimit = 4;
 
   String _key(String dest, String profileId) => '$dest::$profileId';
+
+  bool get _identityOn =>
+      _ref.read(agentProfilesProvider.notifier).serverIdentity;
+
+  bool _isRegisteredDest(String dest) {
+    if (!_identityOn) {
+      return false;
+    }
+    return isOwnedRegisteredBot(dest, _ref.read(agentProfilesProvider));
+  }
 
   /// Direct DM with a local agent contact — every line is a prompt.
   Future<void> sendDirect({required String dest, required String text}) async {
@@ -57,7 +86,11 @@ class ChatAgent {
     if (body.isEmpty) {
       return;
     }
-    final profile = await _profileForDest(dest);
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    if (_isRegisteredDest(dest)) {
+      return;
+    }
+    final profile = await profileForDest(dest);
     await _appendLocal(dest, body, fromAgent: false, profile: profile);
     await _prompt(dest, body, profile: profile);
   }
@@ -69,17 +102,124 @@ class ChatAgent {
     if (!agentHostSupported) {
       return;
     }
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    if (_isRegisteredDest(dest)) {
+      return;
+    }
     if (isAgentDest(dest)) {
       await sendDirect(dest: dest, text: text);
       return;
     }
-    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
     final enabled = _ref.read(agentProfilesProvider.notifier).visibleAgents;
     final profile = mentionedProfile(text, enabled);
     if (profile == null) {
       return;
     }
     await _prompt(dest, text, profile: profile);
+  }
+
+  bool enqueueTurn(String dest, String text, int inReplyTo) {
+    if (!agentHostSupported || !_identityOn || inReplyTo == 0) {
+      return false;
+    }
+    if (!_isRegisteredDest(dest)) {
+      return false;
+    }
+    final body = text.trim();
+    if (body.isEmpty) {
+      return false;
+    }
+    final q = _queues.putIfAbsent(dest, _DestQueue.new);
+    if (q.queue.any((e) => e.inReplyTo == inReplyTo)) {
+      return true;
+    }
+    q.queue.add(_QueuedTurn(body, inReplyTo));
+    unawaited(_pumpDest(dest));
+    return true;
+  }
+
+  Future<void> onIncomingEcho({
+    required String dest,
+    required String sender,
+    required String text,
+    required int messageId,
+  }) async {
+    if (!agentHostSupported) {
+      return;
+    }
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    final me = _ref.read(authProvider).account;
+    if (sender != me || messageId == 0) {
+      return;
+    }
+    enqueueTurn(dest, text, messageId);
+  }
+
+  Future<void> catchUpPending() async {
+    if (!agentHostSupported || !_identityOn) {
+      return;
+    }
+    await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    if (_ref.read(clientPortProvider).linkState().status != ConnStatus.online) {
+      return;
+    }
+    final client = _ref.read(clientPortProvider);
+    final registered = [
+      for (final p in _ref.read(agentProfilesProvider))
+        if (p.serverAccount.isNotEmpty) p.serverAccount,
+    ];
+    for (final dest in registered) {
+      try {
+        final items = await client.botPending(dest);
+        final ordered = [...items]
+          ..sort((a, b) => a.messageId.compareTo(b.messageId));
+        for (final item in ordered) {
+          enqueueTurn(dest, item.body, item.messageId);
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _pumpDest(String dest) async {
+    final q = _queues[dest];
+    if (q == null || q.pumping) {
+      return;
+    }
+    q.pumping = true;
+    try {
+      while (q.queue.isNotEmpty) {
+        final turn = q.queue.first;
+        q.active = turn;
+        q.turnGate = Completer<void>();
+        try {
+          final profile = await profileForDest(dest);
+          await _prompt(dest, turn.text, profile: profile);
+          final gate = q.turnGate;
+          if (gate != null && !gate.isCompleted) {
+            await gate.future;
+          }
+        } catch (_) {
+          _completeTurn(dest);
+        }
+        q.active = null;
+        if (q.queue.isNotEmpty) {
+          q.queue.removeFirst();
+        }
+      }
+    } finally {
+      q.pumping = false;
+      q.turnGate = null;
+      if (q.queue.isNotEmpty) {
+        unawaited(_pumpDest(dest));
+      }
+    }
+  }
+
+  void _completeTurn(String dest) {
+    final gate = _queues[dest]?.turnGate;
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
   }
 
   Future<void> _prompt(
@@ -95,13 +235,20 @@ class ChatAgent {
       await _appendLocal(
         dest,
         '未配置 API Key。打开「我 → Agent 设置」填入 OpenAI 或 Anthropic 密钥。',
+        sys: _isRegisteredDest(dest),
         profile: profile,
       );
+      _completeTurn(dest);
       return;
+    }
+    _promptInFlight += 1;
+    if (_promptInFlight > promptMaxInFlight) {
+      promptMaxInFlight = _promptInFlight;
     }
     try {
       final live = await _ensureSession(dest, profile, apiKey: apiKey);
-      if (!isAgentDest(dest)) {
+      final registered = _isRegisteredDest(dest);
+      if (!isAgentDest(dest) && !registered) {
         final ctx = _contextJson(dest);
         if (ctx.isNotEmpty) {
           await live.session.promptWithContext(text: text, contextJson: ctx);
@@ -110,13 +257,28 @@ class ChatAgent {
       }
       await live.session.prompt(text: text);
     } catch (e) {
-      await _appendLocal(dest, 'Goose 调用失败：$e', profile: profile);
+      await _appendLocal(
+        dest,
+        'Goose 调用失败：$e',
+        sys: _isRegisteredDest(dest),
+        profile: profile,
+      );
+      _completeTurn(dest);
+    } finally {
+      _promptInFlight -= 1;
     }
   }
+
+  Future<AgentProfile> profileForDest(String dest) => _profileForDest(dest);
 
   Future<AgentProfile> _profileForDest(String dest) async {
     await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
     final store = _ref.read(agentProfilesProvider.notifier);
+    for (final p in _ref.read(agentProfilesProvider)) {
+      if (p.serverAccount.isNotEmpty && p.serverAccount == dest) {
+        return p;
+      }
+    }
     final canon = canonicalAgentDest(dest);
     if (canon == kGooseAgentId) {
       return store.goose ??
@@ -166,11 +328,18 @@ class ChatAgent {
     live.sub = session.listen().listen((ev) {
       switch (ev.kind) {
         case 'assistant_finished':
-          if (ev.message.trim().isNotEmpty) {
+          if (_isRegisteredDest(dest)) {
+            final text = ev.message.trim();
+            if (text.isNotEmpty) {
+              unawaited(_onRegisteredFinished(dest, text, profile));
+            }
+          } else if (ev.message.trim().isNotEmpty) {
             unawaited(_appendLocal(dest, ev.message.trim(), profile: profile));
           }
         case 'failed':
-          if (ev.message.trim().isNotEmpty) {
+          if (_isRegisteredDest(dest)) {
+            unawaited(_onRegisteredFailed(dest, ev.message.trim(), profile));
+          } else if (ev.message.trim().isNotEmpty) {
             unawaited(_appendLocal(dest, ev.message.trim(), profile: profile));
           }
         case 'tool_started':
@@ -506,10 +675,98 @@ class ChatAgent {
     _ref.read(threadMessagesProvider(dest).notifier).receive(msg);
   }
 
+  Future<void> _onRegisteredFinished(
+    String dest,
+    String text,
+    AgentProfile profile,
+  ) async {
+    final q = _queues[dest];
+    final active = q?.active;
+    if (active == null || text.isEmpty || active.inReplyTo == 0) {
+      return;
+    }
+    if (q?.turnGate == null || q!.turnGate!.isCompleted) {
+      return;
+    }
+    final inReplyTo = active.inReplyTo;
+    q.active = null;
+    try {
+      final result = await _ref
+          .read(clientPortProvider)
+          .botReply(
+            dest: dest,
+            body: text,
+            inReplyTo: inReplyTo,
+            clientId: _uuid.v4(),
+          );
+      if (result.messageId != 0) {
+        await _commitServerAssistant(dest: dest, body: text, result: result);
+      }
+    } catch (e) {
+      await _appendLocal(dest, 'Goose 调用失败：$e', sys: true, profile: profile);
+    } finally {
+      _completeTurn(dest);
+    }
+  }
+
+  Future<void> _onRegisteredFailed(
+    String dest,
+    String message,
+    AgentProfile profile,
+  ) async {
+    final q = _queues[dest];
+    if (q?.turnGate == null || q!.turnGate!.isCompleted) {
+      return;
+    }
+    q.active = null;
+    try {
+      if (message.isNotEmpty) {
+        await _appendLocal(dest, message, sys: true, profile: profile);
+      }
+    } finally {
+      _completeTurn(dest);
+    }
+  }
+
+  Future<void> _commitServerAssistant({
+    required String dest,
+    required String body,
+    required KimTalkResult result,
+  }) async {
+    final account = _ref.read(authProvider).account;
+    if (account.isEmpty) {
+      return;
+    }
+    final at = result.sendTime == 0
+        ? DateTime.now().millisecondsSinceEpoch
+        : sendTimeMs(result.sendTime);
+    final msg = KimChatMsg(
+      key: incomingMessageKey(
+        messageId: result.messageId,
+        sendTime: result.sendTime,
+        sender: dest,
+      ),
+      dest: dest,
+      sender: dest,
+      body: body,
+      at: at,
+      messageId: result.messageId,
+    );
+    await _ref.read(messageRepositoryProvider).applyLive(account, [
+      msg,
+    ], viewingDest: dest);
+    if (!_ref.mounted) {
+      return;
+    }
+    _ref.read(threadMessagesProvider(dest).notifier).receive(msg);
+    _ref.read(threadsProvider.notifier).applyTalk(msg, fromSelf: false);
+  }
+
   Future<void> _appendLocal(
     String dest,
     String body, {
     bool fromAgent = true,
+    bool sys = false,
     AgentProfile? profile,
   }) async {
     if (body.isEmpty) {
@@ -529,6 +786,7 @@ class ChatAgent {
       sender: sender,
       body: body,
       at: now,
+      sys: sys,
     );
     await _ref.read(messageRepositoryProvider).applyLive(account, [
       msg,

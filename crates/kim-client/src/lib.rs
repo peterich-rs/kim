@@ -27,8 +27,8 @@ pub use config::{
 };
 pub use error::ClientError;
 pub use events::{
-    Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex, OutgoingContent,
-    PresenceEntry, Profile, TalkResult,
+    BotPendingItem, Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex,
+    OutgoingContent, PresenceEntry, Profile, TalkResult,
 };
 pub use link::DropReason;
 pub use login::{login_on_conn, send_ping, wait_pong};

@@ -12,10 +12,11 @@ use crate::idgen::IdGenerator;
 
 use super::{
     clamp_page, clamp_start, fanout_from_index_rows, fanout_from_write, now_unix_nano,
-    recv_accounts, AckIndex, DeliveryTarget, Fanout, HistoryEntry, InboxEntry, InsertMessage,
-    InsertResult, MessageContentRow, MessageIndexRow, MessageKind, MessageStore, StoreError,
-    DAY_NANOS, DIRECTION_RECV, DIRECTION_SEND, EXPIRES_NANOS, HISTORY_MAX, HISTORY_PAGE, INBOX_MAX,
-    INBOX_PAGE, LIST_LOCATIONS_BUDGET, MESSAGE_MAX_COUNT_PER_PAGE, OFFLINE_SYNC_INDEX_COUNT,
+    recv_accounts, AckIndex, BotPendingItem, DeliveryTarget, Fanout, HistoryEntry, InboxEntry,
+    InsertMessage, InsertResult, MessageContentRow, MessageIndexRow, MessageKind, MessageStore,
+    StoreError, DAY_NANOS, DIRECTION_RECV, DIRECTION_SEND, EXPIRES_NANOS, HISTORY_MAX,
+    HISTORY_PAGE, INBOX_MAX, INBOX_PAGE, LIST_LOCATIONS_BUDGET, MESSAGE_MAX_COUNT_PER_PAGE,
+    OFFLINE_SYNC_INDEX_COUNT,
 };
 
 #[derive(Clone, Copy)]
@@ -1292,6 +1293,219 @@ impl MessageStore for PostgresMessageStore {
         .map_err(pg_err)?;
         tx.commit().await.map_err(pg_err)?;
         Ok(())
+    }
+
+    async fn insert_bot_reply(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        in_reply_to: i64,
+        req: &InsertMessage,
+    ) -> Result<InsertResult, StoreError> {
+        if req.sender != bot || req.dest != owner {
+            return Err(StoreError::Invalid(
+                "sender must be bot, dest must be owner".into(),
+            ));
+        }
+        if in_reply_to <= 0 {
+            return Err(StoreError::Invalid("in_reply_to".into()));
+        }
+        let message_id = self.idgen.next_id()?;
+        let msg_type = i16::try_from(req.msg_type)
+            .map_err(|_| StoreError::Backend("msg_type does not fit smallint".into()))?;
+        let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
+        lock_inbox_accounts(&mut tx, app, &[owner.to_string(), bot.to_string()]).await?;
+        let valid: Option<(i64,)> = sqlx::query_as(
+            "SELECT i.message_id FROM message_index i
+              JOIN message_content c ON c.id = i.message_id
+             WHERE i.app = $1 AND i.account_a = $2 AND i.account_b = $3
+               AND i.direction = $4 AND i.message_id = $5 AND i.group_id = ''
+               AND c.sender = $2",
+        )
+        .bind(app)
+        .bind(owner)
+        .bind(bot)
+        .bind(DIRECTION_SEND as i16)
+        .bind(in_reply_to)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if valid.is_none() {
+            return Err(StoreError::Invalid("in_reply_to".into()));
+        }
+        let claimed = sqlx::query(
+            "INSERT INTO bot_turns (app, bot_account, in_reply_to, reply_message_id)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (app, bot_account, in_reply_to) DO NOTHING",
+        )
+        .bind(app)
+        .bind(bot)
+        .bind(in_reply_to)
+        .bind(message_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if claimed.rows_affected() == 0 {
+            let existing: Option<(i64,)> = sqlx::query_as(
+                "SELECT reply_message_id FROM bot_turns
+                 WHERE app = $1 AND bot_account = $2 AND in_reply_to = $3",
+            )
+            .bind(app)
+            .bind(bot)
+            .bind(in_reply_to)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            let reply_id = existing
+                .map(|r| r.0)
+                .ok_or_else(|| StoreError::Backend("bot_turns missing after conflict".into()))?;
+            tx.commit().await.map_err(pg_err)?;
+            let fanout = load_fanout(&self.pool, app, reply_id).await?;
+            let send_time =
+                sqlx::query_scalar::<_, i64>("SELECT send_time FROM message_content WHERE id = $1")
+                    .bind(reply_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(pg_err)?
+                    .unwrap_or(0);
+            return Ok(InsertResult {
+                message_id: reply_id,
+                send_time,
+                duplicate: true,
+                fanout,
+            });
+        }
+
+        sqlx::query(
+            "INSERT INTO message_content (id, app, msg_type, body, extra, send_time)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(message_id)
+        .bind(app)
+        .bind(msg_type)
+        .bind(&req.body)
+        .bind(&req.extra)
+        .bind(req.send_time)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        let rows = [
+            (
+                req.sender.clone(),
+                req.dest.clone(),
+                DIRECTION_SEND as i16,
+                String::new(),
+            ),
+            (
+                req.dest.clone(),
+                req.sender.clone(),
+                DIRECTION_RECV as i16,
+                String::new(),
+            ),
+        ];
+        for (account_a, account_b, direction, group_id) in &rows {
+            let idx_id = self.idgen.next_id()?;
+            sqlx::query(
+                "INSERT INTO message_index
+                    (id, app, account_a, account_b, direction, message_id, group_id, send_time)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            )
+            .bind(idx_id)
+            .bind(app)
+            .bind(account_a)
+            .bind(account_b)
+            .bind(direction)
+            .bind(message_id)
+            .bind(group_id)
+            .bind(req.send_time)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        }
+        upsert_inbox_rows(
+            &mut tx,
+            app,
+            message_id,
+            req.send_time,
+            &req.sender,
+            &req.body,
+            msg_type,
+            &rows,
+        )
+        .await?;
+        if !req.client_id.is_empty() {
+            let _ = sqlx::query(
+                "INSERT INTO message_idempotency (app, sender, client_id, message_id, send_time)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (app, sender, client_id) DO NOTHING",
+            )
+            .bind(app)
+            .bind(&req.sender)
+            .bind(&req.client_id)
+            .bind(message_id)
+            .bind(req.send_time)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        }
+        if self.pending_receipt {
+            let recv = recv_accounts(req, None);
+            let targets = match self.resolve_targets(&recv, req).await {
+                Ok(t) => t,
+                Err(err) => {
+                    tx.rollback().await.map_err(pg_err)?;
+                    return Err(err);
+                }
+            };
+            insert_receipts(&mut tx, app, message_id, &targets).await?;
+        }
+        tx.commit().await.map_err(pg_err)?;
+        Ok(InsertResult {
+            message_id,
+            send_time: req.send_time,
+            duplicate: false,
+            fanout: fanout_from_write(MessageKind::User, req, &[]),
+        })
+    }
+
+    async fn bot_pending(
+        &self,
+        app: &str,
+        owner: &str,
+        bot: &str,
+        limit: i32,
+    ) -> Result<Vec<BotPendingItem>, StoreError> {
+        let cap = i64::try_from(clamp_page(limit, 20, 50)).unwrap_or(20);
+        let rows: Vec<(i64, String, i64)> = sqlx::query_as(
+            "SELECT i.message_id, c.body, i.send_time
+               FROM message_index i
+               JOIN message_content c ON c.id = i.message_id
+               LEFT JOIN bot_turns t
+                 ON t.app = i.app AND t.bot_account = i.account_b AND t.in_reply_to = i.message_id
+              WHERE i.app = $1 AND i.account_a = $2 AND i.account_b = $3
+                AND i.direction = $4 AND i.group_id = ''
+                AND t.in_reply_to IS NULL
+                AND c.sender = $2
+              ORDER BY i.message_id ASC
+              LIMIT $5",
+        )
+        .bind(app)
+        .bind(owner)
+        .bind(bot)
+        .bind(DIRECTION_SEND as i16)
+        .bind(cap)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        Ok(rows
+            .into_iter()
+            .map(|(message_id, body, send_time)| BotPendingItem {
+                message_id,
+                body,
+                send_time,
+            })
+            .collect())
     }
 }
 

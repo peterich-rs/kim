@@ -141,6 +141,18 @@ class KimTalkResult {
   final int sendTime;
 }
 
+class KimBotPendingItem {
+  const KimBotPendingItem({
+    required this.messageId,
+    required this.body,
+    required this.sendTime,
+  });
+
+  final int messageId;
+  final String body;
+  final int sendTime;
+}
+
 class KimHistoryMsg {
   const KimHistoryMsg({
     required this.messageId,
@@ -327,6 +339,8 @@ class KimChatMsg {
   final String? batchId;
   final KimSendStatus status;
   final String? localPath;
+
+  bool get isText => kind == KimMsgKind.text;
 
   bool get isImage => kind == KimMsgKind.image;
 

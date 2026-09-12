@@ -97,6 +97,31 @@ abstract class KimClientPort {
 
   /// Fire-and-forget typing indicator for a DM thread.
   Future<void> sendTyping(String dest, {int kind = 0, bool active = true});
+
+  Future<KimPerson> botCreate({
+    required String clientProfileId,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  });
+
+  Future<void> botDelete(String dest);
+
+  Future<KimPerson> botUpdate({
+    required String dest,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  });
+
+  Future<KimTalkResult> botReply({
+    required String dest,
+    required String body,
+    required int inReplyTo,
+    required String clientId,
+  });
+
+  Future<List<KimBotPendingItem>> botPending(String dest, {int limit = 20});
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -652,5 +677,79 @@ class KimBridge implements KimAuthPort, KimClientPort {
   @override
   Future<void> roomLeave(String dest, {int kind = 0}) async {
     await _require().roomLeave(dest: dest, kind: kind);
+  }
+
+  @override
+  Future<KimPerson> botCreate({
+    required String clientProfileId,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  }) async {
+    return _person(
+      await _require().botCreate(
+        clientProfileId: clientProfileId,
+        nickname: nickname,
+        avatar: avatar,
+        bio: bio,
+      ),
+    );
+  }
+
+  @override
+  Future<void> botDelete(String dest) async {
+    await _require().botDelete(dest: dest);
+  }
+
+  @override
+  Future<KimPerson> botUpdate({
+    required String dest,
+    required String nickname,
+    String avatar = '',
+    String bio = '',
+  }) async {
+    return _person(
+      await _require().botUpdate(
+        dest: dest,
+        nickname: nickname,
+        avatar: avatar,
+        bio: bio,
+      ),
+    );
+  }
+
+  @override
+  Future<KimTalkResult> botReply({
+    required String dest,
+    required String body,
+    required int inReplyTo,
+    required String clientId,
+  }) async {
+    final result = await _require().botReply(
+      dest: dest,
+      body: body,
+      inReplyTo: inReplyTo,
+      clientId: clientId,
+    );
+    return KimTalkResult(
+      messageId: result.messageId.toInt(),
+      sendTime: sendTimeMs(result.sendTime.toInt()),
+    );
+  }
+
+  @override
+  Future<List<KimBotPendingItem>> botPending(
+    String dest, {
+    int limit = 20,
+  }) async {
+    final items = await _require().botPending(dest: dest, limit: limit);
+    return [
+      for (final item in items)
+        KimBotPendingItem(
+          messageId: item.messageId.toInt(),
+          body: item.body,
+          sendTime: item.sendTime.toInt(),
+        ),
+    ];
   }
 }

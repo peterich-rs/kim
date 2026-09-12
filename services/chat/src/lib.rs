@@ -2,6 +2,7 @@
 
 mod ack;
 pub mod admin;
+mod bot;
 pub mod directory;
 mod echo;
 pub mod filter;
@@ -36,7 +37,8 @@ use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, StateListe
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, ALLOWED_APP, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_CHAT_GROUP_TALK,
+    read_logic, ALLOWED_APP, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_BOT_CREATE,
+    CMD_BOT_DELETE, CMD_BOT_PENDING, CMD_BOT_REPLY, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK,
     CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING,
     CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
     CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
@@ -60,6 +62,7 @@ use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
 pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
+pub use bot::{do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_update};
 pub use echo::do_echo;
 pub use filter::{
     builtin_talk_filter, ContentFilter, FilterChain, ImageFilter, NoopFilter, TextWordFilter,
@@ -142,12 +145,22 @@ impl ChatHandler {
         let _ = cfg_node;
         // Test constructor: SequenceIdGen. Production `main` fails on Snowflake init.
         let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::new(10_001));
-        Self::with_seams_and_zone(
+        let social = Arc::new(MemorySocialDirectory::new());
+        let users = Arc::new(
+            MemoryUserDirectory::new()
+                .with_social(social.clone())
+                .with_idgen(idgen.clone()),
+        );
+        Self::with_social(
             container,
             cache,
             Arc::new(MemoryMessageStore::new(idgen.clone())),
             Arc::new(MemoryGroupDirectory::new(idgen)),
             String::new(),
+            Arc::new(NoopFilter),
+            users,
+            social,
+            pending_receipt_enabled(),
         )
     }
 
@@ -493,7 +506,7 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(CMD_FRIEND_REMOVE, move |ctx| {
                 let svc = svc.clone();
-                async move { do_friend_remove(ctx, svc.social.as_ref()).await }
+                async move { do_friend_remove(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
@@ -521,7 +534,7 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(CMD_BLOCK_REMOVE, move |ctx| {
                 let svc = svc.clone();
-                async move { do_block_remove(ctx, svc.social.as_ref()).await }
+                async move { do_block_remove(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
@@ -558,6 +571,56 @@ impl ChatHandler {
             router.handle(CMD_HISTORY, move |ctx| {
                 let svc = svc.clone();
                 async move { do_history(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BOT_CREATE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_bot_create(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BOT_DELETE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_bot_delete(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BOT_UPDATE, move |ctx| {
+                let svc = svc.clone();
+                async move { do_bot_update(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BOT_REPLY, move |ctx| {
+                let svc = svc.clone();
+                async move {
+                    let metrics = svc
+                        .metrics
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    do_bot_reply(
+                        ctx,
+                        svc.store.as_ref(),
+                        svc.filter.as_ref(),
+                        svc.users.as_ref(),
+                        metrics.as_deref(),
+                        talk::TALK_PUSH_BUDGET,
+                    )
+                    .await
+                }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(CMD_BOT_PENDING, move |ctx| {
+                let svc = svc.clone();
+                async move { do_bot_pending(ctx, svc.store.as_ref(), svc.users.as_ref()).await }
             });
         }
         Self {
@@ -672,6 +735,8 @@ impl MessageListener for ChatHandler {
                 m.on_talk("user");
             } else if pkt.header.command == CMD_CHAT_GROUP_TALK {
                 m.on_talk("group");
+            } else if pkt.header.command == CMD_BOT_REPLY {
+                m.on_talk("bot");
             }
         }
         let started = std::time::Instant::now();

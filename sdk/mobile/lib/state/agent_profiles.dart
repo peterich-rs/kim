@@ -9,11 +9,14 @@ import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../core/settings.dart';
 import 'agent_settings.dart';
+import 'auth.dart';
+import 'providers.dart';
 
 const _kProfiles = 'agent.profiles';
 const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';
 const _kMulti = 'agent.multi_profile';
+const _kServerIdentity = 'agent.server_identity';
 
 class AgentToolSet {
   const AgentToolSet({
@@ -146,6 +149,7 @@ class AgentProfile {
     this.extensions = const [],
     this.enabled = true,
     this.steer = '',
+    this.serverAccount = '',
   });
 
   final String id;
@@ -165,6 +169,9 @@ class AgentProfile {
   final bool enabled;
   final String steer;
 
+  /// Empty = unregistered. Not a secret. IM dest after `chat.bot.create`.
+  final String serverAccount;
+
   String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
 
   AgentProfile copyWith({
@@ -181,6 +188,7 @@ class AgentProfile {
     List<AgentExtension>? extensions,
     bool? enabled,
     String? steer,
+    String? serverAccount,
   }) {
     return AgentProfile(
       id: id,
@@ -199,6 +207,7 @@ class AgentProfile {
       extensions: extensions ?? this.extensions,
       enabled: enabled ?? this.enabled,
       steer: steer ?? this.steer,
+      serverAccount: serverAccount ?? this.serverAccount,
     );
   }
 
@@ -219,6 +228,7 @@ class AgentProfile {
     'extensions': [for (final e in extensions) e.toJson()],
     'enabled': enabled,
     if (steer.isNotEmpty) 'steer': steer,
+    'server_account': serverAccount,
   };
 
   factory AgentProfile.fromJson(Map<String, Object?> json) {
@@ -274,6 +284,7 @@ class AgentProfile {
       }(),
       enabled: json['enabled'] != false,
       steer: json['steer'] as String? ?? '',
+      serverAccount: json['server_account'] as String? ?? '',
     );
   }
 
@@ -310,6 +321,9 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   final _secure = SettingsStore.productionSecureStorage();
   Future<void>? _load;
   var multiProfile = false;
+
+  /// `agent.server_identity`. Default false: 1:1 stays local `_appendLocal`.
+  var serverIdentity = false;
 
   @override
   List<AgentProfile> build() {
@@ -372,19 +386,57 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> saveProfile(AgentProfile profile) async {
     await ensureLoaded();
-    if (state.any((p) => p.id == profile.id)) {
+    final isNew = !state.any((p) => p.id == profile.id);
+    if (isNew) {
+      await _persist([...state, profile]);
+      await ensureBotIdentity(profile);
+    } else {
       await _persist([
         for (final p in state)
           if (p.id == profile.id) profile else p,
       ]);
-    } else {
-      await _persist([...state, profile]);
     }
+  }
+
+  /// Register a local profile on Chat when the identity flag is on and logged in.
+  Future<AgentProfile> ensureBotIdentity(AgentProfile profile) async {
+    if (!serverIdentity ||
+        !ref.read(authProvider).signedIn ||
+        profile.serverAccount.isNotEmpty) {
+      return profile;
+    }
+    try {
+      final person = await ref
+          .read(clientPortProvider)
+          .botCreate(
+            clientProfileId: profile.id,
+            nickname: profile.displayName,
+          );
+      if (person.account.isEmpty) {
+        return profile;
+      }
+      final next = profile.copyWith(serverAccount: person.account);
+      await _persist([
+        for (final p in state)
+          if (p.id == profile.id) next else p,
+      ]);
+      return next;
+    } catch (_) {
+      return profile;
+    }
+  }
+
+  Future<void> setServerIdentity(bool value) async {
+    serverIdentity = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kServerIdentity, value);
+    state = [...state];
   }
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
     multiProfile = prefs.getBool(_kMulti) ?? false;
+    serverIdentity = prefs.getBool(_kServerIdentity) ?? false;
     final raw = prefs.getString(_kProfiles);
     var profiles = <AgentProfile>[];
     if (raw != null && raw.isNotEmpty) {
@@ -520,6 +572,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
     } catch (_) {}
     await _persist([...state, copy]);
+    await ensureBotIdentity(copy);
   }
 
   Future<void> delete(String id) async {

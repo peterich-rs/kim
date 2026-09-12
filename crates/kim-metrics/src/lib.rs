@@ -44,6 +44,11 @@ const COMMANDS: &[&str] = &[
     "chat.inbox.list",
     "chat.inbox.read",
     "chat.history",
+    "chat.bot.create",
+    "chat.bot.delete",
+    "chat.bot.update",
+    "chat.bot.reply",
+    "chat.bot.pending",
 ];
 
 #[derive(Debug, Error)]

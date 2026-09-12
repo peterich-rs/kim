@@ -8,11 +8,39 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimApi>>
 abstract class KimApi implements RustOpaqueInterface {
   Future<void> ack({required PlatformInt64 messageId});
+
+  Future<String> botCreate({
+    required String clientProfileId,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
+
+  Future<String> botDelete({required String dest});
+
+  Future<List<KimBotPendingItem>> botPending({
+    required String dest,
+    required int limit,
+  });
+
+  Future<KimTalkResult> botReply({
+    required String dest,
+    required String body,
+    required PlatformInt64 inReplyTo,
+    required String clientId,
+  });
+
+  Future<String> botUpdate({
+    required String dest,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
 
   Future<String> friendAccept({required String dest});
 
@@ -89,6 +117,30 @@ abstract class KimApi implements RustOpaqueInterface {
     required String avatar,
     required String bio,
   });
+}
+
+class KimBotPendingItem {
+  final PlatformInt64 messageId;
+  final String body;
+  final PlatformInt64 sendTime;
+
+  const KimBotPendingItem({
+    required this.messageId,
+    required this.body,
+    required this.sendTime,
+  });
+
+  @override
+  int get hashCode => messageId.hashCode ^ body.hashCode ^ sendTime.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KimBotPendingItem &&
+          runtimeType == other.runtimeType &&
+          messageId == other.messageId &&
+          body == other.body &&
+          sendTime == other.sendTime;
 }
 
 class KimHistoryItem {

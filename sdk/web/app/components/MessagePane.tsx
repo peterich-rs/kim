@@ -31,6 +31,7 @@ import { cn } from "../lib/utils.ts";
 import { useChat, type ChatMsg } from "../state/ChatProvider.tsx";
 import { ImageBubble } from "./ImageBubble.tsx";
 import { ImageViewer } from "./ImageViewer.tsx";
+import { BotBadge } from "./BotBadge.tsx";
 import { GhostIconButton, UserAvatar } from "./ui.tsx";
 import { Badge } from "./ui/badge.tsx";
 import { Bubble, BubbleContent } from "./ui/bubble.tsx";
@@ -173,6 +174,7 @@ export function MessagePane() {
     isIncoming,
     requestFriend,
     acceptFriend,
+    people,
   } = useChat();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -378,7 +380,10 @@ export function MessagePane() {
           </GhostIconButton>
           <UserAvatar name={active.title} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{active.title}</p>
+            <p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold">
+              <span className="truncate">{active.title}</span>
+              <BotBadge kind={people.find((p) => p.account === active.id)?.kind} />
+            </p>
             <p className="text-xs text-muted-foreground">
               {active.kind === "group" && members.length > 0 ? memberCount(members.length) : subtitle}
             </p>

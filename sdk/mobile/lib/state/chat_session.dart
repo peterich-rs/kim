@@ -10,6 +10,8 @@ import '../agent/mention.dart';
 import '../copy.dart';
 import '../kim_bridge.dart';
 import '../models/models.dart';
+import 'agent_profiles.dart';
+import 'auth.dart';
 import 'chat_agent.dart';
 import 'inbox.dart';
 import 'messages.dart';
@@ -20,10 +22,15 @@ import 'providers.dart';
 import 'session.dart';
 
 class ChatSessionState {
-  const ChatSessionState({this.toast, this.toastError = false});
+  const ChatSessionState({
+    this.toast,
+    this.toastError = false,
+    this.redirectDest,
+  });
 
   final String? toast;
   final bool toastError;
+  final String? redirectDest;
 }
 
 class ChatSessionNotifier extends Notifier<ChatSessionState> {
@@ -61,7 +68,49 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     );
     unawaited(messages.reconcile());
     unawaited(messages.markRead());
+    await _maybeRegisterLocalAgent();
+    if (!ref.mounted) {
+      return;
+    }
+    if (state.redirectDest != null) {
+      return;
+    }
     await _enterRoom();
+  }
+
+  Future<void> _maybeRegisterLocalAgent() async {
+    if (!isAgentDest(dest)) {
+      return;
+    }
+    final store = ref.read(agentProfilesProvider.notifier);
+    if (!store.serverIdentity || !ref.read(authProvider).signedIn) {
+      return;
+    }
+    await store.ensureLoaded();
+    if (!ref.mounted) {
+      return;
+    }
+    AgentProfile? profile;
+    final canon = canonicalAgentDest(dest);
+    for (final p in ref.read(agentProfilesProvider)) {
+      if (canonicalAgentDest(p.dest) == canon) {
+        profile = p;
+        break;
+      }
+    }
+    profile ??= store.goose;
+    if (profile == null) {
+      return;
+    }
+    if (profile.serverAccount.isEmpty) {
+      profile = await store.ensureBotIdentity(profile);
+    }
+    if (!ref.mounted) {
+      return;
+    }
+    if (profile.serverAccount.isNotEmpty && profile.serverAccount != dest) {
+      state = ChatSessionState(redirectDest: profile.serverAccount);
+    }
   }
 
   Future<void> _enterRoom() async {
@@ -224,7 +273,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
 
   void consumeToast() {
     if (state.toast != null) {
-      state = const ChatSessionState();
+      state = ChatSessionState(redirectDest: state.redirectDest);
     }
   }
 

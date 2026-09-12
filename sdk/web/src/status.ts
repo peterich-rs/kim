@@ -14,6 +14,8 @@ export const Status = {
   NotFriends: 109,
   Blocked: 110,
   IdempotencyConflict: 111,
+  NotBotOwner: 112,
+  BotSocialDenied: 113,
   NoDestination: 300,
   SessionNotFound: 404,
 } as const;

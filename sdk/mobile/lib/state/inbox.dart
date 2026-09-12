@@ -62,7 +62,7 @@ List<KimThread> withLocalThreads(
   final existing = {for (final t in threads) t.id};
   final extras = <KimThread>[];
   for (final profile in enabled) {
-    final id = canonicalAgentDest(profile.dest);
+    final id = personForProfile(profile).account;
     if (existing.contains(id)) {
       continue;
     }
