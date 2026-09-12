@@ -69,7 +69,10 @@ impl SdkError {
 pub(crate) fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
     use kim_client::ClientError;
     match err {
-        ClientError::NotConnected => SdkError::NotConnected,
+        ClientError::NotConnected
+        | ClientError::NotLoggedIn
+        | ClientError::HandshakeTimeout(_)
+        | ClientError::Handshake(_) => SdkError::NotConnected,
         ClientError::Unauthorized | ClientError::InvalidToken => SdkError::Unauthorized,
         ClientError::Status(109) => SdkError::NotFriends {
             dest: dest.to_string(),

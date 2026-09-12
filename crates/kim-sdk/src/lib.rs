@@ -57,6 +57,8 @@ struct Inner {
     session_snapshot: watch::Sender<SessionSnapshot>,
     agent: Mutex<Arc<dyn AgentPort>>,
     metrics: SdkMetrics,
+    outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
+    outbox_run: Mutex<CancellationToken>,
 }
 
 #[derive(Clone)]
@@ -82,6 +84,8 @@ impl KimSdk {
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
                 agent: Mutex::new(Arc::new(NoopAgent)),
                 metrics: SdkMetrics::default(),
+                outbox_kick: Mutex::new(None),
+                outbox_run: Mutex::new(CancellationToken::new()),
             }),
         })
     }
@@ -127,22 +131,34 @@ impl KimSdk {
                 message: "account is required".into(),
             });
         }
+        let _ = self.bump_epoch();
         self.stop_supervisor();
+        *lock(&self.inner.outbox_kick) = None;
         self.replace_session(s.clone());
-        let cfg = kim_client::ClientConfig::new(s.url, s.token)
-            .with_user_agent(s.user_agent)
+        let cfg = kim_client::ClientConfig::new(s.url.clone(), s.token.clone())
+            .with_user_agent(s.user_agent.clone())
             .with_device(kim_client::device_for_target_os(std::env::consts::OS).to_string());
         let mut sup = kim_client::SessionSupervisor::new(cfg);
+        let epoch = self.current_epoch().0;
         if self.store_attached() {
-            sup = sup.with_persist(Arc::new(SdkPersistHook { sdk: self.clone() }));
+            sup = sup.with_persist(Arc::new(SdkPersistHook {
+                sdk: self.clone(),
+                account: s.account.clone(),
+                epoch,
+            }));
         }
+        self.install_protocol(sup.client());
+        self.spawn_session_bridge(&sup);
+        self.spawn_outbox_worker();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
         Ok(())
     }
 
     pub async fn stop_session(&self) -> Result<(), SdkError> {
         let _ = self.bump_epoch();
+        self.cancel_outbox_run();
         self.stop_supervisor();
+        *lock(&self.inner.outbox_kick) = None;
         *lock(&self.inner.session) = None;
         Ok(())
     }
@@ -193,14 +209,12 @@ impl KimSdk {
             client_id = %receipt.client_id,
             "enqueue committed"
         );
-        let sdk = self.clone();
-        tokio::spawn(async move {
-            let _ = outbox::pump::run_once(&sdk).await;
-        });
+        self.kick_outbox();
         Ok(receipt)
     }
 
     pub async fn cancel_send(&self, id: String) -> Result<(), SdkError> {
+        self.cancel_outbox_run();
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
@@ -210,14 +224,17 @@ impl KimSdk {
     pub async fn retry_send(&self, id: String) -> Result<CommandReceipt, SdkError> {
         let store = self.store()?;
         let session = self.session_snapshot()?;
-        let due = store.load_due(&session.account).await?;
-        let row =
-            due.into_iter()
-                .find(|r| r.client_id == id)
-                .ok_or_else(|| SdkError::NotFound {
-                    what: "outbox".into(),
-                })?;
-        let _ = outbox::pump::run_once(self).await;
+        let epoch = self.current_epoch().0;
+        store
+            .requeue(epoch, session.account.clone(), id.clone())
+            .await?;
+        let row = store
+            .get_row(&session.account, &id)
+            .await?
+            .ok_or_else(|| SdkError::NotFound {
+                what: "outbox".into(),
+            })?;
+        self.kick_outbox();
         Ok(CommandReceipt {
             request_id: uuid::Uuid::new_v4().to_string(),
             client_id: row.client_id,
@@ -227,7 +244,28 @@ impl KimSdk {
         })
     }
 
+    pub async fn mark_read(&self, marker: ReadMarker) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        store
+            .mark_read_local(
+                epoch,
+                session.account,
+                marker.dest.clone(),
+                marker.visible_message_id,
+            )
+            .await?;
+        if let Ok(proto) = self.protocol() {
+            let _ = proto
+                .mark_read(&marker.dest, marker.kind, marker.visible_message_id)
+                .await;
+        }
+        Ok(())
+    }
+
     pub async fn delete_thread(&self, dest: String) -> Result<(), SdkError> {
+        self.cancel_outbox_run();
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
@@ -279,12 +317,21 @@ impl KimSdk {
         talks: Vec<kim_client::IncomingTalk>,
         policy: UnreadPolicy,
     ) -> Result<(), SdkError> {
-        let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store
-            .persist_talks(epoch, session.account, talks, policy)
-            .await?;
+        self.persist_talks_for(epoch, session.account, talks, policy)
+            .await
+    }
+
+    pub(crate) async fn persist_talks_for(
+        &self,
+        epoch: u64,
+        account: String,
+        talks: Vec<kim_client::IncomingTalk>,
+        policy: UnreadPolicy,
+    ) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store.persist_talks(epoch, account, talks, policy).await?;
         self.inner.metrics.inc_persist_talk();
         Ok(())
     }
@@ -297,10 +344,19 @@ impl KimSdk {
         &self,
         items: Vec<kim_client::InboxItem>,
     ) -> Result<Vec<ThreadView>, SdkError> {
-        let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        let views = store.persist_inbox(epoch, session.account, items).await?;
+        self.persist_inbox_for(epoch, session.account, items).await
+    }
+
+    pub(crate) async fn persist_inbox_for(
+        &self,
+        epoch: u64,
+        account: String,
+        items: Vec<kim_client::InboxItem>,
+    ) -> Result<Vec<ThreadView>, SdkError> {
+        let store = self.store()?;
+        let views = store.persist_inbox(epoch, account, items).await?;
         self.emit_session(SessionUpdate::Inbox {
             threads: views.clone(),
         });
@@ -322,7 +378,86 @@ impl KimSdk {
 
     pub fn emit_session(&self, update: SessionUpdate) {
         let mut subs = lock(&self.inner.session_subs);
-        subs.retain(|tx| tx.try_send(update.clone()).is_ok());
+        subs.retain(|tx| match tx.try_send(update.clone()) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => true,
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        });
+    }
+
+    async fn emit_session_wait(&self, update: SessionUpdate) {
+        let subs = lock(&self.inner.session_subs).clone();
+        for tx in subs {
+            let _ = tx.send(update.clone()).await;
+        }
+        lock(&self.inner.session_subs).retain(|tx| !tx.is_closed());
+    }
+
+    fn spawn_session_bridge(&self, sup: &kim_client::SessionSupervisor) {
+        let mut rx = sup.events();
+        let sdk = self.clone();
+        let cancel = self.child_token();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    ev = rx.recv() => {
+                        match ev {
+                            Ok(ev) => {
+                                if let Some(update) = session_update_from_event(ev) {
+                                    sdk.emit_session_wait(update).await;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    fn spawn_outbox_worker(&self) {
+        if !self.store_attached() {
+            return;
+        }
+        let (tx, mut rx) = mpsc::channel::<()>(8);
+        *lock(&self.inner.outbox_kick) = Some(tx);
+        let sdk = self.clone();
+        let parent = lock(&self.inner.cancel).clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = parent.cancelled() => break,
+                    msg = rx.recv() => {
+                        if msg.is_none() {
+                            break;
+                        }
+                    }
+                }
+                let run = parent.child_token();
+                *lock(&sdk.inner.outbox_run) = run.clone();
+                if let Err(SdkError::StaleEpoch { .. }) = outbox::pump::run_once(&sdk, &run).await {
+                    sdk.metrics_inc_epoch_drop();
+                }
+                while rx.try_recv().is_ok() {}
+            }
+        });
+        self.kick_outbox();
+    }
+
+    fn kick_outbox(&self) {
+        if let Some(tx) = lock(&self.inner.outbox_kick).as_ref() {
+            let _ = tx.try_send(());
+        }
+    }
+
+    fn cancel_outbox_run(&self) {
+        lock(&self.inner.outbox_run).cancel();
+    }
+
+    pub(crate) fn metrics_inc_epoch_drop(&self) {
+        self.inner.metrics.inc_epoch_drop();
     }
 
     pub fn subscribe_session_snapshot(&self) -> watch::Receiver<SessionSnapshot> {
@@ -368,6 +503,8 @@ impl KimSdk {
 
 struct SdkPersistHook {
     sdk: KimSdk,
+    account: String,
+    epoch: u64,
 }
 
 #[async_trait::async_trait]
@@ -382,7 +519,7 @@ impl kim_client::PersistHook for SdkPersistHook {
             kim_client::UnreadPolicy::IfInserted => UnreadPolicy::IfInserted,
         };
         self.sdk
-            .persist_talks(talks.to_vec(), mapped)
+            .persist_talks_for(self.epoch, self.account.clone(), talks.to_vec(), mapped)
             .await
             .map_err(sdk_to_persist)
     }
@@ -392,10 +529,49 @@ impl kim_client::PersistHook for SdkPersistHook {
         items: &[kim_client::InboxItem],
     ) -> Result<(), kim_client::PersistError> {
         self.sdk
-            .persist_inbox(items.to_vec())
+            .persist_inbox_for(self.epoch, self.account.clone(), items.to_vec())
             .await
             .map(|_| ())
             .map_err(sdk_to_persist)
+    }
+}
+
+fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpdate> {
+    match ev {
+        kim_client::SessionEvent::Kickout { channel_id } => {
+            Some(SessionUpdate::Kickout { channel_id })
+        }
+        kim_client::SessionEvent::TokenRenew { token, exp } => {
+            Some(SessionUpdate::TokenRenew { token, exp })
+        }
+        kim_client::SessionEvent::FriendRequest { from, nickname } => {
+            Some(SessionUpdate::FriendRequest { from, nickname })
+        }
+        kim_client::SessionEvent::FriendAccepted { from, nickname } => {
+            Some(SessionUpdate::FriendAccepted { from, nickname })
+        }
+        kim_client::SessionEvent::AuthFailed { reason } => {
+            Some(SessionUpdate::AuthExpired { reason })
+        }
+        kim_client::SessionEvent::Link(state) => Some(SessionUpdate::Link {
+            state: match state {
+                kim_client::LinkState::Connecting => LinkStateView::Connecting,
+                kim_client::LinkState::Online => LinkStateView::Online,
+                kim_client::LinkState::Reconnecting { attempt } => {
+                    LinkStateView::Reconnecting { attempt }
+                }
+                kim_client::LinkState::Offline => LinkStateView::Offline,
+            },
+            last_error: None,
+        }),
+        kim_client::SessionEvent::SyncProgress {
+            pulled,
+            page_pending,
+        } => Some(SessionUpdate::SyncProgress {
+            pulled: pulled as u64,
+            catching_up: page_pending,
+        }),
+        _ => None,
     }
 }
 

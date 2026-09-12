@@ -77,40 +77,146 @@ pub(crate) struct OutboxRow {
     pub payload_type: i32,
     pub body: String,
     pub extra: String,
+    pub local_path: String,
+    pub mime: String,
+    pub width: i32,
+    pub height: i32,
+    pub byte_size: i64,
     #[allow(dead_code)]
     pub status: String,
+    pub attempt: i32,
 }
+
+fn map_row(row: sqlx::sqlite::SqliteRow) -> Result<OutboxRow, SdkError> {
+    use sqlx::Row;
+    Ok(OutboxRow {
+        client_id: row.try_get("client_id").map_err(map_sqlx)?,
+        dest: row.try_get("dest").map_err(map_sqlx)?,
+        kind: row.try_get("kind").map_err(map_sqlx)?,
+        payload_type: row.try_get("payload_type").map_err(map_sqlx)?,
+        body: row.try_get("body").map_err(map_sqlx)?,
+        extra: row.try_get("extra").map_err(map_sqlx)?,
+        local_path: row.try_get("local_path").map_err(map_sqlx)?,
+        mime: row.try_get("mime").map_err(map_sqlx)?,
+        width: row.try_get("width").map_err(map_sqlx)?,
+        height: row.try_get("height").map_err(map_sqlx)?,
+        byte_size: row.try_get("byte_size").map_err(map_sqlx)?,
+        status: row.try_get("status").map_err(map_sqlx)?,
+        attempt: row.try_get("attempt").map_err(map_sqlx)?,
+    })
+}
+
+const ROW_COLS: &str = "client_id, dest, kind, payload_type, body, extra, local_path, mime, \
+     width, height, byte_size, status, attempt";
 
 pub(crate) async fn load_due(
     pool: &sqlx::SqlitePool,
     account: &str,
+    now: i64,
 ) -> Result<Vec<OutboxRow>, SdkError> {
-    let rows = sqlx::query(
-        r"
-        SELECT client_id, dest, kind, payload_type, body, extra, status
-        FROM outbox
-        WHERE account = ? AND status IN ('pending', 'failed')
-        ORDER BY created_at ASC, client_id ASC
-        ",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {ROW_COLS} FROM outbox
+         WHERE account = ? AND status = 'pending' AND next_attempt_at <= ?
+         ORDER BY created_at ASC, client_id ASC"
+    ))
     .bind(account)
+    .bind(now)
     .fetch_all(pool)
     .await
     .map_err(map_sqlx)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
-        use sqlx::Row;
-        out.push(OutboxRow {
-            client_id: row.try_get("client_id").map_err(map_sqlx)?,
-            dest: row.try_get("dest").map_err(map_sqlx)?,
-            kind: row.try_get("kind").map_err(map_sqlx)?,
-            payload_type: row.try_get("payload_type").map_err(map_sqlx)?,
-            body: row.try_get("body").map_err(map_sqlx)?,
-            extra: row.try_get("extra").map_err(map_sqlx)?,
-            status: row.try_get("status").map_err(map_sqlx)?,
-        });
+        out.push(map_row(row)?);
     }
     Ok(out)
+}
+
+pub(crate) async fn get_row(
+    pool: &sqlx::SqlitePool,
+    account: &str,
+    client_id: &str,
+) -> Result<Option<OutboxRow>, SdkError> {
+    let row = sqlx::query(&format!(
+        "SELECT {ROW_COLS} FROM outbox WHERE account = ? AND client_id = ?"
+    ))
+    .bind(account)
+    .bind(client_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx)?;
+    row.map(map_row).transpose()
+}
+
+pub(crate) async fn alive(
+    pool: &sqlx::SqlitePool,
+    account: &str,
+    client_id: &str,
+) -> Result<bool, SdkError> {
+    let row = sqlx::query(
+        "SELECT 1 FROM outbox WHERE account = ? AND client_id = ? AND status NOT IN ('sent', 'cancelled')",
+    )
+    .bind(account)
+    .bind(client_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(row.is_some())
+}
+
+pub(crate) async fn requeue(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+    now: i64,
+) -> Result<(), SdkError> {
+    let n = sqlx::query(
+        "UPDATE outbox SET status = 'pending', next_attempt_at = 0, updated_at = ?
+         WHERE account = ? AND client_id = ? AND status IN ('pending', 'failed')",
+    )
+    .bind(now)
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?
+    .rows_affected();
+    if n == 0 {
+        return Err(SdkError::NotFound {
+            what: "outbox".into(),
+        });
+    }
+    sqlx::query(
+        "UPDATE messages SET status = 'sending', failed = 0 WHERE account = ? AND key = ?",
+    )
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn mark_retry(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+    attempt: i32,
+    next_attempt_at: i64,
+    now: i64,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        "UPDATE outbox SET status = 'pending', attempt = ?, next_attempt_at = ?, updated_at = ?
+         WHERE account = ? AND client_id = ?",
+    )
+    .bind(attempt)
+    .bind(next_attempt_at)
+    .bind(now)
+    .bind(account)
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
 }
 
 pub(crate) async fn mark_sent(

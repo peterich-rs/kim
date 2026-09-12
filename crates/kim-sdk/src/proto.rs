@@ -67,3 +67,39 @@ impl ProtocolClient for KimClient {
             .map_err(|e| map_client(e, dest))
     }
 }
+
+#[async_trait::async_trait]
+impl ProtocolClient for std::sync::Arc<KimClient> {
+    async fn send_message(
+        &self,
+        dest: &str,
+        kind: i32,
+        body: &str,
+        extra: &str,
+        payload_type: i32,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        ProtocolClient::send_message(
+            &**self,
+            dest,
+            kind,
+            body,
+            extra,
+            payload_type,
+            client_id,
+        )
+        .await
+    }
+
+    async fn ack(&self, message_id: i64) -> Result<(), SdkError> {
+        ProtocolClient::ack(&**self, message_id).await
+    }
+
+    async fn ack_batch(&self, ids: &[i64]) -> Result<(), SdkError> {
+        ProtocolClient::ack_batch(&**self, ids).await
+    }
+
+    async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError> {
+        ProtocolClient::mark_read(&**self, dest, kind, message_id).await
+    }
+}

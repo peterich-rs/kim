@@ -24,7 +24,6 @@ impl KimSdk {
         (old, SessionEpoch(next))
     }
 
-    #[allow(dead_code)]
     pub(crate) fn child_token(&self) -> CancellationToken {
         lock(&self.inner.cancel).child_token()
     }

@@ -1351,6 +1351,95 @@ async fn persist_hook_failure_does_not_ack() {
     assert_eq!(acks, 0, "storage full must not ack");
 }
 
+struct InboxBusyPersist;
+
+#[async_trait]
+impl crate::PersistHook for InboxBusyPersist {
+    async fn persist_talks(
+        &self,
+        _talks: &[crate::IncomingTalk],
+        _policy: crate::UnreadPolicy,
+    ) -> Result<(), crate::PersistError> {
+        Ok(())
+    }
+
+    async fn persist_inbox(&self, _items: &[crate::InboxItem]) -> Result<(), crate::PersistError> {
+        Err(crate::PersistError::Busy)
+    }
+}
+
+#[tokio::test]
+async fn persist_inbox_busy_stops_without_ack() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp { items: vec![] });
+    });
+    let index = resp_logic(CMD_OFFLINE_INDEX, 3, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 11,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 4, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 11,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "later".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![inbox, index, content]);
+    let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+    let gate = ConfirmGate::new();
+    let stop = tokio::sync::Notify::new();
+    let persist: Option<Arc<dyn crate::PersistHook>> = Some(Arc::new(InboxBusyPersist));
+    let pulled = tokio::time::timeout(Duration::from_secs(2), async {
+        let engine = SyncEngine::new();
+        let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+        engine
+            .run(
+                &client,
+                &tx,
+                &gate,
+                &stop,
+                &mut death_rx,
+                Duration::from_secs(15),
+                persist,
+            )
+            .await
+    })
+    .await
+    .expect("join")
+    .expect("sync must return Ok, not ClientError reconnect");
+    assert_eq!(pulled, 0);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let acks = frames
+        .iter()
+        .filter(|f| {
+            matches!(read(&f.payload), Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK)
+        })
+        .count();
+    assert_eq!(acks, 0, "busy inbox merge must not ack past the page");
+    let mut saw_inbox = false;
+    let mut saw_failed = false;
+    while let Ok(ev) = rx.try_recv() {
+        match ev {
+            SessionEvent::Inbox(_) => saw_inbox = true,
+            SessionEvent::SyncFailed(_) => saw_failed = true,
+            _ => {}
+        }
+    }
+    assert!(saw_failed);
+    assert!(!saw_inbox, "must not emit Inbox after persist_inbox Err");
+}
+
 struct DropGw {
     accepts: AtomicU32,
 }

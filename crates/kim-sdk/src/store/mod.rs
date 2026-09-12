@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::{Connection, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::command::{
@@ -72,6 +72,27 @@ enum WriteOp {
         epoch: u64,
         account: String,
         client_id: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    MarkRetry {
+        epoch: u64,
+        account: String,
+        client_id: String,
+        attempt: i32,
+        next_attempt_at: i64,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    Requeue {
+        epoch: u64,
+        account: String,
+        client_id: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    MarkRead {
+        epoch: u64,
+        account: String,
+        dest: String,
+        message_id: i64,
         reply: oneshot::Sender<Result<(), SdkError>>,
     },
 }
@@ -199,7 +220,23 @@ impl Store {
     }
 
     pub(crate) async fn load_due(&self, account: &str) -> Result<Vec<outbox::OutboxRow>, SdkError> {
-        outbox::load_due(&self.pool, account).await
+        outbox::load_due(&self.pool, account, now_ms()).await
+    }
+
+    pub(crate) async fn get_row(
+        &self,
+        account: &str,
+        client_id: &str,
+    ) -> Result<Option<outbox::OutboxRow>, SdkError> {
+        outbox::get_row(&self.pool, account, client_id).await
+    }
+
+    pub(crate) async fn outbox_alive(
+        &self,
+        account: &str,
+        client_id: &str,
+    ) -> Result<bool, SdkError> {
+        outbox::alive(&self.pool, account, client_id).await
     }
 
     pub(crate) async fn cancel(
@@ -259,6 +296,78 @@ impl Store {
                 epoch,
                 account,
                 client_id,
+                message_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn mark_retry(
+        &self,
+        epoch: u64,
+        account: String,
+        client_id: String,
+        attempt: i32,
+        next_attempt_at: i64,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::MarkRetry {
+                epoch,
+                account,
+                client_id,
+                attempt,
+                next_attempt_at,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn requeue(
+        &self,
+        epoch: u64,
+        account: String,
+        client_id: String,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::Requeue {
+                epoch,
+                account,
+                client_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn mark_read_local(
+        &self,
+        epoch: u64,
+        account: String,
+        dest: String,
+        message_id: i64,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::MarkRead {
+                epoch,
+                account,
+                dest,
                 message_id,
                 reply,
             })
@@ -417,20 +526,76 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 };
                 let _ = reply.send(result);
             }
+            WriteOp::MarkRetry {
+                epoch: op_epoch,
+                account,
+                client_id,
+                attempt,
+                next_attempt_at,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    mark_retry_tx(&pool, &account, &client_id, attempt, next_attempt_at).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::Requeue {
+                epoch: op_epoch,
+                account,
+                client_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    requeue_tx(&pool, &account, &client_id).await
+                };
+                let _ = reply.send(result);
+            }
+            WriteOp::MarkRead {
+                epoch: op_epoch,
+                account,
+                dest,
+                message_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    mark_read_tx(&pool, &account, &dest, message_id).await
+                };
+                let _ = reply.send(result);
+            }
         }
     }
 }
 
 async fn cancel_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
-    let mut tx = pool.begin().await.map_err(map_sqlx)?;
-    let result = outbox::cancel(&mut tx, account, client_id).await;
-    finish_tx(tx, result).await
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::cancel(&mut conn, account, client_id).await;
+    finish_conn(&mut conn, result).await
 }
 
 async fn delete_thread_tx(pool: &SqlitePool, account: &str, dest: &str) -> Result<(), SdkError> {
-    let mut tx = pool.begin().await.map_err(map_sqlx)?;
-    let result = outbox::delete_thread(&mut tx, account, dest).await;
-    finish_tx(tx, result).await
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::delete_thread(&mut conn, account, dest).await;
+    finish_conn(&mut conn, result).await
 }
 
 async fn mark_sent_tx(
@@ -439,28 +604,74 @@ async fn mark_sent_tx(
     client_id: &str,
     message_id: i64,
 ) -> Result<(), SdkError> {
-    let mut tx = pool.begin().await.map_err(map_sqlx)?;
-    let result = outbox::mark_sent(&mut tx, account, client_id, message_id, now_ms()).await;
-    finish_tx(tx, result).await
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::mark_sent(&mut conn, account, client_id, message_id, now_ms()).await;
+    finish_conn(&mut conn, result).await
 }
 
 async fn mark_failed_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
-    let mut tx = pool.begin().await.map_err(map_sqlx)?;
-    let result = outbox::mark_failed(&mut tx, account, client_id, now_ms()).await;
-    finish_tx(tx, result).await
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::mark_failed(&mut conn, account, client_id, now_ms()).await;
+    finish_conn(&mut conn, result).await
 }
 
-async fn finish_tx(
-    tx: sqlx::Transaction<'_, sqlx::Sqlite>,
-    result: Result<(), SdkError>,
+async fn mark_retry_tx(
+    pool: &SqlitePool,
+    account: &str,
+    client_id: &str,
+    attempt: i32,
+    next_attempt_at: i64,
 ) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result =
+        outbox::mark_retry(&mut conn, account, client_id, attempt, next_attempt_at, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn requeue_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::requeue(&mut conn, account, client_id, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn mark_read_tx(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    message_id: i64,
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = watermarks::advance(&mut conn, account, dest, message_id, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn begin_immediate(conn: &mut sqlx::SqliteConnection) -> Result<(), SdkError> {
+    sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *conn)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn finish_conn<T>(
+    conn: &mut sqlx::SqliteConnection,
+    result: Result<T, SdkError>,
+) -> Result<T, SdkError> {
     match result {
-        Ok(()) => {
-            tx.commit().await.map_err(map_sqlx)?;
-            Ok(())
+        Ok(v) => {
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
+                .await
+                .map_err(map_sqlx)?;
+            Ok(v)
         }
         Err(e) => {
-            let _ = tx.rollback().await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
             Err(e)
         }
     }
@@ -518,10 +729,10 @@ async fn persist_enqueue(
     let payload_type = cmd.payload.payload_type();
     let kind_i32 = payload_type;
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
-    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
     let result = async {
         messages::insert_own(
-            &mut tx,
+            &mut conn,
             messages::OwnInsert {
                 account,
                 dest: &cmd.dest,
@@ -540,7 +751,7 @@ async fn persist_enqueue(
         )
         .await?;
         outbox::insert(
-            &mut tx,
+            &mut conn,
             outbox::OutboxInsert {
                 account,
                 client_id: &client_id,
@@ -560,18 +771,12 @@ async fn persist_enqueue(
             },
         )
         .await?;
-        threads::upsert_on_send(&mut tx, account, &cmd.dest, cmd.kind, &body, now).await?;
-        messages::prune(&mut tx, account, &cmd.dest).await?;
+        threads::upsert_on_send(&mut conn, account, &cmd.dest, cmd.kind, &body, now).await?;
+        messages::prune(&mut conn, account, &cmd.dest).await?;
         Ok::<(), SdkError>(())
     }
     .await;
-    match result {
-        Ok(()) => tx.commit().await.map_err(map_sqlx)?,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            return Err(e);
-        }
-    }
+    finish_conn(&mut conn, result).await?;
     Ok(CommandReceipt {
         request_id,
         client_id,
@@ -613,13 +818,13 @@ async fn persist_talks_tx(
         return Ok(());
     }
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
-    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
     let result = async {
         let mut dests = Vec::new();
         for talk in talks {
-            if let Some(out) = messages::apply_talk(&mut tx, account, talk, policy).await? {
+            if let Some(out) = messages::apply_talk(&mut conn, account, talk, policy).await? {
                 threads::apply_incoming(
-                    &mut tx,
+                    &mut conn,
                     account,
                     &out.dest,
                     &out.msg.body,
@@ -634,19 +839,12 @@ async fn persist_talks_tx(
         dests.sort();
         dests.dedup();
         for dest in dests {
-            messages::prune(&mut tx, account, &dest).await?;
+            messages::prune(&mut conn, account, &dest).await?;
         }
         Ok::<(), SdkError>(())
     }
     .await;
-    match result {
-        Ok(()) => tx.commit().await.map_err(map_sqlx)?,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            return Err(e);
-        }
-    }
-    Ok(())
+    finish_conn(&mut conn, result).await
 }
 
 async fn persist_inbox_tx(
@@ -655,11 +853,11 @@ async fn persist_inbox_tx(
     items: &[kim_client::InboxItem],
 ) -> Result<Vec<ThreadView>, SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
-    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
     let result = async {
         let mut views = Vec::with_capacity(items.len());
         for item in items {
-            let t = threads::persist_inbox_item(&mut tx, account, item).await?;
+            let t = threads::persist_inbox_item(&mut conn, account, item).await?;
             views.push(ThreadView {
                 id: t.id,
                 kind: t.kind,
@@ -673,14 +871,5 @@ async fn persist_inbox_tx(
         Ok::<Vec<ThreadView>, SdkError>(views)
     }
     .await;
-    match result {
-        Ok(views) => {
-            tx.commit().await.map_err(map_sqlx)?;
-            Ok(views)
-        }
-        Err(e) => {
-            let _ = tx.rollback().await;
-            Err(e)
-        }
-    }
+    finish_conn(&mut conn, result).await
 }

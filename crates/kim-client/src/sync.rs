@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 
 use crate::events::{IncomingTalk, Message, MessageIndex};
 use crate::link::DropReason;
-use crate::persist::{PersistError, PersistHook, UnreadPolicy};
+use crate::persist::{PersistHook, UnreadPolicy};
 use crate::pump::wait_dead;
 use crate::supervisor::SessionEvent;
 use crate::ClientError;
@@ -162,9 +162,7 @@ impl SyncEngine {
         if let Some(hook) = persist.as_ref() {
             if let Err(err) = hook.persist_inbox(&items).await {
                 let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
-                if matches!(err, PersistError::StorageFull | PersistError::Disk { .. }) {
-                    return Ok(0);
-                }
+                return Ok(0);
             }
         }
         let _ = events.send(SessionEvent::Inbox(items));

@@ -247,6 +247,11 @@ impl SessionSupervisor {
         self.inner.client.clone()
     }
 
+    /// Push a session event to subscribers. Used by tests to drive the SDK bridge.
+    pub fn inject_event(&self, event: SessionEvent) {
+        let _ = self.inner.events.send(event);
+    }
+
     pub fn last_drop_reason(&self) -> Option<DropReason> {
         *self
             .inner
