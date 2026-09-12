@@ -736,42 +736,45 @@ void main() {
     },
   );
 
-  test('empty finished does not complete; late finished does not steal next turn', () async {
-    final session = _HoldSession();
-    final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
-      token: 'tok.jwt',
-      account: 'alice',
-      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
-    );
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-live',
-      'agent.api_key.goose': 'sk-live',
-    });
-    env.container.read(linkProvider);
-    await Future<void>.delayed(Duration.zero);
-    final store = env.container.read(agentProfilesProvider.notifier);
-    await store.ensureLoaded();
-    await store.setServerIdentity(true);
-    await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
-    final agent = env.container.read(chatAgentProvider);
-    expect(agent.enqueueTurn('b_bot', 'one', 1), isTrue);
-    expect(agent.enqueueTurn('b_bot', 'two', 2), isTrue);
-    await _until(() => session.prompts.length == 1);
-    session.emit(_finished(''));
-    await Future<void>.delayed(Duration.zero);
-    expect(env.fake.botReplies, isEmpty);
-    expect(session.prompts, ['one']);
-    session.emit(_failed('boom'));
-    await _until(() => session.prompts.length == 2);
-    expect(env.fake.botReplies, isEmpty);
-    session.emit(_finished('late'));
-    await Future<void>.delayed(Duration.zero);
-    expect(env.fake.botReplies, isEmpty);
-    session.release();
-    await _until(() => env.fake.botReplies.length == 1);
-    expect(env.fake.botReplies.single.inReplyTo, 2);
-  });
+  test(
+    'empty finished does not complete; late finished does not steal next turn',
+    () async {
+      final session = _HoldSession();
+      final bridge = _RecordingAgentBridge()..session = session;
+      final env = await kimHarness(
+        token: 'tok.jwt',
+        account: 'alice',
+        overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+      );
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-live',
+        'agent.api_key.goose': 'sk-live',
+      });
+      env.container.read(linkProvider);
+      await Future<void>.delayed(Duration.zero);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.setServerIdentity(true);
+      await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+      final agent = env.container.read(chatAgentProvider);
+      expect(agent.enqueueTurn('b_bot', 'one', 1), isTrue);
+      expect(agent.enqueueTurn('b_bot', 'two', 2), isTrue);
+      await _until(() => session.prompts.length == 1);
+      session.emit(_finished(''));
+      await Future<void>.delayed(Duration.zero);
+      expect(env.fake.botReplies, isEmpty);
+      expect(session.prompts, ['one']);
+      session.emit(_failed('boom'));
+      await _until(() => session.prompts.length == 2);
+      expect(env.fake.botReplies, isEmpty);
+      session.emit(_finished('late'));
+      await Future<void>.delayed(Duration.zero);
+      expect(env.fake.botReplies, isEmpty);
+      session.release();
+      await _until(() => env.fake.botReplies.length == 1);
+      expect(env.fake.botReplies.single.inReplyTo, 2);
+    },
+  );
 }
 
 AgentUiEvent _finished(String message) => AgentUiEvent(
