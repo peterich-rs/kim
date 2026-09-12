@@ -879,8 +879,10 @@ class ConversationStore {
 
   void _pruneThread(String account, String dest) {
     _engine.execute(
-      'DELETE FROM messages WHERE account = ? AND dest = ? AND key NOT IN ('
+      'DELETE FROM messages WHERE account = ? AND dest = ? '
+      'AND status NOT IN (\'sending\', \'failed\') AND key NOT IN ('
       'SELECT key FROM messages WHERE account = ? AND dest = ? '
+      'AND status NOT IN (\'sending\', \'failed\') '
       'ORDER BY at DESC, key DESC LIMIT ?)',
       [account, dest, account, dest, maxMessages],
     );
