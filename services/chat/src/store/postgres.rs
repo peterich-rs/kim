@@ -1320,8 +1320,7 @@ impl MessageStore for PostgresMessageStore {
             "SELECT i.message_id FROM message_index i
               JOIN message_content c ON c.id = i.message_id
              WHERE i.app = $1 AND i.account_a = $2 AND i.account_b = $3
-               AND i.direction = $4 AND i.message_id = $5 AND i.group_id = ''
-               AND c.sender = $2",
+               AND i.direction = $4 AND i.message_id = $5 AND i.group_id = ''",
         )
         .bind(app)
         .bind(owner)
@@ -1486,7 +1485,6 @@ impl MessageStore for PostgresMessageStore {
               WHERE i.app = $1 AND i.account_a = $2 AND i.account_b = $3
                 AND i.direction = $4 AND i.group_id = ''
                 AND t.in_reply_to IS NULL
-                AND c.sender = $2
               ORDER BY i.message_id ASC
               LIMIT $5",
         )
