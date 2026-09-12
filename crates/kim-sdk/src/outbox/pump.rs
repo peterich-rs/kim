@@ -46,9 +46,24 @@ pub(crate) async fn run_once(sdk: &KimSdk) -> Result<usize, SdkError> {
         {
             Ok((message_id, _)) => {
                 store
-                    .mark_sent(epoch, session.account.clone(), row.client_id, message_id)
+                    .mark_sent(
+                        epoch,
+                        session.account.clone(),
+                        row.client_id.clone(),
+                        message_id,
+                    )
                     .await?;
                 sent += 1;
+                if row.payload_type == kim_protocol::MESSAGE_TYPE_TEXT {
+                    sdk.agent()
+                        .enqueue_turn(
+                            &row.dest,
+                            &body,
+                            message_id,
+                            crate::ids::SessionEpoch(epoch),
+                        )
+                        .await;
+                }
             }
             Err(err) if err.retryable_send() => {
                 store

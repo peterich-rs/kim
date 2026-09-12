@@ -53,8 +53,7 @@ struct Inner {
     session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
     timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
     session_snapshot: watch::Sender<SessionSnapshot>,
-    #[allow(dead_code)]
-    agent: Arc<dyn AgentPort>,
+    agent: Mutex<Arc<dyn AgentPort>>,
 }
 
 #[derive(Clone)]
@@ -78,7 +77,7 @@ impl KimSdk {
                 session_subs: Mutex::new(Vec::new()),
                 timelines: Mutex::new(HashMap::new()),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
-                agent: Arc::new(NoopAgent),
+                agent: Mutex::new(Arc::new(NoopAgent)),
             }),
         })
     }
@@ -227,6 +226,14 @@ impl KimSdk {
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
         *lock(&self.inner.protocol) = Some(protocol);
+    }
+
+    pub fn set_agent(&self, agent: Arc<dyn AgentPort>) {
+        *lock(&self.inner.agent) = agent;
+    }
+
+    pub(crate) fn agent(&self) -> Arc<dyn AgentPort> {
+        lock(&self.inner.agent).clone()
     }
 
     pub fn set_upload_origin(&self, origin: String) -> Result<(), SdkError> {
