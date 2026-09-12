@@ -130,8 +130,30 @@ impl From<SessionUpdate> for SessionUpdateDto {
 
 impl From<kim_sdk::SdkError> for SdkErrorDto {
     fn from(err: kim_sdk::SdkError) -> Self {
+        use kim_sdk::SdkError::*;
+        let kind = match &err {
+            NotFriends { .. } => "not_friends",
+            Blocked { .. } => "blocked",
+            UserNotFound { .. } => "user_not_found",
+            CannotChatSelf => "cannot_chat_self",
+            AuthExpired => "auth_expired",
+            Unauthorized => "unauthorized",
+            NotConnected => "not_connected",
+            StorageFull => "storage_full",
+            SqliteBusy => "sqlite_busy",
+            Disk { .. } => "disk",
+            RateLimited { .. } => "rate_limited",
+            PayloadTooLarge { .. } => "payload_too_large",
+            UnsupportedMedia { .. } => "unsupported_media",
+            Busy { .. } => "busy",
+            StaleEpoch { .. } => "stale_epoch",
+            NotFound { .. } => "not_found",
+            InvalidArgument { .. } => "invalid_argument",
+            Protocol { .. } => "protocol",
+            Internal { .. } => "internal",
+        };
         Self {
-            kind: "error".into(),
+            kind: kind.into(),
             message: err.to_string(),
         }
     }

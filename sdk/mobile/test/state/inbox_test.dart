@@ -389,4 +389,74 @@ void main() {
     );
     expect(env.store.loadMessages('alice', 'bob'), hasLength(1));
   });
+
+  test('flag-off send uses captured thread kind', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.container
+        .read(threadsProvider.notifier)
+        .ensureThread(id: 'squad', kind: ThreadKind.group);
+    await env.container
+        .read(outboxProvider.notifier)
+        .enqueue(
+          'squad',
+          const KimOutgoingContent.text('hi'),
+          kind: ThreadKind.group,
+        );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(env.fake.talks, 1);
+    expect(env.fake.lastTalkDest, 'squad');
+    expect(env.fake.lastTalkKind, 1);
+  });
+
+  test('rustStore enqueue goes through FFI not dart pump', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      rustStore: true,
+    );
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await _online(env);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final msg = await env.container
+        .read(outboxProvider.notifier)
+        .sendText('bob', 'hello');
+    await Future<void>.delayed(Duration.zero);
+    expect(env.fake.enqueues, 1);
+    expect(env.fake.talks, 0);
+    expect(env.fake.lastEnqueueDest, 'bob');
+    expect(env.fake.lastEnqueueBody, 'hello');
+    expect(env.fake.lastClientId, msg.key);
+    expect(env.store.loadMessages('alice', 'bob'), isEmpty);
+    expect(
+      env.container.read(threadMessagesProvider('bob')).items.single.body,
+      'hello',
+    );
+  });
+
+  test('rustStore retry and delete call FFI', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      rustStore: true,
+    );
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await _online(env);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final msg = await env.container
+        .read(outboxProvider.notifier)
+        .sendText('bob', 'hello');
+    await env.container.read(outboxProvider.notifier).retry('bob', msg.key);
+    expect(env.fake.retries, 0, reason: 'retry no-ops unless failed');
+    env.container
+        .read(threadMessagesProvider('bob').notifier)
+        .receiveAll([
+          msg.copyWith(failed: true, status: KimSendStatus.failed),
+        ]);
+    await env.container.read(outboxProvider.notifier).retry('bob', msg.key);
+    expect(env.fake.retries, 1);
+    await env.container.read(threadsProvider.notifier).deleteThread('bob');
+    expect(env.fake.deletes, 1);
+    expect(env.container.read(threadsProvider).thread('bob'), isNull);
+  });
 }

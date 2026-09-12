@@ -1,6 +1,7 @@
 library;
 
 import '../copy.dart';
+import '../src/rust/api/types.dart' show SdkErrorDto;
 
 /// Errors that must not trip Riverpod 3 automatic retry (auth, validation).
 bool isPermanentClientError(Object err) {
@@ -58,6 +59,16 @@ String mapUserError(Object err) {
 }
 
 String mapTalkError(Object err) {
+  if (err is SdkErrorDto) {
+    return switch (err.kind) {
+      'not_friends' => Copy.notFriends,
+      'blocked' => Copy.blocked,
+      'user_not_found' => Copy.userNotFound,
+      'cannot_chat_self' => Copy.cannotAddSelf,
+      'not_connected' => Copy.notConnected,
+      _ => Copy.sendFailed,
+    };
+  }
   final msg = err.toString();
   if (msg.contains(Copy.notConnected) || msg.contains('not connected')) {
     return Copy.notConnected;

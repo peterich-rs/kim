@@ -107,6 +107,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimBotPendingItem dco_decode_kim_bot_pending_item(dynamic raw);
 
   @protected
+  KimCommandReceipt dco_decode_kim_command_receipt(dynamic raw);
+
+  @protected
   KimHistoryItem dco_decode_kim_history_item(dynamic raw);
 
   @protected
@@ -144,6 +147,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  SdkErrorDto dco_decode_sdk_error_dto(dynamic raw);
 
   @protected
   SessionUpdateDto dco_decode_session_update_dto(dynamic raw);
@@ -245,6 +251,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  KimCommandReceipt sse_decode_kim_command_receipt(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   KimHistoryItem sse_decode_kim_history_item(SseDeserializer deserializer);
 
   @protected
@@ -292,6 +303,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  SdkErrorDto sse_decode_sdk_error_dto(SseDeserializer deserializer);
 
   @protected
   SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer);
@@ -410,6 +424,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_kim_command_receipt(
+    KimCommandReceipt self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_kim_history_item(
     KimHistoryItem self,
     SseSerializer serializer,
@@ -474,6 +494,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sdk_error_dto(SdkErrorDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_session_update_dto(

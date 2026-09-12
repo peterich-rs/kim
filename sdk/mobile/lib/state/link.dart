@@ -423,6 +423,25 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         return;
       }
       ref.read(threadMessagesProvider(dest).notifier).receiveAll([msg]);
+      if (event.sender == account &&
+          event.messageId != 0 &&
+          kindFromWire(
+                body: event.body,
+                extra: event.extra,
+                type: event.msgType,
+              ) ==
+              KimMsgKind.text) {
+        unawaited(
+          ref
+              .read(chatAgentProvider)
+              .onIncomingEcho(
+                dest: dest,
+                sender: event.sender,
+                text: event.body,
+                messageId: event.messageId,
+              ),
+        );
+      }
       return;
     }
     final results = await repo.applyLive(account, [msg], viewingDest: viewing);

@@ -116,16 +116,14 @@ class MessageRepository {
   }) async {
     final client = _client;
     if (client != null && client.rustStoreAttached) {
-      await client.persistTalks(msgs, policy: policy);
+      // PersistHook / enqueue_message own kim-cache.db. Do not write own
+      // rows as incoming sent talks via persistTalks.
       return [
         for (final m in msgs)
           ApplyResult(
             message: m,
             inserted: true,
-            unreadDelta:
-                policy == UnreadPolicy.ifInserted && m.sender != account
-                ? 1
-                : 0,
+            unreadDelta: 0,
             thread: KimThread(
               id: m.dest,
               kind: ThreadKind.user,

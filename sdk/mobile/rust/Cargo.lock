@@ -1224,6 +1224,7 @@ dependencies = [
  "async-trait",
  "kim-client",
  "kim-protocol",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",

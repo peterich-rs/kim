@@ -4,15 +4,25 @@ use kim_client::{
     BotPendingItem, HistoryItem, InboxItem, IncomingTalk, LinkState, OutgoingContent, SessionEvent,
     SessionSupervisor, TalkResult,
 };
-use kim_sdk::{KimSdk, StartSession, UnreadPolicy};
+use kim_sdk::{
+    KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession, UnreadPolicy,
+};
 
 use super::rt;
-use super::types::{SessionUpdateDto, TimelineUpdateDto};
+use super::types::{SdkErrorDto, SessionUpdateDto, TimelineUpdateDto};
 use crate::frb_generated::StreamSink;
 
 pub struct KimTalkResult {
     pub message_id: i64,
     pub send_time: i64,
+}
+
+pub struct KimCommandReceipt {
+    pub request_id: String,
+    pub client_id: String,
+    pub dest: String,
+    pub accepted_at: i64,
+    pub send_status: String,
 }
 
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
@@ -125,8 +135,8 @@ impl KimSdkHandle {
         }
     }
 
-    pub async fn attach_store(&self, db_path: String) -> Result<(), String> {
-        self.inner.attach_store(db_path).await.map_err(|e| e.to_string())
+    pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
+        self.inner.attach_store(db_path).await.map_err(SdkErrorDto::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]
@@ -134,7 +144,8 @@ impl KimSdkHandle {
         self.inner.store_attached()
     }
 
-    /// FFI reads the session mpsc so Kickout/token/friend are not coalesced.
+    /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
+    /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
     #[flutter_rust_bridge::frb(sync)]
     pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), String> {
         let mut rx = self.inner.subscribe_session();
@@ -200,7 +211,7 @@ impl KimSdkHandle {
         &self,
         talks: Vec<KimIncomingTalk>,
         policy: String,
-    ) -> Result<(), String> {
+    ) -> Result<(), SdkErrorDto> {
         let policy = if policy == "ifInserted" {
             UnreadPolicy::IfInserted
         } else {
@@ -210,16 +221,117 @@ impl KimSdkHandle {
         self.inner
             .persist_talks(talks, policy)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(SdkErrorDto::from)
     }
 
-    pub async fn persist_inbox(&self, items: Vec<KimInboxItem>) -> Result<(), String> {
+    pub async fn persist_inbox(&self, items: Vec<KimInboxItem>) -> Result<(), SdkErrorDto> {
         let items = items.into_iter().map(InboxItem::from).collect();
         self.inner
             .persist_inbox(items)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(SdkErrorDto::from)?;
         Ok(())
+    }
+
+    pub async fn enqueue_message(
+        &self,
+        dest: String,
+        kind: i32,
+        content: KimOutgoingContent,
+        client_id: String,
+        local_path: String,
+        mime: String,
+        width: i32,
+        height: i32,
+        byte_size: i64,
+    ) -> Result<KimCommandReceipt, SdkErrorDto> {
+        let payload = match content.kind {
+            2 => OutgoingPayload::Image {
+                media: MediaRef {
+                    path: if local_path.is_empty() {
+                        content.body
+                    } else {
+                        local_path
+                    },
+                    mime,
+                    width,
+                    height,
+                    byte_size,
+                },
+            },
+            4 => OutgoingPayload::Video {
+                url: content.body,
+                extra: content.extra,
+            },
+            _ => OutgoingPayload::Text { body: content.body },
+        };
+        let receipt = self
+            .inner
+            .enqueue_message(SendMessageCommand {
+                dest,
+                kind,
+                payload,
+                client_id: if client_id.is_empty() {
+                    None
+                } else {
+                    Some(client_id)
+                },
+                batch_id: None,
+            })
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(KimCommandReceipt {
+            request_id: receipt.request_id,
+            client_id: receipt.client_id,
+            dest: receipt.dest,
+            accepted_at: receipt.accepted_at,
+            send_status: receipt.send_status.as_str().into(),
+        })
+    }
+
+    pub async fn cancel_send(&self, client_id: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .cancel_send(client_id)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn retry_send(&self, client_id: String) -> Result<KimCommandReceipt, SdkErrorDto> {
+        let receipt = self
+            .inner
+            .retry_send(client_id)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(KimCommandReceipt {
+            request_id: receipt.request_id,
+            client_id: receipt.client_id,
+            dest: receipt.dest,
+            accepted_at: receipt.accepted_at,
+            send_status: receipt.send_status.as_str().into(),
+        })
+    }
+
+    pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .delete_thread(dest)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn mark_thread_read(
+        &self,
+        dest: String,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .mark_read(ReadMarker {
+                dest,
+                kind,
+                visible_message_id: message_id,
+            })
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     fn supervisor(&self) -> Result<Arc<SessionSupervisor>, String> {
@@ -247,7 +359,8 @@ impl KimSdkHandle {
         }
     }
 
-    /// Supervisor event stream. Replaces `listen` / `KimPush`.
+    /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
+    /// watch_session is Kickout/token/friend, not a replacement inbox.
     #[flutter_rust_bridge::frb(sync)]
     pub fn session_events(&self, sink: StreamSink<KimSessionEvent>) -> Result<(), String> {
         let supervisor = self.supervisor()?;

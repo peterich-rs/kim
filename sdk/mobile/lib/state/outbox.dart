@@ -57,10 +57,12 @@ class OutboxNotifier extends Notifier<int> {
       batchId: batchId,
       clientId: clientId,
     );
-    await _persist(msg);
-    if (!ref.read(runtimeProvider).rustStore) {
-      unawaited(_pump());
+    if (ref.read(runtimeProvider).rustStore) {
+      await _enqueueRust(msg, content, kind);
+      return msg;
     }
+    await _persist(msg);
+    unawaited(_pump());
     return msg;
   }
 
@@ -132,10 +134,16 @@ class OutboxNotifier extends Notifier<int> {
       return;
     }
     final next = target.copyWith(failed: false, status: KimSendStatus.sending);
-    await _persist(next);
-    if (!ref.read(runtimeProvider).rustStore) {
-      unawaited(_pump());
+    if (ref.read(runtimeProvider).rustStore) {
+      await ref.read(clientPortProvider).retrySend(key);
+      if (!ref.mounted) {
+        return;
+      }
+      ref.read(threadMessagesProvider(dest).notifier).receiveAll([next]);
+      return;
     }
+    await _persist(next);
+    unawaited(_pump());
   }
 
   Future<void> replay() async {
@@ -219,9 +227,11 @@ class OutboxNotifier extends Notifier<int> {
         );
         await _persist(working);
       }
+      final kind =
+          ref.read(threadsProvider).thread(msg.dest)?.kind ?? ThreadKind.user;
       final result = await ref
           .read(clientPortProvider)
-          .sendMessage(msg.dest, ThreadKind.user, content, clientId: msg.key);
+          .sendMessage(msg.dest, kind, content, clientId: msg.key);
       if (!ref.mounted) {
         return;
       }
@@ -336,6 +346,54 @@ class OutboxNotifier extends Notifier<int> {
         batchId: batchId,
       ),
     };
+  }
+
+  Future<void> _enqueueRust(
+    KimChatMsg msg,
+    KimOutgoingContent content,
+    ThreadKind kind,
+  ) async {
+    var localPath = '';
+    var mime = '';
+    var byteSize = 0;
+    if (content is KimImageContent && !isRemoteUrl(content.url)) {
+      localPath = content.url;
+      mime = _imageMime(content.url);
+      try {
+        byteSize = File(content.url).lengthSync();
+      } catch (_) {}
+    }
+    await ref
+        .read(clientPortProvider)
+        .enqueueMessage(
+          dest: msg.dest,
+          kind: kind,
+          content: content,
+          clientId: msg.key,
+          localPath: localPath,
+          mime: mime,
+          width: msg.width,
+          height: msg.height,
+          byteSize: byteSize,
+        );
+    if (!ref.mounted) {
+      return;
+    }
+    ref.read(threadMessagesProvider(msg.dest).notifier).receiveAll([msg]);
+  }
+
+  String _imageMime(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) {
+      return 'image/png';
+    }
+    if (lower.endsWith('.webp')) {
+      return 'image/webp';
+    }
+    if (lower.endsWith('.gif')) {
+      return 'image/gif';
+    }
+    return 'image/jpeg';
   }
 
   Future<void> _persist(KimChatMsg msg) async {

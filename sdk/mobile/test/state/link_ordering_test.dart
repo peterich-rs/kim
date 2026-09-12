@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/data/message_repository.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/state/inbox.dart';
 import 'package:kim_mobile/state/link.dart';
+import 'package:kim_mobile/state/location.dart';
 import 'package:kim_mobile/state/providers.dart';
 
 import '../support/harness.dart';
@@ -75,6 +77,27 @@ class _GatedRepo extends MessageRepository {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('rustStore catch-up keeps unread while ChatPage is open', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      rustStore: true,
+    );
+    env.container.read(locationProvider.notifier).setPath('/chat/bob');
+    env.container.read(threadsProvider.notifier).mergeInbox([
+      KimThread(
+        id: 'bob',
+        kind: ThreadKind.user,
+        title: 'bob',
+        lastBody: 'later',
+        lastAt: 2,
+        unread: 3,
+      ),
+    ]);
+    expect(env.container.read(threadsProvider).thread('bob')?.unread, 3);
+  });
+
 
   test('talk and syncPage finish in arrival order', () async {
     final hold = Completer<void>();

@@ -81,6 +81,7 @@ class ConversationStore {
   }) async {
     if (rustStore) {
       await attachStore(p.join(support.path, _dbName));
+      // UI-only cache. kim-cache.db is owned by kim-sdk; this is not the writer.
       return ConversationStore.memory();
     }
     return open(support: support, prefs: prefs);

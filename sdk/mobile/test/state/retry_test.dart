@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/state/retry.dart';
 
 void main() {
@@ -24,6 +25,17 @@ void main() {
     expect(
       kimRetry(1, Exception('Connection refused')),
       const Duration(milliseconds: 400),
+    );
+  });
+
+  test('sdk error dto maps by kind not message substring', () {
+    expect(
+      mapTalkError(const SdkErrorDto(kind: 'not_friends', message: 'x')),
+      Copy.notFriends,
+    );
+    expect(
+      mapTalkError(const SdkErrorDto(kind: 'blocked', message: 'x')),
+      Copy.blocked,
     );
   });
 }

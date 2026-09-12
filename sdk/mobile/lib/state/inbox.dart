@@ -144,7 +144,8 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   void applyTalk(KimChatMsg msg, {required bool fromSelf}) {
     final existing = state.thread(msg.dest);
     final viewing = chatIdFromPath(ref.read(locationProvider));
-    final unread = viewing == msg.dest
+    final unread =
+        !ref.read(runtimeProvider).rustStore && viewing == msg.dest
         ? 0
         : fromSelf || msg.sys
         ? (existing?.unread ?? 0)
@@ -193,6 +194,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
       return;
     }
     _upsert(existing.copyWith(unread: 0));
+    if (ref.read(runtimeProvider).rustStore) {
+      return;
+    }
     _persist();
     unawaited(
       ref
@@ -250,14 +254,18 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
 
   Future<void> deleteThread(String id) async {
     final account = ref.read(authProvider).account;
-    await ref.read(conversationStoreProvider).deleteThread(account, id);
+    if (ref.read(runtimeProvider).rustStore) {
+      await ref.read(clientPortProvider).deleteThread(id);
+    } else {
+      await ref.read(conversationStoreProvider).deleteThread(account, id);
+    }
     state = state.copyWith(
       threads: state.threads.where((t) => t.id != id).toList(),
     );
   }
 
   int _mergedUnread(KimThread? prev, KimThread incoming, String? viewing) {
-    if (viewing == incoming.id) {
+    if (!ref.read(runtimeProvider).rustStore && viewing == incoming.id) {
       return 0;
     }
     if (prev != null &&

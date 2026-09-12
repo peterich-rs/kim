@@ -46,9 +46,25 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String bio,
   });
 
+  Future<void> cancelSend({required String clientId});
+
   /// Always callable. Does not open SQLite.
   static KimSdkHandle create() =>
       RustLib.instance.api.crateApiClientKimSdkHandleCreate();
+
+  Future<void> deleteThread({required String dest});
+
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required int kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    required String localPath,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  });
 
   Future<String> friendAccept({required String dest});
 
@@ -77,6 +93,12 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required PlatformInt64 messageId,
   });
 
+  Future<void> markThreadRead({
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  });
+
   Future<void> notifyForeground();
 
   Future<void> notifyRadioUp();
@@ -89,6 +111,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   });
 
   Future<String> profile({required String dest});
+
+  Future<KimCommandReceipt> retrySend({required String clientId});
 
   /// Returns JSON array of `{account,status,last_seen}`.
   Future<String> roomEnter({required String dest, required int kind});
@@ -110,7 +134,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  /// Supervisor event stream. Replaces `listen` / `KimPush`.
+  /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
+  /// watch_session is Kickout/token/friend, not a replacement inbox.
   Stream<KimSessionEvent> sessionEvents();
 
   Future<void> startSession({
@@ -132,7 +157,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String bio,
   });
 
-  /// FFI reads the session mpsc so Kickout/token/friend are not coalesced.
+  /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
+  /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
   Stream<SessionUpdateDto> watchSession();
 
   Stream<TimelineUpdateDto> watchTimeline({
@@ -163,6 +189,41 @@ class KimBotPendingItem {
           messageId == other.messageId &&
           body == other.body &&
           sendTime == other.sendTime;
+}
+
+class KimCommandReceipt {
+  final String requestId;
+  final String clientId;
+  final String dest;
+  final PlatformInt64 acceptedAt;
+  final String sendStatus;
+
+  const KimCommandReceipt({
+    required this.requestId,
+    required this.clientId,
+    required this.dest,
+    required this.acceptedAt,
+    required this.sendStatus,
+  });
+
+  @override
+  int get hashCode =>
+      requestId.hashCode ^
+      clientId.hashCode ^
+      dest.hashCode ^
+      acceptedAt.hashCode ^
+      sendStatus.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KimCommandReceipt &&
+          runtimeType == other.runtimeType &&
+          requestId == other.requestId &&
+          clientId == other.clientId &&
+          dest == other.dest &&
+          acceptedAt == other.acceptedAt &&
+          sendStatus == other.sendStatus;
 }
 
 class KimHistoryItem {

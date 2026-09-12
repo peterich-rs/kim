@@ -21,6 +21,22 @@ import 'src/rust/api/client.dart' as rust;
 import 'src/rust/api/types.dart' as rust_types;
 import 'src/rust/frb_generated.dart';
 
+class KimCommandReceipt {
+  const KimCommandReceipt({
+    required this.requestId,
+    required this.clientId,
+    required this.dest,
+    required this.acceptedAt,
+    required this.sendStatus,
+  });
+
+  final String requestId;
+  final String clientId;
+  final String dest;
+  final int acceptedAt;
+  final String sendStatus;
+}
+
 class KimAuthSession {
   const KimAuthSession({
     required this.token,
@@ -59,6 +75,24 @@ abstract class KimClientPort {
     KimOutgoingContent content, {
     required String clientId,
   });
+
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required ThreadKind kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    String localPath = '',
+    String mime = '',
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  });
+
+  Future<void> cancelSend(String clientId);
+
+  Future<KimCommandReceipt> retrySend(String clientId);
+
+  Future<void> deleteThread(String dest);
 
   Future<List<KimHistoryMsg>> history(
     String dest,
@@ -322,6 +356,8 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
     );
     _account = account;
+    // Fat session_events is the Dart inbox. watch_session is Kickout/token/friend
+    // only; it does not replace Lagged on the fat stream.
     final fat = _api!
         .sessionEvents()
         .map(_event)
@@ -511,11 +547,71 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   @override
   Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
-    await _require().markRead(
+    final api = _require();
+    final wireKind = kind == ThreadKind.group ? 1 : 0;
+    if (rustStoreAttached) {
+      await api.markThreadRead(
+        dest: dest,
+        kind: wireKind,
+        messageId: messageId,
+      );
+      return;
+    }
+    await api.markRead(dest: dest, kind: wireKind, messageId: messageId);
+  }
+
+  @override
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required ThreadKind kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    String localPath = '',
+    String mime = '',
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  }) async {
+    final receipt = await _require().enqueueMessage(
       dest: dest,
       kind: kind == ThreadKind.group ? 1 : 0,
-      messageId: messageId,
+      content: _wire(content),
+      clientId: clientId,
+      localPath: localPath,
+      mime: mime,
+      width: width,
+      height: height,
+      byteSize: byteSize,
     );
+    return KimCommandReceipt(
+      requestId: receipt.requestId,
+      clientId: receipt.clientId,
+      dest: receipt.dest,
+      acceptedAt: receipt.acceptedAt.toInt(),
+      sendStatus: receipt.sendStatus,
+    );
+  }
+
+  @override
+  Future<void> cancelSend(String clientId) async {
+    await _require().cancelSend(clientId: clientId);
+  }
+
+  @override
+  Future<KimCommandReceipt> retrySend(String clientId) async {
+    final receipt = await _require().retrySend(clientId: clientId);
+    return KimCommandReceipt(
+      requestId: receipt.requestId,
+      clientId: receipt.clientId,
+      dest: receipt.dest,
+      acceptedAt: receipt.acceptedAt.toInt(),
+      sendStatus: receipt.sendStatus,
+    );
+  }
+
+  @override
+  Future<void> deleteThread(String dest) async {
+    await _require().deleteThread(dest: dest);
   }
 
   KimEvent? _event(rust.KimSessionEvent push) {

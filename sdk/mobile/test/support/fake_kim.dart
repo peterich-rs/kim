@@ -40,6 +40,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastAccount = '';
   String lastPassword = '';
   String lastTalkDest = '';
+  int lastTalkKind = 0;
   String lastTalkBody = '';
   String lastImageUrl = '';
   String lastImageExtra = '';
@@ -170,6 +171,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastClientId = clientId;
     clientIds.add(clientId);
     lastTalkDest = dest;
+    lastTalkKind = kind == ThreadKind.group ? 1 : 0;
     switch (content) {
       case KimTextContent(:final text):
         talks += 1;
@@ -462,6 +464,73 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<void> persistInboxThreads(List<KimThread> threads) async {}
+
+  int enqueues = 0;
+  int retries = 0;
+  int deletes = 0;
+  int cancels = 0;
+  String lastEnqueueDest = '';
+  String lastEnqueueBody = '';
+  int lastEnqueueKind = 0;
+  String lastEnqueueMime = '';
+  final enqueueIds = <String>[];
+
+  @override
+  Future<KimCommandReceipt> enqueueMessage({
+    required String dest,
+    required ThreadKind kind,
+    required KimOutgoingContent content,
+    required String clientId,
+    String localPath = '',
+    String mime = '',
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  }) async {
+    enqueues += 1;
+    lastEnqueueDest = dest;
+    lastEnqueueKind = kind == ThreadKind.group ? 1 : 0;
+    lastEnqueueMime = mime;
+    lastClientId = clientId;
+    enqueueIds.add(clientId);
+    lastEnqueueBody = switch (content) {
+      KimTextContent(:final text) => text,
+      KimImageContent(:final url) => url,
+      KimVideoContent(:final url) => url,
+    };
+    return KimCommandReceipt(
+      requestId: 'req-$enqueues',
+      clientId: clientId,
+      dest: dest,
+      acceptedAt: 1,
+      sendStatus: 'pending',
+    );
+  }
+
+  @override
+  Future<void> cancelSend(String clientId) async {
+    cancels += 1;
+    lastClientId = clientId;
+  }
+
+  @override
+  Future<KimCommandReceipt> retrySend(String clientId) async {
+    retries += 1;
+    lastClientId = clientId;
+    return KimCommandReceipt(
+      requestId: 'retry-$retries',
+      clientId: clientId,
+      dest: lastEnqueueDest,
+      acceptedAt: 1,
+      sendStatus: 'pending',
+    );
+  }
+
+  @override
+  Future<void> deleteThread(String dest) async {
+    deletes += 1;
+    lastTalkDest = dest;
+  }
 }
 
 class FakeKimMedia implements KimMediaPort {

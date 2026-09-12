@@ -37,7 +37,7 @@ void main() {
       messageId: 1,
     );
     await repo.applyLive('alice', [msg]);
-    expect(client.persisted.single.key, 'm1');
+    expect(client.persisted, isEmpty);
     expect(dart.loadMessages('alice', 'bob'), isEmpty);
     expect(dart.isolateBacked, isFalse);
   });

@@ -34,9 +34,13 @@ Future<KimHarness> kimHarness({
   String token = '',
   String account = '',
   bool online = true,
+  bool rustStore = false,
   List<Override> overrides = const [],
 }) async {
-  SharedPreferences.setMockInitialValues({'agent.server_identity': false});
+  SharedPreferences.setMockInitialValues({
+    'agent.server_identity': false,
+    if (rustStore) KimFlags.rustStorePref: true,
+  });
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
   addTearDown(() {
     if (tmp.existsSync()) {
