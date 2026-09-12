@@ -5,6 +5,7 @@ mod command;
 mod error;
 mod ids;
 mod media;
+mod metrics;
 mod proto;
 mod session;
 mod store;
@@ -32,6 +33,7 @@ pub use ids::{
     SessionEpoch,
 };
 pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
+pub use metrics::SdkMetrics;
 pub use proto::ProtocolClient;
 pub use sync::UnreadPolicy;
 pub use timeline::{
@@ -54,6 +56,7 @@ struct Inner {
     timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
     session_snapshot: watch::Sender<SessionSnapshot>,
     agent: Mutex<Arc<dyn AgentPort>>,
+    metrics: SdkMetrics,
 }
 
 #[derive(Clone)]
@@ -78,6 +81,7 @@ impl KimSdk {
                 timelines: Mutex::new(HashMap::new()),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
                 agent: Mutex::new(Arc::new(NoopAgent)),
+                metrics: SdkMetrics::default(),
             }),
         })
     }
@@ -183,6 +187,12 @@ impl KimSdk {
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
         let receipt = store.enqueue(epoch, session.account, cmd).await?;
+        self.inner.metrics.inc_enqueue();
+        tracing::debug!(
+            request_id = %receipt.request_id,
+            client_id = %receipt.client_id,
+            "enqueue committed"
+        );
         let sdk = self.clone();
         tokio::spawn(async move {
             let _ = outbox::pump::run_once(&sdk).await;
@@ -274,7 +284,13 @@ impl KimSdk {
         let epoch = self.current_epoch().0;
         store
             .persist_talks(epoch, session.account, talks, policy)
-            .await
+            .await?;
+        self.inner.metrics.inc_persist_talk();
+        Ok(())
+    }
+
+    pub fn metrics(&self) -> (u64, u64, u64) {
+        self.inner.metrics.snapshot()
     }
 
     pub async fn persist_inbox(

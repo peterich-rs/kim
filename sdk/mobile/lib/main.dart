@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
@@ -18,6 +19,13 @@ import 'theme/kim_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _enableMaxRefreshRate();
+  const dsn = String.fromEnvironment('SENTRY_DSN');
+  if (dsn.isNotEmpty) {
+    await SentryFlutter.init((options) {
+      options.dsn = dsn;
+    }, appRunner: () => runApp(const KimBoot()));
+    return;
+  }
   runApp(const KimBoot());
 }
 
