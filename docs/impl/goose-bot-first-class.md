@@ -108,7 +108,7 @@
 15. **`agent.server_identity` 默认 false，直到身份 + Outbox + Goose 代发 **同一客户端 PR** 就绪。** 禁止「先停 `_appendLocal`、后接 `bot_reply`」的空窗。
 16. **talk 热路径用缓存的 `{exists, kind, owner}`，不每条多一跳 `bot_owner` RPC。** 扩展 `/internal/user/lookup`（`AccountExists` 加字段）与 `CachedUserDirectory`。TTL 与现 social 相同（默认 30s，`KIM_SOCIAL_CACHE_TTL_MS`）。
 17. **`do_bot_reply` 与 `do_user_talk` 走同一 `ContentFilter`。** 失败 `ContentBlocked=106`。Owner 代发不是绕过滤的通道。
-18. **`chat.bot.delete` 后：好友消失、inbox/历史保留只读、再发送 108、本机清 `serverAccount` 保留 profile。** 不复活合成 `dest=goose` 去顶替仍存在的 `b_XXX` inbox 行。
+18. **人设删除（修订）：不可删 goose。若 `serverAccount` 非空，先 `chat.bot.delete`；成功则去掉本机 profile 行。** 好友消失；inbox/历史里残留 `b_*` 只读；再发送 108。**禁止**再注入合成 `dest=goose` 顶替仍存在的 `b_XXX` inbox 行。`botDelete` 108 / not-owner 视为云端已无，仍清本地行；其它错误保留行并写入 `identityError`。注销云身份但保留人设（只清 `serverAccount`）是后续可选按钮，不是 v1 人设删除。
 19. **已注册 1:1 只把 text 同步并喂 Goose。** 图片可出站但不 prompt；bot 线程忽略 `@mention`；工具卡本机。
 20. **创建时 Chat 只调 `create_bot`。** Memory 经注入的 `SocialDirectory` 内部 `ensure_friends`；Http/Royal 在 `/api/v1/bot` 内完成。`ensure_friends` 不作为 Chat handler 的第二次调用。
 21. **个性化文档「明确不改 kim-client / chat / royal」必须在 Chat 行为变更的同一 PR 划掉。** 不能拖到文档扫尾 PR。隔离本身保留：Goose 仍 `kim_agent_ffi`，代发走 Dart → `kim_client_ffi`。
@@ -191,7 +191,7 @@ create 时机（flag 打开且已登录，KD 22）：
 | 消息 | `message_content` / `message_index` / `conversation_inbox` **保留** |
 | 删后发送 | users 行已删 → `exists=false` → **108**（不是 109） |
 | 删后打开 | inbox 行仍在，历史只读；composer 禁用。标题用缓存 nickname，没有则 account |
-| 删后本机 | 清 `serverAccount`，**保留** `AgentProfile` 与 key。允许同一 `client_profile_id` 再 create（新雪花 account）。**禁止**在仍有 `b_XXX` inbox 时再注入合成 `dest=goose` 空线程 |
+| 删后本机 | **人设删除：** `botDelete` 成功（或 108）后去掉本机 `AgentProfile` 行。inbox `b_*` 只读残留。~~清 `serverAccount` 并保留 profile~~ 是未修订的 KD 18，仅留给以后的「注销云身份」按钮。**禁止**在仍有 `b_XXX` inbox 时再注入合成 `dest=goose` 空线程 |
 | 读路径 | 不进 `UserProfile` proto。内部 `lookup` / `bot_owner` |
 
 #### 创建事务与幂等
@@ -870,7 +870,7 @@ Memory：`UserRecord` 去掉 `#[allow(dead_code)]`，补 `client_profile_id`；`
 
 产品已拍板。下列不再作为未决项；实现按 **Resolved** 执行。
 
-1. **何时 `chat.bot.create`？** **Resolved（KD 22，非单纯 C）。** 新建 profile：设置页保存成功后立刻注册。已有 profile（含「助手」/goose）：第一次打开该 1:1 会话才注册。不在 login 批量 ensure。
+1. **何时 `chat.bot.create`？** **Resolved（KD 22，非单纯 C）。** 新建 profile：保存成功后立刻注册。已有 profile（含「助手」/goose）：第一次打开该 1:1 会话才注册。~~login / `ConnStatus.online` 批量 `ensureVisibleIdentities`~~ 是对 KD 22 的偏离，已从 `link.dart` 拆掉（保留 `catchUpPending`）。`setServerIdentity(true)` 仍可对当前可见未注册 profile 补注册（用户显式开关）。
 2. **桌面离线时手机 UI？** **Resolved = 静默（KD 23）。** 发送不失败、不弹窗、不顶栏、不加 l10n。桌面上线后 `chat.bot.pending` 补跑。
 3. **旧 `dest=goose` 历史？** **Resolved = 不导入（KD 24）。** 旧本地会话留在设备；新 `b_XXX` 从服务器空开始。
 4. **两台桌面 runtime 租约？** **Resolved = 本切片延期（KD 25）。** v1 用 `bot_turns` + pending 去重落库，接受可能双倍 LLM。

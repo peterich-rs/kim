@@ -57,6 +57,9 @@
 | **Session** | 一条已登录连接的完整记录（account、channel_id、gate_id…），按 channel_id 存 |
 | **Location** | 热路径：account → {channel_id, gate_id}。同一账号第二次登录先查这个再互踢 |
 | **Kickout** | 互踢通知。command 仍是 `login.signin`，`Flag=Push`，body 是 `KickoutNotify{channelId}`。网关 hook 先看 Flag 再关旧连接 |
+| **Agent（Goose 人设）** | `AgentProfile`：id / 显示名 / 别名 / prompt / 工具 / `account_id` / 模型 / `ReasoningChoice` / 可选 `serverAccount`。不是 glossary `Session`，也不是 IM `dest` 本身。默认 id=`goose` |
+| **ProviderAccount** | 厂商账号：catalog vendor id + base_url + `key_ref`。多个 Agent 可共享一把 key。CRUD **不** `chat.bot.create` |
+| **ModelChoice** | 挂在 Agent 上的模型 id + `ReasoningChoice`。推理 UI 只看 `ReasoningSurface.kind`，不 `switch (vendorId)` |
 
 ## 小册里的四层
 
