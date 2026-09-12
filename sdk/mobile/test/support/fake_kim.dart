@@ -449,6 +449,7 @@ class FakeKimMedia implements KimMediaPort {
   int uploads = 0;
   List<int> lastBytes = const [];
   String lastType = '';
+  Completer<void>? uploadHold;
 
   @override
   Future<UploadedObject> uploadImage({
@@ -459,6 +460,10 @@ class FakeKimMedia implements KimMediaPort {
     uploads += 1;
     lastBytes = bytes;
     lastType = contentType;
+    final hold = uploadHold;
+    if (hold != null) {
+      await hold.future;
+    }
     return UploadedObject(
       key: 'alice/a.jpg',
       url: url,

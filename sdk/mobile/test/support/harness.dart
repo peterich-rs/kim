@@ -20,12 +20,14 @@ class KimHarness {
     required this.fake,
     required this.runtime,
     required this.store,
+    required this.media,
   });
 
   final ProviderContainer container;
   final FakeKim fake;
   final KimRuntime runtime;
   final ConversationStore store;
+  final FakeKimMedia media;
 }
 
 Future<KimHarness> kimHarness({
@@ -57,6 +59,7 @@ Future<KimHarness> kimHarness({
   final fake = FakeKim();
   final store = ConversationStore.memory();
   addTearDown(store.close);
+  final media = FakeKimMedia();
   final container = ProviderContainer.test(
     retry: kimRetry,
     overrides: [
@@ -65,7 +68,7 @@ Future<KimHarness> kimHarness({
         auth: fake,
         client: fake,
         store: store,
-        media: FakeKimMedia(),
+        media: media,
       ),
       ...overrides,
     ],
@@ -75,5 +78,6 @@ Future<KimHarness> kimHarness({
     fake: fake,
     runtime: runtime,
     store: store,
+    media: media,
   );
 }
