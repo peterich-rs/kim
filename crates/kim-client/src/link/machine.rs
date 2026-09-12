@@ -155,6 +155,11 @@ async fn serve(inner: &Inner, live: &Live) -> SessionEnd {
 
     let dispatch = dispatch_loop(inner, live, seen);
     let mut death = live.death_rx();
+    let persist = inner
+        .persist
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     let sync = engine.run(
         client,
         &inner.events,
@@ -162,6 +167,7 @@ async fn serve(inner: &Inner, live: &Live) -> SessionEnd {
         &inner.stop,
         &mut death,
         confirm_timeout,
+        persist,
     );
 
     tokio::select! {
@@ -293,6 +299,17 @@ async fn dispatch_loop(
 fn dispatch_event(inner: &Inner, seen: &Arc<std::sync::Mutex<SeenSet>>, event: Event) {
     match event {
         Event::Talk(t) => {
+            let live_tx = inner
+                .live_persist
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(tx) = live_tx {
+                if tx.try_send(t.clone()).is_ok() {
+                    let _ = inner.events.send(SessionEvent::Talk(t));
+                }
+                return;
+            }
             let emit = seen
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())

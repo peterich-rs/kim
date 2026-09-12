@@ -1078,6 +1078,7 @@ async fn sync_confirm_gate_blocks_ack() {
                     &stop,
                     &mut death_rx,
                     Duration::from_secs(15),
+                    None,
                 )
                 .await
         }
@@ -1172,6 +1173,7 @@ async fn undelivered_sync_page_does_not_ack() {
                 &stop,
                 &mut death_rx,
                 Duration::from_secs(15),
+                None,
             )
             .await
     })
@@ -1186,6 +1188,167 @@ async fn undelivered_sync_page_does_not_ack() {
         })
         .count();
     assert_eq!(acks, 0, "must not ack a page Dart never received");
+}
+
+struct RecordingPersist {
+    fail: std::sync::atomic::AtomicBool,
+    talks: StdMutex<usize>,
+}
+
+#[async_trait]
+impl crate::PersistHook for RecordingPersist {
+    async fn persist_talks(
+        &self,
+        talks: &[crate::IncomingTalk],
+        _policy: crate::UnreadPolicy,
+    ) -> Result<(), crate::PersistError> {
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(crate::PersistError::StorageFull);
+        }
+        *self.talks.lock().unwrap_or_else(|e| e.into_inner()) += talks.len();
+        Ok(())
+    }
+
+    async fn persist_inbox(&self, _items: &[crate::InboxItem]) -> Result<(), crate::PersistError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn persist_hook_acks_without_confirm() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp { items: vec![] });
+    });
+    let index = resp_logic(CMD_OFFLINE_INDEX, 3, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 11,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 4, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 11,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "later".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let empty_index = resp_logic(CMD_OFFLINE_INDEX, 6, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![],
+            has_more: false,
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![inbox, index, content, empty_index]);
+    let hook = Arc::new(RecordingPersist {
+        fail: std::sync::atomic::AtomicBool::new(false),
+        talks: StdMutex::new(0),
+    });
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    let gate = ConfirmGate::new();
+    let stop = tokio::sync::Notify::new();
+    let persist: Option<Arc<dyn crate::PersistHook>> = Some(hook.clone());
+    let pulled = tokio::time::timeout(Duration::from_secs(2), async {
+        let engine = SyncEngine::new();
+        let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+        engine
+            .run(
+                &client,
+                &tx,
+                &gate,
+                &stop,
+                &mut death_rx,
+                Duration::from_secs(15),
+                persist,
+            )
+            .await
+    })
+    .await
+    .expect("join")
+    .expect("sync");
+    assert_eq!(pulled, 1);
+    assert_eq!(*hook.talks.lock().unwrap_or_else(|e| e.into_inner()), 1);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let acks = frames
+        .iter()
+        .filter(|f| {
+            matches!(read(&f.payload), Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK)
+        })
+        .count();
+    assert_eq!(acks, 1, "hook persist then ack_batch");
+}
+
+#[tokio::test]
+async fn persist_hook_failure_does_not_ack() {
+    let inbox = resp_logic(CMD_INBOX_LIST, 2, |p| {
+        p.write_body(&InboxResp { items: vec![] });
+    });
+    let index = resp_logic(CMD_OFFLINE_INDEX, 3, |p| {
+        p.write_body(&MessageIndexResp {
+            indexes: vec![ProtoIndex {
+                message_id: 11,
+                direction: 0,
+                send_time: 1,
+                account_b: "bob".into(),
+                group: String::new(),
+            }],
+            has_more: false,
+        });
+    });
+    let content = resp_logic(CMD_OFFLINE_CONTENT, 4, |p| {
+        p.write_body(&MessageContentResp {
+            messages: vec![PktMessage {
+                message_id: 11,
+                r#type: MESSAGE_TYPE_TEXT,
+                body: "later".into(),
+                extra: String::new(),
+            }],
+        });
+    });
+    let (client, outgoing) = logged_in_shared(vec![inbox, index, content]);
+    let hook = Arc::new(RecordingPersist {
+        fail: std::sync::atomic::AtomicBool::new(true),
+        talks: StdMutex::new(0),
+    });
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    let gate = ConfirmGate::new();
+    let stop = tokio::sync::Notify::new();
+    let persist: Option<Arc<dyn crate::PersistHook>> = Some(hook);
+    let pulled = tokio::time::timeout(Duration::from_secs(2), async {
+        let engine = SyncEngine::new();
+        let (_death_tx, mut death_rx) = tokio::sync::watch::channel(None);
+        engine
+            .run(
+                &client,
+                &tx,
+                &gate,
+                &stop,
+                &mut death_rx,
+                Duration::from_secs(15),
+                persist,
+            )
+            .await
+    })
+    .await
+    .expect("join")
+    .expect("sync");
+    assert_eq!(pulled, 1);
+    let frames = outgoing.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let acks = frames
+        .iter()
+        .filter(|f| {
+            matches!(read(&f.payload), Ok(Packet::Logic(p)) if p.header.command == CMD_CHAT_TALK_ACK)
+        })
+        .count();
+    assert_eq!(acks, 0, "storage full must not ack");
 }
 
 struct DropGw {

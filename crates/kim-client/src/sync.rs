@@ -9,6 +9,7 @@ use tracing::{debug, warn};
 
 use crate::events::{IncomingTalk, Message, MessageIndex};
 use crate::link::DropReason;
+use crate::persist::{PersistError, PersistHook, UnreadPolicy};
 use crate::pump::wait_dead;
 use crate::supervisor::SessionEvent;
 use crate::ClientError;
@@ -145,6 +146,7 @@ impl SyncEngine {
         self.seen.clone()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn run(
         &self,
         client: &KimClient,
@@ -153,9 +155,18 @@ impl SyncEngine {
         stop: &Notify,
         death: &mut watch::Receiver<Option<DropReason>>,
         confirm_timeout: Duration,
+        persist: Option<Arc<dyn PersistHook>>,
     ) -> Result<usize, ClientError> {
         let account = client.session().account;
         let items = client.inbox_list(INBOX_LIMIT).await?;
+        if let Some(hook) = persist.as_ref() {
+            if let Err(err) = hook.persist_inbox(&items).await {
+                let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
+                if matches!(err, PersistError::StorageFull | PersistError::Disk { .. }) {
+                    return Ok(0);
+                }
+            }
+        }
         let _ = events.send(SessionEvent::Inbox(items));
 
         let mut pulled = 0usize;
@@ -179,7 +190,14 @@ impl SyncEngine {
             let new_count = talks.len();
             pulled += new_count;
             let max_id = ids.iter().copied().max().unwrap_or(0);
-            if new_count > 0 && max_id > 0 {
+            if let Some(hook) = persist.as_ref() {
+                if new_count > 0 {
+                    if let Err(err) = hook.persist_talks(&talks, UnreadPolicy::Keep).await {
+                        let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
+                        return Ok(pulled);
+                    }
+                }
+            } else if new_count > 0 && max_id > 0 {
                 if events
                     .send(SessionEvent::SyncPage {
                         page_id: max_id,

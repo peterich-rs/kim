@@ -277,6 +277,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   }
 
   void _persist() {
+    if (ref.read(runtimeProvider).rustStore) {
+      return;
+    }
     final account = ref.read(authProvider).account;
     unawaited(() async {
       final store = ref.read(conversationStoreProvider);

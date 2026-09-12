@@ -55,6 +55,7 @@ struct Inner {
     agent: Arc<dyn AgentPort>,
 }
 
+#[derive(Clone)]
 pub struct KimSdk {
     inner: Arc<Inner>,
 }
@@ -124,7 +125,10 @@ impl KimSdk {
         let cfg = kim_client::ClientConfig::new(s.url, s.token)
             .with_user_agent(s.user_agent)
             .with_device(kim_client::device_for_target_os(std::env::consts::OS).to_string());
-        let sup = kim_client::SessionSupervisor::new(cfg);
+        let mut sup = kim_client::SessionSupervisor::new(cfg);
+        if self.store_attached() {
+            sup = sup.with_persist(Arc::new(SdkPersistHook { sdk: self.clone() }));
+        }
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
         Ok(())
     }
@@ -267,6 +271,51 @@ impl KimSdk {
             .ok_or(SdkError::InvalidArgument {
                 message: "store not attached".into(),
             })
+    }
+}
+
+struct SdkPersistHook {
+    sdk: KimSdk,
+}
+
+#[async_trait::async_trait]
+impl kim_client::PersistHook for SdkPersistHook {
+    async fn persist_talks(
+        &self,
+        talks: &[kim_client::IncomingTalk],
+        policy: kim_client::UnreadPolicy,
+    ) -> Result<(), kim_client::PersistError> {
+        let mapped = match policy {
+            kim_client::UnreadPolicy::Keep => UnreadPolicy::Keep,
+            kim_client::UnreadPolicy::IfInserted => UnreadPolicy::IfInserted,
+        };
+        self.sdk
+            .persist_talks(talks.to_vec(), mapped)
+            .await
+            .map_err(sdk_to_persist)
+    }
+
+    async fn persist_inbox(
+        &self,
+        items: &[kim_client::InboxItem],
+    ) -> Result<(), kim_client::PersistError> {
+        self.sdk
+            .persist_inbox(items.to_vec())
+            .await
+            .map(|_| ())
+            .map_err(sdk_to_persist)
+    }
+}
+
+fn sdk_to_persist(err: SdkError) -> kim_client::PersistError {
+    match err {
+        SdkError::Busy { .. } | SdkError::SqliteBusy => kim_client::PersistError::Busy,
+        SdkError::StorageFull => kim_client::PersistError::StorageFull,
+        SdkError::StaleEpoch { .. } => kim_client::PersistError::StaleEpoch,
+        SdkError::Disk { message } => kim_client::PersistError::Disk { message },
+        other => kim_client::PersistError::Disk {
+            message: other.to_string(),
+        },
     }
 }
 

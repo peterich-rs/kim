@@ -11,6 +11,7 @@ mod error;
 mod events;
 mod link;
 mod login;
+mod persist;
 mod pump;
 mod session;
 mod supervisor;
@@ -32,6 +33,7 @@ pub use events::{
 };
 pub use link::DropReason;
 pub use login::{login_on_conn, send_ping, wait_pong};
+pub use persist::{PersistError, PersistHook, UnreadPolicy};
 pub use session::MemorySession;
 pub use supervisor::{LinkState, SessionEvent, SessionSupervisor};
 pub use token::{account_from_token, token_unusable, unverified_claims, UnverifiedClaims};

@@ -235,7 +235,11 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       case KimEventKind.inbox:
         ref.read(threadsProvider.notifier).mergeInbox(event.inbox);
       case KimEventKind.talk:
-        await _onTalk(event, gen, ack: !_syncing);
+        await _onTalk(
+          event,
+          gen,
+          ack: !_syncing && !ref.read(runtimeProvider).rustStore,
+        );
       case KimEventKind.syncPage:
         await _onSyncPage(event, gen);
       case KimEventKind.syncProgress:
@@ -346,6 +350,21 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         ),
     ].where((m) => m.dest.isNotEmpty && m.body.isNotEmpty).toList();
     if (msgs.isNotEmpty) {
+      if (ref.read(runtimeProvider).rustStore) {
+        if (!ref.mounted || gen != _sessionGen) {
+          return;
+        }
+        final byDest = <String, List<KimChatMsg>>{};
+        for (final m in msgs) {
+          byDest.putIfAbsent(m.dest, () => []).add(m);
+        }
+        for (final entry in byDest.entries) {
+          ref
+              .read(threadMessagesProvider(entry.key).notifier)
+              .receiveAll(entry.value);
+        }
+        return;
+      }
       final results = await repo.applySync(account, msgs, viewingDest: viewing);
       if (!ref.mounted || gen != _sessionGen) {
         return;
@@ -367,6 +386,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       }
     }
     if (!ref.mounted || gen != _sessionGen) {
+      return;
+    }
+    if (ref.read(runtimeProvider).rustStore) {
       return;
     }
     if (event.pageId != 0) {
@@ -396,6 +418,13 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       sendTime: event.sendTime,
       msgType: event.msgType,
     );
+    if (ref.read(runtimeProvider).rustStore) {
+      if (!ref.mounted || gen != _sessionGen) {
+        return;
+      }
+      ref.read(threadMessagesProvider(dest).notifier).receiveAll([msg]);
+      return;
+    }
     final results = await repo.applyLive(account, [msg], viewingDest: viewing);
     if (!ref.mounted || gen != _sessionGen) {
       return;
