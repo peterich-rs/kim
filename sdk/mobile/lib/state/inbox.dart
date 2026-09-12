@@ -144,8 +144,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   void applyTalk(KimChatMsg msg, {required bool fromSelf}) {
     final existing = state.thread(msg.dest);
     final viewing = chatIdFromPath(ref.read(locationProvider));
-    final unread =
-        !ref.read(runtimeProvider).rustStore && viewing == msg.dest
+    final unread = !ref.read(runtimeProvider).rustStore && viewing == msg.dest
         ? 0
         : fromSelf || msg.sys
         ? (existing?.unread ?? 0)

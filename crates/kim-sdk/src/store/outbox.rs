@@ -185,14 +185,12 @@ pub(crate) async fn requeue(
             what: "outbox".into(),
         });
     }
-    sqlx::query(
-        "UPDATE messages SET status = 'sending', failed = 0 WHERE account = ? AND key = ?",
-    )
-    .bind(account)
-    .bind(client_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(map_sqlx)?;
+    sqlx::query("UPDATE messages SET status = 'sending', failed = 0 WHERE account = ? AND key = ?")
+        .bind(account)
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
     Ok(())
 }
 

@@ -228,12 +228,13 @@ impl KimSdk {
         store
             .requeue(epoch, session.account.clone(), id.clone())
             .await?;
-        let row = store
-            .get_row(&session.account, &id)
-            .await?
-            .ok_or_else(|| SdkError::NotFound {
-                what: "outbox".into(),
-            })?;
+        let row =
+            store
+                .get_row(&session.account, &id)
+                .await?
+                .ok_or_else(|| SdkError::NotFound {
+                    what: "outbox".into(),
+                })?;
         self.kick_outbox();
         Ok(CommandReceipt {
             request_id: uuid::Uuid::new_v4().to_string(),

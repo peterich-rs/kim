@@ -21,10 +21,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                 actual: sdk.current_epoch().0,
             });
         }
-        if !store
-            .outbox_alive(&session.account, &row.client_id)
-            .await?
-        {
+        if !store.outbox_alive(&session.account, &row.client_id).await? {
             continue;
         }
         let mut extra = row.extra.clone();
@@ -50,11 +47,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
             body = url;
             extra = image_extra(row.width, row.height);
         }
-        if cancel.is_cancelled()
-            || !store
-                .outbox_alive(&session.account, &row.client_id)
-                .await?
-        {
+        if cancel.is_cancelled() || !store.outbox_alive(&session.account, &row.client_id).await? {
             continue;
         }
         match proto

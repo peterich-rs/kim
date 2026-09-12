@@ -448,11 +448,9 @@ void main() {
         .sendText('bob', 'hello');
     await env.container.read(outboxProvider.notifier).retry('bob', msg.key);
     expect(env.fake.retries, 0, reason: 'retry no-ops unless failed');
-    env.container
-        .read(threadMessagesProvider('bob').notifier)
-        .receiveAll([
-          msg.copyWith(failed: true, status: KimSendStatus.failed),
-        ]);
+    env.container.read(threadMessagesProvider('bob').notifier).receiveAll([
+      msg.copyWith(failed: true, status: KimSendStatus.failed),
+    ]);
     await env.container.read(outboxProvider.notifier).retry('bob', msg.key);
     expect(env.fake.retries, 1);
     await env.container.read(threadsProvider.notifier).deleteThread('bob');

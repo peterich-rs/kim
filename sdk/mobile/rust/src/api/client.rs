@@ -136,7 +136,10 @@ impl KimSdkHandle {
     }
 
     pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
-        self.inner.attach_store(db_path).await.map_err(SdkErrorDto::from)
+        self.inner
+            .attach_store(db_path)
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]
@@ -167,7 +170,9 @@ impl KimSdkHandle {
         limit: i32,
         sink: StreamSink<TimelineUpdateDto>,
     ) -> Result<(), String> {
-        let rx = self.inner.subscribe_timeline(kim_sdk::TimelineQuery { dest, limit });
+        let rx = self
+            .inner
+            .subscribe_timeline(kim_sdk::TimelineQuery { dest, limit });
         let _guard = rt().enter();
         rt().spawn(async move {
             let mut rx = rx;

@@ -79,16 +79,8 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
         payload_type: i32,
         client_id: &str,
     ) -> Result<(i64, i64), SdkError> {
-        ProtocolClient::send_message(
-            &**self,
-            dest,
-            kind,
-            body,
-            extra,
-            payload_type,
-            client_id,
-        )
-        .await
+        ProtocolClient::send_message(&**self, dest, kind, body, extra, payload_type, client_id)
+            .await
     }
 
     async fn ack(&self, message_id: i64) -> Result<(), SdkError> {

@@ -98,7 +98,6 @@ void main() {
     expect(env.container.read(threadsProvider).thread('bob')?.unread, 3);
   });
 
-
   test('talk and syncPage finish in arrival order', () async {
     final hold = Completer<void>();
     _GatedRepo? repo;

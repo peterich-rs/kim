@@ -663,8 +663,15 @@ async fn mark_retry_tx(
 ) -> Result<(), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result =
-        outbox::mark_retry(&mut conn, account, client_id, attempt, next_attempt_at, now_ms()).await;
+    let result = outbox::mark_retry(
+        &mut conn,
+        account,
+        client_id,
+        attempt,
+        next_attempt_at,
+        now_ms(),
+    )
+    .await;
     finish_conn(&mut conn, result).await
 }
 

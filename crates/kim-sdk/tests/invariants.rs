@@ -98,13 +98,9 @@ async fn status_109_is_not_resent_until_retry_send() {
     let proto = RecProto::new();
     proto.fail_with(SdkError::NotFriends { dest: "bob".into() });
     sdk.install_protocol(proto.clone());
-    sdk.enqueue_message(text(
-        "bob",
-        "hi",
-        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-    ))
-    .await
-    .expect("enqueue");
+    sdk.enqueue_message(text("bob", "hi", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        .await
+        .expect("enqueue");
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     assert!(proto.sent().is_empty(), "109 must not count as sent");
     sdk.enqueue_message(text(
@@ -131,13 +127,9 @@ async fn status_109_is_not_resent_until_retry_send() {
 async fn switch_account_drops_inflight_and_does_not_send_old_outbox() {
     let (_dir, sdk) = open_sdk().await;
     sdk.start_session(session("alice")).await.expect("session");
-    sdk.enqueue_message(text(
-        "bob",
-        "hi",
-        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-    ))
-    .await
-    .expect("enqueue");
+    sdk.enqueue_message(text("bob", "hi", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        .await
+        .expect("enqueue");
     sdk.switch_account("carol".into(), "t2".into())
         .await
         .expect("switch");
@@ -223,11 +215,17 @@ async fn pump_sends_image_extra_from_outbox_row() {
     tokio::fs::write(&path, [0xFF, 0xD8, 0xFF, 0xD9])
         .await
         .expect("write");
-    let sdk = KimSdk::open(dir.path().join("kim-cache.db").to_string_lossy().into_owned())
-        .await
-        .expect("open");
+    let sdk = KimSdk::open(
+        dir.path()
+            .join("kim-cache.db")
+            .to_string_lossy()
+            .into_owned(),
+    )
+    .await
+    .expect("open");
     sdk.start_session(session("alice")).await.expect("session");
-    sdk.set_upload_origin(format!("http://{addr}")).expect("origin");
+    sdk.set_upload_origin(format!("http://{addr}"))
+        .expect("origin");
     let proto = RecProto::new();
     sdk.install_protocol(proto.clone());
     sdk.enqueue_message(SendMessageCommand {
@@ -342,21 +340,13 @@ async fn second_enqueue_during_in_flight_send_is_not_dropped() {
         release: tokio::sync::Mutex::new(Some(release_rx)),
     });
     sdk.install_protocol(proto.clone());
-    sdk.enqueue_message(text(
-        "bob",
-        "one",
-        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-    ))
-    .await
-    .expect("enqueue1");
+    sdk.enqueue_message(text("bob", "one", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        .await
+        .expect("enqueue1");
     started_rx.await.expect("started");
-    sdk.enqueue_message(text(
-        "bob",
-        "two",
-        "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee",
-    ))
-    .await
-    .expect("enqueue2");
+    sdk.enqueue_message(text("bob", "two", "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        .await
+        .expect("enqueue2");
     release_tx.send(()).expect("release");
     let a = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     let b = "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -406,15 +396,14 @@ async fn not_connected_then_radio_up_sends() {
     let proto = RecProto::new();
     proto.fail_with(SdkError::NotConnected);
     sdk.install_protocol(proto.clone());
-    sdk.enqueue_message(text(
-        "bob",
-        "hi",
-        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-    ))
-    .await
-    .expect("enqueue");
+    sdk.enqueue_message(text("bob", "hi", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+        .await
+        .expect("enqueue");
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-    assert!(proto.sent().is_empty(), "NotConnected must not count as sent");
+    assert!(
+        proto.sent().is_empty(),
+        "NotConnected must not count as sent"
+    );
     sdk.notify_radio_up().await.expect("radio");
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
     loop {
