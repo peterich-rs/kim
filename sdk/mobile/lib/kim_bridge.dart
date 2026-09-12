@@ -2,6 +2,7 @@
 /// Session / login / talk / Royal HTTP stay in Rust. Do not expand FFI here.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -17,6 +18,7 @@ import 'core/jwt.dart';
 import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
 import 'src/rust/api/client.dart' as rust;
+import 'src/rust/api/types.dart' as rust_types;
 import 'src/rust/frb_generated.dart';
 
 class KimAuthSession {
@@ -320,11 +322,59 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
     );
     _account = account;
-    _events = _api!
+    final fat = _api!
         .sessionEvents()
         .map(_event)
         .where((event) => event != null)
         .map((event) => event!);
+    final watch = _api!.watchSession().map(_fromWatch);
+    _events = _mergeEvents(fat, watch);
+  }
+
+  Stream<KimEvent> _mergeEvents(Stream<KimEvent> a, Stream<KimEvent> b) {
+    late StreamController<KimEvent> controller;
+    StreamSubscription<KimEvent>? sa;
+    StreamSubscription<KimEvent>? sb;
+    controller = StreamController<KimEvent>.broadcast(
+      onListen: () {
+        sa = a.listen(controller.add, onError: controller.addError);
+        sb = b.listen(controller.add, onError: controller.addError);
+      },
+      onCancel: () {
+        unawaited(sa?.cancel());
+        unawaited(sb?.cancel());
+      },
+    );
+    return controller.stream;
+  }
+
+  KimEvent _fromWatch(rust_types.SessionUpdateDto dto) {
+    return switch (dto.kind) {
+      'kickout' => KimEvent(kind: KimEventKind.kick, dest: dto.channelId),
+      'auth_expired' => KimEvent(
+        kind: KimEventKind.authExpired,
+        error: dto.reason,
+      ),
+      'token' => KimEvent(
+        kind: KimEventKind.token,
+        token: dto.token,
+        exp: dto.exp.toInt(),
+      ),
+      'friend' => KimEvent(
+        kind: KimEventKind.friend,
+        dest: dto.from,
+        sender: dto.from,
+        nickname: dto.nickname,
+      ),
+      'friend_accepted' => KimEvent(
+        kind: KimEventKind.friendAccepted,
+        dest: dto.from,
+        sender: dto.from,
+        nickname: dto.nickname,
+      ),
+      'link' => KimEvent(kind: KimEventKind.link, error: dto.lastError ?? ''),
+      _ => const KimEvent(kind: KimEventKind.closed),
+    };
   }
 
   @override
