@@ -11,16 +11,18 @@ publish = false
 async-trait.workspace = true
 kim-client.workspace = true
 kim-protocol.workspace = true
+reqwest = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+tokio-util = { workspace = true, features = ["io"] }
 tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 

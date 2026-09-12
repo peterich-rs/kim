@@ -31,7 +31,7 @@ pub use ids::{
     incoming_message_key, is_client_key, prefer_key, AccountId, ClientMessageId, DestId,
     SessionEpoch,
 };
-pub use media::{image_mime_ok, MediaRef, MAX_IMAGE_BYTES};
+pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
 pub use proto::ProtocolClient;
 pub use sync::UnreadPolicy;
 pub use timeline::{
@@ -49,6 +49,7 @@ struct Inner {
     store: Mutex<Option<Arc<Store>>>,
     supervisor: Mutex<Option<Arc<kim_client::SessionSupervisor>>>,
     protocol: Mutex<Option<Arc<dyn ProtocolClient>>>,
+    uploader: Mutex<Option<Arc<MediaUploader>>>,
     session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
     timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
     session_snapshot: watch::Sender<SessionSnapshot>,
@@ -73,6 +74,7 @@ impl KimSdk {
                 store: Mutex::new(None),
                 supervisor: Mutex::new(None),
                 protocol: Mutex::new(None),
+                uploader: Mutex::new(None),
                 session_subs: Mutex::new(Vec::new()),
                 timelines: Mutex::new(HashMap::new()),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
@@ -225,6 +227,21 @@ impl KimSdk {
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
         *lock(&self.inner.protocol) = Some(protocol);
+    }
+
+    pub fn set_upload_origin(&self, origin: String) -> Result<(), SdkError> {
+        *lock(&self.inner.uploader) = Some(Arc::new(MediaUploader::new(origin)?));
+        Ok(())
+    }
+
+    pub(crate) fn uploader(&self) -> Result<Arc<MediaUploader>, SdkError> {
+        let mut g = lock(&self.inner.uploader);
+        if let Some(u) = g.as_ref() {
+            return Ok(u.clone());
+        }
+        let u = Arc::new(MediaUploader::new(media::UPLOAD_ORIGIN)?);
+        *g = Some(u.clone());
+        Ok(u)
     }
 
     pub(crate) fn protocol(&self) -> Result<Arc<dyn ProtocolClient>, SdkError> {

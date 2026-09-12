@@ -16,11 +16,28 @@ pub(crate) async fn run_once(sdk: &KimSdk) -> Result<usize, SdkError> {
             });
         }
         let extra = row.extra.clone();
+        let mut body = row.body.clone();
+        if row.payload_type == kim_protocol::MESSAGE_TYPE_IMAGE && !body.starts_with("http") {
+            let url = sdk
+                .uploader()?
+                .upload_image(
+                    &session.token,
+                    &crate::media::MediaRef {
+                        path: body.clone(),
+                        mime: extra.clone(),
+                        width: 0,
+                        height: 0,
+                        byte_size: 0,
+                    },
+                )
+                .await?;
+            body = url;
+        }
         match proto
             .send_message(
                 &row.dest,
                 row.kind,
-                &row.body,
+                &body,
                 &extra,
                 row.payload_type,
                 &row.client_id,
