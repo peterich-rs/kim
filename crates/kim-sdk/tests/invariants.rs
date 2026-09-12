@@ -41,14 +41,16 @@ impl ProtocolClient for RecProto {
         if let Some(err) = self.fail.lock().expect("lock").take() {
             return Err(err);
         }
-        self.sent.lock().expect("lock").push((
+        let mut sent = self.sent.lock().expect("lock");
+        sent.push((
             client_id.to_string(),
             dest.to_string(),
             payload_type,
             extra.to_string(),
         ));
+        let id = i64::try_from(sent.len()).unwrap_or(i64::MAX);
         let _ = body;
-        Ok((7, 1))
+        Ok((id, 1))
     }
     async fn ack(&self, _message_id: i64) -> Result<(), SdkError> {
         Ok(())
@@ -287,4 +289,143 @@ async fn mark_read_zeros_unread_without_protocol() {
     .await
     .expect("read");
     assert_eq!(sdk.load_threads().await.expect("t")[0].unread, 0);
+}
+
+struct HoldProto {
+    sent: Mutex<Vec<String>>,
+    started: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+#[async_trait::async_trait]
+impl ProtocolClient for HoldProto {
+    async fn send_message(
+        &self,
+        _dest: &str,
+        _kind: i32,
+        _body: &str,
+        _extra: &str,
+        _payload_type: i32,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        if let Some(tx) = self.started.lock().expect("lock").take() {
+            let _ = tx.send(());
+        }
+        if let Some(rx) = self.release.lock().await.take() {
+            let _ = rx.await;
+        }
+        let mut sent = self.sent.lock().expect("lock");
+        sent.push(client_id.to_string());
+        let id = i64::try_from(sent.len()).unwrap_or(i64::MAX);
+        Ok((id, 1))
+    }
+    async fn ack(&self, _message_id: i64) -> Result<(), SdkError> {
+        Ok(())
+    }
+    async fn ack_batch(&self, _ids: &[i64]) -> Result<(), SdkError> {
+        Ok(())
+    }
+    async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn second_enqueue_during_in_flight_send_is_not_dropped() {
+    let (_dir, sdk) = open_sdk().await;
+    sdk.start_session(session("alice")).await.expect("session");
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let proto = Arc::new(HoldProto {
+        sent: Mutex::new(Vec::new()),
+        started: Mutex::new(Some(started_tx)),
+        release: tokio::sync::Mutex::new(Some(release_rx)),
+    });
+    sdk.install_protocol(proto.clone());
+    sdk.enqueue_message(text(
+        "bob",
+        "one",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    ))
+    .await
+    .expect("enqueue1");
+    started_rx.await.expect("started");
+    sdk.enqueue_message(text(
+        "bob",
+        "two",
+        "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee",
+    ))
+    .await
+    .expect("enqueue2");
+    release_tx.send(()).expect("release");
+    let a = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let b = "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+    loop {
+        let sent = proto.sent.lock().expect("lock").clone();
+        let has_a = sent.iter().any(|id| id == a);
+        let has_b = sent.iter().any(|id| id == b);
+        if has_a && has_b {
+            assert_eq!(sent.iter().filter(|id| *id == a).count(), 1);
+            assert_eq!(sent.iter().filter(|id| *id == b).count(), 1);
+            let page = sdk
+                .load_older(kim_sdk::PageCursor {
+                    dest: "bob".into(),
+                    before_at: 0,
+                    before_key: String::new(),
+                    limit: 10,
+                    before_id: 0,
+                })
+                .await
+                .expect("load");
+            let statuses: Vec<_> = page
+                .messages
+                .iter()
+                .map(|m| (m.key.clone(), m.send_status))
+                .collect();
+            assert_eq!(page.messages.len(), 2);
+            assert!(
+                page.messages
+                    .iter()
+                    .all(|m| m.send_status == kim_sdk::SendStatus::Sent),
+                "statuses {statuses:?}"
+            );
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("expected both rows sent once, got {sent:?}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test]
+async fn not_connected_then_radio_up_sends() {
+    let (_dir, sdk) = open_sdk().await;
+    sdk.start_session(session("alice")).await.expect("session");
+    let proto = RecProto::new();
+    proto.fail_with(SdkError::NotConnected);
+    sdk.install_protocol(proto.clone());
+    sdk.enqueue_message(text(
+        "bob",
+        "hi",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    ))
+    .await
+    .expect("enqueue");
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    assert!(proto.sent().is_empty(), "NotConnected must not count as sent");
+    sdk.notify_radio_up().await.expect("radio");
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+    loop {
+        let sent = proto.sent();
+        if sent.len() == 1 {
+            assert_eq!(sent[0].0, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            panic!("radio-up must send, got {sent:?}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }

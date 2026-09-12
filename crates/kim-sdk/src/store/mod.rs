@@ -95,6 +95,11 @@ enum WriteOp {
         message_id: i64,
         reply: oneshot::Sender<Result<(), SdkError>>,
     },
+    DueNow {
+        epoch: u64,
+        account: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
 }
 
 pub(crate) fn connect_options(path: &PathBuf) -> SqliteConnectOptions {
@@ -379,6 +384,22 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn due_now(&self, epoch: u64, account: String) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::DueNow {
+                epoch,
+                account,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
     pub(crate) async fn mark_failed(
         &self,
         epoch: u64,
@@ -580,6 +601,22 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 };
                 let _ = reply.send(result);
             }
+            WriteOp::DueNow {
+                epoch: op_epoch,
+                account,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    due_now_tx(&pool, &account).await
+                };
+                let _ = reply.send(result);
+            }
         }
     }
 }
@@ -635,6 +672,13 @@ async fn requeue_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = outbox::requeue(&mut conn, account, client_id, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn due_now_tx(pool: &SqlitePool, account: &str) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = outbox::wake_pending(&mut conn, account, now_ms()).await;
     finish_conn(&mut conn, result).await
 }
 

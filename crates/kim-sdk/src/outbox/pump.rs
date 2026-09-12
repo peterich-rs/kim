@@ -69,10 +69,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
             .await
         {
             Ok((message_id, _)) => {
-                if !store
-                    .outbox_alive(&session.account, &row.client_id)
-                    .await?
-                {
+                if cancel.is_cancelled() {
                     continue;
                 }
                 store

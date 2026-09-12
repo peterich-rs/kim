@@ -397,11 +397,13 @@ impl KimSdkHandle {
     }
 
     pub fn notify_radio_up(&self) -> Result<(), String> {
-        self.inner.notify_radio_up().map_err(|e| e.to_string())
+        rt().block_on(self.inner.notify_radio_up())
+            .map_err(|e| e.to_string())
     }
 
     pub fn notify_foreground(&self) -> Result<(), String> {
-        self.inner.notify_foreground().map_err(|e| e.to_string())
+        rt().block_on(self.inner.notify_foreground())
+            .map_err(|e| e.to_string())
     }
 
     pub fn send_message(

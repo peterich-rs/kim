@@ -196,6 +196,23 @@ pub(crate) async fn requeue(
     Ok(())
 }
 
+pub(crate) async fn wake_pending(
+    tx: &mut SqliteConnection,
+    account: &str,
+    now: i64,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        "UPDATE outbox SET next_attempt_at = 0, updated_at = ?
+         WHERE account = ? AND status = 'pending'",
+    )
+    .bind(now)
+    .bind(account)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
+}
+
 pub(crate) async fn mark_retry(
     tx: &mut SqliteConnection,
     account: &str,

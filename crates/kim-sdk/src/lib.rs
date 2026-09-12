@@ -435,12 +435,37 @@ impl KimSdk {
                         }
                     }
                 }
-                let run = parent.child_token();
-                *lock(&sdk.inner.outbox_run) = run.clone();
-                if let Err(SdkError::StaleEpoch { .. }) = outbox::pump::run_once(&sdk, &run).await {
-                    sdk.metrics_inc_epoch_drop();
+                let mut prev_due: Option<Vec<String>> = None;
+                loop {
+                    if parent.is_cancelled() {
+                        return;
+                    }
+                    let run = parent.child_token();
+                    *lock(&sdk.inner.outbox_run) = run.clone();
+                    if let Err(SdkError::StaleEpoch { .. }) =
+                        outbox::pump::run_once(&sdk, &run).await
+                    {
+                        sdk.metrics_inc_epoch_drop();
+                    }
+                    let mut again = false;
+                    while rx.try_recv().is_ok() {
+                        again = true;
+                    }
+                    let due = outbox_due_ids(&sdk).await;
+                    if !again {
+                        if due.is_empty() {
+                            break;
+                        }
+                        if prev_due.as_ref() == Some(&due) {
+                            break;
+                        }
+                        again = true;
+                    }
+                    prev_due = Some(due);
+                    if !again {
+                        break;
+                    }
                 }
-                while rx.try_recv().is_ok() {}
             }
         });
         self.kick_outbox();
@@ -482,13 +507,22 @@ impl KimSdk {
         tx.subscribe()
     }
 
-    pub fn notify_radio_up(&self) -> Result<(), SdkError> {
+    pub async fn notify_radio_up(&self) -> Result<(), SdkError> {
         self.supervisor()?.notify_radio_up();
-        Ok(())
+        self.wake_outbox().await
     }
 
-    pub fn notify_foreground(&self) -> Result<(), SdkError> {
+    pub async fn notify_foreground(&self) -> Result<(), SdkError> {
         self.supervisor()?.notify_foreground();
+        self.wake_outbox().await
+    }
+
+    async fn wake_outbox(&self) -> Result<(), SdkError> {
+        if let (Ok(store), Ok(session)) = (self.store(), self.session_snapshot()) {
+            let epoch = self.current_epoch().0;
+            store.due_now(epoch, session.account).await?;
+        }
+        self.kick_outbox();
         Ok(())
     }
 
@@ -533,6 +567,19 @@ impl kim_client::PersistHook for SdkPersistHook {
             .await
             .map(|_| ())
             .map_err(sdk_to_persist)
+    }
+}
+
+async fn outbox_due_ids(sdk: &KimSdk) -> Vec<String> {
+    let Ok(store) = sdk.store() else {
+        return Vec::new();
+    };
+    let Ok(session) = sdk.session_snapshot() else {
+        return Vec::new();
+    };
+    match store.load_due(&session.account).await {
+        Ok(rows) => rows.into_iter().map(|r| r.client_id).collect(),
+        Err(_) => Vec::new(),
     }
 }
 
