@@ -147,6 +147,12 @@ class OutboxNotifier extends Notifier<int> {
   }
 
   Future<void> replay() async {
+    if (ref.read(runtimeProvider).rustStore) {
+      try {
+        await ref.read(clientPortProvider).notifyForeground();
+      } catch (_) {}
+      return;
+    }
     final account = ref.read(sessionProvider).account;
     final store = ref.read(conversationStoreProvider);
     final pending = [
@@ -160,9 +166,7 @@ class OutboxNotifier extends Notifier<int> {
         );
       }
     }
-    if (!ref.read(runtimeProvider).rustStore) {
-      unawaited(_pump());
-    }
+    unawaited(_pump());
   }
 
   Future<void> _pump() async {

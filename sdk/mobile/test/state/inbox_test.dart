@@ -459,4 +459,17 @@ void main() {
     expect(env.fake.deletes, 1);
     expect(env.container.read(threadsProvider).thread('bob'), isNull);
   });
+
+  test('rustStore replay notifies foreground to kick rust outbox', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      rustStore: true,
+    );
+    await _online(env);
+    final before = env.fake.foregrounds;
+    await env.container.read(outboxProvider.notifier).replay();
+    expect(env.fake.foregrounds, before + 1);
+    expect(env.fake.talks, 0);
+  });
 }
