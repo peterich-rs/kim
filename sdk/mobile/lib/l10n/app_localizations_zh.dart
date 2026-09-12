@@ -208,6 +208,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notFriends => '对方还不是你好友';
 
   @override
+  String get botSocialDenied => '助手已是好友，不能再发申请';
+
+  @override
   String get blocked => '无法与该用户互动';
 
   @override
@@ -559,6 +562,17 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentMultiProfile => '在通讯录展示多个本地 Agent';
+
+  @override
+  String get agentServerIdentity => '同步助手会话到其它设备';
+
+  @override
+  String get agentServerIdentityHint =>
+      '打开后桌面一上线就会向服务器注册。设置里出现 b_ 账号即成功；之后发的消息才会进手机。本机旧历史不会上传。';
+
+  @override
+  String get agentRegisterFailed =>
+      '无法在服务器注册助手。若刚部署，确认 Chat 已滚动到含 chat.bot 的镜像。';
 
   @override
   String get agentDuplicate => '复制';

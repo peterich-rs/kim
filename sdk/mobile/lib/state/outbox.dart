@@ -362,7 +362,10 @@ class OutboxNotifier extends Notifier<int> {
       throw StateError(Copy.cannotChatSelf);
     }
     final social = ref.read(contactsProvider);
-    if (kind != ThreadKind.group && social.ready && !social.isFriend(dest)) {
+    if (kind != ThreadKind.group &&
+        social.ready &&
+        !social.isFriend(dest) &&
+        !isOwnedRegisteredBot(dest, ref.read(agentProfilesProvider))) {
       throw StateError(Copy.notFriends);
     }
   }

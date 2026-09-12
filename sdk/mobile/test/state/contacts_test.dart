@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/link.dart';
+import 'package:kim_mobile/state/profile.dart';
 
 import '../support/harness.dart';
 
@@ -41,6 +42,33 @@ void main() {
       expect(social.isIncoming('bob'), isFalse);
     },
   );
+
+  test('server bot dest is a friend without a list row', () {
+    final social = ContactsState.empty();
+    expect(social.isFriend('b_4Q03DOP0NRPC'), isTrue);
+    expect(social.isFriend('alice'), isFalse);
+  });
+
+  test('conversation list prefers nickname over account id', () {
+    final social = ContactsState(
+      friends: const [
+        KimPerson(
+          account: 'b_4Q03DOP0NRPC',
+          nickname: '助手',
+          kind: ProfileKind.bot,
+        ),
+      ],
+      incoming: const [],
+      outgoing: const {},
+      hits: const [],
+    );
+    const thread = KimThread(
+      id: 'b_4Q03DOP0NRPC',
+      kind: ThreadKind.user,
+      title: 'b_4Q03DOP0NRPC',
+    );
+    expect(threadDisplayTitle(thread, social), '助手');
+  });
 
   test('onProfileUpdated patches friend nickname and avatar', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');

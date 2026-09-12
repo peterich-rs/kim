@@ -34,7 +34,7 @@ Future<KimHarness> kimHarness({
   bool online = true,
   List<Override> overrides = const [],
 }) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues({'agent.server_identity': false});
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
   addTearDown(() {
     if (tmp.existsSync()) {

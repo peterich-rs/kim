@@ -565,6 +565,30 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                 KimGroupCard(
                   children: [
                     SwitchListTile(
+                      title: Text(l10n.agentServerIdentity),
+                      subtitle: Text(() {
+                        final store = ref.watch(agentProfilesProvider.notifier);
+                        ref.watch(agentProfilesProvider);
+                        if (store.identityError != null) {
+                          return store.identityError!;
+                        }
+                        final acc = store.goose?.serverAccount ?? '';
+                        if (acc.isNotEmpty) {
+                          return acc;
+                        }
+                        return l10n.agentServerIdentityHint;
+                      }()),
+                      value: ref
+                          .watch(agentProfilesProvider.notifier)
+                          .serverIdentity,
+                      onChanged: (next) => unawaited(
+                        ref
+                            .read(agentProfilesProvider.notifier)
+                            .setServerIdentity(next),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    SwitchListTile(
                       title: Text(l10n.agentMultiProfile),
                       value: ref
                           .watch(agentProfilesProvider.notifier)
@@ -585,7 +609,11 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
                         const Divider(height: 1),
                       ListTile(
                         title: Text(profile.displayName),
-                        subtitle: Text(profile.id),
+                        subtitle: Text(
+                          profile.serverAccount.isEmpty
+                              ? profile.id
+                              : '${profile.id} · ${profile.serverAccount}',
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

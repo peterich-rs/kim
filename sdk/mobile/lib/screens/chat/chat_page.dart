@@ -51,12 +51,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final session = ref.watch(chatSessionProvider(widget.id));
+    final redirectTo = session.redirectDest;
+    if (redirectTo != null &&
+        redirectTo.isNotEmpty &&
+        redirectTo != widget.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) {
+          return;
+        }
+        context.replace('/chat/$redirectTo');
+      });
+    }
     ref.listen(chatSessionProvider(widget.id), (prev, next) {
-      final to = next.redirectDest;
-      if (to != null && to.isNotEmpty && to != widget.id) {
-        context.replace('/chat/$to');
-        return;
-      }
       final toast = next.toast;
       if (toast == null || toast == prev?.toast) {
         return;
@@ -83,6 +90,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         : widget.id;
     final gated =
         !agentChat &&
+        !isServerBotAccount(widget.id) &&
         kind == ThreadKind.user &&
         social.ready &&
         !social.isFriend(widget.id);

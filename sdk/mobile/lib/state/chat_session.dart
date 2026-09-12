@@ -13,6 +13,7 @@ import '../models/models.dart';
 import 'agent_profiles.dart';
 import 'auth.dart';
 import 'chat_agent.dart';
+import 'contacts.dart';
 import 'inbox.dart';
 import 'messages.dart';
 import 'mutations.dart';
@@ -54,6 +55,9 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   @override
   ChatSessionState build() {
     ref.onDispose(_disposeSession);
+    ref.listen(agentProfilesProvider, (prev, next) {
+      unawaited(_maybeRegisterLocalAgent());
+    });
     Future<void>.microtask(_start);
     return const ChatSessionState();
   }
@@ -83,11 +87,11 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       return;
     }
     final store = ref.read(agentProfilesProvider.notifier);
-    if (!store.serverIdentity || !ref.read(authProvider).signedIn) {
-      return;
-    }
     await store.ensureLoaded();
     if (!ref.mounted) {
+      return;
+    }
+    if (!store.serverIdentity || !ref.read(authProvider).signedIn) {
       return;
     }
     AgentProfile? profile;
@@ -103,13 +107,21 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       return;
     }
     if (profile.serverAccount.isEmpty) {
-      profile = await store.ensureBotIdentity(profile);
+      try {
+        profile = await store.ensureBotIdentity(profile);
+      } catch (err) {
+        if (ref.mounted) {
+          _toast(agentRegisterError(err), error: true);
+        }
+        return;
+      }
     }
     if (!ref.mounted) {
       return;
     }
     if (profile.serverAccount.isNotEmpty && profile.serverAccount != dest) {
       state = ChatSessionState(redirectDest: profile.serverAccount);
+      unawaited(ref.read(contactsProvider.notifier).refresh());
     }
   }
 
@@ -205,20 +217,32 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     stopTyping();
     try {
       if (isAgent) {
+        await _maybeRegisterLocalAgent();
+        if (!ref.mounted) {
+          return false;
+        }
+        final serverDest = state.redirectDest;
+        if (serverDest != null && serverDest.isNotEmpty) {
+          await sendMessageMutation(serverDest).run(ref, (tsx) {
+            return tsx.get(outboxProvider.notifier).sendText(serverDest, text);
+          });
+          return true;
+        }
         await ref.read(chatAgentProvider).sendDirect(dest: dest, text: text);
-      } else {
-        await sendMessageMutation(dest).run(ref, (tsx) {
-          return tsx.get(outboxProvider.notifier).sendText(dest, text);
-        });
-        unawaited(
-          ref.read(chatAgentProvider).onOutgoingText(dest: dest, text: text),
-        );
+        return true;
       }
+      await sendMessageMutation(dest).run(ref, (tsx) {
+        return tsx.get(outboxProvider.notifier).sendText(dest, text);
+      });
+      unawaited(
+        ref.read(chatAgentProvider).onOutgoingText(dest: dest, text: text),
+      );
       return true;
     } on StateError catch (err) {
       _toast(err.message, error: true);
       return false;
-    } catch (_) {
+    } catch (err) {
+      _toast(agentRegisterError(err), error: true);
       return false;
     }
   }

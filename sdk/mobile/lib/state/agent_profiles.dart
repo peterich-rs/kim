@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
+import '../copy.dart';
 import '../core/settings.dart';
 import 'agent_settings.dart';
 import 'auth.dart';
@@ -17,6 +18,17 @@ const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';
 const _kMulti = 'agent.multi_profile';
 const _kServerIdentity = 'agent.server_identity';
+
+String agentRegisterError(Object err) {
+  final msg = err.toString();
+  if (msg.contains('status 2')) {
+    return Copy.agentRegisterFailed;
+  }
+  if (err is StateError && err.message.isNotEmpty) {
+    return err.message;
+  }
+  return Copy.agentRegisterFailed;
+}
 
 class AgentToolSet {
   const AgentToolSet({
@@ -320,10 +332,12 @@ class AgentProfile {
 class AgentProfileStore extends Notifier<List<AgentProfile>> {
   final _secure = SettingsStore.productionSecureStorage();
   Future<void>? _load;
+  final _ensureInFlight = <String, Future<AgentProfile>>{};
   var multiProfile = false;
 
-  /// `agent.server_identity`. Default false: 1:1 stays local `_appendLocal`.
+  /// `agent.server_identity`. Desktop defaults on so 1:1 can register.
   var serverIdentity = false;
+  String? identityError;
 
   @override
   List<AgentProfile> build() {
@@ -399,30 +413,55 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   /// Register a local profile on Chat when the identity flag is on and logged in.
-  Future<AgentProfile> ensureBotIdentity(AgentProfile profile) async {
+  Future<AgentProfile> ensureBotIdentity(AgentProfile profile) {
+    final pending = _ensureInFlight[profile.id];
+    if (pending != null) {
+      return pending;
+    }
+    final future = _ensureBotIdentity(profile);
+    _ensureInFlight[profile.id] = future;
+    return future.whenComplete(() => _ensureInFlight.remove(profile.id));
+  }
+
+  Future<AgentProfile> _ensureBotIdentity(AgentProfile profile) async {
     if (!serverIdentity ||
         !ref.read(authProvider).signedIn ||
         profile.serverAccount.isNotEmpty) {
       return profile;
     }
-    try {
-      final person = await ref
-          .read(clientPortProvider)
-          .botCreate(
-            clientProfileId: profile.id,
-            nickname: profile.displayName,
-          );
-      if (person.account.isEmpty) {
-        return profile;
+    final person = await ref
+        .read(clientPortProvider)
+        .botCreate(clientProfileId: profile.id, nickname: profile.displayName);
+    if (person.account.isEmpty) {
+      throw StateError(Copy.agentRegisterFailed);
+    }
+    final next = profile.copyWith(serverAccount: person.account);
+    await _persist([
+      for (final p in state)
+        if (p.id == profile.id) next else p,
+    ]);
+    return next;
+  }
+
+  /// Register enabled desktop personas. Idempotent. Desktop-online seam so
+  /// mobile can see the bot without opening each 1:1 first.
+  Future<void> ensureVisibleIdentities() async {
+    await ensureLoaded();
+    if (!serverIdentity || !ref.read(authProvider).signedIn) {
+      return;
+    }
+    identityError = null;
+    for (final profile in visibleAgents) {
+      if (profile.serverAccount.isNotEmpty) {
+        continue;
       }
-      final next = profile.copyWith(serverAccount: person.account);
-      await _persist([
-        for (final p in state)
-          if (p.id == profile.id) next else p,
-      ]);
-      return next;
-    } catch (_) {
-      return profile;
+      try {
+        await ensureBotIdentity(profile);
+      } catch (err) {
+        identityError = agentRegisterError(err);
+        state = [...state];
+        rethrow;
+      }
     }
   }
 
@@ -431,12 +470,19 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kServerIdentity, value);
     state = [...state];
+    if (value) {
+      try {
+        await ensureVisibleIdentities();
+      } catch (_) {
+        // [identityError] already set for settings / chat UI.
+      }
+    }
   }
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
     multiProfile = prefs.getBool(_kMulti) ?? false;
-    serverIdentity = prefs.getBool(_kServerIdentity) ?? false;
+    serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
     final raw = prefs.getString(_kProfiles);
     var profiles = <AgentProfile>[];
     if (raw != null && raw.isNotEmpty) {

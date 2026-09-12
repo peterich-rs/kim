@@ -49,6 +49,7 @@ void main() {
     ).copyWith(serverAccount: 'b_ABC');
     expect(personForProfile(profile).account, 'b_ABC');
     expect(isAgentDest('b_ABC'), isFalse);
+    expect(isServerBotAccount('b_ABC'), isTrue);
     expect(isOwnedRegisteredBot('b_ABC', [profile]), isTrue);
     expect(isOwnedRegisteredBot('goose', [profile]), isFalse);
   });

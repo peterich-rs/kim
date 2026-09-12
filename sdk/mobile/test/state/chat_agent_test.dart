@@ -589,11 +589,23 @@ void main() {
     expect(await store.readApiKey(copy), 'sk-live');
   });
 
+  test('server identity flag persists', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.serverIdentity, isFalse);
+    await store.setServerIdentity(true);
+    expect(store.serverIdentity, isTrue);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('agent.server_identity'), isTrue);
+  });
+
   test('new profile save registers on the server when flag is on', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
     final created = AgentProfile(
       id: 'translator',
       displayName: '译者',
@@ -619,20 +631,60 @@ void main() {
     expect(env.fake.botCreates, 1);
   });
 
-  test('existing goose registers on first 1:1 open, not on login', () async {
+  test('login does not register; turning identity on does', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
-    await store.setServerIdentity(true);
     expect(env.fake.botCreates, 0);
+    await store.setServerIdentity(true);
+    expect(env.fake.botCreates, 1);
+    expect(env.fake.lastBotCreateId, kGooseAgentId);
+    expect(store.goose!.serverAccount, 'b_goose');
+  });
+
+  test('botCreate failure is visible and not swallowed', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.fake.botCreateError = StateError('status 2');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    expect(store.identityError, isNotEmpty);
+    expect(store.goose!.serverAccount, isEmpty);
+  });
+
+  test('turning on identity after goose 1:1 is open still registers', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
     env.container.read(chatSessionProvider(kGooseAgentId));
     await Future<void>.delayed(Duration.zero);
-    expect(env.fake.botCreates, 1);
+    expect(env.fake.botCreates, 0);
+    await store.setServerIdentity(true);
+    await _until(() => env.fake.botCreates == 1);
     expect(env.fake.lastBotCreateId, kGooseAgentId);
     expect(
       env.container.read(chatSessionProvider(kGooseAgentId)).redirectDest,
       'b_goose',
     );
+  });
+
+  test('sendText on open goose dest after flag on goes to server', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(linkProvider);
+    await Future<void>.delayed(Duration.zero);
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final session = env.container.read(
+      chatSessionProvider(kGooseAgentId).notifier,
+    );
+    await Future<void>.delayed(Duration.zero);
+    await store.setServerIdentity(true);
+    await _until(() => env.fake.botCreates == 1);
+    final ok = await session.sendText('hello from pc');
+    expect(ok, isTrue);
+    await _until(() => env.fake.talks == 1);
+    expect(env.fake.lastTalkDest, 'b_goose');
+    expect(env.fake.lastTalkBody, 'hello from pc');
   });
 
   test('profileForDest matches serverAccount', () async {

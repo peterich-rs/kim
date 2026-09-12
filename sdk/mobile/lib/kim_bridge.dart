@@ -611,6 +611,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   int _profileKind(Object? raw) {
+    if (raw == 'bot' || raw == '2') {
+      return ProfileKind.bot;
+    }
     final n = raw is int
         ? raw
         : raw is num

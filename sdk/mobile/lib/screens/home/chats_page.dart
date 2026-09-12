@@ -207,10 +207,12 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate((context, i) {
                   final thread = visible[i];
+                  final title = threadDisplayTitle(thread, social);
                   return ConversationTile(
                     thread: thread,
                     selected: thread.id == widget.selectedId,
                     avatarUrl: avatarFor(me, social, thread.id),
+                    displayTitle: title,
                     presence: thread.kind == ThreadKind.user
                         ? ref.watch(peerPresenceProvider(thread.id))
                         : PeerPresenceStatus.unknown,
@@ -221,7 +223,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
                         ref,
                         id: thread.id,
                         kind: thread.kind,
-                        title: thread.title,
+                        title: title,
                       );
                     },
                     onDelete: () => ref
@@ -304,11 +306,13 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
       itemCount: visible.length,
       itemBuilder: (context, i) {
         final thread = visible[i];
+        final title = threadDisplayTitle(thread, social);
         return ConversationRailAvatar(
           key: Key('rail-${thread.id}'),
           thread: thread,
           selected: thread.id == widget.selectedId,
           avatarUrl: avatarFor(me, social, thread.id),
+          displayTitle: title,
           presence: thread.kind == ThreadKind.user
               ? ref.watch(peerPresenceProvider(thread.id))
               : PeerPresenceStatus.unknown,
@@ -319,7 +323,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
               ref,
               id: thread.id,
               kind: thread.kind,
-              title: thread.title,
+              title: title,
             );
           },
         );

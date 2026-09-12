@@ -37,6 +37,9 @@ KimPerson personForProfile(AgentProfile profile) {
   );
 }
 
+/// Royal `create_bot` accounts are `b_` + base36 id. Not a local Goose dest.
+bool isServerBotAccount(String account) => account.startsWith('b_');
+
 /// Server bot accounts are IM dests, not local `goose` / `agent:` dests.
 bool isOwnedRegisteredBot(String dest, List<AgentProfile> profiles) {
   if (dest.isEmpty || isAgentDest(dest)) {

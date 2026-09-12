@@ -212,6 +212,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notFriends => 'You are not friends yet';
 
   @override
+  String get botSocialDenied => 'The assistant is already a friend';
+
+  @override
   String get blocked => 'You cannot interact with this user';
 
   @override
@@ -569,6 +572,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentMultiProfile => 'Show multiple local agents';
+
+  @override
+  String get agentServerIdentity => 'Sync assistant chats to other devices';
+
+  @override
+  String get agentServerIdentityHint =>
+      'When on, desktop registers as soon as it is online. A b_ account in settings means it worked; only messages after that reach the phone. Old on-device history is not uploaded.';
+
+  @override
+  String get agentRegisterFailed =>
+      'Could not register the assistant on the server. If you just deployed, confirm Chat was rolled to an image that has chat.bot.';
 
   @override
   String get agentDuplicate => 'Duplicate';
