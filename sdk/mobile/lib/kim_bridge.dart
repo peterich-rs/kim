@@ -10,6 +10,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
 
 import 'core/format.dart';
+import 'data/conversation_store.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
 import 'core/jwt.dart';
@@ -122,6 +123,17 @@ abstract class KimClientPort {
   });
 
   Future<List<KimBotPendingItem>> botPending(String dest, {int limit = 20});
+
+  Future<void> attachStore(String dbPath);
+
+  bool get rustStoreAttached;
+
+  Future<void> persistTalks(
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+  });
+
+  Future<void> persistInboxThreads(List<KimThread> threads);
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -162,7 +174,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   static const ffiReady = true;
 
   static bool _inited = false;
-  rust.KimApi? _api;
+  rust.KimSdkHandle? _api;
   Stream<KimEvent>? _events;
   String? _account;
 
@@ -208,7 +220,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     );
   }
 
-  rust.KimApi _require() {
+  rust.KimSdkHandle _require() {
     final api = _api;
     if (api == null) {
       throw StateError('startSession first');
@@ -294,22 +306,21 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _ensure();
     lastUrl = url;
     final account = JwtPeek.account(token) ?? '';
-    if (_api != null && _account == account && account.isNotEmpty) {
+    _api ??= rust.KimSdkHandle.create();
+    if (_account == account && account.isNotEmpty) {
       try {
         await _api!.notifyRadioUp();
       } catch (_) {}
       return;
     }
-    final prev = _api;
-    if (prev != null) {
-      try {
-        await prev.stop();
-      } catch (_) {}
-    }
-    final api = rust.KimApi.start(url: url, token: token, userAgent: userAgent);
-    _api = api;
+    await _api!.startSession(
+      url: url,
+      token: token,
+      userAgent: userAgent,
+      account: account,
+    );
     _account = account;
-    _events = api
+    _events = _api!
         .sessionEvents()
         .map(_event)
         .where((event) => event != null)
@@ -754,5 +765,61 @@ class KimBridge implements KimAuthPort, KimClientPort {
           sendTime: item.sendTime.toInt(),
         ),
     ];
+  }
+
+  @override
+  Future<void> attachStore(String dbPath) async {
+    await _ensure();
+    _api ??= rust.KimSdkHandle.create();
+    await _api!.attachStore(dbPath: dbPath);
+  }
+
+  @override
+  bool get rustStoreAttached => _api?.storeAttached() ?? false;
+
+  @override
+  Future<void> persistTalks(
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+  }) async {
+    await _require().persistTalks(
+      talks: [
+        for (final m in msgs)
+          rust.KimIncomingTalk(
+            dest: m.dest,
+            sender: m.sender,
+            body: m.body,
+            extra: '',
+            messageId: m.messageId,
+            sendTime: m.at,
+            msgType: switch (m.kind) {
+              KimMsgKind.image => 2,
+              KimMsgKind.video => 4,
+              _ => 1,
+            },
+          ),
+      ],
+      policy: policy == UnreadPolicy.ifInserted ? 'ifInserted' : 'keep',
+    );
+  }
+
+  @override
+  Future<void> persistInboxThreads(List<KimThread> threads) async {
+    await _require().persistInbox(
+      items: [
+        for (final t in threads)
+          rust.KimInboxItem(
+            dest: t.id,
+            kind: t.kind == ThreadKind.group ? 1 : 0,
+            title: t.title,
+            avatar: t.avatar,
+            lastBody: t.lastBody,
+            lastSender: '',
+            lastMessageId: 0,
+            lastSendTime: t.lastAt,
+            unread: t.unread,
+          ),
+      ],
+    );
   }
 }

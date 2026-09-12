@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:kim_mobile/core/media.dart';
+import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 
@@ -440,6 +441,21 @@ class FakeKim implements KimAuthPort, KimClientPort {
     botPendings += 1;
     return pendingItems.take(limit).toList();
   }
+
+  @override
+  Future<void> attachStore(String dbPath) async {}
+
+  @override
+  bool get rustStoreAttached => false;
+
+  @override
+  Future<void> persistTalks(
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+  }) async {}
+
+  @override
+  Future<void> persistInboxThreads(List<KimThread> threads) async {}
 }
 
 class FakeKimMedia implements KimMediaPort {

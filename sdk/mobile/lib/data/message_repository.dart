@@ -3,14 +3,16 @@ library;
 
 import '../core/format.dart';
 import '../core/image_extra.dart';
+import '../kim_bridge.dart';
 import '../models/models.dart';
 import 'conversation_store.dart';
 import 'message_identity.dart';
 
 class MessageRepository {
-  MessageRepository(this._store);
+  MessageRepository(this._store, {this._client});
 
   final ConversationStore _store;
+  final KimClientPort? _client;
 
   ConversationStore get store => _store;
 
@@ -72,7 +74,7 @@ class MessageRepository {
     Iterable<KimChatMsg> msgs, {
     String? viewingDest,
   }) {
-    return _store.applyMessages(
+    return _apply(
       account,
       msgs,
       policy: UnreadPolicy.keep,
@@ -85,7 +87,7 @@ class MessageRepository {
     Iterable<KimChatMsg> msgs, {
     String? viewingDest,
   }) {
-    return _store.applyMessages(
+    return _apply(
       account,
       msgs,
       policy: UnreadPolicy.ifInserted,
@@ -98,10 +100,46 @@ class MessageRepository {
     Iterable<KimChatMsg> msgs, {
     String? viewingDest,
   }) {
-    return _store.applyMessages(
+    return _apply(
       account,
       msgs,
       policy: UnreadPolicy.keep,
+      viewingDest: viewingDest,
+    );
+  }
+
+  Future<List<ApplyResult>> _apply(
+    String account,
+    Iterable<KimChatMsg> msgs, {
+    required UnreadPolicy policy,
+    String? viewingDest,
+  }) async {
+    final client = _client;
+    if (client != null && client.rustStoreAttached) {
+      await client.persistTalks(msgs, policy: policy);
+      return [
+        for (final m in msgs)
+          ApplyResult(
+            message: m,
+            inserted: true,
+            unreadDelta:
+                policy == UnreadPolicy.ifInserted && m.sender != account
+                ? 1
+                : 0,
+            thread: KimThread(
+              id: m.dest,
+              kind: ThreadKind.user,
+              title: m.dest,
+              lastBody: m.body,
+              lastAt: m.at,
+            ),
+          ),
+      ];
+    }
+    return _store.applyMessages(
+      account,
+      msgs,
+      policy: policy,
       viewingDest: viewingDest,
     );
   }

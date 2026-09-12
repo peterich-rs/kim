@@ -41,6 +41,7 @@ impl KimSdk {
             })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn update_account(&self, account: String, token: String) -> Result<(), SdkError> {
         let mut session = lock(&self.inner.session);
         let Some(s) = session.as_mut() else {

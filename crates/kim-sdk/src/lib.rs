@@ -47,6 +47,7 @@ struct Inner {
     cancel: Mutex<CancellationToken>,
     session: Mutex<Option<StartSession>>,
     store: Mutex<Option<Arc<Store>>>,
+    supervisor: Mutex<Option<Arc<kim_client::SessionSupervisor>>>,
     session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
     timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
     session_snapshot: watch::Sender<SessionSnapshot>,
@@ -68,6 +69,7 @@ impl KimSdk {
                 cancel: Mutex::new(CancellationToken::new()),
                 session: Mutex::new(None),
                 store: Mutex::new(None),
+                supervisor: Mutex::new(None),
                 session_subs: Mutex::new(Vec::new()),
                 timelines: Mutex::new(HashMap::new()),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
@@ -117,12 +119,19 @@ impl KimSdk {
                 message: "account is required".into(),
             });
         }
-        self.replace_session(s);
+        self.stop_supervisor();
+        self.replace_session(s.clone());
+        let cfg = kim_client::ClientConfig::new(s.url, s.token)
+            .with_user_agent(s.user_agent)
+            .with_device(kim_client::device_for_target_os(std::env::consts::OS).to_string());
+        let sup = kim_client::SessionSupervisor::new(cfg);
+        *lock(&self.inner.supervisor) = Some(Arc::new(sup));
         Ok(())
     }
 
     pub async fn stop_session(&self) -> Result<(), SdkError> {
         let _ = self.bump_epoch();
+        self.stop_supervisor();
         *lock(&self.inner.session) = None;
         Ok(())
     }
@@ -133,8 +142,30 @@ impl KimSdk {
                 message: "account is required".into(),
             });
         }
-        let _ = self.bump_epoch();
-        self.update_account(account, token)
+        let snap = self.session_snapshot()?;
+        self.start_session(StartSession {
+            url: snap.url,
+            token,
+            user_agent: snap.user_agent,
+            account,
+        })
+        .await
+    }
+
+    pub fn supervisor(&self) -> Result<Arc<kim_client::SessionSupervisor>, SdkError> {
+        lock(&self.inner.supervisor)
+            .clone()
+            .ok_or(SdkError::NotConnected)
+    }
+
+    pub fn store_attached(&self) -> bool {
+        lock(&self.inner.store).is_some()
+    }
+
+    fn stop_supervisor(&self) {
+        if let Some(sup) = lock(&self.inner.supervisor).take() {
+            sup.stop();
+        }
     }
 
     pub async fn enqueue_message(
@@ -221,10 +252,12 @@ impl KimSdk {
     }
 
     pub fn notify_radio_up(&self) -> Result<(), SdkError> {
+        self.supervisor()?.notify_radio_up();
         Ok(())
     }
 
     pub fn notify_foreground(&self) -> Result<(), SdkError> {
+        self.supervisor()?.notify_foreground();
         Ok(())
     }
 

@@ -28,7 +28,10 @@ final conversationStoreProvider = Provider<ConversationStore>((ref) {
 });
 
 final messageRepositoryProvider = Provider<MessageRepository>((ref) {
-  return MessageRepository(ref.watch(conversationStoreProvider));
+  return MessageRepository(
+    ref.watch(conversationStoreProvider),
+    client: ref.watch(clientPortProvider),
+  );
 });
 
 final mediaPortProvider = Provider<KimMediaPort>((ref) {

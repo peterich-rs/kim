@@ -71,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1464948896;
+  int get rustContentHash => 1641521222;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -83,152 +83,6 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<void> crateApiClientKimApiAck({
-    required KimApi that,
-    required PlatformInt64 messageId,
-  });
-
-  Future<String> crateApiClientKimApiBotCreate({
-    required KimApi that,
-    required String clientProfileId,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  });
-
-  Future<String> crateApiClientKimApiBotDelete({
-    required KimApi that,
-    required String dest,
-  });
-
-  Future<List<KimBotPendingItem>> crateApiClientKimApiBotPending({
-    required KimApi that,
-    required String dest,
-    required int limit,
-  });
-
-  Future<KimTalkResult> crateApiClientKimApiBotReply({
-    required KimApi that,
-    required String dest,
-    required String body,
-    required PlatformInt64 inReplyTo,
-    required String clientId,
-  });
-
-  Future<String> crateApiClientKimApiBotUpdate({
-    required KimApi that,
-    required String dest,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  });
-
-  Future<String> crateApiClientKimApiFriendAccept({
-    required KimApi that,
-    required String dest,
-  });
-
-  Future<String> crateApiClientKimApiFriendIncoming({required KimApi that});
-
-  Future<String> crateApiClientKimApiFriendList({required KimApi that});
-
-  Future<String> crateApiClientKimApiFriendReject({
-    required KimApi that,
-    required String dest,
-  });
-
-  Future<String> crateApiClientKimApiFriendRequest({
-    required KimApi that,
-    required String dest,
-  });
-
-  Future<List<KimHistoryItem>> crateApiClientKimApiHistory({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required PlatformInt64 beforeId,
-    required int limit,
-  });
-
-  Future<List<KimInboxItem>> crateApiClientKimApiInbox({
-    required KimApi that,
-    required int limit,
-  });
-
-  String crateApiClientKimApiLinkState({required KimApi that});
-
-  Future<void> crateApiClientKimApiMarkRead({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required PlatformInt64 messageId,
-  });
-
-  Future<void> crateApiClientKimApiNotifyForeground({required KimApi that});
-
-  Future<void> crateApiClientKimApiNotifyRadioUp({required KimApi that});
-
-  Future<String> crateApiClientKimApiProfile({
-    required KimApi that,
-    required String dest,
-  });
-
-  Future<String> crateApiClientKimApiRoomEnter({
-    required KimApi that,
-    required String dest,
-    required int kind,
-  });
-
-  Future<String> crateApiClientKimApiRoomLeave({
-    required KimApi that,
-    required String dest,
-    required int kind,
-  });
-
-  Future<String> crateApiClientKimApiSearchUsers({
-    required KimApi that,
-    required String query,
-  });
-
-  Future<KimTalkResult> crateApiClientKimApiSendMessage({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required KimOutgoingContent content,
-    required String clientId,
-  });
-
-  Future<void> crateApiClientKimApiSendTyping({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required bool active,
-  });
-
-  Stream<KimSessionEvent> crateApiClientKimApiSessionEvents({
-    required KimApi that,
-  });
-
-  KimApi crateApiClientKimApiStart({
-    required String url,
-    required String token,
-    required String userAgent,
-  });
-
-  Future<void> crateApiClientKimApiStop({required KimApi that});
-
-  Future<void> crateApiClientKimApiSyncConfirm({
-    required KimApi that,
-    required PlatformInt64 cursor,
-  });
-
-  Future<String> crateApiClientKimApiUpdateProfile({
-    required KimApi that,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  });
-
   Future<void> crateApiAuthKimAuthChangePassword({
     required KimAuth that,
     required String token,
@@ -258,23 +112,201 @@ abstract class RustLibApi extends BaseApi {
     required String password,
   });
 
+  Future<void> crateApiClientKimSdkHandleAck({
+    required KimSdkHandle that,
+    required PlatformInt64 messageId,
+  });
+
+  Future<void> crateApiClientKimSdkHandleAttachStore({
+    required KimSdkHandle that,
+    required String dbPath,
+  });
+
+  Future<String> crateApiClientKimSdkHandleBotCreate({
+    required KimSdkHandle that,
+    required String clientProfileId,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
+
+  Future<String> crateApiClientKimSdkHandleBotDelete({
+    required KimSdkHandle that,
+    required String dest,
+  });
+
+  Future<List<KimBotPendingItem>> crateApiClientKimSdkHandleBotPending({
+    required KimSdkHandle that,
+    required String dest,
+    required int limit,
+  });
+
+  Future<KimTalkResult> crateApiClientKimSdkHandleBotReply({
+    required KimSdkHandle that,
+    required String dest,
+    required String body,
+    required PlatformInt64 inReplyTo,
+    required String clientId,
+  });
+
+  Future<String> crateApiClientKimSdkHandleBotUpdate({
+    required KimSdkHandle that,
+    required String dest,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
+
+  KimSdkHandle crateApiClientKimSdkHandleCreate();
+
+  Future<String> crateApiClientKimSdkHandleFriendAccept({
+    required KimSdkHandle that,
+    required String dest,
+  });
+
+  Future<String> crateApiClientKimSdkHandleFriendIncoming({
+    required KimSdkHandle that,
+  });
+
+  Future<String> crateApiClientKimSdkHandleFriendList({
+    required KimSdkHandle that,
+  });
+
+  Future<String> crateApiClientKimSdkHandleFriendReject({
+    required KimSdkHandle that,
+    required String dest,
+  });
+
+  Future<String> crateApiClientKimSdkHandleFriendRequest({
+    required KimSdkHandle that,
+    required String dest,
+  });
+
+  Future<List<KimHistoryItem>> crateApiClientKimSdkHandleHistory({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required PlatformInt64 beforeId,
+    required int limit,
+  });
+
+  Future<List<KimInboxItem>> crateApiClientKimSdkHandleInbox({
+    required KimSdkHandle that,
+    required int limit,
+  });
+
+  String crateApiClientKimSdkHandleLinkState({required KimSdkHandle that});
+
+  Future<void> crateApiClientKimSdkHandleMarkRead({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  });
+
+  Future<void> crateApiClientKimSdkHandleNotifyForeground({
+    required KimSdkHandle that,
+  });
+
+  Future<void> crateApiClientKimSdkHandleNotifyRadioUp({
+    required KimSdkHandle that,
+  });
+
+  Future<void> crateApiClientKimSdkHandlePersistInbox({
+    required KimSdkHandle that,
+    required List<KimInboxItem> items,
+  });
+
+  Future<void> crateApiClientKimSdkHandlePersistTalks({
+    required KimSdkHandle that,
+    required List<KimIncomingTalk> talks,
+    required String policy,
+  });
+
+  Future<String> crateApiClientKimSdkHandleProfile({
+    required KimSdkHandle that,
+    required String dest,
+  });
+
+  Future<String> crateApiClientKimSdkHandleRoomEnter({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+  });
+
+  Future<String> crateApiClientKimSdkHandleRoomLeave({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+  });
+
+  Future<String> crateApiClientKimSdkHandleSearchUsers({
+    required KimSdkHandle that,
+    required String query,
+  });
+
+  Future<KimTalkResult> crateApiClientKimSdkHandleSendMessage({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required KimOutgoingContent content,
+    required String clientId,
+  });
+
+  Future<void> crateApiClientKimSdkHandleSendTyping({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required bool active,
+  });
+
+  Stream<KimSessionEvent> crateApiClientKimSdkHandleSessionEvents({
+    required KimSdkHandle that,
+  });
+
+  Future<void> crateApiClientKimSdkHandleStartSession({
+    required KimSdkHandle that,
+    required String url,
+    required String token,
+    required String userAgent,
+    required String account,
+  });
+
+  Future<void> crateApiClientKimSdkHandleStop({required KimSdkHandle that});
+
+  bool crateApiClientKimSdkHandleStoreAttached({required KimSdkHandle that});
+
+  Future<void> crateApiClientKimSdkHandleSyncConfirm({
+    required KimSdkHandle that,
+    required PlatformInt64 cursor,
+  });
+
+  Future<String> crateApiClientKimSdkHandleUpdateProfile({
+    required KimSdkHandle that,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  });
+
   String crateApiSimpleGreet({required String name});
 
   String crateApiAuthHttpOriginFromWs({required String wsUrl});
 
   Future<void> crateApiSimpleInitApp();
 
-  RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_KimApi;
-
-  RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_KimApi;
-
-  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KimApiPtr;
-
   RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_KimAuth;
 
   RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_KimAuth;
 
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KimAuthPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KimSdkHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KimSdkHandle;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KimSdkHandlePtr;
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -284,1068 +316,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
-
-  @override
-  Future<void> crateApiClientKimApiAck({
-    required KimApi that,
-    required PlatformInt64 messageId,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_i_64(messageId, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 1,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiAckConstMeta,
-        argValues: [that, messageId],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiAckConstMeta => const TaskConstMeta(
-    debugName: "KimApi_ack",
-    argNames: ["that", "messageId"],
-  );
-
-  @override
-  Future<String> crateApiClientKimApiBotCreate({
-    required KimApi that,
-    required String clientProfileId,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(clientProfileId, serializer);
-          sse_encode_String(nickname, serializer);
-          sse_encode_String(avatar, serializer);
-          sse_encode_String(bio, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 2,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiBotCreateConstMeta,
-        argValues: [that, clientProfileId, nickname, avatar, bio],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiBotCreateConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_bot_create",
-        argNames: ["that", "clientProfileId", "nickname", "avatar", "bio"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiBotDelete({
-    required KimApi that,
-    required String dest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 3,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiBotDeleteConstMeta,
-        argValues: [that, dest],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiBotDeleteConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_bot_delete",
-        argNames: ["that", "dest"],
-      );
-
-  @override
-  Future<List<KimBotPendingItem>> crateApiClientKimApiBotPending({
-    required KimApi that,
-    required String dest,
-    required int limit,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(limit, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 4,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_kim_bot_pending_item,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiBotPendingConstMeta,
-        argValues: [that, dest, limit],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiBotPendingConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_bot_pending",
-        argNames: ["that", "dest", "limit"],
-      );
-
-  @override
-  Future<KimTalkResult> crateApiClientKimApiBotReply({
-    required KimApi that,
-    required String dest,
-    required String body,
-    required PlatformInt64 inReplyTo,
-    required String clientId,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_String(body, serializer);
-          sse_encode_i_64(inReplyTo, serializer);
-          sse_encode_String(clientId, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 5,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_kim_talk_result,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiBotReplyConstMeta,
-        argValues: [that, dest, body, inReplyTo, clientId],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiBotReplyConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_bot_reply",
-        argNames: ["that", "dest", "body", "inReplyTo", "clientId"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiBotUpdate({
-    required KimApi that,
-    required String dest,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_String(nickname, serializer);
-          sse_encode_String(avatar, serializer);
-          sse_encode_String(bio, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 6,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiBotUpdateConstMeta,
-        argValues: [that, dest, nickname, avatar, bio],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiBotUpdateConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_bot_update",
-        argNames: ["that", "dest", "nickname", "avatar", "bio"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiFriendAccept({
-    required KimApi that,
-    required String dest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 7,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiFriendAcceptConstMeta,
-        argValues: [that, dest],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiFriendAcceptConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_friend_accept",
-        argNames: ["that", "dest"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiFriendIncoming({required KimApi that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 8,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiFriendIncomingConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiFriendIncomingConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_friend_incoming",
-        argNames: ["that"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiFriendList({required KimApi that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 9,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiFriendListConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiFriendListConstMeta =>
-      const TaskConstMeta(debugName: "KimApi_friend_list", argNames: ["that"]);
-
-  @override
-  Future<String> crateApiClientKimApiFriendReject({
-    required KimApi that,
-    required String dest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 10,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiFriendRejectConstMeta,
-        argValues: [that, dest],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiFriendRejectConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_friend_reject",
-        argNames: ["that", "dest"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiFriendRequest({
-    required KimApi that,
-    required String dest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 11,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiFriendRequestConstMeta,
-        argValues: [that, dest],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiFriendRequestConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_friend_request",
-        argNames: ["that", "dest"],
-      );
-
-  @override
-  Future<List<KimHistoryItem>> crateApiClientKimApiHistory({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required PlatformInt64 beforeId,
-    required int limit,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          sse_encode_i_64(beforeId, serializer);
-          sse_encode_i_32(limit, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 12,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_kim_history_item,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiHistoryConstMeta,
-        argValues: [that, dest, kind, beforeId, limit],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiHistoryConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_history",
-        argNames: ["that", "dest", "kind", "beforeId", "limit"],
-      );
-
-  @override
-  Future<List<KimInboxItem>> crateApiClientKimApiInbox({
-    required KimApi that,
-    required int limit,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_i_32(limit, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 13,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_kim_inbox_item,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiInboxConstMeta,
-        argValues: [that, limit],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiInboxConstMeta => const TaskConstMeta(
-    debugName: "KimApi_inbox",
-    argNames: ["that", "limit"],
-  );
-
-  @override
-  String crateApiClientKimApiLinkState({required KimApi that}) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiClientKimApiLinkStateConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiLinkStateConstMeta =>
-      const TaskConstMeta(debugName: "KimApi_link_state", argNames: ["that"]);
-
-  @override
-  Future<void> crateApiClientKimApiMarkRead({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required PlatformInt64 messageId,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          sse_encode_i_64(messageId, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 15,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiMarkReadConstMeta,
-        argValues: [that, dest, kind, messageId],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiMarkReadConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_mark_read",
-        argNames: ["that", "dest", "kind", "messageId"],
-      );
-
-  @override
-  Future<void> crateApiClientKimApiNotifyForeground({required KimApi that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 16,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiNotifyForegroundConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiNotifyForegroundConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_notify_foreground",
-        argNames: ["that"],
-      );
-
-  @override
-  Future<void> crateApiClientKimApiNotifyRadioUp({required KimApi that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 17,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiNotifyRadioUpConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiNotifyRadioUpConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_notify_radio_up",
-        argNames: ["that"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiProfile({
-    required KimApi that,
-    required String dest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 18,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiProfileConstMeta,
-        argValues: [that, dest],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiProfileConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_profile",
-        argNames: ["that", "dest"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiRoomEnter({
-    required KimApi that,
-    required String dest,
-    required int kind,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 19,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiRoomEnterConstMeta,
-        argValues: [that, dest, kind],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiRoomEnterConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_room_enter",
-        argNames: ["that", "dest", "kind"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiRoomLeave({
-    required KimApi that,
-    required String dest,
-    required int kind,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 20,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiRoomLeaveConstMeta,
-        argValues: [that, dest, kind],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiRoomLeaveConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_room_leave",
-        argNames: ["that", "dest", "kind"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiSearchUsers({
-    required KimApi that,
-    required String query,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(query, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 21,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiSearchUsersConstMeta,
-        argValues: [that, query],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiSearchUsersConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_search_users",
-        argNames: ["that", "query"],
-      );
-
-  @override
-  Future<KimTalkResult> crateApiClientKimApiSendMessage({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required KimOutgoingContent content,
-    required String clientId,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          sse_encode_box_autoadd_kim_outgoing_content(content, serializer);
-          sse_encode_String(clientId, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 22,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_kim_talk_result,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiSendMessageConstMeta,
-        argValues: [that, dest, kind, content, clientId],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiSendMessageConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_send_message",
-        argNames: ["that", "dest", "kind", "content", "clientId"],
-      );
-
-  @override
-  Future<void> crateApiClientKimApiSendTyping({
-    required KimApi that,
-    required String dest,
-    required int kind,
-    required bool active,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(dest, serializer);
-          sse_encode_i_32(kind, serializer);
-          sse_encode_bool(active, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 23,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiSendTypingConstMeta,
-        argValues: [that, dest, kind, active],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiSendTypingConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_send_typing",
-        argNames: ["that", "dest", "kind", "active"],
-      );
-
-  @override
-  Stream<KimSessionEvent> crateApiClientKimApiSessionEvents({
-    required KimApi that,
-  }) {
-    final sink = RustStreamSink<KimSessionEvent>();
-    handler.executeSync(
-      SyncTask(
-        callFfi: () {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_StreamSink_kim_session_event_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24)!;
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiSessionEventsConstMeta,
-        argValues: [that, sink],
-        apiImpl: this,
-      ),
-    );
-    return sink.stream;
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiSessionEventsConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_session_events",
-        argNames: ["that", "sink"],
-      );
-
-  @override
-  KimApi crateApiClientKimApiStart({
-    required String url,
-    required String token,
-    required String userAgent,
-  }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(url, serializer);
-          sse_encode_String(token, serializer);
-          sse_encode_String(userAgent, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 25)!;
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiClientKimApiStartConstMeta,
-        argValues: [url, token, userAgent],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiStartConstMeta => const TaskConstMeta(
-    debugName: "KimApi_start",
-    argNames: ["url", "token", "userAgent"],
-  );
-
-  @override
-  Future<void> crateApiClientKimApiStop({required KimApi that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 26,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiClientKimApiStopConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiStopConstMeta =>
-      const TaskConstMeta(debugName: "KimApi_stop", argNames: ["that"]);
-
-  @override
-  Future<void> crateApiClientKimApiSyncConfirm({
-    required KimApi that,
-    required PlatformInt64 cursor,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_i_64(cursor, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 27,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiSyncConfirmConstMeta,
-        argValues: [that, cursor],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiSyncConfirmConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_sync_confirm",
-        argNames: ["that", "cursor"],
-      );
-
-  @override
-  Future<String> crateApiClientKimApiUpdateProfile({
-    required KimApi that,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-            that,
-            serializer,
-          );
-          sse_encode_String(nickname, serializer);
-          sse_encode_String(avatar, serializer);
-          sse_encode_String(bio, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 28,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiClientKimApiUpdateProfileConstMeta,
-        argValues: [that, nickname, avatar, bio],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimApiUpdateProfileConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimApi_update_profile",
-        argNames: ["that", "nickname", "avatar", "bio"],
-      );
 
   @override
   Future<void> crateApiAuthKimAuthChangePassword({
@@ -1368,7 +338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 1,
             port: port_,
           );
         },
@@ -1408,7 +378,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 2,
             port: port_,
           );
         },
@@ -1445,7 +415,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 3,
             port: port_,
           );
         },
@@ -1476,7 +446,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(baseUrl, serializer);
           sse_encode_String(userAgent, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -1514,7 +484,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 5,
             port: port_,
           );
         },
@@ -1536,13 +506,1271 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiClientKimSdkHandleAck({
+    required KimSdkHandle that,
+    required PlatformInt64 messageId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_i_64(messageId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleAckConstMeta,
+        argValues: [that, messageId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleAckConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_ack",
+        argNames: ["that", "messageId"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleAttachStore({
+    required KimSdkHandle that,
+    required String dbPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dbPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleAttachStoreConstMeta,
+        argValues: [that, dbPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleAttachStoreConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_attach_store",
+        argNames: ["that", "dbPath"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleBotCreate({
+    required KimSdkHandle that,
+    required String clientProfileId,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(clientProfileId, serializer);
+          sse_encode_String(nickname, serializer);
+          sse_encode_String(avatar, serializer);
+          sse_encode_String(bio, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleBotCreateConstMeta,
+        argValues: [that, clientProfileId, nickname, avatar, bio],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleBotCreateConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_bot_create",
+        argNames: ["that", "clientProfileId", "nickname", "avatar", "bio"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleBotDelete({
+    required KimSdkHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleBotDeleteConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleBotDeleteConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_bot_delete",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<List<KimBotPendingItem>> crateApiClientKimSdkHandleBotPending({
+    required KimSdkHandle that,
+    required String dest,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_kim_bot_pending_item,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleBotPendingConstMeta,
+        argValues: [that, dest, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleBotPendingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_bot_pending",
+        argNames: ["that", "dest", "limit"],
+      );
+
+  @override
+  Future<KimTalkResult> crateApiClientKimSdkHandleBotReply({
+    required KimSdkHandle that,
+    required String dest,
+    required String body,
+    required PlatformInt64 inReplyTo,
+    required String clientId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_String(body, serializer);
+          sse_encode_i_64(inReplyTo, serializer);
+          sse_encode_String(clientId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_kim_talk_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleBotReplyConstMeta,
+        argValues: [that, dest, body, inReplyTo, clientId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleBotReplyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_bot_reply",
+        argNames: ["that", "dest", "body", "inReplyTo", "clientId"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleBotUpdate({
+    required KimSdkHandle that,
+    required String dest,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_String(nickname, serializer);
+          sse_encode_String(avatar, serializer);
+          sse_encode_String(bio, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleBotUpdateConstMeta,
+        argValues: [that, dest, nickname, avatar, bio],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleBotUpdateConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_bot_update",
+        argNames: ["that", "dest", "nickname", "avatar", "bio"],
+      );
+
+  @override
+  KimSdkHandle crateApiClientKimSdkHandleCreate() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleCreateConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleCreateConstMeta =>
+      const TaskConstMeta(debugName: "KimSdkHandle_create", argNames: []);
+
+  @override
+  Future<String> crateApiClientKimSdkHandleFriendAccept({
+    required KimSdkHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleFriendAcceptConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleFriendAcceptConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_friend_accept",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleFriendIncoming({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleFriendIncomingConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleFriendIncomingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_friend_incoming",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleFriendList({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleFriendListConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleFriendListConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_friend_list",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleFriendReject({
+    required KimSdkHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleFriendRejectConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleFriendRejectConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_friend_reject",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleFriendRequest({
+    required KimSdkHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleFriendRequestConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleFriendRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_friend_request",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<List<KimHistoryItem>> crateApiClientKimSdkHandleHistory({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required PlatformInt64 beforeId,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          sse_encode_i_64(beforeId, serializer);
+          sse_encode_i_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_kim_history_item,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleHistoryConstMeta,
+        argValues: [that, dest, kind, beforeId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleHistoryConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_history",
+        argNames: ["that", "dest", "kind", "beforeId", "limit"],
+      );
+
+  @override
+  Future<List<KimInboxItem>> crateApiClientKimSdkHandleInbox({
+    required KimSdkHandle that,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_i_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_kim_inbox_item,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleInboxConstMeta,
+        argValues: [that, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleInboxConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_inbox",
+        argNames: ["that", "limit"],
+      );
+
+  @override
+  String crateApiClientKimSdkHandleLinkState({required KimSdkHandle that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleLinkStateConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleLinkStateConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_link_state",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleMarkRead({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          sse_encode_i_64(messageId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleMarkReadConstMeta,
+        argValues: [that, dest, kind, messageId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleMarkReadConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_mark_read",
+        argNames: ["that", "dest", "kind", "messageId"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleNotifyForeground({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleNotifyForegroundConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleNotifyForegroundConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_notify_foreground",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleNotifyRadioUp({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleNotifyRadioUpConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleNotifyRadioUpConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_notify_radio_up",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandlePersistInbox({
+    required KimSdkHandle that,
+    required List<KimInboxItem> items,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_list_kim_inbox_item(items, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandlePersistInboxConstMeta,
+        argValues: [that, items],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandlePersistInboxConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_persist_inbox",
+        argNames: ["that", "items"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandlePersistTalks({
+    required KimSdkHandle that,
+    required List<KimIncomingTalk> talks,
+    required String policy,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_list_kim_incoming_talk(talks, serializer);
+          sse_encode_String(policy, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandlePersistTalksConstMeta,
+        argValues: [that, talks, policy],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandlePersistTalksConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_persist_talks",
+        argNames: ["that", "talks", "policy"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleProfile({
+    required KimSdkHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleProfileConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_profile",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleRoomEnter({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 28,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleRoomEnterConstMeta,
+        argValues: [that, dest, kind],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleRoomEnterConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_room_enter",
+        argNames: ["that", "dest", "kind"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleRoomLeave({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 29,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleRoomLeaveConstMeta,
+        argValues: [that, dest, kind],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleRoomLeaveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_room_leave",
+        argNames: ["that", "dest", "kind"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleSearchUsers({
+    required KimSdkHandle that,
+    required String query,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(query, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSearchUsersConstMeta,
+        argValues: [that, query],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSearchUsersConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_search_users",
+        argNames: ["that", "query"],
+      );
+
+  @override
+  Future<KimTalkResult> crateApiClientKimSdkHandleSendMessage({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required KimOutgoingContent content,
+    required String clientId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          sse_encode_box_autoadd_kim_outgoing_content(content, serializer);
+          sse_encode_String(clientId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_kim_talk_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSendMessageConstMeta,
+        argValues: [that, dest, kind, content, clientId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSendMessageConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_send_message",
+        argNames: ["that", "dest", "kind", "content", "clientId"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleSendTyping({
+    required KimSdkHandle that,
+    required String dest,
+    required int kind,
+    required bool active,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_32(kind, serializer);
+          sse_encode_bool(active, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSendTypingConstMeta,
+        argValues: [that, dest, kind, active],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSendTypingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_send_typing",
+        argNames: ["that", "dest", "kind", "active"],
+      );
+
+  @override
+  Stream<KimSessionEvent> crateApiClientKimSdkHandleSessionEvents({
+    required KimSdkHandle that,
+  }) {
+    final sink = RustStreamSink<KimSessionEvent>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_StreamSink_kim_session_event_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSessionEventsConstMeta,
+        argValues: [that, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSessionEventsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_session_events",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleStartSession({
+    required KimSdkHandle that,
+    required String url,
+    required String token,
+    required String userAgent,
+    required String account,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(url, serializer);
+          sse_encode_String(token, serializer);
+          sse_encode_String(userAgent, serializer);
+          sse_encode_String(account, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 34,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleStartSessionConstMeta,
+        argValues: [that, url, token, userAgent, account],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleStartSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_start_session",
+        argNames: ["that", "url", "token", "userAgent", "account"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleStop({required KimSdkHandle that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleStopConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleStopConstMeta =>
+      const TaskConstMeta(debugName: "KimSdkHandle_stop", argNames: ["that"]);
+
+  @override
+  bool crateApiClientKimSdkHandleStoreAttached({required KimSdkHandle that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 36)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleStoreAttachedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleStoreAttachedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_store_attached",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleSyncConfirm({
+    required KimSdkHandle that,
+    required PlatformInt64 cursor,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_i_64(cursor, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 37,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSyncConfirmConstMeta,
+        argValues: [that, cursor],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSyncConfirmConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_sync_confirm",
+        argNames: ["that", "cursor"],
+      );
+
+  @override
+  Future<String> crateApiClientKimSdkHandleUpdateProfile({
+    required KimSdkHandle that,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(nickname, serializer);
+          sse_encode_String(avatar, serializer);
+          sse_encode_String(bio, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleUpdateProfileConstMeta,
+        argValues: [that, nickname, avatar, bio],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleUpdateProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_update_profile",
+        argNames: ["that", "nickname", "avatar", "bio"],
+      );
+
+  @override
   String crateApiSimpleGreet({required String name}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 34)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1565,7 +1793,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 35)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1593,7 +1821,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1612,14 +1840,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_KimApi => wire
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi;
-
-  RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_KimApi => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi;
-
-  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KimAuth => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth;
 
@@ -1627,19 +1847,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   get rust_arc_decrement_strong_count_KimAuth => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth;
 
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KimSdkHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KimSdkHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle;
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
-  }
-
-  @protected
-  KimApi
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return KimApiImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1652,12 +1871,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  KimApi
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return KimApiImpl.frbInternalDcoDecode(raw as List<dynamic>);
+    return KimSdkHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1670,12 +1889,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  KimApi
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return KimApiImpl.frbInternalDcoDecode(raw as List<dynamic>);
+    return KimSdkHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1685,6 +1904,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KimAuthImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KimSdkHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KimSdkHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1788,6 +2016,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  KimIncomingTalk dco_decode_kim_incoming_talk(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return KimIncomingTalk(
+      dest: dco_decode_String(arr[0]),
+      sender: dco_decode_String(arr[1]),
+      body: dco_decode_String(arr[2]),
+      extra: dco_decode_String(arr[3]),
+      messageId: dco_decode_i_64(arr[4]),
+      sendTime: dco_decode_i_64(arr[5]),
+      msgType: dco_decode_i_32(arr[6]),
+    );
+  }
+
+  @protected
   KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1867,6 +2112,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<KimIncomingTalk> dco_decode_list_kim_incoming_talk(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_kim_incoming_talk).toList();
+  }
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
@@ -1910,18 +2161,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  KimApi
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return KimApiImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
   KimAuth
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     SseDeserializer deserializer,
@@ -1934,12 +2173,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  KimApi
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return KimApiImpl.frbInternalSseDecode(
+    return KimSdkHandleImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -1958,12 +2197,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  KimApi
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
+  KimSdkHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return KimApiImpl.frbInternalSseDecode(
+    return KimSdkHandleImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -1976,6 +2215,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return KimAuthImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KimSdkHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KimSdkHandleImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2089,6 +2340,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       lastMessageId: var_lastMessageId,
       lastSendTime: var_lastSendTime,
       unread: var_unread,
+    );
+  }
+
+  @protected
+  KimIncomingTalk sse_decode_kim_incoming_talk(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_sender = sse_decode_String(deserializer);
+    var var_body = sse_decode_String(deserializer);
+    var var_extra = sse_decode_String(deserializer);
+    var var_messageId = sse_decode_i_64(deserializer);
+    var var_sendTime = sse_decode_i_64(deserializer);
+    var var_msgType = sse_decode_i_32(deserializer);
+    return KimIncomingTalk(
+      dest: var_dest,
+      sender: var_sender,
+      body: var_body,
+      extra: var_extra,
+      messageId: var_messageId,
+      sendTime: var_sendTime,
+      msgType: var_msgType,
     );
   }
 
@@ -2213,6 +2485,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<KimIncomingTalk> sse_decode_list_kim_incoming_talk(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <KimIncomingTalk>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_kim_incoming_talk(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -2259,19 +2545,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as KimApiImpl).frbInternalSseEncode(move: true),
-      serializer,
-    );
-  }
-
-  @protected
-  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     KimAuth self,
     SseSerializer serializer,
@@ -2285,13 +2558,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
-      (self as KimApiImpl).frbInternalSseEncode(move: false),
+      (self as KimSdkHandleImpl).frbInternalSseEncode(move: true),
       serializer,
     );
   }
@@ -2311,13 +2584,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimApi(
-    KimApi self,
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
-      (self as KimApiImpl).frbInternalSseEncode(move: null),
+      (self as KimSdkHandleImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -2331,6 +2604,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KimAuthImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+    KimSdkHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KimSdkHandleImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -2434,6 +2720,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_kim_incoming_talk(
+    KimIncomingTalk self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.sender, serializer);
+    sse_encode_String(self.body, serializer);
+    sse_encode_String(self.extra, serializer);
+    sse_encode_i_64(self.messageId, serializer);
+    sse_encode_i_64(self.sendTime, serializer);
+    sse_encode_i_32(self.msgType, serializer);
+  }
+
+  @protected
   void sse_encode_kim_outgoing_content(
     KimOutgoingContent self,
     SseSerializer serializer,
@@ -2528,6 +2829,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_kim_incoming_talk(
+    List<KimIncomingTalk> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_kim_incoming_talk(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -2565,195 +2878,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
   }
-}
-
-@sealed
-class KimApiImpl extends RustOpaque implements KimApi {
-  // Not to be used by end users
-  KimApiImpl.frbInternalDcoDecode(List<dynamic> wire)
-    : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  KimApiImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_KimApi,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_KimApi,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_KimApiPtr,
-  );
-
-  Future<void> ack({required PlatformInt64 messageId}) => RustLib.instance.api
-      .crateApiClientKimApiAck(that: this, messageId: messageId);
-
-  Future<String> botCreate({
-    required String clientProfileId,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) => RustLib.instance.api.crateApiClientKimApiBotCreate(
-    that: this,
-    clientProfileId: clientProfileId,
-    nickname: nickname,
-    avatar: avatar,
-    bio: bio,
-  );
-
-  Future<String> botDelete({required String dest}) => RustLib.instance.api
-      .crateApiClientKimApiBotDelete(that: this, dest: dest);
-
-  Future<List<KimBotPendingItem>> botPending({
-    required String dest,
-    required int limit,
-  }) => RustLib.instance.api.crateApiClientKimApiBotPending(
-    that: this,
-    dest: dest,
-    limit: limit,
-  );
-
-  Future<KimTalkResult> botReply({
-    required String dest,
-    required String body,
-    required PlatformInt64 inReplyTo,
-    required String clientId,
-  }) => RustLib.instance.api.crateApiClientKimApiBotReply(
-    that: this,
-    dest: dest,
-    body: body,
-    inReplyTo: inReplyTo,
-    clientId: clientId,
-  );
-
-  Future<String> botUpdate({
-    required String dest,
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) => RustLib.instance.api.crateApiClientKimApiBotUpdate(
-    that: this,
-    dest: dest,
-    nickname: nickname,
-    avatar: avatar,
-    bio: bio,
-  );
-
-  Future<String> friendAccept({required String dest}) => RustLib.instance.api
-      .crateApiClientKimApiFriendAccept(that: this, dest: dest);
-
-  Future<String> friendIncoming() =>
-      RustLib.instance.api.crateApiClientKimApiFriendIncoming(that: this);
-
-  Future<String> friendList() =>
-      RustLib.instance.api.crateApiClientKimApiFriendList(that: this);
-
-  Future<String> friendReject({required String dest}) => RustLib.instance.api
-      .crateApiClientKimApiFriendReject(that: this, dest: dest);
-
-  Future<String> friendRequest({required String dest}) => RustLib.instance.api
-      .crateApiClientKimApiFriendRequest(that: this, dest: dest);
-
-  Future<List<KimHistoryItem>> history({
-    required String dest,
-    required int kind,
-    required PlatformInt64 beforeId,
-    required int limit,
-  }) => RustLib.instance.api.crateApiClientKimApiHistory(
-    that: this,
-    dest: dest,
-    kind: kind,
-    beforeId: beforeId,
-    limit: limit,
-  );
-
-  Future<List<KimInboxItem>> inbox({required int limit}) =>
-      RustLib.instance.api.crateApiClientKimApiInbox(that: this, limit: limit);
-
-  String linkState() =>
-      RustLib.instance.api.crateApiClientKimApiLinkState(that: this);
-
-  Future<void> markRead({
-    required String dest,
-    required int kind,
-    required PlatformInt64 messageId,
-  }) => RustLib.instance.api.crateApiClientKimApiMarkRead(
-    that: this,
-    dest: dest,
-    kind: kind,
-    messageId: messageId,
-  );
-
-  Future<void> notifyForeground() =>
-      RustLib.instance.api.crateApiClientKimApiNotifyForeground(that: this);
-
-  Future<void> notifyRadioUp() =>
-      RustLib.instance.api.crateApiClientKimApiNotifyRadioUp(that: this);
-
-  Future<String> profile({required String dest}) =>
-      RustLib.instance.api.crateApiClientKimApiProfile(that: this, dest: dest);
-
-  /// Returns JSON array of `{account,status,last_seen}`.
-  Future<String> roomEnter({required String dest, required int kind}) => RustLib
-      .instance
-      .api
-      .crateApiClientKimApiRoomEnter(that: this, dest: dest, kind: kind);
-
-  Future<String> roomLeave({required String dest, required int kind}) => RustLib
-      .instance
-      .api
-      .crateApiClientKimApiRoomLeave(that: this, dest: dest, kind: kind);
-
-  Future<String> searchUsers({required String query}) => RustLib.instance.api
-      .crateApiClientKimApiSearchUsers(that: this, query: query);
-
-  Future<KimTalkResult> sendMessage({
-    required String dest,
-    required int kind,
-    required KimOutgoingContent content,
-    required String clientId,
-  }) => RustLib.instance.api.crateApiClientKimApiSendMessage(
-    that: this,
-    dest: dest,
-    kind: kind,
-    content: content,
-    clientId: clientId,
-  );
-
-  Future<void> sendTyping({
-    required String dest,
-    required int kind,
-    required bool active,
-  }) => RustLib.instance.api.crateApiClientKimApiSendTyping(
-    that: this,
-    dest: dest,
-    kind: kind,
-    active: active,
-  );
-
-  /// Supervisor event stream. Replaces `listen` / `KimPush`.
-  Stream<KimSessionEvent> sessionEvents() =>
-      RustLib.instance.api.crateApiClientKimApiSessionEvents(that: this);
-
-  Future<void> stop() =>
-      RustLib.instance.api.crateApiClientKimApiStop(that: this);
-
-  Future<void> syncConfirm({required PlatformInt64 cursor}) => RustLib
-      .instance
-      .api
-      .crateApiClientKimApiSyncConfirm(that: this, cursor: cursor);
-
-  Future<String> updateProfile({
-    required String nickname,
-    required String avatar,
-    required String bio,
-  }) => RustLib.instance.api.crateApiClientKimApiUpdateProfile(
-    that: this,
-    nickname: nickname,
-    avatar: avatar,
-    bio: bio,
-  );
 }
 
 @sealed
@@ -2805,5 +2929,227 @@ class KimAuthImpl extends RustOpaque implements KimAuth {
     that: this,
     account: account,
     password: password,
+  );
+}
+
+@sealed
+class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
+  // Not to be used by end users
+  KimSdkHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KimSdkHandleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_KimSdkHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_KimSdkHandle,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_KimSdkHandlePtr,
+  );
+
+  Future<void> ack({required PlatformInt64 messageId}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleAck(that: this, messageId: messageId);
+
+  Future<void> attachStore({required String dbPath}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleAttachStore(that: this, dbPath: dbPath);
+
+  Future<String> botCreate({
+    required String clientProfileId,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleBotCreate(
+    that: this,
+    clientProfileId: clientProfileId,
+    nickname: nickname,
+    avatar: avatar,
+    bio: bio,
+  );
+
+  Future<String> botDelete({required String dest}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleBotDelete(that: this, dest: dest);
+
+  Future<List<KimBotPendingItem>> botPending({
+    required String dest,
+    required int limit,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleBotPending(
+    that: this,
+    dest: dest,
+    limit: limit,
+  );
+
+  Future<KimTalkResult> botReply({
+    required String dest,
+    required String body,
+    required PlatformInt64 inReplyTo,
+    required String clientId,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleBotReply(
+    that: this,
+    dest: dest,
+    body: body,
+    inReplyTo: inReplyTo,
+    clientId: clientId,
+  );
+
+  Future<String> botUpdate({
+    required String dest,
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleBotUpdate(
+    that: this,
+    dest: dest,
+    nickname: nickname,
+    avatar: avatar,
+    bio: bio,
+  );
+
+  Future<String> friendAccept({required String dest}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleFriendAccept(that: this, dest: dest);
+
+  Future<String> friendIncoming() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleFriendIncoming(that: this);
+
+  Future<String> friendList() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleFriendList(that: this);
+
+  Future<String> friendReject({required String dest}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleFriendReject(that: this, dest: dest);
+
+  Future<String> friendRequest({required String dest}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleFriendRequest(that: this, dest: dest);
+
+  Future<List<KimHistoryItem>> history({
+    required String dest,
+    required int kind,
+    required PlatformInt64 beforeId,
+    required int limit,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleHistory(
+    that: this,
+    dest: dest,
+    kind: kind,
+    beforeId: beforeId,
+    limit: limit,
+  );
+
+  Future<List<KimInboxItem>> inbox({required int limit}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleInbox(that: this, limit: limit);
+
+  String linkState() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleLinkState(that: this);
+
+  Future<void> markRead({
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleMarkRead(
+    that: this,
+    dest: dest,
+    kind: kind,
+    messageId: messageId,
+  );
+
+  Future<void> notifyForeground() => RustLib.instance.api
+      .crateApiClientKimSdkHandleNotifyForeground(that: this);
+
+  Future<void> notifyRadioUp() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleNotifyRadioUp(that: this);
+
+  Future<void> persistInbox({required List<KimInboxItem> items}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandlePersistInbox(that: this, items: items);
+
+  Future<void> persistTalks({
+    required List<KimIncomingTalk> talks,
+    required String policy,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandlePersistTalks(
+    that: this,
+    talks: talks,
+    policy: policy,
+  );
+
+  Future<String> profile({required String dest}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleProfile(that: this, dest: dest);
+
+  /// Returns JSON array of `{account,status,last_seen}`.
+  Future<String> roomEnter({required String dest, required int kind}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandleRoomEnter(that: this, dest: dest, kind: kind);
+
+  Future<String> roomLeave({required String dest, required int kind}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandleRoomLeave(that: this, dest: dest, kind: kind);
+
+  Future<String> searchUsers({required String query}) => RustLib.instance.api
+      .crateApiClientKimSdkHandleSearchUsers(that: this, query: query);
+
+  Future<KimTalkResult> sendMessage({
+    required String dest,
+    required int kind,
+    required KimOutgoingContent content,
+    required String clientId,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleSendMessage(
+    that: this,
+    dest: dest,
+    kind: kind,
+    content: content,
+    clientId: clientId,
+  );
+
+  Future<void> sendTyping({
+    required String dest,
+    required int kind,
+    required bool active,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleSendTyping(
+    that: this,
+    dest: dest,
+    kind: kind,
+    active: active,
+  );
+
+  /// Supervisor event stream. Replaces `listen` / `KimPush`.
+  Stream<KimSessionEvent> sessionEvents() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleSessionEvents(that: this);
+
+  Future<void> startSession({
+    required String url,
+    required String token,
+    required String userAgent,
+    required String account,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleStartSession(
+    that: this,
+    url: url,
+    token: token,
+    userAgent: userAgent,
+    account: account,
+  );
+
+  Future<void> stop() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleStop(that: this);
+
+  bool storeAttached() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleStoreAttached(that: this);
+
+  Future<void> syncConfirm({required PlatformInt64 cursor}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandleSyncConfirm(that: this, cursor: cursor);
+
+  Future<String> updateProfile({
+    required String nickname,
+    required String avatar,
+    required String bio,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleUpdateProfile(
+    that: this,
+    nickname: nickname,
+    avatar: avatar,
+    bio: bio,
   );
 }

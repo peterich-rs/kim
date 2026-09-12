@@ -7,12 +7,14 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`, `supervisor`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimApi>>
-abstract class KimApi implements RustOpaqueInterface {
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>>
+abstract class KimSdkHandle implements RustOpaqueInterface {
   Future<void> ack({required PlatformInt64 messageId});
+
+  Future<void> attachStore({required String dbPath});
 
   Future<String> botCreate({
     required String clientProfileId,
@@ -41,6 +43,10 @@ abstract class KimApi implements RustOpaqueInterface {
     required String avatar,
     required String bio,
   });
+
+  /// Always callable. Does not open SQLite.
+  static KimSdkHandle create() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleCreate();
 
   Future<String> friendAccept({required String dest});
 
@@ -73,6 +79,13 @@ abstract class KimApi implements RustOpaqueInterface {
 
   Future<void> notifyRadioUp();
 
+  Future<void> persistInbox({required List<KimInboxItem> items});
+
+  Future<void> persistTalks({
+    required List<KimIncomingTalk> talks,
+    required String policy,
+  });
+
   Future<String> profile({required String dest});
 
   /// Returns JSON array of `{account,status,last_seen}`.
@@ -98,17 +111,16 @@ abstract class KimApi implements RustOpaqueInterface {
   /// Supervisor event stream. Replaces `listen` / `KimPush`.
   Stream<KimSessionEvent> sessionEvents();
 
-  static KimApi start({
+  Future<void> startSession({
     required String url,
     required String token,
     required String userAgent,
-  }) => RustLib.instance.api.crateApiClientKimApiStart(
-    url: url,
-    token: token,
-    userAgent: userAgent,
-  );
+    required String account,
+  });
 
   Future<void> stop();
+
+  bool storeAttached();
 
   Future<void> syncConfirm({required PlatformInt64 cursor});
 
@@ -235,6 +247,49 @@ class KimInboxItem {
           lastMessageId == other.lastMessageId &&
           lastSendTime == other.lastSendTime &&
           unread == other.unread;
+}
+
+class KimIncomingTalk {
+  final String dest;
+  final String sender;
+  final String body;
+  final String extra;
+  final PlatformInt64 messageId;
+  final PlatformInt64 sendTime;
+  final int msgType;
+
+  const KimIncomingTalk({
+    required this.dest,
+    required this.sender,
+    required this.body,
+    required this.extra,
+    required this.messageId,
+    required this.sendTime,
+    required this.msgType,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      sender.hashCode ^
+      body.hashCode ^
+      extra.hashCode ^
+      messageId.hashCode ^
+      sendTime.hashCode ^
+      msgType.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KimIncomingTalk &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          sender == other.sender &&
+          body == other.body &&
+          extra == other.extra &&
+          messageId == other.messageId &&
+          sendTime == other.sendTime &&
+          msgType == other.msgType;
 }
 
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
