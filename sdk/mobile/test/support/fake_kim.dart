@@ -391,7 +391,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastBotCreateId = '';
   String lastBotCreateNickname = '';
   Object? botCreateError;
-  int botDeletes = 0;
   String lastBotDeleteDest = '';
   Object? botDeleteError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
