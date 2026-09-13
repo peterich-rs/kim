@@ -6,7 +6,7 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{OpCode, Server};
+use kim_core::{ChannelId, OpCode, Server};
 use kim_naming::{DefaultRegistration, Naming};
 use kim_protocol::{marshal, read_logic, LogicPkt, Packet, META_DEST_CHANNELS, META_DEST_SERVER};
 use kim_tcp::{ClientOptions, TcpClient, TcpDialer};
@@ -22,7 +22,7 @@ use crate::selector::{HashSelector, Selector};
 /// 本进程 `Server::push` 成功之后、同一任务调用。
 #[async_trait]
 pub trait DownlinkHook: Send + Sync {
-    async fn after_push(&self, channel_id: &str, pkt: &LogicPkt);
+    async fn after_push(&self, channel_id: &ChannelId, pkt: &LogicPkt);
 }
 
 pub struct ContainerOpts {
@@ -226,13 +226,15 @@ impl Container {
             .map_err(Error::from)
     }
 
-    pub async fn push(&self, gateway_id: &str, pkt: LogicPkt) -> Result<(), Error> {
+    /// `channel_id` is the local ChannelMap key of the downlink (on Chat this
+    /// is the gateway uplink id, which happens to equal `GatewayId`).
+    pub async fn push(&self, channel_id: &ChannelId, pkt: LogicPkt) -> Result<(), Error> {
         let srv = self
             .server
             .get()
             .ok_or_else(|| Error::other("no server"))?
             .clone();
-        srv.push(gateway_id, marshal(&Packet::Logic(pkt)))
+        srv.push(channel_id, marshal(&Packet::Logic(pkt)))
             .await
             .map_err(Error::from)
     }
@@ -538,11 +540,12 @@ impl Container {
             .ok_or_else(|| Error::other("no server"))?
             .clone();
         for id in channels.split(',').filter(|s| !s.is_empty()) {
-            match srv.push(id, bytes.clone()).await {
+            let channel = ChannelId::from_trusted(id);
+            match srv.push(&channel, bytes.clone()).await {
                 Ok(()) => {
                     if let Some(p) = &hook_pkt {
                         for h in &self.after_downlink {
-                            h.after_push(id, p).await;
+                            h.after_push(&channel, p).await;
                         }
                     }
                 }
@@ -622,10 +625,10 @@ mod tests {
         async fn start(&self) -> Result<(), CoreError> {
             Ok(())
         }
-        async fn push(&self, _channel_id: &str, _payload: Bytes) -> Result<(), CoreError> {
+        async fn push(&self, _channel_id: &ChannelId, _payload: Bytes) -> Result<(), CoreError> {
             Ok(())
         }
-        async fn close_channel(&self, _channel_id: &str) -> Result<(), CoreError> {
+        async fn close_channel(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
             Ok(())
         }
         async fn shutdown(&self) -> Result<(), CoreError> {

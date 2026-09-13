@@ -11,6 +11,7 @@ name = "kim-client-demo"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 kim-client.workspace = true
 kim-protocol.workspace = true
 tokio.workspace = true

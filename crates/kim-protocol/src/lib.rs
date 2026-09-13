@@ -1,5 +1,9 @@
+//! KIM 业务包：Magic、BasicPkt、LogicPkt、身份 ID。
+
 mod basic;
+mod command;
 mod error;
+mod ids;
 mod internal_hmac;
 mod logic;
 mod magic;
@@ -12,7 +16,9 @@ pub mod pkt {
 }
 
 pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
+pub use command::Command;
 pub use error::ProtocolError;
+pub use ids::{AccountId, ChannelId, DestId, GatewayId, ACCOUNT_MAX, ACCOUNT_MIN};
 pub use internal_hmac::{
     check_strict_runtime, consul_url_is_https, hmac_headers_from, hmac_nonce_key,
     is_demo_internal_hmac, redis_url_has_password, resolve_internal_hmac_secret,
@@ -45,6 +51,8 @@ pub use wire::{
     META_DEST_SERVER, PROFILE_KIND_BOT, PROFILE_KIND_USER, SN_CHAT, SN_LOGIN, SN_ROYAL,
     SN_TGATEWAY, SN_WGATEWAY,
 };
+
+use std::sync::Arc;
 
 use bytes::Bytes;
 
@@ -82,11 +90,12 @@ pub fn read_logic(buf: &[u8]) -> Result<LogicPkt, ProtocolError> {
     }
 }
 
-pub fn logic_channel_id(buf: &[u8]) -> Option<String> {
+pub fn logic_channel_id(buf: &[u8]) -> Option<Arc<str>> {
     read_logic(buf)
         .ok()
         .map(|p| p.header.channel_id)
         .filter(|s| !s.is_empty())
+        .map(Arc::from)
 }
 
 #[cfg(test)]

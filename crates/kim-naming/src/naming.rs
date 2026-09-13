@@ -6,8 +6,16 @@ use crate::registration::DefaultRegistration;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("consul http {status}")]
+    Http { status: u16 },
+    #[error("transport: {0}")]
+    Transport(String),
+    #[error("rebuild with --features consul")]
+    FeatureDisabled,
+    #[error("tls: {0}")]
+    Tls(String),
     #[error("{0}")]
-    Other(String),
+    Invalid(String),
 }
 
 #[async_trait]

@@ -1,5 +1,6 @@
 //! Presence + room enter/leave e2e (design §10).
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::time::Duration;
@@ -203,6 +204,10 @@ async fn multi_device_stays_online_when_one_leaves() {
     let (alice, _) = login("alice", &url).await;
     let (mut bob_a, _) = login_with_device("bob", &url, "web").await;
     let (_bob_b, _) = login_with_device("bob", &url, "web").await;
+    // Second login starts PresenceHub's reconnect poller (`RECONNECT_POLL` =
+    // 10×10ms in presence.rs). Leave after that window so 2→1 is not classified
+    // as reconnect.
+    tokio::time::sleep(Duration::from_millis(150)).await;
     become_friends(&alice, &bob_a, "bob", "alice").await;
 
     alice

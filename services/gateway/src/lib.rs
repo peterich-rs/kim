@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::{Container, DownlinkHook};
 use kim_core::{
-    Acceptor, ChannelHandle, Conn, Error, MessageListener, OpCode, Server, StateListener,
+    Acceptor, ChannelHandle, ChannelId, Conn, Error, MessageListener, OpCode, Server, StateListener,
 };
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
@@ -397,7 +397,7 @@ impl GatewayHandler {
             .insert(channel_id.to_string(), meta);
     }
 
-    async fn close_now(&self, channel_id: &str) {
+    async fn close_now(&self, channel_id: &ChannelId) {
         if let Some(srv) = self.server.get() {
             let _ = srv.close_channel(channel_id).await;
         }
@@ -445,7 +445,7 @@ impl GatewayHandler {
                 match store.is_revoked(&jti).await {
                     Ok(true) => {
                         warn!(channel = channel_id, "heartbeat revoked");
-                        self.close_now(channel_id).await;
+                        self.close_now(&ChannelId::from_trusted(channel_id)).await;
                         return Err(());
                     }
                     Ok(false) => self.clear_revoke_errors(channel_id),
@@ -461,7 +461,7 @@ impl GatewayHandler {
                                 %err,
                                 "heartbeat revoke check failed past grace"
                             );
-                            self.close_now(channel_id).await;
+                            self.close_now(&ChannelId::from_trusted(channel_id)).await;
                             return Err(());
                         }
                         warn!(
@@ -478,7 +478,7 @@ impl GatewayHandler {
             match store.token_epoch(&account).await {
                 Ok(epoch) if ver < epoch => {
                     warn!(channel = channel_id, "heartbeat stale epoch");
-                    self.close_now(channel_id).await;
+                    self.close_now(&ChannelId::from_trusted(channel_id)).await;
                     return Err(());
                 }
                 Ok(_) => {}
@@ -494,7 +494,7 @@ impl GatewayHandler {
                             %err,
                             "heartbeat epoch check failed past grace"
                         );
-                        self.close_now(channel_id).await;
+                        self.close_now(&ChannelId::from_trusted(channel_id)).await;
                         return Err(());
                     }
                     warn!(
@@ -512,7 +512,7 @@ impl GatewayHandler {
                     Ok(true) => {}
                     Ok(false) => {
                         warn!(channel = channel_id, "heartbeat device revoked");
-                        self.close_now(channel_id).await;
+                        self.close_now(&ChannelId::from_trusted(channel_id)).await;
                         return Err(());
                     }
                     Err(err) => {
@@ -527,7 +527,7 @@ impl GatewayHandler {
                                 %err,
                                 "heartbeat device check failed past grace"
                             );
-                            self.close_now(channel_id).await;
+                            self.close_now(&ChannelId::from_trusted(channel_id)).await;
                             return Err(());
                         }
                         warn!(
@@ -545,7 +545,7 @@ impl GatewayHandler {
         let now = now_ts();
         if idle_exp > 0 && now >= idle_exp {
             warn!(channel = channel_id, "heartbeat expired");
-            self.close_now(channel_id).await;
+            self.close_now(&ChannelId::from_trusted(channel_id)).await;
             return Err(());
         }
         let next_idle = now.saturating_add(self.token_ttl_secs);
@@ -649,7 +649,7 @@ pub struct MetricsHook(pub Arc<KimMetrics>);
 
 #[async_trait]
 impl DownlinkHook for MetricsHook {
-    async fn after_push(&self, _channel_id: &str, pkt: &LogicPkt) {
+    async fn after_push(&self, _channel_id: &ChannelId, pkt: &LogicPkt) {
         let n = marshal(&Packet::Logic(pkt.clone())).len() as u64;
         self.0.on_message_out(n);
     }
@@ -657,7 +657,7 @@ impl DownlinkHook for MetricsHook {
 
 #[async_trait]
 impl Acceptor for GatewayHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
@@ -802,19 +802,19 @@ impl Acceptor for GatewayHandler {
             pending.insert(id.clone(), pkt);
         }
         info!(account = %claims.account, channel = %id, "accept login");
-        Ok(id)
+        Ok(ChannelId::from_trusted(&id))
     }
 
-    async fn on_accept_abandoned(&self, channel_id: &str) {
+    async fn on_accept_abandoned(&self, channel_id: &ChannelId) {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        pending.remove(channel_id);
-        self.remove_meta(channel_id);
+        pending.remove(channel_id.as_str());
+        self.remove_meta(channel_id.as_str());
     }
 
-    async fn on_channel_ready(&self, channel_id: &str) -> Result<(), Error> {
+    async fn on_channel_ready(&self, channel_id: &ChannelId) -> Result<(), Error> {
         let pkt = {
             let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            pending.remove(channel_id)
+            pending.remove(channel_id.as_str())
         };
         let Some(pkt) = pkt else {
             return Err(Error::other("pending login missing"));
@@ -824,7 +824,7 @@ impl Acceptor for GatewayHandler {
         resp.header.status = Status::ServiceUnavailable as i32;
         if let Err(err) = self.forward_logic(SN_LOGIN, pkt).await {
             warn!(%err, "forward login failed");
-            self.remove_meta(channel_id);
+            self.remove_meta(channel_id.as_str());
             if let Err(e) = self.container.push(channel_id, resp).await {
                 warn!(%e, "push ServiceUnavailable failed");
             }
@@ -840,12 +840,12 @@ impl Acceptor for GatewayHandler {
 
 #[async_trait]
 impl MessageListener for GatewayHandler {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         let pkt = match read(&payload) {
             Ok(p) => p,
             Err(err) => {
                 warn!(%err, "bad payload");
-                return;
+                return Ok(());
             }
         };
         match pkt {
@@ -853,7 +853,7 @@ impl MessageListener for GatewayHandler {
                 let id = handle.id().to_string();
                 let renew = match self.heartbeat(&id).await {
                     Ok(v) => v,
-                    Err(()) => return,
+                    Err(()) => return Ok(()),
                 };
                 info!(channel = %id, "basic ping, local pong");
                 let _ = handle
@@ -883,19 +883,20 @@ impl MessageListener for GatewayHandler {
                 }
             }
         }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for GatewayHandler {
-    async fn disconnect(&self, channel_id: &str) -> Result<(), Error> {
-        info!(channel = channel_id, "disconnect");
+    async fn disconnect(&self, channel_id: &ChannelId) -> Result<(), Error> {
+        info!(channel = %channel_id, "disconnect");
         let mut logout = LogicPkt::new(CMD_LOGIN_SIGN_OUT, 0, Bytes::new());
-        logout.header.channel_id = channel_id.to_string();
+        logout.header.channel_id = channel_id.as_str().to_owned();
         if let Err(err) = self.forward_logic(SN_LOGIN, logout).await {
             warn!(%err, "signout forward failed");
         }
-        self.remove_meta(channel_id);
+        self.remove_meta(channel_id.as_str());
         if let Some(m) = self.metrics() {
             m.on_channel_close();
         }
@@ -929,7 +930,7 @@ impl Default for KickHook {
 
 #[async_trait]
 impl DownlinkHook for KickHook {
-    async fn after_push(&self, channel_id: &str, pkt: &LogicPkt) {
+    async fn after_push(&self, channel_id: &ChannelId, pkt: &LogicPkt) {
         if pkt.header.flag != Flag::Push as i32 {
             return;
         }
@@ -939,10 +940,10 @@ impl DownlinkHook for KickHook {
         let Ok(notify) = pkt.read_body::<KickoutNotify>() else {
             return;
         };
-        if notify.channel_id != channel_id {
+        if notify.channel_id != channel_id.as_str() {
             return;
         }
-        info!(channel = channel_id, "kick close");
+        info!(channel = %channel_id, "kick close");
         if let Some(srv) = self.server.get() {
             let _ = srv.close_channel(channel_id).await;
         }
@@ -957,7 +958,9 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use kim_container::{Container, ContainerOpts, InnerTcpDialer};
-    use kim_core::{Acceptor, Conn, Error, Frame, MessageListener, OpCode, Server, StateListener};
+    use kim_core::{
+        Acceptor, ChannelId, Conn, Error, Frame, MessageListener, OpCode, Server, StateListener,
+    };
     use kim_naming::{DefaultRegistration, StaticNaming};
     use kim_protocol::{
         generate_with_device, generate_with_session, marshal, LogicPkt, Packet, CMD_LOGIN_SIGN_IN,
@@ -1083,7 +1086,7 @@ mod tests {
             .accept(&mut conn, Duration::from_secs(1))
             .await
             .expect("demo AllowAllRevoke must satisfy login revoke store");
-        assert!(id.starts_with("wg-1_alice_"));
+        assert!(id.as_str().starts_with("wg-1_alice_"));
     }
 
     #[tokio::test]
@@ -1129,7 +1132,7 @@ mod tests {
             .accept(&mut conn, Duration::from_secs(1))
             .await
             .expect("empty jti is compatible when require=0");
-        assert!(id.starts_with("wg-1_alice_"));
+        assert!(id.as_str().starts_with("wg-1_alice_"));
     }
 
     struct RevokeBroken;
@@ -1155,14 +1158,14 @@ mod tests {
         async fn start(&self) -> Result<(), Error> {
             Ok(())
         }
-        async fn push(&self, _channel_id: &str, _payload: Bytes) -> Result<(), Error> {
+        async fn push(&self, _channel_id: &ChannelId, _payload: Bytes) -> Result<(), Error> {
             Ok(())
         }
-        async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+        async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error> {
             self.closed
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(channel_id.to_string());
+                .push(channel_id.as_str().to_owned());
             Ok(())
         }
         async fn shutdown(&self) -> Result<(), Error> {
@@ -1193,7 +1196,7 @@ mod tests {
         handler.attach_server(server.clone());
         let id = live_channel(&handler, "jti-revoked");
         assert!(
-            handler.heartbeat(&id).await.is_err(),
+            handler.heartbeat(id.as_str()).await.is_err(),
             "confirmed revoke must close",
         );
         assert_eq!(closed_ids(&server), vec![id]);
@@ -1208,7 +1211,7 @@ mod tests {
         let id = live_channel(&handler, "jti-ok");
         for i in 1..=2 {
             handler
-                .heartbeat(&id)
+                .heartbeat(id.as_str())
                 .await
                 .unwrap_or_else(|_| panic!("error {i} must stay within grace"));
         }
@@ -1227,7 +1230,7 @@ mod tests {
         let id = live_channel(&handler, "jti-ok");
         for i in 1..HEARTBEAT_REVOKE_ERROR_GRACE {
             handler
-                .heartbeat(&id)
+                .heartbeat(id.as_str())
                 .await
                 .unwrap_or_else(|_| panic!("error {i} must stay within grace"));
             assert!(
@@ -1236,7 +1239,7 @@ mod tests {
             );
         }
         assert!(
-            handler.heartbeat(&id).await.is_err(),
+            handler.heartbeat(id.as_str()).await.is_err(),
             "errors past grace must close",
         );
         assert_eq!(closed_ids(&server), vec![id]);
@@ -1293,7 +1296,7 @@ mod tests {
             .accept(&mut conn, Duration::from_secs(1))
             .await
             .expect("ver=0 epoch=0 must login");
-        assert!(id.starts_with("wg-1_alice_"));
+        assert!(id.as_str().starts_with("wg-1_alice_"));
     }
 
     #[tokio::test]
@@ -1320,7 +1323,7 @@ mod tests {
             .expect("login before bump");
         store.epoch.store(1, std::sync::atomic::Ordering::Relaxed);
         assert!(
-            handler.heartbeat(&id).await.is_err(),
+            handler.heartbeat(id.as_str()).await.is_err(),
             "same jti heartbeat must fail after epoch bump"
         );
     }
@@ -1346,7 +1349,7 @@ mod tests {
             .accept(&mut other, Duration::from_secs(1))
             .await
             .expect("session without did must still login");
-        assert!(id.starts_with("wg-1_alice_"));
+        assert!(id.as_str().starts_with("wg-1_alice_"));
     }
 
     #[test]

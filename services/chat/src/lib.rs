@@ -33,18 +33,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::Container;
-use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, StateListener};
+use kim_core::{Acceptor, ChannelHandle, ChannelId, Conn, Error, MessageListener, StateListener};
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Session, Status};
 use kim_protocol::{
-    read_logic, ALLOWED_APP, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_BOT_CREATE,
-    CMD_BOT_DELETE, CMD_BOT_PENDING, CMD_BOT_REPLY, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK,
-    CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING,
-    CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
-    CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
-    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
-    CMD_USER_SEARCH, CMD_USER_UPDATE, META_DEST_CHANNELS, META_DEST_SERVER,
+    read_logic, Command, GatewayId, ALLOWED_APP, META_DEST_CHANNELS, META_DEST_SERVER,
 };
 use kim_router::{Dispatcher, Router, RouterError, SessionError, SessionStorage};
 use prost::Message;
@@ -109,14 +102,21 @@ struct ContainerDispatcher(Arc<Container>);
 impl Dispatcher for ContainerDispatcher {
     async fn push(
         &self,
-        gateway: &str,
-        channels: &[String],
+        gateway: &GatewayId,
+        channels: &[ChannelId],
         mut pkt: kim_protocol::LogicPkt,
     ) -> Result<(), RouterError> {
-        pkt.set_meta(META_DEST_SERVER, gateway);
-        pkt.set_meta(META_DEST_CHANNELS, &channels.join(","));
+        pkt.set_meta(META_DEST_SERVER, gateway.as_str());
+        pkt.set_meta(
+            META_DEST_CHANNELS,
+            &channels
+                .iter()
+                .map(ChannelId::as_str)
+                .collect::<Vec<_>>()
+                .join(","),
+        );
         self.0
-            .push(gateway, pkt)
+            .push(&ChannelId::from_trusted(gateway.as_str()), pkt)
             .await
             .map_err(|e| RouterError::Dispatcher(e.to_string()))
     }
@@ -297,7 +297,7 @@ impl ChatHandler {
             let users = users.clone();
             let store = store.clone();
             let presence = presence.clone();
-            router.handle(CMD_LOGIN_SIGN_IN, move |ctx| {
+            router.handle(Command::LoginSignIn, move |ctx| {
                 let zone = zone.clone();
                 let users = users.clone();
                 let store = store.clone();
@@ -317,12 +317,12 @@ impl ChatHandler {
         }
         {
             let presence = presence.clone();
-            router.handle(CMD_LOGIN_SIGN_OUT, move |ctx| {
+            router.handle(Command::LoginSignOut, move |ctx| {
                 let presence = presence.clone();
                 async move { do_sys_logout(ctx, Some(presence.as_ref())).await }
             });
         }
-        router.handle(CMD_DEMO_ECHO, do_echo);
+        router.handle(Command::DemoEcho, do_echo);
         let svc = ChatSvc {
             store,
             groups,
@@ -335,7 +335,7 @@ impl ChatHandler {
         };
         {
             let svc = svc.clone();
-            router.handle(CMD_CHAT_USER_TALK, move |ctx| {
+            router.handle(Command::UserTalk, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     let metrics = svc
@@ -358,7 +358,7 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
+            router.handle(Command::GroupTalk, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     let metrics = svc
@@ -380,77 +380,77 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_GROUP_CREATE, move |ctx| {
+            router.handle(Command::GroupCreate, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_create(ctx, svc.groups.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_GROUP_JOIN, move |ctx| {
+            router.handle(Command::GroupJoin, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_join(ctx, svc.groups.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_GROUP_QUIT, move |ctx| {
+            router.handle(Command::GroupQuit, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_quit(ctx, svc.groups.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_GROUP_DETAIL, move |ctx| {
+            router.handle(Command::GroupDetail, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_detail(ctx, svc.groups.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_GROUP_MEMBERS, move |ctx| {
+            router.handle(Command::GroupMembers, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_members(ctx, svc.groups.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_CHAT_TALK_ACK, move |ctx| {
+            router.handle(Command::TalkAck, move |ctx| {
                 let svc = svc.clone();
                 async move { do_talk_ack(ctx, svc.store.as_ref(), svc.pending_receipt).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_OFFLINE_INDEX, move |ctx| {
+            router.handle(Command::OfflineIndex, move |ctx| {
                 let svc = svc.clone();
                 async move { do_offline_index(ctx, svc.store.as_ref(), svc.pending_receipt).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_OFFLINE_CONTENT, move |ctx| {
+            router.handle(Command::OfflineContent, move |ctx| {
                 let svc = svc.clone();
                 async move { do_offline_content(ctx, svc.store.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_USER_PROFILE, move |ctx| {
+            router.handle(Command::UserProfile, move |ctx| {
                 let svc = svc.clone();
                 async move { do_user_profile(ctx, svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_USER_UPDATE, move |ctx| {
+            router.handle(Command::UserUpdate, move |ctx| {
                 let svc = svc.clone();
                 async move { do_user_update(ctx, svc.users.as_ref(), svc.social.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_USER_SEARCH, move |ctx| {
+            router.handle(Command::UserSearch, move |ctx| {
                 let svc = svc.clone();
                 async move { do_user_search(ctx, svc.users.as_ref(), svc.social.as_ref()).await }
             });
@@ -458,7 +458,7 @@ impl ChatHandler {
 
         {
             let svc = svc.clone();
-            router.handle(CMD_ROOM_ENTER, move |ctx| {
+            router.handle(Command::RoomEnter, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     do_room_enter(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
@@ -467,14 +467,14 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_ROOM_LEAVE, move |ctx| {
+            router.handle(Command::RoomLeave, move |ctx| {
                 let svc = svc.clone();
                 async move { do_room_leave(ctx, svc.presence.interest().as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_TYPING, move |ctx| {
+            router.handle(Command::Typing, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     do_typing(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
@@ -483,70 +483,70 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_REQUEST, move |ctx| {
+            router.handle(Command::FriendRequest, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_request(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_ACCEPT, move |ctx| {
+            router.handle(Command::FriendAccept, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_accept(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_REJECT, move |ctx| {
+            router.handle(Command::FriendReject, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_reject(ctx, svc.social.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_REMOVE, move |ctx| {
+            router.handle(Command::FriendRemove, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_remove(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_LIST, move |ctx| {
+            router.handle(Command::FriendList, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_list(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_FRIEND_INCOMING, move |ctx| {
+            router.handle(Command::FriendIncoming, move |ctx| {
                 let svc = svc.clone();
                 async move { do_friend_incoming(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BLOCK_ADD, move |ctx| {
+            router.handle(Command::BlockAdd, move |ctx| {
                 let svc = svc.clone();
                 async move { do_block_add(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BLOCK_REMOVE, move |ctx| {
+            router.handle(Command::BlockRemove, move |ctx| {
                 let svc = svc.clone();
                 async move { do_block_remove(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BLOCK_LIST, move |ctx| {
+            router.handle(Command::BlockList, move |ctx| {
                 let svc = svc.clone();
                 async move { do_block_list(ctx, svc.social.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_INBOX_LIST, move |ctx| {
+            router.handle(Command::InboxList, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     do_inbox_list(
@@ -561,42 +561,42 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_INBOX_READ, move |ctx| {
+            router.handle(Command::InboxRead, move |ctx| {
                 let svc = svc.clone();
                 async move { do_inbox_read(ctx, svc.store.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_HISTORY, move |ctx| {
+            router.handle(Command::History, move |ctx| {
                 let svc = svc.clone();
                 async move { do_history(ctx, svc.store.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BOT_CREATE, move |ctx| {
+            router.handle(Command::BotCreate, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_create(ctx, svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BOT_DELETE, move |ctx| {
+            router.handle(Command::BotDelete, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_delete(ctx, svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BOT_UPDATE, move |ctx| {
+            router.handle(Command::BotUpdate, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_update(ctx, svc.users.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BOT_REPLY, move |ctx| {
+            router.handle(Command::BotReply, move |ctx| {
                 let svc = svc.clone();
                 async move {
                     let metrics = svc
@@ -618,7 +618,7 @@ impl ChatHandler {
         }
         {
             let svc = svc.clone();
-            router.handle(CMD_BOT_PENDING, move |ctx| {
+            router.handle(Command::BotPending, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_pending(ctx, svc.store.as_ref(), svc.users.as_ref()).await }
             });
@@ -665,14 +665,14 @@ async fn resp_err(container: &Container, mut pkt: kim_protocol::LogicPkt, status
     pkt.header.status = status as i32;
     pkt.set_meta(META_DEST_SERVER, &gw);
     pkt.set_meta(META_DEST_CHANNELS, &ch);
-    if let Err(err) = container.push(&gw, pkt).await {
+    if let Err(err) = container.push(&ChannelId::from_trusted(&gw), pkt).await {
         warn!(%err, "push err resp failed");
     }
 }
 
 #[async_trait]
 impl Acceptor for ChatHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
@@ -681,18 +681,18 @@ impl Acceptor for ChatHandler {
         if req.service_id.is_empty() {
             return Err(Error::Handshake("empty service id".into()));
         }
-        Ok(req.service_id)
+        Ok(ChannelId::from_trusted(&req.service_id))
     }
 }
 
 #[async_trait]
 impl MessageListener for ChatHandler {
-    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         let pkt = match read_logic(&payload) {
             Ok(p) => p,
             Err(err) => {
                 warn!(%err, "unexpected basic pkt or bad logic");
-                return;
+                return Ok(());
             }
         };
         info!(
@@ -701,7 +701,8 @@ impl MessageListener for ChatHandler {
             channel_id = %pkt.header.channel_id,
             "chat recv logic"
         );
-        let session = if pkt.header.command == CMD_LOGIN_SIGN_IN {
+        let command = Command::parse(&pkt.header.command);
+        let session = if command == Some(Command::LoginSignIn) {
             let gate = pkt.get_meta(META_DEST_SERVER).unwrap_or("").to_string();
             Session {
                 channel_id: pkt.header.channel_id.clone(),
@@ -710,33 +711,36 @@ impl MessageListener for ChatHandler {
                 ..Session::default()
             }
         } else {
-            match self.cache.get(&pkt.header.channel_id).await {
+            match self
+                .cache
+                .get(&ChannelId::from_trusted(&pkt.header.channel_id))
+                .await
+            {
                 Ok(s) => s,
                 Err(SessionError::NotFound) => {
                     if let Some(m) = self.metrics() {
                         m.on_session_not_found();
                     }
                     resp_err(&self.container, pkt, Status::SessionNotFound).await;
-                    return;
+                    return Ok(());
                 }
                 Err(_) => {
                     resp_err(&self.container, pkt, Status::SystemException).await;
-                    return;
+                    return Ok(());
                 }
             }
         };
-        if pkt.header.command != CMD_LOGIN_SIGN_IN && session.app != ALLOWED_APP {
+        if command != Some(Command::LoginSignIn) && session.app != ALLOWED_APP {
             resp_err(&self.container, pkt, Status::Unauthorized).await;
-            return;
+            return Ok(());
         }
         if let Some(m) = self.metrics() {
             m.on_message_in(payload.len() as u64);
-            if pkt.header.command == CMD_CHAT_USER_TALK {
-                m.on_talk("user");
-            } else if pkt.header.command == CMD_CHAT_GROUP_TALK {
-                m.on_talk("group");
-            } else if pkt.header.command == CMD_BOT_REPLY {
-                m.on_talk("bot");
+            match command {
+                Some(Command::UserTalk) => m.on_talk("user"),
+                Some(Command::GroupTalk) => m.on_talk("group"),
+                Some(Command::BotReply) => m.on_talk("bot"),
+                _ => {}
             }
         }
         let started = std::time::Instant::now();
@@ -751,13 +755,14 @@ impl MessageListener for ChatHandler {
         if let Some(m) = self.metrics() {
             m.observe_handler(&cmd, started.elapsed());
         }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for ChatHandler {
-    async fn disconnect(&self, channel_id: &str) -> Result<(), Error> {
-        info!(channel = channel_id, "gateway disconnected");
+    async fn disconnect(&self, channel_id: &ChannelId) -> Result<(), Error> {
+        info!(channel = %channel_id, "gateway disconnected");
         Ok(())
     }
 }
@@ -769,7 +774,7 @@ mod tests {
     use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
     use kim_naming::{DefaultRegistration, StaticNaming};
     use kim_protocol::pkt::MessageReq;
-    use kim_protocol::{marshal, LogicPkt, Packet, MESSAGE_TYPE_TEXT};
+    use kim_protocol::{marshal, LogicPkt, Packet, CMD_CHAT_USER_TALK, MESSAGE_TYPE_TEXT};
     use kim_session::MemorySessionStore;
 
     use super::*;
@@ -861,7 +866,8 @@ mod tests {
         });
         handler
             .receive(&NoopHandle, marshal(&Packet::Logic(pkt)))
-            .await;
+            .await
+            .unwrap();
         assert!(
             store.recorded().is_empty(),
             "kim-gray session must not reach the message store"

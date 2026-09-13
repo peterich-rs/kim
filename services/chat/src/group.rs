@@ -2,7 +2,8 @@ use kim_protocol::pkt::{
     GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq,
     GroupMembersResp, GroupQuitReq, Status,
 };
-use kim_router::{Context, SessionError};
+use kim_protocol::AccountId;
+use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
@@ -40,12 +41,12 @@ async fn load_group(
     groups.detail(app, group_id).await
 }
 
-pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) {
+pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) -> Result<(), RouterError> {
     let req = match ctx.read_body::<GroupCreateReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let owner = ctx.session().account.clone();
@@ -71,18 +72,19 @@ pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) {
     {
         Ok(id) => id,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
 
-    let locs = match ctx.get_locations(&members).await {
+    let member_ids: Vec<AccountId> = members.iter().map(|s| AccountId::from_trusted(s)).collect();
+    let locs = match ctx.get_locations(&member_ids).await {
         Ok(v) => v,
         Err(SessionError::NotFound) => Vec::new(),
         Err(err) => {
             warn!(%err, "get_locations failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     if !locs.is_empty() {
@@ -92,73 +94,70 @@ pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) {
         };
         if let Err(err) = ctx.dispatch(&notify, &locs).await {
             warn!(%err, "dispatch GroupCreateNotify failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
 
     let resp = GroupCreateResp { group_id };
-    let _ = ctx.resp(Status::Success, Some(&resp)).await;
+    ctx.resp(Status::Success, Some(&resp)).await?;
+    Ok(())
 }
 
-pub async fn do_group_join(ctx: Context, groups: &dyn GroupDirectory) {
+pub async fn do_group_join(ctx: Context, groups: &dyn GroupDirectory) -> Result<(), RouterError> {
     let req = match ctx.read_body::<GroupJoinReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let group_id = dest_or_body_group(&ctx.header().dest, &req.group_id);
     if group_id.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let session_account = ctx.session().account.as_str();
     if !req.account.is_empty() && req.account != session_account {
-        let _ = ctx
-            .resp_bytes(Status::Unauthorized, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::Unauthorized, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     match load_group(groups, &ctx.session().app, group_id).await {
         Ok(info) if is_member(&info, session_account) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Ok(_) => {
-            let _ = ctx
-                .resp_bytes(Status::Unauthorized, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::Unauthorized, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(group_lookup_status(&err), &err).await;
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_group_quit(ctx: Context, groups: &dyn GroupDirectory) {
+pub async fn do_group_quit(ctx: Context, groups: &dyn GroupDirectory) -> Result<(), RouterError> {
     let req = match ctx.read_body::<GroupQuitReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let group_id = dest_or_body_group(&ctx.header().dest, &req.group_id);
     if group_id.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let session_account = ctx.session().account.as_str();
     if !req.account.is_empty() && req.account != session_account {
-        let _ = ctx
-            .resp_bytes(Status::Unauthorized, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::Unauthorized, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     match load_group(groups, &ctx.session().app, group_id).await {
         Ok(info) if is_member(&info, session_account) => {
@@ -167,30 +166,29 @@ pub async fn do_group_quit(ctx: Context, groups: &dyn GroupDirectory) {
                 .await
             {
                 Ok(()) => {
-                    let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+                    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
                 }
                 Err(err) => {
-                    let _ = ctx.resp_with_error(group_lookup_status(&err), &err).await;
+                    ctx.resp_with_error(group_lookup_status(&err), &err).await?;
                 }
             }
         }
         Ok(_) => {
-            let _ = ctx
-                .resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(group_lookup_status(&err), &err).await;
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_group_detail(ctx: Context, groups: &dyn GroupDirectory) {
+pub async fn do_group_detail(ctx: Context, groups: &dyn GroupDirectory) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
+            .await?;
+        return Ok(());
     }
     match load_group(groups, &ctx.session().app, &ctx.header().dest).await {
         Ok(info) if is_member(&info, &ctx.session().account) => {
@@ -202,42 +200,44 @@ pub async fn do_group_detail(ctx: Context, groups: &dyn GroupDirectory) {
                 owner: info.owner,
                 members: info.members,
             };
-            let _ = ctx.resp(Status::Success, Some(&resp)).await;
+            ctx.resp(Status::Success, Some(&resp)).await?;
         }
         Ok(_) => {
-            let _ = ctx
-                .resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(group_lookup_status(&err), &err).await;
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_group_members(ctx: Context, groups: &dyn GroupDirectory) {
+pub async fn do_group_members(
+    ctx: Context,
+    groups: &dyn GroupDirectory,
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
+            .await?;
+        return Ok(());
     }
     match load_group(groups, &ctx.session().app, &ctx.header().dest).await {
         Ok(info) if is_member(&info, &ctx.session().account) => {
             let resp = GroupMembersResp {
                 members: info.members,
             };
-            let _ = ctx.resp(Status::Success, Some(&resp)).await;
+            ctx.resp(Status::Success, Some(&resp)).await?;
         }
         Ok(_) => {
-            let _ = ctx
-                .resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(group_lookup_status(&err), &err).await;
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -250,7 +250,7 @@ mod tests {
         Flag, GroupCreateReq, GroupCreateResp, GroupJoinReq, GroupQuitReq, Session, Status,
     };
     use kim_protocol::{
-        LogicPkt, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS,
+        Command, LogicPkt, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS,
         CMD_GROUP_QUIT, META_DEST_SERVER,
     };
     use kim_router::test_support::RecordingDispatcher;
@@ -305,7 +305,7 @@ mod tests {
     }
 
     async fn serve(
-        cmd: &'static str,
+        cmd: Command,
         groups: Arc<dyn GroupDirectory>,
         dispatcher: Arc<RecordingDispatcher>,
         logic: LogicPkt,
@@ -316,11 +316,11 @@ mod tests {
             let groups = groups.clone();
             async move {
                 match cmd {
-                    CMD_GROUP_CREATE => do_group_create(ctx, groups.as_ref()).await,
-                    CMD_GROUP_JOIN => do_group_join(ctx, groups.as_ref()).await,
-                    CMD_GROUP_QUIT => do_group_quit(ctx, groups.as_ref()).await,
-                    CMD_GROUP_DETAIL => do_group_detail(ctx, groups.as_ref()).await,
-                    CMD_GROUP_MEMBERS => do_group_members(ctx, groups.as_ref()).await,
+                    Command::GroupCreate => do_group_create(ctx, groups.as_ref()).await,
+                    Command::GroupJoin => do_group_join(ctx, groups.as_ref()).await,
+                    Command::GroupQuit => do_group_quit(ctx, groups.as_ref()).await,
+                    Command::GroupDetail => do_group_detail(ctx, groups.as_ref()).await,
+                    Command::GroupMembers => do_group_members(ctx, groups.as_ref()).await,
                     _ => unreachable!(),
                 }
             }
@@ -349,7 +349,7 @@ mod tests {
     async fn create_alice_group(groups: Arc<MemoryGroupDirectory>) -> String {
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_CREATE,
+            Command::GroupCreate,
             groups.clone(),
             dispatcher.clone(),
             create_req_pkt(&GroupCreateReq {
@@ -378,7 +378,7 @@ mod tests {
         let groups = memory_groups();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_CREATE,
+            Command::GroupCreate,
             groups.clone(),
             dispatcher.clone(),
             create_req_pkt(&GroupCreateReq {
@@ -404,7 +404,7 @@ mod tests {
         let groups = memory_groups();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_CREATE,
+            Command::GroupCreate,
             groups,
             dispatcher.clone(),
             pkt(
@@ -445,7 +445,7 @@ mod tests {
             .unwrap();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_GROUP_CREATE, {
+        router.handle(Command::GroupCreate, {
             let groups = groups.clone();
             move |ctx| {
                 let groups = groups.clone();
@@ -493,7 +493,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_JOIN,
+            Command::GroupJoin,
             groups.clone(),
             dispatcher.clone(),
             join(""),
@@ -504,7 +504,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_JOIN,
+            Command::GroupJoin,
             groups.clone(),
             dispatcher.clone(),
             join("bob"),
@@ -515,7 +515,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_JOIN,
+            Command::GroupJoin,
             groups.clone(),
             dispatcher.clone(),
             join(""),
@@ -544,7 +544,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_QUIT,
+            Command::GroupQuit,
             groups.clone(),
             dispatcher.clone(),
             quit("", "nope", "ch-alice"),
@@ -555,7 +555,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_QUIT,
+            Command::GroupQuit,
             groups.clone(),
             dispatcher.clone(),
             quit("", &gid, "ch-bob"),
@@ -566,7 +566,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_QUIT,
+            Command::GroupQuit,
             groups.clone(),
             dispatcher.clone(),
             quit("bob", &gid, "ch-alice"),
@@ -577,7 +577,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_QUIT,
+            Command::GroupQuit,
             groups.clone(),
             dispatcher.clone(),
             quit("", &gid, "ch-alice"),
@@ -598,7 +598,7 @@ mod tests {
         let gid = create_alice_group(groups.clone()).await;
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_DETAIL,
+            Command::GroupDetail,
             groups.clone(),
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gid, Bytes::new(), "ch-bob"),
@@ -609,7 +609,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_DETAIL,
+            Command::GroupDetail,
             groups,
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gid, Bytes::new(), "ch-alice"),
@@ -657,7 +657,7 @@ mod tests {
 
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_DETAIL,
+            Command::GroupDetail,
             Arc::new(FailDetail),
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, "g1", Bytes::new(), "ch-alice"),
@@ -685,7 +685,7 @@ mod tests {
             .unwrap();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_DETAIL,
+            Command::GroupDetail,
             groups,
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gray, Bytes::new(), "ch-alice"),
@@ -701,7 +701,7 @@ mod tests {
         let gid = create_alice_group(groups.clone()).await;
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
-            CMD_GROUP_MEMBERS,
+            Command::GroupMembers,
             groups,
             dispatcher.clone(),
             pkt(CMD_GROUP_MEMBERS, &gid, Bytes::new(), "ch-bob"),

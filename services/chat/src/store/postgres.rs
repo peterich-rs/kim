@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kim_protocol::AccountId;
 use kim_router::{SessionError, SessionStorage};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -494,7 +495,11 @@ impl PostgresMessageStore {
         match timeout(LIST_LOCATIONS_BUDGET, async move {
             let mut out = Vec::new();
             for account in &recv {
-                let locs = match sessions.get_locations(std::slice::from_ref(account)).await {
+                let account_id = AccountId::from_trusted(account);
+                let locs = match sessions
+                    .get_locations(std::slice::from_ref(&account_id))
+                    .await
+                {
                     Ok(v) => v,
                     Err(SessionError::NotFound) => continue,
                     Err(err) => return Err(StoreError::Backend(err.to_string())),
@@ -1693,21 +1698,28 @@ mod tests {
         async fn add(&self, _: &kim_protocol::pkt::Session) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn delete(&self, _: &str, _: &str) -> Result<(), SessionError> {
+        async fn delete(
+            &self,
+            _: &kim_protocol::AccountId,
+            _: &kim_protocol::ChannelId,
+        ) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn get(&self, _: &str) -> Result<kim_protocol::pkt::Session, SessionError> {
+        async fn get(
+            &self,
+            _: &kim_protocol::ChannelId,
+        ) -> Result<kim_protocol::pkt::Session, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_locations(
             &self,
-            _: &[String],
+            _: &[kim_protocol::AccountId],
         ) -> Result<Vec<kim_router::Location>, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_location(
             &self,
-            _: &str,
+            _: &kim_protocol::AccountId,
             _: &str,
         ) -> Result<kim_router::Location, SessionError> {
             Err(SessionError::Other("boom".into()))

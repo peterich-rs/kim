@@ -8,6 +8,7 @@ mod storage;
 
 pub use context::Context;
 pub use dispatcher::{Dispatcher, RouterError};
+pub use kim_protocol::{AccountId, ChannelId, Command, DestId, GatewayId};
 pub use location::Location;
 pub use router::{HandlerFn, Router};
 pub use storage::{SessionError, SessionStorage};

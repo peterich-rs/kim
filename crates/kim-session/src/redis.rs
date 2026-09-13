@@ -6,6 +6,7 @@ use ::redis::Client;
 use async_trait::async_trait;
 use futures::StreamExt;
 use kim_protocol::pkt::Session;
+use kim_protocol::{AccountId, ChannelId, GatewayId};
 use kim_router::{Location, SessionError, SessionStorage};
 use prost::Message;
 use tracing::warn;
@@ -256,8 +257,8 @@ pub(crate) fn note_location_blob(scan: &mut crate::LocationScan, bytes: &[u8]) {
 
 fn loc_of(session: &Session) -> Location {
     Location {
-        channel_id: session.channel_id.clone(),
-        gate_id: session.gate_id.clone(),
+        channel_id: ChannelId::from_trusted(&session.channel_id),
+        gate_id: GatewayId::from_trusted(&session.gate_id),
         device: session.device.clone(),
         jti: session.jti.clone(),
     }
@@ -320,23 +321,27 @@ impl SessionStorage for RedisSessionStore {
         }
     }
 
-    async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
-        let loc_key = key_location(account, "");
-        let sn_key = key_session(channel_id);
+    async fn delete(
+        &self,
+        account: &AccountId,
+        channel_id: &ChannelId,
+    ) -> Result<(), SessionError> {
+        let loc_key = key_location(account.as_str(), "");
+        let sn_key = key_session(channel_id.as_str());
         let mut conn = self.conn.clone();
         let _: i32 = DELETE_SCRIPT
             .key(loc_key)
             .key(sn_key)
-            .arg(channel_id)
+            .arg(channel_id.as_str())
             .invoke_async(&mut conn)
             .await
             .map_err(redis_err)?;
-        self.publish_inv(account).await;
+        self.publish_inv(account.as_str()).await;
         Ok(())
     }
 
-    async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
-        match self.get_bytes(&key_session(channel_id)).await? {
+    async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError> {
+        match self.get_bytes(&key_session(channel_id.as_str())).await? {
             Some(bytes) => {
                 Session::decode(bytes.as_slice()).map_err(|e| SessionError::Other(e.to_string()))
             }
@@ -344,12 +349,12 @@ impl SessionStorage for RedisSessionStore {
         }
     }
 
-    async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+    async fn get_locations(&self, accounts: &[AccountId]) -> Result<Vec<Location>, SessionError> {
         if accounts.is_empty() {
             return Err(SessionError::NotFound);
         }
         if accounts.len() == 1 {
-            let out = self.hash_locs(&accounts[0]).await?;
+            let out = self.hash_locs(accounts[0].as_str()).await?;
             return if out.is_empty() {
                 Err(SessionError::NotFound)
             } else {
@@ -358,7 +363,7 @@ impl SessionStorage for RedisSessionStore {
         }
         let mut pipe = ::redis::pipe();
         for account in accounts {
-            pipe.cmd("HVALS").arg(key_location(account, ""));
+            pipe.cmd("HVALS").arg(key_location(account.as_str(), ""));
         }
         let mut conn = self.conn.clone();
         let nested: Result<Vec<Vec<Vec<u8>>>, ::redis::RedisError> =
@@ -368,7 +373,7 @@ impl SessionStorage for RedisSessionStore {
             Err(_) => {
                 let mut out = Vec::new();
                 for account in accounts {
-                    out.extend(self.hash_locs(account).await?);
+                    out.extend(self.hash_locs(account.as_str()).await?);
                 }
                 return if out.is_empty() {
                     Err(SessionError::NotFound)
@@ -390,8 +395,12 @@ impl SessionStorage for RedisSessionStore {
         }
     }
 
-    async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError> {
-        let slots = self.hash_locs(account).await?;
+    async fn get_location(
+        &self,
+        account: &AccountId,
+        device: &str,
+    ) -> Result<Location, SessionError> {
+        let slots = self.hash_locs(account.as_str()).await?;
         let loc = if device.is_empty() {
             slots.into_iter().next()
         } else {
@@ -438,14 +447,14 @@ mod tests {
     fn note_blob_counts_empty_jti_invalid_and_ok() {
         let mut scan = crate::LocationScan::default();
         let with_jti = Location {
-            channel_id: "c".into(),
-            gate_id: "g".into(),
+            channel_id: ChannelId::from_trusted("c"),
+            gate_id: GatewayId::from_trusted("g"),
             device: String::new(),
             jti: "j".into(),
         };
         let empty = Location {
-            channel_id: "c".into(),
-            gate_id: "g".into(),
+            channel_id: ChannelId::from_trusted("c"),
+            gate_id: GatewayId::from_trusted("g"),
             device: String::new(),
             jti: String::new(),
         };
@@ -486,14 +495,17 @@ mod tests {
         let id2 = unique("id2");
         store.add(&session(&id1, &account, "wg-1")).await.unwrap();
         store.add(&session(&id2, &account, "wg-1")).await.unwrap();
-        let locs = store.list_locations(&account).await.unwrap();
+        let acc = AccountId::from_trusted(&account);
+        let ch1 = ChannelId::from_trusted(&id1);
+        let ch2 = ChannelId::from_trusted(&id2);
+        let locs = store.list_locations(&acc).await.unwrap();
         assert_eq!(locs.len(), 2);
-        store.delete(&account, &id1).await.unwrap();
+        store.delete(&acc, &ch1).await.unwrap();
 
-        let loc = store.get_location(&account, "").await.unwrap();
-        assert_eq!(loc.channel_id, id2);
-        assert!(matches!(store.get(&id1).await, Err(SessionError::NotFound)));
-        let s2 = store.get(&id2).await.unwrap();
+        let loc = store.get_location(&acc, "").await.unwrap();
+        assert_eq!(loc.channel_id.as_str(), id2);
+        assert!(matches!(store.get(&ch1).await, Err(SessionError::NotFound)));
+        let s2 = store.get(&ch2).await.unwrap();
         assert_eq!(s2.channel_id, id2);
     }
 }

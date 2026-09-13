@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
+
 use chat::directory::MemoryGroupDirectory;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::royal::http_backends_with_pool;
@@ -135,21 +137,22 @@ fn port_from_listen(listen: &str) -> Option<u16> {
 }
 
 #[cfg(feature = "redis")]
-async fn open_nonce_guard(
-    url: &str,
-) -> Result<Arc<dyn HmacNonceGuard>, Box<dyn std::error::Error>> {
-    Ok(Arc::new(chat::RedisHmacNonceGuard::open(url).await?))
+async fn open_nonce_guard(url: &str) -> anyhow::Result<Arc<dyn HmacNonceGuard>> {
+    Ok(Arc::new(
+        chat::RedisHmacNonceGuard::open(url)
+            .await
+            .map_err(anyhow::Error::msg)
+            .context("redis")?,
+    ))
 }
 
 #[cfg(not(feature = "redis"))]
-async fn open_nonce_guard(
-    _url: &str,
-) -> Result<Arc<dyn HmacNonceGuard>, Box<dyn std::error::Error>> {
-    Err("rebuild chat with --features redis".into())
+async fn open_nonce_guard(_url: &str) -> anyhow::Result<Arc<dyn HmacNonceGuard>> {
+    anyhow::bail!("rebuild chat with --features redis")
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -160,7 +163,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.toml"));
-    let cfg: File = toml::from_str(&std::fs::read_to_string(&path)?)?;
+    let cfg: File =
+        toml::from_str(&std::fs::read_to_string(&path).context("config")?).context("config")?;
 
     let service_id =
         env_or_cfg("KIM_SERVICE_ID", &cfg.this.service_id).unwrap_or_else(|| "chat-1".into());
@@ -184,8 +188,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         require_redis: true,
         consul_addr: consul.as_deref(),
         ..StrictCheck::default()
-    })?;
-    let naming = open_naming(consul.as_deref(), vec![])?;
+    })
+    .map_err(anyhow::Error::msg)?;
+    let naming = open_naming(consul.as_deref(), vec![]).context("naming")?;
     let mut tags = Vec::new();
     if !zone.is_empty() {
         tags.push(format!("zone:{zone}"));
@@ -219,7 +224,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta,
     };
 
-    let cache = open_session_store(redis_url.as_deref()).await?;
+    let cache = open_session_store(redis_url.as_deref())
+        .await
+        .context("session")?;
     let nonce: Arc<dyn HmacNonceGuard> = match redis_url.as_deref() {
         Some(url) => open_nonce_guard(url).await?,
         None => Arc::new(MemoryHmacNonceGuard::new()),
@@ -250,7 +257,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ..PoolConfig::default()
                 },
             )
-            .await?;
+            .await
+            .context("store")?;
             let groups: Arc<dyn chat::directory::GroupDirectory> =
                 Arc::new(MemoryGroupDirectory::new(idgen));
             let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
@@ -261,7 +269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let users = CachedUserDirectory::wrap(users);
     let social = CachedSocial::wrap(social);
 
-    let mut server = TcpServer::bind(&cfg.this.listen).await?;
+    let mut server = TcpServer::bind(&cfg.this.listen).await.context("listen")?;
     server.set_socket_opts(SocketOpts::default());
     let container = Container::new(ContainerOpts {
         naming,
@@ -274,7 +282,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selector: Arc::new(HashSelector),
         after_downlink: vec![],
     });
-    let interest: Arc<dyn RoomInterestStore> = open_room_interest(redis_url.as_deref()).await?;
+    let interest: Arc<dyn RoomInterestStore> = open_room_interest(redis_url.as_deref())
+        .await
+        .context("interest")?;
     let handler = Arc::new(ChatHandler::with_social_interest(
         container.clone(),
         cache,

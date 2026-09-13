@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-use crate::{Error, Frame, OpCode};
+use crate::{ChannelId, Error, Frame, OpCode};
 
 /// 一条已经建立的连接。握手阶段 Server/Client 都拿这个读写。
 ///
@@ -24,22 +24,22 @@ pub trait Conn: Send {
 
 /// 新连接进来后，由业务决定「这是谁」。
 ///
-/// 返回的字符串就是 channel_id（这条连接的临时身份证）。
+/// 返回的 [`ChannelId`] 就是这条连接的临时身份证。
 /// 返回 Err 则通信层会关掉这条连接。
 ///
 /// 第一期 echo 里：客户端先发自己的名字，这里读出来当 id。
 /// 以后登录：这里读 JWT、校验，再把用户和连接绑在一起。
 #[async_trait]
 pub trait Acceptor: Send + Sync {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error>;
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error>;
 
     /// ChannelMap.add 成功、且 MessageListener 已设置之后、read_loop 之前。默认 Ok。
-    async fn on_channel_ready(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn on_channel_ready(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 
     /// Accept 已 Ok，但这条连接不会进入 read_loop（id 重复 / 未设 MessageListener）。
-    async fn on_accept_abandoned(&self, _channel_id: &str) {}
+    async fn on_accept_abandoned(&self, _channel_id: &ChannelId) {}
 }
 
 /// 收到一帧业务数据（Ping/Pong/Close 已经被 Channel 吃掉）。
@@ -48,13 +48,13 @@ pub trait Acceptor: Send + Sync {
 /// 第一个参数是 [`ChannelHandle`]：只能回消息、能知道 id，不能直接把连接关掉。
 #[async_trait]
 pub trait MessageListener: Send + Sync {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes);
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error>;
 }
 
 /// 连接断开时通知业务。以后这里会清会话、改在线状态。
 #[async_trait]
 pub trait StateListener: Send + Sync {
-    async fn disconnect(&self, channel_id: &str) -> Result<(), Error>;
+    async fn disconnect(&self, channel_id: &ChannelId) -> Result<(), Error>;
 }
 
 /// 业务层能对一条连接做的最小操作：我是谁、推一串字节。

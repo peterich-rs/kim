@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{MessagePush, MessageReq, MessageResp, Status};
-use kim_router::{Context, SessionError};
+use kim_protocol::AccountId;
+use kim_router::{Context, RouterError, SessionError};
 use tracing::{info, warn};
 
 use crate::directory::{GroupDirectory, GroupError};
@@ -51,34 +52,29 @@ pub async fn do_user_talk(
     social: &dyn SocialDirectory,
     metrics: Option<&KimMetrics>,
     push_budget: Duration,
-) {
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
         warn!(
             command = %ctx.header().command,
             account = %ctx.session().account,
             "no destination"
         );
-        if let Err(err) = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await
-        {
-            warn!(%err, "resp failed");
-        }
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let req = match ctx.read_body::<MessageReq>() {
         Ok(r) => r,
         Err(err) => {
             warn!(%err, "invalid MessageReq");
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     if let Err(status) = filter.check(&req).await {
-        let _ = ctx
-            .resp_with_error(status, &TalkError::ContentBlocked)
-            .await;
-        return;
+        ctx.resp_with_error(status, &TalkError::ContentBlocked)
+            .await?;
+        return Ok(());
     }
     let receiver = ctx.header().dest.as_str();
     const DIRECTORY_BUDGET: Duration = Duration::from_millis(800);
@@ -88,22 +84,20 @@ pub async fn do_user_talk(
                 if p.kind == kim_protocol::PROFILE_KIND_BOT
                     && p.owner_account != ctx.session().account
                 {
-                    let _ = ctx
-                        .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
-                        .await;
-                    return Err(());
+                    ctx.resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
+                        .await?;
+                    return Ok(false);
                 }
             }
             Ok(_) => {
-                let _ = ctx
-                    .resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
-                    .await;
-                return Err(());
+                ctx.resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
+                    .await?;
+                return Ok(false);
             }
             Err(err) => {
                 warn!(%err, account = %receiver, "user lookup failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return Err(());
+                ctx.resp_with_error(Status::SystemException, &err).await?;
+                return Ok(false);
             }
         }
         if receiver != ctx.session().account {
@@ -112,16 +106,15 @@ pub async fn do_user_talk(
                 .await
             {
                 Ok(true) => {
-                    let _ = ctx
-                        .resp_with_error(Status::Blocked, &TalkError::Blocked)
-                        .await;
-                    return Err(());
+                    ctx.resp_with_error(Status::Blocked, &TalkError::Blocked)
+                        .await?;
+                    return Ok(false);
                 }
                 Ok(false) => {}
                 Err(err) => {
                     warn!(%err, "block check failed");
-                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                    return Err(());
+                    ctx.resp_with_error(Status::SystemException, &err).await?;
+                    return Ok(false);
                 }
             }
             match social
@@ -130,30 +123,29 @@ pub async fn do_user_talk(
             {
                 Ok(true) => {}
                 Ok(false) => {
-                    let _ = ctx
-                        .resp_with_error(Status::NotFriends, &TalkError::NotFriends)
-                        .await;
-                    return Err(());
+                    ctx.resp_with_error(Status::NotFriends, &TalkError::NotFriends)
+                        .await?;
+                    return Ok(false);
                 }
                 Err(err) => {
                     warn!(%err, "friend check failed");
-                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                    return Err(());
+                    ctx.resp_with_error(Status::SystemException, &err).await?;
+                    return Ok(false);
                 }
             }
         }
-        Ok(())
+        Ok(true)
     })
     .await;
     match directory {
-        Ok(Ok(())) => {}
-        Ok(Err(())) => return,
+        Ok(Ok(true)) => {}
+        Ok(Ok(false)) => return Ok(()),
+        Ok(Err(err)) => return Err(err),
         Err(()) => {
             warn!("directory check timed out");
-            let _ = ctx
-                .resp_with_error(Status::SystemException, &TalkError::DirectoryTimeout)
-                .await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &TalkError::DirectoryTimeout)
+                .await?;
+            return Ok(());
         }
     }
 
@@ -178,17 +170,16 @@ pub async fn do_user_talk(
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "insert_user failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     if inserted.duplicate
         && !fanout_matches_req(MessageKind::User, receiver, &req, &inserted.fanout)
     {
-        let _ = ctx
-            .resp(Status::IdempotencyConflict, None::<&MessageResp>)
-            .await;
-        return;
+        ctx.resp(Status::IdempotencyConflict, None::<&MessageResp>)
+            .await?;
+        return Ok(());
     }
     persist_then_push(
         &ctx,
@@ -198,7 +189,8 @@ pub async fn do_user_talk(
         push_budget,
         ctx.header().command.as_str(),
     )
-    .await;
+    .await?;
+    Ok(())
 }
 
 pub async fn do_group_talk(
@@ -208,30 +200,28 @@ pub async fn do_group_talk(
     filter: &dyn ContentFilter,
     metrics: Option<&KimMetrics>,
     push_budget: Duration,
-) {
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
         warn!(
             command = %ctx.header().command,
             account = %ctx.session().account,
             "no destination"
         );
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let req = match ctx.read_body::<MessageReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     if let Err(status) = filter.check(&req).await {
-        let _ = ctx
-            .resp_with_error(status, &TalkError::ContentBlocked)
-            .await;
-        return;
+        ctx.resp_with_error(status, &TalkError::ContentBlocked)
+            .await?;
+        return Ok(());
     }
     let group = ctx.header().dest.as_str();
     let send_time = unix_nano();
@@ -239,22 +229,20 @@ pub async fn do_group_talk(
     let members = match groups.members(&ctx.session().app, group).await {
         Ok(m) => m,
         Err(GroupError::NotFound) => {
-            let _ = ctx
-                .resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
+                .await?;
+            return Ok(());
         }
         Err(err) => {
             warn!(%err, "group members failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     if !members.iter().any(|m| m == &ctx.session().account) {
-        let _ = ctx
-            .resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NotGroupMember, &TalkError::NotGroupMember)
+            .await?;
+        return Ok(());
     }
 
     let recv: Vec<String> = members
@@ -283,16 +271,15 @@ pub async fn do_group_talk(
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "insert_group failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     if inserted.duplicate && !fanout_matches_req(MessageKind::Group, group, &req, &inserted.fanout)
     {
-        let _ = ctx
-            .resp(Status::IdempotencyConflict, None::<&MessageResp>)
-            .await;
-        return;
+        ctx.resp(Status::IdempotencyConflict, None::<&MessageResp>)
+            .await?;
+        return Ok(());
     }
     persist_then_push(
         &ctx,
@@ -302,7 +289,8 @@ pub async fn do_group_talk(
         push_budget,
         ctx.header().command.as_str(),
     )
-    .await;
+    .await?;
+    Ok(())
 }
 
 pub(crate) fn fanout_matches_req(
@@ -322,7 +310,8 @@ pub(crate) async fn fallback_targets(ctx: &Context, accounts: &[String]) -> Vec<
     let collect = async {
         let mut out = Vec::new();
         for account in accounts {
-            if let Ok(locs) = ctx.get_locations(std::slice::from_ref(account)).await {
+            let account_id = AccountId::from_trusted(account);
+            if let Ok(locs) = ctx.get_locations(std::slice::from_ref(&account_id)).await {
                 for loc in locs {
                     if loc.jti.is_empty() {
                         continue;
@@ -348,14 +337,12 @@ pub(crate) async fn persist_then_push(
     metrics: Option<&KimMetrics>,
     push_budget: Duration,
     push_command: &str,
-) {
+) -> Result<(), RouterError> {
     let resp = MessageResp {
         message_id: inserted.message_id,
         send_time: inserted.send_time,
     };
-    if let Err(err) = ctx.resp(Status::Success, Some(&resp)).await {
-        warn!(%err, "resp failed");
-    }
+    ctx.resp(Status::Success, Some(&resp)).await?;
 
     let push = MessagePush {
         message_id: inserted.message_id,
@@ -377,7 +364,11 @@ pub(crate) async fn persist_then_push(
             }
             return;
         }
-        let locs = match ctx.get_locations(&accounts).await {
+        let account_ids: Vec<AccountId> = accounts
+            .iter()
+            .map(|s| AccountId::from_trusted(s))
+            .collect();
+        let locs = match ctx.get_locations(&account_ids).await {
             Ok(v) => v,
             Err(SessionError::NotFound) => Vec::new(),
             Err(err) => {
@@ -415,6 +406,7 @@ pub(crate) async fn persist_then_push(
         recipients = accounts.len(),
         "talk"
     );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -427,9 +419,10 @@ mod tests {
 
     use kim_metrics::KimMetrics;
     use kim_protocol::pkt::{Flag, MessagePush, MessageReq, MessageResp, Session, Status};
+    use kim_protocol::{AccountId, ChannelId};
     use kim_protocol::{
-        LogicPkt, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
-        META_DEST_CHANNELS, META_DEST_SERVER,
+        Command, LogicPkt, CMD_CHAT_GROUP_TALK, CMD_CHAT_USER_TALK, MESSAGE_TYPE_IMAGE,
+        MESSAGE_TYPE_TEXT, META_DEST_CHANNELS, META_DEST_SERVER,
     };
     use kim_router::test_support::{RecordedPush, RecordingDispatcher};
     use kim_router::{Location, Router, SessionError, SessionStorage};
@@ -651,7 +644,7 @@ mod tests {
         push_budget: Duration,
     ) {
         let mut router = Router::new();
-        router.handle(CMD_CHAT_USER_TALK, move |ctx| {
+        router.handle(Command::UserTalk, move |ctx| {
             let store = store.clone();
             let filter = filter.clone();
             let users = users.clone();
@@ -784,21 +777,28 @@ mod tests {
             Ok(())
         }
 
-        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+        async fn delete(
+            &self,
+            _account: &AccountId,
+            _channel_id: &ChannelId,
+        ) -> Result<(), SessionError> {
             Ok(())
         }
 
-        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+        async fn get(&self, _channel_id: &ChannelId) -> Result<Session, SessionError> {
             Err(SessionError::NotFound)
         }
 
-        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+        async fn get_locations(
+            &self,
+            _accounts: &[AccountId],
+        ) -> Result<Vec<Location>, SessionError> {
             Err(SessionError::Other("unavailable".into()))
         }
 
         async fn get_location(
             &self,
-            _account: &str,
+            _account: &AccountId,
             _device: &str,
         ) -> Result<Location, SessionError> {
             Err(SessionError::Other("unavailable".into()))
@@ -813,21 +813,28 @@ mod tests {
             Ok(())
         }
 
-        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+        async fn delete(
+            &self,
+            _account: &AccountId,
+            _channel_id: &ChannelId,
+        ) -> Result<(), SessionError> {
             Ok(())
         }
 
-        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+        async fn get(&self, _channel_id: &ChannelId) -> Result<Session, SessionError> {
             Err(SessionError::NotFound)
         }
 
-        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+        async fn get_locations(
+            &self,
+            _accounts: &[AccountId],
+        ) -> Result<Vec<Location>, SessionError> {
             std::future::pending().await
         }
 
         async fn get_location(
             &self,
-            _account: &str,
+            _account: &AccountId,
             _device: &str,
         ) -> Result<Location, SessionError> {
             std::future::pending().await
@@ -1746,7 +1753,7 @@ mod tests {
         push_budget: Duration,
     ) {
         let mut router = Router::new();
-        router.handle(CMD_CHAT_GROUP_TALK, move |ctx| {
+        router.handle(Command::GroupTalk, move |ctx| {
             let store = store.clone();
             let groups = groups.clone();
             let filter = filter.clone();
@@ -1813,21 +1820,28 @@ mod tests {
             Ok(())
         }
 
-        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+        async fn delete(
+            &self,
+            _account: &AccountId,
+            _channel_id: &ChannelId,
+        ) -> Result<(), SessionError> {
             Ok(())
         }
 
-        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+        async fn get(&self, _channel_id: &ChannelId) -> Result<Session, SessionError> {
             Err(SessionError::NotFound)
         }
 
-        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+        async fn get_locations(
+            &self,
+            _accounts: &[AccountId],
+        ) -> Result<Vec<Location>, SessionError> {
             Err(SessionError::Other("unavailable".into()))
         }
 
         async fn get_location(
             &self,
-            _account: &str,
+            _account: &AccountId,
             _device: &str,
         ) -> Result<Location, SessionError> {
             Err(SessionError::NotFound)

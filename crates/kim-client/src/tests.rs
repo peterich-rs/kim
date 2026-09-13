@@ -6,8 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{
-    Acceptor, ChannelHandle, Conn, Error as CoreError, Frame, MessageListener, OpCode, Server,
-    StateListener,
+    Acceptor, ChannelHandle, ChannelId, Conn, Error as CoreError, Frame, MessageListener, OpCode,
+    Server, StateListener,
 };
 use kim_protocol::pkt::{
     ConversationReadReq, Flag, FriendRequestNotify, HistoryItem as ProtoHistory, HistoryReq,
@@ -555,7 +555,7 @@ struct FakeGw {
 
 #[async_trait]
 impl Acceptor for FakeGw {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, CoreError> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| CoreError::HandshakeTimeout(timeout))??;
@@ -585,13 +585,13 @@ impl Acceptor for FakeGw {
         });
         conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
             .await?;
-        Ok(id)
+        Ok(ChannelId::from_trusted(&id))
     }
 }
 
 #[async_trait]
 impl MessageListener for FakeGw {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), CoreError> {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == CODE_PING => {
                 self.pings.fetch_add(1, Ordering::SeqCst);
@@ -649,12 +649,13 @@ impl MessageListener for FakeGw {
             }
             _ => {}
         }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for FakeGw {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
         Ok(())
     }
 }
@@ -1446,7 +1447,7 @@ struct DropGw {
 
 #[async_trait]
 impl Acceptor for DropGw {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, CoreError> {
         self.accepts.fetch_add(1, Ordering::SeqCst);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
@@ -1470,22 +1471,24 @@ impl Acceptor for DropGw {
         });
         conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
             .await?;
-        Ok(id)
+        Ok(ChannelId::from_trusted(&id))
     }
 
-    async fn on_channel_ready(&self, _channel_id: &str) -> Result<(), CoreError> {
+    async fn on_channel_ready(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
         Err(CoreError::other("drop after login"))
     }
 }
 
 #[async_trait]
 impl MessageListener for DropGw {
-    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {}
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl StateListener for DropGw {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
         Ok(())
     }
 }
@@ -1635,7 +1638,7 @@ struct RejectGw {
 
 #[async_trait]
 impl Acceptor for RejectGw {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, CoreError> {
         self.accepts.fetch_add(1, Ordering::SeqCst);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
@@ -1655,12 +1658,14 @@ impl Acceptor for RejectGw {
 
 #[async_trait]
 impl MessageListener for RejectGw {
-    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {}
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl StateListener for RejectGw {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
         Ok(())
     }
 }
@@ -1952,7 +1957,7 @@ struct KickGw {
 
 #[async_trait]
 impl Acceptor for KickGw {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, CoreError> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, CoreError> {
         self.accepts.fetch_add(1, Ordering::SeqCst);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
@@ -1975,25 +1980,26 @@ impl Acceptor for KickGw {
         });
         conn.write_frame(OpCode::Binary, marshal(&Packet::Logic(resp)))
             .await?;
-        Ok(id)
+        Ok(ChannelId::from_trusted(&id))
     }
 }
 
 #[async_trait]
 impl MessageListener for KickGw {
-    async fn receive(&self, handle: &dyn ChannelHandle, _payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, _payload: Bytes) -> Result<(), CoreError> {
         let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 0, Bytes::new());
         pkt.header.flag = Flag::Push as i32;
         pkt.write_body(&KickoutNotify {
             channel_id: handle.id().to_string(),
         });
         let _ = handle.push(marshal(&Packet::Logic(pkt))).await;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for KickGw {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), CoreError> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), CoreError> {
         Ok(())
     }
 }

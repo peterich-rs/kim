@@ -1,10 +1,8 @@
 use kim_protocol::pkt::Status;
-use kim_router::Context;
-use tracing::warn;
+use kim_router::{Context, RouterError};
 
-pub async fn do_echo(ctx: Context) {
+pub async fn do_echo(ctx: Context) -> Result<(), RouterError> {
     let body = ctx.request().body.clone();
-    if let Err(err) = ctx.resp_bytes(Status::Success, body).await {
-        warn!(%err, "resp failed");
-    }
+    ctx.resp_bytes(Status::Success, body).await?;
+    Ok(())
 }

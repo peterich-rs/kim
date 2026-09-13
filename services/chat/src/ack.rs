@@ -1,5 +1,5 @@
 use kim_protocol::pkt::{MessageAckReq, Status};
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::{info, warn};
 
 use crate::store::{collect_ack_ids, MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
@@ -10,51 +10,51 @@ enum AckError {
     TooManyIds,
 }
 
-pub async fn do_talk_ack(ctx: Context, store: &dyn MessageStore, pending_receipt: bool) {
+pub async fn do_talk_ack(
+    ctx: Context,
+    store: &dyn MessageStore,
+    pending_receipt: bool,
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<MessageAckReq>() {
         Ok(r) => r,
         Err(err) => {
             warn!(%err, "invalid MessageAckReq");
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let ids = collect_ack_ids(req.message_id, &req.message_ids);
     if ids.len() > MESSAGE_MAX_COUNT_PER_PAGE {
-        let _ = ctx
-            .resp_with_error(Status::InvalidPacketBody, &AckError::TooManyIds)
-            .await;
-        return;
+        ctx.resp_with_error(Status::InvalidPacketBody, &AckError::TooManyIds)
+            .await?;
+        return Ok(());
     }
     let session = ctx.session();
     if pending_receipt {
         if ids.is_empty() || session.jti.trim().is_empty() {
-            if let Err(err) = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await {
-                warn!(%err, "resp failed");
-            }
-            return;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
+            return Ok(());
         }
         if let Err(err) = store
             .ack(&session.app, &session.account, session.jti.trim(), &ids)
             .await
         {
             warn!(%err, "ack failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     } else if let Err(err) = store.ack(&session.app, &session.account, "", &ids).await {
         warn!(%err, "ack failed");
-        let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-        return;
+        ctx.resp_with_error(Status::SystemException, &err).await?;
+        return Ok(());
     }
     info!(
         account = %session.account,
         count = ids.len(),
         "talk ack"
     );
-    if let Err(err) = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await {
-        warn!(%err, "resp failed");
-    }
+    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -63,7 +63,7 @@ mod tests {
 
     use bytes::Bytes;
     use kim_protocol::pkt::{Flag, MessageAckReq, Session, Status};
-    use kim_protocol::{LogicPkt, CMD_CHAT_TALK_ACK, META_DEST_SERVER};
+    use kim_protocol::{Command, LogicPkt, CMD_CHAT_TALK_ACK, META_DEST_SERVER};
     use kim_router::test_support::RecordingDispatcher;
     use kim_router::Router;
     use kim_session::MemorySessionStore;
@@ -104,7 +104,7 @@ mod tests {
             .unwrap();
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_CHAT_TALK_ACK, {
+        router.handle(Command::TalkAck, {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();
@@ -140,7 +140,7 @@ mod tests {
         let store = Arc::new(MemoryMessageStore::new(idgen));
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_CHAT_TALK_ACK, {
+        router.handle(Command::TalkAck, {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();

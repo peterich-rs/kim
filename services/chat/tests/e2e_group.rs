@@ -1,5 +1,6 @@
 //! Private-group command authz over the login stack (Memory directory).
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use bytes::Bytes;

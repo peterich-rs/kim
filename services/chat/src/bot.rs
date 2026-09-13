@@ -4,7 +4,7 @@ use kim_protocol::pkt::{
     InboxReq, Status, UserProfileUpdate,
 };
 use kim_protocol::{CMD_CHAT_USER_TALK, PROFILE_KIND_BOT};
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::filter::ContentFilter;
@@ -46,19 +46,18 @@ pub(crate) async fn lookup_bot(
     }
 }
 
-pub async fn do_bot_create(ctx: Context, users: &dyn UserDirectory) {
+pub async fn do_bot_create(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     let req = match ctx.read_body::<BotCreateReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     if !valid_client_profile_id(&req.client_profile_id) {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     match users
         .create_bot(
@@ -74,82 +73,79 @@ pub async fn do_bot_create(ctx: Context, users: &dyn UserDirectory) {
         .await
     {
         Ok(profile) => {
-            let _ = ctx
-                .resp(
-                    Status::Success,
-                    Some(&BotCreateResp {
-                        profile: Some(to_pb(&profile)),
-                    }),
-                )
-                .await;
+            ctx.resp(
+                Status::Success,
+                Some(&BotCreateResp {
+                    profile: Some(to_pb(&profile)),
+                }),
+            )
+            .await?;
         }
         Err(err) => {
             warn!(%err, "bot create failed");
-            let _ = ctx.resp_with_error(user_status(&err), &err).await;
+            ctx.resp_with_error(user_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_bot_delete(ctx: Context, users: &dyn UserDirectory) {
+pub async fn do_bot_delete(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let dest = ctx.header().dest.clone();
     let presence = match lookup_bot(users, &ctx.session().app, &dest).await {
         Ok(p) => p,
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     };
     if presence.owner_account != ctx.session().account {
-        let _ = ctx
-            .resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     match users
         .delete_bot(&ctx.session().app, &ctx.session().account, &dest)
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(user_status(&err), &err).await;
+            ctx.resp_with_error(user_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_bot_update(ctx: Context, users: &dyn UserDirectory) {
+pub async fn do_bot_update(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let dest = ctx.header().dest.clone();
     let presence = match lookup_bot(users, &ctx.session().app, &dest).await {
         Ok(p) => p,
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     };
     if presence.owner_account != ctx.session().account {
-        let _ = ctx
-            .resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let req = match ctx.read_body::<UserProfileUpdate>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let patch = crate::users::ProfilePatch {
@@ -162,12 +158,13 @@ pub async fn do_bot_update(ctx: Context, users: &dyn UserDirectory) {
         .await
     {
         Ok(p) => {
-            let _ = ctx.resp(Status::Success, Some(&to_pb(&p))).await;
+            ctx.resp(Status::Success, Some(&to_pb(&p))).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(user_status(&err), &err).await;
+            ctx.resp_with_error(user_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 pub async fn do_bot_reply(
@@ -177,54 +174,49 @@ pub async fn do_bot_reply(
     users: &dyn UserDirectory,
     metrics: Option<&KimMetrics>,
     push_budget: std::time::Duration,
-) {
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let dest = ctx.header().dest.clone();
     let req = match ctx.read_body::<BotReplyReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     if req.in_reply_to <= 0 {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let message = match req.message {
         Some(m) => m,
         None => {
-            let _ = ctx
-                .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-                .await;
-            return;
+            ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+                .await?;
+            return Ok(());
         }
     };
     if let Err(status) = filter.check(&message).await {
-        let _ = ctx
-            .resp_with_error(status, &TalkError::ContentBlocked)
-            .await;
-        return;
+        ctx.resp_with_error(status, &TalkError::ContentBlocked)
+            .await?;
+        return Ok(());
     }
     let presence = match lookup_bot(users, &ctx.session().app, &dest).await {
         Ok(p) => p,
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     };
     if presence.owner_account != ctx.session().account {
-        let _ = ctx
-            .resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let owner = ctx.session().account.clone();
     let online_targets = fallback_targets(&ctx, std::slice::from_ref(&owner)).await;
@@ -250,8 +242,8 @@ pub async fn do_bot_reply(
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "insert_bot_reply failed");
-            let _ = ctx.resp_with_error(store_status(&err), &err).await;
-            return;
+            ctx.resp_with_error(store_status(&err), &err).await?;
+            return Ok(());
         }
     };
     persist_then_push(
@@ -262,29 +254,32 @@ pub async fn do_bot_reply(
         push_budget,
         CMD_CHAT_USER_TALK,
     )
-    .await;
+    .await?;
+    Ok(())
 }
 
-pub async fn do_bot_pending(ctx: Context, store: &dyn MessageStore, users: &dyn UserDirectory) {
+pub async fn do_bot_pending(
+    ctx: Context,
+    store: &dyn MessageStore,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_with_error(Status::NoDestination, &TalkError::NoDestination)
-            .await;
-        return;
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
     }
     let dest = ctx.header().dest.clone();
     let presence = match lookup_bot(users, &ctx.session().app, &dest).await {
         Ok(p) => p,
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     };
     if presence.owner_account != ctx.session().account {
-        let _ = ctx
-            .resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let limit = match ctx.read_body::<InboxReq>() {
         Ok(r) => r.limit,
@@ -295,24 +290,24 @@ pub async fn do_bot_pending(ctx: Context, store: &dyn MessageStore, users: &dyn 
         .await
     {
         Ok(items) => {
-            let _ = ctx
-                .resp(
-                    Status::Success,
-                    Some(&BotPendingResp {
-                        items: items
-                            .into_iter()
-                            .map(|i: BotPendingItem| PbPending {
-                                message_id: i.message_id,
-                                body: i.body,
-                                send_time: i.send_time,
-                            })
-                            .collect(),
-                    }),
-                )
-                .await;
+            ctx.resp(
+                Status::Success,
+                Some(&BotPendingResp {
+                    items: items
+                        .into_iter()
+                        .map(|i: BotPendingItem| PbPending {
+                            message_id: i.message_id,
+                            body: i.body,
+                            send_time: i.send_time,
+                        })
+                        .collect(),
+                }),
+            )
+            .await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(store_status(&err), &err).await;
+            ctx.resp_with_error(store_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
