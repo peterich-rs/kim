@@ -28,7 +28,7 @@ pub use config::{
 };
 pub use error::ClientError;
 pub use events::{
-    BotPendingItem, Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex,
+    BotConfig, BotPendingItem, Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex,
     OutgoingContent, PresenceEntry, Profile, TalkResult,
 };
 pub use link::DropReason;

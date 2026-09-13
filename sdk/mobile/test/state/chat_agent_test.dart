@@ -648,6 +648,7 @@ void main() {
     await store.saveProfile(created);
     expect(env.fake.botCreates, 1);
     expect(env.fake.lastBotCreateId, 'translator');
+    expect(env.fake.lastBotCreateModel, 'gpt-4o');
     expect(
       env.container
           .read(agentProfilesProvider)
@@ -656,9 +657,19 @@ void main() {
       'b_translator',
     );
     await store.saveProfile(
-      created.copyWith(model: 'gpt-4.1', serverAccount: 'b_translator'),
+      created.copyWith(
+        model: 'gpt-4.1',
+        thinkingEffort: 'high',
+        contextTokens: 16000,
+        serverAccount: 'b_translator',
+      ),
     );
     expect(env.fake.botCreates, 1);
+    expect(env.fake.botUpdates, 1);
+    expect(env.fake.lastBotUpdateDest, 'b_translator');
+    expect(env.fake.lastBotUpdateModel, 'gpt-4.1');
+    expect(env.fake.lastBotUpdateThinking, 'high');
+    expect(env.fake.lastBotUpdateContextTokens, 16000);
   });
 
   test('login does not register; turning identity on does', () async {

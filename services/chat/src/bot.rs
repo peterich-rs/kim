@@ -1,7 +1,7 @@
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
-    BotCreateReq, BotCreateResp, BotPendingItem as PbPending, BotPendingResp, BotReplyReq,
-    InboxReq, Status, UserProfileUpdate,
+    BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
+    BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status,
 };
 use kim_protocol::{CMD_CHAT_USER_TALK, PROFILE_KIND_BOT};
 use kim_router::{Context, RouterError};
@@ -11,7 +11,18 @@ use crate::filter::ContentFilter;
 use crate::profile::to_pb;
 use crate::store::{BotPendingItem, InsertMessage, MessageStore, StoreError};
 use crate::talk::{fallback_targets, persist_then_push, unix_nano, TalkError};
-use crate::users::{valid_client_profile_id, CreateBot, UserDirectory, UserError, UserPresence};
+use crate::users::{
+    valid_client_profile_id, BotConfig, BotPatch, CreateBot, UserDirectory, UserError, UserPresence,
+};
+
+pub(crate) fn to_pb_config(c: &BotConfig) -> PbBotConfig {
+    PbBotConfig {
+        model: c.model.clone(),
+        thinking_effort: c.thinking_effort.clone(),
+        context_tokens: c.context_tokens,
+        visibility: c.visibility.clone(),
+    }
+}
 
 pub(crate) fn store_status(err: &StoreError) -> Status {
     match err {
@@ -68,15 +79,20 @@ pub async fn do_bot_create(ctx: Context, users: &dyn UserDirectory) -> Result<()
                 nickname: req.nickname,
                 avatar: req.avatar,
                 bio: req.bio,
+                model: req.model,
+                thinking_effort: req.thinking_effort,
+                context_tokens: req.context_tokens,
+                visibility: req.visibility,
             },
         )
         .await
     {
-        Ok(profile) => {
+        Ok(record) => {
             ctx.resp(
                 Status::Success,
                 Some(&BotCreateResp {
-                    profile: Some(to_pb(&profile)),
+                    profile: Some(to_pb(&record.profile)),
+                    config: Some(to_pb_config(&record.config)),
                 }),
             )
             .await?;
@@ -149,24 +165,35 @@ pub async fn do_bot_update(ctx: Context, users: &dyn UserDirectory) -> Result<()
             .await?;
         return Ok(());
     }
-    let req = match ctx.read_body::<UserProfileUpdate>() {
+    let req = match ctx.read_body::<BotUpdateReq>() {
         Ok(r) => r,
         Err(err) => {
             ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
             return Ok(());
         }
     };
-    let patch = crate::users::ProfilePatch {
+    let patch = BotPatch {
         nickname: req.nickname,
         avatar: req.avatar,
         bio: req.bio,
+        model: req.model,
+        thinking_effort: req.thinking_effort,
+        context_tokens: req.context_tokens,
+        visibility: req.visibility,
     };
     match users
-        .update_profile(&ctx.session().app, &dest, &patch)
+        .update_bot(&ctx.session().app, &ctx.session().account, &dest, &patch)
         .await
     {
-        Ok(p) => {
-            ctx.resp(Status::Success, Some(&to_pb(&p))).await?;
+        Ok(record) => {
+            ctx.resp(
+                Status::Success,
+                Some(&BotCreateResp {
+                    profile: Some(to_pb(&record.profile)),
+                    config: Some(to_pb_config(&record.config)),
+                }),
+            )
+            .await?;
         }
         Err(err) => {
             ctx.resp_with_error(user_status(&err), &err).await?;

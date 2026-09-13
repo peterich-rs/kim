@@ -289,6 +289,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/bot", delete(bot::bot_delete))
         .route("/api/v1/message/purge-dm", post(bot::purge_dm))
         .route("/api/v1/bot/update", post(bot::bot_update))
+        .route("/api/v1/bot/config", post(bot::bot_config))
         .route("/api/v1/bot/reply", post(bot::bot_reply))
         .route("/api/v1/bot/pending", post(bot::bot_pending))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_hmac))
@@ -2173,10 +2174,12 @@ mod tests {
                     nickname: "助手".into(),
                     avatar: String::new(),
                     bio: String::new(),
+                    ..Default::default()
                 },
             )
             .await
-            .unwrap();
+            .unwrap()
+            .profile;
         let user_msg = store
             .insert_user(
                 "kim",

@@ -129,6 +129,10 @@ abstract class RustLibApi extends BaseApi {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   });
 
   Future<String> crateApiClientKimSdkHandleBotDelete({
@@ -156,6 +160,10 @@ abstract class RustLibApi extends BaseApi {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   });
 
   Future<void> crateApiClientKimSdkHandleCancelSend({
@@ -639,6 +647,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -652,6 +664,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(nickname, serializer);
           sse_encode_String(avatar, serializer);
           sse_encode_String(bio, serializer);
+          sse_encode_String(model, serializer);
+          sse_encode_String(thinkingEffort, serializer);
+          sse_encode_i_32(contextTokens, serializer);
+          sse_encode_String(visibility, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -664,7 +680,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleBotCreateConstMeta,
-        argValues: [that, clientProfileId, nickname, avatar, bio],
+        argValues: [
+          that,
+          clientProfileId,
+          nickname,
+          avatar,
+          bio,
+          model,
+          thinkingEffort,
+          contextTokens,
+          visibility,
+        ],
         apiImpl: this,
       ),
     );
@@ -673,7 +699,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientKimSdkHandleBotCreateConstMeta =>
       const TaskConstMeta(
         debugName: "KimSdkHandle_bot_create",
-        argNames: ["that", "clientProfileId", "nickname", "avatar", "bio"],
+        argNames: [
+          "that",
+          "clientProfileId",
+          "nickname",
+          "avatar",
+          "bio",
+          "model",
+          "thinkingEffort",
+          "contextTokens",
+          "visibility",
+        ],
       );
 
   @override
@@ -805,6 +841,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -818,6 +858,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(nickname, serializer);
           sse_encode_String(avatar, serializer);
           sse_encode_String(bio, serializer);
+          sse_encode_String(model, serializer);
+          sse_encode_String(thinkingEffort, serializer);
+          sse_encode_i_32(contextTokens, serializer);
+          sse_encode_String(visibility, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -830,7 +874,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleBotUpdateConstMeta,
-        argValues: [that, dest, nickname, avatar, bio],
+        argValues: [
+          that,
+          dest,
+          nickname,
+          avatar,
+          bio,
+          model,
+          thinkingEffort,
+          contextTokens,
+          visibility,
+        ],
         apiImpl: this,
       ),
     );
@@ -839,7 +893,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientKimSdkHandleBotUpdateConstMeta =>
       const TaskConstMeta(
         debugName: "KimSdkHandle_bot_update",
-        argNames: ["that", "dest", "nickname", "avatar", "bio"],
+        argNames: [
+          "that",
+          "dest",
+          "nickname",
+          "avatar",
+          "bio",
+          "model",
+          "thinkingEffort",
+          "contextTokens",
+          "visibility",
+        ],
       );
 
   @override
@@ -3648,12 +3712,20 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   }) => RustLib.instance.api.crateApiClientKimSdkHandleBotCreate(
     that: this,
     clientProfileId: clientProfileId,
     nickname: nickname,
     avatar: avatar,
     bio: bio,
+    model: model,
+    thinkingEffort: thinkingEffort,
+    contextTokens: contextTokens,
+    visibility: visibility,
   );
 
   Future<String> botDelete({required String dest}) => RustLib.instance.api
@@ -3686,12 +3758,20 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   }) => RustLib.instance.api.crateApiClientKimSdkHandleBotUpdate(
     that: this,
     dest: dest,
     nickname: nickname,
     avatar: avatar,
     bio: bio,
+    model: model,
+    thinkingEffort: thinkingEffort,
+    contextTokens: contextTokens,
+    visibility: visibility,
   );
 
   Future<void> cancelSend({required String clientId}) => RustLib.instance.api

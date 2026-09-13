@@ -8,7 +8,10 @@ use async_trait::async_trait;
 use tokio::sync::oneshot;
 
 use crate::social::{ordered_pair, FriendRequestOutcome, SocialDirectory, SocialError};
-use crate::users::{CreateBot, ProfilePatch, UserDirectory, UserError, UserPresence, UserProfile};
+use crate::users::{
+    BotConfig, BotPatch, BotRecord, CreateBot, ProfilePatch, UserDirectory, UserError,
+    UserPresence, UserProfile,
+};
 
 const DEFAULT_TTL: Duration = Duration::from_secs(30);
 const DEFAULT_CAP: usize = 10_000;
@@ -461,10 +464,31 @@ impl UserDirectory for CachedUserDirectory {
             .await
     }
 
-    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
-        let profile = self.inner.create_bot(app, req).await?;
-        self.evict(app, &profile.account);
-        Ok(profile)
+    async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
+        let record = self.inner.create_bot(app, req).await?;
+        self.evict(app, &record.profile.account);
+        Ok(record)
+    }
+
+    async fn update_bot(
+        &self,
+        app: &str,
+        owner: &str,
+        account: &str,
+        patch: &BotPatch,
+    ) -> Result<BotRecord, UserError> {
+        let record = self.inner.update_bot(app, owner, account, patch).await?;
+        self.evict(app, account);
+        Ok(record)
+    }
+
+    async fn bot_config(
+        &self,
+        app: &str,
+        owner: &str,
+        account: &str,
+    ) -> Result<BotConfig, UserError> {
+        self.inner.bot_config(app, owner, account).await
     }
 
     async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
@@ -763,12 +787,25 @@ mod tests {
                     .set_password_and_bump_epoch(app, account, password_hash)
                     .await
             }
-            async fn create_bot(
+            async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
+                self.inner.create_bot(app, req).await
+            }
+            async fn update_bot(
                 &self,
                 app: &str,
-                req: &CreateBot,
-            ) -> Result<UserProfile, UserError> {
-                self.inner.create_bot(app, req).await
+                owner: &str,
+                account: &str,
+                patch: &BotPatch,
+            ) -> Result<BotRecord, UserError> {
+                self.inner.update_bot(app, owner, account, patch).await
+            }
+            async fn bot_config(
+                &self,
+                app: &str,
+                owner: &str,
+                account: &str,
+            ) -> Result<BotConfig, UserError> {
+                self.inner.bot_config(app, owner, account).await
             }
             async fn bot_owner(
                 &self,

@@ -23,6 +23,10 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   });
 
   Future<String> botDelete({required String dest});
@@ -44,6 +48,10 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String nickname,
     required String avatar,
     required String bio,
+    required String model,
+    required String thinkingEffort,
+    required int contextTokens,
+    required String visibility,
   });
 
   Future<void> cancelSend({required String clientId});

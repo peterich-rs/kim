@@ -258,6 +258,7 @@ class AgentProfile {
     this.mode = 'smart_approve',
     this.maxTurns,
     this.thinkingEffort = '',
+    this.contextTokens,
     this.accountId = '',
     this.reasoning,
     this.tools = const AgentToolSet(),
@@ -279,6 +280,7 @@ class AgentProfile {
   final String mode;
   final int? maxTurns;
   final String thinkingEffort;
+  final int? contextTokens;
   final String accountId;
   final ReasoningChoice? reasoning;
   final AgentToolSet tools;
@@ -302,6 +304,7 @@ class AgentProfile {
     String? mode,
     int? maxTurns,
     String? thinkingEffort,
+    int? contextTokens,
     String? accountId,
     ReasoningChoice? reasoning,
     AgentToolSet? tools,
@@ -323,6 +326,7 @@ class AgentProfile {
       mode: mode ?? this.mode,
       maxTurns: maxTurns ?? this.maxTurns,
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
+      contextTokens: contextTokens ?? this.contextTokens,
       accountId: accountId ?? this.accountId,
       reasoning: reasoning ?? this.reasoning,
       tools: tools ?? this.tools,
@@ -344,6 +348,7 @@ class AgentProfile {
       'name': model,
       if (reasoning == null && thinkingEffort.isNotEmpty)
         'thinking_effort': thinkingEffort,
+      if (contextTokens != null) 'context_tokens': contextTokens,
     },
     if (reasoning != null) 'reasoning': reasoning!.toJson(),
     'system_prompt': systemPrompt,
@@ -405,6 +410,9 @@ class AgentProfile {
       mode: json['mode'] as String? ?? 'smart_approve',
       maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
       thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
+      contextTokens: modelMap['context_tokens'] is int
+          ? modelMap['context_tokens'] as int
+          : null,
       accountId: json['account_id'] as String? ?? '',
       reasoning: reasoningRaw is Map
           ? ReasoningChoice.fromJson(Map<String, Object?>.from(reasoningRaw))
@@ -569,6 +577,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         for (final p in state)
           if (p.id == next.id) next else p,
       ]);
+      await _syncBotConfig(profile);
     }
   }
 
@@ -591,7 +600,13 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     final person = await ref
         .read(clientPortProvider)
-        .botCreate(clientProfileId: profile.id, nickname: profile.displayName);
+        .botCreate(
+          clientProfileId: profile.id,
+          nickname: profile.displayName,
+          model: profile.model,
+          thinkingEffort: profile.thinkingEffort,
+          contextTokens: profile.contextTokens,
+        );
     if (person.account.isEmpty) {
       throw StateError(Copy.agentRegisterFailed);
     }
@@ -603,6 +618,28 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     return next;
   }
 
+  Future<void> _syncBotConfig(AgentProfile profile) async {
+    if (!serverIdentity ||
+        !ref.read(authProvider).signedIn ||
+        profile.serverAccount.isEmpty) {
+      return;
+    }
+    try {
+      await ref
+          .read(clientPortProvider)
+          .botUpdate(
+            dest: profile.serverAccount,
+            nickname: profile.displayName,
+            model: profile.model,
+            thinkingEffort: profile.thinkingEffort,
+            contextTokens: profile.contextTokens,
+          );
+    } catch (err) {
+      identityError = agentRegisterError(err);
+      state = [...state];
+    }
+  }
+
   void _assertCanInsert() {
     if (state.length >= kMaxBotsPerOwner) {
       throw AgentProfileCapExceeded();
@@ -610,6 +647,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   /// Explicit user action (`setServerIdentity(true)`), not login / online.
+  /// Also registers enabled desktop personas (idempotent) so mobile can see bots.
   Future<void> ensureVisibleIdentities() async {
     await ensureLoaded();
     if (!serverIdentity || !ref.read(authProvider).signedIn) {

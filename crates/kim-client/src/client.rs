@@ -9,22 +9,23 @@ use uuid::Uuid;
 
 use crate::config::ClientConfig;
 use crate::events::{
-    BotPendingItem, Event, HistoryItem, InboxItem, Message, MessageIndex, OutgoingContent, Profile,
-    TalkResult,
+    BotConfig, BotPendingItem, Event, HistoryItem, InboxItem, Message, MessageIndex,
+    OutgoingContent, Profile, TalkResult,
 };
 use crate::login::{login_with_device, send_ping};
 use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_bot_create, encode_bot_pending,
-    encode_bot_reply, encode_dest_cmd, encode_empty_cmd, encode_history, encode_inbox_list,
-    encode_inbox_read, encode_offline_content, encode_offline_index, encode_outgoing, encode_ping,
-    encode_room_enter, encode_room_leave, encode_typing, encode_user_search, encode_user_update,
+    encode_bot_reply, encode_bot_update, encode_dest_cmd, encode_empty_cmd, encode_history,
+    encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
+    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_typing,
+    encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
-    CMD_BOT_DELETE, CMD_BOT_UPDATE, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
-    CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, INBOX_KIND_USER,
+    CMD_BOT_DELETE, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT,
+    CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, INBOX_KIND_USER,
 };
 
 enum Io {
@@ -340,13 +341,14 @@ impl KimClient {
         nickname: &str,
         avatar: &str,
         bio: &str,
+        config: &BotConfig,
     ) -> Result<Profile, ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
         self.write_wait(
-            encode_bot_create(seq, client_profile_id, nickname, avatar, bio),
+            encode_bot_create(seq, client_profile_id, nickname, avatar, bio, config),
             seq,
             |ev| match ev {
                 Event::Profile { sequence, profile } if *sequence == seq => {
@@ -371,20 +373,14 @@ impl KimClient {
         nickname: &str,
         avatar: &str,
         bio: &str,
+        config: &BotConfig,
     ) -> Result<Profile, ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-        let mut pkt = kim_protocol::LogicPkt::new(CMD_BOT_UPDATE, seq, bytes::Bytes::new());
-        pkt.set_dest(dest);
-        pkt.write_body(&kim_protocol::pkt::UserProfileUpdate {
-            nickname: nickname.to_string(),
-            avatar: avatar.to_string(),
-            bio: bio.to_string(),
-        });
         self.write_wait(
-            kim_protocol::marshal(&kim_protocol::Packet::Logic(pkt)),
+            encode_bot_update(seq, dest, nickname, avatar, bio, config),
             seq,
             |ev| match ev {
                 Event::Profile { sequence, profile } if *sequence == seq => {

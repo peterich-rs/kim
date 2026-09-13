@@ -4,15 +4,25 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
 use chat::store::StoreError;
-use chat::users::{CreateBot, UserError};
+use chat::users::{BotConfig, BotPatch, CreateBot, UserError};
 use kim_protocol::pkt::{
-    AccountExists, AccountPair, BotCreateResp, BotPendingItem as PbPending, BotPendingQuery,
-    BotPendingResp, BotReplyStoreReq, InternalBotCreate,
+    AccountExists, AccountPair, BotConfig as PbBotConfig, BotCreateResp,
+    BotPendingItem as PbPending, BotPendingQuery, BotPendingResp, BotReplyStoreReq,
+    InternalBotConfig, InternalBotCreate, InternalBotUpdate,
 };
 use kim_protocol::PROFILE_KIND_BOT;
 
 use crate::product::to_pb;
 use crate::{backend, decode, encode, insert_from_req, RoyalState};
+
+fn to_pb_config(c: BotConfig) -> PbBotConfig {
+    PbBotConfig {
+        model: c.model,
+        thinking_effort: c.thinking_effort,
+        context_tokens: c.context_tokens,
+        visibility: c.visibility,
+    }
+}
 
 fn user_http(err: UserError) -> (StatusCode, String) {
     match err {
@@ -42,7 +52,7 @@ pub async fn bot_create(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InternalBotCreate>(&body)?;
-    let profile = st
+    let record = st
         .users
         .create_bot(
             &st.app,
@@ -52,12 +62,17 @@ pub async fn bot_create(
                 nickname: req.nickname,
                 avatar: req.avatar,
                 bio: req.bio,
+                model: req.model,
+                thinking_effort: req.thinking_effort,
+                context_tokens: req.context_tokens,
+                visibility: req.visibility,
             },
         )
         .await
         .map_err(user_http)?;
     Ok(encode(&BotCreateResp {
-        profile: Some(to_pb(profile)),
+        profile: Some(to_pb(record.profile)),
+        config: Some(to_pb_config(record.config)),
     }))
 }
 
@@ -101,26 +116,46 @@ pub async fn bot_update(
     State(st): State<RoyalState>,
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
-    let req = decode::<kim_protocol::pkt::InternalBotUpdate>(&body)?;
-    match st.users.lookup(&st.app, &req.account).await {
-        Ok(Some(p)) if p.kind == PROFILE_KIND_BOT && p.owner_account == req.owner => {}
-        Ok(Some(p)) if p.kind == PROFILE_KIND_BOT => {
-            return Err((StatusCode::FORBIDDEN, "not bot owner".into()));
-        }
-        Ok(_) => return Err((StatusCode::NOT_FOUND, "not found".into())),
-        Err(err) => return Err(user_http(err)),
-    }
-    let patch = chat::users::ProfilePatch {
-        nickname: req.nickname,
-        avatar: req.avatar,
-        bio: req.bio,
-    };
-    let p = st
+    let req = decode::<InternalBotUpdate>(&body)?;
+    let record = st
         .users
-        .update_profile(&st.app, &req.account, &patch)
+        .update_bot(
+            &st.app,
+            &req.owner,
+            &req.account,
+            &BotPatch {
+                nickname: req.nickname,
+                avatar: req.avatar,
+                bio: req.bio,
+                model: req.model,
+                thinking_effort: req.thinking_effort,
+                context_tokens: req.context_tokens,
+                visibility: req.visibility,
+            },
+        )
         .await
         .map_err(user_http)?;
-    Ok(encode(&to_pb(p)))
+    Ok(encode(&BotCreateResp {
+        profile: Some(to_pb(record.profile)),
+        config: Some(to_pb_config(record.config)),
+    }))
+}
+
+pub async fn bot_config(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<InternalBotConfig>(&body)?;
+    let config = st
+        .users
+        .bot_config(&st.app, &req.owner, &req.account)
+        .await
+        .map_err(user_http)?;
+    Ok(encode(&InternalBotConfig {
+        owner: req.owner,
+        account: req.account,
+        config: Some(to_pb_config(config)),
+    }))
 }
 
 pub async fn bot_reply(

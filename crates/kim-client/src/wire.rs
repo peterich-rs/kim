@@ -216,6 +216,7 @@ pub fn encode_bot_create(
     nickname: &str,
     avatar: &str,
     bio: &str,
+    config: &crate::events::BotConfig,
 ) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_BOT_CREATE, seq, Bytes::new());
     pkt.write_body(&BotCreateReq {
@@ -223,6 +224,32 @@ pub fn encode_bot_create(
         nickname: nickname.to_string(),
         avatar: avatar.to_string(),
         bio: bio.to_string(),
+        model: config.model.clone(),
+        thinking_effort: config.thinking_effort.clone(),
+        context_tokens: config.context_tokens,
+        visibility: config.visibility.clone(),
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_bot_update(
+    seq: u32,
+    dest: &str,
+    nickname: &str,
+    avatar: &str,
+    bio: &str,
+    config: &crate::events::BotConfig,
+) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_BOT_UPDATE, seq, Bytes::new());
+    pkt.set_dest(dest);
+    pkt.write_body(&kim_protocol::pkt::BotUpdateReq {
+        nickname: nickname.to_string(),
+        avatar: avatar.to_string(),
+        bio: bio.to_string(),
+        model: config.model.clone(),
+        thinking_effort: config.thinking_effort.clone(),
+        context_tokens: config.context_tokens,
+        visibility: config.visibility.clone(),
     });
     marshal(&Packet::Logic(pkt))
 }
@@ -521,10 +548,23 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
                 .collect(),
         });
     }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_BOT_UPDATE {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: BotCreateResp = p.read_body()?;
+        let u = resp.profile.unwrap_or_default();
+        return Ok(Event::Profile {
+            sequence: p.header.sequence,
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind),
+        });
+    }
     if p.header.flag == Flag::Response as i32
-        && (p.header.command == CMD_USER_PROFILE
-            || p.header.command == CMD_USER_UPDATE
-            || p.header.command == CMD_BOT_UPDATE)
+        && (p.header.command == CMD_USER_PROFILE || p.header.command == CMD_USER_UPDATE)
     {
         if p.header.status != Status::Success as i32 {
             return Ok(Event::Status {
