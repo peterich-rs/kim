@@ -145,16 +145,18 @@ class ChatTitleChrome extends StatelessWidget {
     required this.title,
     required this.avatarUrl,
     required this.presence,
+    this.onTap,
   });
 
   final String title;
   final String avatarUrl;
   final PeerPresenceStatus presence;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ClipRRect(
+    final chrome = ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
@@ -208,6 +210,10 @@ class ChatTitleChrome extends StatelessWidget {
         ),
       ),
     );
+    if (onTap == null) {
+      return chrome;
+    }
+    return GestureDetector(onTap: onTap, child: chrome);
   }
 }
 

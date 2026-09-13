@@ -89,7 +89,11 @@ pub async fn do_bot_create(ctx: Context, users: &dyn UserDirectory) -> Result<()
     Ok(())
 }
 
-pub async fn do_bot_delete(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
+pub async fn do_bot_delete(
+    ctx: Context,
+    users: &dyn UserDirectory,
+    store: &dyn MessageStore,
+) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
         ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
             .await?;
@@ -108,11 +112,15 @@ pub async fn do_bot_delete(ctx: Context, users: &dyn UserDirectory) -> Result<()
             .await?;
         return Ok(());
     }
-    match users
-        .delete_bot(&ctx.session().app, &ctx.session().account, &dest)
-        .await
-    {
+    let owner = ctx.session().account.clone();
+    let app = ctx.session().app.clone();
+    match users.delete_bot(&app, &owner, &dest).await {
         Ok(()) => {
+            if let Err(err) = store.purge_peer_dm(&app, &owner, &dest).await {
+                warn!(%err, bot = %dest, "bot delete purge dm failed");
+                ctx.resp_with_error(store_status(&err), &err).await?;
+                return Ok(());
+            }
             ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {

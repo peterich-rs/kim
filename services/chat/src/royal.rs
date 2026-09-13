@@ -603,6 +603,17 @@ impl MessageStore for HttpMessageStore {
             })
             .collect())
     }
+
+    async fn purge_peer_dm(&self, _app: &str, account: &str, peer: &str) -> Result<(), StoreError> {
+        // Royal `DELETE /api/v1/bot` already purges the 1:1 DM. Idempotent.
+        let body = AccountPair {
+            account: account.to_string(),
+            peer: peer.to_string(),
+        };
+        self.pool
+            .post_maybe_empty("/api/v1/message/purge-dm", &body)
+            .await
+    }
 }
 
 pub struct HttpGroupDirectory {
