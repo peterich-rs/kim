@@ -917,10 +917,11 @@ class ChatAgent {
   }
 
   Future<void> dispose() async {
-    final dest = _typingDest;
-    if (dest != null) {
-      _setAgentTyping(dest, false);
-    }
+    // Riverpod forbids Ref.read inside onDispose. Drop the heartbeat only;
+    // typingProvider is tearing down with this container.
+    _typingHeartbeat?.cancel();
+    _typingHeartbeat = null;
+    _typingDest = null;
     await _closeLives();
   }
 }

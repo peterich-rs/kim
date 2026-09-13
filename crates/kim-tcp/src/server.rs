@@ -279,7 +279,12 @@ pub struct TcpServer {
 
 impl TcpServer {
     pub async fn bind(listen: impl tokio::net::ToSocketAddrs) -> Result<Self, Error> {
-        let listener = TcpListener::bind(listen).await?;
+        Self::from_listener(TcpListener::bind(listen).await?)
+    }
+
+    /// Take over an already-bound listener. Tests use this so a reserved
+    /// port is never dropped and stolen by a parallel bind(`127.0.0.1:0`).
+    pub fn from_listener(listener: TcpListener) -> Result<Self, Error> {
         let local_addr = listener.local_addr()?;
         Ok(Self {
             local_addr,

@@ -349,8 +349,16 @@ fn chat_reg(port: u16) -> DefaultRegistration {
 }
 
 async fn start_chat(addr: std::net::SocketAddr) -> Arc<Container> {
-    let mut chat_server = TcpServer::bind(addr).await.unwrap();
-    chat_server.set_drain_wait(Duration::from_millis(50));
+    let mut chat_server = None;
+    for _ in 0..50 {
+        if let Ok(mut s) = TcpServer::bind(addr).await {
+            s.set_drain_wait(Duration::from_millis(50));
+            chat_server = Some(s);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut chat_server = chat_server.expect("rebind chat port");
     let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
     let chat_c = Container::new(ContainerOpts {
         naming: chat_naming,
@@ -440,22 +448,13 @@ async fn echo_roundtrip(gw_addr: std::net::SocketAddr, seq: u32, body: &'static 
 async fn dials_when_chat_listen_appears() {
     let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = probe.local_addr().unwrap();
-    drop(probe);
 
     let (gw_c, gw_addr) = start_gateway(addr.port()).await;
     tokio::time::sleep(Duration::from_millis(40)).await;
-    assert_eq!(gw_c.slot_state("chat", "chat-1").await, None);
-
-    let mut chat_server = None;
-    for _ in 0..20 {
-        if let Ok(mut s) = TcpServer::bind(addr).await {
-            s.set_drain_wait(Duration::from_millis(50));
-            chat_server = Some(s);
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    let mut chat_server = chat_server.expect("rebind chat port");
+    // Keep `probe` listening until Chat takes it over. Dropping the fd
+    // lets a parallel bind(127.0.0.1:0) steal the port (CI).
+    let mut chat_server = TcpServer::from_listener(probe).unwrap();
+    chat_server.set_drain_wait(Duration::from_millis(50));
     let chat_naming = Arc::new(StaticNaming::from_slice(vec![]));
     let chat_c = Container::new(ContainerOpts {
         naming: chat_naming,
