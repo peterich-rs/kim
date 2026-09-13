@@ -43,6 +43,12 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String clientId,
   });
 
+  Future<void> botTyping({
+    required String dest,
+    required int kind,
+    required bool active,
+  });
+
   Future<String> botUpdate({
     required String dest,
     required String nickname,

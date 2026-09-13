@@ -842,7 +842,7 @@ class ConversationStore {
     final lastAt = existing == null
         ? msg.at
         : (msg.at >= existing.lastAt ? msg.at : existing.lastAt);
-    final lastBody = msg.sys
+    final lastBody = msg.sys || msg.isAgentCard
         ? (existing?.lastBody ?? '')
         : (existing == null || msg.at >= existing.lastAt
               ? previewBody(msg)

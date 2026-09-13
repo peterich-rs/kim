@@ -27,6 +27,11 @@ fn force_ask(name: &str) -> bool {
 
 impl PermissionConfig {
     pub fn default_for(name: &str, mode: GooseMode) -> PermissionDefault {
+        // S-KD 15: `activate_skill` only reads text the user already assigned
+        // or that the workspace already exposes, so no mode asks for it.
+        if name == crate::ops::skill::ACTIVATE_SKILL {
+            return PermissionDefault::AlwaysAllow;
+        }
         match mode {
             GooseMode::Auto => PermissionDefault::AlwaysAllow,
             GooseMode::Approve | GooseMode::Chat => PermissionDefault::AskBefore,
@@ -285,6 +290,23 @@ mod tests {
             PermissionConfig::default_for("read_file", GooseMode::SmartApprove),
             PermissionDefault::AlwaysAllow
         );
+    }
+
+    #[test]
+    fn activate_skill_never_asks() {
+        let cfg = PermissionConfig::default();
+        for mode in [
+            GooseMode::Chat,
+            GooseMode::Approve,
+            GooseMode::SmartApprove,
+            GooseMode::Auto,
+        ] {
+            assert_eq!(
+                cfg.resolve("activate_skill", mode),
+                PermissionDefault::AlwaysAllow,
+                "{mode:?}"
+            );
+        }
     }
 
     #[test]

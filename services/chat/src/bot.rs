@@ -1,13 +1,18 @@
+use std::collections::HashSet;
+
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
     BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
-    BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status,
+    BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status, TypingPush, TypingReq,
 };
-use kim_protocol::{CMD_CHAT_USER_TALK, PROFILE_KIND_BOT};
-use kim_router::{Context, RouterError};
+use kim_protocol::{
+    AccountId, CMD_CHAT_USER_TALK, CMD_TYPING, INBOX_KIND_USER, PROFILE_KIND_BOT,
+};
+use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::filter::ContentFilter;
+use crate::interest::RoomInterestStore;
 use crate::profile::to_pb;
 use crate::store::{BotPendingItem, InsertMessage, MessageStore, StoreError};
 use crate::talk::{fallback_targets, persist_then_push, unix_nano, TalkError};
@@ -343,6 +348,98 @@ pub async fn do_bot_pending(
         Err(err) => {
             ctx.resp_with_error(store_status(&err), &err).await?;
         }
+    }
+    Ok(())
+}
+
+/// Owner-sent bot typing. Same auth as `do_bot_reply`; Push typer is the bot
+/// so peer UIs never confuse it with the owner typing (S-KD 26).
+pub async fn do_bot_typing(
+    ctx: Context,
+    users: &dyn UserDirectory,
+    interest: &dyn RoomInterestStore,
+) -> Result<(), RouterError> {
+    if ctx.header().dest.is_empty() {
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
+    }
+    let bot = ctx.header().dest.clone();
+    let req = match ctx.read_body::<TypingReq>() {
+        Ok(r) => r,
+        Err(err) => {
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
+        }
+    };
+    if req.kind != INBOX_KIND_USER {
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let presence = match lookup_bot(users, &ctx.session().app, &bot).await {
+        Ok(p) => p,
+        Err(status) => {
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
+        }
+    };
+    if presence.owner_account != ctx.session().account {
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let owner = ctx.session().account.clone();
+    let app = ctx.session().app.clone();
+
+    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
+
+    let body = TypingPush {
+        typer: bot.clone(),
+        dest: owner.clone(),
+        kind: INBOX_KIND_USER,
+        active: req.active,
+    };
+
+    // Devices that entered the bot room (dest=bot). Keep the owner only.
+    let viewers = match interest.viewers(&app, &bot, INBOX_KIND_USER).await {
+        Ok(v) => v,
+        Err(err) => {
+            warn!(%err, bot = %bot, "bot typing list viewers");
+            return Ok(());
+        }
+    };
+    let peer_channels: Vec<String> = viewers
+        .into_iter()
+        .filter(|v| v.account == owner)
+        .map(|v| v.channel_id)
+        .collect();
+    if peer_channels.is_empty() {
+        return Ok(());
+    }
+    let owner_id = match AccountId::parse(&owner) {
+        Ok(id) => id,
+        Err(_) => return Ok(()),
+    };
+    let locs = match ctx.list_locations(&owner_id).await {
+        Ok(v) => v,
+        Err(SessionError::NotFound) => return Ok(()),
+        Err(err) => {
+            warn!(%err, owner = %owner, "bot typing owner locations");
+            return Ok(());
+        }
+    };
+    let want: HashSet<&str> = peer_channels.iter().map(|c| c.as_str()).collect();
+    let recvs: Vec<_> = locs
+        .into_iter()
+        .filter(|l| want.contains(l.channel_id.as_str()))
+        .collect();
+    if recvs.is_empty() {
+        return Ok(());
+    }
+    // Fanout reuses CMD_TYPING so clients keep one decoder; body.typer is the bot.
+    if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &recvs).await {
+        warn!(%err, bot = %bot, "bot typing fanout failed");
     }
     Ok(())
 }

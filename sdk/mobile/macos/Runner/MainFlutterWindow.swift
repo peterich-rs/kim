@@ -9,6 +9,7 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    WorkspaceBookmarkPlugin.register(with: flutterViewController.registrar(forPlugin: "WorkspaceBookmarkPlugin"))
 
     super.awakeFromNib()
     minSize = NSSize(width: 420, height: 560)

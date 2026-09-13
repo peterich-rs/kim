@@ -15,11 +15,16 @@ use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
 use crate::ops::mcp::{McpHub, McpToolProvider};
 use crate::ops::permission::PermissionOp;
+use crate::ops::skill::SkillOp;
 use crate::ops::steer::SteerOp;
 use crate::ops::subagent::SubagentOp;
 use crate::ops::system_prompt::SystemPromptOp;
 use crate::ops::unknown_tool::UnknownToolOp;
-use crate::profile::{AgentProfile, ModelSpec};
+use crate::profile::{AgentProfile, ModelSpec, WorkspaceKind};
+use crate::skills::{
+    build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry,
+    SkillResolver,
+};
 use crate::{HostError, HostSession};
 
 pub struct MachineFactory;
@@ -32,10 +37,49 @@ impl MachineFactory {
         project_root: &Path,
         mcp: Arc<McpHub>,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
-        let prompt = profile.effective_system_prompt().to_string();
+        let mut prompt = profile.effective_system_prompt().to_string();
         if profile.system_prompt.trim().is_empty() {
             tracing::debug!(profile_id = %profile.id, "system_prompt_fallback");
         }
+
+        // S-KD 3: only profiles that can read the workspace inherit the
+        // ecosystem shelves. A sandbox IM-only persona must not see
+        // `git-commit` in its catalog.
+        let scan_portable = profile.tools.fs
+            || profile.tools.fs_write
+            || profile.workspace.kind == WorkspaceKind::Repo;
+        let resolver = Arc::new(SkillResolver::new());
+        let registry = Arc::new(if scan_portable || !profile.skills.is_empty() {
+            if let Some(agents_md) = read_agents_md(project_root) {
+                prompt.push_str("\n\nWorkspace AGENTS.md:\n");
+                prompt.push_str(&agents_md);
+            }
+            build_registry(
+                &profile.skills,
+                &profile.portable_denylist,
+                &RegistryScan {
+                    user_root: &profile.user_agents_skills,
+                    project_root,
+                    enabled: scan_portable,
+                },
+                &resolver,
+            )
+        } else {
+            SkillRegistry::default()
+        });
+        // S-KD 13: the catalog goes in, skill bodies never do.
+        let catalog = catalog_prompt_block(&registry);
+        if !catalog.is_empty() {
+            prompt.push_str("\n\n");
+            prompt.push_str(&catalog);
+        }
+        tracing::debug!(
+            profile_id = %profile.id,
+            workspace_kind = ?profile.workspace.kind,
+            skills_n = registry.len(),
+            "assembled skill catalog"
+        );
+
         let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp { prompt }))];
         if !profile.steer.trim().is_empty() {
             steps.push(Step::Operation(Arc::new(SteerOp {
@@ -57,7 +101,10 @@ impl MachineFactory {
                 "GooseMode::Chat ignored because ToolSet is non-empty"
             );
         }
-        let chat_only = !profile.tools.has_any() && profile.extensions.is_empty();
+        // A catalogued skill needs `activate_skill`, so it also needs the tool
+        // pipeline even when no other tool is on.
+        let chat_only =
+            !profile.tools.has_any() && profile.extensions.is_empty() && registry.is_empty();
         if !chat_only {
             steps.push(Step::Operation(Arc::new(PermissionOp {
                 mode: profile.mode,
@@ -93,6 +140,12 @@ impl MachineFactory {
                 }));
             }
             steps.push(Step::Operation(Arc::new(tools)));
+            if !registry.is_empty() {
+                steps.push(Step::Operation(Arc::new(SkillOp::new(
+                    Arc::clone(&registry),
+                    Arc::clone(&resolver),
+                ))));
+            }
             steps.push(Step::Operation(Arc::new(UnknownToolOp)));
         } else {
             steps.push(Step::Operation(Arc::new(ChatGuardOp)));
@@ -186,6 +239,10 @@ mod tests {
             extensions: Vec::new(),
             enabled: true,
             steer: String::new(),
+            workspace: crate::profile::WorkspaceSpec::default(),
+            skills: Vec::new(),
+            portable_denylist: Vec::new(),
+            user_agents_skills: String::new(),
         }
     }
 
@@ -312,6 +369,125 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(parts[0].1, "Stay terse.");
+    }
+
+    fn step_names(steps: &[Step<'static, HostSession, HostEffect>]) -> Vec<&'static str> {
+        steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Operation(op) => Some(op.name()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    async fn system_prompt(steps: &[Step<'static, HostSession, HostEffect>]) -> String {
+        let Step::Operation(op) = &steps[0] else {
+            panic!("expected system prompt operation");
+        };
+        let session = HostSession {
+            id: "t".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let parts = op
+            .prompt_parts(
+                &session,
+                &goose_provider_types::conversation::Conversation::empty(),
+            )
+            .await
+            .unwrap();
+        parts[0].1.clone()
+    }
+
+    fn write_portable_skill(project_root: &Path, id: &str) {
+        let dir = project_root.join(".agents").join("skills").join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nname: {id}\ndescription: Create Conventional Commits\n---\n\nbody\n"),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn assigned_app_skill_adds_skill_op_and_catalog() {
+        let mut profile = profile_with(ToolSet::default());
+        profile.skills = vec![crate::skills::SkillRef {
+            id: "kim-im".into(),
+            ..crate::skills::SkillRef::default()
+        }];
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+            Arc::new(McpHub::new()),
+        );
+        let names = step_names(&steps);
+        assert!(names.contains(&"skills"), "{names:?}");
+        assert!(!names.contains(&"chat_guard"), "{names:?}");
+        assert_eq!(
+            names.iter().position(|n| *n == "skills"),
+            names
+                .iter()
+                .position(|n| *n == "unknown_tool")
+                .map(|i| i - 1),
+            "skills runs before unknown_tool: {names:?}"
+        );
+        let prompt = system_prompt(&steps).await;
+        assert!(prompt.contains("KIM app skills"), "{prompt}");
+        assert!(prompt.contains("- kim-im: "), "{prompt}");
+        assert!(!prompt.contains("Project/user skills"), "{prompt}");
+    }
+
+    #[tokio::test]
+    async fn fs_profile_discovers_project_portable_skills() {
+        let dir = tempfile::tempdir().unwrap();
+        write_portable_skill(dir.path(), "git-commit");
+        std::fs::write(dir.path().join("AGENTS.md"), "notes live in MEMORY.md").unwrap();
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_fs_tools: true,
+            ..LegacyOpenOpts::default()
+        });
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            dir.path(),
+            Arc::new(McpHub::new()),
+        );
+        assert!(step_names(&steps).contains(&"skills"));
+        let prompt = system_prompt(&steps).await;
+        assert!(
+            prompt.contains("- git-commit: Create Conventional Commits"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("notes live in MEMORY.md"), "{prompt}");
+    }
+
+    #[tokio::test]
+    async fn sandbox_im_only_profile_never_scans_portable_shelves() {
+        let dir = tempfile::tempdir().unwrap();
+        write_portable_skill(dir.path(), "git-commit");
+        std::fs::write(dir.path().join("AGENTS.md"), "should stay unread").unwrap();
+        let profile = profile_with(ToolSet {
+            send_message: true,
+            ..ToolSet::default()
+        });
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            dir.path(),
+            Arc::new(McpHub::new()),
+        );
+        assert!(!step_names(&steps).contains(&"skills"));
+        let prompt = system_prompt(&steps).await;
+        assert!(!prompt.contains("git-commit"), "{prompt}");
+        assert!(!prompt.contains("should stay unread"), "{prompt}");
     }
 
     #[test]

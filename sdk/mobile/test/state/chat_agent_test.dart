@@ -290,6 +290,63 @@ void main() {
     expect(cards.first.body, contains('pending'));
   });
 
+  test('tool_started and tool_finished do not append chat cards', () async {
+    final session = _OneShotSession('done');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    session.emit(
+      AgentUiEvent(
+        kind: 'tool_started',
+        operationId: 'op1',
+        callId: 'tool-1',
+        name: 'bash',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '',
+        ok: false,
+        stopReason: '',
+        message: '',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    session.emit(
+      AgentUiEvent(
+        kind: 'tool_finished',
+        operationId: 'op1',
+        callId: 'tool-1',
+        name: 'bash',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '{"ok":true}',
+        ok: true,
+        stopReason: '',
+        message: '',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final cards = env.container
+        .read(threadMessagesProvider(kGooseAgentId))
+        .items
+        .where((m) => m.key == 'agent-card-tool-1')
+        .toList();
+    expect(cards, isEmpty);
+  });
+
   test('two profiles open two sessions on the same thread dest', () async {
     final session = _OneShotSession('ok');
     final bridge = _RecordingAgentBridge()..session = session;

@@ -11,6 +11,8 @@ import 'package:uuid/uuid.dart';
 import '../agent/capability_host.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
+import '../agent/workspace.dart';
+import '../agent/workspace_access.dart';
 import '../agent_bridge.dart';
 import '../copy.dart';
 import '../core/format.dart';
@@ -24,17 +26,20 @@ import 'provider_accounts.dart';
 import 'inbox.dart';
 import 'messages.dart';
 import 'providers.dart';
+import 'typing.dart';
 
 class _Live {
   _Live({
     required this.session,
     required this.threadDest,
     required this.profile,
+    this.bookmarkBase64 = '',
   });
 
   final AgentSessionPort session;
   final String threadDest;
   final AgentProfile profile;
+  final String bookmarkBase64;
   StreamSubscription<AgentUiEvent>? sub;
 }
 
@@ -64,8 +69,11 @@ class ChatAgent {
   final _queues = <String, _DestQueue>{};
   var _promptInFlight = 0;
   var promptMaxInFlight = 0;
+  Timer? _typingHeartbeat;
+  String? _typingDest;
 
   static const _lruLimit = 4;
+  static const _typingHeartbeatEvery = Duration(seconds: 8);
 
   String _key(String dest, String profileId) => '$dest::$profileId';
 
@@ -77,6 +85,39 @@ class ChatAgent {
       return false;
     }
     return isOwnedRegisteredBot(dest, _ref.read(agentProfilesProvider));
+  }
+
+  /// S-KD 25/27: local bars + optional registered heartbeat (S-KD 26).
+  void _setAgentTyping(String dest, bool active) {
+    _ref
+        .read(typingProvider.notifier)
+        .applyPush(typer: dest, dest: dest, active: active);
+    if (_isRegisteredDest(dest)) {
+      unawaited(_emitBotTyping(dest, active));
+    }
+    _typingHeartbeat?.cancel();
+    _typingHeartbeat = null;
+    if (active) {
+      _typingDest = dest;
+      _typingHeartbeat = Timer.periodic(_typingHeartbeatEvery, (_) {
+        _ref
+            .read(typingProvider.notifier)
+            .applyPush(typer: dest, dest: dest, active: true);
+        if (_isRegisteredDest(dest)) {
+          unawaited(_emitBotTyping(dest, true));
+        }
+      });
+    } else if (_typingDest == dest) {
+      _typingDest = null;
+    }
+  }
+
+  Future<void> _emitBotTyping(String dest, bool active) async {
+    try {
+      await _ref.read(clientPortProvider).botTyping(dest, active: active);
+    } catch (_) {
+      // Offline / missing API — local bars still work.
+    }
   }
 
   /// Direct DM with a local agent contact — every line is a prompt.
@@ -247,6 +288,7 @@ class ChatAgent {
     if (_promptInFlight > promptMaxInFlight) {
       promptMaxInFlight = _promptInFlight;
     }
+    _setAgentTyping(dest, true);
     try {
       final live = await _ensureSession(dest, profile, apiKey: apiKey);
       final registered = _isRegisteredDest(dest);
@@ -259,6 +301,7 @@ class ChatAgent {
       }
       await live.session.prompt(text: text);
     } catch (e) {
+      _setAgentTyping(dest, false);
       await _appendLocal(
         dest,
         'Goose 调用失败：$e',
@@ -293,21 +336,32 @@ class ChatAgent {
     }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
+    final resolved = await resolveAgentProjectRoot(
+      profile: profile,
+      paths: paths,
+    );
+    final projectRoot = resolved.path;
     final bridge = _ref.read(agentBridgeProvider);
     await bridge.ensure();
-    final opts = _openOpts(dest, profile, apiKey);
+    final opts = await _openOpts(dest, profile, apiKey, projectRoot: projectRoot);
     final fileDest = dest.replaceAll('/', '_').replaceAll('\\', '_');
     final sessionFile =
         '${paths.agentSessions.path}/${fileDest}__${profile.id}.json';
     final session = await bridge.open(
       sqlitePath: sessionFile,
-      projectRoot: paths.agentWorkspace.path,
+      projectRoot: projectRoot,
       opts: opts,
     );
-    final live = _Live(session: session, threadDest: dest, profile: profile);
+    final live = _Live(
+      session: session,
+      threadDest: dest,
+      profile: profile,
+      bookmarkBase64: resolved.bookmarkBase64,
+    );
     live.sub = session.listen().listen((ev) {
       switch (ev.kind) {
         case 'assistant_finished':
+          _setAgentTyping(dest, false);
           if (_isRegisteredDest(dest)) {
             final text = ev.message.trim();
             if (text.isNotEmpty) {
@@ -317,6 +371,7 @@ class ChatAgent {
             unawaited(_appendLocal(dest, ev.message.trim(), profile: profile));
           }
         case 'failed':
+          _setAgentTyping(dest, false);
           if (_isRegisteredDest(dest)) {
             unawaited(_onRegisteredFailed(dest, ev.message.trim(), profile));
           } else if (ev.message.trim().isNotEmpty) {
@@ -324,10 +379,13 @@ class ChatAgent {
           }
         case 'tool_started':
         case 'tool_finished':
-          unawaited(_upsertToolCard(dest, ev, profile: profile));
+          // Tool progress stays off the chat transcript; only permission
+          // prompts (action_required) are shown as cards.
+          break;
         case 'tool_request':
           unawaited(_onToolRequest(dest, ev, profile: profile));
         case 'action_required':
+          _setAgentTyping(dest, false);
           unawaited(_appendActionCard(dest, ev, profile: profile));
         default:
           break;
@@ -343,23 +401,38 @@ class ChatAgent {
     _lru.add(key);
   }
 
-  SessionOpenOpts _openOpts(String dest, AgentProfile profile, String apiKey) {
+  Future<SessionOpenOpts> _openOpts(
+    String dest,
+    AgentProfile profile,
+    String apiKey, {
+    required String projectRoot,
+  }) async {
     final accounts = _ref.read(providerAccountsProvider.notifier);
     final account = accounts.byId(profile.accountId);
     if (account == null) {
       throw MissingProviderAccount(profile.accountId);
     }
     final vendorId = canonicalizeVendorId(account.vendorId);
+    var userAgents = '';
+    final scanPortable =
+        profile.workspace.isRepo ||
+        profile.tools.fs ||
+        profile.tools.fsWrite;
+    if (scanPortable) {
+      userAgents = await workspaceAccess.realUserAgentsSkills() ?? '';
+    }
     return SessionOpenOpts(
       model: profile.model,
       llmBackend: vendorId,
       resumeOnOpen: true,
       baseUrl: account.baseUrl,
       apiKey: apiKey,
-      enableFsTools: profile.tools.fs,
+      enableFsTools: profile.tools.fs || profile.tools.fsWrite,
       bashEnabled: profile.tools.bash,
       profileId: profile.id,
-      profileJson: jsonEncode(profile.toHostJson(account)),
+      profileJson: jsonEncode(
+        profile.toHostJson(account, userAgentsSkills: userAgents),
+      ),
       thinkingEffort: profile.thinkingEffort,
       gooseMode: profile.mode,
       enableKimTools: true,
@@ -456,29 +529,6 @@ class ChatAgent {
     }
   }
 
-  Future<void> _upsertToolCard(
-    String dest,
-    AgentUiEvent ev, {
-    AgentProfile? profile,
-  }) async {
-    final callId = ev.callId.trim();
-    if (callId.isEmpty) {
-      return;
-    }
-    final running = ev.kind == 'tool_started';
-    await _upsertCard(
-      dest,
-      callId: callId,
-      name: ev.name,
-      type: 'tool',
-      state: running ? 'running' : (ev.ok ? 'ok' : 'error'),
-      preview: ev.outputPreview,
-      ok: !running && ev.ok,
-      sender: profile?.displayName ?? kGooseAgentName,
-      profileId: profile?.id,
-    );
-  }
-
   Future<void> _appendActionCard(
     String dest,
     AgentUiEvent ev, {
@@ -571,6 +621,13 @@ class ChatAgent {
         callId: callId,
         permission: permission,
       );
+      final denied =
+          permission == 'deny_once' ||
+          permission == 'always_deny' ||
+          permission == 'cancel';
+      if (!denied) {
+        _setAgentTyping(dest, true);
+      }
     } catch (_) {
       await _upsertCard(
         dest,
@@ -804,6 +861,10 @@ class ChatAgent {
         jsonEncode(a.reasoning?.toJson()) !=
             jsonEncode(b.reasoning?.toJson()) ||
         a.steer != b.steer ||
+        a.workspace != b.workspace ||
+        jsonEncode([for (final s in a.skills) s.toJson()]) !=
+            jsonEncode([for (final s in b.skills) s.toJson()]) ||
+        jsonEncode(a.portableDenylist) != jsonEncode(b.portableDenylist) ||
         jsonEncode(a.tools.toJson()) != jsonEncode(b.tools.toJson()) ||
         jsonEncode([for (final e in a.extensions) e.toJson()]) !=
             jsonEncode([for (final e in b.extensions) e.toJson()]);
@@ -816,6 +877,10 @@ class ChatAgent {
     _pendingToolCalls.remove(key);
     await live?.sub?.cancel();
     await live?.session.close();
+    final bookmark = live?.bookmarkBase64 ?? '';
+    if (bookmark.isNotEmpty) {
+      await workspaceAccess.stopAccessing(bookmark);
+    }
   }
 
   Future<void> _onProfilesChanged(List<AgentProfile> next) async {
@@ -849,6 +914,10 @@ class ChatAgent {
   }
 
   Future<void> dispose() async {
+    final dest = _typingDest;
+    if (dest != null) {
+      _setAgentTyping(dest, false);
+    }
     await _closeLives();
   }
 }

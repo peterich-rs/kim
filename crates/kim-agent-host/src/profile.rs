@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::catalog::ReasoningChoice;
 use crate::provider::ProviderConfig;
+use crate::skills::SkillRef;
 use crate::{HostError, DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_SYSTEM_PROMPT};
 
 fn enabled_true() -> bool {
@@ -50,6 +51,38 @@ pub struct AgentProfile {
     pub enabled: bool,
     #[serde(default)]
     pub steer: String,
+    /// Missing JSON → sandbox (S-KD 4).
+    #[serde(default)]
+    pub workspace: WorkspaceSpec,
+    /// App-skill references only. Portable skills are discovered, not stored.
+    #[serde(default)]
+    pub skills: Vec<SkillRef>,
+    /// Portable ids the user muted for this profile.
+    #[serde(default)]
+    pub portable_denylist: Vec<String>,
+    /// Absolute path to the real `~/.agents/skills`. Empty disables the user
+    /// shelf; the host never guesses it, because a sandboxed macOS container
+    /// `$HOME` is not the ecosystem directory (S-KD 23).
+    #[serde(default)]
+    pub user_agents_skills: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceKind {
+    #[default]
+    Sandbox,
+    Repo,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceSpec {
+    #[serde(default)]
+    pub kind: WorkspaceKind,
+    /// sandbox: empty. repo: absolute path, for display and validation only —
+    /// the security-scoped bookmark stays in Dart.
+    #[serde(default)]
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -249,6 +282,10 @@ impl AgentProfile {
             extensions: Vec::new(),
             enabled: true,
             steer: String::new(),
+            workspace: WorkspaceSpec::default(),
+            skills: Vec::new(),
+            portable_denylist: Vec::new(),
+            user_agents_skills: String::new(),
         }
     }
 
@@ -330,6 +367,10 @@ impl ResolvedProfile {
                 extensions: Vec::new(),
                 enabled: true,
                 steer: String::new(),
+                workspace: WorkspaceSpec::default(),
+                skills: Vec::new(),
+                portable_denylist: Vec::new(),
+                user_agents_skills: String::new(),
             },
             api_key: config.api_key,
             project_root: PathBuf::new(),
@@ -389,6 +430,10 @@ fn goose_template() -> AgentProfile {
         extensions: Vec::new(),
         enabled: true,
         steer: String::new(),
+        workspace: WorkspaceSpec::default(),
+        skills: Vec::new(),
+        portable_denylist: Vec::new(),
+        user_agents_skills: String::new(),
     }
 }
 
@@ -416,6 +461,10 @@ fn translator_template() -> AgentProfile {
         extensions: Vec::new(),
         enabled: false,
         steer: String::new(),
+        workspace: WorkspaceSpec::default(),
+        skills: Vec::new(),
+        portable_denylist: Vec::new(),
+        user_agents_skills: String::new(),
     }
 }
 
@@ -449,6 +498,12 @@ fn coder_template() -> AgentProfile {
         extensions: Vec::new(),
         enabled: false,
         steer: String::new(),
+        // Coding profiles pick a repo in the desktop UI; the default stays
+        // sandbox so a template can never point at the user's disk.
+        workspace: WorkspaceSpec::default(),
+        skills: Vec::new(),
+        portable_denylist: Vec::new(),
+        user_agents_skills: String::new(),
     }
 }
 

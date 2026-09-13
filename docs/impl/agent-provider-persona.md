@@ -65,7 +65,7 @@ C-KD 已经把领域拆成 Agent / ProviderAccount / ModelChoice / Vendor，并�
 ### Non-Goals
 
 - **不重做** VendorCatalog / `ReasoningSurface` / `to_model_spec` / URL 切分 / MiniMax builder（C-KD 全文）。
-- **本轮不发内置模板，不做用户模板 CRUD，不做 Skills。** revises C-KD 16。
+- **本轮不发内置模板，不做用户模板 CRUD。** Skills / Workspace 另见 [agent-productivity.md](agent-productivity.md)。revises C-KD 16。
 - **群内 Agent / 群 @。** 未实现，本轮不做。
 - 不在 login 批量 `ensureVisibleIdentities`（C-KD 9 仍成立）。创建保存 / 第一次打开 1:1 两条路径保持 bot-KD 22。
 - 服务端代跑 Goose；后台存 API key（bot-KD 12）；改 proto / gateway / chat / royal（C-KD 13）。
@@ -77,7 +77,7 @@ C-KD 已经把领域拆成 Agent / ProviderAccount / ModelChoice / Vendor，并�
 
 ## Key Decisions
 
-1. **P-KD 1 — 本轮只有两层用户对象：Provider 与 Agent。Catalog 不露面，不发模板。** revises C-KD 16（「产品模板只存在向导」）。也收窄 C-KD 14「第一屏含 3 个工具预设」：工具不出现在创建表单。Vendor Catalog 仍是 `kim-agent-host` `vendors.json`，用户从不编辑 reasoning *levels*。
+1. **P-KD 1 — 本轮只有两层用户对象：Provider 与 Agent。Catalog 不露面，不发模板。** revises C-KD 16（「产品模板只存在向导」）。也收窄 C-KD 14「第一屏含 3 个工具预设」：工具不出现在创建表单。Vendor Catalog 仍是 `kim-agent-host` `vendors.json`，用户从不编辑 reasoning *levels*。**Skills / Workspace / plaza：** 见 [agent-productivity.md](agent-productivity.md)（S-KD）；本切片仍不发译者/编码产品模板。
 2. **P-KD 2 — 创建是短表单，不是厨房水槽，也不是多步向导。** 字段：名称、Provider（可内联新建）、该 Provider 的模型、`catalog_surface(vendor, model)` 驱动的推理、system prompt。工具 / 权限 / MCP 只在详情 **Advanced**。新 Agent 默认工具：`send_message` + `read_clipboard` 开，`fs` / `bash` 关。
 3. **P-KD 3 — system prompt 必须上屏；空值合法；运行时默认就是现有长英文 `DEFAULT_SYSTEM_PROMPT`。** 不另造短中文兜底。占位符 / helper **原文**展示这段（`crates/kim-agent-host/src/lib.rs` 的 `DEFAULT_SYSTEM_PROMPT`）。用户清空 = 用这段；用户改了 = 用用户的。
 4. **P-KD 4 — 模型列表挂在每个 ProviderAccount 上，不是全局 vendor cache。** 打开账号用 catalog `models[]` + default **种子**；Refresh 按钮用该账号 `base_url` + key，结果只写回该账号，且为 **union**（`selectableModelIds(fetched ∪ 账号已有 models)`），保留「其他…」手填 id。Agent 模型选择器只读选中 Provider 的列表。「其他…」把 id **追加到该 Provider**。手填 id 仍走 `catalog_surface` prefix/none。
@@ -960,4 +960,4 @@ None — product contract locked 2026-09-13.
 - **Depends:** PR5
 - **Desc:** 形状写回专题。不改后台文档里的 bot 协议。C-KD 7 插入闸改为本机行数。
 
-**刻意不做（本切片）：** 用户模板 CRUD；Skills；群 @；每 Agent 云注册按钮；Gemini；catalog 热更；把用户人设接到 `delegate` / `ops/subagent.rs`。
+**刻意不做（本切片）：** 用户模板 CRUD；群 @；每 Agent 云注册按钮；Gemini；catalog 热更；把用户人设接到 `delegate` / `ops/subagent.rs`。Skills 见 [agent-productivity.md](agent-productivity.md)。

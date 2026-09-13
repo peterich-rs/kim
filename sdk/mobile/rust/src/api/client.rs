@@ -665,6 +665,12 @@ impl KimSdkHandle {
             .map_err(|e| e.to_string())?;
         Ok(items.into_iter().map(KimBotPendingItem::from).collect())
     }
+
+    pub fn bot_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+        let client = self.supervisor()?.client();
+        rt().block_on(client.bot_typing(&dest, kind, active))
+            .map_err(|e| e.to_string())
+    }
 }
 
 fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {

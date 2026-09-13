@@ -11,6 +11,7 @@ mod ops;
 mod profile;
 mod provider;
 mod scripted;
+mod skills;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,15 +35,23 @@ pub use catalog::{
 pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
 pub use machine::MachineFactory;
 pub use ops::permission::parse_permission;
+pub use ops::skill::{activate_skill_tool, ACTIVATE_SKILL};
 pub use profile::{
     builtin_templates, AgentProfile, ExtensionSpec, LegacyOpenOpts, ModelSpec, PermissionConfig,
     PermissionDefault, ProviderSpec, ResolvedProfile, SandboxMode, SandboxPolicy, ToolSet,
+    WorkspaceKind, WorkspaceSpec,
 };
 pub use provider::{
     bundled_declarative_json, bundled_provider_summaries, fetch_models, BundledProviderSummary,
     ProviderConfig, ProviderKind, SessionKeyResolver,
 };
 pub use scripted::ScriptedProvider;
+pub use skills::{
+    activate, build_registry, bundled_ids, catalog_prompt_block, parse_skill_md, read_agents_md,
+    scan_portable, skill_app_catalog_json, skill_portable_list_json, Activation, PortableSkill,
+    RegistryScan, SkillClass, SkillDoc, SkillEntry, SkillError, SkillMeta, SkillPackage, SkillRef,
+    SkillRegistry, SkillResolver, SkillSource,
+};
 
 pub(crate) use events::HostEffect;
 

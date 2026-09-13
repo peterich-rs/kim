@@ -719,6 +719,219 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentAdvanced => '高级';
 
   @override
+  String get agentWorkspaceEntry => '工作区与能力';
+
+  @override
+  String get agentWorkspaceTitle => '工作区与能力';
+
+  @override
+  String get agentWorkspaceSubtitleOff => '应用内沙箱 · 未开读写';
+
+  @override
+  String get agentWorkspaceSubtitleFs => '应用内沙箱 · 只读';
+
+  @override
+  String get agentWorkspaceSubtitleWrite => '应用内沙箱 · 读·写';
+
+  @override
+  String get agentWorkspaceSubtitleBash => '应用内沙箱 · 终端';
+
+  @override
+  String get agentWorkspaceSubtitleFsBash => '应用内沙箱 · 只读·终端';
+
+  @override
+  String get agentWorkspaceSubtitleWriteBash => '应用内沙箱 · 读·写·终端';
+
+  @override
+  String get agentWorkspaceCapsOff => '未开读写';
+
+  @override
+  String get agentWorkspaceCapsFs => '只读';
+
+  @override
+  String get agentWorkspaceCapsWrite => '读·写';
+
+  @override
+  String get agentWorkspaceCapsBash => '终端';
+
+  @override
+  String get agentWorkspaceCapsFsBash => '只读·终端';
+
+  @override
+  String get agentWorkspaceCapsWriteBash => '读·写·终端';
+
+  @override
+  String get agentWorkspacePath => '当前工作目录';
+
+  @override
+  String get agentWorkspaceKindSandbox => '应用内沙箱';
+
+  @override
+  String get agentWorkspaceKindRepo => '本地仓库';
+
+  @override
+  String get agentWorkspaceUseRepo => '使用本地仓库';
+
+  @override
+  String get agentWorkspaceUseRepoHint => '把读写与终端指向你选的文件夹（需系统授权）';
+
+  @override
+  String get agentWorkspacePickRepo => '选择本地仓库…';
+
+  @override
+  String get agentWorkspaceRepoRequired => '编码工作区需要先选择仓库';
+
+  @override
+  String get agentWorkspaceRepoReselect => '仓库授权已失效，请重新选择';
+
+  @override
+  String get agentFsWrite => '工作区写入';
+
+  @override
+  String get agentFsWriteHint => '允许创建与修改沙箱内文件（如 MEMORY.md）';
+
+  @override
+  String get agentWorkspacePresetKnowledge => '知识';
+
+  @override
+  String get agentWorkspacePresetCoding => '编码';
+
+  @override
+  String get agentWorkspacePresetHint => '预设只改本页开关，不换人设';
+
+  @override
+  String get agentSkillsEntry => '技能';
+
+  @override
+  String get agentSkillsTitle => '技能';
+
+  @override
+  String get agentSkillsNone => '未分配';
+
+  @override
+  String get agentSkillsEmptyTitle => '还没有可配置的技能';
+
+  @override
+  String get agentSkillsEmptyHint => '之后可在这里分配 KIM 技能，或从广场发现生态技能';
+
+  @override
+  String get agentSkillsOpenPlaza => '去广场看看';
+
+  @override
+  String get agentSkillsAppSection => 'KIM 技能';
+
+  @override
+  String get agentSkillsAppEmpty => '暂无内置技能';
+
+  @override
+  String get agentSkillsAppEmptyHint => '需要桌面端 Agent 运行时才能列出 kim-*';
+
+  @override
+  String get agentSkillsPortableSection => '生态技能（发现 / 屏蔽）';
+
+  @override
+  String get agentSkillsPortableEmpty => '未发现生态技能';
+
+  @override
+  String get agentSkillsPortableEmptyHint =>
+      '打开读写或选用本地仓库后，会扫描 ~/.agents 与项目 .agents';
+
+  @override
+  String get agentSkillsPortableScanOff => '当前不扫描生态技能';
+
+  @override
+  String get agentSkillsPortableScanOffHint =>
+      '沙箱且未开读写时，不会把 ~/.agents 里的技能塞进 catalog';
+
+  @override
+  String get agentSkillsPortableMuteHint => '打开开关 = 从 catalog 屏蔽';
+
+  @override
+  String get agentSkillsNeedsToolsTitle => '需要打开工具';
+
+  @override
+  String agentSkillsNeedsToolsBody(String skillId, String tools) {
+    return '分配 $skillId 需要：$tools。不会静默改开关。';
+  }
+
+  @override
+  String get agentSkillsNeedsToolsEnable => '打开这些开关';
+
+  @override
+  String get agentSkillsNeedsToolsCancel => '取消';
+
+  @override
+  String get agentSkillsNeedsToolsToast => '未打开所需工具，技能未分配';
+
+  @override
+  String get agentToolsEntry => '权限与扩展';
+
+  @override
+  String get agentToolsTitle => '权限与扩展';
+
+  @override
+  String get agentToolsSubtitleDefault => '默认 · 无 MCP';
+
+  @override
+  String agentToolsSubtitleMcp(int count) {
+    return '默认 · MCP $count';
+  }
+
+  @override
+  String get agentPlazaTitle => '技能广场';
+
+  @override
+  String get agentPlazaEmptyTitle => '广场即将到来';
+
+  @override
+  String get agentPlazaEmptyHint => '之后可在这里浏览生态技能与 KIM 内置技能';
+
+  @override
+  String get agentPlazaKimSection => 'KIM 架';
+
+  @override
+  String get agentPlazaEcoSection => '生态架';
+
+  @override
+  String get agentPlazaEcoEmpty => '生态架为空';
+
+  @override
+  String get agentPlazaEcoEmptyHint => '真实用户家目录 ~/.agents/skills 里尚无 SKILL.md';
+
+  @override
+  String get agentPlazaAssign => '分配';
+
+  @override
+  String agentPlazaAssigningTo(String name) {
+    return '正在为人设「$name」挑选';
+  }
+
+  @override
+  String get agentPlazaPickAgentFirst => '请从人设的技能页进入广场再分配';
+
+  @override
+  String agentPlazaAssigned(String id) {
+    return '已分配 $id';
+  }
+
+  @override
+  String get agentPlazaImport => '导入文件夹到 ~/.agents…';
+
+  @override
+  String agentPlazaImported(String id) {
+    return '已导入 $id';
+  }
+
+  @override
+  String get agentPlazaImportFailed => '导入失败（需要含 SKILL.md 的目录）';
+
+  @override
+  String get agentPlazaImportNoHome => '找不到真实 ~/.agents/skills';
+
+  @override
+  String get agentOpenChat => '去聊天';
+
+  @override
   String get emptyChatTitle => '选择一个会话';
 
   @override

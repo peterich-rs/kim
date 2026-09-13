@@ -51,6 +51,21 @@ Future<String> catalogValidate({
   choiceJson: choiceJson,
 );
 
+/// Portable skills under the user shelf and/or `<project>/.agents/skills`.
+Future<String> skillPortableList({
+  required String userRoot,
+  required String projectRoot,
+}) => AgentRustLib.instance.api.crateApiSessionSkillPortableList(
+  userRoot: userRoot,
+  projectRoot: projectRoot,
+);
+
+/// Bundled (and optional cache) `kim-*` app skill summaries for assignment UI.
+Future<String> skillAppCatalog({required String cacheRoot}) => AgentRustLib
+    .instance
+    .api
+    .crateApiSessionSkillAppCatalog(cacheRoot: cacheRoot);
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
 abstract class AgentSession implements RustOpaqueInterface {
   Future<void> abort();

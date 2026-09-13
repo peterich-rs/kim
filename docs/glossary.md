@@ -60,6 +60,11 @@
 | **Agent（Goose 人设）** | `AgentProfile`：id / 显示名 / 别名 / prompt / 工具 / `account_id` / 模型 / `ReasoningChoice` / 可选 `serverAccount`。不是 glossary `Session`，也不是 IM `dest` 本身。通讯录里的 1:1 bot 联系人。新装列表可空；旧装 `id=goose` 是普通人设，可改名可删 |
 | **ProviderAccount** | 厂商账号：catalog vendor id + base_url + `key_ref`。多个 Agent 可共享一把 key。CRUD **不** `chat.bot.create` |
 | **ModelChoice** | 挂在 Agent 上的模型 id + `ReasoningChoice`。推理 UI 只看 `ReasoningSurface.kind`，不 `switch (vendorId)` |
+| **Workspace** | 人设工作区：`sandbox`（每人设独立沙箱目录）或 `repo`（用户自选绝对路径）。决定 Goose `project_root` |
+| **portable Skill** | 生态 `SKILL.md` 目录，落在真实 `~/.agents/skills` 或项目 `.agents/skills`。其它 harness 也能读。人设用 `portable_denylist` 屏蔽噪声 |
+| **App Skill / `kim-*`** | 绑定本 messenger 工具面的 Skill（如 `kim-im`、`kim-memory`）。显式分配进 `AgentProfile.skills[]`；**禁止**写入 `~/.agents` |
+| **SkillResolver** | 取 App Skill 正文：`bundled` → 本地 cache →（以后）云 catalog。`activate_skill` 按 pin / latest 注入，不把死副本拷进 session |
+| **chat.bot.typing** | Owner 发的 bot 忙碌指示。鉴权同 `chat.bot.reply`；Push `typer=bot`，避免手机以为主人在打字 |
 
 ## 小册里的四层
 

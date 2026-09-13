@@ -11,7 +11,11 @@ import '../screens/home/chats_split.dart';
 import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/agent/agent_list_page.dart';
+import '../screens/agent/agent_plaza_page.dart';
 import '../screens/agent/agent_settings_page.dart';
+import '../screens/agent/agent_skills_page.dart';
+import '../screens/agent/agent_tools_page.dart';
+import '../screens/agent/agent_workspace_page.dart';
 import '../screens/agent/provider_account_page.dart';
 import '../screens/agent/provider_accounts_page.dart';
 import '../screens/home/me_page.dart';
@@ -168,6 +172,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: 'settings', redirect: (context, state) => '/agent'),
           GoRoute(
+            path: 'plaza',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: AgentPlazaPage(
+                assignTo: state.uri.queryParameters['assignTo'],
+              ),
+            ),
+          ),
+          GoRoute(
             path: 'new',
             pageBuilder: (context, state) => kimPushPage(
               key: state.pageKey,
@@ -185,6 +199,41 @@ final routerProvider = Provider<GoRouter>((ref) {
                 child: AgentEditorPage(profileId: id),
               );
             },
+            routes: [
+              GoRoute(
+                path: 'workspace',
+                pageBuilder: (context, state) {
+                  final id = state.pathParameters['id'] ?? kGooseAgentId;
+                  return kimPushPage(
+                    key: state.pageKey,
+                    name: state.name,
+                    child: AgentWorkspacePage(profileId: id),
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'skills',
+                pageBuilder: (context, state) {
+                  final id = state.pathParameters['id'] ?? kGooseAgentId;
+                  return kimPushPage(
+                    key: state.pageKey,
+                    name: state.name,
+                    child: AgentSkillsPage(profileId: id),
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'tools',
+                pageBuilder: (context, state) {
+                  final id = state.pathParameters['id'] ?? kGooseAgentId;
+                  return kimPushPage(
+                    key: state.pageKey,
+                    name: state.name,
+                    child: AgentToolsPage(profileId: id),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

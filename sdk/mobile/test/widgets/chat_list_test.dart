@@ -103,6 +103,39 @@ void main() {
     expect(divider.bottom, lessThanOrEqualTo(firstUnread.top + 1));
   });
 
+  testWidgets('footer sits above bottom padding (composer clearance)', (
+    tester,
+  ) async {
+    const pad = EdgeInsets.fromLTRB(0, 72, 0, 80);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KimTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            height: 400,
+            child: ChatList(
+              items: [_msg('a', 'hello')],
+              padding: pad,
+              footer: const SizedBox(
+                key: Key('typing-footer'),
+                height: 40,
+                child: Text('typing'),
+              ),
+              itemBuilder: (context, msg, index) {
+                return SizedBox(height: 48, child: Text(msg.body));
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final footer = tester.getRect(find.byKey(const Key('typing-footer')));
+    // reverse list: padding.bottom clears the visual bottom.
+    expect(footer.bottom, lessThanOrEqualTo(400 - pad.bottom + 0.5));
+    expect(footer.bottom, greaterThan(400 - pad.bottom - 50));
+  });
+
   test('groups consecutive messages using millisecond windows', () {
     const nano = 1788077118498491646;
     const twoSecondsLater = nano + 2 * 1000 * 1000 * 1000;

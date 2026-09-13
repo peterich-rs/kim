@@ -739,6 +739,233 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentAdvanced => 'Advanced';
 
   @override
+  String get agentWorkspaceEntry => 'Workspace & capabilities';
+
+  @override
+  String get agentWorkspaceTitle => 'Workspace & capabilities';
+
+  @override
+  String get agentWorkspaceSubtitleOff => 'In-app sandbox · no file access';
+
+  @override
+  String get agentWorkspaceSubtitleFs => 'In-app sandbox · read-only';
+
+  @override
+  String get agentWorkspaceSubtitleWrite => 'In-app sandbox · read · write';
+
+  @override
+  String get agentWorkspaceSubtitleBash => 'In-app sandbox · shell';
+
+  @override
+  String get agentWorkspaceSubtitleFsBash =>
+      'In-app sandbox · read-only · shell';
+
+  @override
+  String get agentWorkspaceSubtitleWriteBash =>
+      'In-app sandbox · read · write · shell';
+
+  @override
+  String get agentWorkspaceCapsOff => 'no file access';
+
+  @override
+  String get agentWorkspaceCapsFs => 'read-only';
+
+  @override
+  String get agentWorkspaceCapsWrite => 'read · write';
+
+  @override
+  String get agentWorkspaceCapsBash => 'shell';
+
+  @override
+  String get agentWorkspaceCapsFsBash => 'read-only · shell';
+
+  @override
+  String get agentWorkspaceCapsWriteBash => 'read · write · shell';
+
+  @override
+  String get agentWorkspacePath => 'Working directory';
+
+  @override
+  String get agentWorkspaceKindSandbox => 'In-app sandbox';
+
+  @override
+  String get agentWorkspaceKindRepo => 'Local repository';
+
+  @override
+  String get agentWorkspaceUseRepo => 'Use local repository';
+
+  @override
+  String get agentWorkspaceUseRepoHint =>
+      'Point read/write/shell at a folder you pick (system permission required)';
+
+  @override
+  String get agentWorkspacePickRepo => 'Choose local repository…';
+
+  @override
+  String get agentWorkspaceRepoRequired =>
+      'Coding workspace needs a repository first';
+
+  @override
+  String get agentWorkspaceRepoReselect =>
+      'Repository access expired; choose it again';
+
+  @override
+  String get agentFsWrite => 'Workspace write';
+
+  @override
+  String get agentFsWriteHint =>
+      'Allow creating and editing files in the sandbox (e.g. MEMORY.md)';
+
+  @override
+  String get agentWorkspacePresetKnowledge => 'Knowledge';
+
+  @override
+  String get agentWorkspacePresetCoding => 'Coding';
+
+  @override
+  String get agentWorkspacePresetHint =>
+      'Presets only change this page; they do not replace the persona';
+
+  @override
+  String get agentSkillsEntry => 'Skills';
+
+  @override
+  String get agentSkillsTitle => 'Skills';
+
+  @override
+  String get agentSkillsNone => 'None assigned';
+
+  @override
+  String get agentSkillsEmptyTitle => 'No skills to configure yet';
+
+  @override
+  String get agentSkillsEmptyHint =>
+      'Later you can assign KIM skills here, or discover ecosystem skills in the plaza';
+
+  @override
+  String get agentSkillsOpenPlaza => 'Browse plaza';
+
+  @override
+  String get agentSkillsAppSection => 'KIM skills';
+
+  @override
+  String get agentSkillsAppEmpty => 'No built-in skills';
+
+  @override
+  String get agentSkillsAppEmptyHint =>
+      'Desktop Agent runtime is required to list kim-*';
+
+  @override
+  String get agentSkillsPortableSection => 'Ecosystem skills (discover / mute)';
+
+  @override
+  String get agentSkillsPortableEmpty => 'No ecosystem skills found';
+
+  @override
+  String get agentSkillsPortableEmptyHint =>
+      'Enable read/write or pick a local repo to scan ~/.agents and project .agents';
+
+  @override
+  String get agentSkillsPortableScanOff => 'Ecosystem scan is off';
+
+  @override
+  String get agentSkillsPortableScanOffHint =>
+      'Sandbox personas without filesystem tools do not inherit ~/.agents into the catalog';
+
+  @override
+  String get agentSkillsPortableMuteHint => 'On = mute from catalog';
+
+  @override
+  String get agentSkillsNeedsToolsTitle => 'Tools required';
+
+  @override
+  String agentSkillsNeedsToolsBody(String skillId, String tools) {
+    return 'Assigning $skillId needs: $tools. Switches are never changed silently.';
+  }
+
+  @override
+  String get agentSkillsNeedsToolsEnable => 'Turn these on';
+
+  @override
+  String get agentSkillsNeedsToolsCancel => 'Cancel';
+
+  @override
+  String get agentSkillsNeedsToolsToast =>
+      'Required tools stay off; skill not assigned';
+
+  @override
+  String get agentToolsEntry => 'Permissions & extensions';
+
+  @override
+  String get agentToolsTitle => 'Permissions & extensions';
+
+  @override
+  String get agentToolsSubtitleDefault => 'Defaults · no MCP';
+
+  @override
+  String agentToolsSubtitleMcp(int count) {
+    return 'Defaults · MCP $count';
+  }
+
+  @override
+  String get agentPlazaTitle => 'Skill plaza';
+
+  @override
+  String get agentPlazaEmptyTitle => 'Plaza coming soon';
+
+  @override
+  String get agentPlazaEmptyHint =>
+      'Browse ecosystem skills and KIM built-ins here later';
+
+  @override
+  String get agentPlazaKimSection => 'KIM shelf';
+
+  @override
+  String get agentPlazaEcoSection => 'Ecosystem shelf';
+
+  @override
+  String get agentPlazaEcoEmpty => 'Ecosystem shelf is empty';
+
+  @override
+  String get agentPlazaEcoEmptyHint =>
+      'No SKILL.md under the real ~/.agents/skills yet';
+
+  @override
+  String get agentPlazaAssign => 'Assign';
+
+  @override
+  String agentPlazaAssigningTo(String name) {
+    return 'Picking for persona “$name”';
+  }
+
+  @override
+  String get agentPlazaPickAgentFirst =>
+      'Open the plaza from a persona’s Skills page to assign';
+
+  @override
+  String agentPlazaAssigned(String id) {
+    return 'Assigned $id';
+  }
+
+  @override
+  String get agentPlazaImport => 'Import folder into ~/.agents…';
+
+  @override
+  String agentPlazaImported(String id) {
+    return 'Imported $id';
+  }
+
+  @override
+  String get agentPlazaImportFailed =>
+      'Import failed (need a folder with SKILL.md)';
+
+  @override
+  String get agentPlazaImportNoHome => 'Real ~/.agents/skills is unavailable';
+
+  @override
+  String get agentOpenChat => 'Open chat';
+
+  @override
   String get emptyChatTitle => 'Select a conversation';
 
   @override

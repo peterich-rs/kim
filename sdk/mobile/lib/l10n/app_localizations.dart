@@ -1496,6 +1496,408 @@ abstract class AppLocalizations {
   /// **'高级'**
   String get agentAdvanced;
 
+  /// No description provided for @agentWorkspaceEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区与能力'**
+  String get agentWorkspaceEntry;
+
+  /// No description provided for @agentWorkspaceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区与能力'**
+  String get agentWorkspaceTitle;
+
+  /// No description provided for @agentWorkspaceSubtitleOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 未开读写'**
+  String get agentWorkspaceSubtitleOff;
+
+  /// No description provided for @agentWorkspaceSubtitleFs.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 只读'**
+  String get agentWorkspaceSubtitleFs;
+
+  /// No description provided for @agentWorkspaceSubtitleWrite.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 读·写'**
+  String get agentWorkspaceSubtitleWrite;
+
+  /// No description provided for @agentWorkspaceSubtitleBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 终端'**
+  String get agentWorkspaceSubtitleBash;
+
+  /// No description provided for @agentWorkspaceSubtitleFsBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 只读·终端'**
+  String get agentWorkspaceSubtitleFsBash;
+
+  /// No description provided for @agentWorkspaceSubtitleWriteBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱 · 读·写·终端'**
+  String get agentWorkspaceSubtitleWriteBash;
+
+  /// No description provided for @agentWorkspaceCapsOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'未开读写'**
+  String get agentWorkspaceCapsOff;
+
+  /// No description provided for @agentWorkspaceCapsFs.
+  ///
+  /// In zh, this message translates to:
+  /// **'只读'**
+  String get agentWorkspaceCapsFs;
+
+  /// No description provided for @agentWorkspaceCapsWrite.
+  ///
+  /// In zh, this message translates to:
+  /// **'读·写'**
+  String get agentWorkspaceCapsWrite;
+
+  /// No description provided for @agentWorkspaceCapsBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'终端'**
+  String get agentWorkspaceCapsBash;
+
+  /// No description provided for @agentWorkspaceCapsFsBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'只读·终端'**
+  String get agentWorkspaceCapsFsBash;
+
+  /// No description provided for @agentWorkspaceCapsWriteBash.
+  ///
+  /// In zh, this message translates to:
+  /// **'读·写·终端'**
+  String get agentWorkspaceCapsWriteBash;
+
+  /// No description provided for @agentWorkspacePath.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前工作目录'**
+  String get agentWorkspacePath;
+
+  /// No description provided for @agentWorkspaceKindSandbox.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内沙箱'**
+  String get agentWorkspaceKindSandbox;
+
+  /// No description provided for @agentWorkspaceKindRepo.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地仓库'**
+  String get agentWorkspaceKindRepo;
+
+  /// No description provided for @agentWorkspaceUseRepo.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用本地仓库'**
+  String get agentWorkspaceUseRepo;
+
+  /// No description provided for @agentWorkspaceUseRepoHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'把读写与终端指向你选的文件夹（需系统授权）'**
+  String get agentWorkspaceUseRepoHint;
+
+  /// No description provided for @agentWorkspacePickRepo.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择本地仓库…'**
+  String get agentWorkspacePickRepo;
+
+  /// No description provided for @agentWorkspaceRepoRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'编码工作区需要先选择仓库'**
+  String get agentWorkspaceRepoRequired;
+
+  /// No description provided for @agentWorkspaceRepoReselect.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库授权已失效，请重新选择'**
+  String get agentWorkspaceRepoReselect;
+
+  /// No description provided for @agentFsWrite.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作区写入'**
+  String get agentFsWrite;
+
+  /// No description provided for @agentFsWriteHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许创建与修改沙箱内文件（如 MEMORY.md）'**
+  String get agentFsWriteHint;
+
+  /// No description provided for @agentWorkspacePresetKnowledge.
+  ///
+  /// In zh, this message translates to:
+  /// **'知识'**
+  String get agentWorkspacePresetKnowledge;
+
+  /// No description provided for @agentWorkspacePresetCoding.
+  ///
+  /// In zh, this message translates to:
+  /// **'编码'**
+  String get agentWorkspacePresetCoding;
+
+  /// No description provided for @agentWorkspacePresetHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'预设只改本页开关，不换人设'**
+  String get agentWorkspacePresetHint;
+
+  /// No description provided for @agentSkillsEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能'**
+  String get agentSkillsEntry;
+
+  /// No description provided for @agentSkillsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能'**
+  String get agentSkillsTitle;
+
+  /// No description provided for @agentSkillsNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'未分配'**
+  String get agentSkillsNone;
+
+  /// No description provided for @agentSkillsEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可配置的技能'**
+  String get agentSkillsEmptyTitle;
+
+  /// No description provided for @agentSkillsEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'之后可在这里分配 KIM 技能，或从广场发现生态技能'**
+  String get agentSkillsEmptyHint;
+
+  /// No description provided for @agentSkillsOpenPlaza.
+  ///
+  /// In zh, this message translates to:
+  /// **'去广场看看'**
+  String get agentSkillsOpenPlaza;
+
+  /// No description provided for @agentSkillsAppSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'KIM 技能'**
+  String get agentSkillsAppSection;
+
+  /// No description provided for @agentSkillsAppEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无内置技能'**
+  String get agentSkillsAppEmpty;
+
+  /// No description provided for @agentSkillsAppEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要桌面端 Agent 运行时才能列出 kim-*'**
+  String get agentSkillsAppEmptyHint;
+
+  /// No description provided for @agentSkillsPortableSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'生态技能（发现 / 屏蔽）'**
+  String get agentSkillsPortableSection;
+
+  /// No description provided for @agentSkillsPortableEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'未发现生态技能'**
+  String get agentSkillsPortableEmpty;
+
+  /// No description provided for @agentSkillsPortableEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开读写或选用本地仓库后，会扫描 ~/.agents 与项目 .agents'**
+  String get agentSkillsPortableEmptyHint;
+
+  /// No description provided for @agentSkillsPortableScanOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前不扫描生态技能'**
+  String get agentSkillsPortableScanOff;
+
+  /// No description provided for @agentSkillsPortableScanOffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'沙箱且未开读写时，不会把 ~/.agents 里的技能塞进 catalog'**
+  String get agentSkillsPortableScanOffHint;
+
+  /// No description provided for @agentSkillsPortableMuteHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开开关 = 从 catalog 屏蔽'**
+  String get agentSkillsPortableMuteHint;
+
+  /// No description provided for @agentSkillsNeedsToolsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要打开工具'**
+  String get agentSkillsNeedsToolsTitle;
+
+  /// No description provided for @agentSkillsNeedsToolsBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'分配 {skillId} 需要：{tools}。不会静默改开关。'**
+  String agentSkillsNeedsToolsBody(String skillId, String tools);
+
+  /// No description provided for @agentSkillsNeedsToolsEnable.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开这些开关'**
+  String get agentSkillsNeedsToolsEnable;
+
+  /// No description provided for @agentSkillsNeedsToolsCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get agentSkillsNeedsToolsCancel;
+
+  /// No description provided for @agentSkillsNeedsToolsToast.
+  ///
+  /// In zh, this message translates to:
+  /// **'未打开所需工具，技能未分配'**
+  String get agentSkillsNeedsToolsToast;
+
+  /// No description provided for @agentToolsEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限与扩展'**
+  String get agentToolsEntry;
+
+  /// No description provided for @agentToolsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限与扩展'**
+  String get agentToolsTitle;
+
+  /// No description provided for @agentToolsSubtitleDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认 · 无 MCP'**
+  String get agentToolsSubtitleDefault;
+
+  /// No description provided for @agentToolsSubtitleMcp.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认 · MCP {count}'**
+  String agentToolsSubtitleMcp(int count);
+
+  /// No description provided for @agentPlazaTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能广场'**
+  String get agentPlazaTitle;
+
+  /// No description provided for @agentPlazaEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'广场即将到来'**
+  String get agentPlazaEmptyTitle;
+
+  /// No description provided for @agentPlazaEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'之后可在这里浏览生态技能与 KIM 内置技能'**
+  String get agentPlazaEmptyHint;
+
+  /// No description provided for @agentPlazaKimSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'KIM 架'**
+  String get agentPlazaKimSection;
+
+  /// No description provided for @agentPlazaEcoSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'生态架'**
+  String get agentPlazaEcoSection;
+
+  /// No description provided for @agentPlazaEcoEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'生态架为空'**
+  String get agentPlazaEcoEmpty;
+
+  /// No description provided for @agentPlazaEcoEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'真实用户家目录 ~/.agents/skills 里尚无 SKILL.md'**
+  String get agentPlazaEcoEmptyHint;
+
+  /// No description provided for @agentPlazaAssign.
+  ///
+  /// In zh, this message translates to:
+  /// **'分配'**
+  String get agentPlazaAssign;
+
+  /// No description provided for @agentPlazaAssigningTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在为人设「{name}」挑选'**
+  String agentPlazaAssigningTo(String name);
+
+  /// No description provided for @agentPlazaPickAgentFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请从人设的技能页进入广场再分配'**
+  String get agentPlazaPickAgentFirst;
+
+  /// No description provided for @agentPlazaAssigned.
+  ///
+  /// In zh, this message translates to:
+  /// **'已分配 {id}'**
+  String agentPlazaAssigned(String id);
+
+  /// No description provided for @agentPlazaImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入文件夹到 ~/.agents…'**
+  String get agentPlazaImport;
+
+  /// No description provided for @agentPlazaImported.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入 {id}'**
+  String agentPlazaImported(String id);
+
+  /// No description provided for @agentPlazaImportFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入失败（需要含 SKILL.md 的目录）'**
+  String get agentPlazaImportFailed;
+
+  /// No description provided for @agentPlazaImportNoHome.
+  ///
+  /// In zh, this message translates to:
+  /// **'找不到真实 ~/.agents/skills'**
+  String get agentPlazaImportNoHome;
+
+  /// No description provided for @agentOpenChat.
+  ///
+  /// In zh, this message translates to:
+  /// **'去聊天'**
+  String get agentOpenChat;
+
   /// No description provided for @emptyChatTitle.
   ///
   /// In zh, this message translates to:

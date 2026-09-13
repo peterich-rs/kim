@@ -153,4 +153,17 @@ class AgentBridge {
       choiceJson: choiceJson,
     );
   }
+
+  Future<String> skillAppCatalogJson({required String cacheRoot}) async {
+    await ensure();
+    return skillAppCatalog(cacheRoot: cacheRoot);
+  }
+
+  Future<String> skillPortableListJson({
+    required String userRoot,
+    required String projectRoot,
+  }) async {
+    await ensure();
+    return skillPortableList(userRoot: userRoot, projectRoot: projectRoot);
+  }
 }

@@ -779,6 +779,25 @@ pub fn catalog_validate(
     kim_agent_host::catalog_validate(&vendor, &model, &choice_json).map_err(map_host_err)
 }
 
+/// Portable skills under the user shelf and/or `<project>/.agents/skills`.
+pub fn skill_portable_list(user_root: String, project_root: String) -> Result<String, String> {
+    Ok(kim_agent_host::skill_portable_list_json(
+        &user_root,
+        &project_root,
+    ))
+}
+
+/// Bundled (and optional cache) `kim-*` app skill summaries for assignment UI.
+pub fn skill_app_catalog(cache_root: String) -> Result<String, String> {
+    let root = cache_root.trim();
+    let path = if root.is_empty() {
+        None
+    } else {
+        Some(std::path::Path::new(root))
+    };
+    Ok(kim_agent_host::skill_app_catalog_json(path))
+}
+
 fn map_host_err(err: HostError) -> String {
     err.to_string()
 }

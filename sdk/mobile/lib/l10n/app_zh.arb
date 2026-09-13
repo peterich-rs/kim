@@ -253,6 +253,99 @@
   "composerHint": "发消息",
   "agentNameHint": "给 Agent 起个名字",
   "agentAdvanced": "高级",
+  "agentWorkspaceEntry": "工作区与能力",
+  "agentWorkspaceTitle": "工作区与能力",
+  "agentWorkspaceSubtitleOff": "应用内沙箱 · 未开读写",
+  "agentWorkspaceSubtitleFs": "应用内沙箱 · 只读",
+  "agentWorkspaceSubtitleWrite": "应用内沙箱 · 读·写",
+  "agentWorkspaceSubtitleBash": "应用内沙箱 · 终端",
+  "agentWorkspaceSubtitleFsBash": "应用内沙箱 · 只读·终端",
+  "agentWorkspaceSubtitleWriteBash": "应用内沙箱 · 读·写·终端",
+  "agentWorkspaceCapsOff": "未开读写",
+  "agentWorkspaceCapsFs": "只读",
+  "agentWorkspaceCapsWrite": "读·写",
+  "agentWorkspaceCapsBash": "终端",
+  "agentWorkspaceCapsFsBash": "只读·终端",
+  "agentWorkspaceCapsWriteBash": "读·写·终端",
+  "agentWorkspacePath": "当前工作目录",
+  "agentWorkspaceKindSandbox": "应用内沙箱",
+  "agentWorkspaceKindRepo": "本地仓库",
+  "agentWorkspaceUseRepo": "使用本地仓库",
+  "agentWorkspaceUseRepoHint": "把读写与终端指向你选的文件夹（需系统授权）",
+  "agentWorkspacePickRepo": "选择本地仓库…",
+  "agentWorkspaceRepoRequired": "编码工作区需要先选择仓库",
+  "agentWorkspaceRepoReselect": "仓库授权已失效，请重新选择",
+  "agentFsWrite": "工作区写入",
+  "agentFsWriteHint": "允许创建与修改沙箱内文件（如 MEMORY.md）",
+  "agentWorkspacePresetKnowledge": "知识",
+  "agentWorkspacePresetCoding": "编码",
+  "agentWorkspacePresetHint": "预设只改本页开关，不换人设",
+  "agentSkillsEntry": "技能",
+  "agentSkillsTitle": "技能",
+  "agentSkillsNone": "未分配",
+  "agentSkillsEmptyTitle": "还没有可配置的技能",
+  "agentSkillsEmptyHint": "之后可在这里分配 KIM 技能，或从广场发现生态技能",
+  "agentSkillsOpenPlaza": "去广场看看",
+  "agentSkillsAppSection": "KIM 技能",
+  "agentSkillsAppEmpty": "暂无内置技能",
+  "agentSkillsAppEmptyHint": "需要桌面端 Agent 运行时才能列出 kim-*",
+  "agentSkillsPortableSection": "生态技能（发现 / 屏蔽）",
+  "agentSkillsPortableEmpty": "未发现生态技能",
+  "agentSkillsPortableEmptyHint": "打开读写或选用本地仓库后，会扫描 ~/.agents 与项目 .agents",
+  "agentSkillsPortableScanOff": "当前不扫描生态技能",
+  "agentSkillsPortableScanOffHint": "沙箱且未开读写时，不会把 ~/.agents 里的技能塞进 catalog",
+  "agentSkillsPortableMuteHint": "打开开关 = 从 catalog 屏蔽",
+  "agentSkillsNeedsToolsTitle": "需要打开工具",
+  "agentSkillsNeedsToolsBody": "分配 {skillId} 需要：{tools}。不会静默改开关。",
+  "@agentSkillsNeedsToolsBody": {
+    "placeholders": {
+      "skillId": { "type": "String" },
+      "tools": { "type": "String" }
+    }
+  },
+  "agentSkillsNeedsToolsEnable": "打开这些开关",
+  "agentSkillsNeedsToolsCancel": "取消",
+  "agentSkillsNeedsToolsToast": "未打开所需工具，技能未分配",
+  "agentToolsEntry": "权限与扩展",
+  "agentToolsTitle": "权限与扩展",
+  "agentToolsSubtitleDefault": "默认 · 无 MCP",
+  "agentToolsSubtitleMcp": "默认 · MCP {count}",
+  "@agentToolsSubtitleMcp": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentPlazaTitle": "技能广场",
+  "agentPlazaEmptyTitle": "广场即将到来",
+  "agentPlazaEmptyHint": "之后可在这里浏览生态技能与 KIM 内置技能",
+  "agentPlazaKimSection": "KIM 架",
+  "agentPlazaEcoSection": "生态架",
+  "agentPlazaEcoEmpty": "生态架为空",
+  "agentPlazaEcoEmptyHint": "真实用户家目录 ~/.agents/skills 里尚无 SKILL.md",
+  "agentPlazaAssign": "分配",
+  "agentPlazaAssigningTo": "正在为人设「{name}」挑选",
+  "@agentPlazaAssigningTo": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "agentPlazaPickAgentFirst": "请从人设的技能页进入广场再分配",
+  "agentPlazaAssigned": "已分配 {id}",
+  "@agentPlazaAssigned": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  },
+  "agentPlazaImport": "导入文件夹到 ~/.agents…",
+  "agentPlazaImported": "已导入 {id}",
+  "@agentPlazaImported": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  },
+  "agentPlazaImportFailed": "导入失败（需要含 SKILL.md 的目录）",
+  "agentPlazaImportNoHome": "找不到真实 ~/.agents/skills",
+  "agentOpenChat": "去聊天",
   "emptyChatTitle": "选择一个会话",
   "emptyChatSubtitle": "从左侧列表打开聊天，或发起新会话",
   "routeNotFound": "页面不存在",

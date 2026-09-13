@@ -43,6 +43,15 @@ class AgentListPage extends ConsumerWidget {
             title: l10n.agentListTitle,
             actions: [
               IconButton(
+                key: const Key('agent-plaza'),
+                tooltip: l10n.agentPlazaTitle,
+                onPressed: () {
+                  unawaited(KimHaptics.light());
+                  context.push('/agent/plaza');
+                },
+                icon: const Icon(LucideIcons.store),
+              ),
+              IconButton(
                 key: const Key('agent-new'),
                 tooltip: l10n.agentCreate,
                 onPressed: () {

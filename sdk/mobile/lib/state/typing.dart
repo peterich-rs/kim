@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Per-thread peer typing (ephemeral). Key = peer account / thread dest.
@@ -16,8 +18,13 @@ class TypingState {
 }
 
 class TypingNotifier extends Notifier<TypingState> {
+  Timer? _ttl;
+
   @override
-  TypingState build() => const TypingState();
+  TypingState build() {
+    ref.onDispose(() => _ttl?.cancel());
+    return const TypingState();
+  }
 
   void applyPush({
     required String typer,
@@ -36,6 +43,7 @@ class TypingNotifier extends Notifier<TypingState> {
       next.remove(thread);
     }
     state = state.copyWith(activeByDest: next);
+    _armTtl();
   }
 
   void clearDest(String dest) {
@@ -44,10 +52,29 @@ class TypingNotifier extends Notifier<TypingState> {
     }
     final next = Map<String, bool>.from(state.activeByDest)..remove(dest);
     state = state.copyWith(activeByDest: next);
+    _armTtl();
   }
 
   void clear() {
+    _ttl?.cancel();
+    _ttl = null;
     state = const TypingState();
+  }
+
+  /// Drop stale typing if a peer crashes mid-indicator (humans + bots).
+  void _armTtl() {
+    _ttl?.cancel();
+    if (state.activeByDest.isEmpty) {
+      _ttl = null;
+      return;
+    }
+    _ttl = Timer(const Duration(seconds: 20), () {
+      if (state.activeByDest.isEmpty) {
+        return;
+      }
+      state = const TypingState();
+      _ttl = null;
+    });
   }
 }
 

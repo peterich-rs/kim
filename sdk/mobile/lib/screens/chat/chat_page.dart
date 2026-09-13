@@ -91,7 +91,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         orphan &&
         (agentChat || isServerBotAccount(widget.id));
     final userThread = kind == ThreadKind.user && !agentChat;
-    final peerTyping = userThread
+    final showTyping =
+        kind == ThreadKind.user || agentChat || isServerBotAccount(widget.id);
+    final peerTyping = showTyping
         ? ref.watch(peerTypingProvider(widget.id))
         : false;
     final readUpTo = userThread
