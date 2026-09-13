@@ -820,11 +820,12 @@ fn row_profile(
 
 #[cfg(feature = "postgres")]
 async fn upsert_bot_config_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    conn: &mut sqlx::PgConnection,
     app: &str,
     account: &str,
     cfg: &BotConfig,
 ) -> Result<(), UserError> {
+    // sqlx 0.8: Executor is on &mut PgConnection, not &mut Transaction.
     sqlx::query(
         "INSERT INTO bot_config (app, bot_account, model, thinking_effort, context_tokens, visibility, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, now())
@@ -841,7 +842,7 @@ async fn upsert_bot_config_tx(
     .bind(&cfg.thinking_effort)
     .bind(cfg.context_tokens)
     .bind(&cfg.visibility)
-    .execute(&mut *tx)
+    .execute(&mut *conn)
     .await
     .map_err(pg_err)?;
     Ok(())
