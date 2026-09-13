@@ -47,6 +47,7 @@ pub struct VendorEntry {
     pub auth: AuthStyle,
     pub builder: BuilderKind,
     #[serde(default)]
+    #[allow(dead_code)]
     pub goose_fallback_name: Option<String>,
     #[serde(default)]
     pub dynamic_models: bool,
@@ -247,18 +248,8 @@ pub fn default_base_url(kind: &str) -> Result<Option<&'static str>, HostError> {
     Ok(vendor_entry(kind)?.map(|v| v.default_base_url.as_str()))
 }
 
-pub fn goose_fallback_name(kind: &str) -> Result<Option<&'static str>, HostError> {
-    Ok(vendor_entry(kind)?.and_then(|v| v.goose_fallback_name.as_deref()))
-}
-
 pub fn builder_kind(kind: &str) -> Result<Option<BuilderKind>, HostError> {
     Ok(vendor_entry(kind)?.map(|v| v.builder))
-}
-
-pub fn catalog_model_ids(kind: &str) -> Result<Vec<String>, HostError> {
-    Ok(vendor_entry(kind)?
-        .map(|v| v.models.iter().map(|m| m.id.clone()).collect())
-        .unwrap_or_default())
 }
 
 pub fn vendor_summaries() -> Result<Vec<VendorSummary>, HostError> {

@@ -181,14 +181,6 @@ fn is_mobile_eligible(cfg: &goose_providers::declarative::DeclarativeProviderCon
     true
 }
 
-const FALLBACK_ANTHROPIC: &[&str] = &[
-    "claude-sonnet-4-5",
-    "claude-opus-4-5",
-    "claude-haiku-4-5",
-    "claude-sonnet-4-6",
-    "claude-opus-4-6",
-];
-
 pub async fn fetch_models(spec: &ProviderSpec, api_key: &str) -> Result<Vec<String>, HostError> {
     if api_key.trim().is_empty() {
         return Err(HostError::MissingApiKey);
@@ -213,38 +205,6 @@ pub async fn fetch_models(spec: &ProviderSpec, api_key: &str) -> Result<Vec<Stri
 pub(crate) fn is_concrete_model_id(id: &str) -> bool {
     let id = id.trim();
     !id.is_empty() && !id.contains('*') && !id.contains('?')
-}
-
-pub(crate) fn fallback_models(spec: &ProviderSpec) -> Vec<String> {
-    let kind = catalog::normalize_vendor_id(&spec.kind);
-    if let Ok(ids) = catalog::catalog_model_ids(&kind) {
-        if !ids.is_empty() {
-            return ids;
-        }
-    }
-    if let Ok(Some(name)) = catalog::goose_fallback_name(&kind) {
-        if let Some(models) = bundled_models(name) {
-            return models;
-        }
-    }
-    match kind.as_str() {
-        "openai" | "openai_compatible" => goose_providers::openai::OPEN_AI_KNOWN_MODELS
-            .iter()
-            .map(|(name, _)| (*name).to_string())
-            .collect(),
-        "anthropic" => FALLBACK_ANTHROPIC
-            .iter()
-            .map(|name| (*name).to_string())
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn bundled_models(name: &str) -> Option<Vec<String>> {
-    bundled_declarative_json(name)
-        .ok()
-        .and_then(|json| goose_providers::declarative::deserialize_provider_config(json).ok())
-        .map(|cfg| cfg.models.into_iter().map(|m| m.name).collect())
 }
 
 pub fn build_openai(
@@ -402,46 +362,6 @@ mod tests {
         };
         let err = fetch_models(&spec, "").await.unwrap_err();
         assert!(matches!(err, HostError::MissingApiKey), "{err:?}");
-    }
-
-    #[test]
-    fn fallback_models_never_empty_for_openai() {
-        let spec = ProviderSpec {
-            kind: "openai".into(),
-            base_url: String::new(),
-            key_ref: "agent.api_key.goose".into(),
-        };
-        assert!(!fallback_models(&spec).is_empty());
-    }
-
-    #[test]
-    fn fallback_models_deepseek_is_catalog_not_gpt4o() {
-        let spec = ProviderSpec {
-            kind: "deepseek".into(),
-            base_url: String::new(),
-            key_ref: String::new(),
-        };
-        let models = fallback_models(&spec);
-        assert!(models.contains(&"deepseek-flash".into()), "{models:?}");
-        assert!(!models.iter().any(|m| m.starts_with("gpt-")), "{models:?}");
-    }
-
-    #[test]
-    fn fallback_models_groq_is_not_gpt4o() {
-        let spec = ProviderSpec {
-            kind: "groq".into(),
-            base_url: String::new(),
-            key_ref: String::new(),
-        };
-        let models = fallback_models(&spec);
-        assert!(!models.is_empty(), "{models:?}");
-        assert!(!models.iter().any(|m| m == "gpt-4o"), "{models:?}");
-        assert!(
-            models
-                .iter()
-                .any(|m| m.contains("llama") || m.contains("groq") || m.contains('/')),
-            "{models:?}"
-        );
     }
 
     #[test]
