@@ -1,5 +1,5 @@
 use kim_protocol::pkt::{Flag, Session};
-use kim_protocol::LogicPkt;
+use kim_protocol::{AccountId, ChannelId, GatewayId, LogicPkt};
 use kim_router::{Context, Dispatcher, Location, RouterError, SessionError, SessionStorage};
 use prost::Message;
 use std::collections::hash_map::Entry;
@@ -10,7 +10,7 @@ use tracing::warn;
 /// Push `body` with `command` to every online location of `account`.
 /// Skips the sender's own channel via [`Context::dispatch_cmd`].
 pub async fn notify_account<B: Message>(ctx: &Context, account: &str, command: &str, body: &B) {
-    match ctx.list_locations(account).await {
+    match ctx.list_locations(&AccountId::from_trusted(account)).await {
         Ok(locs) if !locs.is_empty() => {
             if let Err(err) = ctx.dispatch_cmd(command, body, &locs).await {
                 warn!(%err, account, command, "account notify failed");
@@ -37,10 +37,10 @@ pub async fn notify_locations<B: Message>(
     packet.header.flag = Flag::Push as i32;
     packet.write_body(body);
 
-    let mut group: HashMap<String, Vec<String>> = HashMap::new();
-    let mut order: Vec<String> = Vec::new();
+    let mut group: HashMap<GatewayId, Vec<ChannelId>> = HashMap::new();
+    let mut order: Vec<GatewayId> = Vec::new();
     for recv in recvs {
-        if !skip_channel.is_empty() && recv.channel_id == skip_channel {
+        if !skip_channel.is_empty() && recv.channel_id.as_str() == skip_channel {
             continue;
         }
         match group.entry(recv.gate_id.clone()) {

@@ -1,5 +1,6 @@
 //! Bot identity e2e: create, talk gates, reply, pending, search.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use bytes::Bytes;

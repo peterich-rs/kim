@@ -3,7 +3,7 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::CMD_USER_UPDATED;
 use kim_protocol::PROFILE_KIND_BOT;
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::notify::notify_account;
@@ -31,7 +31,7 @@ pub(crate) async fn profiles_pb(
     Ok(rows.iter().map(to_pb).collect())
 }
 
-pub async fn do_user_profile(ctx: Context, users: &dyn UserDirectory) {
+pub async fn do_user_profile(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     let dest = ctx.header().dest.as_str();
     let account = if dest.is_empty() {
         ctx.session().account.as_str()
@@ -43,49 +43,51 @@ pub async fn do_user_profile(ctx: Context, users: &dyn UserDirectory) {
             Ok(Some(p))
                 if p.kind == PROFILE_KIND_BOT && p.owner_account != ctx.session().account =>
             {
-                let _ = ctx
-                    .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
-                    .await;
-                return;
+                ctx.resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                    .await?;
+                return Ok(());
             }
             Ok(_) => {}
             Err(err) => {
                 warn!(%err, "profile lookup failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return;
+                ctx.resp_with_error(Status::SystemException, &err).await?;
+                return Ok(());
             }
         }
     }
     match users.profile(&ctx.session().app, account).await {
         Ok(Some(p)) => {
-            let _ = ctx.resp(Status::Success, Some(&to_pb(&p))).await;
+            ctx.resp(Status::Success, Some(&to_pb(&p))).await?;
         }
         Ok(None) => {
-            let _ = ctx
-                .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
             warn!(%err, "profile failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory, social: &dyn SocialDirectory) {
+pub async fn do_user_update(
+    ctx: Context,
+    users: &dyn UserDirectory,
+    social: &dyn SocialDirectory,
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<UserProfileUpdate>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let dest = ctx.header().dest.as_str();
     if !dest.is_empty() && dest != ctx.session().account {
-        let _ = ctx
-            .resp_bytes(Status::Unauthorized, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::Unauthorized, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let patch = ProfilePatch {
         nickname: req.nickname,
@@ -93,10 +95,9 @@ pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory, social: &dy
         bio: req.bio,
     };
     if let Err(UserError::InvalidProfile) = validate_patch(&patch) {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     match users
         .update_profile(&ctx.session().app, &ctx.session().account, &patch)
@@ -104,24 +105,23 @@ pub async fn do_user_update(ctx: Context, users: &dyn UserDirectory, social: &dy
     {
         Ok(p) => {
             let body = to_pb(&p);
-            let _ = ctx.resp(Status::Success, Some(&body)).await;
+            ctx.resp(Status::Success, Some(&body)).await?;
             push_profile_updated(&ctx, social, &body).await;
         }
         Err(UserError::NotFound) => {
-            let _ = ctx
-                .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                .await?;
         }
         Err(UserError::InvalidProfile) => {
-            let _ = ctx
-                .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-                .await;
+            ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+                .await?;
         }
         Err(err) => {
             warn!(%err, "update profile failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }
+    Ok(())
 }
 
 /// Push full profile snapshot to online friends (and other online devices of self).
@@ -139,12 +139,16 @@ async fn push_profile_updated(ctx: &Context, social: &dyn SocialDirectory, body:
     notify_account(ctx, me, CMD_USER_UPDATED, body).await;
 }
 
-pub async fn do_user_search(ctx: Context, users: &dyn UserDirectory, social: &dyn SocialDirectory) {
+pub async fn do_user_search(
+    ctx: Context,
+    users: &dyn UserDirectory,
+    social: &dyn SocialDirectory,
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<UserSearchReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let me = ctx.session().account.as_str();
@@ -153,8 +157,8 @@ pub async fn do_user_search(ctx: Context, users: &dyn UserDirectory, social: &dy
         Ok(blocked) => exclude.extend(blocked),
         Err(err) => {
             warn!(%err, "list blocked for search failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
     match users
@@ -172,17 +176,18 @@ pub async fn do_user_search(ctx: Context, users: &dyn UserDirectory, social: &dy
                     Ok(false) => users_pb.push(to_pb(&p)),
                     Err(err) => {
                         warn!(%err, "block check failed");
-                        let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                        return;
+                        ctx.resp_with_error(Status::SystemException, &err).await?;
+                        return Ok(());
                     }
                 }
             }
             let resp = UserSearchResp { users: users_pb };
-            let _ = ctx.resp(Status::Success, Some(&resp)).await;
+            ctx.resp(Status::Success, Some(&resp)).await?;
         }
         Err(err) => {
             warn!(%err, "search failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }
+    Ok(())
 }

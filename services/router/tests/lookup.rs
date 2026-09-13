@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

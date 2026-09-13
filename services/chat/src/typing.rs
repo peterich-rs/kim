@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use kim_protocol::pkt::{Status, TypingPush, TypingReq};
-use kim_protocol::{CMD_TYPING, INBOX_KIND_USER};
-use kim_router::{Context, SessionError};
+use kim_protocol::{AccountId, CMD_TYPING, INBOX_KIND_USER};
+use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::interest::RoomInterestStore;
@@ -15,12 +15,12 @@ pub async fn do_typing(
     ctx: Context,
     social: &dyn SocialDirectory,
     interest: &dyn RoomInterestStore,
-) {
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<TypingReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let me = ctx.session().account.as_str();
@@ -29,46 +29,43 @@ pub async fn do_typing(
     let kind = req.kind;
 
     if dest.is_empty() || dest == me {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     if kind != INBOX_KIND_USER {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
 
     match social.is_blocked_either(app, me, dest).await {
         Ok(true) => {
-            let _ = ctx.resp_bytes(Status::Blocked, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(Status::Blocked, bytes::Bytes::new()).await?;
+            return Ok(());
         }
         Ok(false) => {}
         Err(err) => {
             warn!(%err, "typing block check");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
     match social.is_friend(app, me, dest).await {
         Ok(true) => {}
         Ok(false) => {
-            let _ = ctx
-                .resp_bytes(Status::NotFriends, bytes::Bytes::new())
-                .await;
-            return;
+            ctx.resp_bytes(Status::NotFriends, bytes::Bytes::new())
+                .await?;
+            return Ok(());
         }
         Err(err) => {
             warn!(%err, "typing friend check");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
 
-    let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
 
     let body = TypingPush {
         typer: me.to_string(),
@@ -82,7 +79,7 @@ pub async fn do_typing(
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "typing list viewers");
-            return;
+            return Ok(());
         }
     };
     let peer_channels: Vec<String> = viewers
@@ -91,14 +88,22 @@ pub async fn do_typing(
         .map(|v| v.channel_id)
         .collect();
     if peer_channels.is_empty() {
-        return;
+        return Ok(());
     }
-    let locs = match ctx.list_locations(dest).await {
+    let dest_id = match AccountId::parse(dest) {
+        Ok(id) => id,
+        Err(_) => {
+            ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+                .await?;
+            return Ok(());
+        }
+    };
+    let locs = match ctx.list_locations(&dest_id).await {
         Ok(v) => v,
-        Err(SessionError::NotFound) => return,
+        Err(SessionError::NotFound) => return Ok(()),
         Err(err) => {
             warn!(%err, dest, "typing peer locations");
-            return;
+            return Ok(());
         }
     };
     let want: HashSet<&str> = peer_channels.iter().map(|c| c.as_str()).collect();
@@ -107,9 +112,10 @@ pub async fn do_typing(
         .filter(|l| want.contains(l.channel_id.as_str()))
         .collect();
     if recvs.is_empty() {
-        return;
+        return Ok(());
     }
     if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &recvs).await {
         warn!(%err, dest, "typing fanout failed");
     }
+    Ok(())
 }

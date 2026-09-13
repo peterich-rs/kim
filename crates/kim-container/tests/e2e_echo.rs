@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -5,7 +6,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_container::{Container, ContainerOpts, DownlinkHook, HashSelector, InnerTcpDialer, ADULT};
-use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::{
+    Acceptor, ChannelHandle, ChannelId, Conn, Error, MessageListener, Server, StateListener,
+};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, InnerHandshakeReq, Status};
 use kim_protocol::{
@@ -23,17 +26,19 @@ struct GatewayHandler {
 
 #[async_trait]
 impl Acceptor for GatewayHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        Ok(String::from_utf8_lossy(&frame.payload).trim().to_string())
+        Ok(ChannelId::from_trusted(
+            String::from_utf8_lossy(&frame.payload).trim(),
+        ))
     }
 }
 
 #[async_trait]
 impl MessageListener for GatewayHandler {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         match read(&payload) {
             Ok(Packet::Basic(p)) if p.code == kim_protocol::CODE_PING => {
                 let _ = handle.push(marshal(&Packet::Basic(BasicPkt::pong()))).await;
@@ -51,12 +56,13 @@ impl MessageListener for GatewayHandler {
             }
             _ => {}
         }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for GatewayHandler {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -68,24 +74,24 @@ struct ChatHandler {
 
 #[async_trait]
 impl Acceptor for ChatHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
         let req = InnerHandshakeReq::decode(frame.payload.as_ref())
             .map_err(|e| Error::Handshake(e.to_string()))?;
-        Ok(req.service_id)
+        Ok(ChannelId::from_trusted(&req.service_id))
     }
 }
 
 #[async_trait]
 impl MessageListener for ChatHandler {
-    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         let mut pkt = match read_logic(&payload) {
             Ok(p) => p,
             Err(_) => {
                 self.seen.lock().await.push("basic-or-bad".into());
-                return;
+                return Ok(());
             }
         };
         self.seen.lock().await.push(pkt.header.command.clone());
@@ -95,13 +101,15 @@ impl MessageListener for ChatHandler {
         let ch = pkt.header.channel_id.clone();
         pkt.set_meta(META_DEST_SERVER, &gw);
         pkt.set_meta(META_DEST_CHANNELS, &ch);
-        let _ = self.container.push(&gw, pkt).await;
+        let channel = ChannelId::from_trusted(&gw);
+        let _ = self.container.push(&channel, pkt).await;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for ChatHandler {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -110,11 +118,11 @@ struct RecHook(Arc<Mutex<Vec<(String, String)>>>);
 
 #[async_trait]
 impl DownlinkHook for RecHook {
-    async fn after_push(&self, channel_id: &str, pkt: &LogicPkt) {
+    async fn after_push(&self, channel_id: &ChannelId, pkt: &LogicPkt) {
         self.0
             .lock()
             .await
-            .push((channel_id.to_string(), pkt.header.command.clone()));
+            .push((channel_id.as_str().to_owned(), pkt.header.command.clone()));
     }
 }
 

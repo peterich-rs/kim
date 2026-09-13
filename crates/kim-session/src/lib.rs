@@ -133,8 +133,17 @@ async fn open_uncached_redis_store(_url: &str) -> Result<Arc<dyn SessionStorage>
 mod tests {
     use super::*;
     use kim_protocol::pkt::Session;
+    use kim_protocol::{AccountId, ChannelId};
     use kim_router::SessionError;
     use std::sync::Arc;
+
+    fn acc(s: &str) -> AccountId {
+        AccountId::from_trusted(s)
+    }
+
+    fn ch(s: &str) -> ChannelId {
+        ChannelId::from_trusted(s)
+    }
 
     fn session(channel_id: &str, account: &str, gate_id: &str) -> Session {
         Session {
@@ -214,15 +223,15 @@ mod tests {
         let store = open_session_store(None).await.unwrap();
         store.add(&session("id1", "alice", "wg-1")).await.unwrap();
         store.add(&session("id2", "alice", "wg-1")).await.unwrap();
-        store.delete("alice", "id1").await.unwrap();
+        store.delete(&acc("alice"), &ch("id1")).await.unwrap();
 
-        let loc = store.get_location("alice", "").await.unwrap();
-        assert_eq!(loc.channel_id, "id2");
+        let loc = store.get_location(&acc("alice"), "").await.unwrap();
+        assert_eq!(loc.channel_id.as_str(), "id2");
         assert!(matches!(
-            store.get("id1").await,
+            store.get(&ch("id1")).await,
             Err(SessionError::NotFound)
         ));
-        let s2 = store.get("id2").await.unwrap();
+        let s2 = store.get(&ch("id2")).await.unwrap();
         assert_eq!(s2.channel_id, "id2");
     }
 
@@ -230,7 +239,7 @@ mod tests {
     async fn open_empty_string_is_memory() {
         let store = open_session_store(Some("")).await.unwrap();
         store.add(&session("id1", "bob", "g")).await.unwrap();
-        assert_eq!(store.get("id1").await.unwrap().account, "bob");
+        assert_eq!(store.get(&ch("id1")).await.unwrap().account, "bob");
     }
 
     #[cfg(not(feature = "redis"))]
@@ -259,16 +268,16 @@ mod tests {
         inner.add(&session("c1", "alice", "g")).await.unwrap();
         let cached = CachedSessionStore::wrap(inner.clone());
         assert_eq!(
-            cached.get_locations(&["alice".into()]).await.unwrap().len(),
+            cached.get_locations(&[acc("alice")]).await.unwrap().len(),
             1
         );
-        inner.delete("alice", "c1").await.unwrap();
+        inner.delete(&acc("alice"), &ch("c1")).await.unwrap();
         assert_eq!(
-            cached.get_locations(&["alice".into()]).await.unwrap().len(),
+            cached.get_locations(&[acc("alice")]).await.unwrap().len(),
             1
         );
         assert!(matches!(
-            inner.get_locations(&["alice".into()]).await,
+            inner.get_locations(&[acc("alice")]).await,
             Err(SessionError::NotFound)
         ));
     }

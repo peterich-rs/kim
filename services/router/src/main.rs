@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use kim_naming::{DefaultRegistration, Naming};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let port: u16 = listen
             .rsplit_once(':')
             .and_then(|(_, p)| p.parse().ok())
-            .ok_or("listen has no port")?;
+            .ok_or_else(|| anyhow::anyhow!("listen has no port"))?;
         let mut meta = HashMap::new();
         meta.insert("protocol".into(), "http".into());
         meta.insert("health_url".into(), format!("http://{addr}:{port}/health"));

@@ -381,6 +381,7 @@ dependencies = [
 name = "chat"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arc-swap",
  "async-trait",
  "axum",
@@ -1067,6 +1068,7 @@ dependencies = [
 name = "gateway"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bytes",
  "crc32fast",
@@ -1747,6 +1749,7 @@ dependencies = [
 name = "kim-client-demo"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "kim-client",
  "kim-protocol",
  "tokio",
@@ -1781,6 +1784,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "dashmap",
+ "kim-protocol",
  "socket2",
  "thiserror 2.0.20",
  "tokio",
@@ -1923,6 +1927,7 @@ dependencies = [
 name = "kimbench"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bytes",
  "clap",
  "humantime",
@@ -2368,6 +2373,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 name = "pkt-client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bytes",
  "kim-core",
@@ -2920,6 +2926,7 @@ dependencies = [
 name = "router"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "crc32fast",
  "kim-core",
@@ -2942,6 +2949,7 @@ dependencies = [
 name = "royal"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "async-trait",
  "axum",
@@ -3745,6 +3753,7 @@ dependencies = [
 name = "tgateway"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bytes",
  "gateway",

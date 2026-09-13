@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Context;
+
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::open_uncached_session_store;
 use chat::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
@@ -82,12 +84,15 @@ fn port_from_listen(listen: &str) -> Option<u16> {
     listen.rsplit_once(':')?.1.parse().ok()
 }
 
-async fn scan_empty_jti() -> Result<(), Box<dyn std::error::Error>> {
+async fn scan_empty_jti() -> anyhow::Result<()> {
     #[cfg(feature = "redis")]
     {
-        let url = env_nonempty("REDIS_URL").ok_or("REDIS_URL is required for --scan-empty-jti")?;
-        let scanner = kim_session::RedisSessionStore::open(&url).await?;
-        let scan = scanner.count_empty_jti_locations().await?;
+        let url = env_nonempty("REDIS_URL")
+            .ok_or_else(|| anyhow::anyhow!("REDIS_URL is required for --scan-empty-jti"))?;
+        let scanner = kim_session::RedisSessionStore::open(&url)
+            .await
+            .context("redis")?;
+        let scan = scanner.count_empty_jti_locations().await.context("redis")?;
         println!(
             "empty_jti={} invalid={} wrong_type={} scanned={}",
             scan.empty_jti, scan.invalid, scan.wrong_type, scan.scanned
@@ -98,7 +103,7 @@ async fn scan_empty_jti() -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
     #[cfg(not(feature = "redis"))]
-    Err("rebuild royal with --features redis".into())
+    anyhow::bail!("rebuild royal with --features redis")
 }
 
 fn jwt_secret(cfg: &str) -> String {
@@ -108,62 +113,68 @@ fn jwt_secret(cfg: &str) -> String {
     })
 }
 
-async fn open_devices(url: &str) -> Result<Arc<dyn DeviceDirectory>, Box<dyn std::error::Error>> {
+async fn open_devices(url: &str) -> anyhow::Result<Arc<dyn DeviceDirectory>> {
     #[cfg(feature = "postgres")]
     {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(2)
             .connect(url)
-            .await?;
+            .await
+            .context("postgres")?;
         Ok(Arc::new(royal::PostgresDeviceDirectory::from_pool(pool)))
     }
     #[cfg(not(feature = "postgres"))]
     {
         let _ = url;
-        Err("rebuild royal with --features postgres".into())
+        anyhow::bail!("rebuild royal with --features postgres")
     }
 }
 
-async fn open_device_hot(url: &str) -> Result<Arc<dyn DeviceHot>, Box<dyn std::error::Error>> {
+async fn open_device_hot(url: &str) -> anyhow::Result<Arc<dyn DeviceHot>> {
     #[cfg(feature = "redis")]
     {
-        Ok(Arc::new(royal::RedisDeviceHot::open(url).await?))
+        Ok(Arc::new(
+            royal::RedisDeviceHot::open(url).await.context("redis")?,
+        ))
     }
     #[cfg(not(feature = "redis"))]
     {
         let _ = url;
-        Err("rebuild royal with --features redis".into())
+        anyhow::bail!("rebuild royal with --features redis")
     }
 }
 
-async fn open_revoke(url: &str) -> Result<Arc<dyn TokenRevocation>, Box<dyn std::error::Error>> {
+async fn open_revoke(url: &str) -> anyhow::Result<Arc<dyn TokenRevocation>> {
     #[cfg(feature = "redis")]
     {
-        Ok(Arc::new(royal::RedisRevocation::open(url).await?))
+        Ok(Arc::new(
+            royal::RedisRevocation::open(url).await.context("redis")?,
+        ))
     }
     #[cfg(not(feature = "redis"))]
     {
         let _ = url;
-        Err("rebuild royal with --features redis".into())
+        anyhow::bail!("rebuild royal with --features redis")
     }
 }
 
 #[cfg(feature = "redis")]
-async fn open_nonce(
-    url: &str,
-) -> Result<Arc<dyn chat::HmacNonceGuard>, Box<dyn std::error::Error>> {
-    Ok(Arc::new(chat::RedisHmacNonceGuard::open(url).await?))
+async fn open_nonce(url: &str) -> anyhow::Result<Arc<dyn chat::HmacNonceGuard>> {
+    Ok(Arc::new(
+        chat::RedisHmacNonceGuard::open(url)
+            .await
+            .map_err(anyhow::Error::msg)
+            .context("redis")?,
+    ))
 }
 
 #[cfg(not(feature = "redis"))]
-async fn open_nonce(
-    _url: &str,
-) -> Result<Arc<dyn chat::HmacNonceGuard>, Box<dyn std::error::Error>> {
-    Err("rebuild royal with --features redis".into())
+async fn open_nonce(_url: &str) -> anyhow::Result<Arc<dyn chat::HmacNonceGuard>> {
+    anyhow::bail!("rebuild royal with --features redis")
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -179,7 +190,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = first
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.toml"));
-    let cfg: File = toml::from_str(&std::fs::read_to_string(&path)?)?;
+    let cfg: File =
+        toml::from_str(&std::fs::read_to_string(&path).context("config")?).context("config")?;
     let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
     let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
 
@@ -206,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let key_id = env_nonempty("KIM_AUTH_PASSWORD_SEAL_KEY_ID");
             Some(
                 PasswordSealKey::from_private_b64(&raw, key_id)
-                    .map_err(|e| format!("KIM_AUTH_PASSWORD_SEAL_PRIVATE: {e}"))?,
+                    .context("KIM_AUTH_PASSWORD_SEAL_PRIVATE")?,
             )
         }
         None => None,
@@ -222,7 +234,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         consul_addr: consul.as_deref(),
         password_seal_configured: Some(password_seal.is_some()),
         allow_plaintext_password: Some(allow_plaintext),
-    })?;
+    })
+    .map_err(anyhow::Error::msg)?;
 
     let revoke: Arc<dyn TokenRevocation> = match redis.as_deref() {
         Some(url) => open_revoke(url).await?,
@@ -273,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state = state.with_metrics(metrics.clone());
     let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| ALLOWED_APP.into());
     if kim_protocol::strict_runtime() && app != ALLOWED_APP {
-        return Err(format!("production KIM_APP must be {ALLOWED_APP}").into());
+        anyhow::bail!("production KIM_APP must be {ALLOWED_APP}");
     }
     let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();
     let devices: Arc<dyn DeviceDirectory> = match env_or_cfg("DATABASE_URL", &cfg.this.database_url)
@@ -324,13 +337,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listen = cfg.this.listen.clone();
     let public_address = env_or_cfg("KIM_PUBLIC_ADDRESS", &cfg.this.public_address);
-    let naming = open_naming(consul.as_deref(), vec![])?;
+    let naming = open_naming(consul.as_deref(), vec![]).context("naming")?;
     if !cfg.this.metrics_listen.trim().is_empty() {
         let addr: std::net::SocketAddr = cfg
             .this
             .metrics_listen
             .parse()
-            .map_err(|e| format!("invalid metrics_listen {}: {e}", cfg.this.metrics_listen))?;
+            .with_context(|| format!("invalid metrics_listen {}", cfg.this.metrics_listen))?;
         let metrics_listener = tokio::net::TcpListener::bind(addr).await?;
         tracing::info!(%addr, "royal metrics listening");
         let registry = metrics.registry();
@@ -350,7 +363,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(8080);
 
     if let Some(addr) = &public_address {
-        let health_port = port_from_listen(&listen).ok_or("listen has no port")?;
+        let health_port =
+            port_from_listen(&listen).ok_or_else(|| anyhow::anyhow!("listen has no port"))?;
         let mut meta = HashMap::new();
         meta.insert("protocol".into(), "http".into());
         meta.insert(

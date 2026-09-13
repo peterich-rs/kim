@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use anyhow::Context;
+
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
@@ -155,8 +157,9 @@ struct SvcRow {
     domain: String,
 }
 
-pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::error::Error>> {
-    let cfg: File = toml::from_str(&std::fs::read_to_string(path)?)?;
+pub fn load(path: &std::path::Path) -> anyhow::Result<(String, AppState)> {
+    let cfg: File =
+        toml::from_str(&std::fs::read_to_string(path).context("config")?).context("config")?;
     let mut map = HashMap::new();
     for row in cfg.ip_map {
         if let Ok(ip) = row.ip.parse::<IpAddr>() {
@@ -207,10 +210,11 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
             require_redis: false,
             consul_addr: consul.as_deref(),
             ..StrictCheck::default()
-        })?;
-        open_naming(consul.as_deref(), vec![])?
+        })
+        .map_err(anyhow::Error::msg)?;
+        open_naming(consul.as_deref(), vec![]).context("naming")?
     } else {
-        open_naming(None, regs)?
+        open_naming(None, regs).context("naming")?
     };
     let lookup = Lookup {
         naming,
@@ -250,7 +254,7 @@ pub fn load(path: &std::path::Path) -> Result<(String, AppState), Box<dyn std::e
     ))
 }
 
-pub fn app_from_state(state: AppState) -> Result<Router, Box<dyn std::error::Error>> {
+pub fn app_from_state(state: AppState) -> anyhow::Result<Router> {
     let metrics = kim_metrics::KimMetrics::new("router-1", "router")?;
     Ok(app(state, metrics.registry()))
 }

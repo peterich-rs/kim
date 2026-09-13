@@ -2,7 +2,7 @@ use kim_protocol::pkt::{
     Message as PktMessage, MessageContentReq, MessageContentResp, MessageIndex, MessageIndexReq,
     MessageIndexResp, Status,
 };
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::{info, warn};
 
 use crate::store::{MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
@@ -13,13 +13,17 @@ enum OfflineError {
     TooManyIds,
 }
 
-pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore, pending_receipt: bool) {
+pub async fn do_offline_index(
+    ctx: Context,
+    store: &dyn MessageStore,
+    pending_receipt: bool,
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<MessageIndexReq>() {
         Ok(r) => r,
         Err(err) => {
             warn!(%err, "invalid MessageIndexReq");
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let session = ctx.session();
@@ -40,8 +44,8 @@ pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore, pending_re
                 Ok(v) => v,
                 Err(err) => {
                     warn!(%err, "offline index failed");
-                    let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                    return;
+                    ctx.resp_with_error(Status::SystemException, &err).await?;
+                    return Ok(());
                 }
             }
         }
@@ -53,8 +57,8 @@ pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore, pending_re
             Ok(v) => v,
             Err(err) => {
                 warn!(%err, "offline index failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-                return;
+                ctx.resp_with_error(Status::SystemException, &err).await?;
+                return Ok(());
             }
         }
     };
@@ -76,26 +80,24 @@ pub async fn do_offline_index(ctx: Context, store: &dyn MessageStore, pending_re
         count = resp.indexes.len(),
         "offline index"
     );
-    if let Err(err) = ctx.resp(Status::Success, Some(&resp)).await {
-        warn!(%err, "resp failed");
-    }
+    ctx.resp(Status::Success, Some(&resp)).await?;
+    Ok(())
 }
 
-pub async fn do_offline_content(ctx: Context, store: &dyn MessageStore) {
+pub async fn do_offline_content(ctx: Context, store: &dyn MessageStore) -> Result<(), RouterError> {
     let req = match ctx.read_body::<MessageContentReq>() {
         Ok(r) => r,
         Err(err) => {
             warn!(%err, "invalid MessageContentReq");
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     if req.message_ids.len() > MESSAGE_MAX_COUNT_PER_PAGE {
         warn!(count = req.message_ids.len(), "too many message ids");
-        let _ = ctx
-            .resp_with_error(Status::InvalidPacketBody, &OfflineError::TooManyIds)
-            .await;
-        return;
+        ctx.resp_with_error(Status::InvalidPacketBody, &OfflineError::TooManyIds)
+            .await?;
+        return Ok(());
     }
     let rows = match store
         .offline_content(&ctx.session().app, &ctx.session().account, &req.message_ids)
@@ -104,8 +106,8 @@ pub async fn do_offline_content(ctx: Context, store: &dyn MessageStore) {
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "offline content failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     let resp = MessageContentResp {
@@ -124,9 +126,8 @@ pub async fn do_offline_content(ctx: Context, store: &dyn MessageStore) {
         count = resp.messages.len(),
         "offline content"
     );
-    if let Err(err) = ctx.resp(Status::Success, Some(&resp)).await {
-        warn!(%err, "resp failed");
-    }
+    ctx.resp(Status::Success, Some(&resp)).await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -135,7 +136,9 @@ mod tests {
 
     use bytes::Bytes;
     use kim_protocol::pkt::{Flag, MessageContentReq, MessageIndexReq, Session, Status};
-    use kim_protocol::{LogicPkt, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, META_DEST_SERVER};
+    use kim_protocol::{
+        Command, LogicPkt, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, META_DEST_SERVER,
+    };
     use kim_router::test_support::RecordingDispatcher;
     use kim_router::Router;
     use kim_session::MemorySessionStore;
@@ -160,7 +163,7 @@ mod tests {
         let store = Arc::new(MemoryMessageStore::new(idgen));
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_OFFLINE_CONTENT, {
+        router.handle(Command::OfflineContent, {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();
@@ -201,7 +204,7 @@ mod tests {
         let store = Arc::new(MemoryMessageStore::new(idgen));
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_OFFLINE_INDEX, {
+        router.handle(Command::OfflineIndex, {
             let store = store.clone();
             move |ctx| {
                 let store = store.clone();

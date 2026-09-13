@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 use kim_client::IncomingTalk;
 use kim_sdk::{KimSdk, StartSession, UnreadPolicy};
 

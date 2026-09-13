@@ -12,6 +12,7 @@ use axum::routing::post;
 use axum::Router;
 use http_body_util::BodyExt;
 use kim_protocol::pkt::{Flag, KickAccount, KickoutNotify};
+use kim_protocol::AccountId;
 use kim_protocol::{hmac_headers_from, verify_internal_hmac, LogicPkt, CMD_LOGIN_SIGN_IN};
 use kim_router::{Dispatcher, SessionError, SessionStorage};
 use prost::Message;
@@ -43,7 +44,8 @@ impl ChatAdmin {
     }
 
     pub async fn kick(&self, account: &str) -> Result<bool, SessionError> {
-        let locs = match self.cache.list_locations(account).await {
+        let account_id = AccountId::from_trusted(account);
+        let locs = match self.cache.list_locations(&account_id).await {
             Ok(v) => v,
             Err(SessionError::NotFound) => return Ok(false),
             Err(err) => return Err(err),
@@ -55,7 +57,7 @@ impl ChatAdmin {
             let mut pkt = LogicPkt::new(CMD_LOGIN_SIGN_IN, 0, Bytes::new());
             pkt.header.flag = Flag::Push as i32;
             pkt.write_body(&KickoutNotify {
-                channel_id: loc.channel_id.clone(),
+                channel_id: loc.channel_id.as_str().to_owned(),
             });
             if let Err(err) = self
                 .dispatcher
@@ -65,7 +67,7 @@ impl ChatAdmin {
                 warn!(%err, account, "kick dispatch failed");
                 return Err(SessionError::Other(err.to_string()));
             }
-            self.cache.delete(account, &loc.channel_id).await?;
+            self.cache.delete(&account_id, &loc.channel_id).await?;
             info!(account, channel = %loc.channel_id, "kicked");
         }
         Ok(true)
@@ -366,8 +368,18 @@ mod tests {
         let pushed = dispatcher.recorded();
         assert_eq!(pushed.len(), 1);
         assert_eq!(pushed[0].channels, vec!["wg-1_alice_1".to_string()]);
-        assert!(cache.list_locations("bob").await.unwrap().len() == 1);
-        assert!(cache.list_locations("alice").await.is_err());
+        assert!(
+            cache
+                .list_locations(&AccountId::from_trusted("bob"))
+                .await
+                .unwrap()
+                .len()
+                == 1
+        );
+        assert!(cache
+            .list_locations(&AccountId::from_trusted("alice"))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

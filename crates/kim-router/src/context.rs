@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use kim_protocol::pkt::{Flag, Header, Session, Status};
-use kim_protocol::LogicPkt;
-use kim_protocol::ProtocolError;
+use kim_protocol::{AccountId, ChannelId, GatewayId, LogicPkt, ProtocolError};
 use prost::Message;
 use tracing::warn;
 
@@ -107,10 +106,10 @@ impl Context {
         packet.header.flag = Flag::Push as i32;
         packet.write_body(body);
 
-        let mut group: HashMap<String, Vec<String>> = HashMap::new();
-        let mut order: Vec<String> = Vec::new();
+        let mut group: HashMap<GatewayId, Vec<ChannelId>> = HashMap::new();
+        let mut order: Vec<GatewayId> = Vec::new();
         for recv in recvs {
-            if recv.channel_id == self.session.channel_id {
+            if recv.channel_id.as_str() == self.session.channel_id {
                 continue;
             }
             match group.entry(recv.gate_id.clone()) {
@@ -146,23 +145,30 @@ impl Context {
         self.storage.add(session).await
     }
 
-    pub async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+    pub async fn delete(
+        &self,
+        account: &AccountId,
+        channel_id: &ChannelId,
+    ) -> Result<(), SessionError> {
         self.storage.delete(account, channel_id).await
     }
 
     pub async fn get_location(
         &self,
-        account: &str,
+        account: &AccountId,
         device: &str,
     ) -> Result<Location, SessionError> {
         self.storage.get_location(account, device).await
     }
 
-    pub async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+    pub async fn get_locations(
+        &self,
+        accounts: &[AccountId],
+    ) -> Result<Vec<Location>, SessionError> {
         self.storage.get_locations(accounts).await
     }
 
-    pub async fn list_locations(&self, account: &str) -> Result<Vec<Location>, SessionError> {
+    pub async fn list_locations(&self, account: &AccountId) -> Result<Vec<Location>, SessionError> {
         self.storage.list_locations(account).await
     }
 
@@ -174,12 +180,10 @@ impl Context {
     }
 
     async fn push_to_sender(&self, packet: LogicPkt) -> Result<(), RouterError> {
+        let gate = GatewayId::from_trusted(&self.session.gate_id);
+        let channel = ChannelId::from_trusted(&self.session.channel_id);
         self.dispatcher
-            .push(
-                &self.session.gate_id,
-                std::slice::from_ref(&self.session.channel_id),
-                packet,
-            )
+            .push(&gate, std::slice::from_ref(&channel), packet)
             .await
     }
 }
@@ -190,7 +194,9 @@ mod tests {
     use crate::test_support::{NoopStorage, RecordingDispatcher};
     use crate::{Router, RouterError};
     use kim_protocol::pkt::KickoutNotify;
-    use kim_protocol::{CMD_DEMO_ECHO, CMD_USER_UPDATED, META_DEST_CHANNELS, META_DEST_SERVER};
+    use kim_protocol::{
+        Command, CMD_DEMO_ECHO, CMD_USER_UPDATED, META_DEST_CHANNELS, META_DEST_SERVER,
+    };
 
     fn session(channel: &str, gate: &str) -> Session {
         Session {
@@ -198,6 +204,15 @@ mod tests {
             gate_id: gate.into(),
             account: "alice".into(),
             ..Session::default()
+        }
+    }
+
+    fn loc(channel: &str, gate: &str) -> Location {
+        Location {
+            channel_id: ChannelId::from_trusted(channel),
+            gate_id: GatewayId::from_trusted(gate),
+            device: String::new(),
+            jti: String::new(),
         }
     }
 
@@ -212,9 +227,10 @@ mod tests {
     async fn resp_bytes_echoes_header_and_body() {
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle(CMD_DEMO_ECHO, |ctx| async move {
+        router.handle(Command::DemoEcho, |ctx| async move {
             let body = ctx.request().body.clone();
             let _ = ctx.resp_bytes(Status::Success, body).await;
+            Ok(())
         });
         let pkt = request(CMD_DEMO_ECHO, Bytes::from_static(b"hello pkt"));
         router
@@ -245,21 +261,8 @@ mod tests {
     async fn dispatch_coalesces_same_gate() {
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle("login.signin", |ctx| async move {
-            let recvs = [
-                Location {
-                    channel_id: "ch-a".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-                Location {
-                    channel_id: "ch-b".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-            ];
+        router.handle(Command::LoginSignIn, |ctx| async move {
+            let recvs = [loc("ch-a", "wg-1"), loc("ch-b", "wg-1")];
             let _ = ctx
                 .dispatch(
                     &KickoutNotify {
@@ -268,6 +271,7 @@ mod tests {
                     &recvs,
                 )
                 .await;
+            Ok(())
         });
         router
             .serve(
@@ -294,13 +298,8 @@ mod tests {
     async fn dispatch_rewrites_dest_server_to_target_gate() {
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle("login.signin", |ctx| async move {
-            let recvs = [Location {
-                channel_id: "ch-x".into(),
-                gate_id: "gate-b".into(),
-                device: String::new(),
-                jti: String::new(),
-            }];
+        router.handle(Command::LoginSignIn, |ctx| async move {
+            let recvs = [loc("ch-x", "gate-b")];
             let _ = ctx
                 .dispatch(
                     &KickoutNotify {
@@ -309,6 +308,7 @@ mod tests {
                     &recvs,
                 )
                 .await;
+            Ok(())
         });
         router
             .serve(
@@ -330,21 +330,8 @@ mod tests {
     async fn dispatch_skips_own_channel() {
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
-        router.handle("login.signin", |ctx| async move {
-            let recvs = [
-                Location {
-                    channel_id: "ch-self".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-                Location {
-                    channel_id: "ch-other".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-            ];
+        router.handle(Command::LoginSignIn, |ctx| async move {
+            let recvs = [loc("ch-self", "wg-1"), loc("ch-other", "wg-1")];
             let _ = ctx
                 .dispatch(
                     &KickoutNotify {
@@ -353,6 +340,7 @@ mod tests {
                     &recvs,
                 )
                 .await;
+            Ok(())
         });
         router
             .serve(
@@ -383,24 +371,9 @@ mod tests {
                 channel_id: "ch-a".into(),
             },
             &[
-                Location {
-                    channel_id: "ch-a".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-                Location {
-                    channel_id: "ch-b".into(),
-                    gate_id: "wg-2".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
-                Location {
-                    channel_id: "ch-c".into(),
-                    gate_id: "wg-1".into(),
-                    device: String::new(),
-                    jti: String::new(),
-                },
+                loc("ch-a", "wg-1"),
+                loc("ch-b", "wg-2"),
+                loc("ch-c", "wg-1"),
             ],
         )
         .await
@@ -433,12 +406,7 @@ mod tests {
             &KickoutNotify {
                 channel_id: "ch-a".into(),
             },
-            &[Location {
-                channel_id: "ch-a".into(),
-                gate_id: "wg-1".into(),
-                device: String::new(),
-                jti: String::new(),
-            }],
+            &[loc("ch-a", "wg-1")],
         )
         .await
         .unwrap();
@@ -463,20 +431,7 @@ mod tests {
                 &KickoutNotify {
                     channel_id: "ch-a".into(),
                 },
-                &[
-                    Location {
-                        channel_id: "ch-a".into(),
-                        gate_id: "wg-1".into(),
-                        device: String::new(),
-                        jti: String::new(),
-                    },
-                    Location {
-                        channel_id: "ch-b".into(),
-                        gate_id: "wg-2".into(),
-                        device: String::new(),
-                        jti: String::new(),
-                    },
-                ],
+                &[loc("ch-a", "wg-1"), loc("ch-b", "wg-2")],
             )
             .await
             .unwrap_err();
@@ -497,25 +452,34 @@ mod tests {
             Ok(())
         }
 
-        async fn delete(&self, _account: &str, _channel_id: &str) -> Result<(), SessionError> {
+        async fn delete(
+            &self,
+            _account: &AccountId,
+            _channel_id: &ChannelId,
+        ) -> Result<(), SessionError> {
             Ok(())
         }
 
-        async fn get(&self, _channel_id: &str) -> Result<Session, SessionError> {
+        async fn get(&self, _channel_id: &ChannelId) -> Result<Session, SessionError> {
             Err(SessionError::NotFound)
         }
 
-        async fn get_locations(&self, _accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+        async fn get_locations(
+            &self,
+            _accounts: &[AccountId],
+        ) -> Result<Vec<Location>, SessionError> {
             match &self.result {
                 Ok(locs) => Ok(locs.clone()),
                 Err(SessionError::NotFound) => Err(SessionError::NotFound),
+                Err(SessionError::Truncated) => Err(SessionError::Truncated),
+                Err(SessionError::InvalidUtf8) => Err(SessionError::InvalidUtf8),
                 Err(SessionError::Other(msg)) => Err(SessionError::Other(msg.clone())),
             }
         }
 
         async fn get_location(
             &self,
-            _account: &str,
+            _account: &AccountId,
             _device: &str,
         ) -> Result<Location, SessionError> {
             Err(SessionError::NotFound)
@@ -524,18 +488,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_locations_forwards_two_locs() {
-        let loc_a = Location {
-            channel_id: "ch-a".into(),
-            gate_id: "gw-1".into(),
-            device: String::new(),
-            jti: String::new(),
-        };
-        let loc_b = Location {
-            channel_id: "ch-b".into(),
-            gate_id: "gw-2".into(),
-            device: String::new(),
-            jti: String::new(),
-        };
+        let loc_a = loc("ch-a", "gw-1");
+        let loc_b = loc("ch-b", "gw-2");
         let ctx = Context::new(
             request("chat.group.talk", Bytes::new()),
             session("ch-self", "gate-a"),
@@ -545,7 +499,10 @@ mod tests {
             }),
         );
         let got = ctx
-            .get_locations(&["alice".into(), "bob".into()])
+            .get_locations(&[
+                AccountId::from_trusted("alice"),
+                AccountId::from_trusted("bob"),
+            ])
             .await
             .unwrap();
         assert_eq!(got, vec![loc_a, loc_b]);
@@ -561,7 +518,10 @@ mod tests {
                 result: Err(SessionError::NotFound),
             }),
         );
-        let err = ctx.get_locations(&["carol".into()]).await.unwrap_err();
+        let err = ctx
+            .get_locations(&[AccountId::from_trusted("carol")])
+            .await
+            .unwrap_err();
         assert!(matches!(err, SessionError::NotFound));
     }
 }

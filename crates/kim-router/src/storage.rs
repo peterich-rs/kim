@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use kim_protocol::pkt::Session;
+use kim_protocol::{AccountId, ChannelId};
 use thiserror::Error;
 
 use crate::location::Location;
@@ -8,6 +9,10 @@ use crate::location::Location;
 pub enum SessionError {
     #[error("session not found")]
     NotFound,
+    #[error("truncated location")]
+    Truncated,
+    #[error("invalid utf-8 in location")]
+    InvalidUtf8,
     #[error("{0}")]
     Other(String),
 }
@@ -21,12 +26,17 @@ pub enum SessionError {
 #[async_trait]
 pub trait SessionStorage: Send + Sync {
     async fn add(&self, session: &Session) -> Result<(), SessionError>;
-    async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError>;
-    async fn get(&self, channel_id: &str) -> Result<Session, SessionError>;
-    async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError>;
-    async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError>;
+    async fn delete(&self, account: &AccountId, channel_id: &ChannelId)
+        -> Result<(), SessionError>;
+    async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError>;
+    async fn get_locations(&self, accounts: &[AccountId]) -> Result<Vec<Location>, SessionError>;
+    async fn get_location(
+        &self,
+        account: &AccountId,
+        device: &str,
+    ) -> Result<Location, SessionError>;
     /// Every live location for `account`. Default forwards to [`get_locations`].
-    async fn list_locations(&self, account: &str) -> Result<Vec<Location>, SessionError> {
-        self.get_locations(&[account.to_string()]).await
+    async fn list_locations(&self, account: &AccountId) -> Result<Vec<Location>, SessionError> {
+        self.get_locations(std::slice::from_ref(account)).await
     }
 }

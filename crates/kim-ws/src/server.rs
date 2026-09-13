@@ -18,7 +18,7 @@ use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
-    Acceptor, Channel, ChannelHandle, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
+    Acceptor, Channel, ChannelHandle, ChannelId, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
     MailboxFullHook, MessageListener, OpCode, Server, StateListener, WriteFullPolicy,
     DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_SERVER_MAX_IN_FLIGHT,
 };
@@ -182,16 +182,16 @@ impl Server for WsServer {
         Ok(())
     }
 
-    async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id) else {
-            return Err(Error::ChannelNotFound(channel_id.to_string()));
+    async fn push(&self, channel_id: &ChannelId, payload: Bytes) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id.as_str()) else {
+            return Err(Error::ChannelNotFound(channel_id.as_str().to_owned()));
         };
         ch.push(payload).await
     }
 
-    async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id) else {
-            return Err(Error::ChannelNotFound(channel_id.to_string()));
+    async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id.as_str()) else {
+            return Err(Error::ChannelNotFound(channel_id.as_str().to_owned()));
         };
         ch.close().await;
         Ok(())
@@ -238,46 +238,37 @@ struct HttpCtx {
     tasks: Arc<Mutex<JoinSet<()>>>,
 }
 
+fn empty_response(status: StatusCode) -> Response<Empty<Bytes>> {
+    let mut res = Response::new(Empty::new());
+    *res.status_mut() = status;
+    res
+}
+
 async fn handle_http(
     mut req: Request<Incoming>,
     ctx: HttpCtx,
 ) -> Result<Response<Empty<Bytes>>, Infallible> {
     let path = req.uri().path();
     if path != "/" && path != "/ws" {
-        return Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Empty::new())
-            .unwrap());
+        return Ok(empty_response(StatusCode::NOT_FOUND));
     }
     if !fastwebsockets::upgrade::is_upgrade_request(&req) {
-        return Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(Empty::new())
-            .unwrap());
+        return Ok(empty_response(StatusCode::BAD_REQUEST));
     }
     let (response, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
         Ok(v) => v,
         Err(_) => {
-            return Ok(Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(Empty::new())
-                .unwrap());
+            return Ok(empty_response(StatusCode::BAD_REQUEST));
         }
     };
     if ctx.closed.load(Ordering::SeqCst) {
-        return Ok(Response::builder()
-            .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(Empty::new())
-            .unwrap());
+        return Ok(empty_response(StatusCode::SERVICE_UNAVAILABLE));
     }
     let session = ctx.clone();
     {
         let mut tasks = ctx.tasks.lock().await;
         if ctx.closed.load(Ordering::SeqCst) {
-            return Ok(Response::builder()
-                .status(StatusCode::SERVICE_UNAVAILABLE)
-                .body(Empty::new())
-                .unwrap());
+            return Ok(empty_response(StatusCode::SERVICE_UNAVAILABLE));
         }
         tasks.spawn(async move {
             match fut.await {
@@ -325,7 +316,7 @@ where
         }
     };
     let (reader, writer) = conn.into_split();
-    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, ctx.opts);
+    let (channel, read_loop) = Channel::pair(id.as_arc().clone(), reader, writer, ctx.opts);
     if let Err(err) = ctx.channels.add(channel.clone()) {
         channel.close().await;
         ctx.acceptor.on_accept_abandoned(&id).await;
@@ -333,21 +324,21 @@ where
     }
     let Some(messages) = ctx.messages else {
         ctx.acceptor.on_accept_abandoned(&id).await;
-        if let Some(ch) = ctx.channels.get(&id) {
+        if let Some(ch) = ctx.channels.get(id.as_str()) {
             ch.close().await;
         }
-        ctx.channels.remove(&id);
+        ctx.channels.remove(id.as_str());
         return Err(Error::other("MessageListener is not set"));
     };
     if let Err(err) = ctx.acceptor.on_channel_ready(&id).await {
-        if let Some(ch) = ctx.channels.get(&id) {
+        if let Some(ch) = ctx.channels.get(id.as_str()) {
             ch.close().await;
         }
-        ctx.channels.remove(&id);
+        ctx.channels.remove(id.as_str());
         return Err(err);
     }
     let read_result = read_loop.run(messages).await;
-    ctx.channels.remove(&id);
+    ctx.channels.remove(id.as_str());
     if let Some(states) = ctx.states {
         let _ = states.disconnect(&id).await;
     }
@@ -358,9 +349,10 @@ struct DefaultAcceptor;
 
 #[async_trait]
 impl Acceptor for DefaultAcceptor {
-    async fn accept(&self, _conn: &mut dyn Conn, _timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, _conn: &mut dyn Conn, _timeout: Duration) -> Result<ChannelId, Error> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(1);
-        Ok(format!("ch-{}", SEQ.fetch_add(1, Ordering::Relaxed)))
+        let id = format!("ch-{}", SEQ.fetch_add(1, Ordering::Relaxed));
+        Ok(ChannelId::from_trusted(&id))
     }
 }

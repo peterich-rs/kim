@@ -19,7 +19,7 @@ use pkt_client::{is_kickout, resolve_jwt_secret, LoginDialer};
 use tracing::info;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.connect(&url).await {
         Ok(()) => {
             if bad_token || expect_unavailable {
-                return Err("expected handshake failure".into());
+                return Err(anyhow::anyhow!("expected handshake failure"));
             }
         }
         Err(err) => {
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let channel_id = dialer
         .channel_id()
-        .ok_or("login succeeded without channel_id")?;
+        .ok_or_else(|| anyhow::anyhow!("login succeeded without channel_id"))?;
     info!(channel_id, "logined");
 
     let mut seen = HashSet::new();
@@ -116,8 +116,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Packet::Logic(p) if p.header.status == Status::Success as i32 => {
                 info!("group joined");
             }
-            Packet::Logic(p) => return Err(format!("join status {}", p.header.status).into()),
-            _ => return Err("expected join resp".into()),
+            Packet::Logic(p) => return Err(anyhow::anyhow!("join status {}", p.header.status)),
+            _ => return Err(anyhow::anyhow!("expected join resp")),
         }
         if hold {
             return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
@@ -140,8 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Packet::Logic(p) if p.header.status == Status::Success as i32 => {
                 info!("group quit");
             }
-            Packet::Logic(p) => return Err(format!("quit status {}", p.header.status).into()),
-            _ => return Err("expected quit resp".into()),
+            Packet::Logic(p) => return Err(anyhow::anyhow!("quit status {}", p.header.status)),
+            _ => return Err(anyhow::anyhow!("expected quit resp")),
         }
         client.close().await?;
         return Ok(());
@@ -158,8 +158,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let d: GroupDetail = p.read_body()?;
                 info!(group_id = %d.group_id, name = %d.name, members = d.members.len(), "group detail");
             }
-            Packet::Logic(p) => return Err(format!("detail status {}", p.header.status).into()),
-            _ => return Err("expected detail resp".into()),
+            Packet::Logic(p) => return Err(anyhow::anyhow!("detail status {}", p.header.status)),
+            _ => return Err(anyhow::anyhow!("expected detail resp")),
         }
         client.close().await?;
         return Ok(());
@@ -186,16 +186,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let group_id = match read(&frame.payload)? {
             Packet::Logic(p) => {
                 if p.header.status != Status::Success as i32 {
-                    return Err(format!("group create status {}", p.header.status).into());
+                    return Err(anyhow::anyhow!("group create status {}", p.header.status));
                 }
                 let resp: GroupCreateResp = p.read_body()?;
                 if resp.group_id.is_empty() {
-                    return Err("empty group_id".into());
+                    return Err(anyhow::anyhow!("empty group_id"));
                 }
                 info!(group_id = %resp.group_id, "created group");
                 resp.group_id
             }
-            _ => return Err("expected GroupCreateResp".into()),
+            _ => return Err(anyhow::anyhow!("expected GroupCreateResp")),
         };
 
         let body = talk_body.unwrap_or_else(|| "hellogroup".to_string());
@@ -257,20 +257,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match read(&resp.payload)? {
         Packet::Logic(p) => {
             if p.header.sequence != seq {
-                return Err("echo sequence mismatch".into());
+                return Err(anyhow::anyhow!("echo sequence mismatch"));
             }
             if p.header.flag != Flag::Response as i32 {
-                return Err("echo expected Response".into());
+                return Err(anyhow::anyhow!("echo expected Response"));
             }
             if p.header.status != Status::Success as i32 {
-                return Err(format!("echo status {}", p.header.status).into());
+                return Err(anyhow::anyhow!("echo status {}", p.header.status));
             }
             if p.body.as_ref() != b"hello pkt" {
-                return Err("echo body mismatch".into());
+                return Err(anyhow::anyhow!("echo body mismatch"));
             }
             info!("got echo response");
         }
-        _ => return Err("expected logic".into()),
+        _ => return Err(anyhow::anyhow!("expected logic")),
     }
     client.close().await?;
     Ok(())
@@ -283,34 +283,34 @@ fn env_nonempty(key: &str) -> Option<String> {
     }
 }
 
-async fn ping_pong(client: &WsClient) -> Result<(), Box<dyn std::error::Error>> {
+async fn ping_pong(client: &WsClient) -> anyhow::Result<()> {
     client
         .send(marshal(&Packet::Basic(BasicPkt::ping())))
         .await?;
     let pong = timeout_read(client).await?;
     match read(&pong.payload)? {
         Packet::Basic(p) if p.code == CODE_PONG => info!("got basic pong"),
-        _ => return Err("expected pong, got unexpected packet".into()),
+        _ => return Err(anyhow::anyhow!("expected pong, got unexpected packet")),
     }
     Ok(())
 }
 
-async fn read_message_resp(client: &WsClient) -> Result<(), Box<dyn std::error::Error>> {
+async fn read_message_resp(client: &WsClient) -> anyhow::Result<()> {
     let frame = timeout_read(client).await?;
     match read(&frame.payload)? {
         Packet::Logic(p) => {
             if p.header.flag != Flag::Response as i32 {
-                return Err("talk expected Response".into());
+                return Err(anyhow::anyhow!("talk expected Response"));
             }
             if p.header.status != Status::Success as i32 {
-                return Err(format!("talk status {}", p.header.status).into());
+                return Err(anyhow::anyhow!("talk status {}", p.header.status));
             }
             let resp: MessageResp = p.read_body()?;
             if resp.message_id <= 10_000 {
-                return Err(format!("message_id {}", resp.message_id).into());
+                return Err(anyhow::anyhow!("message_id {}", resp.message_id));
             }
             if resp.send_time <= 1000 {
-                return Err(format!("send_time {}", resp.send_time).into());
+                return Err(anyhow::anyhow!("send_time {}", resp.send_time));
             }
             info!(
                 message_id = resp.message_id,
@@ -319,7 +319,7 @@ async fn read_message_resp(client: &WsClient) -> Result<(), Box<dyn std::error::
             );
             Ok(())
         }
-        _ => Err("expected MessageResp".into()),
+        _ => Err(anyhow::anyhow!("expected MessageResp")),
     }
 }
 
@@ -328,7 +328,7 @@ async fn pull_offline(
     mut seq: u32,
     ack_from: i64,
     seen: &mut HashSet<i64>,
-) -> Result<u32, Box<dyn std::error::Error>> {
+) -> anyhow::Result<u32> {
     let mut pkt = LogicPkt::new(CMD_OFFLINE_INDEX, seq, Bytes::new());
     pkt.write_body(&MessageIndexReq {
         message_id: ack_from,
@@ -343,9 +343,9 @@ async fn pull_offline(
             resp.indexes
         }
         Packet::Logic(p) => {
-            return Err(format!("offline index status {}", p.header.status).into());
+            return Err(anyhow::anyhow!("offline index status {}", p.header.status));
         }
-        _ => return Err("expected offline index".into()),
+        _ => return Err(anyhow::anyhow!("expected offline index")),
     };
     info!(count = indexes.len(), "offline index");
     let ids: Vec<i64> = indexes.iter().map(|i| i.message_id).collect();
@@ -375,9 +375,12 @@ async fn pull_offline(
                 }
             }
             Packet::Logic(p) => {
-                return Err(format!("offline content status {}", p.header.status).into());
+                return Err(anyhow::anyhow!(
+                    "offline content status {}",
+                    p.header.status
+                ));
             }
-            _ => return Err("expected offline content".into()),
+            _ => return Err(anyhow::anyhow!("expected offline content")),
         }
     }
     Ok(seq)
@@ -390,18 +393,18 @@ async fn hold_read_loop(
     ack_delay: Duration,
     mut seen: HashSet<i64>,
     mut seq: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     let mut max_id: i64 = 0;
     loop {
         let frame = client.read().await?;
         if let Packet::Logic(p) = read(&frame.payload)? {
             if let Some(notify) = is_kickout(&p) {
                 if notify.channel_id != channel_id {
-                    return Err(format!(
+                    return Err(anyhow::anyhow!(
                         "kickout channel_id {} != {}",
-                        notify.channel_id, channel_id
-                    )
-                    .into());
+                        notify.channel_id,
+                        channel_id
+                    ));
                 }
                 info!(channel_id = %notify.channel_id, "got kickout");
                 client.close().await?;
@@ -453,6 +456,6 @@ async fn hold_read_loop(
     }
 }
 
-async fn timeout_read(client: &WsClient) -> Result<kim_core::Frame, Box<dyn std::error::Error>> {
+async fn timeout_read(client: &WsClient) -> anyhow::Result<kim_core::Frame> {
     Ok(tokio::time::timeout(Duration::from_secs(5), client.read()).await??)
 }

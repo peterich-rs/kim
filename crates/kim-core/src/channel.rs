@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::write_loop::WriteShared;
 use crate::{ChannelHandle, Conn, Error, MessageListener, OpCode};
@@ -23,7 +23,7 @@ pub enum WriteFullPolicy {
 /// Optional hook when a Disconnect mailbox `try_send` fails.
 pub type MailboxFullHook = Arc<dyn Fn() + Send + Sync>;
 /// Extract a serial-lane key from a binary payload (`header.channel_id`). Empty/None uses the connection id.
-pub type LaneKeyFn = Arc<dyn Fn(&[u8]) -> Option<String> + Send + Sync>;
+pub type LaneKeyFn = Arc<dyn Fn(&[u8]) -> Option<Arc<str>> + Send + Sync>;
 
 /// 连接的上层包装。Server 管理的是 Channel，不是裸 Conn。
 ///
@@ -210,13 +210,19 @@ impl LaneSet {
             let mut rx = rx;
             loop {
                 match tokio::time::timeout(idle, rx.recv()).await {
-                    Ok(Some(job)) => listener.receive(&handle, job.payload).await,
+                    Ok(Some(job)) => {
+                        if let Err(err) = listener.receive(&handle, job.payload).await {
+                            warn!(%err, "message listener failed");
+                        }
+                    }
                     Ok(None) => break,
                     Err(_) => {
                         let mut map = txs.lock().unwrap_or_else(|e| e.into_inner());
                         if let Ok(job) = rx.try_recv() {
                             drop(map);
-                            listener.receive(&handle, job.payload).await;
+                            if let Err(err) = listener.receive(&handle, job.payload).await {
+                                warn!(%err, "message listener failed");
+                            }
                             continue;
                         }
                         if map
@@ -316,7 +322,7 @@ impl<R: Conn> ChannelReadLoop<R> {
         if let Some(f) = &self.lane_key {
             if let Some(k) = f(payload) {
                 if !k.is_empty() {
-                    return Arc::from(k);
+                    return k;
                 }
             }
         }
@@ -529,7 +535,7 @@ mod tests {
     }
 
     fn payload_lane_key() -> LaneKeyFn {
-        Arc::new(|p: &[u8]| Some(String::from_utf8_lossy(p).into_owned()))
+        Arc::new(|p: &[u8]| Some(Arc::from(String::from_utf8_lossy(p).as_ref())))
     }
 
     #[tokio::test]
@@ -608,7 +614,7 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for FifoListener {
-        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
             match payload.as_ref() {
                 b"join" => {
                     self.order
@@ -631,6 +637,7 @@ mod tests {
                 }
                 _ => {}
             }
+            Ok(())
         }
     }
 
@@ -700,7 +707,7 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for OverlapListener {
-        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
             match payload.as_ref() {
                 b"ch-a" => {
                     self.a_running.store(true, Ordering::SeqCst);
@@ -722,6 +729,7 @@ mod tests {
                 }
                 _ => {}
             }
+            Ok(())
         }
     }
 
@@ -778,9 +786,10 @@ mod tests {
 
     #[async_trait]
     impl MessageListener for SlowListener {
-        async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+        async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) -> Result<(), Error> {
             self.started.notify_waiters();
             self.gate.notified().await;
+            Ok(())
         }
     }
 
@@ -924,9 +933,14 @@ mod tests {
         }
         #[async_trait]
         impl MessageListener for RecvOnce {
-            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+            async fn receive(
+                &self,
+                _handle: &dyn ChannelHandle,
+                _payload: Bytes,
+            ) -> Result<(), Error> {
                 self.saw.fetch_add(1, Ordering::SeqCst);
                 self.gate.notify_waiters();
+                Ok(())
             }
         }
         let write = WriteShared::spawn(
@@ -973,9 +987,14 @@ mod tests {
         }
         #[async_trait]
         impl MessageListener for RecvOnce {
-            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+            async fn receive(
+                &self,
+                _handle: &dyn ChannelHandle,
+                _payload: Bytes,
+            ) -> Result<(), Error> {
                 self.saw.fetch_add(1, Ordering::SeqCst);
                 self.gate.notify_waiters();
+                Ok(())
             }
         }
         let write = WriteShared::spawn(
@@ -1021,8 +1040,13 @@ mod tests {
         }
         #[async_trait]
         impl MessageListener for CountRecv {
-            async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+            async fn receive(
+                &self,
+                _handle: &dyn ChannelHandle,
+                _payload: Bytes,
+            ) -> Result<(), Error> {
                 self.saw.fetch_add(1, Ordering::SeqCst);
+                Ok(())
             }
         }
         let write = WriteShared::spawn(
