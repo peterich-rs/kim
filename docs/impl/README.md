@@ -43,6 +43,7 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 
 | 切片 | 覆盖 |
 |---|---|
+| Rust 惯用法升级 | [rust-idiom-upgrade.md](./rust-idiom-upgrade.md)：对照陈天课五刀。worktree `refactor/rust-idiom-upgrade`。第 1 刀 [rust-idiom-p1-ids.md](./rust-idiom-p1-ids.md) |
 | Goose 个性化 Agent | [goose-personalized-agents.md](./goose-personalized-agents.md)：AgentProfile → MachineFactory；Dart IM 工具 + Rust 进程内工具；PR0–PR9 |
 | 端侧 Agent 的后台 bot 身份 | [goose-bot-first-class.md](./goose-bot-first-class.md)：Goose 仍本机跑；1:1 走 WGateway；`chat.bot.create` 自动成友；owner 代发 `chat.bot.reply` |
 
