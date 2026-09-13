@@ -190,20 +190,26 @@ const FALLBACK_ANTHROPIC: &[&str] = &[
 ];
 
 pub async fn fetch_models(spec: &ProviderSpec, api_key: &str) -> Result<Vec<String>, HostError> {
-    let fallback = fallback_models(spec);
-    match build_provider_from_spec(spec, api_key) {
-        Ok(provider) => match provider.fetch_supported_models().await {
-            Ok(list) if !list.is_empty() => Ok(list),
-            _ => Ok(fallback),
-        },
-        Err(_) => {
-            if fallback.is_empty() {
-                Err(HostError::UnknownProvider(spec.kind.clone()))
-            } else {
-                Ok(fallback)
-            }
-        }
+    if api_key.trim().is_empty() {
+        return Err(HostError::MissingApiKey);
     }
+    let provider = build_provider_from_spec(spec, api_key)?;
+    let list = provider
+        .fetch_supported_models()
+        .await
+        .map_err(|e| HostError::Failed(e.to_string()))?;
+    let list: Vec<String> = list.into_iter().filter(|id| is_concrete_model_id(id)).collect();
+    if list.is_empty() {
+        return Err(HostError::Failed("empty model list".into()));
+    }
+    Ok(list)
+}
+
+/// Gateways often advertise routing aliases (`gpt-*`) on `/v1/models`.
+/// Those are not a single chat model id.
+pub(crate) fn is_concrete_model_id(id: &str) -> bool {
+    let id = id.trim();
+    !id.is_empty() && !id.contains('*') && !id.contains('?')
 }
 
 pub(crate) fn fallback_models(spec: &ProviderSpec) -> Vec<String> {
@@ -375,6 +381,27 @@ mod tests {
     }
 
     #[test]
+    fn wildcard_model_ids_are_not_concrete() {
+        assert!(is_concrete_model_id("gpt-4o"));
+        assert!(is_concrete_model_id("composer-2.5"));
+        assert!(!is_concrete_model_id("gpt-*"));
+        assert!(!is_concrete_model_id("claude-*"));
+        assert!(!is_concrete_model_id("codex-*"));
+        assert!(!is_concrete_model_id(""));
+    }
+
+    #[tokio::test]
+    async fn fetch_models_empty_key_is_missing_api_key() {
+        let spec = ProviderSpec {
+            kind: "openai".into(),
+            base_url: "https://api.openai.com/v1".into(),
+            key_ref: String::new(),
+        };
+        let err = fetch_models(&spec, "").await.unwrap_err();
+        assert!(matches!(err, HostError::MissingApiKey), "{err:?}");
+    }
+
+    #[test]
     fn fallback_models_never_empty_for_openai() {
         let spec = ProviderSpec {
             kind: "openai".into(),
@@ -446,6 +473,12 @@ mod tests {
                 "https://openrouter.ai",
                 "api/v1/chat/completions",
                 "api/v1/models",
+            ),
+            (
+                "https://api.x.ai/v1",
+                "https://api.x.ai",
+                "v1/chat/completions",
+                "v1/models",
             ),
             (
                 "https://api.groq.com/openai/v1",
@@ -532,6 +565,24 @@ mod tests {
         let dbg = format!("{provider:?}");
         assert!(dbg.contains("api.deepseek.com"), "{dbg}");
         assert!(build_provider_from_spec(&spec, "sk-dummy").is_ok());
+    }
+
+    #[test]
+    fn build_xai_uses_v1_chat_completions() {
+        let spec = dummy_spec("xai", "");
+        let (host, path) = split_openai_url(&effective_base_url(&spec)).unwrap();
+        assert_eq!(host, "https://api.x.ai");
+        assert_eq!(path, "v1/chat/completions");
+        assert_eq!(goose_map_base_path(&path, "models", "v1/models"), "v1/models");
+        let provider = build_openai(&spec, "sk-dummy").unwrap();
+        let json = serde_json::to_value(&provider).unwrap();
+        assert_eq!(json["base_path"], "v1/chat/completions");
+        assert!(build_provider_from_spec(&spec, "sk-dummy").is_ok());
+        let via_grok = dummy_spec("grok", "");
+        assert_eq!(
+            split_openai_url(&effective_base_url(&via_grok)).unwrap().0,
+            "https://api.x.ai"
+        );
     }
 
     #[test]

@@ -222,6 +222,7 @@ pub fn normalize_vendor_id(raw: &str) -> String {
         "moonshot" => "moonshot".into(),
         "zhipu" => "zhipu".into(),
         "groq" => "groq".into(),
+        "xai" | "grok" => "xai".into(),
         "minimax" => "minimax".into(),
         "openai_compatible" => "openai_compatible".into(),
         "openai" | "responses_http" | "live" | "responses" | "" => "openai".into(),
@@ -296,23 +297,207 @@ pub fn catalog_vendors_json() -> Result<String, HostError> {
 
 pub fn surface_for(vendor: &str, model: &str) -> Result<ReasoningSurface, HostError> {
     let vendor = normalize_vendor_id(vendor);
-    let Some(entry) = vendor_entry(&vendor)? else {
-        return Ok(ReasoningSurface::None);
-    };
     let model_trim = model.trim();
-    if let Some(found) = entry
-        .models
-        .iter()
-        .find(|m| m.id.eq_ignore_ascii_case(model_trim))
-    {
-        return Ok(found.reasoning.clone());
-    }
-    for rule in &entry.model_rules {
-        if prefix_matches(model_trim, &rule.prefix) {
-            return Ok(rule.surface.clone());
+    if let Some(entry) = vendor_entry(&vendor)? {
+        if let Some(found) = entry
+            .models
+            .iter()
+            .find(|m| m.id.eq_ignore_ascii_case(model_trim))
+        {
+            return Ok(found.reasoning.clone());
+        }
+        if let Some(surface) = first_prefix_match(model_trim, &entry.model_rules) {
+            return Ok(surface);
         }
     }
-    Ok(ReasoningSurface::None)
+    Ok(family_surface(model_trim))
+}
+
+fn first_prefix_match(model: &str, rules: &[ModelPrefixRule]) -> Option<ReasoningSurface> {
+    let mut ranked: Vec<&ModelPrefixRule> = rules.iter().collect();
+    ranked.sort_by_key(|r| std::cmp::Reverse(r.prefix.len()));
+    ranked
+        .into_iter()
+        .find(|r| prefix_matches(model, &r.prefix))
+        .map(|r| r.surface.clone())
+}
+
+fn model_basename(model: &str) -> &str {
+    model
+        .rsplit(['/', ':'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(model)
+}
+
+/// OpenCode-style built-in variants: match the model family, not the vendor.
+/// `/v1/models` never returns allowed efforts.
+fn family_surface(model: &str) -> ReasoningSurface {
+    let full = model.trim();
+    let base = model_basename(full);
+    let mut rules = family_rules();
+    rules.sort_by_key(|(p, _)| std::cmp::Reverse(p.len()));
+    for id in [full, base] {
+        for (prefix, surface) in &rules {
+            if prefix_matches(id, prefix) {
+                return surface.clone();
+            }
+        }
+    }
+    ReasoningSurface::None
+}
+
+fn effort(param: &str, allowed: &[&str], default: &str) -> ReasoningSurface {
+    ReasoningSurface::EffortEnum {
+        param: param.to_string(),
+        allowed: allowed.iter().map(|s| (*s).to_string()).collect(),
+        default: default.to_string(),
+    }
+}
+
+fn family_rules() -> Vec<(&'static str, ReasoningSurface)> {
+    vec![
+        (
+            "gpt-5.1-codex",
+            effort(
+                "reasoning_effort",
+                &["low", "medium", "high", "xhigh"],
+                "high",
+            ),
+        ),
+        (
+            "kimi-k2.7-code",
+            ReasoningSurface::AlwaysOn {
+                note: "Kimi K2.7 Code always thinks".into(),
+            },
+        ),
+        (
+            "minimax-m3",
+            ReasoningSurface::Toggle {
+                param: "thinking".into(),
+                default_on: false,
+            },
+        ),
+        (
+            "minimax-m2",
+            ReasoningSurface::AlwaysOn {
+                note: "MiniMax M2 cannot disable thinking".into(),
+            },
+        ),
+        (
+            "kimi-k2.6",
+            ReasoningSurface::Toggle {
+                param: "thinking.type".into(),
+                default_on: true,
+            },
+        ),
+        (
+            "kimi-k2.5",
+            ReasoningSurface::Toggle {
+                param: "thinking.type".into(),
+                default_on: true,
+            },
+        ),
+        (
+            "glm-5.3",
+            effort("reasoning_effort", &["low", "high", "max"], "max"),
+        ),
+        (
+            "glm-5.2",
+            effort("reasoning_effort", &["low", "high", "max"], "max"),
+        ),
+        (
+            "grok-4.20-multi-agent",
+            effort(
+                "reasoning_effort",
+                &["low", "medium", "high", "xhigh"],
+                "high",
+            ),
+        ),
+        (
+            "grok-4.6",
+            effort(
+                "reasoning_effort",
+                &["low", "medium", "high", "xhigh"],
+                "high",
+            ),
+        ),
+        (
+            "grok-4.5",
+            effort("reasoning_effort", &["low", "medium", "high"], "high"),
+        ),
+        (
+            "grok-4.20",
+            effort(
+                "reasoning_effort",
+                &["low", "medium", "high", "xhigh"],
+                "high",
+            ),
+        ),
+        (
+            "grok-3-mini",
+            effort("reasoning_effort", &["low", "high"], "low"),
+        ),
+        (
+            "deepseek-",
+            effort(
+                "reasoning_effort",
+                &["none", "low", "high", "max"],
+                "high",
+            ),
+        ),
+        (
+            "claude-",
+            effort("thinking_effort", &["low", "high", "max"], "high"),
+        ),
+        (
+            "gpt-5",
+            effort(
+                "reasoning_effort",
+                &["none", "minimal", "low", "medium", "high", "xhigh"],
+                "medium",
+            ),
+        ),
+        (
+            "kimi-k3",
+            effort("reasoning_effort", &["low", "high", "max"], "max"),
+        ),
+        (
+            "glm-5",
+            effort("reasoning_effort", &["low", "high", "max"], "max"),
+        ),
+        (
+            "grok-4",
+            effort("reasoning_effort", &["low", "high"], "low"),
+        ),
+        (
+            "grok-3",
+            effort("reasoning_effort", &["low", "high"], "low"),
+        ),
+        (
+            "qwen",
+            ReasoningSurface::Toggle {
+                param: "enable_thinking".into(),
+                default_on: true,
+            },
+        ),
+        (
+            "o1",
+            effort("reasoning_effort", &["low", "medium", "high"], "medium"),
+        ),
+        (
+            "o3",
+            effort("reasoning_effort", &["low", "medium", "high"], "medium"),
+        ),
+        (
+            "o4",
+            effort("reasoning_effort", &["low", "medium", "high"], "medium"),
+        ),
+        (
+            "grok",
+            effort("reasoning_effort", &["low", "high"], "low"),
+        ),
+    ]
 }
 
 pub fn catalog_surface_json(vendor: &str, model: &str) -> Result<String, HostError> {
@@ -762,6 +947,7 @@ mod tests {
         assert_eq!(cat.schema_version, 1);
         assert!(cat.vendors.iter().any(|v| v.id == "deepseek"));
         assert!(cat.vendors.iter().any(|v| v.id == "minimax"));
+        assert!(cat.vendors.iter().any(|v| v.id == "xai"));
     }
 
     #[test]
@@ -833,6 +1019,66 @@ mod tests {
         assert_eq!(surface_kind("siliconflow", "glm-5.3-air"), "effort_enum");
         assert_eq!(surface_kind("openai_compatible", "anything"), "none");
         assert_eq!(surface_kind("unknown-vendor", "x"), "none");
+        assert_eq!(
+            surface_kind("openai_compatible", "claude-sonnet-4-5"),
+            "effort_enum"
+        );
+        assert_eq!(surface_kind("openai", "gpt-5.4"), "effort_enum");
+        assert_eq!(surface_kind("openai", "o3-mini"), "effort_enum");
+        assert_eq!(surface_kind("openai_compatible", "grok-4.5"), "effort_enum");
+        assert_eq!(surface_kind("xai", "grok-4.6"), "effort_enum");
+        assert_eq!(surface_kind("openai", "gpt-4o"), "none");
+    }
+
+    fn surface_allowed(vendor: &str, model: &str) -> Vec<String> {
+        let raw = catalog_surface_json(vendor, model).unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        v["allowed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn xai_is_primary_and_grok_alias() {
+        assert_eq!(normalize_vendor_id("grok"), "xai");
+        assert_eq!(normalize_vendor_id("XAI"), "xai");
+        assert_eq!(normalize_vendor_id("groq"), "groq");
+        let xai = vendor_summaries()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == "xai")
+            .unwrap();
+        assert_eq!(xai.group, VendorGroup::Primary);
+        assert_eq!(xai.default_base_url, "https://api.x.ai/v1");
+        assert_eq!(xai.default_model, "grok-4.6");
+        assert!(xai.models.iter().any(|m| m == "grok-4.5"));
+    }
+
+    #[test]
+    fn xai_grok_reasoning_effort_matches_docs() {
+        assert_eq!(
+            surface_allowed("xai", "grok-4.6"),
+            ["low", "medium", "high", "xhigh"]
+        );
+        assert_eq!(
+            surface_allowed("xai", "grok-4.6-latest"),
+            ["low", "medium", "high", "xhigh"]
+        );
+        assert_eq!(
+            surface_allowed("xai", "grok-4.5"),
+            ["low", "medium", "high"]
+        );
+        assert!(!surface_allowed("xai", "grok-4.5").contains(&"xhigh".into()));
+        assert_eq!(
+            surface_allowed("openai_compatible", "grok-4.6"),
+            ["low", "medium", "high", "xhigh"]
+        );
+        let raw = catalog_surface_json("grok", "grok-4.6").unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["default"], "high");
     }
 
     #[test]

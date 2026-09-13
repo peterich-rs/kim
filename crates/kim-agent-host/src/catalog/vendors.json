@@ -121,6 +121,119 @@
       ]
     },
     {
+      "id": "xai",
+      "display_name": "xAI",
+      "group": "primary",
+      "sort_rank": 25,
+      "protocol": "openai_compat",
+      "default_base_url": "https://api.x.ai/v1",
+      "alt_base_urls": [],
+      "auth": "bearer",
+      "builder": "openai",
+      "dynamic_models": true,
+      "custom_model": true,
+      "models": [
+        {
+          "id": "grok-4.6",
+          "display_name": "Grok 4.6",
+          "supports_tools": true,
+          "default": true,
+          "reasoning": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high", "xhigh"],
+            "default": "high"
+          }
+        },
+        {
+          "id": "grok-4.5",
+          "display_name": "Grok 4.5",
+          "supports_tools": true,
+          "default": false,
+          "reasoning": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high"],
+            "default": "high"
+          }
+        }
+      ],
+      "model_rules": [
+        {
+          "prefix": "grok-4.20-multi-agent",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high", "xhigh"],
+            "default": "high"
+          }
+        },
+        {
+          "prefix": "grok-4.6",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high", "xhigh"],
+            "default": "high"
+          }
+        },
+        {
+          "prefix": "grok-4.5",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high"],
+            "default": "high"
+          }
+        },
+        {
+          "prefix": "grok-4.20",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "medium", "high", "xhigh"],
+            "default": "high"
+          }
+        },
+        {
+          "prefix": "grok-3-mini",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high"],
+            "default": "low"
+          }
+        },
+        {
+          "prefix": "grok-4",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high"],
+            "default": "low"
+          }
+        },
+        {
+          "prefix": "grok-3",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high"],
+            "default": "low"
+          }
+        },
+        {
+          "prefix": "grok",
+          "surface": {
+            "kind": "effort_enum",
+            "param": "reasoning_effort",
+            "allowed": ["low", "high"],
+            "default": "low"
+          }
+        }
+      ]
+    },
+    {
       "id": "deepseek",
       "display_name": "DeepSeek",
       "group": "primary",

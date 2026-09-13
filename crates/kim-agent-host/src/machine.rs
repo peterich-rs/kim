@@ -32,9 +32,11 @@ impl MachineFactory {
         project_root: &Path,
         mcp: Arc<McpHub>,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
-        let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp {
-            prompt: profile.system_prompt.clone(),
-        }))];
+        let prompt = profile.effective_system_prompt().to_string();
+        if profile.system_prompt.trim().is_empty() {
+            tracing::debug!(profile_id = %profile.id, "system_prompt_fallback");
+        }
+        let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp { prompt }))];
         if !profile.steer.trim().is_empty() {
             steps.push(Step::Operation(Arc::new(SteerOp {
                 steer: profile.steer.clone(),
@@ -134,7 +136,7 @@ pub fn model_config(spec: &ModelSpec) -> Result<ModelConfig, HostError> {
 mod tests {
     use super::*;
     use crate::profile::{LegacyOpenOpts, ProviderSpec, ToolSet};
-    use crate::DEFAULT_SYSTEM_PROMPT;
+    use crate::{HostSession, DEFAULT_SYSTEM_PROMPT};
     use async_trait::async_trait;
     use goose_provider_types::base::{MessageStream, Provider};
     use goose_provider_types::conversation::message::Message;
@@ -217,6 +219,99 @@ mod tests {
         );
         // system + max_turns + compaction + permission + tools + unknown + inference
         assert_eq!(steps.len(), 7);
+    }
+
+    #[tokio::test]
+    async fn empty_system_prompt_assembles_default() {
+        let mut profile = profile_with(ToolSet::default());
+        profile.system_prompt = String::new();
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+            Arc::new(McpHub::new()),
+        );
+        let Step::Operation(op) = &steps[0] else {
+            panic!("expected system prompt operation");
+        };
+        assert_eq!(op.name(), "system_prompt");
+        let session = HostSession {
+            id: "t".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let parts = op
+            .prompt_parts(
+                &session,
+                &goose_provider_types::conversation::Conversation::empty(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(parts[0].1, DEFAULT_SYSTEM_PROMPT);
+    }
+
+    #[tokio::test]
+    async fn missing_system_prompt_json_assembles_default() {
+        let json = r#"{
+            "id": "goose",
+            "display_name": "助手",
+            "model": {"name": "gpt-4o"}
+        }"#;
+        let profile: AgentProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.system_prompt, "");
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+            Arc::new(McpHub::new()),
+        );
+        let Step::Operation(op) = &steps[0] else {
+            panic!("expected system prompt operation");
+        };
+        let session = HostSession {
+            id: "t".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let parts = op
+            .prompt_parts(
+                &session,
+                &goose_provider_types::conversation::Conversation::empty(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(parts[0].1, DEFAULT_SYSTEM_PROMPT);
+    }
+
+    #[tokio::test]
+    async fn non_empty_system_prompt_is_not_overwritten() {
+        let mut profile = profile_with(ToolSet::default());
+        profile.system_prompt = "Stay terse.".into();
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+            Arc::new(McpHub::new()),
+        );
+        let Step::Operation(op) = &steps[0] else {
+            panic!("expected system prompt operation");
+        };
+        let session = HostSession {
+            id: "t".into(),
+            conversation: goose_provider_types::conversation::Conversation::empty(),
+        };
+        let parts = op
+            .prompt_parts(
+                &session,
+                &goose_provider_types::conversation::Conversation::empty(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(parts[0].1, "Stay terse.");
     }
 
     #[test]

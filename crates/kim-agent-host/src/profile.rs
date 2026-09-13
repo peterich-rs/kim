@@ -31,6 +31,7 @@ pub struct AgentProfile {
     pub model: ModelSpec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningChoice>,
+    #[serde(default)]
     pub system_prompt: String,
     /// Missing JSON → SmartApprove. Never GooseMode::Auto (enum Default).
     #[serde(default = "default_smart_approve")]
@@ -239,7 +240,7 @@ impl AgentProfile {
                 ..Default::default()
             },
             reasoning: None,
-            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+            system_prompt: String::new(),
             mode,
             max_turns: Some(16),
             tools,
@@ -282,6 +283,16 @@ impl AgentProfile {
         }
         if self.provider.base_url.trim().is_empty() {
             self.provider.base_url = opts.base_url.clone();
+        }
+    }
+
+    /// Empty / whitespace prompt uses the built-in English default at assemble.
+    pub fn effective_system_prompt(&self) -> &str {
+        let t = self.system_prompt.trim();
+        if t.is_empty() {
+            DEFAULT_SYSTEM_PROMPT
+        } else {
+            t
         }
     }
 }
@@ -575,5 +586,35 @@ mod tests {
         assert!(profile.provider.kind.is_empty());
         assert_eq!(profile.model.name, "deepseek-flash");
         assert!(profile.reasoning.is_some());
+    }
+
+    #[test]
+    fn missing_system_prompt_defaults_empty() {
+        let json = r#"{
+            "id": "goose",
+            "display_name": "助手",
+            "model": {"name": "gpt-4o"}
+        }"#;
+        let profile: AgentProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.system_prompt, "");
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+    }
+
+    #[test]
+    fn empty_system_prompt_uses_builtin_default() {
+        let mut profile = goose_template();
+        profile.system_prompt = String::new();
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        profile.system_prompt = "  \n".into();
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        profile.system_prompt = "Stay terse.".into();
+        assert_eq!(profile.effective_system_prompt(), "Stay terse.");
+    }
+
+    #[test]
+    fn from_legacy_writes_empty_system_prompt() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts::default());
+        assert_eq!(profile.system_prompt, "");
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
     }
 }
