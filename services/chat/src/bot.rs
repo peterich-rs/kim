@@ -353,10 +353,7 @@ pub async fn do_bot_pending(
 /// Fanout matches `do_bot_reply`: every online owner device. Room interest is
 /// too strict for same-account multi-device busy sync (phone can talk while
 /// enter failed / left; Mac local bars do not prove the push landed).
-pub async fn do_bot_typing(
-    ctx: Context,
-    users: &dyn UserDirectory,
-) -> Result<(), RouterError> {
+pub async fn do_bot_typing(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
         ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
             .await?;

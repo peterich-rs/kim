@@ -24,10 +24,9 @@ class WorkspaceAccess {
   WorkspaceAccess({
     MethodChannel? channel,
     FlutterSecureStorage? secure,
-    Future<String?> Function()? pickDirectoryFallback,
+    this._pickDirectoryFallback,
   }) : _channel = channel ?? const MethodChannel(_kChannel),
-       _secure = secure ?? SettingsStore.productionSecureStorage(),
-       _pickDirectoryFallback = pickDirectoryFallback;
+       _secure = secure ?? SettingsStore.productionSecureStorage();
 
   final MethodChannel _channel;
   final FlutterSecureStorage _secure;

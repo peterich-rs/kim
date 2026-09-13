@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
-import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/agent/workspace.dart';
 import 'package:kim_mobile/agent/workspace_access.dart';
@@ -35,18 +33,10 @@ AgentProfile _profile(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  late FlutterSecureStoragePlatform previousPlatform;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    previousPlatform = FlutterSecureStoragePlatform.instance;
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
-      {},
-    );
-  });
-
-  tearDown(() {
-    FlutterSecureStoragePlatform.instance = previousPlatform;
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   test('ensureAgentDirs no longer seeds shared .agents/skills', () async {
