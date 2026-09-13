@@ -6,6 +6,15 @@ pub struct TalkResult {
     pub sequence: u32,
 }
 
+/// Owner-only bot runtime projection. Never includes secrets.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BotConfig {
+    pub model: String,
+    pub thinking_effort: String,
+    pub context_tokens: Option<i32>,
+    pub visibility: String,
+}
+
 /// Product profile on friend list / search / incoming.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Profile {

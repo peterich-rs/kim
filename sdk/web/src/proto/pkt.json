@@ -27,6 +27,8 @@
                 "NotFriends": 109,
                 "Blocked": 110,
                 "IdempotencyConflict": 111,
+                "NotBotOwner": 112,
+                "BotSocialDenied": 113,
                 "NoDestination": 300,
                 "SessionNotFound": 404
               }
@@ -682,6 +684,14 @@
                 "exists": {
                   "type": "bool",
                   "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "ownerAccount": {
+                  "type": "string",
+                  "id": 3
                 }
               }
             },
@@ -1002,6 +1012,325 @@
                 "fromNickname": {
                   "type": "string",
                   "id": 2
+                }
+              }
+            },
+            "BotConfig": {
+              "oneofs": {
+                "_contextTokens": {
+                  "oneof": [
+                    "contextTokens"
+                  ]
+                }
+              },
+              "fields": {
+                "model": {
+                  "type": "string",
+                  "id": 1
+                },
+                "thinkingEffort": {
+                  "type": "string",
+                  "id": 2
+                },
+                "contextTokens": {
+                  "type": "int32",
+                  "id": 3,
+                  "options": {
+                    "proto3_optional": true
+                  }
+                },
+                "visibility": {
+                  "type": "string",
+                  "id": 4
+                }
+              }
+            },
+            "BotCreateReq": {
+              "oneofs": {
+                "_contextTokens": {
+                  "oneof": [
+                    "contextTokens"
+                  ]
+                }
+              },
+              "fields": {
+                "clientProfileId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 2
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 3
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 4
+                },
+                "model": {
+                  "type": "string",
+                  "id": 5
+                },
+                "thinkingEffort": {
+                  "type": "string",
+                  "id": 6
+                },
+                "contextTokens": {
+                  "type": "int32",
+                  "id": 7,
+                  "options": {
+                    "proto3_optional": true
+                  }
+                },
+                "visibility": {
+                  "type": "string",
+                  "id": 8
+                }
+              }
+            },
+            "BotCreateResp": {
+              "fields": {
+                "profile": {
+                  "type": "UserProfile",
+                  "id": 1
+                },
+                "config": {
+                  "type": "BotConfig",
+                  "id": 2
+                }
+              }
+            },
+            "BotUpdateReq": {
+              "oneofs": {
+                "_contextTokens": {
+                  "oneof": [
+                    "contextTokens"
+                  ]
+                }
+              },
+              "fields": {
+                "nickname": {
+                  "type": "string",
+                  "id": 1
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 2
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 3
+                },
+                "model": {
+                  "type": "string",
+                  "id": 4
+                },
+                "thinkingEffort": {
+                  "type": "string",
+                  "id": 5
+                },
+                "contextTokens": {
+                  "type": "int32",
+                  "id": 6,
+                  "options": {
+                    "proto3_optional": true
+                  }
+                },
+                "visibility": {
+                  "type": "string",
+                  "id": 7
+                }
+              }
+            },
+            "BotReplyReq": {
+              "fields": {
+                "message": {
+                  "type": "MessageReq",
+                  "id": 1
+                },
+                "inReplyTo": {
+                  "type": "int64",
+                  "id": 2
+                }
+              }
+            },
+            "BotPendingItem": {
+              "fields": {
+                "messageId": {
+                  "type": "int64",
+                  "id": 1
+                },
+                "body": {
+                  "type": "string",
+                  "id": 2
+                },
+                "sendTime": {
+                  "type": "int64",
+                  "id": 3
+                }
+              }
+            },
+            "BotPendingResp": {
+              "fields": {
+                "items": {
+                  "rule": "repeated",
+                  "type": "BotPendingItem",
+                  "id": 1
+                }
+              }
+            },
+            "InternalBotCreate": {
+              "oneofs": {
+                "_contextTokens": {
+                  "oneof": [
+                    "contextTokens"
+                  ]
+                }
+              },
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "clientProfileId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 3
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 4
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 5
+                },
+                "model": {
+                  "type": "string",
+                  "id": 6
+                },
+                "thinkingEffort": {
+                  "type": "string",
+                  "id": 7
+                },
+                "contextTokens": {
+                  "type": "int32",
+                  "id": 8,
+                  "options": {
+                    "proto3_optional": true
+                  }
+                },
+                "visibility": {
+                  "type": "string",
+                  "id": 9
+                }
+              }
+            },
+            "InternalBotUpdate": {
+              "oneofs": {
+                "_contextTokens": {
+                  "oneof": [
+                    "contextTokens"
+                  ]
+                }
+              },
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "account": {
+                  "type": "string",
+                  "id": 2
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 3
+                },
+                "avatar": {
+                  "type": "string",
+                  "id": 4
+                },
+                "bio": {
+                  "type": "string",
+                  "id": 5
+                },
+                "model": {
+                  "type": "string",
+                  "id": 6
+                },
+                "thinkingEffort": {
+                  "type": "string",
+                  "id": 7
+                },
+                "contextTokens": {
+                  "type": "int32",
+                  "id": 8,
+                  "options": {
+                    "proto3_optional": true
+                  }
+                },
+                "visibility": {
+                  "type": "string",
+                  "id": 9
+                }
+              }
+            },
+            "InternalBotConfig": {
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "account": {
+                  "type": "string",
+                  "id": 2
+                },
+                "config": {
+                  "type": "BotConfig",
+                  "id": 3
+                }
+              }
+            },
+            "BotReplyStoreReq": {
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "botAccount": {
+                  "type": "string",
+                  "id": 2
+                },
+                "inReplyTo": {
+                  "type": "int64",
+                  "id": 3
+                },
+                "insert": {
+                  "type": "InsertMessageReq",
+                  "id": 4
+                }
+              }
+            },
+            "BotPendingQuery": {
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "botAccount": {
+                  "type": "string",
+                  "id": 2
+                },
+                "limit": {
+                  "type": "int32",
+                  "id": 3
                 }
               }
             },

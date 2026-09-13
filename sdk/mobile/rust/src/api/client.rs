@@ -580,10 +580,24 @@ impl KimSdkHandle {
         nickname: String,
         avatar: String,
         bio: String,
+        model: String,
+        thinking_effort: String,
+        context_tokens: i32,
+        visibility: String,
     ) -> Result<String, String> {
         let client = self.supervisor()?.client();
+        let config = kim_client::BotConfig {
+            model,
+            thinking_effort,
+            context_tokens: if context_tokens > 0 {
+                Some(context_tokens)
+            } else {
+                None
+            },
+            visibility,
+        };
         let p = rt()
-            .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio))
+            .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio, &config))
             .map_err(|e| e.to_string())?;
         kim_client::Profile::encode_one(&p)
     }
@@ -601,10 +615,24 @@ impl KimSdkHandle {
         nickname: String,
         avatar: String,
         bio: String,
+        model: String,
+        thinking_effort: String,
+        context_tokens: i32,
+        visibility: String,
     ) -> Result<String, String> {
         let client = self.supervisor()?.client();
+        let config = kim_client::BotConfig {
+            model,
+            thinking_effort,
+            context_tokens: if context_tokens > 0 {
+                Some(context_tokens)
+            } else {
+                None
+            },
+            visibility,
+        };
         let p = rt()
-            .block_on(client.bot_update(&dest, &nickname, &avatar, &bio))
+            .block_on(client.bot_update(&dest, &nickname, &avatar, &bio, &config))
             .map_err(|e| e.to_string())?;
         kim_client::Profile::encode_one(&p)
     }

@@ -362,8 +362,16 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   int botCreates = 0;
+  int botUpdates = 0;
   String lastBotCreateId = '';
   String lastBotCreateNickname = '';
+  String lastBotCreateModel = '';
+  String lastBotCreateThinking = '';
+  int? lastBotCreateContextTokens;
+  String lastBotUpdateDest = '';
+  String lastBotUpdateModel = '';
+  String lastBotUpdateThinking = '';
+  int? lastBotUpdateContextTokens;
   Object? botCreateError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
   var botReplyInFlight = 0;
@@ -378,10 +386,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   }) async {
     botCreates += 1;
     lastBotCreateId = clientProfileId;
     lastBotCreateNickname = nickname;
+    lastBotCreateModel = model;
+    lastBotCreateThinking = thinkingEffort;
+    lastBotCreateContextTokens = contextTokens;
     final fail = botCreateError;
     if (fail != null) {
       throw fail;
@@ -406,7 +421,16 @@ class FakeKim implements KimAuthPort, KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   }) async {
+    botUpdates += 1;
+    lastBotUpdateDest = dest;
+    lastBotUpdateModel = model;
+    lastBotUpdateThinking = thinkingEffort;
+    lastBotUpdateContextTokens = contextTokens;
     return KimPerson(
       account: dest,
       nickname: nickname,

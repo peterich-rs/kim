@@ -6,13 +6,13 @@ mod harness;
 use bytes::Bytes;
 use harness::*;
 use kim_protocol::pkt::{
-    BotCreateReq, BotCreateResp, BotReplyReq, Flag, InboxReq, MessagePush, MessageReq, MessageResp,
-    Status, UserListResp, UserSearchReq, UserSearchResp,
+    BotCreateReq, BotCreateResp, BotReplyReq, BotUpdateReq, Flag, InboxReq, MessagePush,
+    MessageReq, MessageResp, Status, UserListResp, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
-    CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_SEARCH,
-    MESSAGE_TYPE_TEXT, PROFILE_KIND_BOT,
+    CMD_BOT_UPDATE, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST,
+    CMD_USER_SEARCH, MESSAGE_TYPE_TEXT, PROFILE_KIND_BOT,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -78,6 +78,7 @@ async fn bot_create_talk_reply_and_gates() {
         nickname: "助手".into(),
         avatar: String::new(),
         bio: String::new(),
+        ..Default::default()
     });
     alice
         .send(marshal(&Packet::Logic(create)))
@@ -249,4 +250,76 @@ async fn bot_create_talk_reply_and_gates() {
         .expect("pending");
     let p = wait_resp(&alice, CMD_BOT_PENDING).await;
     assert_eq!(p.header.status, Status::Success as i32);
+}
+
+#[tokio::test]
+async fn bot_create_and_update_persist_owner_only_config() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+
+    let mut create = LogicPkt::new(CMD_BOT_CREATE, 2, Bytes::new());
+    create.write_body(&BotCreateReq {
+        client_profile_id: "goose".into(),
+        nickname: "助手".into(),
+        avatar: String::new(),
+        bio: String::new(),
+        model: "gpt-4o".into(),
+        thinking_effort: "high".into(),
+        context_tokens: Some(32000),
+        visibility: "owner_card".into(),
+    });
+    alice
+        .send(marshal(&Packet::Logic(create)))
+        .await
+        .expect("create");
+    let p = wait_resp(&alice, CMD_BOT_CREATE).await;
+    assert_eq!(p.header.status, Status::Success as i32);
+    let resp: BotCreateResp = p.read_body().expect("BotCreateResp");
+    let bot = resp.profile.expect("profile");
+    let cfg = resp.config.expect("config");
+    assert_eq!(cfg.model, "gpt-4o");
+    assert_eq!(cfg.thinking_effort, "high");
+    assert_eq!(cfg.context_tokens, Some(32000));
+    assert_eq!(cfg.visibility, "owner_card");
+    let bot_acc = bot.account.clone();
+
+    let mut steal = dest_pkt(CMD_BOT_UPDATE, 3, &bot_acc);
+    steal.write_body(&BotUpdateReq {
+        nickname: "stolen".into(),
+        model: "evil".into(),
+        ..Default::default()
+    });
+    bob.send(marshal(&Packet::Logic(steal)))
+        .await
+        .expect("bob update");
+    assert_eq!(
+        status_of(&timeout_read(&bob).await),
+        Status::NotBotOwner as i32
+    );
+
+    let mut update = dest_pkt(CMD_BOT_UPDATE, 4, &bot_acc);
+    update.write_body(&BotUpdateReq {
+        nickname: "助手".into(),
+        avatar: String::new(),
+        bio: String::new(),
+        model: "gpt-4.1".into(),
+        thinking_effort: "medium".into(),
+        context_tokens: Some(16000),
+        visibility: "private".into(),
+    });
+    alice
+        .send(marshal(&Packet::Logic(update)))
+        .await
+        .expect("update");
+    let p = wait_resp(&alice, CMD_BOT_UPDATE).await;
+    assert_eq!(p.header.status, Status::Success as i32);
+    let resp: BotCreateResp = p.read_body().expect("update resp");
+    let cfg = resp.config.expect("updated config");
+    assert_eq!(cfg.model, "gpt-4.1");
+    assert_eq!(cfg.thinking_effort, "medium");
+    assert_eq!(cfg.context_tokens, Some(16000));
+    assert_eq!(cfg.visibility, "private");
+    assert_eq!(resp.profile.expect("profile").account, bot_acc);
 }

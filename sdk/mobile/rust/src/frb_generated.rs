@@ -437,6 +437,10 @@ fn wire__crate__api__client__KimSdkHandle_bot_create_impl(
             let api_nickname = <String>::sse_decode(&mut deserializer);
             let api_avatar = <String>::sse_decode(&mut deserializer);
             let api_bio = <String>::sse_decode(&mut deserializer);
+            let api_model = <String>::sse_decode(&mut deserializer);
+            let api_thinking_effort = <String>::sse_decode(&mut deserializer);
+            let api_context_tokens = <i32>::sse_decode(&mut deserializer);
+            let api_visibility = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -460,6 +464,10 @@ fn wire__crate__api__client__KimSdkHandle_bot_create_impl(
                         api_nickname,
                         api_avatar,
                         api_bio,
+                        api_model,
+                        api_thinking_effort,
+                        api_context_tokens,
+                        api_visibility,
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -661,6 +669,10 @@ fn wire__crate__api__client__KimSdkHandle_bot_update_impl(
             let api_nickname = <String>::sse_decode(&mut deserializer);
             let api_avatar = <String>::sse_decode(&mut deserializer);
             let api_bio = <String>::sse_decode(&mut deserializer);
+            let api_model = <String>::sse_decode(&mut deserializer);
+            let api_thinking_effort = <String>::sse_decode(&mut deserializer);
+            let api_context_tokens = <i32>::sse_decode(&mut deserializer);
+            let api_visibility = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -684,6 +696,10 @@ fn wire__crate__api__client__KimSdkHandle_bot_update_impl(
                         api_nickname,
                         api_avatar,
                         api_bio,
+                        api_model,
+                        api_thinking_effort,
+                        api_context_tokens,
+                        api_visibility,
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())

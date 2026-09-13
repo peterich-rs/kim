@@ -156,6 +156,7 @@ class AgentProfile {
     this.mode = 'smart_approve',
     this.maxTurns,
     this.thinkingEffort = '',
+    this.contextTokens,
     this.tools = const AgentToolSet(),
     this.permissionOverrides = const {},
     this.extensions = const [],
@@ -175,6 +176,7 @@ class AgentProfile {
   final String mode;
   final int? maxTurns;
   final String thinkingEffort;
+  final int? contextTokens;
   final AgentToolSet tools;
   final Map<String, String> permissionOverrides;
   final List<AgentExtension> extensions;
@@ -195,6 +197,7 @@ class AgentProfile {
     String? mode,
     int? maxTurns,
     String? thinkingEffort,
+    int? contextTokens,
     AgentToolSet? tools,
     Map<String, String>? permissionOverrides,
     List<AgentExtension>? extensions,
@@ -214,6 +217,7 @@ class AgentProfile {
       mode: mode ?? this.mode,
       maxTurns: maxTurns ?? this.maxTurns,
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
+      contextTokens: contextTokens ?? this.contextTokens,
       tools: tools ?? this.tools,
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       extensions: extensions ?? this.extensions,
@@ -231,6 +235,7 @@ class AgentProfile {
     'model': {
       'name': model,
       if (thinkingEffort.isNotEmpty) 'thinking_effort': thinkingEffort,
+      if (contextTokens != null) 'context_tokens': contextTokens,
     },
     'system_prompt': systemPrompt,
     'mode': mode,
@@ -279,6 +284,9 @@ class AgentProfile {
       mode: json['mode'] as String? ?? 'smart_approve',
       maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
       thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
+      contextTokens: modelMap['context_tokens'] is int
+          ? modelMap['context_tokens'] as int
+          : null,
       tools: toolsRaw is Map
           ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
           : const AgentToolSet(),
@@ -409,6 +417,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         for (final p in state)
           if (p.id == profile.id) profile else p,
       ]);
+      await _syncBotConfig(profile);
     }
   }
 
@@ -431,7 +440,13 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     final person = await ref
         .read(clientPortProvider)
-        .botCreate(clientProfileId: profile.id, nickname: profile.displayName);
+        .botCreate(
+          clientProfileId: profile.id,
+          nickname: profile.displayName,
+          model: profile.model,
+          thinkingEffort: profile.thinkingEffort,
+          contextTokens: profile.contextTokens,
+        );
     if (person.account.isEmpty) {
       throw StateError(Copy.agentRegisterFailed);
     }
@@ -441,6 +456,28 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         if (p.id == profile.id) next else p,
     ]);
     return next;
+  }
+
+  Future<void> _syncBotConfig(AgentProfile profile) async {
+    if (!serverIdentity ||
+        !ref.read(authProvider).signedIn ||
+        profile.serverAccount.isEmpty) {
+      return;
+    }
+    try {
+      await ref
+          .read(clientPortProvider)
+          .botUpdate(
+            dest: profile.serverAccount,
+            nickname: profile.displayName,
+            model: profile.model,
+            thinkingEffort: profile.thinkingEffort,
+            contextTokens: profile.contextTokens,
+          );
+    } catch (err) {
+      identityError = agentRegisterError(err);
+      state = [...state];
+    }
   }
 
   /// Register enabled desktop personas. Idempotent. Desktop-online seam so

@@ -140,6 +140,10 @@ abstract class KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   });
 
   Future<void> botDelete(String dest);
@@ -149,6 +153,10 @@ abstract class KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   });
 
   Future<KimTalkResult> botReply({
@@ -845,6 +853,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   }) async {
     return _person(
       await _require().botCreate(
@@ -852,6 +864,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
         nickname: nickname,
         avatar: avatar,
         bio: bio,
+        model: model,
+        thinkingEffort: thinkingEffort,
+        contextTokens: contextTokens ?? 0,
+        visibility: visibility,
       ),
     );
   }
@@ -867,6 +883,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String nickname,
     String avatar = '',
     String bio = '',
+    String model = '',
+    String thinkingEffort = '',
+    int? contextTokens,
+    String visibility = '',
   }) async {
     return _person(
       await _require().botUpdate(
@@ -874,6 +894,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
         nickname: nickname,
         avatar: avatar,
         bio: bio,
+        model: model,
+        thinkingEffort: thinkingEffort,
+        contextTokens: contextTokens ?? 0,
+        visibility: visibility,
       ),
     );
   }

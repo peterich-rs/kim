@@ -10,10 +10,10 @@ use kim_protocol::pkt::{
     BotPendingQuery, BotPendingResp, BotReplyStoreReq, ConversationRead, DeliveryBackfillReq,
     DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail, GroupListReq, GroupListResp,
     GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertFanout,
-    InsertMessageReq, InsertMessageResp, InternalBotCreate, InternalGroupCreate,
-    InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
-    MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
-    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
+    InsertMessageReq, InsertMessageResp, InternalBotConfig, InternalBotCreate, InternalBotUpdate,
+    InternalGroupCreate, InternalGroupMember, InternalGroupQuery, MessageContentReq,
+    MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq,
+    UserListResp, UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
 use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
 use reqwest::StatusCode;
@@ -27,7 +27,10 @@ use crate::store::{
     BotPendingItem, Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult,
     MessageContentRow, MessageIndexRow, MessageKind, MessageStore, StoreError,
 };
-use crate::users::{CreateBot, ProfilePatch, UserDirectory, UserError, UserPresence, UserProfile};
+use crate::users::{
+    BotConfig, BotPatch, BotRecord, CreateBot, ProfilePatch, UserDirectory, UserError,
+    UserPresence, UserProfile,
+};
 
 pub(crate) const RETRIES: usize = 3;
 const PER_ATTEMPT: Duration = Duration::from_millis(400);
@@ -911,13 +914,17 @@ impl UserDirectory for HttpUserDirectory {
         ))
     }
 
-    async fn create_bot(&self, _app: &str, req: &CreateBot) -> Result<UserProfile, UserError> {
+    async fn create_bot(&self, _app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
         let body = InternalBotCreate {
             owner: req.owner.clone(),
             client_profile_id: req.client_profile_id.clone(),
             nickname: req.nickname.clone(),
             avatar: req.avatar.clone(),
             bio: req.bio.clone(),
+            model: req.model.clone(),
+            thinking_effort: req.thinking_effort.clone(),
+            context_tokens: req.context_tokens,
+            visibility: req.visibility.clone(),
         };
         let resp: BotCreateResp = self
             .pool
@@ -925,9 +932,63 @@ impl UserDirectory for HttpUserDirectory {
             .await
             .map_err(user_err)?;
         match resp.profile {
-            Some(p) => Ok(from_pb_profile(p)),
+            Some(p) => Ok(BotRecord {
+                profile: from_pb_profile(p),
+                config: from_pb_config(resp.config),
+            }),
             None => Err(UserError::Backend("bot create missing profile".into())),
         }
+    }
+
+    async fn update_bot(
+        &self,
+        _app: &str,
+        owner: &str,
+        account: &str,
+        patch: &BotPatch,
+    ) -> Result<BotRecord, UserError> {
+        let body = InternalBotUpdate {
+            owner: owner.to_string(),
+            account: account.to_string(),
+            nickname: patch.nickname.clone(),
+            avatar: patch.avatar.clone(),
+            bio: patch.bio.clone(),
+            model: patch.model.clone(),
+            thinking_effort: patch.thinking_effort.clone(),
+            context_tokens: patch.context_tokens,
+            visibility: patch.visibility.clone(),
+        };
+        let resp: BotCreateResp = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/bot/update", Some(&body))
+            .await
+            .map_err(user_err)?;
+        match resp.profile {
+            Some(p) => Ok(BotRecord {
+                profile: from_pb_profile(p),
+                config: from_pb_config(resp.config),
+            }),
+            None => Err(UserError::Backend("bot update missing profile".into())),
+        }
+    }
+
+    async fn bot_config(
+        &self,
+        _app: &str,
+        owner: &str,
+        account: &str,
+    ) -> Result<BotConfig, UserError> {
+        let body = InternalBotConfig {
+            owner: owner.to_string(),
+            account: account.to_string(),
+            config: None,
+        };
+        let resp: InternalBotConfig = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/bot/config", Some(&body))
+            .await
+            .map_err(user_err)?;
+        Ok(from_pb_config(resp.config))
     }
 
     async fn bot_owner(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
@@ -975,6 +1036,25 @@ impl UserDirectory for HttpUserDirectory {
             kind: kim_protocol::profile_kind(resp.kind),
             owner_account: resp.owner_account,
         }))
+    }
+}
+
+fn from_pb_config(cfg: Option<kim_protocol::pkt::BotConfig>) -> BotConfig {
+    match cfg {
+        Some(c) => BotConfig {
+            model: c.model,
+            thinking_effort: c.thinking_effort,
+            context_tokens: c.context_tokens,
+            visibility: if c.visibility.is_empty() {
+                crate::users::BOT_VISIBILITY_PRIVATE.to_string()
+            } else {
+                c.visibility
+            },
+        },
+        None => BotConfig {
+            visibility: crate::users::BOT_VISIBILITY_PRIVATE.to_string(),
+            ..BotConfig::default()
+        },
     }
 }
 

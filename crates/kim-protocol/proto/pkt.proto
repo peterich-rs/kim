@@ -401,13 +401,37 @@ message FriendRequestNotify {
   string fromNickname = 2;
 }
 
+message BotConfig {
+  string model = 1;
+  string thinkingEffort = 2;
+  optional int32 contextTokens = 3; // unset = null
+  string visibility = 4; // private | owner_card | public
+}
+
 message BotCreateReq {
   string clientProfileId = 1;
   string nickname = 2;
   string avatar = 3;
   string bio = 4;
+  string model = 5;
+  string thinkingEffort = 6;
+  optional int32 contextTokens = 7;
+  string visibility = 8;
 }
-message BotCreateResp { UserProfile profile = 1; }
+message BotCreateResp {
+  UserProfile profile = 1;
+  BotConfig config = 2;
+}
+
+message BotUpdateReq {
+  string nickname = 1;
+  string avatar = 2;
+  string bio = 3;
+  string model = 4;
+  string thinkingEffort = 5;
+  optional int32 contextTokens = 6;
+  string visibility = 7;
+}
 
 message BotReplyReq {
   MessageReq message = 1;
@@ -428,6 +452,10 @@ message InternalBotCreate {
   string nickname = 3;
   string avatar = 4;
   string bio = 5;
+  string model = 6;
+  string thinkingEffort = 7;
+  optional int32 contextTokens = 8;
+  string visibility = 9;
 }
 
 message InternalBotUpdate {
@@ -436,6 +464,16 @@ message InternalBotUpdate {
   string nickname = 3;
   string avatar = 4;
   string bio = 5;
+  string model = 6;
+  string thinkingEffort = 7;
+  optional int32 contextTokens = 8;
+  string visibility = 9;
+}
+
+message InternalBotConfig {
+  string owner = 1;
+  string account = 2;
+  BotConfig config = 3;
 }
 
 message BotReplyStoreReq {
