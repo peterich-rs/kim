@@ -32,22 +32,13 @@ void main() {
   final l10n = lookupAppLocalizations(const Locale('zh'));
 
   test('workspace subtitle reflects fs write and bash', () {
-    expect(
-      agentWorkspaceSubtitle(l10n, _profile()),
-      '应用内沙箱 · 未开读写',
-    );
-    expect(
-      agentWorkspaceSubtitle(l10n, _profile(fs: true)),
-      '应用内沙箱 · 只读',
-    );
+    expect(agentWorkspaceSubtitle(l10n, _profile()), '应用内沙箱 · 未开读写');
+    expect(agentWorkspaceSubtitle(l10n, _profile(fs: true)), '应用内沙箱 · 只读');
     expect(
       agentWorkspaceSubtitle(l10n, _profile(fsWrite: true)),
       '应用内沙箱 · 读·写',
     );
-    expect(
-      agentWorkspaceSubtitle(l10n, _profile(bash: true)),
-      '应用内沙箱 · 终端',
-    );
+    expect(agentWorkspaceSubtitle(l10n, _profile(bash: true)), '应用内沙箱 · 终端');
     expect(
       agentWorkspaceSubtitle(l10n, _profile(fs: true, bash: true)),
       '应用内沙箱 · 只读·终端',
@@ -63,7 +54,12 @@ void main() {
     expect(
       agentSkillsSubtitle(
         l10n,
-        _profile(skills: const [SkillRef(id: 'kim-im'), SkillRef(id: 'kim-memory')]),
+        _profile(
+          skills: const [
+            SkillRef(id: 'kim-im'),
+            SkillRef(id: 'kim-memory'),
+          ],
+        ),
       ),
       'kim-im · kim-memory',
     );

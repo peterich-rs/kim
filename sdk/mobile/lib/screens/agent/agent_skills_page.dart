@@ -84,8 +84,7 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
     });
   }
 
-  bool _isAssigned(String id) =>
-      _assigned.any((s) => s.id == id && s.enabled);
+  bool _isAssigned(String id) => _assigned.any((s) => s.id == id && s.enabled);
 
   Future<void> _persist({
     List<SkillRef>? skills,
@@ -186,8 +185,9 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
         final tools = enableRequiredTools(profile.tools, missing);
         var perms = Map<String, String>.from(profile.permissionOverrides);
         if (missing.contains('bash')) {
-          perms['bash'] =
-              perms['bash'] == 'never_allow' ? 'never_allow' : 'ask_before';
+          perms['bash'] = perms['bash'] == 'never_allow'
+              ? 'never_allow'
+              : 'ask_before';
         }
         final skills = [
           for (final s in _assigned)
@@ -246,7 +246,8 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
       );
     }
 
-    final scanOff = _profile != null &&
+    final scanOff =
+        _profile != null &&
         !_profile!.workspace.isRepo &&
         !_profile!.tools.fs &&
         !_profile!.tools.fsWrite;
@@ -319,9 +320,7 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
                       for (var i = 0; i < _portable.length; i++) ...[
                         if (i > 0) const Divider(height: 1),
                         SwitchListTile(
-                          key: Key(
-                            'agent-skills-mute-${_portable[i].id}',
-                          ),
+                          key: Key('agent-skills-mute-${_portable[i].id}'),
                           title: Text(_portable[i].name),
                           subtitle: Text(
                             [
@@ -341,9 +340,8 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
                 const Gap(20),
                 OutlinedButton(
                   key: const Key('agent-skills-plaza'),
-                  onPressed: () => context.push(
-                    '/agent/plaza?assignTo=${widget.profileId}',
-                  ),
+                  onPressed: () =>
+                      context.push('/agent/plaza?assignTo=${widget.profileId}'),
                   child: Text(l10n.agentSkillsOpenPlaza),
                 ),
               ],

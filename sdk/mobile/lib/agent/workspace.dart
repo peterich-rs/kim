@@ -30,25 +30,18 @@ Future<WorkspaceResolveResult> resolveAgentProjectRoot({
   final acc = access ?? workspaceAccess;
 
   if (ws.isRepo) {
-    final stored =
-        ws.bookmarkRef.isNotEmpty
-            ? ws.bookmarkRef
-            : (await acc.loadBookmark(profile.id) ?? '');
+    final stored = ws.bookmarkRef.isNotEmpty
+        ? ws.bookmarkRef
+        : (await acc.loadBookmark(profile.id) ?? '');
     if (!kIsWeb && Platform.isMacOS && stored.isNotEmpty) {
       final accessed = await acc.startAccessing(stored);
       if (accessed != null && await Directory(accessed).exists()) {
-        return WorkspaceResolveResult(
-          path: accessed,
-          bookmarkBase64: stored,
-        );
+        return WorkspaceResolveResult(path: accessed, bookmarkBase64: stored);
       }
       // Stale / denied — do not silently fall back on Release sandbox.
       if (_macosSandboxLikely()) {
         final sandbox = await paths.ensureSandbox(profile.id);
-        return WorkspaceResolveResult(
-          path: sandbox.path,
-          invalidRepo: true,
-        );
+        return WorkspaceResolveResult(path: sandbox.path, invalidRepo: true);
       }
     }
     if (ws.path.isNotEmpty) {
@@ -59,10 +52,7 @@ Future<WorkspaceResolveResult> resolveAgentProjectRoot({
             stored.isEmpty &&
             _macosSandboxLikely()) {
           final sandbox = await paths.ensureSandbox(profile.id);
-          return WorkspaceResolveResult(
-            path: sandbox.path,
-            invalidRepo: true,
-          );
+          return WorkspaceResolveResult(path: sandbox.path, invalidRepo: true);
         }
         return WorkspaceResolveResult(
           path: dir.absolute.path,

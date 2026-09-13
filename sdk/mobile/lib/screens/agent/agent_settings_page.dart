@@ -673,9 +673,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                       ListTile(
                         key: const Key('agent-entry-workspace'),
                         title: Text(l10n.agentWorkspaceEntry),
-                        subtitle: Text(
-                          agentWorkspaceSubtitle(l10n, overview),
-                        ),
+                        subtitle: Text(agentWorkspaceSubtitle(l10n, overview)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () =>
                             context.push('/agent/${overview.id}/workspace'),

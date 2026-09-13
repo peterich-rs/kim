@@ -143,7 +143,9 @@ class WorkspaceAccess {
   Future<String?> realUserAgentsSkills() async {
     if (!kIsWeb && Platform.isMacOS) {
       try {
-        final path = await _channel.invokeMethod<String>('realHomeAgentsSkills');
+        final path = await _channel.invokeMethod<String>(
+          'realHomeAgentsSkills',
+        );
         if (path != null && path.isNotEmpty) {
           return path;
         }

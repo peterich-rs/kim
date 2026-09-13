@@ -343,7 +343,12 @@ class ChatAgent {
     final projectRoot = resolved.path;
     final bridge = _ref.read(agentBridgeProvider);
     await bridge.ensure();
-    final opts = await _openOpts(dest, profile, apiKey, projectRoot: projectRoot);
+    final opts = await _openOpts(
+      dest,
+      profile,
+      apiKey,
+      projectRoot: projectRoot,
+    );
     final fileDest = dest.replaceAll('/', '_').replaceAll('\\', '_');
     final sessionFile =
         '${paths.agentSessions.path}/${fileDest}__${profile.id}.json';
@@ -415,9 +420,7 @@ class ChatAgent {
     final vendorId = canonicalizeVendorId(account.vendorId);
     var userAgents = '';
     final scanPortable =
-        profile.workspace.isRepo ||
-        profile.tools.fs ||
-        profile.tools.fsWrite;
+        profile.workspace.isRepo || profile.tools.fs || profile.tools.fsWrite;
     if (scanPortable) {
       userAgents = await workspaceAccess.realUserAgentsSkills() ?? '';
     }

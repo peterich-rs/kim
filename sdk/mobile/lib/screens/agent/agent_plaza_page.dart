@@ -142,8 +142,9 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
       }
       tools = enableRequiredTools(tools, missing);
       if (missing.contains('bash')) {
-        perms['bash'] =
-            perms['bash'] == 'never_allow' ? 'never_allow' : 'ask_before';
+        perms['bash'] = perms['bash'] == 'never_allow'
+            ? 'never_allow'
+            : 'ask_before';
       }
     }
     final skills = [

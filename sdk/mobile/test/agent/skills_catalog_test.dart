@@ -13,14 +13,14 @@ void main() {
       keyRef: 'k',
       systemPrompt: '',
     );
-    expect(
-      missingToolsForAppSkill(profile, 'kim-memory'),
-      ['fs', 'fs_write'],
-    );
+    expect(missingToolsForAppSkill(profile, 'kim-memory'), ['fs', 'fs_write']);
     final enabled = enableRequiredTools(profile.tools, ['fs', 'fs_write']);
     expect(enabled.fs, isTrue);
     expect(enabled.fsWrite, isTrue);
-    expect(missingToolsForAppSkill(profile.copyWith(tools: enabled), 'kim-memory'), isEmpty);
+    expect(
+      missingToolsForAppSkill(profile.copyWith(tools: enabled), 'kim-memory'),
+      isEmpty,
+    );
   });
 
   test('parseSkillsJson reads app catalog payload', () {

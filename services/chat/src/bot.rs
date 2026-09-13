@@ -5,9 +5,7 @@ use kim_protocol::pkt::{
     BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
     BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status, TypingPush, TypingReq,
 };
-use kim_protocol::{
-    AccountId, CMD_CHAT_USER_TALK, CMD_TYPING, INBOX_KIND_USER, PROFILE_KIND_BOT,
-};
+use kim_protocol::{AccountId, CMD_CHAT_USER_TALK, CMD_TYPING, INBOX_KIND_USER, PROFILE_KIND_BOT};
 use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 

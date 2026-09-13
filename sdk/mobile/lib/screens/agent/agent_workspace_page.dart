@@ -63,10 +63,9 @@ class _AgentWorkspacePageState extends ConsumerState<AgentWorkspacePage> {
     }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
-    final storedBookmark =
-        profile.workspace.bookmarkRef.isNotEmpty
-            ? profile.workspace.bookmarkRef
-            : (await workspaceAccess.loadBookmark(profile.id) ?? '');
+    final storedBookmark = profile.workspace.bookmarkRef.isNotEmpty
+        ? profile.workspace.bookmarkRef
+        : (await workspaceAccess.loadBookmark(profile.id) ?? '');
     final resolved = await resolveAgentProjectRoot(
       profile: profile,
       paths: paths,
@@ -189,16 +188,13 @@ class _AgentWorkspacePageState extends ConsumerState<AgentWorkspacePage> {
     final store = ref.read(agentProfilesProvider.notifier);
     final next = profile.copyWith(
       workspace: workspace,
-      tools: profile.tools.copyWith(
-        fs: fs,
-        fsWrite: _fsWrite,
-        bash: _bash,
-      ),
+      tools: profile.tools.copyWith(fs: fs, fsWrite: _fsWrite, bash: _bash),
       permissionOverrides: () {
         final map = Map<String, String>.from(profile.permissionOverrides);
         if (_bash) {
-          map['bash'] =
-              map['bash'] == 'never_allow' ? 'never_allow' : 'ask_before';
+          map['bash'] = map['bash'] == 'never_allow'
+              ? 'never_allow'
+              : 'ask_before';
         }
         return map;
       }(),

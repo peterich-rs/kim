@@ -66,7 +66,10 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
     if (t.fsWrite) 'fs_write',
     if (t.bash) 'bash',
   };
-  return [for (final n in need) if (!have.contains(n)) n];
+  return [
+    for (final n in need)
+      if (!have.contains(n)) n,
+  ];
 }
 
 AgentToolSet enableRequiredTools(AgentToolSet tools, List<String> missing) {
@@ -182,9 +185,7 @@ Future<String> importPortableSkillDir({
   if (!await skillMd.exists()) {
     throw StateError('missing SKILL.md');
   }
-  final id = source.uri.pathSegments
-      .where((s) => s.isNotEmpty)
-      .last;
+  final id = source.uri.pathSegments.where((s) => s.isNotEmpty).last;
   if (id.isEmpty || id.startsWith('.')) {
     throw StateError('bad skill id');
   }

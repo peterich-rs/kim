@@ -240,11 +240,7 @@ class WorkspaceSpec {
     );
   }
 
-  WorkspaceSpec copyWith({
-    String? kind,
-    String? path,
-    String? bookmarkRef,
-  }) {
+  WorkspaceSpec copyWith({String? kind, String? path, String? bookmarkRef}) {
     return WorkspaceSpec(
       kind: kind ?? this.kind,
       path: path ?? this.path,
@@ -585,9 +581,7 @@ class AgentProfile {
         ];
       }(),
       workspace: WorkspaceSpec.fromJson(
-        workspaceRaw is Map
-            ? Map<String, Object?>.from(workspaceRaw)
-            : null,
+        workspaceRaw is Map ? Map<String, Object?>.from(workspaceRaw) : null,
       ),
       skills: () {
         if (skillsRaw is! List) {

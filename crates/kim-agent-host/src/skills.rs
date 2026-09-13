@@ -985,10 +985,7 @@ mod tests {
         let raw = skill_app_catalog_json(None);
         let value: Value = serde_json::from_str(&raw).expect("json");
         let skills = value["skills"].as_array().expect("skills");
-        let ids: Vec<&str> = skills
-            .iter()
-            .filter_map(|s| s["id"].as_str())
-            .collect();
+        let ids: Vec<&str> = skills.iter().filter_map(|s| s["id"].as_str()).collect();
         assert!(ids.contains(&"kim-im"), "{ids:?}");
         assert!(ids.contains(&"kim-memory"), "{ids:?}");
     }

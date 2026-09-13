@@ -40,7 +40,9 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     previousPlatform = FlutterSecureStoragePlatform.instance;
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({});
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+      {},
+    );
   });
 
   tearDown(() {
@@ -90,10 +92,7 @@ void main() {
     final resolved = await resolveAgentProjectRoot(
       profile: _profile(
         'p-r',
-        workspace: WorkspaceSpec(
-          kind: WorkspaceSpec.kindRepo,
-          path: repo.path,
-        ),
+        workspace: WorkspaceSpec(kind: WorkspaceSpec.kindRepo, path: repo.path),
       ),
       paths: paths,
       access: access,
