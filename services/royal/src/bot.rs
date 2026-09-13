@@ -85,6 +85,26 @@ pub async fn bot_delete(
         .delete_bot(&st.app, &req.account, &req.peer)
         .await
         .map_err(user_http)?;
+    st.store
+        .purge_peer_dm(&st.app, &req.account, &req.peer)
+        .await
+        .map_err(store_http)?;
+    Ok(encode(&AccountExists {
+        exists: true,
+        kind: 0,
+        owner_account: String::new(),
+    }))
+}
+
+pub async fn purge_dm(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<AccountPair>(&body)?;
+    st.store
+        .purge_peer_dm(&st.app, &req.account, &req.peer)
+        .await
+        .map_err(store_http)?;
     Ok(encode(&AccountExists {
         exists: true,
         kind: 0,

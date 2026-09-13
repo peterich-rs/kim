@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 73777071;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 116867278;
 
 // Section: executor
 
@@ -1130,6 +1130,59 @@ fn wire__crate__api__client__KimSdkHandle_friend_reject_impl(
                     }
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok = crate::api::client::KimSdkHandle::friend_reject(
+                        &*api_that_guard,
+                        api_dest,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__client__KimSdkHandle_friend_remove_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimSdkHandle_friend_remove",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_dest = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::client::KimSdkHandle::friend_remove(
                         &*api_that_guard,
                         api_dest,
                     )?;
@@ -3208,108 +3261,114 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        21 => wire__crate__api__client__KimSdkHandle_friend_request_impl(
+        21 => wire__crate__api__client__KimSdkHandle_friend_remove_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => {
+        22 => wire__crate__api__client__KimSdkHandle_friend_request_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        23 => {
             wire__crate__api__client__KimSdkHandle_history_impl(port, ptr, rust_vec_len, data_len)
         }
-        23 => wire__crate__api__client__KimSdkHandle_inbox_impl(port, ptr, rust_vec_len, data_len),
-        25 => {
+        24 => wire__crate__api__client__KimSdkHandle_inbox_impl(port, ptr, rust_vec_len, data_len),
+        26 => {
             wire__crate__api__client__KimSdkHandle_mark_read_impl(port, ptr, rust_vec_len, data_len)
         }
-        26 => wire__crate__api__client__KimSdkHandle_mark_thread_read_impl(
+        27 => wire__crate__api__client__KimSdkHandle_mark_thread_read_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__client__KimSdkHandle_notify_foreground_impl(
+        28 => wire__crate__api__client__KimSdkHandle_notify_foreground_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => wire__crate__api__client__KimSdkHandle_notify_radio_up_impl(
+        29 => wire__crate__api__client__KimSdkHandle_notify_radio_up_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__client__KimSdkHandle_persist_inbox_impl(
+        30 => wire__crate__api__client__KimSdkHandle_persist_inbox_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__client__KimSdkHandle_persist_talks_impl(
+        31 => wire__crate__api__client__KimSdkHandle_persist_talks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => {
+        32 => {
             wire__crate__api__client__KimSdkHandle_profile_impl(port, ptr, rust_vec_len, data_len)
         }
-        32 => wire__crate__api__client__KimSdkHandle_retry_send_impl(
+        33 => wire__crate__api__client__KimSdkHandle_retry_send_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => wire__crate__api__client__KimSdkHandle_room_enter_impl(
+        34 => wire__crate__api__client__KimSdkHandle_room_enter_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => wire__crate__api__client__KimSdkHandle_room_leave_impl(
+        35 => wire__crate__api__client__KimSdkHandle_room_leave_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        35 => wire__crate__api__client__KimSdkHandle_search_users_impl(
+        36 => wire__crate__api__client__KimSdkHandle_search_users_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        36 => wire__crate__api__client__KimSdkHandle_send_message_impl(
+        37 => wire__crate__api__client__KimSdkHandle_send_message_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        37 => wire__crate__api__client__KimSdkHandle_send_typing_impl(
+        38 => wire__crate__api__client__KimSdkHandle_send_typing_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        39 => wire__crate__api__client__KimSdkHandle_start_session_impl(
+        40 => wire__crate__api__client__KimSdkHandle_start_session_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        40 => wire__crate__api__client__KimSdkHandle_stop_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__client__KimSdkHandle_sync_confirm_impl(
+        41 => wire__crate__api__client__KimSdkHandle_stop_impl(port, ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__client__KimSdkHandle_sync_confirm_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        43 => wire__crate__api__client__KimSdkHandle_update_profile_impl(
+        44 => wire__crate__api__client__KimSdkHandle_update_profile_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        48 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3324,21 +3383,21 @@ fn pde_ffi_dispatcher_sync_impl(
     match func_id {
         4 => wire__crate__api__auth__KimAuth_new_impl(ptr, rust_vec_len, data_len),
         14 => wire__crate__api__client__KimSdkHandle_create_impl(ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__client__KimSdkHandle_link_state_impl(ptr, rust_vec_len, data_len),
-        38 => {
+        25 => wire__crate__api__client__KimSdkHandle_link_state_impl(ptr, rust_vec_len, data_len),
+        39 => {
             wire__crate__api__client__KimSdkHandle_session_events_impl(ptr, rust_vec_len, data_len)
         }
-        41 => {
+        42 => {
             wire__crate__api__client__KimSdkHandle_store_attached_impl(ptr, rust_vec_len, data_len)
         }
-        44 => {
+        45 => {
             wire__crate__api__client__KimSdkHandle_watch_session_impl(ptr, rust_vec_len, data_len)
         }
-        45 => {
+        46 => {
             wire__crate__api__client__KimSdkHandle_watch_timeline_impl(ptr, rust_vec_len, data_len)
         }
-        46 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

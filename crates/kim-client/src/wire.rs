@@ -375,7 +375,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
     if p.header.flag == Flag::Push as i32 && p.header.command == CMD_USER_UPDATED {
         let u: UserProfile = p.read_body()?;
         return Ok(Event::ProfileUpdated {
-            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.kind),
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind),
         });
     }
     if p.header.flag == Flag::Push as i32 && p.header.command == CMD_PRESENCE {
@@ -507,7 +507,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
             sequence: p.header.sequence,
             users: users
                 .into_iter()
-                .map(|u| Profile::from_wire(u.account, u.nickname, u.avatar, u.kind))
+                .map(|u| Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind))
                 .collect(),
         });
     }
@@ -523,7 +523,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
         let u = resp.profile.unwrap_or_default();
         return Ok(Event::Profile {
             sequence: p.header.sequence,
-            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.kind),
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind),
         });
     }
     if p.header.flag == Flag::Response as i32 && p.header.command == CMD_BOT_PENDING {
@@ -560,7 +560,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
         let u = resp.profile.unwrap_or_default();
         return Ok(Event::Profile {
             sequence: p.header.sequence,
-            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.kind),
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind),
         });
     }
     if p.header.flag == Flag::Response as i32
@@ -576,7 +576,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
         let u: UserProfile = p.read_body()?;
         return Ok(Event::Profile {
             sequence: p.header.sequence,
-            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.kind),
+            profile: Profile::from_wire(u.account, u.nickname, u.avatar, u.bio, u.kind),
         });
     }
     if p.header.flag == Flag::Response as i32 && p.header.command == CMD_INBOX_LIST {

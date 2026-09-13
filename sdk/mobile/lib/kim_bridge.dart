@@ -119,6 +119,8 @@ abstract class KimClientPort {
 
   Future<void> friendReject(String dest);
 
+  Future<void> friendRemove(String dest);
+
   Future<KimPerson> profile({String dest = ''});
 
   Future<KimPerson> updateProfile({
@@ -416,7 +418,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
         sender: dto.from,
         nickname: dto.nickname,
       ),
-      'link' => KimEvent(kind: KimEventKind.link, error: dto.lastError ?? ''),
+      // Fat session_events already maps Link with supervisor.state.
+      // SessionUpdateDto drops LinkStateView (`Link { last_error, .. }`), so a
+      // watch "link" event has empty `state` and would paint the UI Offline.
+      'link' => const KimEvent(kind: KimEventKind.closed),
       _ => const KimEvent(kind: KimEventKind.closed),
     };
   }
@@ -723,6 +728,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
             account: '${item['account'] ?? ''}',
             nickname: '${item['nickname'] ?? ''}',
             avatar: '${item['avatar'] ?? ''}',
+            bio: '${item['bio'] ?? ''}',
             kind: _profileKind(item['kind']),
           ),
     ].where((p) => p.account.isNotEmpty).toList();
@@ -758,6 +764,11 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _require().friendReject(dest: dest);
   }
 
+  @override
+  Future<void> friendRemove(String dest) async {
+    await _require().friendRemove(dest: dest);
+  }
+
   KimPerson _person(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
@@ -771,6 +782,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
       nickname: '${decoded['nickname'] ?? ''}',
       avatar: '${decoded['avatar'] ?? ''}',
+      bio: '${decoded['bio'] ?? ''}',
       kind: _profileKind(decoded['kind']),
     );
   }

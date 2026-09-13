@@ -9,10 +9,13 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import '../../agent/host_support.dart';
 import '../../agent/mention.dart';
 import '../../copy.dart';
 import '../../core/layout.dart';
+import '../../router/open_peer.dart';
 import '../../models/models.dart';
+import '../../state/agent_profiles.dart';
 import '../../state/chat_session.dart';
 import '../../state/contacts.dart';
 import '../../state/link.dart';
@@ -78,6 +81,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final thread = ref.watch(threadMessagesProvider(widget.id));
     final kind = _session.kind;
     final agentChat = isAgentDest(widget.id);
+    final profileStore = ref.watch(agentProfilesProvider.notifier);
+    final profiles = ref.watch(agentProfilesProvider);
+    final orphan =
+        profileStore.profilesReady &&
+        profileForChatDest(widget.id, profiles) == null;
+    final readOnly =
+        agentHostSupported &&
+        orphan &&
+        (agentChat || isServerBotAccount(widget.id));
     final userThread = kind == ThreadKind.user && !agentChat;
     final peerTyping = userThread
         ? ref.watch(peerTypingProvider(widget.id))
@@ -127,8 +139,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ? null
                     : EmptyState(
                         icon: LucideIcons.messageCircle,
-                        title: l10n.noMessages,
-                        subtitle: l10n.noMessagesHint,
+                        title: readOnly
+                            ? l10n.agentDeletedReadOnly
+                            : l10n.noMessages,
+                        subtitle: readOnly ? '' : l10n.noMessagesHint,
                       ),
                 footer: peerTyping
                     ? KimTypingRow(
@@ -175,6 +189,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         onCopied: _showToast,
                       ),
                     ),
+                    onAvatarTap: !own && kind == ThreadKind.user
+                        ? () => openKimPeerProfile(
+                            context,
+                            ref,
+                            id: msg.sender.isEmpty ? widget.id : msg.sender,
+                            title:
+                                social
+                                    .person(
+                                      msg.sender.isEmpty
+                                          ? widget.id
+                                          : msg.sender,
+                                    )
+                                    ?.title ??
+                                (msg.sender.isEmpty ? liveTitle : msg.sender),
+                          )
+                        : null,
                   );
                 },
               ),
@@ -213,6 +243,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               presence: ref.watch(
                                 peerPresenceProvider(widget.id),
                               ),
+                              onTap: kind == ThreadKind.user
+                                  ? () => openKimPeerProfile(
+                                      context,
+                                      ref,
+                                      id: widget.id,
+                                      title: liveTitle,
+                                    )
+                                  : null,
                             ),
                             const Spacer(),
                             FrostedCircleButton(
@@ -243,13 +281,31 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         incoming: social.isIncoming(widget.id),
                         outgoing: social.isOutgoing(widget.id),
                       )
+                    : readOnly
+                    ? SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                          child: Text(
+                            l10n.agentDeletedReadOnly,
+                            key: const Key('agent-deleted-readonly'),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      )
                     : KeyedSubtree(
                         key: const Key('chat-composer'),
                         child: KimComposer(
                           key: _composer,
                           hintText: agentChat
                               ? l10n.agentComposerDirect
-                              : l10n.agentComposerHint,
+                              : l10n.composerHint,
                           onSend: (text) => unawaited(_send(text)),
                           onPickAlbum: () => unawaited(_session.pickAlbum()),
                           onTakePhoto: () => unawaited(_session.takePhoto()),

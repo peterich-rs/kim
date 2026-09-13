@@ -767,6 +767,14 @@ mod tests {
         ) -> Result<Vec<crate::store::BotPendingItem>, StoreError> {
             Ok(Vec::new())
         }
+        async fn purge_peer_dm(
+            &self,
+            _app: &str,
+            _account: &str,
+            _peer: &str,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
     }
 
     struct OtherLocationStore;

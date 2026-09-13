@@ -145,7 +145,7 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
     );
   }
 
-  Future<void> save(AgentSettings next) async {
+  Future<void> save(AgentSettings next, {bool persistKey = true}) async {
     await ensureLoaded();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kMode, next.llmBackend);
@@ -154,17 +154,19 @@ class AgentSettingsNotifier extends Notifier<AgentSettings> {
     await prefs.setBool(_kFsTools, next.enableFsTools);
     await prefs.setBool(_kBash, next.bashEnabled);
     await prefs.setString(_kThinking, next.thinkingEffort);
-    try {
-      if (next.apiKey.isEmpty) {
-        await _secure.delete(key: _kApiKey);
-        await _secure.delete(key: _kGooseApiKey);
-      } else {
-        await _secure.write(key: _kApiKey, value: next.apiKey);
-        await _secure.write(key: _kGooseApiKey, value: next.apiKey);
+    if (persistKey) {
+      try {
+        if (next.apiKey.isEmpty) {
+          await _secure.delete(key: _kApiKey);
+          await _secure.delete(key: _kGooseApiKey);
+        } else {
+          await _secure.write(key: _kApiKey, value: next.apiKey);
+          await _secure.write(key: _kGooseApiKey, value: next.apiKey);
+        }
+      } catch (_) {
+        // Same Keychain miss as JWT: in-memory [state] still lets this session
+        // talk to the bot; next cold start retries the read.
       }
-    } catch (_) {
-      // Same Keychain miss as JWT: in-memory [state] still lets this session
-      // talk to the bot; next cold start retries the read.
     }
     state = next;
   }

@@ -88,7 +88,7 @@ class KimPaths {
       await agentsMd.writeAsString(
         '# KIM Goose workspace\n\n'
         'Local project root for the desktop Goose host.\n'
-        'Mention @助手 in any IM thread to talk to the local agent.\n',
+        'Open the Agent contact in the address book to chat 1:1.\n',
       );
     }
   }

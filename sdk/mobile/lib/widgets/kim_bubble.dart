@@ -65,6 +65,7 @@ class KimMessageRow extends StatelessWidget {
     this.showRead = false,
     this.onRetry,
     this.onLongPress,
+    this.onAvatarTap,
   });
 
   final KimChatMsg message;
@@ -79,6 +80,7 @@ class KimMessageRow extends StatelessWidget {
   final bool showRead;
   final VoidCallback? onRetry;
   final void Function(LongPressStartDetails details)? onLongPress;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +138,7 @@ class KimMessageRow extends StatelessWidget {
                     displayName: displayName ?? message.sender,
                     avatarUrl: avatarUrl,
                     onRetry: onRetry,
+                    onAvatarTap: onAvatarTap,
                   ),
           ),
         ),
@@ -168,6 +171,7 @@ class _PeerBlock extends StatelessWidget {
     required this.displayName,
     required this.avatarUrl,
     this.onRetry,
+    this.onAvatarTap,
   });
 
   final KimChatMsg message;
@@ -176,6 +180,7 @@ class _PeerBlock extends StatelessWidget {
   final String displayName;
   final String avatarUrl;
   final VoidCallback? onRetry;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -185,11 +190,14 @@ class _PeerBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         first
-            ? KimAvatar(
-                name: displayName,
-                url: avatarUrl,
-                size: KimAvatarSize.sm,
-                shape: KimAvatarShape.squircle,
+            ? GestureDetector(
+                onTap: onAvatarTap,
+                child: KimAvatar(
+                  name: displayName,
+                  url: avatarUrl,
+                  size: KimAvatarSize.sm,
+                  shape: KimAvatarShape.squircle,
+                ),
               )
             : const SizedBox(width: 36),
         const Gap(10),

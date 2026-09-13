@@ -53,9 +53,6 @@ class ContactsState {
         return p;
       }
     }
-    if (isGooseAgentDest(account)) {
-      return kGooseAgentPerson;
-    }
     for (final p in incoming) {
       if (p.account == account) {
         return p;
@@ -111,8 +108,6 @@ class ContactsNotifier extends Notifier<ContactsState> {
     return ContactsState(
       friends: !agentHostSupported
           ? const []
-          : agents.isEmpty
-          ? withGooseAgent(const [])
           : withLocalAgents(const [], agents),
       incoming: const [],
       outgoing: const {},
@@ -143,9 +138,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
             return friends;
           }
           final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
-          return agents.isEmpty
-              ? withGooseAgent(friends)
-              : withLocalAgents(friends, agents);
+          return withLocalAgents(friends, agents);
         }(),
         incoming: incoming,
         outgoing: {...state.outgoing}..removeWhere(friendIds.contains),
@@ -219,6 +212,25 @@ class ContactsNotifier extends Notifier<ContactsState> {
     }
   }
 
+  /// Remove a human friend (`chat.friend.remove`) or own bot (`chat.bot.delete`).
+  Future<void> removePeer(String dest, {required bool isBot}) async {
+    final client = ref.read(clientPortProvider);
+    if (isBot) {
+      await client.botDelete(dest);
+    } else {
+      await client.friendRemove(dest);
+    }
+    if (!ref.mounted) {
+      return;
+    }
+    state = state.copyWith(
+      friends: state.friends.where((p) => p.account != dest).toList(),
+      hits: state.hits.where((p) => p.account != dest).toList(),
+      outgoing: {...state.outgoing}..remove(dest),
+    );
+    await KimHaptics.success();
+  }
+
   void onRequest(String from, String nickname) {
     if (from.isEmpty || state.isFriend(from)) {
       return;
@@ -267,7 +279,13 @@ class ContactsNotifier extends Notifier<ContactsState> {
       return [
         for (final p in rows)
           if (p.account == account)
-            KimPerson(account: account, nickname: title, avatar: avatar)
+            KimPerson(
+              account: account,
+              nickname: title,
+              avatar: avatar,
+              bio: p.bio,
+              kind: p.kind,
+            )
           else
             p,
       ];

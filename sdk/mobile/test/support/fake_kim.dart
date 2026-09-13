@@ -31,6 +31,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int radioUps = 0;
   int foregrounds = 0;
   int friendRequests = 0;
+  int friendRemoves = 0;
   int lastConfirm = 0;
   final eventsController = StreamController<KimEvent>.broadcast();
   List<KimPerson> friends = const [];
@@ -318,12 +319,31 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> friendReject(String dest) async {}
 
+  @override
+  Future<void> friendRemove(String dest) async {
+    friendRemoves += 1;
+    friends = friends.where((p) => p.account != dest).toList();
+  }
+
   KimPerson me = const KimPerson(account: 'alice', nickname: 'alice');
   String lastAvatar = '';
 
   @override
   Future<KimPerson> profile({String dest = ''}) async {
-    return me;
+    if (dest.isEmpty || dest == me.account) {
+      return me;
+    }
+    for (final p in friends) {
+      if (p.account == dest) {
+        return p;
+      }
+    }
+    for (final p in incoming) {
+      if (p.account == dest) {
+        return p;
+      }
+    }
+    return KimPerson(account: dest, nickname: dest);
   }
 
   @override
@@ -357,12 +377,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
     String bio = '',
   }) async {
     lastAvatar = avatar;
-    me = KimPerson(account: me.account, nickname: nickname, avatar: avatar);
+    me = KimPerson(
+      account: me.account,
+      nickname: nickname,
+      avatar: avatar,
+      bio: bio,
+    );
     return me;
   }
 
   int botCreates = 0;
   int botUpdates = 0;
+  int botDeletes = 0;
   String lastBotCreateId = '';
   String lastBotCreateNickname = '';
   String lastBotCreateModel = '';
@@ -373,6 +399,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastBotUpdateThinking = '';
   int? lastBotUpdateContextTokens;
   Object? botCreateError;
+  String lastBotDeleteDest = '';
+  Object? botDeleteError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
   var botReplyInFlight = 0;
   var botReplyMaxInFlight = 0;
@@ -404,6 +432,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     final person = KimPerson(
       account: 'b_$clientProfileId',
       nickname: nickname,
+      bio: bio,
       kind: ProfileKind.bot,
     );
     if (!friends.any((p) => p.account == person.account)) {
@@ -413,7 +442,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<void> botDelete(String dest) async {}
+  Future<void> botDelete(String dest) async {
+    botDeletes += 1;
+    lastBotDeleteDest = dest;
+    final fail = botDeleteError;
+    if (fail != null) {
+      throw fail;
+    }
+    friends = friends.where((p) => p.account != dest).toList();
+  }
 
   @override
   Future<KimPerson> botUpdate({
@@ -435,6 +472,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
       account: dest,
       nickname: nickname,
       avatar: avatar,
+      bio: bio,
       kind: ProfileKind.bot,
     );
   }

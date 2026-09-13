@@ -127,4 +127,30 @@ class AgentBridge {
     await ensure();
     return listBundledProviders();
   }
+
+  Future<String> catalogVendorsJson() async {
+    await ensure();
+    return catalogVendors();
+  }
+
+  Future<String> catalogSurfaceJson({
+    required String vendor,
+    required String model,
+  }) async {
+    await ensure();
+    return catalogSurface(vendor: vendor, model: model);
+  }
+
+  Future<String> catalogValidateChoice({
+    required String vendor,
+    required String model,
+    required String choiceJson,
+  }) async {
+    await ensure();
+    return catalogValidate(
+      vendor: vendor,
+      model: model,
+      choiceJson: choiceJson,
+    );
+  }
 }

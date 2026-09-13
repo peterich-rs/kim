@@ -10,9 +10,8 @@ import '../../agent/host_support.dart';
 import '../../agent/mention.dart';
 import '../../copy.dart';
 import '../../state/agent_profiles.dart';
-import '../../core/haptics.dart';
 import '../../models/models.dart';
-import '../../router/open_chat.dart';
+import '../../router/open_peer.dart';
 import '../../state/contacts.dart';
 import '../../state/mutations.dart';
 import '../../widgets/empty_state.dart';
@@ -107,13 +106,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 
   void _open(String id, String title) {
-    KimHaptics.selection();
-    openKimChat(context, ref, id: id, title: title);
+    openKimPeerProfile(context, ref, id: id, title: title);
   }
 
   @override
   Widget build(BuildContext context) {
     final social = ref.watch(contactsProvider);
+    ref.watch(agentProfilesProvider);
+    final localAgents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     final theme = Theme.of(context);
     final hits = social.hits;
     final queried = social.query.isNotEmpty;
@@ -208,11 +208,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                 ],
               ]),
             ],
-            if (agentHostSupported) ...[
+            if (agentHostSupported && localAgents.isNotEmpty) ...[
               _sectionLabel(theme, Copy.agentLocalSection),
               _groupSliver([
-                for (final profile
-                    in ref.watch(agentProfilesProvider.notifier).visibleAgents)
+                for (final profile in localAgents)
                   ListTile(
                     leading: KimAvatar(name: profile.displayName),
                     title: Text(profile.displayName),

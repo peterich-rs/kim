@@ -82,6 +82,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<String> friendReject({required String dest});
 
+  Future<String> friendRemove({required String dest});
+
   Future<String> friendRequest({required String dest});
 
   Future<List<KimHistoryItem>> history({

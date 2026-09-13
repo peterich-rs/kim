@@ -22,13 +22,21 @@ pub struct Profile {
     pub nickname: String,
     #[serde(default)]
     pub avatar: String,
+    #[serde(default)]
+    pub bio: String,
     /// `PROFILE_KIND_USER` (1) or `PROFILE_KIND_BOT` (2).
     #[serde(default)]
     pub kind: i32,
 }
 
 impl Profile {
-    pub fn from_wire(account: String, nickname: String, avatar: String, kind: i32) -> Self {
+    pub fn from_wire(
+        account: String,
+        nickname: String,
+        avatar: String,
+        bio: String,
+        kind: i32,
+    ) -> Self {
         let nickname = if nickname.is_empty() {
             account.clone()
         } else {
@@ -38,6 +46,7 @@ impl Profile {
             account,
             nickname,
             avatar,
+            bio,
             kind: kim_protocol::profile_kind(kind),
         }
     }

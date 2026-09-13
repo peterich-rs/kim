@@ -94,15 +94,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     if (!store.serverIdentity || !ref.read(authProvider).signedIn) {
       return;
     }
-    AgentProfile? profile;
-    final canon = canonicalAgentDest(dest);
-    for (final p in ref.read(agentProfilesProvider)) {
-      if (canonicalAgentDest(p.dest) == canon) {
-        profile = p;
-        break;
-      }
-    }
-    profile ??= store.goose;
+    var profile = profileForChatDest(dest, ref.read(agentProfilesProvider));
     if (profile == null) {
       return;
     }
@@ -234,9 +226,6 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       await sendMessageMutation(dest).run(ref, (tsx) {
         return tsx.get(outboxProvider.notifier).sendText(dest, text);
       });
-      unawaited(
-        ref.read(chatAgentProvider).onOutgoingText(dest: dest, text: text),
-      );
       return true;
     } on StateError catch (err) {
       _toast(err.message, error: true);

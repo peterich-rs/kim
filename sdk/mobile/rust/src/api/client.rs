@@ -495,6 +495,13 @@ impl KimSdkHandle {
         Ok("ok".into())
     }
 
+    pub fn friend_remove(&self, dest: String) -> Result<String, String> {
+        let client = self.supervisor()?.client();
+        rt().block_on(client.friend_remove(&dest))
+            .map_err(|e| e.to_string())?;
+        Ok("ok".into())
+    }
+
     pub fn friend_list(&self) -> Result<String, String> {
         let client = self.supervisor()?.client();
         let users = rt()
