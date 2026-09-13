@@ -198,7 +198,10 @@ pub async fn fetch_models(spec: &ProviderSpec, api_key: &str) -> Result<Vec<Stri
         .fetch_supported_models()
         .await
         .map_err(|e| HostError::Failed(e.to_string()))?;
-    let list: Vec<String> = list.into_iter().filter(|id| is_concrete_model_id(id)).collect();
+    let list: Vec<String> = list
+        .into_iter()
+        .filter(|id| is_concrete_model_id(id))
+        .collect();
     if list.is_empty() {
         return Err(HostError::Failed("empty model list".into()));
     }
@@ -573,7 +576,10 @@ mod tests {
         let (host, path) = split_openai_url(&effective_base_url(&spec)).unwrap();
         assert_eq!(host, "https://api.x.ai");
         assert_eq!(path, "v1/chat/completions");
-        assert_eq!(goose_map_base_path(&path, "models", "v1/models"), "v1/models");
+        assert_eq!(
+            goose_map_base_path(&path, "models", "v1/models"),
+            "v1/models"
+        );
         let provider = build_openai(&spec, "sk-dummy").unwrap();
         let json = serde_json::to_value(&provider).unwrap();
         assert_eq!(json["base_path"], "v1/chat/completions");

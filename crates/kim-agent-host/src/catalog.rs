@@ -440,11 +440,7 @@ fn family_rules() -> Vec<(&'static str, ReasoningSurface)> {
         ),
         (
             "deepseek-",
-            effort(
-                "reasoning_effort",
-                &["none", "low", "high", "max"],
-                "high",
-            ),
+            effort("reasoning_effort", &["none", "low", "high", "max"], "high"),
         ),
         (
             "claude-",
@@ -493,10 +489,7 @@ fn family_rules() -> Vec<(&'static str, ReasoningSurface)> {
             "o4",
             effort("reasoning_effort", &["low", "medium", "high"], "medium"),
         ),
-        (
-            "grok",
-            effort("reasoning_effort", &["low", "high"], "low"),
-        ),
+        ("grok", effort("reasoning_effort", &["low", "high"], "low")),
     ]
 }
 
