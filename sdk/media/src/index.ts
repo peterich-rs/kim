@@ -1,5 +1,12 @@
 import { bearerToken, verifyHs256 } from "./jwt";
-import { extensionFor, objectKey, parseMaxBytes, publicUrl } from "./object";
+import {
+  contentTypeFor,
+  objectKey,
+  parseMaxBytes,
+  publicUrl,
+  resolveExtension,
+  sha256Hex,
+} from "./object";
 
 const ALLOW_ORIGINS = new Set([
   "https://kim.ainexc.com",
@@ -88,11 +95,6 @@ export async function handleRequest(
     return json(401, { error: "unauthorized" }, origin);
   }
 
-  const contentType = request.headers.get("Content-Type") ?? "";
-  const ext = extensionFor(contentType);
-  if (!ext) {
-    return json(415, { error: "unsupported media type" }, origin);
-  }
   const max = parseMaxBytes(env.MAX_BYTES);
   const buf = await request.arrayBuffer();
   if (buf.byteLength === 0) {
@@ -101,12 +103,25 @@ export async function handleRequest(
   if (buf.byteLength > max) {
     return json(413, { error: "too large" }, origin);
   }
-  const key = objectKey(account, ext);
-  const ct = contentType.split(";")[0]?.trim().toLowerCase() ?? "application/octet-stream";
-  await env.BUCKET.put(key, buf, {
-    httpMetadata: { contentType: ct },
-    customMetadata: { acc: account },
-  });
+
+  const headerCt = request.headers.get("Content-Type") ?? "";
+  const ext = resolveExtension(headerCt, buf);
+  if (!ext) {
+    return json(415, { error: "unsupported media type" }, origin);
+  }
+  const ct = contentTypeFor(ext) ?? "application/octet-stream";
+  const sha256 = await sha256Hex(buf);
+  const key = objectKey(sha256, ext);
+
+  const existing = await env.BUCKET.head(key);
+  const deduped = existing !== null;
+  if (!deduped) {
+    await env.BUCKET.put(key, buf, {
+      httpMetadata: { contentType: ct },
+      customMetadata: { acc: account },
+    });
+  }
+
   return json(
     201,
     {
@@ -114,6 +129,8 @@ export async function handleRequest(
       url: publicUrl(env.PUBLIC_BASE, key),
       contentType: ct,
       bytes: buf.byteLength,
+      sha256,
+      deduped,
     },
     origin,
   );
