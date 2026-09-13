@@ -13,7 +13,7 @@ use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use kim_core::{
-    Acceptor, Channel, ChannelHandle, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
+    Acceptor, Channel, ChannelHandle, ChannelId, ChannelMap, ChannelOpts, Conn, Error, LaneKeyFn,
     MailboxFullHook, MessageListener, OpCode, Server, SocketOpts, StateListener, WriteFullPolicy,
     DEFAULT_DRAIN_WAIT, DEFAULT_LOGIN_WAIT, DEFAULT_SERVER_MAX_IN_FLIGHT,
 };
@@ -146,16 +146,16 @@ impl FrontendState {
         tasks.spawn(fut);
     }
 
-    pub async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id) else {
-            return Err(Error::ChannelNotFound(channel_id.to_string()));
+    pub async fn push(&self, channel_id: &ChannelId, payload: Bytes) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id.as_str()) else {
+            return Err(Error::ChannelNotFound(channel_id.as_str().to_owned()));
         };
         ch.push(payload).await
     }
 
-    pub async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
-        let Some(ch) = self.channels.get(channel_id) else {
-            return Err(Error::ChannelNotFound(channel_id.to_string()));
+    pub async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error> {
+        let Some(ch) = self.channels.get(channel_id.as_str()) else {
+            return Err(Error::ChannelNotFound(channel_id.as_str().to_owned()));
         };
         ch.close().await;
         Ok(())
@@ -238,7 +238,7 @@ where
     };
 
     let (reader, writer) = conn.into_split();
-    let (channel, read_loop) = Channel::pair(id.clone(), reader, writer, ctx.opts);
+    let (channel, read_loop) = Channel::pair(id.as_arc().clone(), reader, writer, ctx.opts);
     if let Err(err) = ctx.channels.add(channel.clone()) {
         channel.close().await;
         ctx.acceptor.on_accept_abandoned(&id).await;
@@ -248,23 +248,23 @@ where
 
     let Some(messages) = ctx.messages else {
         ctx.acceptor.on_accept_abandoned(&id).await;
-        if let Some(ch) = ctx.channels.get(&id) {
+        if let Some(ch) = ctx.channels.get(id.as_str()) {
             ch.close().await;
         }
-        ctx.channels.remove(&id);
+        ctx.channels.remove(id.as_str());
         return Err(Error::other("MessageListener is not set"));
     };
 
     if let Err(err) = ctx.acceptor.on_channel_ready(&id).await {
-        if let Some(ch) = ctx.channels.get(&id) {
+        if let Some(ch) = ctx.channels.get(id.as_str()) {
             ch.close().await;
         }
-        ctx.channels.remove(&id);
+        ctx.channels.remove(id.as_str());
         return Err(err);
     }
 
     let read_result = read_loop.run(messages).await;
-    ctx.channels.remove(&id);
+    ctx.channels.remove(id.as_str());
     if let Some(states) = ctx.states {
         let _ = states.disconnect(&id).await;
     }
@@ -408,11 +408,11 @@ impl Server for TcpServer {
         Ok(())
     }
 
-    async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error> {
+    async fn push(&self, channel_id: &ChannelId, payload: Bytes) -> Result<(), Error> {
         self.state.push(channel_id, payload).await
     }
 
-    async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+    async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error> {
         self.state.close_channel(channel_id).await
     }
 
@@ -447,9 +447,10 @@ struct DefaultAcceptor;
 
 #[async_trait]
 impl Acceptor for DefaultAcceptor {
-    async fn accept(&self, _conn: &mut dyn Conn, _timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, _conn: &mut dyn Conn, _timeout: Duration) -> Result<ChannelId, Error> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(1);
-        Ok(format!("ch-{}", SEQ.fetch_add(1, Ordering::Relaxed)))
+        let id = format!("ch-{}", SEQ.fetch_add(1, Ordering::Relaxed));
+        Ok(ChannelId::from_trusted(&id))
     }
 }

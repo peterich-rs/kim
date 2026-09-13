@@ -1,0 +1,13 @@
+# Placeholder for `cargo deny`. Not a CI gate; syntax only.
+# Licenses: MIT / Apache-2.0 / BSD. Advisories: yanked crates are denied.
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+]

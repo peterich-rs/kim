@@ -119,6 +119,8 @@ abstract class KimClientPort {
 
   Future<void> friendReject(String dest);
 
+  Future<void> friendRemove(String dest);
+
   Future<KimPerson> profile({String dest = ''});
 
   Future<KimPerson> updateProfile({
@@ -718,6 +720,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
             account: '${item['account'] ?? ''}',
             nickname: '${item['nickname'] ?? ''}',
             avatar: '${item['avatar'] ?? ''}',
+            bio: '${item['bio'] ?? ''}',
             kind: _profileKind(item['kind']),
           ),
     ].where((p) => p.account.isNotEmpty).toList();
@@ -753,6 +756,11 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _require().friendReject(dest: dest);
   }
 
+  @override
+  Future<void> friendRemove(String dest) async {
+    await _require().friendRemove(dest: dest);
+  }
+
   KimPerson _person(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
@@ -766,6 +774,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
       nickname: '${decoded['nickname'] ?? ''}',
       avatar: '${decoded['avatar'] ?? ''}',
+      bio: '${decoded['bio'] ?? ''}',
       kind: _profileKind(decoded['kind']),
     );
   }

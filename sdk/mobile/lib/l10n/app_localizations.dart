@@ -1519,6 +1519,42 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'回到消息'**
   String get goHome;
+
+  /// No description provided for @bio.
+  ///
+  /// In zh, this message translates to:
+  /// **'简介'**
+  String get bio;
+
+  /// No description provided for @botBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'助手'**
+  String get botBadge;
+
+  /// No description provided for @deletePeer.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get deletePeer;
+
+  /// No description provided for @deletePeerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除联系人？'**
+  String get deletePeerTitle;
+
+  /// No description provided for @deletePeerBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'将解除关系，并清除本机会话。人类好友的服务端历史会保留。'**
+  String get deletePeerBody;
+
+  /// No description provided for @peerDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get peerDeleted;
 }
 
 class _AppLocalizationsDelegate

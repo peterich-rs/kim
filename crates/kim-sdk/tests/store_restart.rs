@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 use kim_sdk::{KimSdk, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus, StartSession};
 
 fn session(account: &str) -> StartSession {

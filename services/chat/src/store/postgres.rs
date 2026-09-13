@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kim_protocol::AccountId;
 use kim_router::{SessionError, SessionStorage};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -494,7 +495,11 @@ impl PostgresMessageStore {
         match timeout(LIST_LOCATIONS_BUDGET, async move {
             let mut out = Vec::new();
             for account in &recv {
-                let locs = match sessions.get_locations(std::slice::from_ref(account)).await {
+                let account_id = AccountId::from_trusted(account);
+                let locs = match sessions
+                    .get_locations(std::slice::from_ref(&account_id))
+                    .await
+                {
                     Ok(v) => v,
                     Err(SessionError::NotFound) => continue,
                     Err(err) => return Err(StoreError::Backend(err.to_string())),
@@ -1505,6 +1510,95 @@ impl MessageStore for PostgresMessageStore {
             })
             .collect())
     }
+
+    async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError> {
+        if account.is_empty() || peer.is_empty() || account == peer {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await.map_err(pg_err)?;
+        let ids: Vec<(i64,)> = sqlx::query_as(
+            "SELECT DISTINCT message_id FROM message_index
+              WHERE app = $1 AND group_id = ''
+                AND ((account_a = $2 AND account_b = $3)
+                  OR (account_a = $3 AND account_b = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        let message_ids: Vec<i64> = ids.into_iter().map(|(id,)| id).collect();
+        sqlx::query(
+            "DELETE FROM conversation_inbox
+              WHERE app = $1 AND kind = 0
+                AND ((account = $2 AND dest = $3) OR (account = $3 AND dest = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        sqlx::query(
+            "DELETE FROM conversation_reads
+              WHERE app = $1 AND group_id = ''
+                AND ((account = $2 AND peer = $3) OR (account = $3 AND peer = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if !message_ids.is_empty() {
+            sqlx::query(
+                "DELETE FROM pending_delivery
+                  WHERE app = $1 AND message_id = ANY($2)",
+            )
+            .bind(app)
+            .bind(&message_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            sqlx::query(
+                "DELETE FROM message_idempotency
+                  WHERE app = $1 AND message_id = ANY($2)",
+            )
+            .bind(app)
+            .bind(&message_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        }
+        sqlx::query(
+            "DELETE FROM message_index
+              WHERE app = $1 AND group_id = ''
+                AND ((account_a = $2 AND account_b = $3)
+                  OR (account_a = $3 AND account_b = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if !message_ids.is_empty() {
+            sqlx::query("DELETE FROM message_content WHERE id = ANY($1)")
+                .bind(&message_ids)
+                .execute(&mut *tx)
+                .await
+                .map_err(pg_err)?;
+        }
+        sqlx::query("DELETE FROM bot_turns WHERE app = $1 AND bot_account = $2")
+            .bind(app)
+            .bind(peer)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        tx.commit().await.map_err(pg_err)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1513,6 +1607,7 @@ mod tests {
     use crate::idgen::SequenceIdGen;
     use crate::store::{DeliveryTarget, MemoryAckIndex};
     use async_trait::async_trait;
+    use kim_protocol::ChannelId;
     use kim_router::{SessionError, SessionStorage};
 
     fn sample(sender: &str, dest: &str, send_time: i64, body: &str) -> InsertMessage {
@@ -1693,21 +1788,21 @@ mod tests {
         async fn add(&self, _: &kim_protocol::pkt::Session) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn delete(&self, _: &str, _: &str) -> Result<(), SessionError> {
+        async fn delete(&self, _: &AccountId, _: &ChannelId) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn get(&self, _: &str) -> Result<kim_protocol::pkt::Session, SessionError> {
+        async fn get(&self, _: &ChannelId) -> Result<kim_protocol::pkt::Session, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_locations(
             &self,
-            _: &[String],
+            _: &[AccountId],
         ) -> Result<Vec<kim_router::Location>, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_location(
             &self,
-            _: &str,
+            _: &AccountId,
             _: &str,
         ) -> Result<kim_router::Location, SessionError> {
             Err(SessionError::Other("boom".into()))

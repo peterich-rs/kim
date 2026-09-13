@@ -5,18 +5,20 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use kim_protocol::pkt::{Session, Status};
-use kim_protocol::LogicPkt;
+use kim_protocol::{Command, LogicPkt};
 
 use crate::context::Context;
 use crate::dispatcher::{Dispatcher, RouterError};
 use crate::storage::SessionStorage;
 
 #[allow(clippy::type_complexity)]
-pub type HandlerFn = Arc<dyn Fn(Context) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+pub type HandlerFn = Arc<
+    dyn Fn(Context) -> Pin<Box<dyn Future<Output = Result<(), RouterError>> + Send>> + Send + Sync,
+>;
 
 #[derive(Default)]
 pub struct Router {
-    handlers: HashMap<String, HandlerFn>,
+    handlers: HashMap<Command, HandlerFn>,
 }
 
 impl Router {
@@ -24,13 +26,13 @@ impl Router {
         Self::default()
     }
 
-    pub fn handle<F, Fut>(&mut self, command: impl Into<String>, f: F)
+    pub fn handle<F, Fut>(&mut self, command: Command, f: F)
     where
         F: Fn(Context) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = Result<(), RouterError>> + Send + 'static,
     {
         self.handlers
-            .insert(command.into(), Arc::new(move |ctx| Box::pin(f(ctx))));
+            .insert(command, Arc::new(move |ctx| Box::pin(f(ctx))));
     }
 
     pub async fn serve(
@@ -40,11 +42,10 @@ impl Router {
         cache: Arc<dyn SessionStorage>,
         session: Session,
     ) -> Result<(), RouterError> {
-        match self.handlers.get(&packet.header.command).cloned() {
-            Some(handler) => {
-                handler(Context::new(packet, session, dispatcher, cache)).await;
-                Ok(())
-            }
+        let handler =
+            Command::parse(&packet.header.command).and_then(|cmd| self.handlers.get(&cmd).cloned());
+        match handler {
+            Some(handler) => handler(Context::new(packet, session, dispatcher, cache)).await,
             None => {
                 let ctx = Context::new(packet, session, dispatcher, cache);
                 ctx.resp_bytes(Status::CommandNotFound, Bytes::new()).await
@@ -83,5 +84,27 @@ mod tests {
         assert_eq!(got[0].pkt.header.flag, Flag::Response as i32);
         assert_eq!(got[0].pkt.header.status, Status::CommandNotFound as i32);
         assert!(got[0].pkt.body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unregistered_known_command_is_command_not_found() {
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let router = Router::new();
+        let mut pkt = LogicPkt::new(Command::Presence.as_str(), 3, Bytes::new());
+        pkt.header.channel_id = "ch-1".into();
+        pkt.set_meta(META_DEST_SERVER, "gate-a");
+        let session = Session {
+            channel_id: "ch-1".into(),
+            gate_id: "gate-a".into(),
+            ..Session::default()
+        };
+        router
+            .serve(pkt, dispatcher.clone(), Arc::new(NoopStorage), session)
+            .await
+            .unwrap();
+        let got = dispatcher.recorded();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].pkt.header.command, Command::Presence.as_str());
+        assert_eq!(got[0].pkt.header.status, Status::CommandNotFound as i32);
     }
 }

@@ -1,30 +1,12 @@
 //! Newtypes for account, dest, client message id, and session epoch.
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct AccountId(pub String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DestId(pub String);
+pub use kim_protocol::{AccountId, DestId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ClientMessageId(pub String);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionEpoch(pub u64);
-
-impl AccountId {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl DestId {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 impl ClientMessageId {
     #[must_use]

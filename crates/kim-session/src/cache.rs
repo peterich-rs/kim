@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use kim_protocol::pkt::Session;
+use kim_protocol::{AccountId, ChannelId};
 use kim_router::{Location, SessionError, SessionStorage};
 use moka::sync::Cache as MokaCache;
 use std::time::Duration;
@@ -100,7 +101,10 @@ impl CachedSessionStore {
         if *_epoch != stamp {
             return;
         }
-        let chans: HashSet<String> = slots.iter().map(|l| l.channel_id.clone()).collect();
+        let chans: HashSet<String> = slots
+            .iter()
+            .map(|l| l.channel_id.as_str().to_owned())
+            .collect();
         self.channels_lock().insert(account.clone(), chans);
         self.neg.invalidate(&account);
         self.locs.insert(account, Arc::new(slots));
@@ -129,7 +133,7 @@ impl CachedSessionStore {
         }
         if let Some(slots) = self.locs.get(account) {
             for loc in slots.iter() {
-                self.sessions.invalidate(&loc.channel_id);
+                self.sessions.invalidate(loc.channel_id.as_str());
             }
         }
         self.locs.invalidate(account);
@@ -167,24 +171,29 @@ impl SessionStorage for CachedSessionStore {
         Ok(())
     }
 
-    async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+    async fn delete(
+        &self,
+        account: &AccountId,
+        channel_id: &ChannelId,
+    ) -> Result<(), SessionError> {
         self.inner.delete(account, channel_id).await?;
         let _epoch = self.bump_fill_epoch();
-        self.sessions.invalidate(channel_id);
-        self.untrack_channel(account, channel_id);
-        self.locs.invalidate(account);
-        self.neg.invalidate(account);
+        self.sessions.invalidate(channel_id.as_str());
+        self.untrack_channel(account.as_str(), channel_id.as_str());
+        self.locs.invalidate(account.as_str());
+        self.neg.invalidate(account.as_str());
         Ok(())
     }
 
-    async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
-        if let Some(s) = self.sessions.get(channel_id) {
+    async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError> {
+        if let Some(s) = self.sessions.get(channel_id.as_str()) {
             return Ok(s);
         }
         match self.inner.get(channel_id).await {
             Ok(s) => {
-                self.track_channel(&s.account, channel_id);
-                self.sessions.insert(channel_id.to_string(), s.clone());
+                self.track_channel(&s.account, channel_id.as_str());
+                self.sessions
+                    .insert(channel_id.as_str().to_owned(), s.clone());
                 Ok(s)
             }
             Err(SessionError::NotFound) => Err(SessionError::NotFound),
@@ -192,14 +201,14 @@ impl SessionStorage for CachedSessionStore {
         }
     }
 
-    async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+    async fn get_locations(&self, accounts: &[AccountId]) -> Result<Vec<Location>, SessionError> {
         let mut hits = Vec::new();
         let mut misses = Vec::new();
         for acc in accounts {
-            if self.neg.get(acc).is_some() {
+            if self.neg.get(acc.as_str()).is_some() {
                 continue;
             }
-            match self.locs.get(acc) {
+            match self.locs.get(acc.as_str()) {
                 Some(slots) => hits.extend(slots.iter().cloned()),
                 None => misses.push(acc.clone()),
             }
@@ -210,12 +219,14 @@ impl SessionStorage for CachedSessionStore {
                 Ok(slots) => {
                     hits.extend(slots.iter().cloned());
                     if misses.len() == 1 {
-                        self.remember_locs(misses[0].clone(), slots, stamp);
+                        self.remember_locs(misses[0].as_str().to_owned(), slots, stamp);
                     } else {
                         for acc in misses {
                             match self.inner.list_locations(&acc).await {
-                                Ok(v) => self.remember_locs(acc, v, stamp),
-                                Err(SessionError::NotFound) => self.remember_empty(acc, stamp),
+                                Ok(v) => self.remember_locs(acc.as_str().to_owned(), v, stamp),
+                                Err(SessionError::NotFound) => {
+                                    self.remember_empty(acc.as_str().to_owned(), stamp)
+                                }
                                 Err(e) => return Err(e),
                             }
                         }
@@ -223,7 +234,7 @@ impl SessionStorage for CachedSessionStore {
                 }
                 Err(SessionError::NotFound) => {
                     for acc in misses {
-                        self.remember_empty(acc, stamp);
+                        self.remember_empty(acc.as_str().to_owned(), stamp);
                     }
                 }
                 Err(e) => return Err(e),
@@ -236,8 +247,12 @@ impl SessionStorage for CachedSessionStore {
         }
     }
 
-    async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError> {
-        if let Some(slots) = self.locs.get(account) {
+    async fn get_location(
+        &self,
+        account: &AccountId,
+        device: &str,
+    ) -> Result<Location, SessionError> {
+        if let Some(slots) = self.locs.get(account.as_str()) {
             if let Some(l) = pick(&slots, device) {
                 return Ok(l.clone());
             }
@@ -245,14 +260,14 @@ impl SessionStorage for CachedSessionStore {
                 return Err(SessionError::NotFound);
             }
         }
-        if self.neg.get(account).is_some() {
+        if self.neg.get(account.as_str()).is_some() {
             return Err(SessionError::NotFound);
         }
         let stamp = self.fill_stamp();
         let slots = match self.inner.list_locations(account).await {
             Ok(s) => s,
             Err(SessionError::NotFound) => {
-                self.remember_empty(account.to_string(), stamp);
+                self.remember_empty(account.as_str().to_owned(), stamp);
                 return Err(SessionError::NotFound);
             }
             Err(e) => return Err(e),
@@ -260,7 +275,7 @@ impl SessionStorage for CachedSessionStore {
         let loc = pick(&slots, device)
             .cloned()
             .ok_or(SessionError::NotFound)?;
-        self.remember_locs(account.to_string(), slots, stamp);
+        self.remember_locs(account.as_str().to_owned(), slots, stamp);
         Ok(loc)
     }
 }
@@ -279,6 +294,14 @@ mod tests {
         }
     }
 
+    fn acc(s: &str) -> AccountId {
+        AccountId::from_trusted(s)
+    }
+
+    fn ch(s: &str) -> ChannelId {
+        ChannelId::from_trusted(s)
+    }
+
     #[tokio::test]
     async fn miss_fill_and_partial_hits() {
         let inner = Arc::new(MemorySessionStore::new());
@@ -286,12 +309,12 @@ mod tests {
         inner.add(&session("c2", "bob", "g")).await.unwrap();
         let cache = CachedSessionStore::wrap(inner);
         let locs = cache
-            .get_locations(&["alice".into(), "bob".into(), "carol".into()])
+            .get_locations(&[acc("alice"), acc("bob"), acc("carol")])
             .await
             .unwrap();
         assert_eq!(locs.len(), 2);
-        let again = cache.get_location("alice", "").await.unwrap();
-        assert_eq!(again.channel_id, "c1");
+        let again = cache.get_location(&acc("alice"), "").await.unwrap();
+        assert_eq!(again.channel_id.as_str(), "c1");
     }
 
     #[tokio::test]
@@ -300,7 +323,7 @@ mod tests {
         inner.add(&session("c1", "alice", "g")).await.unwrap();
         inner.add(&session("c2", "alice", "g")).await.unwrap();
         let cache = CachedSessionStore::wrap(inner);
-        let locs = cache.list_locations("alice").await.unwrap();
+        let locs = cache.list_locations(&acc("alice")).await.unwrap();
         assert_eq!(locs.len(), 2);
     }
 
@@ -308,12 +331,12 @@ mod tests {
     async fn add_invalidates_neg_and_locs() {
         let inner = Arc::new(MemorySessionStore::new());
         let cache = CachedSessionStore::wrap(inner.clone());
-        let err = cache.get_locations(&["alice".into()]).await.unwrap_err();
+        let err = cache.get_locations(&[acc("alice")]).await.unwrap_err();
         assert!(matches!(err, SessionError::NotFound));
         cache.add(&session("c1", "alice", "g")).await.unwrap();
-        let locs = cache.get_locations(&["alice".into()]).await.unwrap();
+        let locs = cache.get_locations(&[acc("alice")]).await.unwrap();
         assert_eq!(locs.len(), 1);
-        assert_eq!(locs[0].channel_id, "c1");
+        assert_eq!(locs[0].channel_id.as_str(), "c1");
     }
 
     #[tokio::test]
@@ -321,18 +344,18 @@ mod tests {
         let inner = Arc::new(MemorySessionStore::new());
         inner.add(&session("c1", "alice", "g")).await.unwrap();
         let cache = CachedSessionStore::wrap(inner.clone());
-        assert_eq!(cache.get("c1").await.unwrap().account, "alice");
-        assert_eq!(
-            cache.get_locations(&["alice".into()]).await.unwrap().len(),
-            1
-        );
-        inner.delete("alice", "c1").await.unwrap();
+        assert_eq!(cache.get(&ch("c1")).await.unwrap().account, "alice");
+        assert_eq!(cache.get_locations(&[acc("alice")]).await.unwrap().len(), 1);
+        inner.delete(&acc("alice"), &ch("c1")).await.unwrap();
         cache.invalidate_account("alice");
         assert!(matches!(
-            cache.get_locations(&["alice".into()]).await,
+            cache.get_locations(&[acc("alice")]).await,
             Err(SessionError::NotFound)
         ));
-        assert!(matches!(cache.get("c1").await, Err(SessionError::NotFound)));
+        assert!(matches!(
+            cache.get(&ch("c1")).await,
+            Err(SessionError::NotFound)
+        ));
     }
 
     #[tokio::test]
@@ -343,21 +366,21 @@ mod tests {
             async fn add(&self, _: &Session) -> Result<(), SessionError> {
                 Ok(())
             }
-            async fn delete(&self, _: &str, _: &str) -> Result<(), SessionError> {
+            async fn delete(&self, _: &AccountId, _: &ChannelId) -> Result<(), SessionError> {
                 Ok(())
             }
-            async fn get(&self, _: &str) -> Result<Session, SessionError> {
+            async fn get(&self, _: &ChannelId) -> Result<Session, SessionError> {
                 Err(SessionError::Other("boom".into()))
             }
-            async fn get_locations(&self, _: &[String]) -> Result<Vec<Location>, SessionError> {
+            async fn get_locations(&self, _: &[AccountId]) -> Result<Vec<Location>, SessionError> {
                 Err(SessionError::Other("boom".into()))
             }
-            async fn get_location(&self, _: &str, _: &str) -> Result<Location, SessionError> {
+            async fn get_location(&self, _: &AccountId, _: &str) -> Result<Location, SessionError> {
                 Err(SessionError::Other("boom".into()))
             }
         }
         let cache = CachedSessionStore::wrap(Arc::new(Boom));
-        let err = cache.get_locations(&["x".into()]).await.unwrap_err();
+        let err = cache.get_locations(&[acc("x")]).await.unwrap_err();
         assert!(matches!(err, SessionError::Other(_)));
     }
 
@@ -378,15 +401,19 @@ mod tests {
             async fn add(&self, session: &Session) -> Result<(), SessionError> {
                 self.inner.add(session).await
             }
-            async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+            async fn delete(
+                &self,
+                account: &AccountId,
+                channel_id: &ChannelId,
+            ) -> Result<(), SessionError> {
                 self.inner.delete(account, channel_id).await
             }
-            async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
+            async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError> {
                 self.inner.get(channel_id).await
             }
             async fn get_locations(
                 &self,
-                accounts: &[String],
+                accounts: &[AccountId],
             ) -> Result<Vec<Location>, SessionError> {
                 if self.first.swap(false, Ordering::SeqCst) {
                     let started = self
@@ -411,7 +438,7 @@ mod tests {
             }
             async fn get_location(
                 &self,
-                account: &str,
+                account: &AccountId,
                 device: &str,
             ) -> Result<Location, SessionError> {
                 self.inner.get_location(account, device).await
@@ -429,14 +456,14 @@ mod tests {
         let cache = CachedSessionStore::wrap(Arc::new(inner));
         let lookup = {
             let cache = cache.clone();
-            tokio::spawn(async move { cache.get_locations(&["alice".into()]).await })
+            tokio::spawn(async move { cache.get_locations(&[acc("alice")]).await })
         };
         started_rx.await.unwrap();
         cache.add(&session("c1", "alice", "g")).await.unwrap();
         let _ = release_tx.send(());
         let _ = lookup.await.unwrap();
-        let locs = cache.get_locations(&["alice".into()]).await.unwrap();
+        let locs = cache.get_locations(&[acc("alice")]).await.unwrap();
         assert_eq!(locs.len(), 1);
-        assert_eq!(locs[0].channel_id, "c1");
+        assert_eq!(locs[0].channel_id.as_str(), "c1");
     }
 }

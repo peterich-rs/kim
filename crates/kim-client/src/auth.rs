@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
-use kim_protocol::{PasswordSealPublic, PASSWORD_SEAL_ALG};
+use kim_protocol::{AccountId, PasswordSealPublic, PASSWORD_SEAL_ALG};
 use prost::Message;
 use reqwest::header::{
     HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE,
@@ -20,8 +20,6 @@ use crate::config::{DEFAULT_LOCAL_HTTP_ORIGIN, DEFAULT_PROD_HTTP_ORIGIN};
 use crate::ClientError;
 
 const CONTENT_PROTOBUF: &str = "application/x-protobuf";
-const ACCOUNT_MIN: usize = 3;
-const ACCOUNT_MAX: usize = 32;
 const PASSWORD_MIN: usize = 8;
 const PASSWORD_MAX: usize = 128;
 const SEAL_KEY_TTL: Duration = Duration::from_secs(300);
@@ -360,14 +358,8 @@ impl AuthClient {
 }
 
 fn valid_account(raw: &str) -> Result<&str, ClientError> {
-    let s = raw.trim();
-    if s.len() < ACCOUNT_MIN || s.len() > ACCOUNT_MAX {
-        return Err(ClientError::InvalidAccount);
-    }
-    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(ClientError::InvalidAccount);
-    }
-    Ok(s)
+    AccountId::parse(raw).map_err(|_| ClientError::InvalidAccount)?;
+    Ok(raw.trim())
 }
 
 fn valid_password(raw: &str) -> Result<&str, ClientError> {

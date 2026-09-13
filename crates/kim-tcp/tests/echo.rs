@@ -1,9 +1,12 @@
+#![allow(clippy::unwrap_used)]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use kim_core::{Acceptor, ChannelHandle, Conn, Error, MessageListener, Server, StateListener};
+use kim_core::{
+    Acceptor, ChannelHandle, ChannelId, Conn, Error, MessageListener, Server, StateListener,
+};
 use kim_tcp::{ClientOptions, IdentityDialer, TcpClient, TcpServer};
 
 fn assert_accept_peer(conn: &dyn Conn) {
@@ -20,27 +23,30 @@ struct EchoHandler;
 
 #[async_trait]
 impl Acceptor for EchoHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         assert_accept_peer(conn);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        Ok(String::from_utf8_lossy(&frame.payload).to_string())
+        Ok(ChannelId::from_trusted(
+            String::from_utf8_lossy(&frame.payload).as_ref(),
+        ))
     }
 }
 
 #[async_trait]
 impl MessageListener for EchoHandler {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
         let _ = handle.push(Bytes::from(out)).await;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for EchoHandler {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -195,10 +201,13 @@ async fn push_then_close_channel_emits_binary_then_close() {
     .expect("channel dave should be added after handshake");
 
     server
-        .push("dave", Bytes::from_static(b"bye"))
+        .push(&ChannelId::from_trusted("dave"), Bytes::from_static(b"bye"))
         .await
         .unwrap();
-    server.close_channel("dave").await.unwrap();
+    server
+        .close_channel(&ChannelId::from_trusted("dave"))
+        .await
+        .unwrap();
 
     let frame = tokio::time::timeout(Duration::from_secs(2), client.read())
         .await
@@ -245,44 +254,53 @@ struct Probe {
 
 #[async_trait]
 impl Acceptor for Probe {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         assert_accept_peer(conn);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        let id = String::from_utf8_lossy(&frame.payload).to_string();
-        self.log.accepted.lock().unwrap().push(id.clone());
+        let id = ChannelId::from_trusted(String::from_utf8_lossy(&frame.payload).as_ref());
+        self.log
+            .accepted
+            .lock()
+            .unwrap()
+            .push(id.as_str().to_owned());
         Ok(id)
     }
 
-    async fn on_channel_ready(&self, id: &str) -> Result<(), Error> {
-        self.log.ready.lock().unwrap().push(id.to_string());
+    async fn on_channel_ready(&self, id: &ChannelId) -> Result<(), Error> {
+        self.log.ready.lock().unwrap().push(id.as_str().to_owned());
         if self.fail_ready {
             return Err(Error::other("ready failed"));
         }
         Ok(())
     }
 
-    async fn on_accept_abandoned(&self, id: &str) {
-        self.log.abandoned.lock().unwrap().push(id.to_string());
+    async fn on_accept_abandoned(&self, id: &ChannelId) {
+        self.log
+            .abandoned
+            .lock()
+            .unwrap()
+            .push(id.as_str().to_owned());
     }
 }
 
 #[async_trait]
 impl MessageListener for Probe {
-    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) {
+    async fn receive(&self, _handle: &dyn ChannelHandle, _payload: Bytes) -> Result<(), Error> {
         self.log.received.lock().unwrap().push("recv".into());
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for Probe {
-    async fn disconnect(&self, channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, channel_id: &ChannelId) -> Result<(), Error> {
         self.log
             .disconnected
             .lock()
             .unwrap()
-            .push(channel_id.to_string());
+            .push(channel_id.as_str().to_owned());
         Ok(())
     }
 }
@@ -452,18 +470,20 @@ struct SlowEcho {
 
 #[async_trait]
 impl Acceptor for SlowEcho {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         assert_accept_peer(conn);
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        Ok(String::from_utf8_lossy(&frame.payload).to_string())
+        Ok(ChannelId::from_trusted(
+            String::from_utf8_lossy(&frame.payload).as_ref(),
+        ))
     }
 }
 
 #[async_trait]
 impl MessageListener for SlowEcho {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         self.started.notify_waiters();
         tokio::time::sleep(self.delay).await;
         self.finished
@@ -471,12 +491,13 @@ impl MessageListener for SlowEcho {
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
         let _ = handle.push(Bytes::from(out)).await;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for SlowEcho {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 }

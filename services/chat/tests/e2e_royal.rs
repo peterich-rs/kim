@@ -1,5 +1,6 @@
 //! Chat store/directory over royal HTTP.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::sync::Arc;

@@ -13,6 +13,7 @@ import '../../agent/host_support.dart';
 import '../../agent/mention.dart';
 import '../../copy.dart';
 import '../../core/layout.dart';
+import '../../router/open_peer.dart';
 import '../../models/models.dart';
 import '../../state/agent_profiles.dart';
 import '../../state/chat_session.dart';
@@ -188,6 +189,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         onCopied: _showToast,
                       ),
                     ),
+                    onAvatarTap: !own && kind == ThreadKind.user
+                        ? () => openKimPeerProfile(
+                            context,
+                            ref,
+                            id: msg.sender.isEmpty ? widget.id : msg.sender,
+                            title:
+                                social
+                                    .person(
+                                      msg.sender.isEmpty
+                                          ? widget.id
+                                          : msg.sender,
+                                    )
+                                    ?.title ??
+                                (msg.sender.isEmpty ? liveTitle : msg.sender),
+                          )
+                        : null,
                   );
                 },
               ),
@@ -226,6 +243,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               presence: ref.watch(
                                 peerPresenceProvider(widget.id),
                               ),
+                              onTap: kind == ThreadKind.user
+                                  ? () => openKimPeerProfile(
+                                      context,
+                                      ref,
+                                      id: widget.id,
+                                      title: liveTitle,
+                                    )
+                                  : null,
                             ),
                             const Spacer(),
                             FrostedCircleButton(

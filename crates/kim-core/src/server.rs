@@ -4,7 +4,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-use crate::{Acceptor, Error, MailboxFullHook, MessageListener, StateListener, WriteFullPolicy};
+use crate::{
+    Acceptor, ChannelId, Error, MailboxFullHook, MessageListener, StateListener, WriteFullPolicy,
+};
 
 #[async_trait]
 pub trait Server: Send {
@@ -17,9 +19,9 @@ pub trait Server: Send {
     fn set_max_in_flight(&mut self, _n: usize) {}
 
     async fn start(&self) -> Result<(), Error>;
-    async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error>;
+    async fn push(&self, channel_id: &ChannelId, payload: Bytes) -> Result<(), Error>;
     /// 关掉指定 channel：入队 Close。[`crate::ChannelHandle`] 没有对应方法。
-    async fn close_channel(&self, channel_id: &str) -> Result<(), Error>;
+    async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error>;
     async fn shutdown(&self) -> Result<(), Error>;
 }
 

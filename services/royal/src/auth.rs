@@ -9,15 +9,15 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chat::users::UserError;
 use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
-use kim_protocol::{generate_with_device, parse, ProtocolError, PASSWORD_KEY_ID_MISMATCH};
+use kim_protocol::{
+    generate_with_device, parse, AccountId, ProtocolError, PASSWORD_KEY_ID_MISMATCH,
+};
 use serde::Serialize;
 use zeroize::Zeroizing;
 
 use crate::device::{hash_secret, new_device_id, new_secret};
 use crate::{decode, encode, now_ts, RoyalState};
 
-const ACCOUNT_MIN: usize = 3;
-const ACCOUNT_MAX: usize = 32;
 const PASSWORD_MIN: usize = 8;
 const PASSWORD_MAX: usize = 128;
 
@@ -32,14 +32,8 @@ fn unauthorized() -> (StatusCode, String) {
 }
 
 fn valid_account(raw: &str) -> AuthResult<&str> {
-    let s = raw.trim();
-    if s.len() < ACCOUNT_MIN || s.len() > ACCOUNT_MAX {
-        return Err(bad_request("invalid account"));
-    }
-    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(bad_request("invalid account"));
-    }
-    Ok(s)
+    AccountId::parse(raw).map_err(|_| bad_request("invalid account"))?;
+    Ok(raw.trim())
 }
 
 fn valid_password(raw: &str) -> AuthResult<&str> {

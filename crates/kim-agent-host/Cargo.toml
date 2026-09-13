@@ -7,7 +7,7 @@ rust-version.workspace = true
 description = "Local Goose agent host for KIM desktop IM (@agent)"
 
 [dependencies]
-anyhow = "1"
+anyhow.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 goose-agent = "0.1.0-alpha.9"

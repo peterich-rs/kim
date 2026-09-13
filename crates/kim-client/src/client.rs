@@ -24,7 +24,7 @@ use crate::wire::{
 use crate::ClientError;
 use kim_protocol::{
     CMD_BOT_DELETE, CMD_BOT_UPDATE, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
-    CMD_FRIEND_REJECT, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, INBOX_KIND_USER,
+    CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_USER_PROFILE, INBOX_KIND_USER,
 };
 
 enum Io {
@@ -453,6 +453,10 @@ impl KimClient {
 
     pub async fn friend_reject(&self, dest: &str) -> Result<(), ClientError> {
         self.dest_status(CMD_FRIEND_REJECT, dest).await
+    }
+
+    pub async fn friend_remove(&self, dest: &str) -> Result<(), ClientError> {
+        self.dest_status(CMD_FRIEND_REMOVE, dest).await
     }
 
     pub async fn friend_list(&self) -> Result<Vec<Profile>, ClientError> {

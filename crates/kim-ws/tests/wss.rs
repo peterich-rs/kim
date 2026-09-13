@@ -1,4 +1,5 @@
 //! TLS terminator in front of plaintext [`WsServer`]: same shape as a reverse proxy.
+#![allow(clippy::unwrap_used)]
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,7 +7,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{
-    Acceptor, ChannelHandle, Conn, DialerContext, Error, MessageListener, Server, StateListener,
+    Acceptor, ChannelHandle, ChannelId, Conn, DialerContext, Error, MessageListener, Server,
+    StateListener,
 };
 use kim_ws::{connect_ws_with_tls, ClientOptions, WsClient, WsDialer, WsHandshakeConn, WsServer};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -19,26 +21,29 @@ struct EchoHandler;
 
 #[async_trait]
 impl Acceptor for EchoHandler {
-    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<String, Error> {
+    async fn accept(&self, conn: &mut dyn Conn, timeout: Duration) -> Result<ChannelId, Error> {
         let frame = tokio::time::timeout(timeout, conn.read_frame())
             .await
             .map_err(|_| Error::HandshakeTimeout(timeout))??;
-        Ok(String::from_utf8_lossy(&frame.payload).to_string())
+        Ok(ChannelId::from_trusted(
+            String::from_utf8_lossy(&frame.payload).as_ref(),
+        ))
     }
 }
 
 #[async_trait]
 impl MessageListener for EchoHandler {
-    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) {
+    async fn receive(&self, handle: &dyn ChannelHandle, payload: Bytes) -> Result<(), Error> {
         let mut out = payload.to_vec();
         out.extend_from_slice(b" from server");
         let _ = handle.push(Bytes::from(out)).await;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl StateListener for EchoHandler {
-    async fn disconnect(&self, _channel_id: &str) -> Result<(), Error> {
+    async fn disconnect(&self, _channel_id: &ChannelId) -> Result<(), Error> {
         Ok(())
     }
 }

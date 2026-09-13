@@ -3,7 +3,7 @@ use kim_protocol::pkt::{
     ReadReceiptPush, Status,
 };
 use kim_protocol::{CMD_RECEIPT_READ, INBOX_KIND_GROUP, INBOX_KIND_USER};
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::directory::GroupDirectory;
@@ -28,7 +28,7 @@ pub async fn do_inbox_list(
     store: &dyn MessageStore,
     users: &dyn UserDirectory,
     groups: &dyn GroupDirectory,
-) {
+) -> Result<(), RouterError> {
     let limit = match ctx.read_body::<InboxReq>() {
         Ok(r) => r.limit,
         Err(_) => 0,
@@ -40,8 +40,8 @@ pub async fn do_inbox_list(
         Ok(v) => v,
         Err(err) => {
             warn!(%err, "inbox failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     };
     let user_dests: Vec<String> = rows
@@ -111,28 +111,28 @@ pub async fn do_inbox_list(
             unread: row.unread,
         });
     }
-    let _ = ctx.resp(Status::Success, Some(&InboxResp { items })).await;
+    ctx.resp(Status::Success, Some(&InboxResp { items }))
+        .await?;
+    Ok(())
 }
 
-pub async fn do_history(ctx: Context, store: &dyn MessageStore) {
+pub async fn do_history(ctx: Context, store: &dyn MessageStore) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_bytes(Status::NoDestination, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NoDestination, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let req = match ctx.read_body::<HistoryReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let Some(kind) = parse_kind(req.kind) else {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     };
     match store
         .history(
@@ -158,36 +158,34 @@ pub async fn do_history(ctx: Context, store: &dyn MessageStore) {
                     direction: r.direction,
                 })
                 .collect();
-            let _ = ctx
-                .resp(Status::Success, Some(&HistoryResp { messages }))
-                .await;
+            ctx.resp(Status::Success, Some(&HistoryResp { messages }))
+                .await?;
         }
         Err(err) => {
             warn!(%err, "history failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) {
+pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
-        let _ = ctx
-            .resp_bytes(Status::NoDestination, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::NoDestination, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     }
     let req = match ctx.read_body::<ConversationReadReq>() {
         Ok(r) => r,
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::InvalidPacketBody, &err).await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
         }
     };
     let Some(kind) = parse_kind(req.kind) else {
-        let _ = ctx
-            .resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
-            .await;
-        return;
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
     };
     let dest = ctx.header().dest.clone();
     let reader = ctx.session().account.clone();
@@ -196,7 +194,7 @@ pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) {
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
             // DM only: notify peer that messages up to message_id were read.
             if kind == MessageKind::User {
                 let body = ReadReceiptPush {
@@ -210,7 +208,8 @@ pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) {
         }
         Err(err) => {
             warn!(%err, "mark read failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }
+    Ok(())
 }

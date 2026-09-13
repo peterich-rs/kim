@@ -387,6 +387,8 @@ pub trait MessageStore: Send + Sync {
         bot: &str,
         limit: i32,
     ) -> Result<Vec<BotPendingItem>, StoreError>;
+    /// Purge a 1:1 DM thread (both sides): indexes, content, inbox, reads.
+    async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError>;
 }
 
 #[async_trait]
@@ -1366,6 +1368,62 @@ impl MessageStore for MemoryMessageStore {
         items.truncate(cap);
         Ok(items)
     }
+
+    async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError> {
+        if account.is_empty() || peer.is_empty() || account == peer {
+            return Ok(());
+        }
+        let mut inner = self.write();
+        let mut ids: Vec<i64> = Vec::new();
+        for who in [account, peer] {
+            if let Some(by_acct) = inner.indexes_by_account.get_mut(app) {
+                if let Some(rows) = by_acct.get_mut(who) {
+                    let (keep, drop): (Vec<_>, Vec<_>) = rows.drain(..).partition(|r| {
+                        !(r.group_id.is_empty()
+                            && ((r.account_a == account && r.account_b == peer)
+                                || (r.account_a == peer && r.account_b == account)))
+                    });
+                    *rows = keep;
+                    for r in drop {
+                        ids.push(r.message_id);
+                    }
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        for id in &ids {
+            if let Some(rows) = inner.indexes_by_message.get_mut(id) {
+                rows.retain(|r| {
+                    !(r.app == app
+                        && r.group_id.is_empty()
+                        && ((r.account_a == account && r.account_b == peer)
+                            || (r.account_a == peer && r.account_b == account)))
+                });
+                if rows.is_empty() {
+                    inner.indexes_by_message.remove(id);
+                    inner.contents.remove(id);
+                }
+            } else {
+                inner.contents.remove(id);
+            }
+            inner
+                .pending
+                .retain(|(a, _, _, mid), _| !(a == app && mid == id));
+        }
+        inner.reads.retain(|(a, acct, p, gid), _| {
+            !(a == app
+                && gid.is_empty()
+                && ((acct == account && p == peer) || (acct == peer && p == account)))
+        });
+        inner
+            .bot_turns
+            .retain(|(a, bot, _), _| !(a == app && (bot == peer || bot == account)));
+        inner.idempotency.retain(|(a, sender, _), (mid, _)| {
+            !(a == app && ids.contains(mid) && (sender == account || sender == peer))
+        });
+        Ok(())
+    }
 }
 
 /// Postgres backends for Royal. Migrates once via `connect_pool`.
@@ -2264,5 +2322,28 @@ mod tests {
             Ok(_) => panic!("expected invalid in_reply_to"),
         };
         assert!(matches!(bad, StoreError::Invalid(_)));
+    }
+    #[tokio::test]
+    async fn purge_peer_dm_clears_both_sides() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let t = store
+            .insert_user("kim", &sample("alice", "b_bot", 10, "hi"))
+            .await
+            .unwrap();
+        let inbox = store.inbox("kim", "alice", 50).await.unwrap();
+        assert!(!inbox.is_empty());
+        store.purge_peer_dm("kim", "alice", "b_bot").await.unwrap();
+        let inbox = store.inbox("kim", "alice", 50).await.unwrap();
+        assert!(inbox.iter().all(|e| e.dest != "b_bot"));
+        let hist = store
+            .history("kim", "alice", "b_bot", MessageKind::User, 0, 50)
+            .await
+            .unwrap();
+        assert!(
+            hist.is_empty(),
+            "history purged, left={hist:?} mid={}",
+            t.message_id
+        );
     }
 }

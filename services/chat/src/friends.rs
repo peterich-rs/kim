@@ -1,6 +1,6 @@
 use kim_protocol::pkt::{FriendRequestNotify, Status, UserListResp};
 use kim_protocol::PROFILE_KIND_BOT;
-use kim_router::Context;
+use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::notify::notify_account;
@@ -73,41 +73,38 @@ pub async fn do_friend_request(
     ctx: Context,
     social: &dyn SocialDirectory,
     users: &dyn UserDirectory,
-) {
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
         Ok(()) => {}
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     }
     match require_user(users, &ctx.session().app, peer).await {
         Ok(true) => {}
         Ok(false) => {
-            let _ = ctx
-                .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
-                .await;
-            return;
+            ctx.resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                .await?;
+            return Ok(());
         }
         Err(err) => {
             warn!(%err, "friend request user lookup failed");
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
     let from = ctx.session().account.clone();
@@ -130,7 +127,7 @@ pub async fn do_friend_request(
                 },
             )
             .await;
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Ok(FriendRequestOutcome::AutoAccepted) => {
             notify_peer(
@@ -142,35 +139,34 @@ pub async fn do_friend_request(
                 },
             )
             .await;
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Ok(FriendRequestOutcome::AlreadyFriends) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 pub async fn do_friend_accept(
     ctx: Context,
     social: &dyn SocialDirectory,
     users: &dyn UserDirectory,
-) {
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match social
@@ -194,28 +190,30 @@ pub async fn do_friend_accept(
                 },
             )
             .await;
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_friend_reject(ctx: Context, social: &dyn SocialDirectory) {
+pub async fn do_friend_reject(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match social
@@ -223,39 +221,38 @@ pub async fn do_friend_reject(ctx: Context, social: &dyn SocialDirectory) {
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 pub async fn do_friend_remove(
     ctx: Context,
     social: &dyn SocialDirectory,
     users: &dyn UserDirectory,
-) {
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
         Ok(()) => {}
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     }
     match social
@@ -263,96 +260,102 @@ pub async fn do_friend_remove(
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_friend_list(ctx: Context, social: &dyn SocialDirectory, users: &dyn UserDirectory) {
+pub async fn do_friend_list(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
     match social
         .list_friends(&ctx.session().app, &ctx.session().account)
         .await
     {
         Ok(accounts) => match profiles_pb(users, &ctx.session().app, &accounts).await {
             Ok(list) => {
-                let _ = ctx
-                    .resp(Status::Success, Some(&UserListResp { users: list }))
-                    .await;
+                ctx.resp(Status::Success, Some(&UserListResp { users: list }))
+                    .await?;
             }
             Err(err) => {
                 warn!(%err, "friend list profiles failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                ctx.resp_with_error(Status::SystemException, &err).await?;
             }
         },
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 pub async fn do_friend_incoming(
     ctx: Context,
     social: &dyn SocialDirectory,
     users: &dyn UserDirectory,
-) {
+) -> Result<(), RouterError> {
     match social
         .incoming(&ctx.session().app, &ctx.session().account)
         .await
     {
         Ok(accounts) => match profiles_pb(users, &ctx.session().app, &accounts).await {
             Ok(list) => {
-                let _ = ctx
-                    .resp(Status::Success, Some(&UserListResp { users: list }))
-                    .await;
+                ctx.resp(Status::Success, Some(&UserListResp { users: list }))
+                    .await?;
             }
             Err(err) => {
                 warn!(%err, "incoming profiles failed");
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                ctx.resp_with_error(Status::SystemException, &err).await?;
             }
         },
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_block_add(ctx: Context, social: &dyn SocialDirectory, users: &dyn UserDirectory) {
+pub async fn do_block_add(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
         Ok(()) => {}
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     }
     match require_user(users, &ctx.session().app, peer).await {
         Ok(true) => {}
         Ok(false) => {
-            let _ = ctx
-                .resp_bytes(Status::UserNotFound, bytes::Bytes::new())
-                .await;
-            return;
+            ctx.resp_bytes(Status::UserNotFound, bytes::Bytes::new())
+                .await?;
+            return Ok(());
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(Status::SystemException, &err).await;
-            return;
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+            return Ok(());
         }
     }
     match social
@@ -360,39 +363,38 @@ pub async fn do_block_add(ctx: Context, social: &dyn SocialDirectory, users: &dy
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
 pub async fn do_block_remove(
     ctx: Context,
     social: &dyn SocialDirectory,
     users: &dyn UserDirectory,
-) {
+) -> Result<(), RouterError> {
     let peer = match dest_account(&ctx) {
         Ok(d) => d,
         Err(FriendCmdError::NoDestination) => {
-            let _ = ctx
-                .resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
-                .await;
-            return;
+            ctx.resp_with_error(Status::NoDestination, &FriendCmdError::NoDestination)
+                .await?;
+            return Ok(());
         }
         Err(FriendCmdError::SelfOp) => {
-            let _ = ctx
-                .resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
-                .await;
-            return;
+            ctx.resp_with_error(Status::InvalidPacketBody, &FriendCmdError::SelfOp)
+                .await?;
+            return Ok(());
         }
     };
     match reject_bot_social(users, &ctx.session().app, &ctx.session().account, peer).await {
         Ok(()) => {}
         Err(status) => {
-            let _ = ctx.resp_bytes(status, bytes::Bytes::new()).await;
-            return;
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
         }
     }
     match social
@@ -400,31 +402,36 @@ pub async fn do_block_remove(
         .await
     {
         Ok(()) => {
-            let _ = ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await;
+            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
         }
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }
 
-pub async fn do_block_list(ctx: Context, social: &dyn SocialDirectory, users: &dyn UserDirectory) {
+pub async fn do_block_list(
+    ctx: Context,
+    social: &dyn SocialDirectory,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
     match social
         .list_blocked(&ctx.session().app, &ctx.session().account)
         .await
     {
         Ok(accounts) => match profiles_pb(users, &ctx.session().app, &accounts).await {
             Ok(list) => {
-                let _ = ctx
-                    .resp(Status::Success, Some(&UserListResp { users: list }))
-                    .await;
+                ctx.resp(Status::Success, Some(&UserListResp { users: list }))
+                    .await?;
             }
             Err(err) => {
-                let _ = ctx.resp_with_error(Status::SystemException, &err).await;
+                ctx.resp_with_error(Status::SystemException, &err).await?;
             }
         },
         Err(err) => {
-            let _ = ctx.resp_with_error(social_status(&err), &err).await;
+            ctx.resp_with_error(social_status(&err), &err).await?;
         }
     }
+    Ok(())
 }

@@ -1,5 +1,6 @@
 //! Login e2e: JWT handshake, echo after login, kickout, bad token, identity, unavailable.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::sync::Arc;
@@ -10,8 +11,8 @@ use harness::*;
 use kim_core::{Conn, OpCode};
 use kim_protocol::pkt::{Flag, Status};
 use kim_protocol::{
-    marshal, read, read_logic, BasicPkt, LogicPkt, Packet, CMD_DEMO_ECHO, CODE_PONG,
-    DEMO_DEFAULT_SECRET,
+    marshal, read, read_logic, AccountId, BasicPkt, ChannelId, LogicPkt, Packet, CMD_DEMO_ECHO,
+    CODE_PONG, DEMO_DEFAULT_SECRET,
 };
 use kim_ws::{connect_ws, ClientOptions, WsClient, WsIdentityDialer};
 use pkt_client::{is_kickout, LoginDialer};
@@ -93,7 +94,7 @@ async fn second_login_kickout_then_logout_keeps_new_location() {
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     loop {
-        match stack.cache.get(&id1).await {
+        match stack.cache.get(&ChannelId::from_trusted(&id1)).await {
             Err(kim_router::SessionError::NotFound) => break,
             _ if tokio::time::Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(20)).await;
@@ -103,10 +104,10 @@ async fn second_login_kickout_then_logout_keeps_new_location() {
     }
     let loc = stack
         .cache
-        .get_location("alice", "")
+        .get_location(&AccountId::from_trusted("alice"), "")
         .await
         .expect("location");
-    assert_eq!(loc.channel_id, id2);
+    assert_eq!(loc.channel_id.as_str(), id2);
 
     let req = LogicPkt::new(CMD_DEMO_ECHO, 2, Bytes::from_static(b"hello pkt"));
     second
@@ -139,7 +140,11 @@ async fn two_web_logins_stay_online() {
     timeout_no_packet(&first, Duration::from_millis(400)).await;
     assert!(stack.gw_server.channel_map().contains(&id1));
     assert!(stack.gw_server.channel_map().contains(&id2));
-    let locs = stack.cache.list_locations("alice").await.expect("locs");
+    let locs = stack
+        .cache
+        .list_locations(&AccountId::from_trusted("alice"))
+        .await
+        .expect("locs");
     assert_eq!(locs.len(), 2);
 
     let _ = stack.gw.shutdown().await;
@@ -325,7 +330,10 @@ async fn echo_after_session_delete_is_session_not_found() {
     let id = dialer.channel_id().expect("channel_id");
     stack
         .cache
-        .delete("alice", &id)
+        .delete(
+            &AccountId::from_trusted("alice"),
+            &ChannelId::from_trusted(&id),
+        )
         .await
         .expect("delete session");
 

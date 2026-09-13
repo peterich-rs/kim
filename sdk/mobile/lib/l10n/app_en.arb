@@ -256,5 +256,11 @@
   "emptyChatTitle": "Select a conversation",
   "emptyChatSubtitle": "Open a chat from the list, or start a new one",
   "routeNotFound": "Page not found",
-  "goHome": "Back to chats"
+  "goHome": "Back to chats",
+  "bio": "Bio",
+  "botBadge": "Bot",
+  "deletePeer": "Delete",
+  "deletePeerTitle": "Delete contact?",
+  "deletePeerBody": "Removes the relationship. Chat history on this device will be cleared. Server history for people is kept.",
+  "peerDeleted": "Deleted"
 }

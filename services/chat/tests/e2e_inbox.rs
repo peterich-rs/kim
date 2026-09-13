@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use bytes::Bytes;

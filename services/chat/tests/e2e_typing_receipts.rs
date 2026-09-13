@@ -1,5 +1,6 @@
 //! Typing (room-interest scoped) + DM read receipts e2e.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::time::Duration;

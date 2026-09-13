@@ -52,6 +52,8 @@
 | `sdk/media` | 图片上传 Worker → R2 `kim-media` | 把文件字节塞进 talk / VPS |
 | `kim-client` / `sdk/mobile` | App：WSS Conn 上 login/talk/ack；Flutter 壳 | TGateway；改 `WsServer` |
 
+`kim-core` 依赖 `kim-protocol` 仅为 `ChannelId` 出现在 Server / Acceptor 签名；后续可抽 `kim-ids`。
+
 原则：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关：Web → WGateway（WS/WSS），App → TGateway（TCP，公网再套 TLS）。HTTPS 只包住 REST，不替代长连接。
 
 ## Conn 合同（业务到底能假设什么）

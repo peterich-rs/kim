@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use kim_protocol::pkt::{Presence, PresencePush, PresenceStatus};
-use kim_protocol::{CMD_PRESENCE, INBOX_KIND_USER};
+use kim_protocol::{AccountId, CMD_PRESENCE, INBOX_KIND_USER};
 use kim_router::{Dispatcher, Location, SessionError, SessionStorage};
 use tracing::warn;
 
@@ -15,6 +15,9 @@ use crate::notify::notify_locations;
 
 /// Default offline debounce (45s within the 30–60s design window).
 pub const DEFAULT_OFFLINE_DEBOUNCE: Duration = Duration::from_secs(45);
+/// Reconnect poller window (`10 × 10ms`). Multi-device leave tests must wait
+/// this out after the second login so 2→1 is not classified as reconnect.
+pub const RECONNECT_POLL: Duration = Duration::from_millis(100);
 
 pub fn offline_debounce_from_env() -> Duration {
     match std::env::var("KIM_PRESENCE_OFFLINE_DEBOUNCE_MS") {
@@ -81,7 +84,11 @@ impl PresenceHub {
     /// location, fanout ONLINE to interested viewers.
     pub async fn on_location_added(&self, app: &str, account: &str) {
         let _ = self.bump_gen(app, account);
-        let locs = match self.storage.list_locations(account).await {
+        let locs = match self
+            .storage
+            .list_locations(&AccountId::from_trusted(account))
+            .await
+        {
             Ok(v) => v,
             Err(SessionError::NotFound) => Vec::new(),
             Err(err) => {
@@ -112,8 +119,11 @@ impl PresenceHub {
         let debounce = self.debounce;
         tokio::spawn(async move {
             for _ in 0..10 {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                match storage.list_locations(&account).await {
+                tokio::time::sleep(RECONNECT_POLL / 10).await;
+                match storage
+                    .list_locations(&AccountId::from_trusted(&account))
+                    .await
+                {
                     Ok(locs) if locs.len() == 1 => {
                         let hub = PresenceHub {
                             interest,
@@ -143,7 +153,11 @@ impl PresenceHub {
         if let Err(err) = self.interest.clear_channel(app, account, channel_id).await {
             warn!(%err, account, channel_id, "clear room interest failed");
         }
-        let locs = match self.storage.list_locations(account).await {
+        let locs = match self
+            .storage
+            .list_locations(&AccountId::from_trusted(account))
+            .await
+        {
             Ok(v) => v,
             Err(SessionError::NotFound) => Vec::new(),
             Err(err) => {
@@ -171,7 +185,10 @@ impl PresenceHub {
                 g.get(&key).copied().unwrap_or(0) == gen
             };
             if still {
-                match storage.list_locations(&account).await {
+                match storage
+                    .list_locations(&AccountId::from_trusted(&account))
+                    .await
+                {
                     Ok(locs) if !locs.is_empty() => {}
                     Ok(_) | Err(SessionError::NotFound) => {
                         let hub = PresenceHub {
@@ -219,7 +236,11 @@ impl PresenceHub {
             by_account.entry(v.account).or_default().push(v.channel_id);
         }
         for (viewer, channels) in by_account {
-            let locs = match self.storage.list_locations(&viewer).await {
+            let locs = match self
+                .storage
+                .list_locations(&AccountId::from_trusted(&viewer))
+                .await
+            {
                 Ok(v) => v,
                 Err(SessionError::NotFound) => continue,
                 Err(err) => {
@@ -271,7 +292,7 @@ mod tests {
     use crate::interest::MemoryRoomInterest;
     use async_trait::async_trait;
     use kim_protocol::pkt::Session;
-    use kim_protocol::LogicPkt;
+    use kim_protocol::{AccountId, ChannelId, GatewayId, LogicPkt};
     use kim_router::{RouterError, SessionStorage};
     use kim_session::MemorySessionStore;
 
@@ -281,8 +302,8 @@ mod tests {
     impl Dispatcher for NoopDisp {
         async fn push(
             &self,
-            _gateway: &str,
-            _channels: &[String],
+            _gateway: &GatewayId,
+            _channels: &[ChannelId],
             _pkt: LogicPkt,
         ) -> Result<(), RouterError> {
             Ok(())
@@ -312,7 +333,13 @@ mod tests {
             let ch = format!("c{i}");
             storage.add(&session(&ch, "alice")).await.unwrap();
             hub.on_location_added("kim", "alice").await;
-            storage.delete("alice", &ch).await.unwrap();
+            storage
+                .delete(
+                    &AccountId::from_trusted("alice"),
+                    &ChannelId::from_trusted(&ch),
+                )
+                .await
+                .unwrap();
             hub.on_location_removed("kim", "alice", &ch).await;
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -336,8 +363,8 @@ mod tests {
         impl Dispatcher for RecDisp {
             async fn push(
                 &self,
-                _gateway: &str,
-                _channels: &[String],
+                _gateway: &GatewayId,
+                _channels: &[ChannelId],
                 _pkt: LogicPkt,
             ) -> Result<(), RouterError> {
                 self.pushes.fetch_add(1, AtomicOrdering::SeqCst);
@@ -370,7 +397,13 @@ mod tests {
         assert_eq!(pushes.load(AtomicOrdering::SeqCst), 0);
 
         // Dying channel logout lands shortly after.
-        storage.delete("alice", "ch-old").await.unwrap();
+        storage
+            .delete(
+                &AccountId::from_trusted("alice"),
+                &ChannelId::from_trusted("ch-old"),
+            )
+            .await
+            .unwrap();
         hub.on_location_removed("kim", "alice", "ch-old").await;
 
         tokio::time::sleep(Duration::from_millis(80)).await;
@@ -398,15 +431,19 @@ mod tests {
             async fn add(&self, session: &Session) -> Result<(), SessionError> {
                 self.inner.add(session).await
             }
-            async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+            async fn delete(
+                &self,
+                account: &AccountId,
+                channel_id: &ChannelId,
+            ) -> Result<(), SessionError> {
                 self.inner.delete(account, channel_id).await
             }
-            async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
+            async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError> {
                 self.inner.get(channel_id).await
             }
             async fn get_locations(
                 &self,
-                accounts: &[String],
+                accounts: &[AccountId],
             ) -> Result<Vec<Location>, SessionError> {
                 let n = self.calls.fetch_add(1, AtomicOrdering::SeqCst) + 1;
                 if n == self.fail_at {
@@ -416,7 +453,7 @@ mod tests {
             }
             async fn get_location(
                 &self,
-                account: &str,
+                account: &AccountId,
                 device: &str,
             ) -> Result<Location, SessionError> {
                 self.inner.get_location(account, device).await
@@ -431,8 +468,8 @@ mod tests {
         impl Dispatcher for RecDisp {
             async fn push(
                 &self,
-                _gateway: &str,
-                _channels: &[String],
+                _gateway: &GatewayId,
+                _channels: &[ChannelId],
                 _pkt: LogicPkt,
             ) -> Result<(), RouterError> {
                 self.pushes.fetch_add(1, AtomicOrdering::SeqCst);
@@ -452,7 +489,13 @@ mod tests {
             .unwrap();
         storage.add(&session("ch-v", "viewer")).await.unwrap();
         storage.add(&session("ch-a", "alice")).await.unwrap();
-        storage.delete("alice", "ch-a").await.unwrap();
+        storage
+            .delete(
+                &AccountId::from_trusted("alice"),
+                &ChannelId::from_trusted("ch-a"),
+            )
+            .await
+            .unwrap();
 
         let pushes = Arc::new(AtomicUsize::new(0));
         let hub = PresenceHub::new(

@@ -22,6 +22,7 @@ pub use conn::{
 };
 pub use error::Error;
 pub use frame::Frame;
+pub use kim_protocol::ChannelId;
 pub use opcode::OpCode;
 pub use server::{Client, Server};
 pub use signal::wait_shutdown_signal;

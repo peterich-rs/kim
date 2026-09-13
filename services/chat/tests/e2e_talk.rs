@@ -1,5 +1,6 @@
 //! Talk e2e: 1:1 online/offline and private-group create.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::time::Duration;

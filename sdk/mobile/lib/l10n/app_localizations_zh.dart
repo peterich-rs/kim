@@ -729,4 +729,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goHome => '回到消息';
+
+  @override
+  String get bio => '简介';
+
+  @override
+  String get botBadge => '助手';
+
+  @override
+  String get deletePeer => '删除';
+
+  @override
+  String get deletePeerTitle => '删除联系人？';
+
+  @override
+  String get deletePeerBody => '将解除关系，并清除本机会话。人类好友的服务端历史会保留。';
+
+  @override
+  String get peerDeleted => '已删除';
 }

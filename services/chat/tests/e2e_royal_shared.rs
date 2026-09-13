@@ -1,5 +1,6 @@
 //! Two Chat processes share one in-process Royal directory.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::sync::Arc;

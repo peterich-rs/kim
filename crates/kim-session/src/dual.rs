@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use kim_protocol::pkt::Session;
+use kim_protocol::{AccountId, ChannelId};
 use kim_router::{Location, SessionError, SessionStorage};
 
 /// Write both stores; read the primary. Always compiled (Memory+Memory in tests).
@@ -26,7 +27,11 @@ impl SessionStorage for DualWriteStore {
         Ok(())
     }
 
-    async fn delete(&self, account: &str, channel_id: &str) -> Result<(), SessionError> {
+    async fn delete(
+        &self,
+        account: &AccountId,
+        channel_id: &ChannelId,
+    ) -> Result<(), SessionError> {
         self.primary.delete(account, channel_id).await?;
         if let Err(err) = self.mirror.delete(account, channel_id).await {
             tracing::warn!(%err, "mirror delete failed");
@@ -34,15 +39,19 @@ impl SessionStorage for DualWriteStore {
         Ok(())
     }
 
-    async fn get(&self, channel_id: &str) -> Result<Session, SessionError> {
+    async fn get(&self, channel_id: &ChannelId) -> Result<Session, SessionError> {
         self.primary.get(channel_id).await
     }
 
-    async fn get_locations(&self, accounts: &[String]) -> Result<Vec<Location>, SessionError> {
+    async fn get_locations(&self, accounts: &[AccountId]) -> Result<Vec<Location>, SessionError> {
         self.primary.get_locations(accounts).await
     }
 
-    async fn get_location(&self, account: &str, device: &str) -> Result<Location, SessionError> {
+    async fn get_location(
+        &self,
+        account: &AccountId,
+        device: &str,
+    ) -> Result<Location, SessionError> {
         self.primary.get_location(account, device).await
     }
 }
@@ -67,10 +76,12 @@ mod tests {
         let b = Arc::new(MemorySessionStore::new());
         let dual = DualWriteStore::new(a.clone(), b.clone());
         dual.add(&session("c1", "alice")).await.unwrap();
-        assert_eq!(a.get("c1").await.unwrap().account, "alice");
-        assert_eq!(b.get("c1").await.unwrap().account, "alice");
-        dual.delete("alice", "c1").await.unwrap();
-        assert!(matches!(a.get("c1").await, Err(SessionError::NotFound)));
-        assert!(matches!(b.get("c1").await, Err(SessionError::NotFound)));
+        let acc = AccountId::from_trusted("alice");
+        let ch = ChannelId::from_trusted("c1");
+        assert_eq!(a.get(&ch).await.unwrap().account, "alice");
+        assert_eq!(b.get(&ch).await.unwrap().account, "alice");
+        dual.delete(&acc, &ch).await.unwrap();
+        assert!(matches!(a.get(&ch).await, Err(SessionError::NotFound)));
+        assert!(matches!(b.get(&ch).await, Err(SessionError::NotFound)));
     }
 }

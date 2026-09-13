@@ -287,6 +287,7 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/inbox/read", post(product::inbox_read))
         .route("/api/v1/bot", post(bot::bot_create))
         .route("/api/v1/bot", delete(bot::bot_delete))
+        .route("/api/v1/message/purge-dm", post(bot::purge_dm))
         .route("/api/v1/bot/update", post(bot::bot_update))
         .route("/api/v1/bot/reply", post(bot::bot_reply))
         .route("/api/v1/bot/pending", post(bot::bot_pending))

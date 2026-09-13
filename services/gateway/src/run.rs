@@ -4,6 +4,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
+
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, Selector};
 use kim_core::{Server, WriteFullPolicy};
 use kim_metrics::KimMetrics;
@@ -93,8 +95,9 @@ pub struct GatewayConfig {
     pub route: Option<RouteFile>,
 }
 
-pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Error>> {
-    let cfg: File = toml::from_str(&std::fs::read_to_string(path)?)?;
+pub fn load_config(path: &Path) -> anyhow::Result<GatewayConfig> {
+    let cfg: File =
+        toml::from_str(&std::fs::read_to_string(path).context("config")?).context("config")?;
     let services = cfg
         .services
         .into_iter()
@@ -142,18 +145,20 @@ pub fn load_config(path: &Path) -> Result<GatewayConfig, Box<dyn std::error::Err
 
 /// Open Redis-backed JWT revoke storage. A configured `REDIS_URL` must succeed;
 /// callers must not skip revoke checks after a connection error.
-pub async fn open_redis_revoke(url: Option<&str>) -> Result<Arc<RevokeStore>, String> {
+pub async fn open_redis_revoke(url: Option<&str>) -> anyhow::Result<Arc<RevokeStore>> {
     let url = url
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "REDIS_URL is empty".to_string())?;
-    Ok(Arc::new(RevokeStore::open(url).await?))
+        .ok_or_else(|| anyhow::anyhow!("REDIS_URL is empty"))?;
+    Ok(Arc::new(
+        RevokeStore::open(url)
+            .await
+            .map_err(anyhow::Error::msg)
+            .context("redis")?,
+    ))
 }
 
-pub async fn run_gateway<S>(
-    cfg: GatewayConfig,
-    mut server: S,
-) -> Result<(), Box<dyn std::error::Error>>
+pub async fn run_gateway<S>(cfg: GatewayConfig, mut server: S) -> anyhow::Result<()>
 where
     S: Server + Send + Sync + 'static,
 {
@@ -180,16 +185,17 @@ where
         require_redis: true,
         consul_addr: consul.as_deref(),
         ..StrictCheck::default()
-    })?;
+    })
+    .map_err(anyhow::Error::msg)?;
     let public_address = std::env::var("KIM_PUBLIC_ADDRESS")
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| cfg.public_address.clone());
     let naming = if consul.is_some() {
-        open_naming(consul.as_deref(), vec![])?
+        open_naming(consul.as_deref(), vec![]).context("naming")?
     } else {
-        open_naming(None, cfg.services)?
+        open_naming(None, cfg.services).context("naming")?
     };
     let mut tags = Vec::new();
     if !cfg.idc.is_empty() {
@@ -205,7 +211,7 @@ where
             .metrics_listen
             .rsplit_once(':')
             .and_then(|(_, p)| p.parse::<u16>().ok())
-            .ok_or("metrics_listen required when public_address is set")?;
+            .ok_or_else(|| anyhow::anyhow!("metrics_listen required when public_address is set"))?;
         meta.insert(
             "health_url".into(),
             format!("http://{public_address}:{health_port}/health"),
@@ -289,7 +295,8 @@ where
                 let store = HttpRevoke::with_hmac(
                     &base,
                     &kim_protocol::resolve_internal_hmac_secret(&cfg.hmac_secret),
-                )?;
+                )
+                .map_err(anyhow::Error::msg)?;
                 handler.set_revoke(Arc::new(store));
             }
             None => {
@@ -341,10 +348,10 @@ mod tests {
 
     use super::open_redis_revoke;
 
-    fn must_err(result: Result<Arc<super::RevokeStore>, String>, why: &str) -> String {
+    fn must_err(result: anyhow::Result<Arc<super::RevokeStore>>, why: &str) -> String {
         match result {
             Ok(_) => panic!("{why}"),
-            Err(err) => err,
+            Err(err) => err.to_string(),
         }
     }
 
@@ -375,7 +382,7 @@ mod tests {
         let fut = open_redis_revoke(Some("redis://:secret@127.0.0.1:1/0"));
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), fut)
             .await
-            .unwrap_or_else(|_| Err("timed out connecting to redis".into()));
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("timed out connecting to redis")));
         let err = must_err(result, "refused redis must fail start");
         assert!(!err.is_empty(), "{err}");
     }

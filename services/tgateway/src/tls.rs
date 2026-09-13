@@ -3,10 +3,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use kim_core::{
-    Acceptor, Error, MailboxFullHook, MessageListener, Server, StateListener, WriteFullPolicy,
+    Acceptor, ChannelId, Error, MailboxFullHook, MessageListener, Server, StateListener,
+    WriteFullPolicy,
 };
 use kim_tcp::{acquire_permit, apply_socket_opts, serve_conn, FrontendState, TcpConn, TcpServer};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
@@ -17,16 +20,17 @@ use tracing::{info, warn};
 
 const DEFAULT_HANDSHAKE_WAIT: Duration = Duration::from_secs(10);
 
-pub fn load_tls(cert: &str, key: &str) -> Result<Option<TlsAcceptor>, Box<dyn std::error::Error>> {
+pub fn load_tls(cert: &str, key: &str) -> anyhow::Result<Option<TlsAcceptor>> {
     if cert.trim().is_empty() || key.trim().is_empty() {
         return Ok(None);
     }
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let certs = load_certs(Path::new(cert))?;
-    let key = load_key(Path::new(key))?;
+    let certs = load_certs(Path::new(cert)).context("tls")?;
+    let key = load_key(Path::new(key)).context("tls")?;
     let cfg = ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(certs, key)?;
+        .with_single_cert(certs, key)
+        .context("tls")?;
     Ok(Some(TlsAcceptor::from(Arc::new(cfg))))
 }
 
@@ -160,11 +164,11 @@ impl Server for TlsFrontend {
         Ok(())
     }
 
-    async fn push(&self, channel_id: &str, payload: Bytes) -> Result<(), Error> {
+    async fn push(&self, channel_id: &ChannelId, payload: Bytes) -> Result<(), Error> {
         self.state.push(channel_id, payload).await
     }
 
-    async fn close_channel(&self, channel_id: &str) -> Result<(), Error> {
+    async fn close_channel(&self, channel_id: &ChannelId) -> Result<(), Error> {
         self.state.close_channel(channel_id).await
     }
 

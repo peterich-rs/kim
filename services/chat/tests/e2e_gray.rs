@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use std::collections::HashMap;
@@ -14,7 +15,7 @@ use kim_core::{Conn, MessageListener, OpCode, Server};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, MessageReq, Session, Status};
 use kim_protocol::{
-    generate, marshal, read, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
+    generate, marshal, read, ChannelId, LogicPkt, Packet, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
     CMD_FRIEND_REQUEST, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
 };
 use kim_router::SessionStorage;
@@ -213,7 +214,11 @@ async fn whitelist_account_hits_zone_gray() {
     let mut conn = connect_ws(&url).await.expect("ws");
     let ch = perform_login(&mut conn, token).await.expect("login");
     assert!(ch.contains("alice"));
-    let sess = stack.cache.get(&ch).await.expect("session");
+    let sess = stack
+        .cache
+        .get(&ChannelId::from_trusted(&ch))
+        .await
+        .expect("session");
     assert_eq!(sess.zone, "zone_gray");
     assert_eq!(sess.app, "kim");
 
@@ -315,7 +320,11 @@ async fn whitelist_empty_gray_zone_does_not_fallback() {
     let ch = perform_login(&mut bob_conn, bob)
         .await
         .expect("non-whitelist still routes");
-    let sess = stack.cache.get(&ch).await.expect("session");
+    let sess = stack
+        .cache
+        .get(&ChannelId::from_trusted(&ch))
+        .await
+        .expect("session");
     assert_eq!(sess.zone, "zone_local");
 
     stack.shutdown().await;
@@ -330,7 +339,11 @@ async fn non_whitelist_kim_account_hits_zone_local() {
     let token = generate(DEMO_DEFAULT_SECRET, "carol", "kim", i64::MAX / 4).expect("jwt");
     let mut conn = connect_ws(&url).await.expect("ws");
     let ch = perform_login(&mut conn, token).await.expect("login");
-    let sess = stack.cache.get(&ch).await.expect("session");
+    let sess = stack
+        .cache
+        .get(&ChannelId::from_trusted(&ch))
+        .await
+        .expect("session");
     assert_eq!(sess.zone, "zone_local");
     assert_eq!(sess.app, "kim");
     stack.shutdown().await;
@@ -392,7 +405,8 @@ async fn legacy_kim_gray_session_talk_is_unauthorized() {
     });
     handler
         .receive(&NoopHandle, marshal(&Packet::Logic(pkt)))
-        .await;
+        .await
+        .expect("receive");
 
     let (idx, _) = store
         .offline_index("kim-gray", "bob", "", 0, false)

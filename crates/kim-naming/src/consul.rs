@@ -31,16 +31,16 @@ fn build_client(
     let mut builder = reqwest::Client::builder().timeout(timeout);
     if let Some(pem) = ca_pem.filter(|s| !s.trim().is_empty()) {
         let cert = reqwest::Certificate::from_pem(pem.as_bytes())
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|e| Error::Tls(e.to_string()))?;
         builder = builder
             .tls_built_in_root_certs(false)
             .add_root_certificate(cert);
     }
     if let Some(id) = client_identity.filter(|b| !b.is_empty()) {
-        let identity = reqwest::Identity::from_pem(id).map_err(|e| Error::Other(e.to_string()))?;
+        let identity = reqwest::Identity::from_pem(id).map_err(|e| Error::Tls(e.to_string()))?;
         builder = builder.identity(identity);
     }
-    builder.build().map_err(|e| Error::Other(e.to_string()))
+    builder.build().map_err(|e| Error::Transport(e.to_string()))
 }
 
 fn with_token(req: reqwest::RequestBuilder, token: Option<&str>) -> reqwest::RequestBuilder {
@@ -115,17 +115,21 @@ impl ConsulNaming {
         let resp = with_token(client.get(&url), self.token.as_deref())
             .send()
             .await
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|e| Error::Transport(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(Error::Other(format!("consul http {}", resp.status())));
+            return Err(Error::Http {
+                status: resp.status().as_u16(),
+            });
         }
         let new_index = resp
             .headers()
             .get("X-Consul-Index")
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
-        let rows: Vec<HealthService> =
-            resp.json().await.map_err(|e| Error::Other(e.to_string()))?;
+        let rows: Vec<HealthService> = resp
+            .json()
+            .await
+            .map_err(|e| Error::Transport(e.to_string()))?;
         Ok((Self::parse_rows(rows, &[]), new_index))
     }
 }
@@ -206,9 +210,9 @@ impl Naming for ConsulNaming {
             .meta
             .get("health_url")
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| Error::Other("health_url required to register".into()))?;
+            .ok_or_else(|| Error::Invalid("health_url required to register".into()))?;
         if service.protocol.is_empty() {
-            return Err(Error::Other("protocol required to register".into()));
+            return Err(Error::Invalid("protocol required to register".into()));
         }
         let mut meta = service.meta.clone();
         meta.insert("protocol".into(), service.protocol.clone());
@@ -230,9 +234,11 @@ impl Naming for ConsulNaming {
             .json(&body)
             .send()
             .await
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|e| Error::Transport(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(Error::Other(format!("consul register {}", resp.status())));
+            return Err(Error::Http {
+                status: resp.status().as_u16(),
+            });
         }
         Ok(())
     }
@@ -242,9 +248,11 @@ impl Naming for ConsulNaming {
         let resp = with_token(self.http.put(&url), self.token.as_deref())
             .send()
             .await
-            .map_err(|e| Error::Other(e.to_string()))?;
+            .map_err(|e| Error::Transport(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(Error::Other(format!("consul deregister {}", resp.status())));
+            return Err(Error::Http {
+                status: resp.status().as_u16(),
+            });
         }
         Ok(())
     }

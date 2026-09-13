@@ -15,5 +15,6 @@ final sendImagesMutation = Mutation<List<KimChatMsg>>(
 final friendRequestMutation = Mutation<void>(label: 'contacts.request');
 final friendAcceptMutation = Mutation<void>(label: 'contacts.accept');
 final friendRejectMutation = Mutation<void>(label: 'contacts.reject');
+final friendRemoveMutation = Mutation<void>(label: 'contacts.remove');
 final searchPeopleMutation = Mutation<void>(label: 'contacts.search');
 final avatarMutation = Mutation<void>(label: 'profile.avatar');

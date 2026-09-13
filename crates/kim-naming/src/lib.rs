@@ -37,7 +37,7 @@ fn open_consul(url: &str) -> Result<Arc<dyn Naming>, Error> {
     let token = env_nonempty("CONSUL_HTTP_TOKEN");
     let ca = match env_nonempty("CONSUL_CACERT") {
         Some(path) => {
-            Some(std::fs::read_to_string(&path).map_err(|e| Error::Other(format!("{path}: {e}")))?)
+            Some(std::fs::read_to_string(&path).map_err(|e| Error::Tls(format!("{path}: {e}")))?)
         }
         None => None,
     };
@@ -46,14 +46,14 @@ fn open_consul(url: &str) -> Result<Arc<dyn Naming>, Error> {
         env_nonempty("CONSUL_CLIENT_KEY"),
     ) {
         (Some(cert), Some(key)) => {
-            let mut pem = std::fs::read(&cert).map_err(|e| Error::Other(format!("{cert}: {e}")))?;
+            let mut pem = std::fs::read(&cert).map_err(|e| Error::Tls(format!("{cert}: {e}")))?;
             pem.push(b'\n');
-            pem.extend(std::fs::read(&key).map_err(|e| Error::Other(format!("{key}: {e}")))?);
+            pem.extend(std::fs::read(&key).map_err(|e| Error::Tls(format!("{key}: {e}")))?);
             Some(pem)
         }
         (None, None) => None,
         _ => {
-            return Err(Error::Other(
+            return Err(Error::Tls(
                 "CONSUL_CLIENT_CERT and CONSUL_CLIENT_KEY must both be set".into(),
             ));
         }
@@ -68,5 +68,5 @@ fn open_consul(url: &str) -> Result<Arc<dyn Naming>, Error> {
 
 #[cfg(not(feature = "consul"))]
 fn open_consul(_url: &str) -> Result<Arc<dyn Naming>, Error> {
-    Err(Error::Other("rebuild with --features consul".into()))
+    Err(Error::FeatureDisabled)
 }

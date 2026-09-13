@@ -1,5 +1,6 @@
 //! Offline pull e2e: ACK skips replay; no ACK then reconnect fetches content.
 
+#![allow(clippy::unwrap_used)]
 mod harness;
 
 use bytes::Bytes;

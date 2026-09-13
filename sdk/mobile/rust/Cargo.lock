@@ -1191,6 +1191,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "dashmap 6.2.1",
+ "kim-protocol",
  "socket2",
  "thiserror 2.0.20",
  "tokio",

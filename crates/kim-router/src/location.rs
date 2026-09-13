@@ -1,11 +1,12 @@
 use bytes::{BufMut, Bytes, BytesMut};
+use kim_protocol::{ChannelId, GatewayId};
 
 use crate::storage::SessionError;
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Location {
-    pub channel_id: String,
-    pub gate_id: String,
+    pub channel_id: ChannelId,
+    pub gate_id: GatewayId,
     pub device: String,
     pub jti: String,
 }
@@ -14,8 +15,8 @@ impl Location {
     /// `| channel_len u16 LE | channel_id | gate_len u16 LE | gate_id | device_len u16 LE | device | jti_len u16 LE | jti |`
     /// Device and jti are optional on decode: truncated buffers without those fields still work.
     pub fn encode(&self) -> Bytes {
-        let ch = self.channel_id.as_bytes();
-        let gate = self.gate_id.as_bytes();
+        let ch = self.channel_id.as_str().as_bytes();
+        let gate = self.gate_id.as_str().as_bytes();
         let device = self.device.as_bytes();
         let jti = self.jti.as_bytes();
         debug_assert!(
@@ -72,8 +73,8 @@ impl Location {
             read_short_string(rest)?.0
         };
         Ok(Self {
-            channel_id,
-            gate_id,
+            channel_id: ChannelId::from_trusted(&channel_id),
+            gate_id: GatewayId::from_trusted(&gate_id),
             device,
             jti,
         })
@@ -82,15 +83,14 @@ impl Location {
 
 fn read_short_string(buf: &[u8]) -> Result<(String, &[u8]), SessionError> {
     if buf.len() < 2 {
-        return Err(SessionError::Other("truncated location".into()));
+        return Err(SessionError::Truncated);
     }
     let n = usize::from(u16::from_le_bytes([buf[0], buf[1]]));
     let rest = &buf[2..];
     if rest.len() < n {
-        return Err(SessionError::Other("truncated location".into()));
+        return Err(SessionError::Truncated);
     }
-    let s = std::str::from_utf8(&rest[..n])
-        .map_err(|_| SessionError::Other("invalid utf-8 in location".into()))?;
+    let s = std::str::from_utf8(&rest[..n]).map_err(|_| SessionError::InvalidUtf8)?;
     Ok((s.to_string(), &rest[n..]))
 }
 
@@ -102,8 +102,8 @@ mod tests {
     #[test]
     fn encode_decode_roundtrip() {
         let loc = Location {
-            channel_id: "wg-1_alice_1".into(),
-            gate_id: "wg-1".into(),
+            channel_id: ChannelId::from_trusted("wg-1_alice_1"),
+            gate_id: GatewayId::from_trusted("wg-1"),
             device: "web".into(),
             jti: "jti-1".into(),
         };
@@ -114,8 +114,8 @@ mod tests {
     #[test]
     fn encode_layout_u16le_lengths() {
         let loc = Location {
-            channel_id: "ab".into(),
-            gate_id: "g".into(),
+            channel_id: ChannelId::from_trusted("ab"),
+            gate_id: GatewayId::from_trusted("g"),
             device: String::new(),
             jti: String::new(),
         };
@@ -131,8 +131,8 @@ mod tests {
     #[test]
     fn empty_and_unicode_roundtrip() {
         let loc = Location {
-            channel_id: String::new(),
-            gate_id: "网关".into(),
+            channel_id: ChannelId::from_trusted(""),
+            gate_id: GatewayId::from_trusted("网关"),
             device: String::new(),
             jti: String::new(),
         };
@@ -147,8 +147,8 @@ mod tests {
         buf.put_u16_le(1);
         buf.extend_from_slice(b"g");
         let loc = Location::decode(&buf).unwrap();
-        assert_eq!(loc.channel_id, "ab");
-        assert_eq!(loc.gate_id, "g");
+        assert_eq!(loc.channel_id.as_str(), "ab");
+        assert_eq!(loc.gate_id.as_str(), "g");
         assert!(loc.device.is_empty());
         assert!(loc.jti.is_empty());
     }
@@ -171,11 +171,11 @@ mod tests {
     fn decode_truncated() {
         assert!(matches!(
             Location::decode(&[1]),
-            Err(SessionError::Other(_))
+            Err(SessionError::Truncated)
         ));
         assert!(matches!(
             Location::decode(&[5, 0, b'a']),
-            Err(SessionError::Other(_))
+            Err(SessionError::Truncated)
         ));
     }
 
@@ -185,7 +185,7 @@ mod tests {
         let buf = [1, 0, 0xff, 0, 0];
         assert!(matches!(
             Location::decode(&buf),
-            Err(SessionError::Other(_))
+            Err(SessionError::InvalidUtf8)
         ));
     }
 }

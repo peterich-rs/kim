@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use kim_protocol::{LogicPkt, ProtocolError};
+use kim_protocol::{ChannelId, GatewayId, LogicPkt, ProtocolError};
 use thiserror::Error;
 
 use crate::storage::SessionError;
@@ -24,8 +24,8 @@ pub enum RouterError {
 pub trait Dispatcher: Send + Sync {
     async fn push(
         &self,
-        gateway: &str,
-        channels: &[String],
+        gateway: &GatewayId,
+        channels: &[ChannelId],
         pkt: LogicPkt,
     ) -> Result<(), RouterError>;
 }

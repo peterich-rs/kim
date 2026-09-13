@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::Router;

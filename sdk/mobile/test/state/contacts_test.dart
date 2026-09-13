@@ -115,4 +115,38 @@ void main() {
     expect(bob?.nickname, 'Robert');
     expect(bob?.avatar, 'new.png');
   });
+
+  test('removePeer clears human from friends via friendRemove', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    await env.container.read(contactsProvider.notifier).refresh();
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).isFriend('bob'), isTrue);
+    await env.container
+        .read(contactsProvider.notifier)
+        .removePeer('bob', isBot: false);
+    expect(env.fake.friendRemoves, 1);
+    expect(env.container.read(contactsProvider).isFriend('bob'), isFalse);
+  });
+
+  test('removePeer deletes bot via botDelete', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.fake.friends = const [
+      KimPerson(
+        account: 'b_bot',
+        nickname: '助手',
+        bio: 'hi',
+        kind: ProfileKind.bot,
+      ),
+    ];
+    await env.container.read(contactsProvider.notifier).refresh();
+    await Future<void>.delayed(Duration.zero);
+    await env.container
+        .read(contactsProvider.notifier)
+        .removePeer('b_bot', isBot: true);
+    expect(env.fake.botDeletes, 1);
+    expect(env.container.read(contactsProvider).person('b_bot'), isNull);
+  });
 }

@@ -256,5 +256,11 @@
   "emptyChatTitle": "选择一个会话",
   "emptyChatSubtitle": "从左侧列表打开聊天，或发起新会话",
   "routeNotFound": "页面不存在",
-  "goHome": "回到消息"
+  "goHome": "回到消息",
+  "bio": "简介",
+  "botBadge": "助手",
+  "deletePeer": "删除",
+  "deletePeerTitle": "删除联系人？",
+  "deletePeerBody": "将解除关系，并清除本机会话。人类好友的服务端历史会保留。",
+  "peerDeleted": "已删除"
 }

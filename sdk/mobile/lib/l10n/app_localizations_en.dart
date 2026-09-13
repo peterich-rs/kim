@@ -750,4 +750,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goHome => 'Back to chats';
+
+  @override
+  String get bio => 'Bio';
+
+  @override
+  String get botBadge => 'Bot';
+
+  @override
+  String get deletePeer => 'Delete';
+
+  @override
+  String get deletePeerTitle => 'Delete contact?';
+
+  @override
+  String get deletePeerBody =>
+      'Removes the relationship. Chat history on this device will be cleared. Server history for people is kept.';
+
+  @override
+  String get peerDeleted => 'Deleted';
 }
