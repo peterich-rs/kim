@@ -408,7 +408,10 @@ class KimBridge implements KimAuthPort, KimClientPort {
         sender: dto.from,
         nickname: dto.nickname,
       ),
-      'link' => KimEvent(kind: KimEventKind.link, error: dto.lastError ?? ''),
+      // Fat session_events already maps Link with supervisor.state.
+      // SessionUpdateDto drops LinkStateView (`Link { last_error, .. }`), so a
+      // watch "link" event has empty `state` and would paint the UI Offline.
+      'link' => const KimEvent(kind: KimEventKind.closed),
       _ => const KimEvent(kind: KimEventKind.closed),
     };
   }

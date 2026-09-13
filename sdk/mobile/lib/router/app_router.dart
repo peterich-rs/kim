@@ -4,12 +4,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../agent/mention.dart';
 import '../core/layout.dart';
 import '../screens/auth_page.dart';
 import '../screens/home/chats_split.dart';
 import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
+import '../screens/agent/agent_list_page.dart';
 import '../screens/agent/agent_settings_page.dart';
+import '../screens/agent/provider_account_page.dart';
+import '../screens/agent/provider_accounts_page.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
 import '../state/auth.dart';
@@ -114,12 +118,61 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: '/agent/settings',
+        path: '/agent',
         pageBuilder: (context, state) => kimPushPage(
           key: state.pageKey,
           name: state.name,
-          child: const AgentSettingsPage(),
+          child: const AgentListPage(),
         ),
+        routes: [
+          GoRoute(
+            path: 'accounts/new',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: const ProviderAccountPage(),
+            ),
+          ),
+          GoRoute(
+            path: 'accounts/:accountId',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['accountId'] ?? '';
+              return kimPushPage(
+                key: state.pageKey,
+                name: state.name,
+                child: ProviderAccountPage(accountId: id),
+              );
+            },
+          ),
+          GoRoute(
+            path: 'accounts',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: const ProviderAccountsPage(),
+            ),
+          ),
+          GoRoute(path: 'settings', redirect: (context, state) => '/agent'),
+          GoRoute(
+            path: 'new',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: const AgentEditorPage(),
+            ),
+          ),
+          GoRoute(
+            path: ':id',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['id'] ?? kGooseAgentId;
+              return kimPushPage(
+                key: state.pageKey,
+                name: state.name,
+                child: AgentEditorPage(profileId: id),
+              );
+            },
+          ),
+        ],
       ),
     ],
   );

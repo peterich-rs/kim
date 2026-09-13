@@ -1621,6 +1621,8 @@ impl Operation<HostSession, HostEffect> for DeferredKimToolOp {
 
 ### Phase 8 — 多 Agent 通讯录 + @mention
 
+**续：产品闭环与厂商目录见 [multi-agent-vendor-catalog.md](./multi-agent-vendor-catalog.md)**（C-KD；桌面 `agent.multi_profile` 默认 true；`/agent` 列表与编辑器；`botDelete` 后去掉本机人设行）。下文是当时 Phase 8 的通讯录 / mention 切片，不要再把它当「即将推出」。
+
 **改 `sdk/mobile/lib/agent/mention.dart`**
 
 ```dart
@@ -1650,9 +1652,9 @@ AgentProfile? mentionedProfile(String text, List<AgentProfile> enabled) { ... }
 - `_appendLocal` `sender = profile.display_name`，account = canonical dest。
 - `contacts.person` / `isFriend` / `chat_page` 好友门：全部改 `isAgentDest`（否则 `agent:translator` 会撞 not-friends）。
 - `inbox.withGooseThread` → 每个 enabled profile 一条本地线程。
-- flag `agent.multi_profile` 默认 false，设置页打开。
+- flag `agent.multi_profile` 曾默认 false。桌面默认 true 与 `/agent` 路由见 catalog 设计 C-KD 6 / 15。
 
-**设置页：** profile 列表、启用开关、复制、删除（不可删 goose）。
+**设置 / 列表：** `/agent` 列表、`/agent/:id` 编辑器、`/agent/accounts`。复制、删除（不可删 goose；已注册则 `botDelete` 后去掉本机行）。
 
 **测试：** mention 正则；同一 thread 两个 profile 两个 session；`agent:goose` 归一；气泡 sender 不是总是「助手」。
 
@@ -1720,11 +1722,11 @@ AgentProfile? mentionedProfile(String text, List<AgentProfile> enabled) { ... }
 - `sdk/mobile/lib/kim_bridge.dart` -- 不变
 - `sdk/mobile/lib/l10n/app_en.arb` / `app_zh.arb` -- 设置、确认卡、多 Agent 文案
 - `sdk/mobile/lib/models/models.dart` -- `KimMsgKind.agentCard`
-- `sdk/mobile/lib/router/app_router.dart` -- 可选 `/agent/profiles/:id`；可推迟，先堆在 settings
-- `sdk/mobile/lib/screens/agent/agent_settings_page.dart` -- Phase 2 UI；Phase 8 列表
+- `sdk/mobile/lib/router/app_router.dart` -- `/agent` 列表、`/agent/:id` 编辑器、`/agent/accounts`（catalog 设计 PR5）
+- `sdk/mobile/lib/screens/agent/agent_settings_page.dart` -- Phase 2 UI；现为 per-profile 编辑器
 - `sdk/mobile/lib/screens/chat/chat_page.dart` -- `isAgentDest`；itemBuilder 已走 KimMessageRow
 - `sdk/mobile/lib/screens/home/contacts_page.dart` -- Phase 8 多 ListTile
-- `sdk/mobile/lib/screens/home/me_page.dart` -- 不变（仍进 settings）
+- `sdk/mobile/lib/screens/home/me_page.dart` -- 进 `/agent` 列表
 - `sdk/mobile/lib/src/rust_agent/**` -- FRB 生成（PR1 新字段；PR2/4/5 新方法）
 - `sdk/mobile/lib/state/agent_profiles.dart` -- **新** Phase 2
 - `sdk/mobile/lib/state/agent_settings.dart` -- 双写；toOpts 新字段

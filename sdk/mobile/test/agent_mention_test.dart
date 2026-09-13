@@ -27,12 +27,28 @@ void main() {
     expect(mentionsGooseAgent('email goose@x.com'), isFalse);
   });
 
-  test('goose dest is a synthetic local contact', () {
+  test('goose dest is a local dest, not a synthesized contact', () {
     expect(isGooseAgentDest(kGooseAgentId), isTrue);
     expect(isGooseAgentDest('alice'), isFalse);
-    expect(withGooseAgent(const []).single.account, kGooseAgentId);
-    expect(withGooseAgent(const []).single.isBot, isTrue);
-    expect(withGooseAgent(const [kGooseAgentPerson]).length, 1);
+    expect(isOwnedAgentAccount('goose', const []), isFalse);
+    expect(profileForChatDest('goose', const []), isNull);
+  });
+
+  test('profileForChatDest matches dest, goose, and serverAccount', () {
+    final goose = _profile(id: 'goose', displayName: '助手');
+    final work = _profile(
+      id: 'p-1',
+      displayName: 'Work',
+    ).copyWith(serverAccount: 'b_ABC');
+    final all = [goose, work];
+    expect(profileForChatDest('goose', all)?.id, 'goose');
+    expect(profileForChatDest('agent:goose', all)?.id, 'goose');
+    expect(profileForChatDest('agent:p-1', all)?.id, 'p-1');
+    expect(profileForChatDest('b_ABC', all)?.id, 'p-1');
+    expect(profileForChatDest('goose', [work]), isNull);
+    expect(isOwnedAgentAccount('goose', all), isTrue);
+    expect(isOwnedAgentAccount('b_ABC', all), isTrue);
+    expect(isOwnedAgentAccount('goose', const []), isFalse);
   });
 
   test('agent:goose canonicalizes to goose', () {

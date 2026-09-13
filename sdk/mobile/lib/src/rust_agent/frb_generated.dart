@@ -71,7 +71,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1659189456;
+  int get rustContentHash => 2095911914;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -126,6 +126,19 @@ abstract class AgentRustLibApi extends BaseApi {
   SessionSnapshotDto crateApiSessionAgentSessionSnapshot({
     required AgentSession that,
   });
+
+  Future<String> crateApiSessionCatalogSurface({
+    required String vendor,
+    required String model,
+  });
+
+  Future<String> crateApiSessionCatalogValidate({
+    required String vendor,
+    required String model,
+    required String choiceJson,
+  });
+
+  Future<String> crateApiSessionCatalogVendors();
 
   Future<List<String>> crateApiSessionFetchSupportedModels({
     required SessionOpenOpts opts,
@@ -520,6 +533,105 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       );
 
   @override
+  Future<String> crateApiSessionCatalogSurface({
+    required String vendor,
+    required String model,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vendor, serializer);
+          sse_encode_String(model, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionCatalogSurfaceConstMeta,
+        argValues: [vendor, model],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionCatalogSurfaceConstMeta =>
+      const TaskConstMeta(
+        debugName: "catalog_surface",
+        argNames: ["vendor", "model"],
+      );
+
+  @override
+  Future<String> crateApiSessionCatalogValidate({
+    required String vendor,
+    required String model,
+    required String choiceJson,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vendor, serializer);
+          sse_encode_String(model, serializer);
+          sse_encode_String(choiceJson, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionCatalogValidateConstMeta,
+        argValues: [vendor, model, choiceJson],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionCatalogValidateConstMeta =>
+      const TaskConstMeta(
+        debugName: "catalog_validate",
+        argNames: ["vendor", "model", "choiceJson"],
+      );
+
+  @override
+  Future<String> crateApiSessionCatalogVendors() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionCatalogVendorsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionCatalogVendorsConstMeta =>
+      const TaskConstMeta(debugName: "catalog_vendors", argNames: []);
+
+  @override
   Future<List<String>> crateApiSessionFetchSupportedModels({
     required SessionOpenOpts opts,
   }) {
@@ -531,7 +643,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 14,
             port: port_,
           );
         },
@@ -561,7 +673,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 15,
             port: port_,
           );
         },
@@ -588,7 +700,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -615,7 +727,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 17,
             port: port_,
           );
         },
@@ -649,7 +761,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -679,7 +791,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },

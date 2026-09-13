@@ -36,9 +36,16 @@ Future<KimHarness> kimHarness({
   bool online = true,
   bool rustStore = false,
   List<Override> overrides = const [],
+  bool identityMigrated = true,
+  bool? serverIdentity = false,
+  bool multiProfileMigrated = true,
+  bool? multiProfile,
 }) async {
   SharedPreferences.setMockInitialValues({
-    'agent.server_identity': false,
+    if (identityMigrated) 'agent.identity_migrated_on': true,
+    'agent.server_identity': ?serverIdentity,
+    if (multiProfileMigrated) 'agent.multi_profile_migrated_on': true,
+    'agent.multi_profile': ?multiProfile,
     if (rustStore) KimFlags.rustStorePref: true,
   });
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');

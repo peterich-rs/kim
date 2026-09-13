@@ -1,20 +1,27 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/agent/host_support.dart';
 import 'package:kim_mobile/agent/mention.dart';
 import 'package:kim_mobile/agent_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/state/agent_profiles.dart';
 import 'package:kim_mobile/state/chat_agent.dart';
+import 'package:kim_mobile/state/provider_accounts.dart';
 import 'package:kim_mobile/state/chat_session.dart';
 import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/messages.dart';
 import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/outbox.dart';
+import 'package:kim_mobile/state/providers.dart';
+import 'package:kim_mobile/state/retry.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
@@ -128,6 +135,47 @@ Future<void> _until(bool Function() ok, {int ticks = 80}) async {
   }
 }
 
+Future<void> _persistGoose() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(
+    'agent.profiles',
+    jsonEncode([
+      {
+        'id': 'goose',
+        'display_name': '助手',
+        'aliases': ['助手'],
+        'model': {'name': 'gpt-4o'},
+        'system_prompt': '',
+        'mode': 'smart_approve',
+        'max_turns': 16,
+        'tools': {
+          'send_message': true,
+          'search_contacts': true,
+          'search_messages': true,
+          'get_conversation_context': true,
+          'read_clipboard': true,
+          'list_profiles': true,
+        },
+        'enabled': true,
+      },
+    ]),
+  );
+}
+
+Future<KimHarness> _agentHarness({
+  String token = '',
+  String account = '',
+  List<Override> overrides = const [],
+}) async {
+  final env = await kimHarness(
+    token: token,
+    account: account,
+    overrides: overrides,
+  );
+  await _persistGoose();
+  return env;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -145,7 +193,7 @@ void main() {
 
   test('first bot prompt after restart loads the saved API key', () async {
     final bridge = _RecordingAgentBridge();
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -176,7 +224,7 @@ void main() {
   test('one assistant_finished yields exactly one assistant bubble', () async {
     final bridge = _RecordingAgentBridge()
       ..session = _OneShotSession('hello from goose');
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -203,7 +251,7 @@ void main() {
   test('action_required upserts a confirmation card by call_id', () async {
     final session = _OneShotSession('done');
     final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -245,7 +293,7 @@ void main() {
   test('two profiles open two sessions on the same thread dest', () async {
     final session = _OneShotSession('ok');
     final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -285,7 +333,7 @@ void main() {
     () async {
       final session = _OneShotSession('done');
       final bridge = _RecordingAgentBridge()..session = session;
-      final env = await kimHarness(
+      final env = await _agentHarness(
         token: 'tok.jwt',
         account: 'alice',
         overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -339,7 +387,7 @@ void main() {
     final bridge = _RecordingAgentBridge()
       ..sessions['goose'] = gooseSession
       ..session = gooseSession;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -358,10 +406,10 @@ void main() {
     bridge.sessions[copy.id] = copySession;
     await env.container
         .read(chatAgentProvider)
-        .onOutgoingText(dest: 'bob', text: '@助手 ping');
+        .sendDirect(dest: kGooseAgentId, text: 'ping');
     await env.container
         .read(chatAgentProvider)
-        .onOutgoingText(dest: 'bob', text: '@${copy.id} ping');
+        .sendDirect(dest: copy.dest, text: 'ping');
     await Future<void>.delayed(Duration.zero);
     gooseSession.emit(_actionRequired('c-goose'));
     copySession.emit(_actionRequired('c-copy'));
@@ -369,7 +417,7 @@ void main() {
     await env.container
         .read(chatAgentProvider)
         .respondPermission(
-          dest: 'bob',
+          dest: copy.dest,
           callId: 'c-copy',
           permission: 'allow_once',
           toolName: 'send_message',
@@ -384,7 +432,7 @@ void main() {
     final bridge = _RecordingAgentBridge()
       ..sessions['goose'] = gooseSession
       ..session = gooseSession;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -403,26 +451,30 @@ void main() {
     bridge.sessions[copy.id] = copySession;
     await env.container
         .read(chatAgentProvider)
-        .onOutgoingText(dest: 'bob', text: '@助手 ping');
+        .sendDirect(dest: kGooseAgentId, text: 'ping');
     await env.container
         .read(chatAgentProvider)
-        .onOutgoingText(dest: 'bob', text: '@${copy.id} ping');
+        .sendDirect(dest: copy.dest, text: 'ping');
     await Future<void>.delayed(Duration.zero);
     gooseSession.emit(_actionRequired('c-goose'));
     await Future<void>.delayed(Duration.zero);
-    await env.container
-        .read(chatAgentProvider)
-        .sendDirect(dest: 'd1', text: 'hi');
-    await env.container
-        .read(chatAgentProvider)
-        .sendDirect(dest: 'd2', text: 'hi');
-    await env.container
-        .read(chatAgentProvider)
-        .sendDirect(dest: 'd3', text: 'hi');
+    for (var i = 0; i < 3; i++) {
+      await store.duplicate(store.goose!);
+    }
+    final extras = env.container
+        .read(agentProfilesProvider)
+        .where((p) => p.id != kGooseAgentId && p.id != copy.id)
+        .toList();
+    for (final extra in extras.take(3)) {
+      bridge.sessions[extra.id] = _RecordingSession();
+      await env.container
+          .read(chatAgentProvider)
+          .sendDirect(dest: extra.dest, text: 'hi');
+    }
     await env.container
         .read(chatAgentProvider)
         .respondPermission(
-          dest: 'bob',
+          dest: kGooseAgentId,
           callId: 'c-goose',
           permission: 'allow_once',
           toolName: 'send_message',
@@ -434,7 +486,7 @@ void main() {
   test('AlwaysAllow persists onto the acting profile', () async {
     final session = _RecordingSession();
     final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -477,10 +529,10 @@ void main() {
     );
   });
 
-  test('hidden context blob is chronological', () async {
+  test('onOutgoingText on a human dest is a no-op', () async {
     final session = _RecordingSession();
     final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -488,70 +540,46 @@ void main() {
     FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
       'agent.api_key': 'sk-live',
     });
-    final bob = env.container.read(threadMessagesProvider('bob').notifier);
-    bob.receive(
-      const KimChatMsg(
-        key: 'm1',
-        dest: 'bob',
-        sender: 'bob',
-        body: 'first',
-        at: 1,
-      ),
-    );
-    bob.receive(
-      const KimChatMsg(
-        key: 'm2',
-        dest: 'bob',
-        sender: 'alice',
-        body: 'second',
-        at: 2,
-      ),
-    );
     await env.container
         .read(chatAgentProvider)
         .onOutgoingText(dest: 'bob', text: '@助手 总结');
-    expect(session.lastContext, isNotNull);
-    expect(
-      session.lastContext!.indexOf('first'),
-      lessThan(session.lastContext!.indexOf('second')),
-    );
+    expect(bridge.opens, 0);
+    expect(session.lastContext, isNull);
   });
 
-  test('opens with profile keyRef rather than only agent.api_key', () async {
-    final session = _OneShotSession('ok');
-    final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
-      token: 'tok.jwt',
-      account: 'alice',
-      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
-    );
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-legacy',
-      'agent.api_key.goose': 'sk-goose',
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('agent.multi_profile', true);
-    final store = env.container.read(agentProfilesProvider.notifier);
-    await store.ensureLoaded();
-    await store.duplicate(store.goose!);
-    final copy = env.container
-        .read(agentProfilesProvider)
-        .firstWhere((p) => p.id != kGooseAgentId);
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-      'agent.api_key': 'sk-legacy',
-      'agent.api_key.goose': 'sk-goose',
-      copy.keyRef: 'sk-persona',
-    });
-    await env.container
-        .read(chatAgentProvider)
-        .sendDirect(dest: copy.dest, text: 'hi');
-    expect(bridge.lastOpts?.apiKey, 'sk-persona');
-  });
+  test(
+    'opens with shared account key rather than only agent.api_key',
+    () async {
+      final session = _OneShotSession('ok');
+      final bridge = _RecordingAgentBridge()..session = session;
+      final env = await _agentHarness(
+        token: 'tok.jwt',
+        account: 'alice',
+        overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+      );
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key': 'sk-legacy',
+        'agent.api_key.goose': 'sk-goose',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('agent.multi_profile', true);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.duplicate(store.goose!);
+      final copy = env.container
+          .read(agentProfilesProvider)
+          .firstWhere((p) => p.id != kGooseAgentId);
+      await env.container
+          .read(chatAgentProvider)
+          .sendDirect(dest: copy.dest, text: 'hi');
+      expect(bridge.lastOpts?.apiKey, 'sk-goose');
+    },
+  );
 
   test('profile save with tool change reopens the live session', () async {
     final session = _OneShotSession('ok');
     final bridge = _RecordingAgentBridge()..session = session;
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -574,8 +602,8 @@ void main() {
     expect(bridge.opens, 2);
   });
 
-  test('duplicate copies the source api key', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+  test('duplicate shares account_id and does not copy the key', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
       'agent.api_key': 'sk-live',
       'agent.api_key.goose': 'sk-live',
@@ -586,11 +614,13 @@ void main() {
     final copy = env.container
         .read(agentProfilesProvider)
         .firstWhere((p) => p.id != kGooseAgentId);
+    expect(copy.accountId, store.goose!.accountId);
+    expect(copy.accountId, isNotEmpty);
     expect(await store.readApiKey(copy), 'sk-live');
   });
 
   test('server identity flag persists', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     expect(store.serverIdentity, isFalse);
@@ -601,7 +631,7 @@ void main() {
   });
 
   test('new profile save registers on the server when flag is on', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     await store.setServerIdentity(true);
@@ -632,7 +662,7 @@ void main() {
   });
 
   test('login does not register; turning identity on does', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     expect(env.fake.botCreates, 0);
@@ -643,7 +673,7 @@ void main() {
   });
 
   test('botCreate failure is visible and not swallowed', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     env.fake.botCreateError = StateError('status 2');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
@@ -653,7 +683,7 @@ void main() {
   });
 
   test('turning on identity after goose 1:1 is open still registers', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     env.container.read(chatSessionProvider(kGooseAgentId));
@@ -669,7 +699,7 @@ void main() {
   });
 
   test('sendText on open goose dest after flag on goes to server', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     env.container.read(linkProvider);
     await Future<void>.delayed(Duration.zero);
     final store = env.container.read(agentProfilesProvider.notifier);
@@ -688,20 +718,69 @@ void main() {
   });
 
   test('profileForDest matches serverAccount', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
     await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_XXX'));
     final hit = await env.container
         .read(chatAgentProvider)
         .profileForDest('b_XXX');
-    expect(hit.id, kGooseAgentId);
-    expect(hit.serverAccount, 'b_XXX');
+    expect(hit?.id, kGooseAgentId);
+    expect(hit?.serverAccount, 'b_XXX');
+  });
+
+  test('profileForDest is null when the row is gone', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.delete(kGooseAgentId);
+    final agent = env.container.read(chatAgentProvider);
+    expect(await agent.profileForDest('goose'), isNull);
+    expect(await agent.profileForDest('agent:missing'), isNull);
+  });
+
+  test('unknown agent dest does not bind goose or botCreate', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    store.serverIdentity = true;
+    env.fake.botCreates = 0;
+    env.container.read(chatSessionProvider('agent:unknown'));
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(env.fake.botCreates, 0);
+    expect(store.goose!.serverAccount, isEmpty);
+  });
+
+  test('human 1:1 @助手 does not prompt', () async {
+    final session = _RecordingSession();
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+      'agent.api_key.goose': 'sk-live',
+    });
+    await env.container.read(agentProfilesProvider.notifier).ensureLoaded();
+    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+    env.container.read(linkProvider);
+    await Future<void>.delayed(Duration.zero);
+    await env.container.read(contactsProvider.notifier).refresh();
+    final ok = await env.container
+        .read(chatSessionProvider('bob').notifier)
+        .sendText('@助手 ping');
+    expect(ok, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(bridge.opens, 0);
+    expect(session.lastContext, isNull);
   });
 
   test('flag on registered: enqueue does not prompt until TalkResp', () async {
     final bridge = _RecordingAgentBridge()..session = _OneShotSession('ok');
-    final env = await kimHarness(
+    final env = await _agentHarness(
       token: 'tok.jwt',
       account: 'alice',
       overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -744,7 +823,7 @@ void main() {
     () async {
       final session = _HoldSession();
       final bridge = _RecordingAgentBridge()..session = session;
-      final env = await kimHarness(
+      final env = await _agentHarness(
         token: 'tok.jwt',
         account: 'alice',
         overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -793,7 +872,7 @@ void main() {
     () async {
       final session = _HoldSession();
       final bridge = _RecordingAgentBridge()..session = session;
-      final env = await kimHarness(
+      final env = await _agentHarness(
         token: 'tok.jwt',
         account: 'alice',
         overrides: [agentBridgeProvider.overrideWithValue(bridge)],
@@ -825,6 +904,469 @@ void main() {
       session.release();
       await _until(() => env.fake.botReplies.length == 1);
       expect(env.fake.botReplies.single.inReplyTo, 2);
+    },
+  );
+
+  test('disk JSON without provider opens DeepSeek with catalog kind', () async {
+    final session = _OneShotSession('ok');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key.acct.acct-ds': 'sk-ds',
+    });
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-ds',
+        vendorId: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        keyRef: 'agent.api_key.acct.acct-ds',
+        displayName: 'DeepSeek',
+      ),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveGoose(
+      store.goose!.copyWith(
+        accountId: 'acct-ds',
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-flash',
+        reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
+      ),
+      apiKey: 'sk-ds',
+    );
+    final disk = jsonDecode(
+      (await SharedPreferences.getInstance()).getString('agent.profiles')!,
+    );
+    expect(disk.first['provider'], isNull);
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    expect(bridge.lastOpts?.llmBackend, 'deepseek');
+    expect(bridge.lastOpts?.apiKey, 'sk-ds');
+    final host = jsonDecode(bridge.lastOpts!.profileJson) as Map;
+    expect(host['provider']['kind'], 'deepseek');
+    expect(host['reasoning']['value'], 'high');
+    expect(host['model']['name'], 'deepseek-flash');
+  });
+
+  test('save ProviderAccount does not call botCreate', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-new',
+        vendorId: 'groq',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        keyRef: 'agent.api_key.acct.acct-new',
+        displayName: 'Groq',
+      ),
+    );
+    expect(env.fake.botCreates, 0);
+  });
+
+  test('missing account refuses open without stale kind fallback', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final id = store.goose!.accountId;
+    expect(id, isNotEmpty);
+    await env.container.read(providerAccountsProvider.notifier).delete(id);
+    expect(
+      () => store.readApiKey(store.goose!),
+      throwsA(isA<MissingProviderAccount>()),
+    );
+  });
+
+  test('reload does not resurrect a missing account as OpenAI', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key.acct.acct-ds': 'sk-ds',
+    });
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-ds',
+        vendorId: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        keyRef: 'agent.api_key.acct.acct-ds',
+        displayName: 'DeepSeek',
+      ),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveGoose(
+      store.goose!.copyWith(
+        accountId: 'acct-ds',
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-flash',
+      ),
+      apiKey: 'sk-ds',
+    );
+    final prefs = await SharedPreferences.getInstance();
+    final disk = jsonDecode(prefs.getString('agent.profiles')!) as List;
+    expect(disk.first['account_id'], 'acct-ds');
+    expect(disk.first['provider'], isNull);
+    await prefs.setString(kProviderAccountsPref, '[]');
+
+    final container2 = ProviderContainer.test(
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: env.runtime,
+        auth: env.fake,
+        client: env.fake,
+        store: env.store,
+        media: env.media,
+      ),
+    );
+    addTearDown(container2.dispose);
+    final store2 = container2.read(agentProfilesProvider.notifier);
+    await store2.ensureLoaded();
+    expect(store2.goose!.accountId, 'acct-ds');
+    expect(container2.read(providerAccountsProvider), isEmpty);
+    expect(
+      () => store2.readApiKey(store2.goose!),
+      throwsA(isA<MissingProviderAccount>()),
+    );
+  });
+
+  Future<void> addProfile(AgentProfileStore store, String id) {
+    return store.saveProfile(
+      AgentProfile(
+        id: id,
+        displayName: id,
+        providerKind: 'openai',
+        baseUrl: '',
+        model: 'gpt-4o',
+        keyRef: 'agent.api_key.$id',
+        systemPrompt: '',
+      ),
+    );
+  }
+
+  test('new profile immediately botCreate', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    await addProfile(store, 'coder');
+    expect(env.fake.botCreates, 1);
+    expect(env.fake.lastBotCreateId, 'coder');
+  });
+
+  test(
+    'delete registered calls botDelete and 108 still clears local',
+    () async {
+      final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      await store.setServerIdentity(true);
+      await addProfile(store, 'translator');
+      expect(
+        env.container
+            .read(agentProfilesProvider)
+            .any((p) => p.id == 'translator'),
+        isTrue,
+      );
+      env.fake.botDeletes = 0;
+      await store.delete('translator');
+      expect(env.fake.botDeletes, 1);
+      expect(env.fake.lastBotDeleteDest, 'b_translator');
+      expect(
+        env.container
+            .read(agentProfilesProvider)
+            .any((p) => p.id == 'translator'),
+        isFalse,
+      );
+
+      await addProfile(store, 'gone');
+      env.fake.botDeleteError = StateError('status 108');
+      await store.delete('gone');
+      expect(
+        env.container.read(agentProfilesProvider).any((p) => p.id == 'gone'),
+        isFalse,
+      );
+
+      env.fake.botDeleteError = null;
+      await addProfile(store, 'keep');
+      env.fake.botDeleteError = StateError('status 2');
+      await expectLater(store.delete('keep'), throwsA(isA<Object>()));
+      expect(store.identityError, isNotEmpty);
+      expect(
+        env.container.read(agentProfilesProvider).any((p) => p.id == 'keep'),
+        isTrue,
+      );
+    },
+  );
+
+  test('disabled profiles count toward the 20-cap', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    for (var i = 0; i < 18; i++) {
+      await addProfile(store, 'p$i');
+    }
+    await addProfile(store, 'disabled');
+    await store.setEnabled('disabled', false);
+    expect(
+      cloudIdentitySlots(
+        env.container.read(agentProfilesProvider),
+        serverIdentity: true,
+      ),
+      kMaxBotsPerOwner,
+    );
+    expect(
+      addProfile(store, 'overflow'),
+      throwsA(isA<AgentProfileCapExceeded>()),
+    );
+    expect(
+      env.container.read(agentProfilesProvider).any((p) => p.id == 'overflow'),
+      isFalse,
+    );
+  });
+
+  test('draftNew uses create defaults and does not persist', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    env.fake.botCreates = 0;
+    final before = env.container.read(agentProfilesProvider).length;
+    final draft = store.draftNew(accountId: 'acct-1', model: 'gpt-4o');
+    expect(draft.id, startsWith('p-'));
+    expect(draft.tools.sendMessage, isTrue);
+    expect(draft.tools.readClipboard, isTrue);
+    expect(draft.tools.fs, isFalse);
+    expect(draft.tools.searchContacts, isFalse);
+    expect(draft.systemPrompt, isEmpty);
+    expect(env.fake.botCreates, 0);
+    expect(env.container.read(agentProfilesProvider).length, before);
+    expect(
+      env.container.read(agentProfilesProvider).any((p) => p.id == draft.id),
+      isFalse,
+    );
+  });
+
+  test('saveEditor does not rewrite account vendor or url', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-keep',
+        vendorId: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        keyRef: 'agent.api_key.acct.acct-keep',
+        displayName: 'OpenAI',
+        models: ['gpt-4o'],
+      ),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final draft = store.draftNew(accountId: 'acct-keep', model: 'gpt-4o');
+    await store.saveEditor(
+      draft.copyWith(
+        displayName: 'Work',
+        providerKind: 'anthropic',
+        baseUrl: 'https://evil.example',
+      ),
+    );
+    final kept = accounts.byId('acct-keep')!;
+    expect(kept.vendorId, 'openai');
+    expect(kept.baseUrl, 'https://api.openai.com/v1');
+  });
+
+  test('login/online does not batch-ensure bot identities', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    store.serverIdentity = true;
+    env.fake.botCreates = 0;
+    env.container.read(linkProvider);
+    await _until(
+      () => env.container.read(linkProvider).status == ConnStatus.online,
+    );
+    expect(env.fake.botCreates, 0);
+    expect(store.goose!.serverAccount, isEmpty);
+  });
+
+  test('empty first-run does not seed goose', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(env.container.read(agentProfilesProvider), isEmpty);
+    expect(store.goose, isNull);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('agent.profiles', '[]');
+    final container2 = ProviderContainer.test(
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: env.runtime,
+        auth: env.fake,
+        client: env.fake,
+        store: env.store,
+        media: env.media,
+      ),
+    );
+    addTearDown(container2.dispose);
+    final store2 = container2.read(agentProfilesProvider.notifier);
+    await store2.ensureLoaded();
+    expect(container2.read(agentProfilesProvider), isEmpty);
+    expect(store2.goose, isNull);
+  });
+
+  test('delete goose removes the row; 108 still clears', () async {
+    final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.goose, isNotNull);
+    await store.delete(kGooseAgentId);
+    expect(store.goose, isNull);
+    expect(env.fake.botDeletes, 0);
+
+    await store.saveProfile(
+      AgentProfile(
+        id: kGooseAgentId,
+        displayName: kGooseAgentName,
+        providerKind: 'openai',
+        baseUrl: '',
+        model: 'gpt-4o',
+        keyRef: 'agent.api_key.goose',
+        systemPrompt: '',
+        serverAccount: 'b_goose',
+      ),
+    );
+    env.fake.botDeletes = 0;
+    await store.delete(kGooseAgentId);
+    expect(env.fake.botDeletes, 1);
+    expect(env.fake.lastBotDeleteDest, 'b_goose');
+    expect(store.goose, isNull);
+
+    await store.saveProfile(
+      AgentProfile(
+        id: kGooseAgentId,
+        displayName: kGooseAgentName,
+        providerKind: 'openai',
+        baseUrl: '',
+        model: 'gpt-4o',
+        keyRef: 'agent.api_key.goose',
+        systemPrompt: '',
+        serverAccount: 'b_gone',
+      ),
+    );
+    env.fake.botDeleteError = StateError('status 108');
+    await store.delete(kGooseAgentId);
+    expect(store.goose, isNull);
+  });
+
+  test('unset server_identity defaults to agentHostSupported', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      serverIdentity: null,
+      identityMigrated: false,
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.serverIdentity, agentHostSupported);
+  });
+
+  test('persist server_identity false migrates on once', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      serverIdentity: false,
+      identityMigrated: false,
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.serverIdentity, isTrue);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('agent.identity_migrated_on'), isTrue);
+    expect(prefs.getBool('agent.server_identity'), isTrue);
+  });
+
+  test('after identity migration a handwritten false stays off', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      serverIdentity: false,
+      identityMigrated: true,
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.serverIdentity, isFalse);
+  });
+
+  test('persist multi_profile false migrates on and shows p-*', () async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      multiProfile: false,
+      multiProfileMigrated: false,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'agent.profiles',
+      jsonEncode([
+        {
+          'id': 'p-1710000000000',
+          'display_name': 'Work',
+          'model': {'name': 'gpt-4o'},
+          'system_prompt': '',
+          'enabled': true,
+        },
+      ]),
+    );
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.multiProfile, isTrue);
+    expect(store.visibleAgents.any((p) => p.id.startsWith('p-')), isTrue);
+  });
+
+  test('20 local rows cap regardless of serverIdentity', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    expect(store.serverIdentity, isFalse);
+    for (var i = 0; i < 20; i++) {
+      await addProfile(store, 'p$i');
+    }
+    expect(env.container.read(agentProfilesProvider), hasLength(20));
+    expect(
+      addProfile(store, 'overflow'),
+      throwsA(isA<AgentProfileCapExceeded>()),
+    );
+  });
+
+  test(
+    'saveEditor empty key still saves and does not dual-write goose',
+    () async {
+      final env = await _agentHarness(token: 'tok.jwt', account: 'alice');
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        'agent.api_key.goose': 'sk-keep',
+      });
+      final store = env.container.read(agentProfilesProvider.notifier);
+      await store.ensureLoaded();
+      final goose = store.goose!;
+      await store.saveEditor(goose.copyWith(model: 'gpt-4.1'));
+      expect(store.goose!.model, 'gpt-4.1');
+      expect(await store.readApiKey(store.goose!), 'sk-keep');
     },
   );
 }
