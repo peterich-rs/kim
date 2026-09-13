@@ -11,6 +11,7 @@ import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/agent/agent_settings_page.dart';
 import '../screens/home/me_page.dart';
+import '../screens/peer/peer_profile_page.dart';
 import '../screens/password_page.dart';
 import '../state/auth.dart';
 import '../state/location.dart';
@@ -104,6 +105,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/peer/:id',
+        name: 'peer',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+          final title = state.uri.queryParameters['title'] ?? '';
+          return kimPushPage(
+            key: state.pageKey,
+            name: state.name,
+            child: PeerProfilePage(account: id, seedTitle: title),
+          );
+        },
       ),
       GoRoute(
         path: '/password',

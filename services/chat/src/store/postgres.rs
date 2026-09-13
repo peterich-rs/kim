@@ -1510,6 +1510,95 @@ impl MessageStore for PostgresMessageStore {
             })
             .collect())
     }
+
+    async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError> {
+        if account.is_empty() || peer.is_empty() || account == peer {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await.map_err(pg_err)?;
+        let ids: Vec<(i64,)> = sqlx::query_as(
+            "SELECT DISTINCT message_id FROM message_index
+              WHERE app = $1 AND group_id = ''
+                AND ((account_a = $2 AND account_b = $3)
+                  OR (account_a = $3 AND account_b = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        let message_ids: Vec<i64> = ids.into_iter().map(|(id,)| id).collect();
+        sqlx::query(
+            "DELETE FROM conversation_inbox
+              WHERE app = $1 AND kind = 0
+                AND ((account = $2 AND dest = $3) OR (account = $3 AND dest = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        sqlx::query(
+            "DELETE FROM conversation_reads
+              WHERE app = $1 AND group_id = ''
+                AND ((account = $2 AND peer = $3) OR (account = $3 AND peer = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if !message_ids.is_empty() {
+            sqlx::query(
+                "DELETE FROM pending_delivery
+                  WHERE app = $1 AND message_id = ANY($2)",
+            )
+            .bind(app)
+            .bind(&message_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            sqlx::query(
+                "DELETE FROM message_idempotency
+                  WHERE app = $1 AND message_id = ANY($2)",
+            )
+            .bind(app)
+            .bind(&message_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        }
+        sqlx::query(
+            "DELETE FROM message_index
+              WHERE app = $1 AND group_id = ''
+                AND ((account_a = $2 AND account_b = $3)
+                  OR (account_a = $3 AND account_b = $2))",
+        )
+        .bind(app)
+        .bind(account)
+        .bind(peer)
+        .execute(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+        if !message_ids.is_empty() {
+            sqlx::query("DELETE FROM message_content WHERE id = ANY($1)")
+                .bind(&message_ids)
+                .execute(&mut *tx)
+                .await
+                .map_err(pg_err)?;
+        }
+        sqlx::query("DELETE FROM bot_turns WHERE app = $1 AND bot_account = $2")
+            .bind(app)
+            .bind(peer)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        tx.commit().await.map_err(pg_err)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

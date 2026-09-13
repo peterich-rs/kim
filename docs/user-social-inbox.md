@@ -37,7 +37,7 @@
 | `chat.friend.list` / `chat.friend.incoming` | 空 | `UserListResp` |
 | `chat.block.add` / `remove` / `list` | 对方 / 空 | 拉黑会拆好友并取消双方申请 |
 
-`chat.user.talk`：dest 未注册仍是 `UserNotFound=108`。拉黑 `Blocked=110`。非好友 `NotFriends=109`。自己给自己仍可发。群聊不查好友。非 owner 对 bot 的 talk / profile / request / remove / block 一律 `UserNotFound=108`（不泄露「这是 bot」）。owner 误用 `friend.remove` / `block` / `friend.request` dest=自家 bot → `BotSocialDenied=113`（应走 `chat.bot.delete`）。`chat.bot.reply` / `delete` / `update` / `pending` 非 owner → `NotBotOwner=112`。
+`chat.user.talk`：dest 未注册仍是 `UserNotFound=108`。拉黑 `Blocked=110`。非好友 `NotFriends=109`。自己给自己仍可发。群聊不查好友。非 owner 对 bot 的 talk / profile / request / remove / block 一律 `UserNotFound=108`（不泄露「这是 bot」）。owner 误用 `friend.remove` / `block` / `friend.request` dest=自家 bot → `BotSocialDenied=113`（应走 `chat.bot.delete`）。`chat.bot.reply` / `delete` / `update` / `pending` 非 owner → `NotBotOwner=112`。`chat.bot.delete` 成功后会 purge 该 owner↔bot 的 1:1 服务端消息 / inbox / reads（人类 `friend.remove` **不**清服务端历史；双向人类 purge 另议）。
 
 `chat.bot.create` 在同一事务写入 `users(kind=bot)` 与 `friendships(owner, bot)`（自动成友，不走 `chat.friend.request`）。幂等键 `(app, owner_account, client_profile_id)`。`chat.friend.list` 对 owner 含自家 bot 且 `kind=2`。
 

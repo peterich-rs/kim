@@ -584,7 +584,7 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(Command::BotDelete, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_delete(ctx, svc.users.as_ref()).await }
+                async move { do_bot_delete(ctx, svc.users.as_ref(), svc.store.as_ref()).await }
             });
         }
         {

@@ -13,12 +13,14 @@ class KimPerson {
     required this.account,
     required this.nickname,
     this.avatar = '',
+    this.bio = '',
     this.kind = ProfileKind.user,
   });
 
   final String account;
   final String nickname;
   final String avatar;
+  final String bio;
   final int kind;
 
   String get title => nickname.isEmpty ? account : nickname;

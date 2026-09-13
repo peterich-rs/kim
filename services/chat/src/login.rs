@@ -506,6 +506,14 @@ mod tests {
         ) -> Result<Vec<crate::store::BotPendingItem>, crate::store::StoreError> {
             Ok(Vec::new())
         }
+        async fn purge_peer_dm(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::store::StoreError> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
