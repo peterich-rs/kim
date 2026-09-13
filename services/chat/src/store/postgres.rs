@@ -1518,6 +1518,7 @@ mod tests {
     use crate::idgen::SequenceIdGen;
     use crate::store::{DeliveryTarget, MemoryAckIndex};
     use async_trait::async_trait;
+    use kim_protocol::ChannelId;
     use kim_router::{SessionError, SessionStorage};
 
     fn sample(sender: &str, dest: &str, send_time: i64, body: &str) -> InsertMessage {
@@ -1698,28 +1699,21 @@ mod tests {
         async fn add(&self, _: &kim_protocol::pkt::Session) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn delete(
-            &self,
-            _: &kim_protocol::AccountId,
-            _: &kim_protocol::ChannelId,
-        ) -> Result<(), SessionError> {
+        async fn delete(&self, _: &AccountId, _: &ChannelId) -> Result<(), SessionError> {
             Ok(())
         }
-        async fn get(
-            &self,
-            _: &kim_protocol::ChannelId,
-        ) -> Result<kim_protocol::pkt::Session, SessionError> {
+        async fn get(&self, _: &ChannelId) -> Result<kim_protocol::pkt::Session, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_locations(
             &self,
-            _: &[kim_protocol::AccountId],
+            _: &[AccountId],
         ) -> Result<Vec<kim_router::Location>, SessionError> {
             Err(SessionError::Other("boom".into()))
         }
         async fn get_location(
             &self,
-            _: &kim_protocol::AccountId,
+            _: &AccountId,
             _: &str,
         ) -> Result<kim_router::Location, SessionError> {
             Err(SessionError::Other("boom".into()))
