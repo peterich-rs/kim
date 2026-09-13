@@ -77,20 +77,6 @@ List<KimThread> withLocalThreads(
   return [...extras, ...threads];
 }
 
-List<KimThread> withGooseThread(List<KimThread> threads) {
-  return withLocalThreads(threads, const [
-    AgentProfile(
-      id: kGooseAgentId,
-      displayName: kGooseAgentName,
-      providerKind: 'openai',
-      baseUrl: '',
-      model: 'gpt-4o',
-      keyRef: 'agent.api_key.goose',
-      systemPrompt: '',
-    ),
-  ]);
-}
-
 class ThreadsNotifier extends Notifier<ThreadsState> {
   @override
   ThreadsState build() {
@@ -103,11 +89,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     final loaded = store.loadThreads(account);
     return ThreadsState(
-      threads: !agentHostSupported
-          ? loaded
-          : agents.isEmpty
-          ? withGooseThread(loaded)
-          : withLocalThreads(loaded, agents),
+      threads: !agentHostSupported ? loaded : withLocalThreads(loaded, agents),
     );
   }
 

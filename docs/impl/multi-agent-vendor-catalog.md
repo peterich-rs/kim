@@ -169,8 +169,10 @@ Goose 五档：`Off/Low/Medium/High/Max`；`FromStr`：`none`→Off、`xhigh`→
 6. **`agent.multi_profile`：保留作 kill-switch；默认值在 PR5 才改成桌面 true。** PR4 仍默认 false，只改 goose 编辑器的推理控件。删除 `agentMoreComing`。
 
 7. **本地硬上限 20，与 `BOT_MAX_PER_OWNER` 对齐。** 每个插入路径都闸：`saveProfile` 新 id、`duplicate`、向导。计数 = **`serverIdentity` 开启时「已有 `serverAccount` 或即将注册」的 profile 数**（含 disabled——它们仍占云 bot），不是 `enabled.length`。客户端先拒；若仍打到服务器 101，用已有 `Copy.agentRegisterFailed` / `agentRegisterError`（`status 101` 已在 `errors.dart`），不要新 FFI 文案。
+   **revises：见 [agent-provider-persona.md](agent-provider-persona.md) P-KD 12** — 插入闸改本机 profile 行数（含 disabled、含未注册）。
 
 8. **默认 Agent 仍是 `id=goose`。** `mentionedProfile` 精确 id 优先。禁止「最近用过」抢走 `@助手`。
+   **revises：见 [agent-provider-persona.md](agent-provider-persona.md) P-KD 6 / 8** — 新装不种子 goose；goose 不是默认人设。
 
 9. **云身份：遵守 bot-KD 22 两条路径；人设删除修订 bot-KD 18。**
    - **Create：** 新建 / duplicate / 向导保存成功后立刻 `chat.bot.create`。已有空 `serverAccount` 在 **第一次打开该 1:1** 才 create。**禁止** login / `ConnStatus.online` 批量 `ensureVisibleIdentities`。PR5 从 `link.dart:222-232` 拆掉该调用（保留 `catchUpPending`）。`setServerIdentity(true)` 仍可对当前可见未注册 profile 补注册（用户显式打开开关，不是静默 login）。
@@ -207,6 +209,7 @@ Goose 五档：`Off/Low/Medium/High/Max`；`FromStr`：`none`→Off、`xhigh`→
     - PR5：`/agent` 列表、`/agent/:id` 编辑器、`/agent/accounts`；`/agent/settings` 重定向 `/agent`。`multi_profile` 默认 true 与路由同 PR。
 
 16. **产品模板只存在向导（PR6）。Host `translator_template` / `coder_template` 降为测试夹具，不再当 UI 源。** `list_builtin_profiles` 不驱动向导。`_reload` 已不插入这两行（保持）。Host 模板继续 openai/gpt-4o 以免测试漂移；产品「译者」= DeepSeek `deepseek-flash` + effort `none` + 无工具。
+    **revises：见 [agent-provider-persona.md](agent-provider-persona.md) P-KD 1 / 16** — 本轮无内置模板、无向导。
 
 17. **Duplicate Agent 默认共享 `account_id`，不复制 key。** 新 `key_ref` 仅当「复制账号」。
 
@@ -607,7 +610,7 @@ pub fn catalog_validate(vendor: String, model: String, choice_json: String) -> R
 }
 ```
 
-`group`：`"primary" | "gateway" | "other"`。主列表 `primary`（OpenAI / Anthropic / DeepSeek / Qwen / Kimi / GLM / MiniMax / SiliconFlow / 自定义）；OpenRouter = `gateway`；未进 catalog 的 Goose 名 = `other`。Dart **只**按 `group` + `sort_rank` 分段，禁止 `if (id == "openrouter")`。
+`group`：`"primary" | "gateway" | "other"`。主列表 `primary`（OpenAI / Anthropic / xAI / DeepSeek / Qwen / Kimi / GLM / MiniMax / SiliconFlow / 自定义）；OpenRouter = `gateway`；Groq = `other`（不是 xAI Grok）。Dart **只**按 `group` + `sort_rank` 分段，禁止 `if (id == "openrouter")`。
 
 `builder` / `auth` / `goose_fallback_name` / `model_rules` 留在 Rust。
 
@@ -953,7 +956,7 @@ Dart：fetch 失败 toast（已有）；**fortify 丢键 toast**（新）。`ide
 |---|---|---|
 | 1 | Anthropic UI：effort vs `budget_tokens` 滑条 | **`effort_enum` `low\|high\|max`（默认 high）**，跟 Claude Code。UI **不**暴露 budget 滑条。Goose Adaptive（canonical `thinking_mode=adaptive`）HTTP = `thinking.type=adaptive` + `output_config.effort`。Enabled（如 sonnet-4.5）由 Goose 从 effort **内部**推导 `budget_tokens`。MiniMax **分开**：`enabled`+显式 `budget_tokens`，不发 Claude effort。 |
 | 2 | Qwen 国内 vs intl 默认 | **`https://dashscope.aliyuncs.com/compatible-mode/v1`**，intl 为账号页备选下拉。不按 locale 猜。与 C-KD 12 一致。 |
-| 3 | OpenRouter 是否第一屏 | **`VendorSummary.group=gateway`，不进第一屏。** `primary`：OpenAI / Anthropic / DeepSeek / Qwen / Kimi / GLM / MiniMax / SiliconFlow / 自定义（`openai_compatible`）。`vendors.json` 种子 `group` 必须与此一致。 |
+| 3 | OpenRouter 是否第一屏 | **`VendorSummary.group=gateway`，不进第一屏。** `primary`：OpenAI / Anthropic / xAI / DeepSeek / Qwen / Kimi / GLM / MiniMax / SiliconFlow / 自定义（`openai_compatible`）。`vendors.json` 种子 `group` 必须与此一致。**Groq ≠ Grok**：Groq 是 `other`；xAI Grok 是 `id=xai`。 |
 | 4 | 停用的已注册 bot 对手机隐藏 | **本阶段仍可见。** 不做 `chat.bot.update`。桌面 `visibleAgents` 不 prompt；云好友 list 仍含 bot。 |
 
 ---

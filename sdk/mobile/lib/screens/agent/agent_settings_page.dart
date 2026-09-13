@@ -5,22 +5,28 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../agent/catalog.dart';
 import '../../agent/mention.dart';
-import '../../agent_bridge.dart';
 import '../../copy.dart';
 import '../../state/agent_profiles.dart';
-import '../../state/agent_settings.dart';
+import '../../state/provider_accounts.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
+import 'provider_account_page.dart';
 import 'reasoning_controls.dart';
 
-class AgentEditorPage extends ConsumerStatefulWidget {
-  const AgentEditorPage({super.key, this.profileId = kGooseAgentId});
+const _kNewProvider = '__new__';
 
-  final String profileId;
+class AgentEditorPage extends ConsumerStatefulWidget {
+  const AgentEditorPage({super.key, this.profileId});
+
+  final String? profileId;
+
+  bool get isCreate => profileId == null || profileId!.isEmpty;
 
   @override
   ConsumerState<AgentEditorPage> createState() => _AgentEditorPageState();
@@ -33,61 +39,76 @@ class AgentSettingsPage extends AgentEditorPage {
 class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   late final TextEditingController _displayName;
   late final TextEditingController _aliases;
-  late final TextEditingController _baseUrl;
+  late final TextEditingController _prompt;
   late final TextEditingController _model;
-  late final TextEditingController _apiKey;
   late final TextEditingController _mcp;
   late final TextEditingController _advanced;
-  late String _backend;
   ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
   ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
   var _fs = false;
   var _bash = false;
   var _loaded = false;
-  var _fetching = false;
-  List<String> _fetchedModels = const [];
-  List<VendorSummaryDto> _vendors = const [];
+  String _accountId = '';
   Map<String, String> _permissions = {};
+  List<VendorSummaryDto> _vendors = const [];
+  List<String> _pendingModels = const [];
+  AgentProfile? _draft;
 
   @override
   void initState() {
     super.initState();
     _displayName = TextEditingController();
     _aliases = TextEditingController();
-    _baseUrl = TextEditingController();
+    _prompt = TextEditingController();
     _model = TextEditingController();
-    _apiKey = TextEditingController();
     _mcp = TextEditingController();
     _advanced = TextEditingController();
-    _backend = 'openai';
-    unawaited(_loadCatalog());
+    unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
     _displayName.dispose();
     _aliases.dispose();
-    _baseUrl.dispose();
+    _prompt.dispose();
     _model.dispose();
-    _apiKey.dispose();
     _mcp.dispose();
     _advanced.dispose();
     super.dispose();
   }
 
   AgentProfile? get _profile {
+    final draft = _draft;
+    if (draft != null) {
+      for (final p in ref.read(agentProfilesProvider)) {
+        if (p.id == draft.id) {
+          return p;
+        }
+      }
+      return draft;
+    }
     final id = widget.profileId;
+    if (id == null || id.isEmpty) {
+      return null;
+    }
     for (final p in ref.read(agentProfilesProvider)) {
       if (p.id == id) {
         return p;
       }
     }
-    return ref.read(agentProfilesProvider.notifier).goose;
+    return null;
   }
 
-  VendorSummaryDto? get _vendor {
+  ProviderAccount? get _selectedAccount {
+    if (_accountId.isEmpty) {
+      return null;
+    }
+    return ref.read(providerAccountsProvider.notifier).byId(_accountId);
+  }
+
+  VendorSummaryDto? _vendorById(String id) {
     for (final v in _vendors) {
-      if (v.id == _backend) {
+      if (v.id == id) {
         return v;
       }
     }
@@ -95,81 +116,64 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   List<String> get _modelOptions {
-    final seen = <String>{};
-    final out = <String>[];
-    void add(String m) {
-      final id = m.trim();
-      if (id.isEmpty || !seen.add(id)) {
-        return;
-      }
-      out.add(id);
+    final account = _selectedAccount;
+    if (account != null) {
+      return selectableModelIds([
+        ...account.models,
+        ..._pendingModels,
+        _model.text,
+      ]);
     }
-
-    final vendor = _vendor;
-    if (vendor != null) {
-      for (final m in vendor.models) {
-        add(m);
-      }
-      add(vendor.defaultModel);
-    }
-    for (final m in _fetchedModels) {
-      add(m);
-    }
-    add(_model.text);
-    return out;
+    return selectableModelIds([..._pendingModels, _model.text]);
   }
 
-  Future<void> _loadCatalog() async {
-    try {
-      final catalog = ref.read(catalogRepositoryProvider);
-      final vendors = await catalog.ensureVendors();
-      if (!mounted) {
-        return;
-      }
-      setState(() => _vendors = vendors);
-      await _loadModelCache();
-      await _reloadSurface(toastDropped: false);
-    } catch (_) {}
-  }
-
-  void _hydrate(AgentSettings s) {
-    if (!_loaded) {
-      unawaited(_applyFromStore(s));
-      _loaded = true;
+  Future<void> _bootstrap() async {
+    await ref.read(agentProfilesProvider.notifier).ensureLoaded();
+    await ref.read(providerAccountsProvider.notifier).ensureLoaded();
+    if (!mounted) {
       return;
     }
-    if (_apiKey.text.isEmpty &&
-        s.apiKey.isNotEmpty &&
-        widget.profileId == kGooseAgentId) {
-      _apiKey.text = s.apiKey;
+    try {
+      final vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
+      if (mounted) {
+        setState(() => _vendors = vendors);
+      }
+    } catch (_) {}
+    if (!mounted) {
+      return;
     }
+    await _hydrate();
   }
 
-  Future<void> _applyFromStore(AgentSettings s) async {
-    await ref.read(agentProfilesProvider.notifier).ensureLoaded();
-    if (!mounted) {
+  Future<void> _hydrate() async {
+    if (_loaded) {
+      return;
+    }
+    _loaded = true;
+    final accounts = ref.read(providerAccountsProvider);
+    if (widget.isCreate) {
+      if (accounts.isNotEmpty) {
+        _accountId = accounts.first.id;
+        _model.text = defaultModelForAccount(
+          accounts.first,
+          _vendorById(accounts.first.vendorId),
+        );
+      }
+      if (mounted) {
+        setState(() {});
+      }
+      await _reloadSurface(toastDropped: false);
       return;
     }
     final profile = _profile;
     if (profile == null) {
-      _backend = s.llmBackend.isEmpty ? 'openai' : s.llmBackend;
-      _baseUrl.text = s.baseUrl;
-      _model.text = s.model;
-      _apiKey.text = s.apiKey;
-      _displayName.text = kGooseAgentName;
-      _fs = s.enableFsTools;
-      _bash = s.bashEnabled;
-      _choice =
-          ReasoningChoice.fromThinkingEffort(s.thinkingEffort) ??
-          const ReasoningChoice(kind: 'none');
-      await _reloadSurface(toastDropped: false);
       return;
     }
     _displayName.text = profile.displayName;
     _aliases.text = profile.aliases.join(', ');
-    _backend = profile.providerKind.isEmpty ? 'openai' : profile.providerKind;
-    _baseUrl.text = profile.baseUrl.isNotEmpty ? profile.baseUrl : s.baseUrl;
-    _model.text = profile.model.isNotEmpty ? profile.model : s.model;
+    _prompt.text = profile.systemPrompt;
+    _accountId = profile.accountId;
+    _model.text = profile.model;
     _fs = profile.tools.fs;
     _bash = profile.tools.bash;
     _permissions = Map<String, String>.from(profile.permissionOverrides);
@@ -182,18 +186,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         profile.reasoning ??
         ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
         const ReasoningChoice(kind: 'none');
-    try {
-      final key = await ref
-          .read(agentProfilesProvider.notifier)
-          .readApiKey(profile);
-      if (mounted && key.isNotEmpty) {
-        _apiKey.text = key;
-      }
-    } catch (_) {
-      if (widget.profileId == kGooseAgentId && s.apiKey.isNotEmpty) {
-        _apiKey.text = s.apiKey;
-      }
-    }
     if (mounted) {
       setState(() {});
     }
@@ -201,13 +193,15 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   Future<void> _reloadSurface({required bool toastDropped}) async {
-    if (_vendors.isEmpty) {
+    final account = _selectedAccount;
+    final vendorId = account?.vendorId ?? '';
+    if (vendorId.isEmpty) {
       return;
     }
     try {
       final catalog = ref.read(catalogRepositoryProvider);
       final surface = await catalog.surface(
-        vendor: _backend,
+        vendor: vendorId,
         model: _model.text.trim(),
       );
       if (!mounted) {
@@ -219,111 +213,169 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         _choice = aligned.choice;
       });
       if (toastDropped && aligned.dropped) {
-        _toastDropped();
+        _toastInfo(Copy.agentReasoningDropped);
       }
     } catch (_) {}
   }
 
-  void _toastDropped() {
+  void _toastInfo(String message) {
     if (!mounted) {
       return;
     }
     toastification.show(
       context: context,
       type: ToastificationType.info,
-      title: Text(Copy.agentReasoningDropped),
+      title: Text(message),
       autoCloseDuration: const Duration(seconds: 3),
     );
   }
 
-  void _selectVendor(String id) {
-    VendorSummaryDto? next;
-    for (final v in _vendors) {
-      if (v.id == id) {
-        next = v;
-        break;
-      }
+  void _toastError(String message) {
+    if (!mounted) {
+      return;
+    }
+    toastification.show(
+      context: context,
+      type: ToastificationType.error,
+      title: Text(message),
+      autoCloseDuration: const Duration(seconds: 4),
+    );
+  }
+
+  Future<void> _openNewProvider() async {
+    final id = await openProviderAccountEditor(context);
+    if (!mounted || id == null || id.isEmpty) {
+      return;
+    }
+    _selectAccount(id);
+  }
+
+  void _selectAccount(String id) {
+    if (id == _kNewProvider) {
+      unawaited(_openNewProvider());
+      return;
+    }
+    final account = ref.read(providerAccountsProvider.notifier).byId(id);
+    if (account == null) {
+      return;
+    }
+    var model = _model.text.trim();
+    var fell = false;
+    if (account.models.isNotEmpty && !account.models.contains(model)) {
+      model = defaultModelForAccount(account, _vendorById(account.vendorId));
+      fell = true;
     }
     setState(() {
-      _backend = id;
-      if (next != null) {
-        if (next.defaultBaseUrl.isNotEmpty) {
-          _baseUrl.text = next.defaultBaseUrl;
-        }
-        final model = _model.text.trim();
-        final known = {...next.models, next.defaultModel};
-        if (model.isEmpty ||
-            (next.defaultModel.isNotEmpty && !known.contains(model))) {
-          _model.text = next.defaultModel;
-        }
-      }
+      _accountId = id;
+      _pendingModels = const [];
+      _model.text = model;
     });
-    unawaited(_loadModelCache());
+    if (fell && mounted) {
+      _toastInfo(AppLocalizations.of(context).agentModelFallback(model));
+    }
     unawaited(_reloadSurface(toastDropped: true));
   }
 
-  Future<void> _loadModelCache() async {
-    final cached = await loadCatalogModelCache(_backend);
-    if (!mounted || cached.isEmpty) {
+  Future<void> _pickModel() async {
+    final models = _modelOptions;
+    if (!mounted) {
       return;
     }
-    setState(() => _fetchedModels = cached);
+    final l10n = AppLocalizations.of(context);
+    final selected = _model.text.trim();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final height = MediaQuery.sizeOf(ctx).height * 0.55;
+        return SafeArea(
+          child: SizedBox(
+            height: height,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Text(
+                    l10n.agentModel,
+                    style: Theme.of(ctx).textTheme.titleMedium,
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      for (final id in models)
+                        ListTile(
+                          title: Text(id),
+                          selected: id == selected,
+                          onTap: () => Navigator.pop(ctx, id),
+                        ),
+                      ListTile(
+                        title: Text(l10n.agentModelOther),
+                        onTap: () => Navigator.pop(ctx, _kNewProvider),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    if (picked == _kNewProvider) {
+      await _otherModel();
+      return;
+    }
+    setState(() => _model.text = picked);
+    unawaited(_reloadSurface(toastDropped: true));
   }
 
-  Future<void> _fetchModels() async {
-    if (!isAllowedAgentBaseUrl(_baseUrl.text)) {
-      toastification.show(
-        context: context,
-        type: ToastificationType.error,
-        title: Text(Copy.agentInvalidUrl),
-        autoCloseDuration: const Duration(seconds: 3),
-      );
+  Future<void> _otherModel() async {
+    final l10n = AppLocalizations.of(context);
+    final controller = TextEditingController();
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(l10n.agentModelOther),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(hintText: l10n.agentModel),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(Copy.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(Copy.save),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (raw == null || !isSelectableModelId(raw) || !mounted) {
       return;
     }
-    setState(() => _fetching = true);
-    try {
-      final bridge = ref.read(agentBridgeProvider);
-      await bridge.ensure();
-      final list = await bridge.fetchModels(
-        SessionOpenOpts(
-          model: _model.text.trim(),
-          llmBackend: _backend,
-          resumeOnOpen: false,
-          baseUrl: _baseUrl.text.trim(),
-          apiKey: _apiKey.text.trim(),
-          enableFsTools: false,
-          bashEnabled: false,
-          profileId: widget.profileId,
-          profileJson: '',
-          thinkingEffort: _choice.value ?? '',
-          gooseMode: '',
-          enableKimTools: false,
-          enableApprovals: false,
-          sessionId: '',
-        ),
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _fetchedModels = list;
-        if (_model.text.trim().isEmpty && list.isNotEmpty) {
-          _model.text = list.first;
-        }
-      });
-      await saveCatalogModelCache(_backend, list);
-      await _reloadSurface(toastDropped: true);
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      final fallback = _vendor?.models ?? const <String>[];
-      setState(() => _fetchedModels = fallback);
-    } finally {
-      if (mounted) {
-        setState(() => _fetching = false);
-      }
+    final account = _selectedAccount;
+    if (account != null) {
+      final models = selectableModelIds([...account.models, raw]);
+      await ref
+          .read(providerAccountsProvider.notifier)
+          .upsert(account.copyWith(models: models));
+    } else {
+      _pendingModels = selectableModelIds([..._pendingModels, raw]);
     }
+    setState(() => _model.text = raw);
+    unawaited(_reloadSurface(toastDropped: true));
   }
 
   List<AgentExtension> _parseMcp(String raw) {
@@ -360,22 +412,21 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   Future<void> _save() async {
-    if (_apiKey.text.trim().isEmpty) {
-      toastification.show(
-        context: context,
-        type: ToastificationType.error,
-        title: Text(Copy.agentKeyMissing),
-        autoCloseDuration: const Duration(seconds: 3),
-      );
+    final l10n = AppLocalizations.of(context);
+    final name = _displayName.text.trim();
+    if (name.isEmpty) {
+      _toastError(l10n.agentNameHint);
       return;
     }
-    if (!isAllowedAgentBaseUrl(_baseUrl.text)) {
-      toastification.show(
-        context: context,
-        type: ToastificationType.error,
-        title: Text(Copy.agentInvalidUrl),
-        autoCloseDuration: const Duration(seconds: 3),
-      );
+    final accountId = _accountId;
+    if (accountId.isEmpty ||
+        ref.read(providerAccountsProvider.notifier).byId(accountId) == null) {
+      _toastError(l10n.agentNeedProvider);
+      return;
+    }
+    final account = ref.read(providerAccountsProvider.notifier).byId(accountId);
+    if (account == null) {
+      _toastError(l10n.agentProvider);
       return;
     }
     var choice = _choice;
@@ -383,52 +434,63 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       final result = await ref
           .read(catalogRepositoryProvider)
           .validate(
-            vendor: _backend,
+            vendor: account.vendorId,
             model: _model.text.trim(),
             choice: choice,
           );
       choice = result.choice;
       if (result.dropped.isNotEmpty) {
-        _toastDropped();
+        _toastInfo(Copy.agentReasoningDropped);
       }
     } catch (_) {
       final aligned = alignChoice(_surface, choice);
       choice = aligned.choice;
       if (aligned.dropped) {
-        _toastDropped();
+        _toastInfo(Copy.agentReasoningDropped);
       }
     }
-    await ref.read(agentProfilesProvider.notifier).ensureLoaded();
-    final existing =
-        _profile ??
-        AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider));
     final model = _model.text.trim().isEmpty
-        ? (_vendor?.defaultModel.isNotEmpty == true
-              ? _vendor!.defaultModel
-              : 'gpt-4o')
+        ? defaultModelForAccount(account, _vendorById(account.vendorId))
         : _model.text.trim();
-    final aliases = [
-      for (final part in _aliases.text.split(RegExp(r'[,，\s]+')))
-        if (part.trim().isNotEmpty) part.trim(),
-    ];
-    final name = _displayName.text.trim().isEmpty
-        ? existing.displayName
-        : _displayName.text.trim();
-    final next = existing.copyWith(
-      displayName: name,
-      aliases: aliases,
-      providerKind: _backend,
-      baseUrl: _baseUrl.text.trim(),
-      model: model,
-      thinkingEffort: choice.value ?? '',
-      reasoning: choice,
-      tools: existing.tools.copyWith(fs: _fs, bash: _bash),
-      permissionOverrides: _permissions,
-      extensions: _parseMcp(_mcp.text),
-    );
-    await ref
-        .read(agentProfilesProvider.notifier)
-        .saveEditor(next, apiKey: _apiKey.text.trim());
+    final store = ref.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    final existing = _profile;
+    final AgentProfile next;
+    if (widget.isCreate && existing == null) {
+      final draft = store.draftNew(accountId: account.id, model: model);
+      next = draft.copyWith(
+        displayName: name,
+        systemPrompt: _prompt.text,
+        reasoning: choice,
+        thinkingEffort: choice.value ?? '',
+      );
+      _draft = next;
+    } else {
+      if (existing == null) {
+        if (mounted) {
+          Navigator.of(context).maybePop();
+        }
+        return;
+      }
+      final base = existing;
+      final aliases = [
+        for (final part in _aliases.text.split(RegExp(r'[,，\s]+')))
+          if (part.trim().isNotEmpty) part.trim(),
+      ];
+      next = base.copyWith(
+        displayName: name,
+        aliases: aliases,
+        accountId: account.id,
+        model: model,
+        thinkingEffort: choice.value ?? '',
+        reasoning: choice,
+        systemPrompt: _prompt.text,
+        tools: base.tools.copyWith(fs: _fs, bash: _bash),
+        permissionOverrides: _permissions,
+        extensions: _parseMcp(_mcp.text),
+      );
+    }
+    await store.saveEditor(next);
     if (!mounted) {
       return;
     }
@@ -441,55 +503,45 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     );
   }
 
-  List<DropdownMenuItem<String>> _vendorItems(AppLocalizations l10n) {
-    final items = <DropdownMenuItem<String>>[];
-    void section(String group, String label) {
-      final rows = vendorsInGroup(_vendors, group);
-      if (rows.isEmpty) {
-        return;
-      }
-      items.add(
+  List<DropdownMenuItem<String>> _providerItems(AppLocalizations l10n) {
+    final accounts = ref.watch(providerAccountsProvider);
+    final items = <DropdownMenuItem<String>>[
+      for (final a in accounts)
         DropdownMenuItem(
-          value: '__hdr_$group',
-          enabled: false,
-          child: Text(label),
+          value: a.id,
+          child: Text(
+            a.displayName.isNotEmpty
+                ? a.displayName
+                : (_vendorById(a.vendorId)?.displayName ?? a.vendorId),
+          ),
         ),
-      );
-      for (final v in rows) {
-        items.add(DropdownMenuItem(value: v.id, child: Text(v.displayName)));
-      }
-    }
-
-    section('primary', l10n.agentVendorPrimary);
-    section('gateway', l10n.agentVendorGateway);
-    section('other', l10n.agentVendorOther);
-    if (_vendors.every((v) => v.id != _backend) && _backend.isNotEmpty) {
-      items.add(DropdownMenuItem(value: _backend, child: Text(_backend)));
-    }
+      DropdownMenuItem(
+        value: _kNewProvider,
+        child: Text(l10n.agentNewProvider),
+      ),
+    ];
     return items;
   }
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(agentSettingsProvider);
-    _hydrate(settings);
+    ref.watch(providerAccountsProvider);
+    ref.watch(agentProfilesProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
-    final vendor = _vendor;
-    final urlChoices = <String>{
-      if (vendor != null && vendor.defaultBaseUrl.isNotEmpty)
-        vendor.defaultBaseUrl,
-      if (vendor != null) ...vendor.altBaseUrls,
-    }.toList();
+    final accounts = ref.watch(providerAccountsProvider);
+    final providerValue = _accountId.isNotEmpty ? _accountId : null;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(
-            title: _displayName.text.isEmpty
-                ? Copy.agentSettings
-                : _displayName.text,
+            title: widget.isCreate
+                ? l10n.agentCreate
+                : (_displayName.text.isEmpty
+                      ? Copy.agentSettings
+                      : _displayName.text),
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -500,211 +552,129 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                     ListTile(
                       title: Text(l10n.agentDisplayName),
                       subtitle: TextField(
+                        key: const Key('agent-name'),
                         controller: _displayName,
                         decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: kGooseAgentName,
+                          hintText: l10n.agentNameHint,
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
                     ),
-                    const Divider(height: 1),
-                    ListTile(
-                      title: Text(l10n.agentAliases),
-                      subtitle: TextField(
-                        controller: _aliases,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: l10n.agentAliasesHint,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const Gap(18),
-                Text(
-                  Copy.agentMode,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const Gap(8),
-                KimGroupCard(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      child: DropdownButton<String>(
-                        value: _backend,
-                        isExpanded: true,
-                        items: () {
-                          final items = _vendorItems(l10n);
-                          if (items.any((i) => i.value == _backend)) {
-                            return items;
-                          }
-                          return [
-                            DropdownMenuItem(
-                              value: _backend,
-                              child: Text(_backend),
-                            ),
-                            ...items,
-                          ];
-                        }(),
-                        onChanged: (next) {
-                          if (next == null || next.startsWith('__hdr_')) {
-                            return;
-                          }
-                          _selectVendor(next);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const Gap(18),
-                Text(
-                  Copy.agentProvider,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const Gap(8),
-                KimGroupCard(
-                  children: [
-                    ListTile(
-                      title: Text(Copy.agentBaseUrl),
-                      subtitle: TextField(
-                        controller: _baseUrl,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: vendor?.defaultBaseUrl.isNotEmpty == true
-                              ? vendor!.defaultBaseUrl
-                              : 'https://api.openai.com/v1',
-                        ),
-                      ),
-                    ),
-                    if (urlChoices.length > 1) ...[
+                    if (!widget.isCreate) ...[
                       const Divider(height: 1),
+                      ListTile(
+                        title: Text(l10n.agentAliases),
+                        subtitle: TextField(
+                          controller: _aliases,
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: l10n.agentAliasesHint,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const Gap(18),
+                Text(
+                  l10n.agentProvider,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const Gap(8),
+                if (accounts.isEmpty)
+                  EmptyState(
+                    icon: LucideIcons.key,
+                    title: l10n.agentEmptyProviders,
+                    subtitle: l10n.agentEmptyProvidersHint,
+                    action: FilledButton(
+                      key: const Key('agent-add-provider'),
+                      onPressed: () => unawaited(_openNewProvider()),
+                      child: Text(l10n.agentAddAccount),
+                    ),
+                  )
+                else
+                  KimGroupCard(
+                    children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                         child: DropdownButton<String>(
-                          value: urlChoices.contains(_baseUrl.text)
-                              ? _baseUrl.text
-                              : null,
-                          hint: Text(l10n.agentAltUrl),
+                          key: const Key('agent-provider'),
+                          value: () {
+                            final items = _providerItems(l10n);
+                            if (providerValue != null &&
+                                items.any((i) => i.value == providerValue)) {
+                              return providerValue;
+                            }
+                            return items.first.value;
+                          }(),
                           isExpanded: true,
-                          items: [
-                            for (final u in urlChoices)
-                              DropdownMenuItem(value: u, child: Text(u)),
-                          ],
+                          items: _providerItems(l10n),
                           onChanged: (next) {
                             if (next == null) {
                               return;
                             }
-                            setState(() => _baseUrl.text = next);
+                            _selectAccount(next);
                           },
                         ),
                       ),
                     ],
-                    const Divider(height: 1),
-                    ListTile(
-                      title: Text(Copy.agentModel),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(
-                            controller: _model,
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              hintText: vendor?.defaultModel.isNotEmpty == true
-                                  ? vendor!.defaultModel
-                                  : 'gpt-4o / claude-sonnet-4-5',
-                            ),
-                            onEditingComplete: () =>
-                                unawaited(_reloadSurface(toastDropped: true)),
-                          ),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton(
-                              onPressed: _fetching ? null : _fetchModels,
-                              child: Text(
-                                _fetching ? '…' : l10n.agentFetchModels,
+                  ),
+                if (_accountId.isNotEmpty) ...[
+                  const Gap(18),
+                  Text(
+                    Copy.agentModel,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Gap(8),
+                  KimGroupCard(
+                    children: [
+                      ListTile(
+                        title: Text(Copy.agentModel),
+                        subtitle: TextField(
+                          key: const Key('agent-model'),
+                          controller: _model,
+                          readOnly: true,
+                          onTap: () => unawaited(_pickModel()),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: l10n.agentModelOther,
+                            suffixIcon: IconButton(
+                              tooltip: l10n.agentPickModel,
+                              onPressed: () => unawaited(_pickModel()),
+                              icon: const Icon(
+                                LucideIcons.chevronsUpDown,
+                                size: 18,
                               ),
                             ),
                           ),
-                          if (_modelOptions.isNotEmpty)
-                            DropdownButton<String>(
-                              value: _modelOptions.contains(_model.text.trim())
-                                  ? _model.text.trim()
-                                  : null,
-                              hint: Text(l10n.agentFetchModels),
-                              isExpanded: true,
-                              items: [
-                                for (final m in _modelOptions)
-                                  DropdownMenuItem(value: m, child: Text(m)),
-                              ],
-                              onChanged: (next) {
-                                if (next == null) {
-                                  return;
-                                }
-                                setState(() => _model.text = next);
-                                unawaited(_reloadSurface(toastDropped: true));
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      title: Text(Copy.agentApiKey),
-                      subtitle: TextField(
-                        controller: _apiKey,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: Copy.agentApiKeyHint,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const Gap(18),
-                Text(
-                  l10n.agentReasoning,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                    ],
                   ),
-                ),
-                const Gap(8),
-                ReasoningControls(
-                  surface: _surface,
-                  choice: _choice,
-                  onChanged: (next) => setState(() => _choice = next),
-                  advancedController: _advanced,
-                ),
-                const Gap(18),
-                KimGroupCard(
-                  children: [
-                    SwitchListTile(
-                      title: Text(l10n.agentFsReadonly),
-                      value: _fs,
-                      onChanged: (next) => setState(() => _fs = next),
+                  const Gap(18),
+                  Text(
+                    l10n.agentReasoning,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.onSurfaceVariant,
                     ),
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      title: Text(l10n.agentBashDanger),
-                      subtitle: Text(l10n.agentBashLater),
-                      value: _bash,
-                      onChanged: (next) => setState(() {
-                        _bash = next;
-                        if (next) {
-                          _permissions['bash'] = 'ask_before';
-                        }
-                      }),
-                    ),
-                  ],
-                ),
-                const Gap(18),
+                  ),
+                  const Gap(8),
+                  ReasoningControls(
+                    surface: _surface,
+                    choice: _choice,
+                    onChanged: (next) => setState(() => _choice = next),
+                    advancedController: widget.isCreate ? null : _advanced,
+                  ),
+                  const Gap(18),
+                ] else
+                  const Gap(18),
                 Text(
-                  l10n.agentMcp,
+                  l10n.agentPrompt,
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -715,76 +685,129 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                       child: TextField(
-                        controller: _mcp,
-                        maxLines: 4,
+                        key: const Key('agent-prompt'),
+                        controller: _prompt,
+                        maxLines: 8,
                         decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: l10n.agentMcpHint,
+                          hintText: kDefaultSystemPrompt,
+                          helperText: l10n.agentPromptHint,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const Gap(18),
-                Text(
-                  l10n.agentPermissions,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const Gap(8),
-                KimGroupCard(
-                  children: [
-                    for (final entry in [
-                      ('send_message', l10n.agentToolSendMessage),
-                      ('read_clipboard', l10n.agentToolClipboard),
-                      ('search_contacts', l10n.agentToolSearchContacts),
-                      ('search_messages', l10n.agentToolSearchMessages),
-                      ('bash', l10n.agentBashDanger),
-                    ]) ...[
-                      if (entry.$1 != 'send_message') const Divider(height: 1),
-                      ListTile(
-                        title: Text(entry.$2),
-                        trailing: DropdownButton<String>(
-                          value: _permissionValue(entry.$1),
-                          items: [
-                            if (entry.$1 != 'bash')
-                              DropdownMenuItem(
-                                value: 'always_allow',
-                                child: Text(l10n.agentPermissionAlways),
-                              ),
-                            DropdownMenuItem(
-                              value: 'ask_before',
-                              child: Text(l10n.agentPermissionAsk),
-                            ),
-                            DropdownMenuItem(
-                              value: 'never_allow',
-                              child: Text(l10n.agentPermissionNever),
-                            ),
-                          ],
-                          onChanged: (next) {
-                            if (next == null) {
-                              return;
-                            }
-                            if (entry.$1 == 'bash' && next == 'always_allow') {
-                              return;
-                            }
-                            setState(() => _permissions[entry.$1] = next);
-                          },
+                if (!widget.isCreate) ...[
+                  const Gap(18),
+                  ExpansionTile(
+                    title: Text(l10n.agentAdvanced),
+                    children: [
+                      KimGroupCard(
+                        children: [
+                          SwitchListTile(
+                            title: Text(l10n.agentFsReadonly),
+                            value: _fs,
+                            onChanged: (next) => setState(() => _fs = next),
+                          ),
+                          const Divider(height: 1),
+                          SwitchListTile(
+                            title: Text(l10n.agentBashDanger),
+                            subtitle: Text(l10n.agentBashLater),
+                            value: _bash,
+                            onChanged: (next) => setState(() {
+                              _bash = next;
+                              if (next) {
+                                _permissions['bash'] = 'ask_before';
+                              }
+                            }),
+                          ),
+                        ],
+                      ),
+                      const Gap(18),
+                      Text(
+                        l10n.agentMcp,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
+                      const Gap(8),
+                      KimGroupCard(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: TextField(
+                              controller: _mcp,
+                              maxLines: 4,
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                hintText: l10n.agentMcpHint,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Gap(18),
+                      Text(
+                        l10n.agentPermissions,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Gap(8),
+                      KimGroupCard(
+                        children: [
+                          for (final entry in [
+                            ('send_message', l10n.agentToolSendMessage),
+                            ('read_clipboard', l10n.agentToolClipboard),
+                            ('search_contacts', l10n.agentToolSearchContacts),
+                            ('search_messages', l10n.agentToolSearchMessages),
+                            ('bash', l10n.agentBashDanger),
+                          ]) ...[
+                            if (entry.$1 != 'send_message')
+                              const Divider(height: 1),
+                            ListTile(
+                              title: Text(entry.$2),
+                              trailing: DropdownButton<String>(
+                                value: _permissionValue(entry.$1),
+                                items: [
+                                  if (entry.$1 != 'bash')
+                                    DropdownMenuItem(
+                                      value: 'always_allow',
+                                      child: Text(l10n.agentPermissionAlways),
+                                    ),
+                                  DropdownMenuItem(
+                                    value: 'ask_before',
+                                    child: Text(l10n.agentPermissionAsk),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'never_allow',
+                                    child: Text(l10n.agentPermissionNever),
+                                  ),
+                                ],
+                                onChanged: (next) {
+                                  if (next == null) {
+                                    return;
+                                  }
+                                  if (entry.$1 == 'bash' &&
+                                      next == 'always_allow') {
+                                    return;
+                                  }
+                                  setState(() => _permissions[entry.$1] = next);
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
-                  ],
-                ),
-                const Gap(12),
-                Text(
-                  Copy.agentGooseHint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
                   ),
-                ),
+                ],
                 const Gap(20),
-                FilledButton(onPressed: _save, child: Text(Copy.save)),
+                FilledButton(
+                  key: const Key('agent-save'),
+                  onPressed: _save,
+                  child: Text(Copy.save),
+                ),
               ],
             ),
           ),

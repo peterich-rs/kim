@@ -40,11 +40,11 @@ void main() {
       ),
       choice: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
     );
-    expect(find.text('关'), findsOneWidget);
-    expect(find.text('低'), findsOneWidget);
-    expect(find.text('高'), findsOneWidget);
-    expect(find.text('最高'), findsOneWidget);
-    expect(find.text('中'), findsNothing);
+    expect(find.text('none'), findsOneWidget);
+    expect(find.text('low'), findsOneWidget);
+    expect(find.text('high'), findsOneWidget);
+    expect(find.text('max'), findsOneWidget);
+    expect(find.text('medium'), findsNothing);
     expect(find.byType(SegmentedButton<String>), findsOneWidget);
   });
 
@@ -58,11 +58,11 @@ void main() {
       ),
       choice: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
     );
-    expect(find.text('低'), findsOneWidget);
-    expect(find.text('高'), findsOneWidget);
-    expect(find.text('最高'), findsOneWidget);
-    expect(find.text('关'), findsNothing);
-    expect(find.text('中'), findsNothing);
+    expect(find.text('low'), findsOneWidget);
+    expect(find.text('high'), findsOneWidget);
+    expect(find.text('max'), findsOneWidget);
+    expect(find.text('none'), findsNothing);
+    expect(find.text('medium'), findsNothing);
   });
 
   testWidgets('toggle surface is a Switch, not an effort row', (tester) async {

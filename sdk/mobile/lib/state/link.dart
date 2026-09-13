@@ -208,7 +208,10 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     switch (event.kind) {
       case KimEventKind.link:
-        final status = KimLinkState.statusFromLabel(event.state);
+        final status = KimLinkState.parseStatus(event.state);
+        if (status == null) {
+          return;
+        }
         _set(
           KimLinkState(
             status: status,

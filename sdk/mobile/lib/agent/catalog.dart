@@ -9,8 +9,63 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent_bridge.dart';
 import '../state/agent_profiles.dart';
+import '../state/provider_accounts.dart';
 
 const kCatalogCachePrefix = 'agent.catalog_cache.';
+
+/// `/v1/models` on gateways often includes routing aliases (`gpt-*`).
+bool isSelectableModelId(String id) {
+  final trimmed = id.trim();
+  return trimmed.isNotEmpty && !trimmed.contains('*') && !trimmed.contains('?');
+}
+
+List<String> selectableModelIds(Iterable<String> ids) {
+  final seen = <String>{};
+  final out = <String>[];
+  for (final raw in ids) {
+    final id = raw.trim();
+    if (!isSelectableModelId(id) || !seen.add(id)) {
+      continue;
+    }
+    out.add(id);
+  }
+  return out;
+}
+
+/// Refresh success: keep hand-typed ids that the vendor did not return.
+List<String> unionAccountModels(
+  Iterable<String> fetched,
+  Iterable<String> existing,
+) => selectableModelIds([...fetched, ...existing]);
+
+/// Catalog default if it is on the account, else first model, else empty.
+String defaultModelForAccount(
+  ProviderAccount account, [
+  VendorSummaryDto? vendor,
+]) {
+  final def = vendor?.defaultModel.trim() ?? '';
+  if (def.isNotEmpty && account.models.contains(def)) {
+    return def;
+  }
+  if (account.models.isNotEmpty) {
+    return account.models.first;
+  }
+  return '';
+}
+
+/// Catalog seed ∪ vendor cache. Empty [existing] only — do not replace a live list.
+Future<List<String>> migrateAccountModelIds({
+  required String vendorId,
+  required List<String> existing,
+  List<String> catalogModels = const [],
+  String defaultModel = '',
+}) async {
+  if (existing.isNotEmpty) {
+    return selectableModelIds(existing);
+  }
+  final cached = await loadCatalogModelCache(vendorId);
+  return selectableModelIds([...catalogModels, defaultModel, ...cached]);
+}
 
 bool isAllowedAgentBaseUrl(String raw) {
   final uri = Uri.tryParse(raw.trim());
@@ -39,7 +94,7 @@ Future<List<String>> loadCatalogModelCache(String vendor) async {
   try {
     final decoded = jsonDecode(raw);
     if (decoded is List) {
-      return [for (final m in decoded) '$m'];
+      return selectableModelIds([for (final m in decoded) '$m']);
     }
   } catch (_) {}
   return const [];

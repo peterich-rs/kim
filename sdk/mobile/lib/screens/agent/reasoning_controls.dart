@@ -107,7 +107,6 @@ class _EffortEnumControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final allowed = surface.allowed;
     if (allowed.isEmpty) {
       return const SizedBox.shrink();
@@ -123,7 +122,7 @@ class _EffortEnumControl extends StatelessWidget {
           isExpanded: true,
           items: [
             for (final v in allowed)
-              DropdownMenuItem(value: v, child: Text(effortLabel(l10n, v))),
+              DropdownMenuItem(value: v, child: Text(effortLabel(v))),
           ],
           onChanged: (next) {
             if (next == null) {
@@ -139,7 +138,7 @@ class _EffortEnumControl extends StatelessWidget {
       child: SegmentedButton<String>(
         segments: [
           for (final v in allowed)
-            ButtonSegment(value: v, label: Text(effortLabel(l10n, v))),
+            ButtonSegment(value: v, label: Text(effortLabel(v))),
         ],
         selected: {selected},
         onSelectionChanged: (next) {
@@ -255,15 +254,11 @@ class _AdvancedJsonTile extends StatelessWidget {
   }
 }
 
-String effortLabel(AppLocalizations l10n, String value) {
+/// Vendor-native tokens (OpenCode / OpenAI / Anthropic). Do not localize.
+String effortLabel(String value) {
   return switch (value.toLowerCase()) {
-    'none' || 'off' || 'disabled' => l10n.agentReasoningOff,
-    'low' => l10n.agentReasoningLow,
-    'medium' || 'med' => l10n.agentReasoningMedium,
-    'high' => l10n.agentReasoningHigh,
-    'max' => l10n.agentReasoningMax,
-    'minimal' => l10n.agentReasoningMinimal,
-    'xhigh' => l10n.agentReasoningXhigh,
+    'off' || 'disabled' => 'none',
+    'med' => 'medium',
     _ => value,
   };
 }

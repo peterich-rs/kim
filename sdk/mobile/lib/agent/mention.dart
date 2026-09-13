@@ -54,10 +54,38 @@ bool isOwnedRegisteredBot(String dest, List<AgentProfile> profiles) {
 }
 
 bool isOwnedAgentAccount(String account, List<AgentProfile> profiles) {
-  if (isAgentDest(account)) {
-    return true;
+  return profileForChatDest(account, profiles) != null;
+}
+
+/// null = persona missing. Never synthesizes goose.
+/// [all] is the full store (including disabled), not [visibleAgents].
+AgentProfile? profileForChatDest(String dest, List<AgentProfile> all) {
+  if (dest.isEmpty) {
+    return null;
   }
-  return isOwnedRegisteredBot(account, profiles);
+  for (final p in all) {
+    if (p.serverAccount.isNotEmpty && p.serverAccount == dest) {
+      return p;
+    }
+  }
+  final canon = canonicalAgentDest(dest);
+  if (canon == kGooseAgentId) {
+    for (final p in all) {
+      if (p.id == kGooseAgentId) {
+        return p;
+      }
+    }
+    return null;
+  }
+  if (canon.startsWith('agent:')) {
+    final id = canon.substring('agent:'.length);
+    for (final p in all) {
+      if (p.id == id) {
+        return p;
+      }
+    }
+  }
+  return null;
 }
 
 List<KimPerson> withLocalAgents(
@@ -78,20 +106,6 @@ List<KimPerson> withLocalAgents(
     return people;
   }
   return [...extras, ...people];
-}
-
-List<KimPerson> withGooseAgent(List<KimPerson> people) {
-  return withLocalAgents(people, const [
-    AgentProfile(
-      id: kGooseAgentId,
-      displayName: kGooseAgentName,
-      providerKind: 'openai',
-      baseUrl: '',
-      model: 'gpt-4o',
-      keyRef: 'agent.api_key.goose',
-      systemPrompt: '',
-    ),
-  ]);
 }
 
 final _mentionToken = RegExp(r'@([^\s,，.。!！?？]+)');

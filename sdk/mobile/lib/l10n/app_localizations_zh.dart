@@ -438,7 +438,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentLocalSection => '本地 Agent';
 
   @override
-  String get agentLocalSubtitle => '本机 Goose · 不经过服务器';
+  String get agentLocalSubtitle => '本机运行 · 消息走会话';
 
   @override
   String get agentLocalOnly => '这是本机助手，不会发到服务器';
@@ -453,7 +453,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentMode => '协议';
 
   @override
-  String get agentProvider => 'Goose Provider';
+  String get agentProvider => 'Provider';
 
   @override
   String get agentProviderOpenAi => 'OpenAI';
@@ -487,6 +487,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentFetchModels => '拉取模型';
+
+  @override
+  String agentFetchModelsOk(int count) {
+    return '已拉取 $count 个模型';
+  }
+
+  @override
+  String agentFetchModelsFailed(String error) {
+    return '拉取失败：$error';
+  }
+
+  @override
+  String get agentPickModel => '从列表选择';
+
+  @override
+  String get agentModelHint => '保存以输入框为准。可手填，或拉取后从列表选入。';
 
   @override
   String get agentReasoning => '推理强度';
@@ -638,15 +654,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentNew => '新建';
 
   @override
-  String get agentWizardBlank => '空白';
-
-  @override
-  String get agentWizardTranslator => '译者';
-
-  @override
-  String get agentWizardCoder => '编码';
-
-  @override
   String get agentInvalidUrl => '请使用 https 地址（本机可用 http://127.0.0.1）';
 
   @override
@@ -654,6 +661,62 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentComposerHint => '发消息，或 @助手';
+
+  @override
+  String get agentEmptyTitle => '还没有 Agent';
+
+  @override
+  String get agentEmptyHint => '创建一个助手，出现在通讯录和会话列表里';
+
+  @override
+  String get agentCreate => '创建 Agent';
+
+  @override
+  String get agentPrompt => '系统提示';
+
+  @override
+  String get agentPromptHint => '留空则使用该默认';
+
+  @override
+  String get agentNewProvider => '新建 Provider…';
+
+  @override
+  String get agentNeedProvider => '先添加一个厂商账号';
+
+  @override
+  String get agentEmptyProviders => '还没有厂商账号';
+
+  @override
+  String get agentEmptyProvidersHint => '先添加厂商和 API 密钥，再回来创建 Agent';
+
+  @override
+  String get agentKeepKeyHint => '留空则保留已保存的密钥';
+
+  @override
+  String get agentModelOther => '其他…';
+
+  @override
+  String agentModelFallback(String model) {
+    return '模型不在新账号列表中，已改用 $model';
+  }
+
+  @override
+  String get agentListHint => '点进通讯录里的 Agent 即可对话。密钥在厂商账号里。';
+
+  @override
+  String get agentDeletedReadOnly => '此 Agent 已删除，记录只读';
+
+  @override
+  String get agentProviderKeyMissing => '未配置 API Key。打开「我 → Agent → 厂商账号」补全密钥。';
+
+  @override
+  String get composerHint => '发消息';
+
+  @override
+  String get agentNameHint => '给 Agent 起个名字';
+
+  @override
+  String get agentAdvanced => '高级';
 
   @override
   String get emptyChatTitle => '选择一个会话';

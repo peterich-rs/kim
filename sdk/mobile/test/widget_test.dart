@@ -168,7 +168,7 @@ void main() {
     expect(fake.connects, greaterThan(0));
   });
 
-  testWidgets('desktop login shows local Goose in the conversation list', (
+  testWidgets('desktop login does not synthesize a Goose contact', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -183,8 +183,7 @@ void main() {
       await tapKey(tester, const Key('auth-submit'));
 
       expect(find.byType(KimDock), findsOneWidget);
-      expect(find.text(kGooseAgentName), findsWidgets);
-      expect(find.text(Copy.noConversations), findsNothing);
+      expect(find.text(kGooseAgentName), findsNothing);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

@@ -108,7 +108,7 @@
 15. **`agent.server_identity` 默认 false，直到身份 + Outbox + Goose 代发 **同一客户端 PR** 就绪。** 禁止「先停 `_appendLocal`、后接 `bot_reply`」的空窗。
 16. **talk 热路径用缓存的 `{exists, kind, owner}`，不每条多一跳 `bot_owner` RPC。** 扩展 `/internal/user/lookup`（`AccountExists` 加字段）与 `CachedUserDirectory`。TTL 与现 social 相同（默认 30s，`KIM_SOCIAL_CACHE_TTL_MS`）。
 17. **`do_bot_reply` 与 `do_user_talk` 走同一 `ContentFilter`。** 失败 `ContentBlocked=106`。Owner 代发不是绕过滤的通道。
-18. **人设删除（修订）：不可删 goose。若 `serverAccount` 非空，先 `chat.bot.delete`；成功则去掉本机 profile 行。** 好友消失；inbox/历史里残留 `b_*` 只读；再发送 108。**禁止**再注入合成 `dest=goose` 顶替仍存在的 `b_XXX` inbox 行。`botDelete` 108 / not-owner 视为云端已无，仍清本地行；其它错误保留行并写入 `identityError`。注销云身份但保留人设（只清 `serverAccount`）是后续可选按钮，不是 v1 人设删除。
+18. **人设删除（修订）：~~不可删 goose。~~ 可删（含 goose）。若 `serverAccount` 非空，先 `chat.bot.delete`；成功则去掉本机 profile 行。** 好友消失；inbox/历史里残留 `b_*` 只读；再发送 108。**禁止**再注入合成 `dest=goose` 顶替仍存在的 `b_XXX` inbox 行。`botDelete` 108 / not-owner 视为云端已无，仍清本地行；其它错误保留行并写入 `identityError`。注销云身份但保留人设（只清 `serverAccount`）是后续可选按钮，不是 v1 人设删除。 **revises：见 [agent-provider-persona.md](agent-provider-persona.md) P-KD 6。**
 19. **已注册 1:1 只把 text 同步并喂 Goose。** 图片可出站但不 prompt；bot 线程忽略 `@mention`；工具卡本机。
 20. **创建时 Chat 只调 `create_bot`。** Memory 经注入的 `SocialDirectory` 内部 `ensure_friends`；Http/Royal 在 `/api/v1/bot` 内完成。`ensure_friends` 不作为 Chat handler 的第二次调用。
 21. **个性化文档「明确不改 kim-client / chat / royal」必须在 Chat 行为变更的同一 PR 划掉。** 不能拖到文档扫尾 PR。隔离本身保留：Goose 仍 `kim_agent_ffi`，代发走 Dart → `kim_client_ffi`。

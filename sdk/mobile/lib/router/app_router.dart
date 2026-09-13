@@ -12,6 +12,7 @@ import '../screens/home/contacts_page.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/agent/agent_list_page.dart';
 import '../screens/agent/agent_settings_page.dart';
+import '../screens/agent/provider_account_page.dart';
 import '../screens/agent/provider_accounts_page.dart';
 import '../screens/home/me_page.dart';
 import '../screens/password_page.dart';
@@ -125,6 +126,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
         routes: [
           GoRoute(
+            path: 'accounts/new',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: const ProviderAccountPage(),
+            ),
+          ),
+          GoRoute(
+            path: 'accounts/:accountId',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['accountId'] ?? '';
+              return kimPushPage(
+                key: state.pageKey,
+                name: state.name,
+                child: ProviderAccountPage(accountId: id),
+              );
+            },
+          ),
+          GoRoute(
             path: 'accounts',
             pageBuilder: (context, state) => kimPushPage(
               key: state.pageKey,
@@ -133,6 +153,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(path: 'settings', redirect: (context, state) => '/agent'),
+          GoRoute(
+            path: 'new',
+            pageBuilder: (context, state) => kimPushPage(
+              key: state.pageKey,
+              name: state.name,
+              child: const AgentEditorPage(),
+            ),
+          ),
           GoRoute(
             path: ':id',
             pageBuilder: (context, state) {

@@ -18,6 +18,9 @@ String canonicalizeVendorId(String raw) {
       return 'qwen';
     case 'openai_compatible':
       return 'openai_compatible';
+    case 'xai':
+    case 'grok':
+      return 'xai';
     case 'openai':
     case 'responses_http':
     case 'live':
@@ -48,6 +51,7 @@ class ProviderAccount {
     required this.baseUrl,
     required this.keyRef,
     this.displayName = '',
+    this.models = const [],
   });
 
   final String id;
@@ -55,12 +59,14 @@ class ProviderAccount {
   final String baseUrl;
   final String keyRef;
   final String displayName;
+  final List<String> models;
 
   ProviderAccount copyWith({
     String? vendorId,
     String? baseUrl,
     String? keyRef,
     String? displayName,
+    List<String>? models,
   }) {
     return ProviderAccount(
       id: id,
@@ -68,6 +74,7 @@ class ProviderAccount {
       baseUrl: baseUrl ?? this.baseUrl,
       keyRef: keyRef ?? this.keyRef,
       displayName: displayName ?? this.displayName,
+      models: models ?? this.models,
     );
   }
 
@@ -77,15 +84,18 @@ class ProviderAccount {
     'base_url': baseUrl,
     'key_ref': keyRef,
     'display_name': displayName,
+    'models': models,
   };
 
   factory ProviderAccount.fromJson(Map<String, Object?> json) {
+    final modelsRaw = json['models'];
     return ProviderAccount(
       id: json['id'] as String? ?? '',
       vendorId: canonicalizeVendorId(json['vendor_id'] as String? ?? ''),
       baseUrl: json['base_url'] as String? ?? '',
       keyRef: json['key_ref'] as String? ?? '',
       displayName: json['display_name'] as String? ?? '',
+      models: modelsRaw is List ? [for (final m in modelsRaw) '$m'] : const [],
     );
   }
 

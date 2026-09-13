@@ -147,12 +147,12 @@
   "addByAccount": "添加好友",
   "recentContacts": "好友",
   "agentLocalSection": "本地 Agent",
-  "agentLocalSubtitle": "本机 Goose · 不经过服务器",
+  "agentLocalSubtitle": "本机运行 · 消息走会话",
   "agentLocalOnly": "这是本机助手，不会发到服务器",
   "agentComposerDirect": "给助手发消息",
   "agentSettings": "Agent 设置",
   "agentMode": "协议",
-  "agentProvider": "Goose Provider",
+  "agentProvider": "Provider",
   "agentProviderOpenAi": "OpenAI",
   "agentProviderAnthropic": "Anthropic",
   "agentBaseUrl": "Base URL",
@@ -164,6 +164,20 @@
   "agentGooseHint": "通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。",
   "agentProviderCompatible": "OpenAI 兼容",
   "agentFetchModels": "拉取模型",
+  "agentFetchModelsOk": "已拉取 {count} 个模型",
+  "@agentFetchModelsOk": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentFetchModelsFailed": "拉取失败：{error}",
+  "@agentFetchModelsFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "agentPickModel": "从列表选择",
+  "agentModelHint": "保存以输入框为准。可手填，或拉取后从列表选入。",
   "agentReasoning": "推理强度",
   "agentReasoningOff": "关",
   "agentReasoningLow": "低",
@@ -213,12 +227,32 @@
   "agentAccountInUse": "仍有 Agent 使用此账号",
   "agentAddAccount": "添加账号",
   "agentNew": "新建",
-  "agentWizardBlank": "空白",
-  "agentWizardTranslator": "译者",
-  "agentWizardCoder": "编码",
   "agentInvalidUrl": "请使用 https 地址（本机可用 http://127.0.0.1）",
   "agentNeedsEnv": "桌面/需环境变量",
   "agentComposerHint": "发消息，或 @助手",
+  "agentEmptyTitle": "还没有 Agent",
+  "agentEmptyHint": "创建一个助手，出现在通讯录和会话列表里",
+  "agentCreate": "创建 Agent",
+  "agentPrompt": "系统提示",
+  "agentPromptHint": "留空则使用该默认",
+  "agentNewProvider": "新建 Provider…",
+  "agentNeedProvider": "先添加一个厂商账号",
+  "agentEmptyProviders": "还没有厂商账号",
+  "agentEmptyProvidersHint": "先添加厂商和 API 密钥，再回来创建 Agent",
+  "agentKeepKeyHint": "留空则保留已保存的密钥",
+  "agentModelOther": "其他…",
+  "agentModelFallback": "模型不在新账号列表中，已改用 {model}",
+  "@agentModelFallback": {
+    "placeholders": {
+      "model": { "type": "String" }
+    }
+  },
+  "agentListHint": "点进通讯录里的 Agent 即可对话。密钥在厂商账号里。",
+  "agentDeletedReadOnly": "此 Agent 已删除，记录只读",
+  "agentProviderKeyMissing": "未配置 API Key。打开「我 → Agent → 厂商账号」补全密钥。",
+  "composerHint": "发消息",
+  "agentNameHint": "给 Agent 起个名字",
+  "agentAdvanced": "高级",
   "emptyChatTitle": "选择一个会话",
   "emptyChatSubtitle": "从左侧列表打开聊天，或发起新会话",
   "routeNotFound": "页面不存在",

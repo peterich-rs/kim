@@ -953,7 +953,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentLocalSubtitle.
   ///
   /// In zh, this message translates to:
-  /// **'本机 Goose · 不经过服务器'**
+  /// **'本机运行 · 消息走会话'**
   String get agentLocalSubtitle;
 
   /// No description provided for @agentLocalOnly.
@@ -983,7 +983,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentProvider.
   ///
   /// In zh, this message translates to:
-  /// **'Goose Provider'**
+  /// **'Provider'**
   String get agentProvider;
 
   /// No description provided for @agentProviderOpenAi.
@@ -1051,6 +1051,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'拉取模型'**
   String get agentFetchModels;
+
+  /// No description provided for @agentFetchModelsOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'已拉取 {count} 个模型'**
+  String agentFetchModelsOk(int count);
+
+  /// No description provided for @agentFetchModelsFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉取失败：{error}'**
+  String agentFetchModelsFailed(String error);
+
+  /// No description provided for @agentPickModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'从列表选择'**
+  String get agentPickModel;
+
+  /// No description provided for @agentModelHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存以输入框为准。可手填，或拉取后从列表选入。'**
+  String get agentModelHint;
 
   /// No description provided for @agentReasoning.
   ///
@@ -1346,24 +1370,6 @@ abstract class AppLocalizations {
   /// **'新建'**
   String get agentNew;
 
-  /// No description provided for @agentWizardBlank.
-  ///
-  /// In zh, this message translates to:
-  /// **'空白'**
-  String get agentWizardBlank;
-
-  /// No description provided for @agentWizardTranslator.
-  ///
-  /// In zh, this message translates to:
-  /// **'译者'**
-  String get agentWizardTranslator;
-
-  /// No description provided for @agentWizardCoder.
-  ///
-  /// In zh, this message translates to:
-  /// **'编码'**
-  String get agentWizardCoder;
-
   /// No description provided for @agentInvalidUrl.
   ///
   /// In zh, this message translates to:
@@ -1381,6 +1387,114 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'发消息，或 @助手'**
   String get agentComposerHint;
+
+  /// No description provided for @agentEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有 Agent'**
+  String get agentEmptyTitle;
+
+  /// No description provided for @agentEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建一个助手，出现在通讯录和会话列表里'**
+  String get agentEmptyHint;
+
+  /// No description provided for @agentCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建 Agent'**
+  String get agentCreate;
+
+  /// No description provided for @agentPrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统提示'**
+  String get agentPrompt;
+
+  /// No description provided for @agentPromptHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空则使用该默认'**
+  String get agentPromptHint;
+
+  /// No description provided for @agentNewProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建 Provider…'**
+  String get agentNewProvider;
+
+  /// No description provided for @agentNeedProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'先添加一个厂商账号'**
+  String get agentNeedProvider;
+
+  /// No description provided for @agentEmptyProviders.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有厂商账号'**
+  String get agentEmptyProviders;
+
+  /// No description provided for @agentEmptyProvidersHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'先添加厂商和 API 密钥，再回来创建 Agent'**
+  String get agentEmptyProvidersHint;
+
+  /// No description provided for @agentKeepKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空则保留已保存的密钥'**
+  String get agentKeepKeyHint;
+
+  /// No description provided for @agentModelOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他…'**
+  String get agentModelOther;
+
+  /// No description provided for @agentModelFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型不在新账号列表中，已改用 {model}'**
+  String agentModelFallback(String model);
+
+  /// No description provided for @agentListHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点进通讯录里的 Agent 即可对话。密钥在厂商账号里。'**
+  String get agentListHint;
+
+  /// No description provided for @agentDeletedReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'此 Agent 已删除，记录只读'**
+  String get agentDeletedReadOnly;
+
+  /// No description provided for @agentProviderKeyMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置 API Key。打开「我 → Agent → 厂商账号」补全密钥。'**
+  String get agentProviderKeyMissing;
+
+  /// No description provided for @composerHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'发消息'**
+  String get composerHint;
+
+  /// No description provided for @agentNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'给 Agent 起个名字'**
+  String get agentNameHint;
+
+  /// No description provided for @agentAdvanced.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级'**
+  String get agentAdvanced;
 
   /// No description provided for @emptyChatTitle.
   ///

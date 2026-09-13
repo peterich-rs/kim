@@ -1,4 +1,4 @@
-/// Runs the local Goose host when an IM message @mentions 助手.
+/// Runs the local Goose host for Agent 1:1 (unregistered dest or bot.reply).
 library;
 
 import 'dart:async';
@@ -12,6 +12,7 @@ import '../agent/capability_host.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../agent_bridge.dart';
+import '../copy.dart';
 import '../core/format.dart';
 import '../core/paths.dart';
 import '../data/message_identity.dart';
@@ -92,6 +93,9 @@ class ChatAgent {
       return;
     }
     final profile = await profileForDest(dest);
+    if (profile == null) {
+      return;
+    }
     await _appendLocal(dest, body, fromAgent: false, profile: profile);
     await _prompt(dest, body, profile: profile);
   }
@@ -109,14 +113,7 @@ class ChatAgent {
     }
     if (isAgentDest(dest)) {
       await sendDirect(dest: dest, text: text);
-      return;
     }
-    final enabled = _ref.read(agentProfilesProvider.notifier).visibleAgents;
-    final profile = mentionedProfile(text, enabled);
-    if (profile == null) {
-      return;
-    }
-    await _prompt(dest, text, profile: profile);
   }
 
   bool enqueueTurn(String dest, String text, int inReplyTo) {
@@ -194,7 +191,11 @@ class ChatAgent {
         q.turnGate = Completer<void>();
         try {
           final profile = await profileForDest(dest);
-          await _prompt(dest, turn.text, profile: profile);
+          if (profile == null) {
+            _completeTurn(dest);
+          } else {
+            await _prompt(dest, turn.text, profile: profile);
+          }
           final gate = q.turnGate;
           if (gate != null && !gate.isCompleted) {
             await gate.future;
@@ -235,7 +236,7 @@ class ChatAgent {
     if (apiKey.trim().isEmpty) {
       await _appendLocal(
         dest,
-        '未配置 API Key。打开「我 → Agent 设置」填入 OpenAI 或 Anthropic 密钥。',
+        Copy.agentProviderKeyMissing,
         sys: _isRegisteredDest(dest),
         profile: profile,
       );
@@ -270,31 +271,9 @@ class ChatAgent {
     }
   }
 
-  Future<AgentProfile> profileForDest(String dest) => _profileForDest(dest);
-
-  Future<AgentProfile> _profileForDest(String dest) async {
+  Future<AgentProfile?> profileForDest(String dest) async {
     await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
-    final store = _ref.read(agentProfilesProvider.notifier);
-    for (final p in _ref.read(agentProfilesProvider)) {
-      if (p.serverAccount.isNotEmpty && p.serverAccount == dest) {
-        return p;
-      }
-    }
-    final canon = canonicalAgentDest(dest);
-    if (canon == kGooseAgentId) {
-      return store.goose ??
-          AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
-    }
-    if (canon.startsWith('agent:')) {
-      final id = canon.substring('agent:'.length);
-      for (final p in _ref.read(agentProfilesProvider)) {
-        if (p.id == id) {
-          return p;
-        }
-      }
-    }
-    return store.goose ??
-        AgentProfile.gooseFromSettings(_ref.read(agentSettingsProvider));
+    return profileForChatDest(dest, _ref.read(agentProfilesProvider));
   }
 
   Future<_Live> _ensureSession(
@@ -544,7 +523,7 @@ class ChatAgent {
     required String permission,
     required String toolName,
   }) async {
-    var profileId = kGooseAgentId;
+    var profileId = '';
     final existing = _ref
         .read(threadMessagesProvider(dest))
         .items
@@ -557,6 +536,14 @@ class ChatAgent {
           profileId = '${prev['profile_id']}';
         }
       } catch (_) {}
+    }
+    if (profileId.isEmpty) {
+      await _ref.read(agentProfilesProvider.notifier).ensureLoaded();
+      profileId =
+          profileForChatDest(dest, _ref.read(agentProfilesProvider))?.id ?? '';
+    }
+    if (profileId.isEmpty) {
+      return;
     }
     await _upsertCard(
       dest,
@@ -611,7 +598,6 @@ class ChatAgent {
         break;
       }
     }
-    profile ??= store.goose;
     if (profile == null) {
       return;
     }

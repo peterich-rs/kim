@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../agent/catalog.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
@@ -18,7 +19,24 @@ const _kProfiles = 'agent.profiles';
 const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';
 const _kMulti = 'agent.multi_profile';
+const _kMultiMigrated = 'agent.multi_profile_migrated_on';
 const _kServerIdentity = 'agent.server_identity';
+const _kIdentityMigrated = 'agent.identity_migrated_on';
+
+/// Byte-identical to Rust `DEFAULT_SYSTEM_PROMPT`. Empty prompt injects this.
+const kDefaultSystemPrompt =
+    'You are 助手, a local desktop agent inside the KIM messenger. '
+    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
+    'Be concise. You can see the current conversation because the host pasted it into this session. '
+    'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
+    'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
+    'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
+
+/// New Agent tools. Do not rewrite an existing goose row.
+const kCreateDefaultTools = AgentToolSet(
+  sendMessage: true,
+  readClipboard: true,
+);
 
 /// Aligns with Chat `BOT_MAX_PER_OWNER`.
 const kMaxBotsPerOwner = 20;
@@ -424,11 +442,7 @@ class AgentProfile {
       model: s.model,
       keyRef: _kGooseKey,
       accountId: '',
-      systemPrompt:
-          'You are 助手, a local desktop agent inside the KIM messenger. '
-          'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
-          'Be concise. You can see the current conversation because the host pasted it into this session. '
-          'Do not claim you have tools you were not given.',
+      systemPrompt: kDefaultSystemPrompt,
       mode: 'smart_approve',
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,
@@ -454,6 +468,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   /// `agent.server_identity`. Desktop defaults on so 1:1 can register.
   var serverIdentity = false;
   String? identityError;
+
+  /// False until the first `_reload` finishes. Empty `[]` before this is
+  /// "not loaded yet", not "no agents".
+  var profilesReady = false;
 
   @override
   List<AgentProfile> build() {
@@ -586,8 +604,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   void _assertCanInsert() {
-    if (cloudIdentitySlots(state, serverIdentity: serverIdentity) >=
-        kMaxBotsPerOwner) {
+    if (state.length >= kMaxBotsPerOwner) {
       throw AgentProfileCapExceeded();
     }
   }
@@ -629,6 +646,18 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
+    if (agentHostSupported && prefs.getBool(_kMultiMigrated) != true) {
+      if (prefs.getBool(_kMulti) == false) {
+        await prefs.setBool(_kMulti, true);
+      }
+      await prefs.setBool(_kMultiMigrated, true);
+    }
+    if (agentHostSupported && prefs.getBool(_kIdentityMigrated) != true) {
+      if (prefs.getBool(_kServerIdentity) == false) {
+        await prefs.setBool(_kServerIdentity, true);
+      }
+      await prefs.setBool(_kIdentityMigrated, true);
+    }
     multiProfile = prefs.getBool(_kMulti) ?? agentHostSupported;
     serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
     final raw = prefs.getString(_kProfiles);
@@ -652,39 +681,26 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     if (!ref.mounted) {
       return;
     }
-    if (profiles.isEmpty) {
-      await ref.read(agentSettingsProvider.notifier).ensureLoaded();
-      if (!ref.mounted) {
-        return;
-      }
-      profiles = [
-        AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider)),
-      ];
-    } else {
-      profiles = [
-        for (final p in profiles)
-          if (p.id == kGooseAgentId &&
-              !p.tools.sendMessage &&
-              !p.tools.readClipboard)
-            p.copyWith(
-              tools: p.tools.copyWith(sendMessage: true, readClipboard: true),
-            )
-          else
-            p,
-      ];
-    }
     profiles = await _migrateAccounts(profiles);
     if (!ref.mounted) {
       return;
     }
-    state = profiles;
+    profilesReady = true;
+    state = List<AgentProfile>.from(profiles);
+    await _migrateAccountModels();
   }
 
   Future<List<AgentProfile>> _migrateAccounts(
     List<AgentProfile> profiles,
   ) async {
+    if (!ref.mounted) {
+      return profiles;
+    }
     final accounts = ref.read(providerAccountsProvider.notifier);
     await accounts.ensureLoaded();
+    if (!ref.mounted) {
+      return profiles;
+    }
     var changed = false;
     final next = <AgentProfile>[];
     for (var p in profiles) {
@@ -709,6 +725,9 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         keyRef: p.keyRef,
       );
       await accounts.upsert(account);
+      if (!ref.mounted) {
+        return next;
+      }
       p = p.copyWith(
         accountId: account.id,
         providerKind: canonicalizeVendorId(account.vendorId),
@@ -721,6 +740,53 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       await _persist(next);
     }
     return next;
+  }
+
+  Future<void> _migrateAccountModels() async {
+    if (!ref.mounted) {
+      return;
+    }
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    if (!ref.mounted) {
+      return;
+    }
+    final pending = [
+      for (final a in ref.read(providerAccountsProvider))
+        if (a.models.isEmpty) a,
+    ];
+    if (pending.isEmpty) {
+      return;
+    }
+    var vendors = const <VendorSummaryDto>[];
+    try {
+      vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
+    } catch (_) {}
+    if (!ref.mounted) {
+      return;
+    }
+    for (final account in pending) {
+      VendorSummaryDto? vendor;
+      for (final v in vendors) {
+        if (v.id == account.vendorId) {
+          vendor = v;
+          break;
+        }
+      }
+      final models = await migrateAccountModelIds(
+        vendorId: account.vendorId,
+        existing: account.models,
+        catalogModels: vendor?.models ?? const [],
+        defaultModel: vendor?.defaultModel ?? '',
+      );
+      if (!ref.mounted) {
+        return;
+      }
+      if (models.isEmpty) {
+        continue;
+      }
+      await accounts.upsert(account.copyWith(models: models));
+    }
   }
 
   Future<void> saveGoose(AgentProfile goose, {required String apiKey}) async {
@@ -778,49 +844,14 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     state = next;
   }
 
-  Future<void> saveEditor(
-    AgentProfile profile, {
-    required String apiKey,
-  }) async {
-    if (profile.id == kGooseAgentId) {
-      await saveGoose(profile, apiKey: apiKey);
-      return;
-    }
+  Future<void> saveEditor(AgentProfile profile) async {
     await ensureLoaded();
     final accounts = ref.read(providerAccountsProvider.notifier);
     await accounts.ensureLoaded();
-    var accountId = profile.accountId;
-    if (accountId.isEmpty) {
-      final created = ProviderAccount.fromLegacyProfile(
-        profileId: profile.id,
-        providerKind: profile.providerKind,
-        baseUrl: profile.baseUrl,
-        keyRef: profile.keyRef,
-      );
-      await accounts.upsert(created);
-      accountId = created.id;
+    if (profile.accountId.isEmpty || accounts.byId(profile.accountId) == null) {
+      throw MissingProviderAccount(profile.accountId);
     }
-    var account = accounts.byId(accountId);
-    if (account == null) {
-      throw MissingProviderAccount(accountId);
-    }
-    final vendorId = canonicalizeVendorId(profile.providerKind);
-    account = account.copyWith(vendorId: vendorId, baseUrl: profile.baseUrl);
-    await accounts.upsert(account);
-    try {
-      if (apiKey.isEmpty) {
-        await _secure.delete(key: account.keyRef);
-      } else {
-        await _secure.write(key: account.keyRef, value: apiKey);
-      }
-    } catch (_) {}
-    await saveProfile(
-      profile.copyWith(
-        accountId: account.id,
-        providerKind: vendorId,
-        baseUrl: profile.baseUrl,
-      ),
-    );
+    await saveProfile(profile);
   }
 
   Future<void> _persist(List<AgentProfile> next) async {
@@ -841,9 +872,6 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> setEnabled(String id, bool enabled) async {
     await ensureLoaded();
-    if (id == kGooseAgentId) {
-      return;
-    }
     await _persist([
       for (final p in state)
         if (p.id == id) p.copyWith(enabled: enabled) else p,
@@ -866,7 +894,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       await accounts.upsert(account);
       accountId = account.id;
     }
-    final id = 'p-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'p-${DateTime.now().microsecondsSinceEpoch}';
     final copy = AgentProfile(
       id: id,
       displayName: '${source.displayName} copy',
@@ -891,114 +919,25 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await ensureBotIdentity(copy);
   }
 
-  static const templateBlank = 'blank';
-  static const templateTranslator = 'translator';
-  static const templateCoder = 'coder';
-
-  Future<String> _accountForVendor({
-    required String vendorId,
-    required String baseUrl,
-  }) async {
-    final accounts = ref.read(providerAccountsProvider.notifier);
-    await accounts.ensureLoaded();
-    for (final a in ref.read(providerAccountsProvider)) {
-      if (a.vendorId == vendorId) {
-        return a.id;
-      }
-    }
-    final id = 'acct-${DateTime.now().microsecondsSinceEpoch}';
-    await accounts.upsert(
-      ProviderAccount(
-        id: id,
-        vendorId: vendorId,
-        baseUrl: baseUrl,
-        keyRef: '$kAccountKeyPrefix$id',
-        displayName: vendorId,
-      ),
-    );
-    return id;
-  }
-
-  /// Product wizard. Host `translator_template` / `coder_template` stay fixtures.
-  Future<AgentProfile> createFromTemplate(String template) async {
-    await ensureLoaded();
-    _assertCanInsert();
+  /// In-memory persona. Does not persist or call `chat.bot.create`.
+  AgentProfile draftNew({required String accountId, required String model}) {
     final id = 'p-${DateTime.now().microsecondsSinceEpoch}';
-    late final AgentProfile profile;
-    switch (template) {
-      case templateTranslator:
-        final accountId = await _accountForVendor(
-          vendorId: 'deepseek',
-          baseUrl: 'https://api.deepseek.com',
-        );
-        profile = AgentProfile(
-          id: id,
-          displayName: '译者',
-          aliases: const ['译者'],
-          providerKind: 'deepseek',
-          baseUrl: 'https://api.deepseek.com',
-          model: 'deepseek-flash',
-          keyRef: '',
-          accountId: accountId,
-          systemPrompt: 'You are 译者. Translate faithfully. Do not use tools. Reply in the target language only.',
-          mode: 'chat',
-          reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'none'),
-          thinkingEffort: 'none',
-        );
-      case templateCoder:
-        final accountId = await _accountForVendor(
-          vendorId: 'anthropic',
-          baseUrl: 'https://api.anthropic.com',
-        );
-        profile = AgentProfile(
-          id: id,
-          displayName: '编码',
-          aliases: const ['编码'],
-          providerKind: 'anthropic',
-          baseUrl: 'https://api.anthropic.com',
-          model: 'claude-sonnet-4-5',
-          keyRef: '',
-          accountId: accountId,
-          systemPrompt: 'You are 编码, a local coding assistant. Prefer small, correct patches.',
-          mode: 'approve',
-          reasoning: const ReasoningChoice(kind: 'effort_enum', value: 'high'),
-          thinkingEffort: 'high',
-          tools: const AgentToolSet(
-            sendMessage: true,
-            readClipboard: true,
-            fs: true,
-          ),
-        );
-      default:
-        final goose = this.goose;
-        final accountId = goose != null && goose.accountId.isNotEmpty
-            ? goose.accountId
-            : await _accountForVendor(
-                vendorId: 'openai',
-                baseUrl: 'https://api.openai.com/v1',
-              );
-        profile = AgentProfile(
-          id: id,
-          displayName: 'Agent',
-          aliases: const ['Agent'],
-          providerKind: goose?.providerKind ?? 'openai',
-          baseUrl: goose?.baseUrl ?? 'https://api.openai.com/v1',
-          model: goose?.model ?? 'gpt-4o',
-          keyRef: goose?.keyRef ?? '',
-          accountId: accountId,
-          systemPrompt: '',
-          tools: const AgentToolSet(sendMessage: true, readClipboard: true),
-        );
-    }
-    await saveProfile(profile);
-    return profile;
+    return AgentProfile(
+      id: id,
+      displayName: '',
+      aliases: const [],
+      providerKind: '',
+      baseUrl: '',
+      model: model,
+      keyRef: '',
+      accountId: accountId,
+      systemPrompt: '',
+      tools: kCreateDefaultTools,
+    );
   }
 
   Future<void> delete(String id) async {
     await ensureLoaded();
-    if (id == kGooseAgentId) {
-      return;
-    }
     AgentProfile? profile;
     for (final p in state) {
       if (p.id == id) {

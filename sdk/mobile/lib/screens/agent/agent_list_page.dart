@@ -6,11 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../agent/mention.dart';
 import '../../copy.dart';
+import '../../core/haptics.dart';
 import '../../state/agent_profiles.dart';
+import '../../state/provider_accounts.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
 
@@ -24,6 +28,7 @@ class AgentListPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final store = ref.watch(agentProfilesProvider.notifier);
     ref.watch(agentProfilesProvider);
+    final accounts = ref.watch(providerAccountsProvider);
     final profiles = store.multiProfile
         ? ref.watch(agentProfilesProvider)
         : [
@@ -38,8 +43,12 @@ class AgentListPage extends ConsumerWidget {
             title: l10n.agentListTitle,
             actions: [
               IconButton(
-                tooltip: l10n.agentNew,
-                onPressed: () => unawaited(_wizard(context, ref)),
+                key: const Key('agent-new'),
+                tooltip: l10n.agentCreate,
+                onPressed: () {
+                  unawaited(KimHaptics.light());
+                  context.push('/agent/new');
+                },
                 icon: const Icon(Icons.add),
               ),
               IconButton(
@@ -53,65 +62,44 @@ class AgentListPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverList.list(
               children: [
-                KimGroupCard(
-                  children: [
-                    SwitchListTile(
-                      title: Text(l10n.agentServerIdentity),
-                      subtitle: Text(() {
-                        if (store.identityError != null) {
-                          return store.identityError!;
-                        }
-                        final acc = store.goose?.serverAccount ?? '';
-                        if (acc.isNotEmpty) {
-                          return acc;
-                        }
-                        return l10n.agentServerIdentityHint;
-                      }()),
-                      value: store.serverIdentity,
-                      onChanged: (next) =>
-                          unawaited(store.setServerIdentity(next)),
+                if (profiles.isEmpty)
+                  EmptyState(
+                    icon: LucideIcons.bot,
+                    title: l10n.agentEmptyTitle,
+                    subtitle: l10n.agentEmptyHint,
+                    action: FilledButton(
+                      key: const Key('agent-create'),
+                      onPressed: () => context.push('/agent/new'),
+                      child: Text(l10n.agentCreate),
                     ),
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      title: Text(l10n.agentMultiProfile),
-                      value: store.multiProfile,
-                      onChanged: (next) =>
-                          unawaited(store.setMultiProfile(next)),
-                    ),
-                  ],
-                ),
-                const Gap(18),
-                KimGroupCard(
-                  children: [
-                    for (final profile in profiles) ...[
-                      if (profile != profiles.first) const Divider(height: 1),
-                      ListTile(
-                        title: Text(profile.displayName),
-                        subtitle: Text(
-                          profile.serverAccount.isEmpty
-                              ? profile.id
-                              : '${profile.id} · ${profile.serverAccount}',
-                        ),
-                        onTap: () => context.push('/agent/${profile.id}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (profile.id != kGooseAgentId)
+                  )
+                else
+                  KimGroupCard(
+                    children: [
+                      for (final profile in profiles) ...[
+                        if (profile != profiles.first) const Divider(height: 1),
+                        ListTile(
+                          title: Text(profile.displayName),
+                          subtitle: Text(_profileSubtitle(profile, accounts)),
+                          onTap: () => context.push('/agent/${profile.id}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Switch(
                                 value: profile.enabled,
                                 onChanged: (next) => unawaited(
                                   store.setEnabled(profile.id, next),
                                 ),
                               ),
-                            IconButton(
-                              tooltip: l10n.agentDuplicate,
-                              onPressed: () => unawaited(
-                                _duplicate(context, store, profile),
-                              ),
-                              icon: const Icon(Icons.copy, size: 18),
-                            ),
-                            if (profile.id != kGooseAgentId)
                               IconButton(
+                                tooltip: l10n.agentDuplicate,
+                                onPressed: () => unawaited(
+                                  _duplicate(context, store, profile),
+                                ),
+                                icon: const Icon(Icons.copy, size: 18),
+                              ),
+                              IconButton(
+                                key: Key('agent-delete-${profile.id}'),
                                 tooltip: l10n.agentDelete,
                                 onPressed: () => unawaited(
                                   _delete(context, store, profile.id),
@@ -121,15 +109,15 @@ class AgentListPage extends ConsumerWidget {
                                   size: 18,
                                 ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
                 const Gap(12),
                 Text(
-                  Copy.agentGooseHint,
+                  l10n.agentListHint,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -143,56 +131,24 @@ class AgentListPage extends ConsumerWidget {
   }
 }
 
-Future<void> _wizard(BuildContext context, WidgetRef ref) async {
-  final l10n = AppLocalizations.of(context);
-  final template = await showModalBottomSheet<String>(
-    context: context,
-    builder: (ctx) {
-      return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(l10n.agentWizardBlank),
-              onTap: () => Navigator.pop(ctx, AgentProfileStore.templateBlank),
-            ),
-            ListTile(
-              title: Text(l10n.agentWizardTranslator),
-              subtitle: const Text('DeepSeek · deepseek-flash'),
-              onTap: () =>
-                  Navigator.pop(ctx, AgentProfileStore.templateTranslator),
-            ),
-            ListTile(
-              title: Text(l10n.agentWizardCoder),
-              subtitle: const Text('Claude · high · fs'),
-              onTap: () => Navigator.pop(ctx, AgentProfileStore.templateCoder),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-  if (template == null || !context.mounted) {
-    return;
-  }
-  try {
-    final created = await ref
-        .read(agentProfilesProvider.notifier)
-        .createFromTemplate(template);
-    if (context.mounted) {
-      context.push('/agent/${created.id}');
+String _profileSubtitle(AgentProfile profile, List<ProviderAccount> accounts) {
+  ProviderAccount? account;
+  for (final a in accounts) {
+    if (a.id == profile.accountId) {
+      account = a;
+      break;
     }
-  } catch (err) {
-    if (!context.mounted) {
-      return;
-    }
-    toastification.show(
-      context: context,
-      type: ToastificationType.error,
-      title: Text(err.toString()),
-      autoCloseDuration: const Duration(seconds: 3),
-    );
   }
+  final provider = (account != null && account.displayName.isNotEmpty)
+      ? account.displayName
+      : (account != null && account.vendorId.isNotEmpty)
+      ? account.vendorId
+      : profile.providerKind;
+  final bits = <String>[
+    if (provider.isNotEmpty) provider,
+    if (profile.model.isNotEmpty) profile.model,
+  ];
+  return bits.join(' · ');
 }
 
 Future<void> _duplicate(

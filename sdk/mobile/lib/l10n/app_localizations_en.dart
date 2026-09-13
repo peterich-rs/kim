@@ -444,7 +444,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentLocalSection => 'Local agent';
 
   @override
-  String get agentLocalSubtitle => 'On-device Goose · never hits the server';
+  String get agentLocalSubtitle =>
+      'Runs on this device · messages are a normal 1:1';
 
   @override
   String get agentLocalOnly =>
@@ -460,7 +461,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentMode => 'Protocol';
 
   @override
-  String get agentProvider => 'Goose provider';
+  String get agentProvider => 'Provider';
 
   @override
   String get agentProviderOpenAi => 'OpenAI';
@@ -496,6 +497,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentFetchModels => 'Fetch models';
+
+  @override
+  String agentFetchModelsOk(int count) {
+    return 'Fetched $count models';
+  }
+
+  @override
+  String agentFetchModelsFailed(String error) {
+    return 'Could not fetch models: $error';
+  }
+
+  @override
+  String get agentPickModel => 'Choose from list';
+
+  @override
+  String get agentModelHint =>
+      'The text field is what gets saved. Type an id, or fetch and pick one.';
 
   @override
   String get agentReasoning => 'Reasoning';
@@ -650,15 +668,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentNew => 'New';
 
   @override
-  String get agentWizardBlank => 'Blank';
-
-  @override
-  String get agentWizardTranslator => 'Translator';
-
-  @override
-  String get agentWizardCoder => 'Coder';
-
-  @override
   String get agentInvalidUrl =>
       'Use an https URL (http://127.0.0.1 is allowed locally)';
 
@@ -667,6 +676,67 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentComposerHint => 'Send a message, or @助手';
+
+  @override
+  String get agentEmptyTitle => 'No agents yet';
+
+  @override
+  String get agentEmptyHint =>
+      'Create an assistant. It shows up in Contacts and Chats.';
+
+  @override
+  String get agentCreate => 'Create agent';
+
+  @override
+  String get agentPrompt => 'System prompt';
+
+  @override
+  String get agentPromptHint => 'Leave empty to use this default';
+
+  @override
+  String get agentNewProvider => 'New provider…';
+
+  @override
+  String get agentNeedProvider => 'Add a provider account first';
+
+  @override
+  String get agentEmptyProviders => 'No provider accounts yet';
+
+  @override
+  String get agentEmptyProvidersHint =>
+      'Add a vendor and API key, then come back to create the agent';
+
+  @override
+  String get agentKeepKeyHint => 'Leave empty to keep the saved key';
+
+  @override
+  String get agentModelOther => 'Other…';
+
+  @override
+  String agentModelFallback(String model) {
+    return 'Model is not on the new account; switched to $model';
+  }
+
+  @override
+  String get agentListHint =>
+      'Open an agent in Contacts to chat. Keys live on provider accounts.';
+
+  @override
+  String get agentDeletedReadOnly =>
+      'This agent was deleted. History is read-only.';
+
+  @override
+  String get agentProviderKeyMissing =>
+      'No API key. Open Me → Agent → Provider accounts to add one.';
+
+  @override
+  String get composerHint => 'Send a message';
+
+  @override
+  String get agentNameHint => 'Name this agent';
+
+  @override
+  String get agentAdvanced => 'Advanced';
 
   @override
   String get emptyChatTitle => 'Select a conversation';

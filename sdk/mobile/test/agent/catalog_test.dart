@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/agent/catalog.dart';
 import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:kim_mobile/state/provider_accounts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -14,6 +15,64 @@ void main() {
   {"id":"groq","display_name":"Groq","group":"other","sort_rank":80,"default_base_url":"https://api.groq.com/openai/v1","alt_base_urls":[],"dynamic_models":true,"custom_model":true,"default_model":"","models":[]}
 ]
 ''';
+
+  test('defaultModelForAccount prefers catalog default then first', () {
+    const account = ProviderAccount(
+      id: 'acct-1',
+      vendorId: 'openai',
+      baseUrl: '',
+      keyRef: '',
+      models: ['gpt-4.1', 'gpt-4o'],
+    );
+    expect(
+      defaultModelForAccount(
+        account,
+        const VendorSummaryDto(
+          id: 'openai',
+          displayName: 'OpenAI',
+          group: 'primary',
+          sortRank: 0,
+          defaultBaseUrl: '',
+          defaultModel: 'gpt-4o',
+        ),
+      ),
+      'gpt-4o',
+    );
+    expect(
+      defaultModelForAccount(
+        account,
+        const VendorSummaryDto(
+          id: 'openai',
+          displayName: 'OpenAI',
+          group: 'primary',
+          sortRank: 0,
+          defaultBaseUrl: '',
+          defaultModel: 'missing',
+        ),
+      ),
+      'gpt-4.1',
+    );
+  });
+
+  test('selectableModelIds drops gateway routing aliases', () {
+    expect(
+      selectableModelIds([
+        'gpt-4o',
+        'gpt-*',
+        'claude-*',
+        'codex-*',
+        'composer-2.5',
+        '',
+      ]),
+      ['gpt-4o', 'composer-2.5'],
+    );
+  });
+
+  test('canonicalizeVendorId maps grok to xai and leaves groq', () {
+    expect(canonicalizeVendorId('grok'), 'xai');
+    expect(canonicalizeVendorId('XAI'), 'xai');
+    expect(canonicalizeVendorId('groq'), 'groq');
+  });
 
   test('sortVendors uses group then sort_rank, not vendor id', () {
     final vendors = VendorSummaryDto.listFromJson(vendorsJson);
@@ -109,6 +168,68 @@ void main() {
       'deepseek-v4-pro',
     ]);
   });
+
+  test('Dart kDefaultSystemPrompt matches the Rust DEFAULT_SYSTEM_PROMPT', () {
+    const rust =
+        'You are 助手, a local desktop agent inside the KIM messenger. '
+        'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
+        'Be concise. You can see the current conversation because the host pasted it into this session. '
+        'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
+        'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
+        'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
+    expect(kDefaultSystemPrompt, rust);
+    expect(kDefaultSystemPrompt.contains('You are 助手'), isTrue);
+    expect(kDefaultSystemPrompt.contains('search_contacts'), isTrue);
+  });
+
+  test('refresh unions fetched with existing, keeping hand-typed ids', () {
+    expect(unionAccountModels(['gpt-4o', 'gpt-5'], ['gpt-4o', 'my-finetune']), [
+      'gpt-4o',
+      'gpt-5',
+      'my-finetune',
+    ]);
+  });
+
+  test('fetch failure does not change the list', () {
+    const original = ['gpt-4o', 'my-finetune'];
+    final models = List<String>.from(original);
+    // Callers skip unionAccountModels / upsert when fetch throws.
+    expect(models, original);
+    expect(unionAccountModels(['gpt-5'], original), isNot(equals(original)));
+  });
+
+  test(
+    'ProviderAccount models roundtrip and migrate from catalog cache',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      await saveCatalogModelCache('openai', const ['gpt-4o', 'hand-typed']);
+      const account = ProviderAccount(
+        id: 'acct-1',
+        vendorId: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        keyRef: 'agent.api_key.acct.acct-1',
+        displayName: 'OpenAI',
+      );
+      expect(account.models, isEmpty);
+      final seeded = await migrateAccountModelIds(
+        vendorId: account.vendorId,
+        existing: account.models,
+        catalogModels: const ['gpt-4o'],
+        defaultModel: 'gpt-4o',
+      );
+      expect(seeded, ['gpt-4o', 'hand-typed']);
+      final json = account.copyWith(models: seeded).toJson();
+      expect(json['models'], ['gpt-4o', 'hand-typed']);
+      final restored = ProviderAccount.fromJson(json);
+      expect(restored.models, ['gpt-4o', 'hand-typed']);
+      final again = await migrateAccountModelIds(
+        vendorId: restored.vendorId,
+        existing: restored.models,
+        catalogModels: const ['should-not-replace'],
+      );
+      expect(again, ['gpt-4o', 'hand-typed']);
+    },
+  );
 
   test('Claude surface has no Off or Medium', () {
     const surface = ReasoningSurfaceDto(
