@@ -391,6 +391,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastBotCreateId = '';
   String lastBotCreateNickname = '';
   Object? botCreateError;
+  String lastBotDeleteDest = '';
+  Object? botDeleteError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
   var botReplyInFlight = 0;
   var botReplyMaxInFlight = 0;
@@ -427,6 +429,11 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> botDelete(String dest) async {
     botDeletes += 1;
+    lastBotDeleteDest = dest;
+    final fail = botDeleteError;
+    if (fail != null) {
+      throw fail;
+    }
     friends = friends.where((p) => p.account != dest).toList();
   }
 

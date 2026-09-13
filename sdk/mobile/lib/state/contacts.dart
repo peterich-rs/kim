@@ -53,9 +53,6 @@ class ContactsState {
         return p;
       }
     }
-    if (isGooseAgentDest(account)) {
-      return kGooseAgentPerson;
-    }
     for (final p in incoming) {
       if (p.account == account) {
         return p;
@@ -111,8 +108,6 @@ class ContactsNotifier extends Notifier<ContactsState> {
     return ContactsState(
       friends: !agentHostSupported
           ? const []
-          : agents.isEmpty
-          ? withGooseAgent(const [])
           : withLocalAgents(const [], agents),
       incoming: const [],
       outgoing: const {},
@@ -143,9 +138,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
             return friends;
           }
           final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
-          return agents.isEmpty
-              ? withGooseAgent(friends)
-              : withLocalAgents(friends, agents);
+          return withLocalAgents(friends, agents);
         }(),
         incoming: incoming,
         outgoing: {...state.outgoing}..removeWhere(friendIds.contains),

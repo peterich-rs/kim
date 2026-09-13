@@ -13,7 +13,6 @@ import '../core/image_extra.dart';
 import '../core/permissions.dart';
 import '../core/user_agent.dart';
 import '../models/models.dart';
-import 'agent_profiles.dart';
 import 'auth.dart';
 import 'chat_agent.dart';
 import 'contacts.dart';
@@ -209,7 +208,10 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     switch (event.kind) {
       case KimEventKind.link:
-        final status = KimLinkState.statusFromLabel(event.state);
+        final status = KimLinkState.parseStatus(event.state);
+        if (status == null) {
+          return;
+        }
         _set(
           KimLinkState(
             status: status,
@@ -223,13 +225,6 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
           _askNotifications();
           if (agentHostSupported) {
             unawaited(ref.read(chatAgentProvider).catchUpPending());
-            unawaited(() async {
-              try {
-                await ref
-                    .read(agentProfilesProvider.notifier)
-                    .ensureVisibleIdentities();
-              } catch (_) {}
-            }());
           }
         }
       case KimEventKind.inbox:

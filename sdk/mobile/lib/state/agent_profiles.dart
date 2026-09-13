@@ -5,19 +5,69 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../agent/catalog.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/settings.dart';
 import 'agent_settings.dart';
 import 'auth.dart';
+import 'provider_accounts.dart';
 import 'providers.dart';
 
 const _kProfiles = 'agent.profiles';
 const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';
 const _kMulti = 'agent.multi_profile';
+const _kMultiMigrated = 'agent.multi_profile_migrated_on';
 const _kServerIdentity = 'agent.server_identity';
+const _kIdentityMigrated = 'agent.identity_migrated_on';
+
+/// Byte-identical to Rust `DEFAULT_SYSTEM_PROMPT`. Empty prompt injects this.
+const kDefaultSystemPrompt =
+    'You are 助手, a local desktop agent inside the KIM messenger. '
+    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
+    'Be concise. You can see the current conversation because the host pasted it into this session. '
+    'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
+    'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
+    'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
+
+/// New Agent tools. Do not rewrite an existing goose row.
+const kCreateDefaultTools = AgentToolSet(
+  sendMessage: true,
+  readClipboard: true,
+);
+
+/// Aligns with Chat `BOT_MAX_PER_OWNER`.
+const kMaxBotsPerOwner = 20;
+
+class AgentProfileCapExceeded implements Exception {
+  @override
+  String toString() => Copy.agentCapReached;
+}
+
+/// Profiles that have or will have a cloud bot when [serverIdentity] is on,
+/// including disabled rows.
+int cloudIdentitySlots(
+  Iterable<AgentProfile> profiles, {
+  required bool serverIdentity,
+}) {
+  var n = 0;
+  for (final p in profiles) {
+    if (p.serverAccount.isNotEmpty || serverIdentity) {
+      n++;
+    }
+  }
+  return n;
+}
+
+bool isBotAlreadyGone(Object err) {
+  final msg = err.toString().toLowerCase();
+  return msg.contains('status 108') ||
+      msg.contains('not_owner') ||
+      msg.contains('not owner') ||
+      msg.contains(Copy.userNotFound.toLowerCase());
+}
 
 String agentRegisterError(Object err) {
   final msg = err.toString();
@@ -143,6 +193,58 @@ class AgentExtension {
   }
 }
 
+class ReasoningChoice {
+  const ReasoningChoice({
+    this.v = 1,
+    required this.kind,
+    this.on,
+    this.value,
+    this.budget,
+    this.advanced,
+  });
+
+  final int v;
+  final String kind;
+  final bool? on;
+  final String? value;
+  final int? budget;
+  final Map<String, Object?>? advanced;
+
+  Map<String, Object?> toJson() => {
+    'v': v,
+    'kind': kind,
+    if (on != null) 'on': on,
+    if (value != null) 'value': value,
+    if (budget != null) 'value': budget,
+    if (advanced != null) 'json': advanced,
+  };
+
+  factory ReasoningChoice.fromJson(Map<String, Object?> json) {
+    final raw = json['value'];
+    return ReasoningChoice(
+      v: json['v'] is int ? json['v'] as int : 1,
+      kind: '${json['kind'] ?? 'none'}',
+      on: json['on'] as bool?,
+      value: raw is String ? raw : null,
+      budget: raw is int ? raw : null,
+      advanced: json['json'] is Map
+          ? Map<String, Object?>.from(json['json'] as Map)
+          : null,
+    );
+  }
+
+  static ReasoningChoice? fromThinkingEffort(String effort) {
+    final trimmed = effort.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    if (trimmed == 'off' || trimmed == 'none' || trimmed == 'disabled') {
+      return const ReasoningChoice(kind: 'none');
+    }
+    return ReasoningChoice(kind: 'effort_enum', value: trimmed);
+  }
+}
+
 class AgentProfile {
   const AgentProfile({
     required this.id,
@@ -156,6 +258,8 @@ class AgentProfile {
     this.mode = 'smart_approve',
     this.maxTurns,
     this.thinkingEffort = '',
+    this.accountId = '',
+    this.reasoning,
     this.tools = const AgentToolSet(),
     this.permissionOverrides = const {},
     this.extensions = const [],
@@ -175,6 +279,8 @@ class AgentProfile {
   final String mode;
   final int? maxTurns;
   final String thinkingEffort;
+  final String accountId;
+  final ReasoningChoice? reasoning;
   final AgentToolSet tools;
   final Map<String, String> permissionOverrides;
   final List<AgentExtension> extensions;
@@ -188,6 +294,7 @@ class AgentProfile {
 
   AgentProfile copyWith({
     String? displayName,
+    List<String>? aliases,
     String? providerKind,
     String? baseUrl,
     String? model,
@@ -195,6 +302,8 @@ class AgentProfile {
     String? mode,
     int? maxTurns,
     String? thinkingEffort,
+    String? accountId,
+    ReasoningChoice? reasoning,
     AgentToolSet? tools,
     Map<String, String>? permissionOverrides,
     List<AgentExtension>? extensions,
@@ -205,7 +314,7 @@ class AgentProfile {
     return AgentProfile(
       id: id,
       displayName: displayName ?? this.displayName,
-      aliases: aliases,
+      aliases: aliases ?? this.aliases,
       providerKind: providerKind ?? this.providerKind,
       baseUrl: baseUrl ?? this.baseUrl,
       model: model ?? this.model,
@@ -214,6 +323,8 @@ class AgentProfile {
       mode: mode ?? this.mode,
       maxTurns: maxTurns ?? this.maxTurns,
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
+      accountId: accountId ?? this.accountId,
+      reasoning: reasoning ?? this.reasoning,
       tools: tools ?? this.tools,
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       extensions: extensions ?? this.extensions,
@@ -223,15 +334,18 @@ class AgentProfile {
     );
   }
 
+  /// Disk JSON: no `provider` block (C-KD 1).
   Map<String, Object?> toJson() => {
     'id': id,
     'display_name': displayName,
     'aliases': aliases,
-    'provider': {'kind': providerKind, 'base_url': baseUrl, 'key_ref': keyRef},
+    if (accountId.isNotEmpty) 'account_id': accountId,
     'model': {
       'name': model,
-      if (thinkingEffort.isNotEmpty) 'thinking_effort': thinkingEffort,
+      if (reasoning == null && thinkingEffort.isNotEmpty)
+        'thinking_effort': thinkingEffort,
     },
+    if (reasoning != null) 'reasoning': reasoning!.toJson(),
     'system_prompt': systemPrompt,
     'mode': mode,
     'max_turns': maxTurns,
@@ -242,6 +356,16 @@ class AgentProfile {
     if (steer.isNotEmpty) 'steer': steer,
     'server_account': serverAccount,
   };
+
+  Map<String, Object?> toHostJson(ProviderAccount account) {
+    final json = toJson();
+    json['provider'] = {
+      'kind': canonicalizeVendorId(account.vendorId),
+      'base_url': account.baseUrl,
+      'key_ref': '',
+    };
+    return json;
+  }
 
   factory AgentProfile.fromJson(Map<String, Object?> json) {
     final provider = json['provider'];
@@ -265,13 +389,15 @@ class AgentProfile {
       }
     }
     final aliasesRaw = json['aliases'];
+    final reasoningRaw = json['reasoning'];
+    final kind = canonicalizeVendorId(providerMap['kind'] as String? ?? '');
     return AgentProfile(
       id: json['id'] as String? ?? kGooseAgentId,
       displayName: json['display_name'] as String? ?? kGooseAgentName,
       aliases: aliasesRaw is List
           ? [for (final a in aliasesRaw) '$a']
           : const [],
-      providerKind: providerMap['kind'] as String? ?? 'openai',
+      providerKind: kind.isEmpty ? 'openai' : kind,
       baseUrl: providerMap['base_url'] as String? ?? '',
       model: modelMap['name'] as String? ?? 'gpt-4o',
       keyRef: providerMap['key_ref'] as String? ?? 'agent.api_key.goose',
@@ -279,6 +405,12 @@ class AgentProfile {
       mode: json['mode'] as String? ?? 'smart_approve',
       maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
       thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
+      accountId: json['account_id'] as String? ?? '',
+      reasoning: reasoningRaw is Map
+          ? ReasoningChoice.fromJson(Map<String, Object?>.from(reasoningRaw))
+          : ReasoningChoice.fromThinkingEffort(
+              modelMap['thinking_effort'] as String? ?? '',
+            ),
       tools: toolsRaw is Map
           ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
           : const AgentToolSet(),
@@ -305,18 +437,16 @@ class AgentProfile {
       id: kGooseAgentId,
       displayName: kGooseAgentName,
       aliases: const ['助手'],
-      providerKind: s.llmBackend,
+      providerKind: canonicalizeVendorId(s.llmBackend),
       baseUrl: s.baseUrl,
       model: s.model,
       keyRef: _kGooseKey,
-      systemPrompt:
-          'You are 助手, a local desktop agent inside the KIM messenger. '
-          'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
-          'Be concise. You can see the current conversation because the host pasted it into this session. '
-          'Do not claim you have tools you were not given.',
+      accountId: '',
+      systemPrompt: kDefaultSystemPrompt,
       mode: 'smart_approve',
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,
+      reasoning: ReasoningChoice.fromThinkingEffort(s.thinkingEffort),
       tools: const AgentToolSet(
         sendMessage: true,
         searchContacts: true,
@@ -338,6 +468,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   /// `agent.server_identity`. Desktop defaults on so 1:1 can register.
   var serverIdentity = false;
   String? identityError;
+
+  /// False until the first `_reload` finishes. Empty `[]` before this is
+  /// "not loaded yet", not "no agents".
+  var profilesReady = false;
 
   @override
   List<AgentProfile> build() {
@@ -381,33 +515,59 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
     }
 
-    final keyed = await read(profile.keyRef);
+    await ref.read(providerAccountsProvider.notifier).ensureLoaded();
+    final accountId = profile.accountId;
+    if (accountId.isEmpty) {
+      throw MissingProviderAccount(accountId);
+    }
+    final account = ref.read(providerAccountsProvider.notifier).byId(accountId);
+    if (account == null) {
+      throw MissingProviderAccount(accountId);
+    }
+    final keyed = await read(account.keyRef);
     if (keyed.isNotEmpty) {
       return keyed;
     }
-    if (profile.id == kGooseAgentId) {
+    if (account.keyRef == _kGooseKey || profile.id == kGooseAgentId) {
       final goose = await read(_kGooseKey);
       if (goose.isNotEmpty) {
         return goose;
       }
+      final legacy = await read('agent.api_key');
+      if (legacy.isNotEmpty) {
+        return legacy;
+      }
+      return ref.read(agentSettingsProvider).apiKey;
     }
-    final legacy = await read('agent.api_key');
-    if (legacy.isNotEmpty) {
-      return legacy;
-    }
-    return ref.read(agentSettingsProvider).apiKey;
+    return '';
   }
 
   Future<void> saveProfile(AgentProfile profile) async {
     await ensureLoaded();
-    final isNew = !state.any((p) => p.id == profile.id);
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    var next = profile;
+    if (next.accountId.isEmpty) {
+      final account = ProviderAccount.fromLegacyProfile(
+        profileId: next.id,
+        providerKind: next.providerKind,
+        baseUrl: next.baseUrl,
+        keyRef: next.keyRef,
+      );
+      await accounts.upsert(account);
+      next = next.copyWith(accountId: account.id);
+    } else if (accounts.byId(next.accountId) == null) {
+      throw MissingProviderAccount(next.accountId);
+    }
+    final isNew = !state.any((p) => p.id == next.id);
     if (isNew) {
-      await _persist([...state, profile]);
-      await ensureBotIdentity(profile);
+      _assertCanInsert();
+      await _persist([...state, next]);
+      await ensureBotIdentity(next);
     } else {
       await _persist([
         for (final p in state)
-          if (p.id == profile.id) profile else p,
+          if (p.id == next.id) next else p,
       ]);
     }
   }
@@ -443,8 +603,13 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     return next;
   }
 
-  /// Register enabled desktop personas. Idempotent. Desktop-online seam so
-  /// mobile can see the bot without opening each 1:1 first.
+  void _assertCanInsert() {
+    if (state.length >= kMaxBotsPerOwner) {
+      throw AgentProfileCapExceeded();
+    }
+  }
+
+  /// Explicit user action (`setServerIdentity(true)`), not login / online.
   Future<void> ensureVisibleIdentities() async {
     await ensureLoaded();
     if (!serverIdentity || !ref.read(authProvider).signedIn) {
@@ -481,7 +646,19 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _reload() async {
     final prefs = await SharedPreferences.getInstance();
-    multiProfile = prefs.getBool(_kMulti) ?? false;
+    if (agentHostSupported && prefs.getBool(_kMultiMigrated) != true) {
+      if (prefs.getBool(_kMulti) == false) {
+        await prefs.setBool(_kMulti, true);
+      }
+      await prefs.setBool(_kMultiMigrated, true);
+    }
+    if (agentHostSupported && prefs.getBool(_kIdentityMigrated) != true) {
+      if (prefs.getBool(_kServerIdentity) == false) {
+        await prefs.setBool(_kServerIdentity, true);
+      }
+      await prefs.setBool(_kIdentityMigrated, true);
+    }
+    multiProfile = prefs.getBool(_kMulti) ?? agentHostSupported;
     serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
     final raw = prefs.getString(_kProfiles);
     var profiles = <AgentProfile>[];
@@ -504,57 +681,177 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     if (!ref.mounted) {
       return;
     }
-    if (profiles.isEmpty) {
-      await ref.read(agentSettingsProvider.notifier).ensureLoaded();
+    profiles = await _migrateAccounts(profiles);
+    if (!ref.mounted) {
+      return;
+    }
+    profilesReady = true;
+    state = List<AgentProfile>.from(profiles);
+    await _migrateAccountModels();
+  }
+
+  Future<List<AgentProfile>> _migrateAccounts(
+    List<AgentProfile> profiles,
+  ) async {
+    if (!ref.mounted) {
+      return profiles;
+    }
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    if (!ref.mounted) {
+      return profiles;
+    }
+    var changed = false;
+    final next = <AgentProfile>[];
+    for (var p in profiles) {
+      if (p.accountId.isNotEmpty) {
+        final account = accounts.byId(p.accountId);
+        if (account == null) {
+          // Keep the dangling account_id so readApiKey / open throw.
+          next.add(p);
+          continue;
+        }
+        p = p.copyWith(
+          providerKind: canonicalizeVendorId(account.vendorId),
+          baseUrl: account.baseUrl,
+        );
+        next.add(p);
+        continue;
+      }
+      final account = ProviderAccount.fromLegacyProfile(
+        profileId: p.id,
+        providerKind: p.providerKind,
+        baseUrl: p.baseUrl,
+        keyRef: p.keyRef,
+      );
+      await accounts.upsert(account);
+      if (!ref.mounted) {
+        return next;
+      }
+      p = p.copyWith(
+        accountId: account.id,
+        providerKind: canonicalizeVendorId(account.vendorId),
+        baseUrl: account.baseUrl,
+      );
+      changed = true;
+      next.add(p);
+    }
+    if (changed) {
+      await _persist(next);
+    }
+    return next;
+  }
+
+  Future<void> _migrateAccountModels() async {
+    if (!ref.mounted) {
+      return;
+    }
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    if (!ref.mounted) {
+      return;
+    }
+    final pending = [
+      for (final a in ref.read(providerAccountsProvider))
+        if (a.models.isEmpty) a,
+    ];
+    if (pending.isEmpty) {
+      return;
+    }
+    var vendors = const <VendorSummaryDto>[];
+    try {
+      vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
+    } catch (_) {}
+    if (!ref.mounted) {
+      return;
+    }
+    for (final account in pending) {
+      VendorSummaryDto? vendor;
+      for (final v in vendors) {
+        if (v.id == account.vendorId) {
+          vendor = v;
+          break;
+        }
+      }
+      final models = await migrateAccountModelIds(
+        vendorId: account.vendorId,
+        existing: account.models,
+        catalogModels: vendor?.models ?? const [],
+        defaultModel: vendor?.defaultModel ?? '',
+      );
       if (!ref.mounted) {
         return;
       }
-      profiles = [
-        AgentProfile.gooseFromSettings(ref.read(agentSettingsProvider)),
-      ];
-    } else {
-      profiles = [
-        for (final p in profiles)
-          if (p.id == kGooseAgentId &&
-              !p.tools.sendMessage &&
-              !p.tools.readClipboard)
-            p.copyWith(
-              tools: p.tools.copyWith(sendMessage: true, readClipboard: true),
-            )
-          else
-            p,
-      ];
+      if (models.isEmpty) {
+        continue;
+      }
+      await accounts.upsert(account.copyWith(models: models));
     }
-    state = profiles;
   }
 
   Future<void> saveGoose(AgentProfile goose, {required String apiKey}) async {
     await ensureLoaded();
-    final next = [goose, ...state.where((p) => p.id != kGooseAgentId)];
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    final accountId = goose.accountId.isNotEmpty
+        ? goose.accountId
+        : kGooseAccountId;
+    final vendorId = canonicalizeVendorId(goose.providerKind);
+    var account = accounts.byId(accountId);
+    account ??= ProviderAccount(
+      id: accountId,
+      vendorId: vendorId,
+      baseUrl: goose.baseUrl,
+      keyRef: _kGooseKey,
+      displayName: vendorId,
+    );
+    account = account.copyWith(vendorId: vendorId, baseUrl: goose.baseUrl);
+    await accounts.upsert(account);
+    try {
+      if (apiKey.isEmpty) {
+        await _secure.delete(key: account.keyRef);
+      } else {
+        await _secure.write(key: account.keyRef, value: apiKey);
+      }
+    } catch (_) {}
+    final persisted = goose.copyWith(
+      accountId: account.id,
+      providerKind: vendorId,
+      baseUrl: goose.baseUrl,
+      reasoning:
+          goose.reasoning ??
+          ReasoningChoice.fromThinkingEffort(goose.thinkingEffort),
+    );
+    final next = [persisted, ...state.where((p) => p.id != kGooseAgentId)];
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _kProfiles,
       jsonEncode([for (final p in next) p.toJson()]),
     );
-    await prefs.setString(_kActive, goose.id);
+    await prefs.setString(_kActive, persisted.id);
     final settings = AgentSettings(
-      llmBackend: goose.providerKind,
-      baseUrl: goose.baseUrl,
-      model: goose.model,
+      llmBackend: vendorId,
+      baseUrl: persisted.baseUrl,
+      model: persisted.model,
       apiKey: apiKey,
-      enableFsTools: goose.tools.fs,
-      bashEnabled: goose.tools.bash,
-      thinkingEffort: goose.thinkingEffort,
+      enableFsTools: persisted.tools.fs,
+      bashEnabled: persisted.tools.bash,
+      thinkingEffort: persisted.thinkingEffort,
     );
-    await ref.read(agentSettingsProvider.notifier).save(settings);
-    try {
-      if (apiKey.isEmpty) {
-        await _secure.delete(key: _kGooseKey);
-      } else {
-        await _secure.write(key: _kGooseKey, value: apiKey);
-      }
-    } catch (_) {}
+    await ref
+        .read(agentSettingsProvider.notifier)
+        .save(settings, persistKey: false);
     state = next;
+  }
+
+  Future<void> saveEditor(AgentProfile profile) async {
+    await ensureLoaded();
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    if (profile.accountId.isEmpty || accounts.byId(profile.accountId) == null) {
+      throw MissingProviderAccount(profile.accountId);
+    }
+    await saveProfile(profile);
   }
 
   Future<void> _persist(List<AgentProfile> next) async {
@@ -575,9 +872,6 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> setEnabled(String id, bool enabled) async {
     await ensureLoaded();
-    if (id == kGooseAgentId) {
-      return;
-    }
     await _persist([
       for (final p in state)
         if (p.id == id) p.copyWith(enabled: enabled) else p,
@@ -586,7 +880,21 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> duplicate(AgentProfile source) async {
     await ensureLoaded();
-    final id = 'p-${DateTime.now().millisecondsSinceEpoch}';
+    _assertCanInsert();
+    final accounts = ref.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    var accountId = source.accountId;
+    if (accountId.isEmpty) {
+      final account = ProviderAccount.fromLegacyProfile(
+        profileId: source.id,
+        providerKind: source.providerKind,
+        baseUrl: source.baseUrl,
+        keyRef: source.keyRef,
+      );
+      await accounts.upsert(account);
+      accountId = account.id;
+    }
+    final id = 'p-${DateTime.now().microsecondsSinceEpoch}';
     final copy = AgentProfile(
       id: id,
       displayName: '${source.displayName} copy',
@@ -594,7 +902,9 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       providerKind: source.providerKind,
       baseUrl: source.baseUrl,
       model: source.model,
-      keyRef: 'agent.api_key.$id',
+      keyRef: source.keyRef,
+      accountId: accountId,
+      reasoning: source.reasoning,
       systemPrompt: source.systemPrompt,
       mode: source.mode,
       maxTurns: source.maxTurns,
@@ -605,26 +915,49 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       enabled: true,
       steer: source.steer,
     );
-    try {
-      var secret = await _secure.read(key: source.keyRef) ?? '';
-      if (secret.isEmpty) {
-        secret = await _secure.read(key: _kGooseKey) ?? '';
-      }
-      if (secret.isEmpty) {
-        secret = await _secure.read(key: 'agent.api_key') ?? '';
-      }
-      if (secret.isNotEmpty) {
-        await _secure.write(key: copy.keyRef, value: secret);
-      }
-    } catch (_) {}
     await _persist([...state, copy]);
     await ensureBotIdentity(copy);
   }
 
+  /// In-memory persona. Does not persist or call `chat.bot.create`.
+  AgentProfile draftNew({required String accountId, required String model}) {
+    final id = 'p-${DateTime.now().microsecondsSinceEpoch}';
+    return AgentProfile(
+      id: id,
+      displayName: '',
+      aliases: const [],
+      providerKind: '',
+      baseUrl: '',
+      model: model,
+      keyRef: '',
+      accountId: accountId,
+      systemPrompt: '',
+      tools: kCreateDefaultTools,
+    );
+  }
+
   Future<void> delete(String id) async {
     await ensureLoaded();
-    if (id == kGooseAgentId) {
+    AgentProfile? profile;
+    for (final p in state) {
+      if (p.id == id) {
+        profile = p;
+        break;
+      }
+    }
+    if (profile == null) {
       return;
+    }
+    if (profile.serverAccount.isNotEmpty) {
+      try {
+        await ref.read(clientPortProvider).botDelete(profile.serverAccount);
+      } catch (err) {
+        if (!isBotAlreadyGone(err)) {
+          identityError = agentRegisterError(err);
+          state = [...state];
+          rethrow;
+        }
+      }
     }
     await _persist([
       for (final p in state)

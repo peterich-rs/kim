@@ -42,6 +42,30 @@ void main() {
     expect(env.container.read(linkProvider).status, ConnStatus.online);
   });
 
+  test('link event with empty state does not clobber online', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(linkProvider);
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
+    env.fake.eventsController.add(
+      const KimEvent(kind: KimEventKind.link, state: '', error: ''),
+    );
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.online);
+    expect(env.container.read(sessionProvider).status, ConnStatus.online);
+  });
+
+  test('explicit Offline link event marks offline', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    env.container.read(linkProvider);
+    await _tick();
+    env.fake.eventsController.add(
+      const KimEvent(kind: KimEventKind.link, state: 'Offline'),
+    );
+    await _tick();
+    expect(env.container.read(linkProvider).status, ConnStatus.offline);
+  });
+
   test('unknown ffi kind does not mark reconnecting', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.container.read(linkProvider);

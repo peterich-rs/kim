@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `aborted`, `action_required`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`
+// These functions are ignored because they are not marked as `pub`: `aborted`, `action_required`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SessionPhase`, `Shared`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`
 
@@ -29,6 +29,27 @@ Future<List<String>> listBuiltinProfiles() =>
 
 Future<List<String>> listBundledProviders() =>
     AgentRustLib.instance.api.crateApiSessionListBundledProviders();
+
+Future<String> catalogVendors() =>
+    AgentRustLib.instance.api.crateApiSessionCatalogVendors();
+
+Future<String> catalogSurface({
+  required String vendor,
+  required String model,
+}) => AgentRustLib.instance.api.crateApiSessionCatalogSurface(
+  vendor: vendor,
+  model: model,
+);
+
+Future<String> catalogValidate({
+  required String vendor,
+  required String model,
+  required String choiceJson,
+}) => AgentRustLib.instance.api.crateApiSessionCatalogValidate(
+  vendor: vendor,
+  model: model,
+  choiceJson: choiceJson,
+);
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
 abstract class AgentSession implements RustOpaqueInterface {

@@ -438,7 +438,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentLocalSection => '本地 Agent';
 
   @override
-  String get agentLocalSubtitle => '本机 Goose · 不经过服务器';
+  String get agentLocalSubtitle => '本机运行 · 消息走会话';
 
   @override
   String get agentLocalOnly => '这是本机助手，不会发到服务器';
@@ -453,7 +453,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentMode => '协议';
 
   @override
-  String get agentProvider => 'Goose Provider';
+  String get agentProvider => 'Provider';
 
   @override
   String get agentProviderOpenAi => 'OpenAI';
@@ -489,6 +489,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentFetchModels => '拉取模型';
 
   @override
+  String agentFetchModelsOk(int count) {
+    return '已拉取 $count 个模型';
+  }
+
+  @override
+  String agentFetchModelsFailed(String error) {
+    return '拉取失败：$error';
+  }
+
+  @override
+  String get agentPickModel => '从列表选择';
+
+  @override
+  String get agentModelHint => '保存以输入框为准。可手填，或拉取后从列表选入。';
+
+  @override
   String get agentReasoning => '推理强度';
 
   @override
@@ -505,6 +521,36 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentReasoningMax => '最高';
+
+  @override
+  String get agentReasoningNone => '无';
+
+  @override
+  String get agentReasoningAlwaysOn => '始终开启';
+
+  @override
+  String get agentReasoningMinimal => '最低';
+
+  @override
+  String get agentReasoningXhigh => '极高';
+
+  @override
+  String get agentReasoningDropped => '已忽略不受支持的推理参数';
+
+  @override
+  String get agentAdvancedJson => '高级 JSON';
+
+  @override
+  String get agentVendorPrimary => '常用';
+
+  @override
+  String get agentVendorGateway => '网关';
+
+  @override
+  String get agentVendorOther => '其他';
+
+  @override
+  String get agentAltUrl => '备选地址';
 
   @override
   String get agentFsLater => '工作区文件（后续版本）';
@@ -558,7 +604,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentToolSearchMessages => '搜索消息';
 
   @override
-  String get agentMoreComing => '更多 Agent（即将推出）';
+  String get agentMoreComing => '打开「多个本地 Agent」后可管理列表';
 
   @override
   String get agentMultiProfile => '在通讯录展示多个本地 Agent';
@@ -581,10 +627,96 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentDelete => '删除';
 
   @override
+  String get agentListTitle => 'Agent';
+
+  @override
+  String get agentAccounts => '厂商账号';
+
+  @override
+  String get agentDisplayName => '名称';
+
+  @override
+  String get agentAliases => '别名';
+
+  @override
+  String get agentAliasesHint => '逗号分隔';
+
+  @override
+  String get agentCapReached => '最多 20 个已注册助手';
+
+  @override
+  String get agentAccountInUse => '仍有 Agent 使用此账号';
+
+  @override
+  String get agentAddAccount => '添加账号';
+
+  @override
+  String get agentNew => '新建';
+
+  @override
+  String get agentInvalidUrl => '请使用 https 地址（本机可用 http://127.0.0.1）';
+
+  @override
   String get agentNeedsEnv => '桌面/需环境变量';
 
   @override
   String get agentComposerHint => '发消息，或 @助手';
+
+  @override
+  String get agentEmptyTitle => '还没有 Agent';
+
+  @override
+  String get agentEmptyHint => '创建一个助手，出现在通讯录和会话列表里';
+
+  @override
+  String get agentCreate => '创建 Agent';
+
+  @override
+  String get agentPrompt => '系统提示';
+
+  @override
+  String get agentPromptHint => '留空则使用该默认';
+
+  @override
+  String get agentNewProvider => '新建 Provider…';
+
+  @override
+  String get agentNeedProvider => '先添加一个厂商账号';
+
+  @override
+  String get agentEmptyProviders => '还没有厂商账号';
+
+  @override
+  String get agentEmptyProvidersHint => '先添加厂商和 API 密钥，再回来创建 Agent';
+
+  @override
+  String get agentKeepKeyHint => '留空则保留已保存的密钥';
+
+  @override
+  String get agentModelOther => '其他…';
+
+  @override
+  String agentModelFallback(String model) {
+    return '模型不在新账号列表中，已改用 $model';
+  }
+
+  @override
+  String get agentListHint => '点进通讯录里的 Agent 即可对话。密钥在厂商账号里。';
+
+  @override
+  String get agentDeletedReadOnly => '此 Agent 已删除，记录只读';
+
+  @override
+  String get agentProviderKeyMissing => '未配置 API Key。打开「我 → Agent → 厂商账号」补全密钥。';
+
+  @override
+  String get composerHint => '发消息';
+
+  @override
+  String get agentNameHint => '给 Agent 起个名字';
+
+  @override
+  String get agentAdvanced => '高级';
 
   @override
   String get emptyChatTitle => '选择一个会话';

@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/agent/mention.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/state/agent_profiles.dart';
 import 'package:kim_mobile/state/contacts.dart';
 import 'package:kim_mobile/state/link.dart';
 import 'package:kim_mobile/state/profile.dart';
@@ -70,8 +73,35 @@ void main() {
     expect(threadDisplayTitle(thread, social), '助手');
   });
 
+  test('person goose is null after the row is deleted', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+    });
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.saveProfile(
+      const AgentProfile(
+        id: kGooseAgentId,
+        displayName: kGooseAgentName,
+        providerKind: 'openai',
+        baseUrl: '',
+        model: 'gpt-4o',
+        keyRef: 'agent.api_key.goose',
+        systemPrompt: '',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).person('goose'), isNotNull);
+    await store.delete(kGooseAgentId);
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).person('goose'), isNull);
+  });
+
   test('onProfileUpdated patches friend nickname and avatar', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await env.container.read(agentProfilesProvider.notifier).ensureLoaded();
     await _online(env);
     env.fake.friends = const [
       KimPerson(account: 'bob', nickname: 'Bobby', avatar: 'old.png'),

@@ -1079,7 +1079,7 @@ Auth 过期：`SessionEvent::AuthFailed` 已存在。sdk 将其变为 `SessionUp
 
 | 信号 | 形状 |
 |---|---|
-| `request_id` | 命令入口生成 UUID（Rust 生成，回执带回）。`tracing` span `request_id` + `account` + `epoch` + `client_id`。Dart 用同一 id 打 log。Sentry 面包屑带此 id。 |
+| `request_id` | 命令入口生成 UUID（Rust 生成，回执带回）。`tracing` span `request_id` + `account` + `epoch` + `client_id`。Dart 用同一 id 打 log。 |
 | `kim_sdk_enqueue_ms` | enqueue 到 commit 的延迟（发送受理） |
 | `kim_sdk_persist_talk_ms` | PersistHook 事务 |
 | `kim_sdk_sync_page_msgs` | 每页条数 |
@@ -1089,7 +1089,7 @@ Auth 过期：`SessionEvent::AuthFailed` 已存在。sdk 将其变为 `SessionUp
 | `kim_sdk_upload_ms` / `upload_inflight` | 媒体 |
 | 首屏 | Dart 记 `watchTimeline` 首 Snapshot 到达时间；Rust 记 `attach_store()`（含 `spawn_blocking` 迁移）+ 首查询。第一帧包含 attach 成本（仅 flag 开） |
 
-实现：`tracing` + 计数器 trait（测试可注入）。不要在 App 里拉 `prometheus` 导出器。Phase 5 之前用 debug log / 开发页。`sentry_flutter` 在 **launch 前**加（PR 13）：Dart 侧；Rust panic hook 写同一 `release`；符号表走 NDK/dSYM，本切片只留接口位置，不做完整符号化流水线承诺。
+实现：`tracing` + 计数器 trait（测试可注入）。不要在 App 里拉 `prometheus` 导出器。Phase 5 之前用 debug log / 开发页。
 
 告警（开发期）：`epoch_drop` 异常高、`outbox` pending 年龄 > 1h、`timeline_resync` 风暴。生产告警等有基线再定阈值——不编造。
 
@@ -1291,7 +1291,7 @@ Rust 断言活在 `crates/kim-sdk/tests/`。FFI / Riverpod / StreamSink 行活�
 - **Dependencies:** PR 11
 - **Description:** 队列 / inReplyTo 去重 / catchUpPending / session LRU 迁入 `AgentPort`。删除 PR 8 的 Dart `enqueueTurn` 适配器。权限 UI 与卡片留 Flutter。default features 无 goose。
 
-### PR 13: Observability, Sentry, and release gates
-- **Files/components affected:** `crates/kim-sdk/src/`（metrics、`request_id` 已在 `CommandReceipt`）、`sdk/mobile/pubspec.yaml`（`sentry_flutter`）、`docs/mobile-client.md`, `docs/impl/README.md`
+### PR 13: Observability and release gates
+- **Files/components affected:** `crates/kim-sdk/src/`（metrics、`request_id` 已在 `CommandReceipt`）、`docs/mobile-client.md`, `docs/impl/README.md`
 - **Dependencies:** PR 11
-- **Description:** tracing 与 Dart log 用同一 `request_id`。开发期露出 enqueue/persist/sync/outbox_depth。`sentry_flutter` launch 门闩。门闩：`cargo test -p kim-sdk`、`cargo test -p kim-client`、`flutter analyze && flutter test`、flag 开升级 fixture、杀进程矩阵。写回 `docs/mobile-client.md`；**不**从 gaps 删 G-03 / G-13。
+- **Description:** tracing 与 Dart log 用同一 `request_id`。开发期露出 enqueue/persist/sync/outbox_depth。门闩：`cargo test -p kim-sdk`、`cargo test -p kim-client`、`flutter analyze && flutter test`、flag 开升级 fixture、杀进程矩阵。写回 `docs/mobile-client.md`；**不**从 gaps 删 G-03 / G-13。

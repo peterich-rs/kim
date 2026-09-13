@@ -57,7 +57,7 @@ class KimLinkState {
   final int attempt;
   final String? error;
 
-  static ConnStatus statusFromLabel(String raw) {
+  static ConnStatus? parseStatus(String raw) {
     switch (raw) {
       case 'Connecting':
         return ConnStatus.connecting;
@@ -65,9 +65,15 @@ class KimLinkState {
         return ConnStatus.online;
       case 'Reconnecting':
         return ConnStatus.reconnecting;
-      default:
+      case 'Offline':
         return ConnStatus.offline;
+      default:
+        return null;
     }
+  }
+
+  static ConnStatus statusFromLabel(String raw) {
+    return parseStatus(raw) ?? ConnStatus.offline;
   }
 }
 
