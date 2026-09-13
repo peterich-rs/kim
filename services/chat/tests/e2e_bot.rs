@@ -7,14 +7,14 @@ use bytes::Bytes;
 use harness::*;
 use kim_protocol::pkt::{
     BotCreateReq, BotCreateResp, BotReplyReq, BotUpdateReq, Flag, InboxReq, MessagePush,
-    MessageReq, MessageResp, RoomEnterReq, Status, TypingPush, TypingReq, UserListResp,
-    UserSearchReq, UserSearchResp,
+    MessageReq, MessageResp, Status, TypingPush, TypingReq, UserListResp, UserSearchReq,
+    UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
     CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE,
-    CMD_FRIEND_REQUEST, CMD_ROOM_ENTER, CMD_TYPING, CMD_USER_SEARCH, INBOX_KIND_USER,
-    MESSAGE_TYPE_TEXT, PROFILE_KIND_BOT,
+    CMD_FRIEND_REQUEST, CMD_TYPING, CMD_USER_SEARCH, INBOX_KIND_USER, MESSAGE_TYPE_TEXT,
+    PROFILE_KIND_BOT,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -355,18 +355,8 @@ async fn bot_typing_owner_only_and_typer_is_bot() {
         .expect("profile")
         .account;
 
-    // Phone is in the bot room so it can receive typing fanout.
-    let mut enter = LogicPkt::new(CMD_ROOM_ENTER, 3, Bytes::new());
-    enter.write_body(&RoomEnterReq {
-        dest: bot_acc.clone(),
-        kind: INBOX_KIND_USER,
-    });
-    alice_phone
-        .send(marshal(&Packet::Logic(enter)))
-        .await
-        .expect("enter");
-    let _ = wait_resp(&alice_phone, CMD_ROOM_ENTER).await;
-
+    // Phone is online under the same owner account; typing fans out by
+    // owner locations (no room-enter required — same as bot.reply).
     let mut typing = dest_pkt(CMD_BOT_TYPING, 4, &bot_acc);
     typing.write_body(&TypingReq {
         dest: bot_acc.clone(),

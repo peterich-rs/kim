@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
     BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
@@ -10,7 +8,6 @@ use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::filter::ContentFilter;
-use crate::interest::RoomInterestStore;
 use crate::profile::to_pb;
 use crate::store::{BotPendingItem, InsertMessage, MessageStore, StoreError};
 use crate::talk::{fallback_targets, persist_then_push, unix_nano, TalkError};
@@ -352,10 +349,13 @@ pub async fn do_bot_pending(
 
 /// Owner-sent bot typing. Same auth as `do_bot_reply`; Push typer is the bot
 /// so peer UIs never confuse it with the owner typing (S-KD 26).
+///
+/// Fanout matches `do_bot_reply`: every online owner device. Room interest is
+/// too strict for same-account multi-device busy sync (phone can talk while
+/// enter failed / left; Mac local bars do not prove the push landed).
 pub async fn do_bot_typing(
     ctx: Context,
     users: &dyn UserDirectory,
-    interest: &dyn RoomInterestStore,
 ) -> Result<(), RouterError> {
     if ctx.header().dest.is_empty() {
         ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
@@ -388,7 +388,6 @@ pub async fn do_bot_typing(
         return Ok(());
     }
     let owner = ctx.session().account.clone();
-    let app = ctx.session().app.clone();
 
     ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
 
@@ -399,22 +398,6 @@ pub async fn do_bot_typing(
         active: req.active,
     };
 
-    // Devices that entered the bot room (dest=bot). Keep the owner only.
-    let viewers = match interest.viewers(&app, &bot, INBOX_KIND_USER).await {
-        Ok(v) => v,
-        Err(err) => {
-            warn!(%err, bot = %bot, "bot typing list viewers");
-            return Ok(());
-        }
-    };
-    let peer_channels: Vec<String> = viewers
-        .into_iter()
-        .filter(|v| v.account == owner)
-        .map(|v| v.channel_id)
-        .collect();
-    if peer_channels.is_empty() {
-        return Ok(());
-    }
     let owner_id = match AccountId::parse(&owner) {
         Ok(id) => id,
         Err(_) => return Ok(()),
@@ -427,16 +410,11 @@ pub async fn do_bot_typing(
             return Ok(());
         }
     };
-    let want: HashSet<&str> = peer_channels.iter().map(|c| c.as_str()).collect();
-    let recvs: Vec<_> = locs
-        .into_iter()
-        .filter(|l| want.contains(l.channel_id.as_str()))
-        .collect();
-    if recvs.is_empty() {
+    if locs.is_empty() {
         return Ok(());
     }
     // Fanout reuses CMD_TYPING so clients keep one decoder; body.typer is the bot.
-    if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &recvs).await {
+    if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &locs).await {
         warn!(%err, bot = %bot, "bot typing fanout failed");
     }
     Ok(())

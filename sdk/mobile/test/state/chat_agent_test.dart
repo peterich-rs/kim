@@ -886,6 +886,32 @@ void main() {
     expect(localAgent, isEmpty);
   });
 
+  test('registered prompt emits chat.bot.typing', () async {
+    final session = _HoldSession();
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+      'agent.api_key.goose': 'sk-live',
+    });
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+    final agent = env.container.read(chatAgentProvider);
+    expect(agent.enqueueTurn('b_bot', 'hello', 1), isTrue);
+    await _until(() => session.prompts.length == 1);
+    await _until(() => env.fake.botTypings >= 1);
+    expect(env.fake.lastBotTypingDest, 'b_bot');
+    expect(env.fake.lastBotTypingActive, isTrue);
+    session.release();
+    await _until(() => env.fake.botReplies.isNotEmpty);
+  });
+
   test(
     'FIFO: two TalkResp plus overlapping pending yield three serial bot_reply',
     () async {
