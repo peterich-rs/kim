@@ -160,16 +160,16 @@ impl KimUiHandle {
                     .map_err(SdkErrorDto::from)?;
                 Ok(empty_ack())
             }
-            UiCommandDto::AgentRespondPermission { .. } => Err(SdkErrorDto::from(
-                kim_sdk::SdkError::InvalidArgument {
+            UiCommandDto::AgentRespondPermission { .. } => {
+                Err(SdkErrorDto::from(kim_sdk::SdkError::InvalidArgument {
                     message: "respond permission via rust_agent session".into(),
-                },
-            )),
-            UiCommandDto::AgentAbortTurn { .. } => Err(SdkErrorDto::from(
-                kim_sdk::SdkError::InvalidArgument {
+                }))
+            }
+            UiCommandDto::AgentAbortTurn { .. } => {
+                Err(SdkErrorDto::from(kim_sdk::SdkError::InvalidArgument {
                     message: "abort turn via rust_agent session".into(),
-                },
-            )),
+                }))
+            }
             UiCommandDto::AgentRunResult {
                 dest,
                 profile_id,
@@ -316,10 +316,10 @@ impl KimUiHandle {
         limit: i32,
         sink: StreamSink<TimelineUpdateDto>,
     ) -> Result<(), String> {
+        let _guard = rt().enter();
         let rx = self
             .inner
             .subscribe_timeline(kim_sdk::TimelineQuery { dest, limit });
-        let _guard = rt().enter();
         rt().spawn(async move {
             let mut rx = rx;
             loop {
@@ -502,8 +502,6 @@ impl KimUiHandle {
         rt().block_on(self.inner.notify_foreground())
             .map_err(|e| e.to_string())
     }
-
-
 
     pub async fn mark_read(
         &self,

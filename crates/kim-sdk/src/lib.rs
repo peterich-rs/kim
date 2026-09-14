@@ -175,9 +175,12 @@ impl KimSdk {
             }));
         }
         self.install_protocol(sup.client());
+        // Subscribe before the reconnect loop so the first Link events are not missed.
         self.spawn_session_bridge(&sup);
         self.spawn_outbox_worker();
+        sup.ensure_running();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
+        self.publish_session_snapshot().await;
         if let Ok(store) = self.store() {
             store
                 .rekey_agent_profiles(String::new(), s.account.clone())
@@ -960,9 +963,13 @@ impl KimSdk {
             .clone();
         drop(map);
         let sdk = self.clone();
-        tokio::spawn(async move {
-            sdk.publish_timeline_limit(&dest, limit).await;
-        });
+        // FRB sync watchers are not inside a Tokio context unless the FFI
+        // layer enters one first. Skip the eager load rather than panic.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                sdk.publish_timeline_limit(&dest, limit).await;
+            });
+        }
         tx.subscribe()
     }
 

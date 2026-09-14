@@ -12,6 +12,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   Object? error;
   Object? connectError;
   Object? talkError;
+  Object? watchThreadError;
   Duration? loginDelay;
   int logins = 0;
   int registers = 0;
@@ -226,7 +227,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
   final lastTimeline = <String, TimelineUpdateDto>{};
 
   @override
-  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) async* {
+  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) {
+    final err = watchThreadError;
+    if (err != null) {
+      throw err;
+    }
+    return _watchThreadStream(dest);
+  }
+
+  Stream<TimelineUpdateDto> _watchThreadStream(String dest) async* {
     final last = lastTimeline[dest];
     if (last != null) {
       yield last;

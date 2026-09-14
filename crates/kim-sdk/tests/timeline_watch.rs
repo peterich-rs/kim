@@ -99,3 +99,17 @@ async fn subscribe_initial_is_snapshot_not_resync() {
         TimelineUpdate::Snapshot { .. } | TimelineUpdate::Delta { .. } => {}
     }
 }
+
+#[test]
+fn subscribe_timeline_without_tokio_runtime_does_not_panic() {
+    let sdk = KimSdk::protocol_only();
+    let rx = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let init = rx.borrow().clone();
+    match init {
+        TimelineUpdate::Snapshot { snapshot } => assert_eq!(snapshot.dest, "bob"),
+        other => panic!("expected snapshot, got {other:?}"),
+    }
+}

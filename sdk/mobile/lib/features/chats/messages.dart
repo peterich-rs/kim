@@ -68,24 +68,36 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   void _listen() {
     unawaited(_sub?.cancel());
     _awaitingSnapshot = false;
-    _sub = ref.read(clientPortProvider).watchThread(dest).listen((update) {
-      if (!ref.mounted) {
-        return;
-      }
-      switch (update) {
-        case TimelineUpdateDto_Snapshot(:final snapshot):
-          _onSnapshot(snapshot);
-        case TimelineUpdateDto_Delta(:final delta):
-          if (_awaitingSnapshot) {
-            return;
-          }
-          _onDelta(delta);
-        case TimelineUpdateDto_Resync():
-          _awaitingSnapshot = true;
-          _older = [];
-          state = state.copyWith(items: const []);
-      }
-    });
+    try {
+      _sub = ref
+          .read(clientPortProvider)
+          .watchThread(dest)
+          .listen(
+            (update) {
+              if (!ref.mounted) {
+                return;
+              }
+              switch (update) {
+                case TimelineUpdateDto_Snapshot(:final snapshot):
+                  _onSnapshot(snapshot);
+                case TimelineUpdateDto_Delta(:final delta):
+                  if (_awaitingSnapshot) {
+                    return;
+                  }
+                  _onDelta(delta);
+                case TimelineUpdateDto_Resync():
+                  _awaitingSnapshot = true;
+                  _older = [];
+                  state = state.copyWith(items: const []);
+              }
+            },
+            onError: (Object e, StackTrace st) {
+              KimLogger.warn('watchThread', e, st);
+            },
+          );
+    } catch (e, st) {
+      KimLogger.warn('watchThread subscribe', e, st);
+    }
   }
 
   void _onSnapshot(TimelineSnapshotDto snapshot) {

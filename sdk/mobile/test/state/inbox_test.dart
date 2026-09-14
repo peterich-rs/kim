@@ -41,6 +41,16 @@ void main() {
     expect(env.container.read(kimSessionProvider).threads, isNotEmpty);
   });
 
+  test('watchThread throw leaves threadMessages empty, not error', () async {
+    final env = await kimHarness(
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
+      account: 'alice',
+    );
+    env.fake.watchThreadError = StateError('no reactor running');
+    final state = env.container.read(threadMessagesProvider('bob'));
+    expect(state.items, isEmpty);
+  });
+
   test('fakeIncomingText updates threads and timeline', () async {
     final env = await kimHarness(
       token: testJwt(acc: 'alice', exp: 4_000_000_000),
