@@ -24,12 +24,7 @@ impl CapabilityBlock for BashBlock {
     fn param_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {
-                "allow_argv_prefixes": {
-                    "type": "array",
-                    "items": { "type": "string" }
-                }
-            },
+            "properties": {},
             "additionalProperties": false
         })
     }

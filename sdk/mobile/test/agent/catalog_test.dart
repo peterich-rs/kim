@@ -169,17 +169,16 @@ void main() {
     ]);
   });
 
-  test('Dart kDefaultSystemPrompt matches the Rust DEFAULT_SYSTEM_PROMPT', () {
+  test('Dart kDefaultSystemPrompt matches the Rust DEFAULT_IDENTITY_PROMPT', () {
     const rust =
-        'You are 助手, a local desktop agent inside the KIM messenger. '
-        'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
-        'Be concise. You can see the current conversation because the host pasted it into this session. '
-        'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
-        'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
-        'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
+        'You are a local desktop agent inside the KIM messenger. '
+        'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. Be concise. '
+        'Only use tools that appear in your tool list; never claim tools you were not given.';
     expect(kDefaultSystemPrompt, rust);
-    expect(kDefaultSystemPrompt.contains('You are 助手'), isTrue);
-    expect(kDefaultSystemPrompt.contains('search_contacts'), isTrue);
+    expect(kDefaultSystemPrompt.contains('send_message'), isFalse);
+    expect(kDefaultSystemPrompt.contains('search_contacts'), isFalse);
+    expect(isLegacyToolLaundryIdentity(kLegacyToolLaundryIdentity), isTrue);
+    expect(migrateIdentityPrompt(kLegacyToolLaundryIdentity), isEmpty);
   });
 
   test('refresh unions fetched with existing, keeping hand-typed ids', () {

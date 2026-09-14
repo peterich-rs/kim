@@ -24,10 +24,7 @@ impl CapabilityBlock for SubagentBlock {
     fn param_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {
-                "max_turns": { "type": "integer", "minimum": 1, "default": 8 },
-                "child_profile_id": { "type": "string" }
-            },
+            "properties": {},
             "additionalProperties": false
         })
     }
@@ -43,8 +40,7 @@ impl CapabilityBlock for SubagentBlock {
             risk: RiskTier::Write,
             prompt_parts: vec![(
                 "capability".into(),
-                "You have delegate (run a smaller child agent; requires confirmation)."
-                    .into(),
+                "You have delegate (run a smaller child agent; requires confirmation).".into(),
             )],
             deferred_tool_names: Vec::new(),
             in_process: Some(Arc::new(SubagentOp {

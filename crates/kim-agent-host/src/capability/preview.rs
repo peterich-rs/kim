@@ -65,15 +65,14 @@ pub fn preview_assembled(
 ) -> Result<AssembledPreview, HostError> {
     let mcp = Arc::new(McpHub::new());
     let provider: Arc<dyn Provider> = Arc::new(PreviewProvider);
-    let model = model_config(&profile.model).unwrap_or_else(|_| ModelConfig::new("gpt-4o"));
-    let resolved = resolve_parts(
+    let model = model_config(&profile.model)?;
+    let resolved = resolve_parts(profile, project_root, Arc::clone(&mcp), provider, model);
+    Ok(preview_from_resolved(
         profile,
         project_root,
-        Arc::clone(&mcp),
-        provider,
-        model,
-    );
-    Ok(preview_from_resolved(profile, project_root, &resolved.parts, &resolved))
+        &resolved.parts,
+        &resolved,
+    ))
 }
 
 pub(crate) fn preview_from_resolved(
@@ -83,8 +82,7 @@ pub(crate) fn preview_from_resolved(
     resolved: &crate::capability::ResolvedParts,
 ) -> AssembledPreview {
     let identity = profile.effective_identity_prompt().to_string();
-    let prompt_layers =
-        build_prompt_layers(profile, project_root, parts, &resolved.skill_registry);
+    let prompt_layers = build_prompt_layers(profile, project_root, parts, &resolved.skill_registry);
     let full_system_prompt = prompt_layers
         .iter()
         .map(|(_, text)| text.as_str())
@@ -123,7 +121,7 @@ pub(crate) fn preview_from_resolved(
     let chat_only = deferred.is_empty()
         && providers.is_empty()
         && resolved.skill_registry.is_empty()
-        && profile.extensions.is_empty();
+        && profile.project_extensions().is_empty();
 
     let mut step_names = vec!["prompt_compose".to_string()];
     if profile.max_turns.is_some() {
@@ -215,5 +213,39 @@ mod tests {
         assert!(preview.tools.iter().any(|t| t.name == "send_message"));
         assert!(preview.tools.iter().any(|t| t.name == "search_contacts"));
         assert!(!preview.warnings.iter().any(|w| w.contains("unknown")));
+    }
+
+    #[test]
+    fn leftover_extensions_ignored_when_capabilities_authoritative() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        profile.capabilities = crate::capability::CapabilityRef::from_legacy(&profile.tools, &[]);
+        profile.extensions = vec![crate::profile::ExtensionSpec {
+            name: "github".into(),
+            transport: "stdio".into(),
+            command: vec!["npx".into(), "mcp".into()],
+            url: String::new(),
+        }];
+        assert!(profile.project_extensions().is_empty());
+        let preview = preview_assembled(&profile, Path::new("/tmp")).unwrap();
+        assert!(!preview.tools.iter().any(|t| t.source.contains("mcp")));
+        assert!(!preview.full_system_prompt.contains("github"));
+    }
+
+    #[test]
+    fn preview_rejects_bad_temperature() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        profile.model.temperature = Some("nope".into());
+        let err = preview_assembled(&profile, Path::new("/tmp")).unwrap_err();
+        assert!(matches!(err, HostError::Profile(_)));
     }
 }

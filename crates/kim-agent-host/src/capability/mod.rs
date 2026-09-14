@@ -16,15 +16,20 @@ use serde_json::Value;
 
 use crate::ops::mcp::McpHub;
 use crate::profile::{
-    AgentProfile, ExtensionSpec, PermissionDefault, PermissionConfig, ToolSet, WorkspaceKind,
+    AgentProfile, ExtensionSpec, PermissionConfig, PermissionDefault, ToolSet, WorkspaceKind,
 };
 use crate::skills::{
-    build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry, SkillResolver,
+    build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry,
+    SkillResolver,
 };
 use crate::{HostError, HostSession};
 
 pub use legacy::from_legacy;
 pub use preview::{preview_assembled, AssembledPreview, PreviewTool};
+
+pub(crate) fn extensions_from_capabilities(caps: &[CapabilityRef]) -> Vec<ExtensionSpec> {
+    legacy::extensions_from_capabilities(caps)
+}
 
 fn enabled_true() -> bool {
     true
@@ -83,6 +88,7 @@ pub(crate) struct CapabilityPart {
 }
 
 pub(crate) struct AssembleCtx<'a> {
+    #[allow(dead_code)] // Available to block check/build (workspace, identity).
     pub profile: &'a AgentProfile,
     pub project_root: &'a Path,
     pub mcp: Arc<McpHub>,
@@ -112,8 +118,11 @@ pub(crate) fn registry() -> &'static HashMap<&'static str, Arc<dyn CapabilityBlo
 }
 
 pub fn catalog_entries() -> Vec<Value> {
-    registry()
-        .values()
+    let mut kinds: Vec<&'static str> = registry().keys().copied().collect();
+    kinds.sort_unstable();
+    kinds
+        .into_iter()
+        .filter_map(|k| registry().get(k))
         .map(|b| {
             serde_json::json!({
                 "kind": b.kind(),
@@ -204,41 +213,6 @@ pub(crate) fn resolve_parts(
         }
     }
 
-    // Legacy extensions without capability refs still need the MCP provider.
-    if !seen_mcp_provider && !profile.extensions.is_empty() {
-        parts.push(CapabilityPart {
-            kind: "mcp".into(),
-            instance_id: "mcp".into(),
-            risk: RiskTier::External,
-            prompt_parts: vec![(
-                "capability".into(),
-                format!(
-                    "You have MCP tools from: {} (names look like ext__tool).",
-                    profile
-                        .extensions
-                        .iter()
-                        .map(|e| e.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            )],
-            deferred_tool_names: Vec::new(),
-            in_process: Some(Arc::new(crate::ops::mcp::McpToolProvider {
-                hub: Arc::clone(&ctx.mcp),
-            })),
-            permission_defaults: Vec::new(),
-            preview_tools: profile
-                .extensions
-                .iter()
-                .map(|e| PreviewTool {
-                    name: format!("{}__*", e.name),
-                    source: format!("mcp:{}", e.name),
-                    executor: "rust".into(),
-                })
-                .collect(),
-        });
-    }
-
     ResolvedParts {
         parts,
         warnings,
@@ -298,7 +272,10 @@ pub(crate) fn build_prompt_layers(
     layers
 }
 
-pub(crate) fn merge_permission_config(profile: &AgentProfile, parts: &[CapabilityPart]) -> PermissionConfig {
+pub(crate) fn merge_permission_config(
+    profile: &AgentProfile,
+    parts: &[CapabilityPart],
+) -> PermissionConfig {
     let mut config = profile.permissions.clone();
     for part in parts {
         for rule in &part.permission_defaults {
@@ -328,7 +305,9 @@ pub(crate) fn flatten_deferred(parts: &[CapabilityPart]) -> Vec<String> {
     names
 }
 
-pub(crate) fn flatten_providers(parts: &[CapabilityPart]) -> Vec<Arc<dyn ToolProvider<HostSession>>> {
+pub(crate) fn flatten_providers(
+    parts: &[CapabilityPart],
+) -> Vec<Arc<dyn ToolProvider<HostSession>>> {
     parts.iter().filter_map(|p| p.in_process.clone()).collect()
 }
 
@@ -374,5 +353,23 @@ mod tests {
         let identity = profile.effective_identity_prompt();
         assert_eq!(identity, DEFAULT_IDENTITY_PROMPT);
         assert!(!identity.contains("send_message"));
+    }
+
+    #[test]
+    fn catalog_entries_are_sorted_by_kind() {
+        let kinds: Vec<String> = catalog_entries()
+            .iter()
+            .filter_map(|v| v.get("kind").and_then(|k| k.as_str()).map(str::to_string))
+            .collect();
+        let mut sorted = kinds.clone();
+        sorted.sort();
+        assert_eq!(kinds, sorted);
+        assert!(kinds.contains(&"fs".to_string()));
+        assert!(kinds.contains(&"im.send_message".to_string()));
+        let fs = catalog_entries()
+            .into_iter()
+            .find(|v| v.get("kind").and_then(|k| k.as_str()) == Some("fs"))
+            .expect("fs catalog");
+        assert_eq!(fs.get("risk").and_then(|r| r.as_str()), Some("read"));
     }
 }

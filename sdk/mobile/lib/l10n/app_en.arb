@@ -160,6 +160,7 @@
   "agentApiKey": "API key",
   "agentApiKeyHint": "Stored in the system keychain, not in plain preferences",
   "agentSaved": "Agent settings saved",
+  "agentSaveFailed": "Could not save agent settings",
   "agentKeyMissing": "API key required",
   "agentGooseHint": "The assistant in Contacts and Chats is on-device Goose. Open it to talk, or @助手 in other threads.",
   "agentProviderCompatible": "OpenAI compatible",

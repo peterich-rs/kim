@@ -24,14 +24,42 @@ const _kMultiMigrated = 'agent.multi_profile_migrated_on';
 const _kServerIdentity = 'agent.server_identity';
 const _kIdentityMigrated = 'agent.identity_migrated_on';
 
-/// Byte-identical to Rust `DEFAULT_SYSTEM_PROMPT`. Empty prompt injects this.
+/// Byte-identical to Rust `DEFAULT_IDENTITY_PROMPT`. Empty prompt injects this.
 const kDefaultSystemPrompt =
+    'You are a local desktop agent inside the KIM messenger. '
+    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. Be concise. '
+    'Only use tools that appear in your tool list; never claim tools you were not given.';
+
+/// Pre-B-KD 4 identity that enumerated every IM tool. Load as empty.
+const kLegacyToolLaundryIdentity =
     'You are 助手, a local desktop agent inside the KIM messenger. '
     'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
     'Be concise. You can see the current conversation because the host pasted it into this session. '
     'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
     'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
     'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
+
+bool isLegacyToolLaundryIdentity(String prompt) {
+  final t = prompt.trim();
+  if (t.isEmpty) {
+    return false;
+  }
+  if (t == kLegacyToolLaundryIdentity) {
+    return true;
+  }
+  return t.contains('You are 助手') &&
+      t.contains('search_contacts') &&
+      t.contains('search_messages') &&
+      t.contains('get_conversation_context') &&
+      t.contains('list_profiles') &&
+      t.contains('send_message') &&
+      t.contains('read_clipboard') &&
+      t.contains('You do not have filesystem or shell access');
+}
+
+String migrateIdentityPrompt(String prompt) {
+  return isLegacyToolLaundryIdentity(prompt) ? '' : prompt;
+}
 
 /// Default capabilities for a new persona (B-KD create defaults).
 const kCreateDefaultCapabilities = <CapabilityRef>[
@@ -144,10 +172,7 @@ List<CapabilityRef> capabilitiesFromLegacy(
   }
   if (tools.fsWrite) {
     out.add(
-      const CapabilityRef(
-        kind: CapabilityKinds.fs,
-        params: {'writable': true},
-      ),
+      const CapabilityRef(kind: CapabilityKinds.fs, params: {'writable': true}),
     );
   } else if (tools.fs) {
     out.add(
@@ -240,6 +265,7 @@ AgentToolSet projectToolSet(List<CapabilityRef> capabilities) {
 }
 
 /// MCP capability refs → [AgentExtension] rows (one-release dual write).
+/// Empty input → empty output (clearing MCP must wipe leftover extensions).
 List<AgentExtension> projectExtensions(List<CapabilityRef> capabilities) {
   final out = <AgentExtension>[];
   for (final c in capabilities) {
@@ -261,6 +287,63 @@ List<AgentExtension> projectExtensions(List<CapabilityRef> capabilities) {
     );
   }
   return out;
+}
+
+/// Parse MCP textarea lines (`name argv0 argv1…`).
+List<CapabilityRef> mcpCapsFromText(String text) {
+  final mcp = <CapabilityRef>[];
+  for (final line in text.split('\n')) {
+    final parts = line
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.length < 2) {
+      continue;
+    }
+    final name = parts.first;
+    mcp.add(
+      CapabilityRef(
+        kind: CapabilityKinds.mcp,
+        id: 'mcp:$name',
+        params: {
+          'name': name,
+          'command': parts.sublist(1),
+          'transport': 'stdio',
+        },
+      ),
+    );
+  }
+  return mcp;
+}
+
+String mcpTextFromCaps(List<CapabilityRef> caps) {
+  final lines = <String>[];
+  for (final c in caps) {
+    if (!c.enabled || c.kind != CapabilityKinds.mcp) {
+      continue;
+    }
+    final name = '${c.params['name'] ?? ''}'.trim();
+    final cmd = c.params['command'];
+    final args = cmd is List ? [for (final x in cmd) '$x'] : const <String>[];
+    if (name.isEmpty || args.isEmpty) {
+      continue;
+    }
+    lines.add('$name ${args.join(' ')}');
+  }
+  return lines.join('\n');
+}
+
+/// Keep singleton caps, replace MCP from the textarea (autosave must not drop it).
+List<CapabilityRef> mergeCapsWithMcpLines(
+  List<CapabilityRef> caps,
+  String mcpText,
+) {
+  return [
+    for (final c in caps)
+      if (c.kind != CapabilityKinds.mcp) c,
+    ...mcpCapsFromText(mcpText),
+  ];
 }
 
 /// Local fallback tool names when host `preview_assembled` is unavailable.
@@ -792,7 +875,7 @@ class AgentProfile {
     return copyWith(
       capabilities: next,
       tools: projected,
-      extensions: extensionsOverride ?? (mcp.isNotEmpty ? mcp : extensions),
+      extensions: extensionsOverride ?? mcp,
     );
   }
 
@@ -872,9 +955,7 @@ class AgentProfile {
       // One-release ToolSet projection for old readers.
       'tools': projectedTools.toJson(),
       'permissions': {'tools': permissionOverrides},
-      'extensions': [
-        for (final e in (mcpExt.isNotEmpty ? mcpExt : extensions)) e.toJson(),
-      ],
+      'extensions': [for (final e in mcpExt) e.toJson()],
       'workspace': workspace.toJson(),
       'skills': [for (final s in skills) s.toJson()],
       if (portableDenylist.isNotEmpty) 'portable_denylist': portableDenylist,
@@ -956,9 +1037,8 @@ class AgentProfile {
     if (capabilities.isEmpty) {
       capabilities = capabilitiesFromLegacy(tools, extensions);
     }
-    final projectedTools = capabilities.isEmpty
-        ? tools
-        : projectToolSet(capabilities);
+    final projectedTools = projectToolSet(capabilities);
+    final projectedExt = projectExtensions(capabilities);
     return AgentProfile(
       id: json['id'] as String? ?? kGooseAgentId,
       displayName: json['display_name'] as String? ?? kGooseAgentName,
@@ -969,7 +1049,9 @@ class AgentProfile {
       baseUrl: providerMap['base_url'] as String? ?? '',
       model: modelMap['name'] as String? ?? 'gpt-4o',
       keyRef: providerMap['key_ref'] as String? ?? 'agent.api_key.goose',
-      systemPrompt: json['system_prompt'] as String? ?? '',
+      systemPrompt: migrateIdentityPrompt(
+        json['system_prompt'] as String? ?? '',
+      ),
       mode: json['mode'] as String? ?? 'smart_approve',
       maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
       thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
@@ -985,7 +1067,7 @@ class AgentProfile {
       tools: projectedTools,
       capabilities: capabilities,
       permissionOverrides: overrides,
-      extensions: extensions,
+      extensions: projectedExt,
       workspace: WorkspaceSpec.fromJson(
         workspaceRaw is Map ? Map<String, Object?>.from(workspaceRaw) : null,
       ),
@@ -1025,7 +1107,7 @@ class AgentProfile {
       model: s.model,
       keyRef: _kGooseKey,
       accountId: '',
-      systemPrompt: kDefaultSystemPrompt,
+      systemPrompt: '',
       mode: 'smart_approve',
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,

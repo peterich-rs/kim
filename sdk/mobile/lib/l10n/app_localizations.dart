@@ -1028,6 +1028,12 @@ abstract class AppLocalizations {
   /// **'Agent 设置已保存'**
   String get agentSaved;
 
+  /// No description provided for @agentSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法保存 Agent 设置'**
+  String get agentSaveFailed;
+
   /// No description provided for @agentKeyMissing.
   ///
   /// In zh, this message translates to:

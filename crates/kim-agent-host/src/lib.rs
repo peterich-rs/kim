@@ -173,9 +173,10 @@ impl AgentHost {
     }
 
     pub async fn connect_extensions(&self) -> Result<(), HostError> {
+        let extensions = self.inner.profile.project_extensions();
         self.inner
             .mcp
-            .connect(&self.inner.profile.extensions, &self.inner.project_root)
+            .connect(&extensions, &self.inner.project_root)
             .await
     }
 

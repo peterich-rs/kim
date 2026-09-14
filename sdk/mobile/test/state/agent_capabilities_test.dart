@@ -24,14 +24,11 @@ void main() {
       fsWrite: false,
     );
     final caps = capabilitiesFromLegacy(tools, const []);
-    expect(
-      caps.map((c) => c.kind).toList(),
-      [
-        CapabilityKinds.imSendMessage,
-        CapabilityKinds.imReadClipboard,
-        CapabilityKinds.fs,
-      ],
-    );
+    expect(caps.map((c) => c.kind).toList(), [
+      CapabilityKinds.imSendMessage,
+      CapabilityKinds.imReadClipboard,
+      CapabilityKinds.fs,
+    ]);
     expect(caps.last.params['writable'], false);
     final projected = projectToolSet(caps);
     expect(projected.sendMessage, true);
@@ -60,9 +57,7 @@ void main() {
         },
       ],
     };
-    final profile = AgentProfile.fromJson(
-      Map<String, Object?>.from(legacy),
-    );
+    final profile = AgentProfile.fromJson(Map<String, Object?>.from(legacy));
     expect(profile.capabilities, isNotEmpty);
     expect(
       profile.capabilities.any((c) => c.kind == CapabilityKinds.imSendMessage),
@@ -73,12 +68,23 @@ void main() {
       true,
     );
     final json = profile.toJson();
-    expect(json['capabilities'], isA<List>());
-    expect(json['tools'], isA<Map>());
-    final caps = json['capabilities'] as List;
-    expect(caps.any((c) => (c as Map)['kind'] == 'im.send_message'), true);
-    expect(caps.any((c) => (c as Map)['kind'] == 'fs'), true);
-    expect(caps.any((c) => (c as Map)['kind'] == 'mcp'), true);
+    expect(json['capabilities'], isA<List<Object?>>());
+    expect(json['tools'], isA<Map<String, Object?>>());
+    final caps = json['capabilities'] as List<Object?>;
+    expect(
+      caps.any(
+        (c) => c is Map<String, Object?> && c['kind'] == 'im.send_message',
+      ),
+      true,
+    );
+    expect(
+      caps.any((c) => c is Map<String, Object?> && c['kind'] == 'fs'),
+      true,
+    );
+    expect(
+      caps.any((c) => c is Map<String, Object?> && c['kind'] == 'mcp'),
+      true,
+    );
     // No API keys in export surface.
     final encoded = jsonEncode(json);
     expect(encoded.contains('api_key'), false);
@@ -100,13 +106,10 @@ void main() {
     expect(draft.tools.sendMessage, true);
     expect(draft.tools.readClipboard, true);
     expect(draft.tools.fs, false);
-    expect(
-      draft.capabilities.map((c) => c.kind),
-      [
-        CapabilityKinds.imSendMessage,
-        CapabilityKinds.imReadClipboard,
-      ],
-    );
+    expect(draft.capabilities.map((c) => c.kind), [
+      CapabilityKinds.imSendMessage,
+      CapabilityKinds.imReadClipboard,
+    ]);
   });
 
   test('withCapabilities projects tools and mcp extensions', () {
@@ -121,10 +124,7 @@ void main() {
     );
     final next = base.withCapabilities([
       const CapabilityRef(kind: CapabilityKinds.imSendMessage),
-      const CapabilityRef(
-        kind: CapabilityKinds.fs,
-        params: {'writable': true},
-      ),
+      const CapabilityRef(kind: CapabilityKinds.fs, params: {'writable': true}),
       const CapabilityRef(
         kind: CapabilityKinds.mcp,
         id: 'mcp:gh',
@@ -138,5 +138,91 @@ void main() {
     expect(next.tools.sendMessage, true);
     expect(next.tools.fsWrite, true);
     expect(next.extensions.single.name, 'gh');
+  });
+
+  test('withCapabilities empty MCP list wipes leftover extensions', () {
+    final base = AgentProfile(
+      id: 'p-1',
+      displayName: 'A',
+      providerKind: 'openai',
+      baseUrl: '',
+      model: 'gpt-4o',
+      keyRef: '',
+      systemPrompt: '',
+      extensions: const [
+        AgentExtension(name: 'gh', command: ['uvx', 'mcp']),
+      ],
+    );
+    final next = base.withCapabilities([
+      const CapabilityRef(kind: CapabilityKinds.imSendMessage),
+    ]);
+    expect(next.extensions, isEmpty);
+    expect(next.tools.sendMessage, true);
+    final json = next.toJson();
+    expect(json['extensions'], isEmpty);
+  });
+
+  test('toJson does not keep leftover extensions when caps omit mcp', () {
+    final profile = AgentProfile(
+      id: 'p-1',
+      displayName: 'A',
+      providerKind: 'openai',
+      baseUrl: '',
+      model: 'gpt-4o',
+      keyRef: '',
+      systemPrompt: '',
+      capabilities: const [CapabilityRef(kind: CapabilityKinds.imSendMessage)],
+      tools: const AgentToolSet(sendMessage: true),
+      extensions: const [
+        AgentExtension(name: 'stale', command: ['npx', 'mcp']),
+      ],
+    );
+    final json = profile.toJson();
+    expect(json['extensions'], isEmpty);
+  });
+
+  test(
+    'fromJson projects extensions from capabilities; migrates laundry identity',
+    () {
+      final profile = AgentProfile.fromJson({
+        'id': 'p-1',
+        'display_name': 'Work',
+        'model': {'name': 'gpt-4o'},
+        'system_prompt': kLegacyToolLaundryIdentity,
+        'capabilities': [
+          {'kind': CapabilityKinds.imSendMessage, 'enabled': true},
+        ],
+        'extensions': [
+          {
+            'name': 'stale',
+            'transport': 'stdio',
+            'command': ['npx', 'mcp'],
+          },
+        ],
+      });
+      expect(profile.systemPrompt, isEmpty);
+      expect(profile.extensions, isEmpty);
+      expect(profile.capabilities.single.kind, CapabilityKinds.imSendMessage);
+    },
+  );
+
+  test('mergeCapsWithMcpLines keeps IM upsert and field MCP', () {
+    final caps = [
+      const CapabilityRef(kind: CapabilityKinds.imSendMessage),
+      const CapabilityRef(
+        kind: CapabilityKinds.mcp,
+        id: 'mcp:old',
+        params: {
+          'name': 'old',
+          'command': ['old'],
+        },
+      ),
+    ];
+    final merged = mergeCapsWithMcpLines(caps, 'gh uvx mcp');
+    expect(merged.any((c) => c.kind == CapabilityKinds.imSendMessage), true);
+    expect(merged.where((c) => c.kind == CapabilityKinds.mcp), hasLength(1));
+    expect(merged.last.params['name'], 'gh');
+    expect(mcpTextFromCaps(merged), 'gh uvx mcp');
+    expect(mcpCapsFromText('').isEmpty, true);
   });
 }

@@ -486,6 +486,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSaved => 'Agent settings saved';
 
   @override
+  String get agentSaveFailed => 'Could not save agent settings';
+
+  @override
   String get agentKeyMissing => 'API key required';
 
   @override
@@ -617,55 +620,55 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentToolSearchMessages => 'Search messages';
 
   @override
-  String get agentToolGetConversationContext => '会话上下文';
+  String get agentToolGetConversationContext => 'Conversation context';
 
   @override
-  String get agentToolListProfiles => '列出人设';
+  String get agentToolListProfiles => 'List personas';
 
   @override
-  String get agentCapabilitiesEntry => '能力';
+  String get agentCapabilitiesEntry => 'Capabilities';
 
   @override
-  String get agentCapabilitiesTitle => '能力';
+  String get agentCapabilitiesTitle => 'Capabilities';
 
   @override
-  String get agentCapabilitiesSubtitleEmpty => '未启用工具 · 未分配技能';
+  String get agentCapabilitiesSubtitleEmpty => 'No tools · no skills';
 
   @override
   String agentCapabilitiesSubtitleTools(int count) {
-    return '$count 个工具';
+    return '$count tools';
   }
 
   @override
   String agentCapabilitiesSubtitleSkills(int count) {
-    return '$count 个技能';
+    return '$count skills';
   }
 
   @override
-  String get agentCapabilitiesPreview => '装配预览';
+  String get agentCapabilitiesPreview => 'Assembly preview';
 
   @override
-  String get agentCapabilitiesPreviewEmpty => '当前无工具（纯对话）';
+  String get agentCapabilitiesPreviewEmpty => 'No tools (chat only)';
 
   @override
   String agentCapabilitiesPreviewLocal(String tools) {
-    return '主机预览不可用 · $tools';
+    return 'Host preview unavailable · $tools';
   }
 
   @override
-  String get agentCapabilitiesImSection => '即时通讯';
+  String get agentCapabilitiesImSection => 'Messaging';
 
   @override
-  String get agentCapabilitiesFsSection => '文件与命令行';
+  String get agentCapabilitiesFsSection => 'Files & shell';
 
   @override
   String get agentCapabilitiesMcpSection => 'MCP';
 
   @override
-  String get agentCapabilitiesMcpSave => '保存 MCP 行';
+  String get agentCapabilitiesMcpSave => 'Save MCP lines';
 
   @override
-  String get agentCapabilitiesSkillsSection => '技能';
+  String get agentCapabilitiesSkillsSection => 'Skills';
 
   @override
   String get agentMoreComing =>

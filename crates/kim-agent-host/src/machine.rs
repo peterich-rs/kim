@@ -8,7 +8,8 @@ use goose_provider_types::base::Provider;
 use goose_provider_types::model::ModelConfig;
 
 use crate::capability::{
-    build_prompt_layers, flatten_deferred, flatten_providers, merge_permission_config, resolve_parts,
+    build_prompt_layers, flatten_deferred, flatten_providers, merge_permission_config,
+    resolve_parts,
 };
 use crate::events::HostEffect;
 use crate::ops::chat_guard::ChatGuardOp;
@@ -83,7 +84,7 @@ impl MachineFactory {
         let chat_only = deferred.is_empty()
             && providers.is_empty()
             && resolved.skill_registry.is_empty()
-            && profile.extensions.is_empty();
+            && profile.project_extensions().is_empty();
 
         if !chat_only {
             let config = merge_permission_config(profile, &resolved.parts);

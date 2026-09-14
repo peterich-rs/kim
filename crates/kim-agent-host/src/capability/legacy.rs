@@ -86,6 +86,55 @@ pub fn from_legacy(tools: &ToolSet, extensions: &[ExtensionSpec]) -> Vec<Capabil
     caps
 }
 
+/// MCP capability refs → `extensions` rows (empty when no MCP caps).
+pub(crate) fn extensions_from_capabilities(caps: &[CapabilityRef]) -> Vec<ExtensionSpec> {
+    let mut out = Vec::new();
+    for cap in caps.iter().filter(|c| c.enabled && c.kind == "mcp") {
+        let name = cap
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if name.is_empty() {
+            continue;
+        }
+        let command = cap
+            .params
+            .get("command")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let transport = cap
+            .params
+            .get("transport")
+            .and_then(|v| v.as_str())
+            .unwrap_or("stdio")
+            .trim();
+        let url = cap
+            .params
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        out.push(ExtensionSpec {
+            name: name.to_string(),
+            transport: if transport.is_empty() {
+                "stdio".into()
+            } else {
+                transport.to_string()
+            },
+            command,
+            url,
+        });
+    }
+    out
+}
+
 impl ToolSet {
     /// Project capabilities back to the legacy bool surface.
     pub fn from_capabilities(caps: &[CapabilityRef]) -> Self {
@@ -146,5 +195,26 @@ mod tests {
         let back = ToolSet::from_capabilities(&caps);
         assert!(back.fs);
         assert!(back.fs_write);
+    }
+
+    #[test]
+    fn mcp_round_trip_and_clear() {
+        let ext = ExtensionSpec {
+            name: "gh".into(),
+            transport: "stdio".into(),
+            command: vec!["uvx".into(), "mcp".into()],
+            url: String::new(),
+        };
+        let caps = from_legacy(&ToolSet::default(), &[ext.clone()]);
+        assert_eq!(extensions_from_capabilities(&caps), vec![ext]);
+        assert!(extensions_from_capabilities(&[]).is_empty());
+        let im_only = from_legacy(
+            &ToolSet {
+                send_message: true,
+                ..ToolSet::default()
+            },
+            &[],
+        );
+        assert!(extensions_from_capabilities(&im_only).is_empty());
     }
 }

@@ -14,7 +14,6 @@ pub mod mcp;
 pub mod permission;
 pub mod prompt_compose;
 pub mod skill;
-pub mod steer;
 pub mod subagent;
 pub mod system_prompt;
 pub mod unknown_tool;

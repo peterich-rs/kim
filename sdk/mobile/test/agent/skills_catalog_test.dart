@@ -23,6 +23,33 @@ void main() {
     );
   });
 
+  test('assignAppSkillToProfile writes capabilities not just tools', () {
+    final profile = AgentProfile(
+      id: 'a',
+      displayName: 'a',
+      providerKind: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o',
+      keyRef: 'k',
+      systemPrompt: '',
+      capabilities: kCreateDefaultCapabilities,
+      tools: kCreateDefaultTools,
+    );
+    const skill = CatalogSkill(id: 'kim-im', name: 'IM', description: 'send');
+    final next = assignAppSkillToProfile(
+      profile: profile,
+      skill: skill,
+      enableMissingTools: true,
+    );
+    expect(next.skills.single.id, 'kim-im');
+    expect(
+      next.capabilities.any((c) => c.kind == CapabilityKinds.imSearchContacts),
+      isTrue,
+    );
+    expect(next.tools.searchContacts, isTrue);
+    expect(next.tools.sendMessage, isTrue);
+  });
+
   test('parseSkillsJson reads app catalog payload', () {
     final skills = parseSkillsJson(
       '{"skills":[{"id":"kim-im","name":"IM","description":"send","class":"app","version":"1"}]}',

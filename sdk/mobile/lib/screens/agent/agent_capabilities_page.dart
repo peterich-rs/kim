@@ -38,8 +38,7 @@ class AgentCapabilitiesPage extends ConsumerStatefulWidget {
       _AgentCapabilitiesPageState();
 }
 
-class _AgentCapabilitiesPageState
-    extends ConsumerState<AgentCapabilitiesPage> {
+class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
   final _imKey = GlobalKey();
   final _fsKey = GlobalKey();
   final _mcpKey = GlobalKey();
@@ -98,9 +97,14 @@ class _AgentCapabilitiesPageState
     }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
-    final storedBookmark = profile.workspace.bookmarkRef.isNotEmpty
-        ? profile.workspace.bookmarkRef
-        : (await workspaceAccess.loadBookmark(profile.id) ?? '');
+    var storedBookmark = profile.workspace.bookmarkRef;
+    if (storedBookmark.isEmpty) {
+      try {
+        storedBookmark = await workspaceAccess.loadBookmark(profile.id) ?? '';
+      } catch (_) {
+        storedBookmark = '';
+      }
+    }
     final resolved = await resolveAgentProjectRoot(
       profile: profile,
       paths: paths,
@@ -137,11 +141,7 @@ class _AgentCapabilitiesPageState
       _bookmark = storedBookmark;
       _cwd = resolved.path;
       _invalidRepo = resolved.invalidRepo;
-      _mcp.text = [
-        for (final e in profile.extensions)
-          if (e.name.isNotEmpty && e.command.isNotEmpty)
-            '${e.name} ${e.command.join(' ')}',
-      ].join('\n');
+      _mcp.text = mcpTextFromCaps(caps);
       _loaded = true;
     });
     _schedulePreview();
@@ -167,8 +167,7 @@ class _AgentCapabilitiesPageState
     }
   }
 
-  bool _capOn(String kind) =>
-      _caps.any((c) => c.kind == kind && c.enabled);
+  bool _capOn(String kind) => _caps.any((c) => c.kind == kind && c.enabled);
 
   bool get _fsOn => _capOn(CapabilityKinds.fs);
   bool get _fsWriteOn {
@@ -202,9 +201,7 @@ class _AgentCapabilitiesPageState
           workspace: _workspaceSpec(),
         );
     final localNames = projectedToolNames(draft.resolveCapabilities());
-    var summary = localNames.isEmpty
-        ? ''
-        : localNames.join(' · ');
+    var summary = localNames.isEmpty ? '' : localNames.join(' · ');
     var fromHost = false;
     if (agentHostSupported) {
       try {
@@ -229,11 +226,20 @@ class _AgentCapabilitiesPageState
                 }
               }
             }
-            final warnCount = warnings is List ? warnings.length : 0;
-            if (names.isNotEmpty) {
+            final warnTexts = <String>[];
+            if (warnings is List) {
+              for (final w in warnings) {
+                final text = '$w'.trim();
+                if (text.isNotEmpty) {
+                  warnTexts.add(text);
+                }
+              }
+            }
+            if (names.isNotEmpty || warnTexts.isNotEmpty) {
               summary = names.join(' · ');
-              if (warnCount > 0) {
-                summary = '$summary · ⚠$warnCount';
+              if (warnTexts.isNotEmpty) {
+                final warn = warnTexts.join(' · ');
+                summary = summary.isEmpty ? warn : '$summary · $warn';
               }
               fromHost = true;
             }
@@ -263,34 +269,7 @@ class _AgentCapabilitiesPageState
   }
 
   List<CapabilityRef> _capsWithMcpFromField() {
-    final withoutMcp = [
-      for (final c in _caps)
-        if (c.kind != CapabilityKinds.mcp) c,
-    ];
-    final mcp = <CapabilityRef>[];
-    for (final line in _mcp.text.split('\n')) {
-      final parts = line
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((p) => p.isNotEmpty)
-          .toList();
-      if (parts.length < 2) {
-        continue;
-      }
-      final name = parts.first;
-      mcp.add(
-        CapabilityRef(
-          kind: CapabilityKinds.mcp,
-          id: 'mcp:$name',
-          params: {
-            'name': name,
-            'command': parts.sublist(1),
-            'transport': 'stdio',
-          },
-        ),
-      );
-    }
-    return [...withoutMcp, ...mcp];
+    return mergeCapsWithMcpLines(_caps, _mcp.text);
   }
 
   Future<void> _persist({
@@ -302,16 +281,19 @@ class _AgentCapabilitiesPageState
     bool toast = true,
   }) async {
     final profile = _profile;
-    if (profile == null) {
+    if (profile == null || !mounted) {
       return;
     }
-    final nextCaps = caps ?? _capsWithMcpFromField();
-    var next = profile.withCapabilities(nextCaps).copyWith(
-      skills: skills ?? _assigned,
-      portableDenylist: denylist ?? _denylist,
-      workspace: workspace ?? _workspaceSpec(),
-      permissionOverrides: permissionOverrides,
-    );
+    final l10n = AppLocalizations.of(context);
+    final nextCaps = mergeCapsWithMcpLines(caps ?? _caps, _mcp.text);
+    var next = profile
+        .withCapabilities(nextCaps)
+        .copyWith(
+          skills: skills ?? _assigned,
+          portableDenylist: denylist ?? _denylist,
+          workspace: workspace ?? _workspaceSpec(),
+          permissionOverrides: permissionOverrides,
+        );
     setState(() {
       _profile = next;
       _caps = List<CapabilityRef>.from(next.resolveCapabilities());
@@ -338,8 +320,15 @@ class _AgentCapabilitiesPageState
           _caps = List<CapabilityRef>.from(rolled!.resolveCapabilities());
           _assigned = List<SkillRef>.from(rolled.skills);
           _denylist = List<String>.from(rolled.portableDenylist);
+          _mcp.text = mcpTextFromCaps(_caps);
         });
       }
+      toastification.show(
+        context: context,
+        type: ToastificationType.error,
+        title: Text(l10n.agentSaveFailed),
+        autoCloseDuration: const Duration(seconds: 3),
+      );
       return;
     }
     if (!mounted || !toast) {
@@ -411,11 +400,7 @@ class _AgentCapabilitiesPageState
       enabled: true,
       params: const {'writable': true},
     );
-    next = upsertCapability(
-      next,
-      kind: CapabilityKinds.bash,
-      enabled: true,
-    );
+    next = upsertCapability(next, kind: CapabilityKinds.bash, enabled: true);
     await _persist(caps: next, workspace: _workspaceSpec());
   }
 
@@ -442,7 +427,7 @@ class _AgentCapabilitiesPageState
   }
 
   Future<void> _saveMcp() async {
-    await _persist(caps: _capsWithMcpFromField());
+    await _persist();
   }
 
   bool _isAssigned(String id) => _assigned.any((s) => s.id == id && s.enabled);
@@ -502,11 +487,7 @@ class _AgentCapabilitiesPageState
             if (s.id != skill.id) s,
           appSkillRef(skill),
         ];
-        await _persist(
-          caps: caps,
-          skills: skills,
-          permissionOverrides: perms,
-        );
+        await _persist(caps: caps, skills: skills, permissionOverrides: perms);
         return;
       }
       final skills = [
@@ -554,8 +535,7 @@ class _AgentCapabilitiesPageState
       );
     }
 
-    final scanOff =
-        !_kindRepo && !_fsOn && !_fsWriteOn;
+    final scanOff = !_kindRepo && !_fsOn && !_fsWriteOn;
 
     return Scaffold(
       body: CustomScrollView(
@@ -596,7 +576,10 @@ class _AgentCapabilitiesPageState
                 KimGroupCard(
                   children: [
                     for (final entry in [
-                      (CapabilityKinds.imSendMessage, l10n.agentToolSendMessage),
+                      (
+                        CapabilityKinds.imSendMessage,
+                        l10n.agentToolSendMessage,
+                      ),
                       (
                         CapabilityKinds.imReadClipboard,
                         l10n.agentToolClipboard,
@@ -738,9 +721,8 @@ class _AgentCapabilitiesPageState
                       title: Text(l10n.agentFsWrite),
                       subtitle: Text(l10n.agentFsWriteHint),
                       value: _fsWriteOn,
-                      onChanged: (next) => unawaited(
-                        _setFs(read: next || _fsOn, write: next),
-                      ),
+                      onChanged: (next) =>
+                          unawaited(_setFs(read: next || _fsOn, write: next)),
                     ),
                     const Divider(height: 1),
                     SwitchListTile(

@@ -477,6 +477,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentSaved => 'Agent 设置已保存';
 
   @override
+  String get agentSaveFailed => '无法保存 Agent 设置';
+
+  @override
   String get agentKeyMissing => '需要 API Key';
 
   @override

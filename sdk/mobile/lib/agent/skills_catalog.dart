@@ -74,8 +74,40 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
 
 AgentToolSet enableRequiredTools(AgentToolSet tools, List<String> missing) {
   return projectToolSet(
-    enableRequiredCapabilities(capabilitiesFromLegacy(tools, const []), missing),
+    enableRequiredCapabilities(
+      capabilitiesFromLegacy(tools, const []),
+      missing,
+    ),
   );
+}
+
+/// Plaza / skills assign: persist required caps (not tools-only) + skill ref.
+AgentProfile assignAppSkillToProfile({
+  required AgentProfile profile,
+  required CatalogSkill skill,
+  required bool enableMissingTools,
+}) {
+  var caps = List<CapabilityRef>.from(profile.resolveCapabilities());
+  var perms = Map<String, String>.from(profile.permissionOverrides);
+  if (enableMissingTools) {
+    final missing = missingToolsForAppSkill(profile, skill.id);
+    if (missing.isNotEmpty) {
+      caps = enableRequiredCapabilities(caps, missing);
+      if (missing.contains('bash')) {
+        perms['bash'] = perms['bash'] == 'never_allow'
+            ? 'never_allow'
+            : 'ask_before';
+      }
+    }
+  }
+  final skills = [
+    for (final s in profile.skills)
+      if (s.id != skill.id) s,
+    appSkillRef(skill),
+  ];
+  return profile
+      .withCapabilities(caps)
+      .copyWith(skills: skills, permissionOverrides: perms);
 }
 
 List<CatalogSkill> parseSkillsJson(String raw) {

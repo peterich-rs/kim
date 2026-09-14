@@ -17,6 +17,29 @@ fn enabled_true() -> bool {
     true
 }
 
+/// Pre-B-KD 4 identity that enumerated every IM tool. Treat as empty.
+const LEGACY_TOOL_LAUNDRY_IDENTITY: &str = concat!(
+    "You are 助手, a local desktop agent inside the KIM messenger. ",
+    "You run on the user's machine (not a cloud bot). Reply in the user's language. ",
+    "Be concise. You can see the current conversation because the host pasted it into this session. ",
+    "You have search_contacts, search_messages, get_conversation_context, list_profiles, ",
+    "send_message, and read_clipboard. send_message and clipboard require user confirmation. ",
+    "You do not have filesystem or shell access. Do not claim you have tools you were not given.",
+);
+
+fn is_legacy_tool_laundry_identity(prompt: &str) -> bool {
+    let t = prompt.trim();
+    t == LEGACY_TOOL_LAUNDRY_IDENTITY
+        || (t.contains("You are 助手")
+            && t.contains("search_contacts")
+            && t.contains("search_messages")
+            && t.contains("get_conversation_context")
+            && t.contains("list_profiles")
+            && t.contains("send_message")
+            && t.contains("read_clipboard")
+            && t.contains("You do not have filesystem or shell access"))
+}
+
 fn default_smart_approve() -> GooseMode {
     GooseMode::SmartApprove
 }
@@ -353,10 +376,15 @@ impl AgentProfile {
         ToolSet::from_capabilities(&self.resolve_capabilities())
     }
 
+    /// MCP rows implied by resolved capabilities. Empty when MCP is off.
+    pub fn project_extensions(&self) -> Vec<ExtensionSpec> {
+        crate::capability::extensions_from_capabilities(&self.resolve_capabilities())
+    }
+
     /// Identity text only — never lists tools (B-KD 4).
     pub fn effective_identity_prompt(&self) -> &str {
         let t = self.system_prompt.trim();
-        if t.is_empty() {
+        if t.is_empty() || is_legacy_tool_laundry_identity(t) {
             DEFAULT_IDENTITY_PROMPT
         } else {
             t
@@ -720,5 +748,30 @@ mod tests {
     fn identity_prompt_never_lists_tools() {
         assert!(!DEFAULT_IDENTITY_PROMPT.contains("send_message"));
         assert!(!DEFAULT_IDENTITY_PROMPT.contains("search_contacts"));
+    }
+
+    #[test]
+    fn leftover_extensions_do_not_project_when_caps_omit_mcp() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            ..LegacyOpenOpts::default()
+        });
+        profile.capabilities = CapabilityRef::from_legacy(&profile.tools, &[]);
+        profile.extensions = vec![ExtensionSpec {
+            name: "github".into(),
+            transport: "stdio".into(),
+            command: vec!["npx".into()],
+            url: String::new(),
+        }];
+        assert!(profile.project_extensions().is_empty());
+    }
+
+    #[test]
+    fn laundry_list_identity_falls_back_to_tool_free_default() {
+        let mut profile = goose_template();
+        profile.system_prompt = LEGACY_TOOL_LAUNDRY_IDENTITY.to_string();
+        assert_eq!(profile.effective_identity_prompt(), DEFAULT_IDENTITY_PROMPT);
+        assert!(!profile.effective_identity_prompt().contains("send_message"));
     }
 }

@@ -18,7 +18,7 @@ impl CapabilityBlock for FsBlock {
     }
 
     fn risk(&self) -> RiskTier {
-        RiskTier::Write
+        RiskTier::Read
     }
 
     fn param_schema(&self) -> Value {

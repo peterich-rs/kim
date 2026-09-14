@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::capability::{
-    AssembleCtx, CapabilityBlock, CapabilityPart, PreviewTool, RiskTier,
-};
+use crate::capability::{AssembleCtx, CapabilityBlock, CapabilityPart, PreviewTool, RiskTier};
 use crate::ops::mcp::McpToolProvider;
 use crate::HostError;
 
