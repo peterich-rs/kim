@@ -45,6 +45,10 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         migrate_v2(tx).await?;
         set_schema_version(tx, 2).await?;
     }
+    if version < 3 {
+        migrate_v3(tx).await?;
+        set_schema_version(tx, 3).await?;
+    }
     Ok(())
 }
 
@@ -84,6 +88,16 @@ async fn migrate_v2(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         .await
         .map_err(map_sqlx)?;
     tx.execute(schema::CREATE_SETTINGS)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v3(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_AGENT_PROFILES)
+        .await
+        .map_err(map_sqlx)?;
+    tx.execute(schema::CREATE_AGENT_PERMISSIONS)
         .await
         .map_err(map_sqlx)?;
     Ok(())

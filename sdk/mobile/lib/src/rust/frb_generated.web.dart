@@ -74,6 +74,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<AgentRunRequestDto>
+  dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw);
 
@@ -95,6 +99,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AgentCardDto dco_decode_agent_card_dto(dynamic raw);
+
+  @protected
+  AgentProfileDto dco_decode_agent_profile_dto(dynamic raw);
+
+  @protected
+  AgentRunRequestDto dco_decode_agent_run_request_dto(dynamic raw);
+
+  @protected
+  AgentRunResultDto dco_decode_agent_run_result_dto(dynamic raw);
+
+  @protected
+  AgentTurnStateDto dco_decode_agent_turn_state_dto(dynamic raw);
+
+  @protected
   AuthSession dco_decode_auth_session(dynamic raw);
 
   @protected
@@ -102,6 +121,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BotDto dco_decode_bot_dto(dynamic raw);
+
+  @protected
+  AgentCardDto dco_decode_box_autoadd_agent_card_dto(dynamic raw);
+
+  @protected
+  AgentProfileDto dco_decode_box_autoadd_agent_profile_dto(dynamic raw);
+
+  @protected
+  AgentRunResultDto dco_decode_box_autoadd_agent_run_result_dto(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_i_32(dynamic raw);
@@ -156,6 +184,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<AgentProfileDto> dco_decode_list_agent_profile_dto(dynamic raw);
 
   @protected
   List<KimBotPendingItem> dco_decode_list_kim_bot_pending_item(dynamic raw);
@@ -293,6 +324,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<AgentRunRequestDto>
+  sse_decode_StreamSink_agent_run_request_dto_Sse(SseDeserializer deserializer);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer);
 
@@ -314,6 +349,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AgentCardDto sse_decode_agent_card_dto(SseDeserializer deserializer);
+
+  @protected
+  AgentProfileDto sse_decode_agent_profile_dto(SseDeserializer deserializer);
+
+  @protected
+  AgentRunRequestDto sse_decode_agent_run_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AgentRunResultDto sse_decode_agent_run_result_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AgentTurnStateDto sse_decode_agent_turn_state_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   AuthSession sse_decode_auth_session(SseDeserializer deserializer);
 
   @protected
@@ -321,6 +377,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BotDto sse_decode_bot_dto(SseDeserializer deserializer);
+
+  @protected
+  AgentCardDto sse_decode_box_autoadd_agent_card_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AgentProfileDto sse_decode_box_autoadd_agent_profile_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AgentRunResultDto sse_decode_box_autoadd_agent_run_result_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int sse_decode_box_autoadd_i_32(SseDeserializer deserializer);
@@ -391,6 +462,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<AgentProfileDto> sse_decode_list_agent_profile_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<KimBotPendingItem> sse_decode_list_kim_bot_pending_item(
@@ -555,6 +631,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_agent_run_request_dto_Sse(
+    RustStreamSink<AgentRunRequestDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_session_snapshot_dto_Sse(
     RustStreamSink<SessionSnapshotDto> self,
     SseSerializer serializer,
@@ -582,6 +664,33 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_agent_card_dto(AgentCardDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_agent_profile_dto(
+    AgentProfileDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_agent_run_request_dto(
+    AgentRunRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_agent_run_result_dto(
+    AgentRunResultDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_agent_turn_state_dto(
+    AgentTurnStateDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_auth_session(AuthSession self, SseSerializer serializer);
 
   @protected
@@ -589,6 +698,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_bot_dto(BotDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_agent_card_dto(
+    AgentCardDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_agent_profile_dto(
+    AgentProfileDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_agent_run_result_dto(
+    AgentRunResultDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer);
@@ -673,6 +800,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_agent_profile_dto(
+    List<AgentProfileDto> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_kim_bot_pending_item(

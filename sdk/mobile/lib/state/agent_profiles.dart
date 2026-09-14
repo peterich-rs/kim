@@ -10,7 +10,9 @@ import '../agent/catalog.dart';
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
+import '../core/logger.dart';
 import '../core/settings.dart';
+import '../src/rust/api/types.dart';
 import 'agent_settings.dart';
 import 'auth.dart';
 import 'provider_accounts.dart';
@@ -1375,9 +1377,52 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     if (!ref.mounted) {
       return;
     }
+    try {
+      final client = ref.read(clientPortProvider);
+      final rows = await client.listAgentProfiles();
+      if (rows.isNotEmpty) {
+        profiles = [for (final row in rows) _fromDto(row)];
+      } else if (profiles.isNotEmpty) {
+        await client.importAgentProfiles([for (final p in profiles) _toDto(p)]);
+        await prefs.remove(_kProfiles);
+      }
+    } catch (e, st) {
+      KimLogger.warn('agent profile rust load', e, st);
+    }
     profilesReady = true;
     state = List<AgentProfile>.from(profiles);
     await _migrateAccountModels();
+  }
+
+  AgentProfileDto _toDto(AgentProfile p) {
+    return AgentProfileDto(
+      profileId: p.id,
+      nickname: p.displayName,
+      serverAccount: p.serverAccount,
+      bodyJson: jsonEncode(p.toJson()),
+    );
+  }
+
+  AgentProfile _fromDto(AgentProfileDto row) {
+    try {
+      final raw = jsonDecode(row.bodyJson);
+      if (raw is Map) {
+        return AgentProfile.fromJson(Map<String, Object?>.from(raw))
+            .copyWith(serverAccount: row.serverAccount);
+      }
+    } catch (e, st) {
+      KimLogger.warn('agent profile decode', e, st);
+    }
+    return AgentProfile(
+      id: row.profileId,
+      displayName: row.nickname,
+      providerKind: 'openai',
+      baseUrl: '',
+      model: '',
+      keyRef: '',
+      systemPrompt: '',
+      serverAccount: row.serverAccount,
+    );
   }
 
   Future<List<AgentProfile>> _migrateAccounts(
@@ -1514,10 +1559,6 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     );
     final next = [persisted, ...state.where((p) => p.id != kGooseAgentId)];
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kProfiles,
-      jsonEncode([for (final p in next) p.toJson()]),
-    );
     await prefs.setString(_kActive, persisted.id);
     final settings = AgentSettings(
       llmBackend: vendorId,
@@ -1531,7 +1572,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await ref
         .read(agentSettingsProvider.notifier)
         .save(settings, persistKey: false);
-    state = next;
+    await _persist(next);
   }
 
   Future<void> saveEditor(AgentProfile profile) async {
@@ -1545,11 +1586,22 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   Future<void> _persist(List<AgentProfile> next) async {
+    try {
+      final client = ref.read(clientPortProvider);
+      final keep = {for (final p in next) p.id};
+      for (final p in next) {
+        await client.upsertAgentProfile(_toDto(p));
+      }
+      for (final old in state) {
+        if (!keep.contains(old.id)) {
+          await client.deleteAgentProfile(old.id);
+        }
+      }
+    } catch (e, st) {
+      KimLogger.warn('agent profile persist', e, st);
+    }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kProfiles,
-      jsonEncode([for (final p in next) p.toJson()]),
-    );
+    await prefs.remove(_kProfiles);
     state = next;
   }
 

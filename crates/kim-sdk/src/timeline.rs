@@ -117,9 +117,38 @@ pub enum SessionUpdate {
     ContactsChanged {
         contacts: Vec<PersonRef>,
     },
+    AgentTurn {
+        dest: String,
+        state: AgentTurnState,
+        text: String,
+    },
+    AgentCard {
+        dest: String,
+        card: AgentCard,
+    },
     RustPanic {
         message: String,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentTurnState {
+    Queued,
+    Running,
+    WaitingPermission,
+    Done,
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentCard {
+    pub v: i32,
+    pub card_type: String,
+    pub call_id: String,
+    pub name: String,
+    pub state: String,
+    pub preview: String,
+    pub ok: bool,
 }
 
 /// Lightweight contact row for `SessionUpdate::ContactsChanged` (P3 fills this).

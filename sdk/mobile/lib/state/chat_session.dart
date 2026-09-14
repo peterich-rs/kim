@@ -13,7 +13,7 @@ import '../kim_bridge.dart';
 import '../models/models.dart';
 import 'agent_profiles.dart';
 import 'auth.dart';
-import 'chat_agent.dart';
+
 import 'contacts.dart';
 import 'inbox.dart';
 import 'messages.dart';
@@ -219,7 +219,9 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
           });
           return true;
         }
-        await ref.read(chatAgentProvider).sendDirect(dest: dest, text: text);
+        await sendMessageMutation(dest).run(ref, (tsx) {
+          return _enqueueText(tsx.get(clientPortProvider), dest, text);
+        });
         return true;
       }
       await sendMessageMutation(dest).run(ref, (tsx) {

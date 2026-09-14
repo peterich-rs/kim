@@ -389,7 +389,7 @@ extension SessionUpdateDtoPatterns on SessionUpdateDto {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SessionUpdateDto_Link value)?  link,TResult Function( SessionUpdateDto_Inbox value)?  inbox,TResult Function( SessionUpdateDto_ThreadUpsert value)?  threadUpsert,TResult Function( SessionUpdateDto_SyncProgress value)?  syncProgress,TResult Function( SessionUpdateDto_Kickout value)?  kickout,TResult Function( SessionUpdateDto_AuthExpired value)?  authExpired,TResult Function( SessionUpdateDto_TokenRenew value)?  tokenRenew,TResult Function( SessionUpdateDto_FriendRequest value)?  friendRequest,TResult Function( SessionUpdateDto_FriendAccepted value)?  friendAccepted,TResult Function( SessionUpdateDto_ProfileUpdated value)?  profileUpdated,TResult Function( SessionUpdateDto_Presence value)?  presence,TResult Function( SessionUpdateDto_Typing value)?  typing,TResult Function( SessionUpdateDto_ReceiptRead value)?  receiptRead,TResult Function( SessionUpdateDto_GroupCreate value)?  groupCreate,TResult Function( SessionUpdateDto_ContactsChanged value)?  contactsChanged,TResult Function( SessionUpdateDto_RustPanic value)?  rustPanic,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SessionUpdateDto_Link value)?  link,TResult Function( SessionUpdateDto_Inbox value)?  inbox,TResult Function( SessionUpdateDto_ThreadUpsert value)?  threadUpsert,TResult Function( SessionUpdateDto_SyncProgress value)?  syncProgress,TResult Function( SessionUpdateDto_Kickout value)?  kickout,TResult Function( SessionUpdateDto_AuthExpired value)?  authExpired,TResult Function( SessionUpdateDto_TokenRenew value)?  tokenRenew,TResult Function( SessionUpdateDto_FriendRequest value)?  friendRequest,TResult Function( SessionUpdateDto_FriendAccepted value)?  friendAccepted,TResult Function( SessionUpdateDto_ProfileUpdated value)?  profileUpdated,TResult Function( SessionUpdateDto_Presence value)?  presence,TResult Function( SessionUpdateDto_Typing value)?  typing,TResult Function( SessionUpdateDto_ReceiptRead value)?  receiptRead,TResult Function( SessionUpdateDto_GroupCreate value)?  groupCreate,TResult Function( SessionUpdateDto_ContactsChanged value)?  contactsChanged,TResult Function( SessionUpdateDto_AgentTurn value)?  agentTurn,TResult Function( SessionUpdateDto_AgentCard value)?  agentCard,TResult Function( SessionUpdateDto_RustPanic value)?  rustPanic,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link() when link != null:
@@ -407,7 +407,9 @@ return presence(_that);case SessionUpdateDto_Typing() when typing != null:
 return typing(_that);case SessionUpdateDto_ReceiptRead() when receiptRead != null:
 return receiptRead(_that);case SessionUpdateDto_GroupCreate() when groupCreate != null:
 return groupCreate(_that);case SessionUpdateDto_ContactsChanged() when contactsChanged != null:
-return contactsChanged(_that);case SessionUpdateDto_RustPanic() when rustPanic != null:
+return contactsChanged(_that);case SessionUpdateDto_AgentTurn() when agentTurn != null:
+return agentTurn(_that);case SessionUpdateDto_AgentCard() when agentCard != null:
+return agentCard(_that);case SessionUpdateDto_RustPanic() when rustPanic != null:
 return rustPanic(_that);case _:
   return orElse();
 
@@ -426,7 +428,7 @@ return rustPanic(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SessionUpdateDto_Link value)  link,required TResult Function( SessionUpdateDto_Inbox value)  inbox,required TResult Function( SessionUpdateDto_ThreadUpsert value)  threadUpsert,required TResult Function( SessionUpdateDto_SyncProgress value)  syncProgress,required TResult Function( SessionUpdateDto_Kickout value)  kickout,required TResult Function( SessionUpdateDto_AuthExpired value)  authExpired,required TResult Function( SessionUpdateDto_TokenRenew value)  tokenRenew,required TResult Function( SessionUpdateDto_FriendRequest value)  friendRequest,required TResult Function( SessionUpdateDto_FriendAccepted value)  friendAccepted,required TResult Function( SessionUpdateDto_ProfileUpdated value)  profileUpdated,required TResult Function( SessionUpdateDto_Presence value)  presence,required TResult Function( SessionUpdateDto_Typing value)  typing,required TResult Function( SessionUpdateDto_ReceiptRead value)  receiptRead,required TResult Function( SessionUpdateDto_GroupCreate value)  groupCreate,required TResult Function( SessionUpdateDto_ContactsChanged value)  contactsChanged,required TResult Function( SessionUpdateDto_RustPanic value)  rustPanic,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SessionUpdateDto_Link value)  link,required TResult Function( SessionUpdateDto_Inbox value)  inbox,required TResult Function( SessionUpdateDto_ThreadUpsert value)  threadUpsert,required TResult Function( SessionUpdateDto_SyncProgress value)  syncProgress,required TResult Function( SessionUpdateDto_Kickout value)  kickout,required TResult Function( SessionUpdateDto_AuthExpired value)  authExpired,required TResult Function( SessionUpdateDto_TokenRenew value)  tokenRenew,required TResult Function( SessionUpdateDto_FriendRequest value)  friendRequest,required TResult Function( SessionUpdateDto_FriendAccepted value)  friendAccepted,required TResult Function( SessionUpdateDto_ProfileUpdated value)  profileUpdated,required TResult Function( SessionUpdateDto_Presence value)  presence,required TResult Function( SessionUpdateDto_Typing value)  typing,required TResult Function( SessionUpdateDto_ReceiptRead value)  receiptRead,required TResult Function( SessionUpdateDto_GroupCreate value)  groupCreate,required TResult Function( SessionUpdateDto_ContactsChanged value)  contactsChanged,required TResult Function( SessionUpdateDto_AgentTurn value)  agentTurn,required TResult Function( SessionUpdateDto_AgentCard value)  agentCard,required TResult Function( SessionUpdateDto_RustPanic value)  rustPanic,}){
 final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link():
@@ -444,7 +446,9 @@ return presence(_that);case SessionUpdateDto_Typing():
 return typing(_that);case SessionUpdateDto_ReceiptRead():
 return receiptRead(_that);case SessionUpdateDto_GroupCreate():
 return groupCreate(_that);case SessionUpdateDto_ContactsChanged():
-return contactsChanged(_that);case SessionUpdateDto_RustPanic():
+return contactsChanged(_that);case SessionUpdateDto_AgentTurn():
+return agentTurn(_that);case SessionUpdateDto_AgentCard():
+return agentCard(_that);case SessionUpdateDto_RustPanic():
 return rustPanic(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
@@ -459,7 +463,7 @@ return rustPanic(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SessionUpdateDto_Link value)?  link,TResult? Function( SessionUpdateDto_Inbox value)?  inbox,TResult? Function( SessionUpdateDto_ThreadUpsert value)?  threadUpsert,TResult? Function( SessionUpdateDto_SyncProgress value)?  syncProgress,TResult? Function( SessionUpdateDto_Kickout value)?  kickout,TResult? Function( SessionUpdateDto_AuthExpired value)?  authExpired,TResult? Function( SessionUpdateDto_TokenRenew value)?  tokenRenew,TResult? Function( SessionUpdateDto_FriendRequest value)?  friendRequest,TResult? Function( SessionUpdateDto_FriendAccepted value)?  friendAccepted,TResult? Function( SessionUpdateDto_ProfileUpdated value)?  profileUpdated,TResult? Function( SessionUpdateDto_Presence value)?  presence,TResult? Function( SessionUpdateDto_Typing value)?  typing,TResult? Function( SessionUpdateDto_ReceiptRead value)?  receiptRead,TResult? Function( SessionUpdateDto_GroupCreate value)?  groupCreate,TResult? Function( SessionUpdateDto_ContactsChanged value)?  contactsChanged,TResult? Function( SessionUpdateDto_RustPanic value)?  rustPanic,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SessionUpdateDto_Link value)?  link,TResult? Function( SessionUpdateDto_Inbox value)?  inbox,TResult? Function( SessionUpdateDto_ThreadUpsert value)?  threadUpsert,TResult? Function( SessionUpdateDto_SyncProgress value)?  syncProgress,TResult? Function( SessionUpdateDto_Kickout value)?  kickout,TResult? Function( SessionUpdateDto_AuthExpired value)?  authExpired,TResult? Function( SessionUpdateDto_TokenRenew value)?  tokenRenew,TResult? Function( SessionUpdateDto_FriendRequest value)?  friendRequest,TResult? Function( SessionUpdateDto_FriendAccepted value)?  friendAccepted,TResult? Function( SessionUpdateDto_ProfileUpdated value)?  profileUpdated,TResult? Function( SessionUpdateDto_Presence value)?  presence,TResult? Function( SessionUpdateDto_Typing value)?  typing,TResult? Function( SessionUpdateDto_ReceiptRead value)?  receiptRead,TResult? Function( SessionUpdateDto_GroupCreate value)?  groupCreate,TResult? Function( SessionUpdateDto_ContactsChanged value)?  contactsChanged,TResult? Function( SessionUpdateDto_AgentTurn value)?  agentTurn,TResult? Function( SessionUpdateDto_AgentCard value)?  agentCard,TResult? Function( SessionUpdateDto_RustPanic value)?  rustPanic,}){
 final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link() when link != null:
@@ -477,7 +481,9 @@ return presence(_that);case SessionUpdateDto_Typing() when typing != null:
 return typing(_that);case SessionUpdateDto_ReceiptRead() when receiptRead != null:
 return receiptRead(_that);case SessionUpdateDto_GroupCreate() when groupCreate != null:
 return groupCreate(_that);case SessionUpdateDto_ContactsChanged() when contactsChanged != null:
-return contactsChanged(_that);case SessionUpdateDto_RustPanic() when rustPanic != null:
+return contactsChanged(_that);case SessionUpdateDto_AgentTurn() when agentTurn != null:
+return agentTurn(_that);case SessionUpdateDto_AgentCard() when agentCard != null:
+return agentCard(_that);case SessionUpdateDto_RustPanic() when rustPanic != null:
 return rustPanic(_that);case _:
   return null;
 
@@ -495,7 +501,7 @@ return rustPanic(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( LinkStateDto state,  String? lastError)?  link,TResult Function( List<ThreadViewDto> threads)?  inbox,TResult Function( ThreadViewDto thread)?  threadUpsert,TResult Function( BigInt pulled,  bool catchingUp)?  syncProgress,TResult Function( String channelId)?  kickout,TResult Function( String reason)?  authExpired,TResult Function( String token,  PlatformInt64 exp)?  tokenRenew,TResult Function( String from,  String nickname)?  friendRequest,TResult Function( String from,  String nickname)?  friendAccepted,TResult Function( String account,  String nickname,  String avatar)?  profileUpdated,TResult Function( String account,  int status,  PlatformInt64 lastSeen)?  presence,TResult Function( String typer,  String dest,  int kind,  bool active)?  typing,TResult Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)?  receiptRead,TResult Function( String groupId,  List<String> members)?  groupCreate,TResult Function( List<PersonDto> contacts)?  contactsChanged,TResult Function( String message)?  rustPanic,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( LinkStateDto state,  String? lastError)?  link,TResult Function( List<ThreadViewDto> threads)?  inbox,TResult Function( ThreadViewDto thread)?  threadUpsert,TResult Function( BigInt pulled,  bool catchingUp)?  syncProgress,TResult Function( String channelId)?  kickout,TResult Function( String reason)?  authExpired,TResult Function( String token,  PlatformInt64 exp)?  tokenRenew,TResult Function( String from,  String nickname)?  friendRequest,TResult Function( String from,  String nickname)?  friendAccepted,TResult Function( String account,  String nickname,  String avatar)?  profileUpdated,TResult Function( String account,  int status,  PlatformInt64 lastSeen)?  presence,TResult Function( String typer,  String dest,  int kind,  bool active)?  typing,TResult Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)?  receiptRead,TResult Function( String groupId,  List<String> members)?  groupCreate,TResult Function( List<PersonDto> contacts)?  contactsChanged,TResult Function( String dest,  AgentTurnStateDto state,  String text)?  agentTurn,TResult Function( String dest,  AgentCardDto card)?  agentCard,TResult Function( String message)?  rustPanic,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link() when link != null:
 return link(_that.state,_that.lastError);case SessionUpdateDto_Inbox() when inbox != null:
@@ -512,7 +518,9 @@ return presence(_that.account,_that.status,_that.lastSeen);case SessionUpdateDto
 return typing(_that.typer,_that.dest,_that.kind,_that.active);case SessionUpdateDto_ReceiptRead() when receiptRead != null:
 return receiptRead(_that.reader,_that.dest,_that.kind,_that.messageId);case SessionUpdateDto_GroupCreate() when groupCreate != null:
 return groupCreate(_that.groupId,_that.members);case SessionUpdateDto_ContactsChanged() when contactsChanged != null:
-return contactsChanged(_that.contacts);case SessionUpdateDto_RustPanic() when rustPanic != null:
+return contactsChanged(_that.contacts);case SessionUpdateDto_AgentTurn() when agentTurn != null:
+return agentTurn(_that.dest,_that.state,_that.text);case SessionUpdateDto_AgentCard() when agentCard != null:
+return agentCard(_that.dest,_that.card);case SessionUpdateDto_RustPanic() when rustPanic != null:
 return rustPanic(_that.message);case _:
   return orElse();
 
@@ -531,7 +539,7 @@ return rustPanic(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( LinkStateDto state,  String? lastError)  link,required TResult Function( List<ThreadViewDto> threads)  inbox,required TResult Function( ThreadViewDto thread)  threadUpsert,required TResult Function( BigInt pulled,  bool catchingUp)  syncProgress,required TResult Function( String channelId)  kickout,required TResult Function( String reason)  authExpired,required TResult Function( String token,  PlatformInt64 exp)  tokenRenew,required TResult Function( String from,  String nickname)  friendRequest,required TResult Function( String from,  String nickname)  friendAccepted,required TResult Function( String account,  String nickname,  String avatar)  profileUpdated,required TResult Function( String account,  int status,  PlatformInt64 lastSeen)  presence,required TResult Function( String typer,  String dest,  int kind,  bool active)  typing,required TResult Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)  receiptRead,required TResult Function( String groupId,  List<String> members)  groupCreate,required TResult Function( List<PersonDto> contacts)  contactsChanged,required TResult Function( String message)  rustPanic,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( LinkStateDto state,  String? lastError)  link,required TResult Function( List<ThreadViewDto> threads)  inbox,required TResult Function( ThreadViewDto thread)  threadUpsert,required TResult Function( BigInt pulled,  bool catchingUp)  syncProgress,required TResult Function( String channelId)  kickout,required TResult Function( String reason)  authExpired,required TResult Function( String token,  PlatformInt64 exp)  tokenRenew,required TResult Function( String from,  String nickname)  friendRequest,required TResult Function( String from,  String nickname)  friendAccepted,required TResult Function( String account,  String nickname,  String avatar)  profileUpdated,required TResult Function( String account,  int status,  PlatformInt64 lastSeen)  presence,required TResult Function( String typer,  String dest,  int kind,  bool active)  typing,required TResult Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)  receiptRead,required TResult Function( String groupId,  List<String> members)  groupCreate,required TResult Function( List<PersonDto> contacts)  contactsChanged,required TResult Function( String dest,  AgentTurnStateDto state,  String text)  agentTurn,required TResult Function( String dest,  AgentCardDto card)  agentCard,required TResult Function( String message)  rustPanic,}) {final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link():
 return link(_that.state,_that.lastError);case SessionUpdateDto_Inbox():
@@ -548,7 +556,9 @@ return presence(_that.account,_that.status,_that.lastSeen);case SessionUpdateDto
 return typing(_that.typer,_that.dest,_that.kind,_that.active);case SessionUpdateDto_ReceiptRead():
 return receiptRead(_that.reader,_that.dest,_that.kind,_that.messageId);case SessionUpdateDto_GroupCreate():
 return groupCreate(_that.groupId,_that.members);case SessionUpdateDto_ContactsChanged():
-return contactsChanged(_that.contacts);case SessionUpdateDto_RustPanic():
+return contactsChanged(_that.contacts);case SessionUpdateDto_AgentTurn():
+return agentTurn(_that.dest,_that.state,_that.text);case SessionUpdateDto_AgentCard():
+return agentCard(_that.dest,_that.card);case SessionUpdateDto_RustPanic():
 return rustPanic(_that.message);}
 }
 /// A variant of `when` that fallback to returning `null`
@@ -563,7 +573,7 @@ return rustPanic(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( LinkStateDto state,  String? lastError)?  link,TResult? Function( List<ThreadViewDto> threads)?  inbox,TResult? Function( ThreadViewDto thread)?  threadUpsert,TResult? Function( BigInt pulled,  bool catchingUp)?  syncProgress,TResult? Function( String channelId)?  kickout,TResult? Function( String reason)?  authExpired,TResult? Function( String token,  PlatformInt64 exp)?  tokenRenew,TResult? Function( String from,  String nickname)?  friendRequest,TResult? Function( String from,  String nickname)?  friendAccepted,TResult? Function( String account,  String nickname,  String avatar)?  profileUpdated,TResult? Function( String account,  int status,  PlatformInt64 lastSeen)?  presence,TResult? Function( String typer,  String dest,  int kind,  bool active)?  typing,TResult? Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)?  receiptRead,TResult? Function( String groupId,  List<String> members)?  groupCreate,TResult? Function( List<PersonDto> contacts)?  contactsChanged,TResult? Function( String message)?  rustPanic,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( LinkStateDto state,  String? lastError)?  link,TResult? Function( List<ThreadViewDto> threads)?  inbox,TResult? Function( ThreadViewDto thread)?  threadUpsert,TResult? Function( BigInt pulled,  bool catchingUp)?  syncProgress,TResult? Function( String channelId)?  kickout,TResult? Function( String reason)?  authExpired,TResult? Function( String token,  PlatformInt64 exp)?  tokenRenew,TResult? Function( String from,  String nickname)?  friendRequest,TResult? Function( String from,  String nickname)?  friendAccepted,TResult? Function( String account,  String nickname,  String avatar)?  profileUpdated,TResult? Function( String account,  int status,  PlatformInt64 lastSeen)?  presence,TResult? Function( String typer,  String dest,  int kind,  bool active)?  typing,TResult? Function( String reader,  String dest,  int kind,  PlatformInt64 messageId)?  receiptRead,TResult? Function( String groupId,  List<String> members)?  groupCreate,TResult? Function( List<PersonDto> contacts)?  contactsChanged,TResult? Function( String dest,  AgentTurnStateDto state,  String text)?  agentTurn,TResult? Function( String dest,  AgentCardDto card)?  agentCard,TResult? Function( String message)?  rustPanic,}) {final _that = this;
 switch (_that) {
 case SessionUpdateDto_Link() when link != null:
 return link(_that.state,_that.lastError);case SessionUpdateDto_Inbox() when inbox != null:
@@ -580,7 +590,9 @@ return presence(_that.account,_that.status,_that.lastSeen);case SessionUpdateDto
 return typing(_that.typer,_that.dest,_that.kind,_that.active);case SessionUpdateDto_ReceiptRead() when receiptRead != null:
 return receiptRead(_that.reader,_that.dest,_that.kind,_that.messageId);case SessionUpdateDto_GroupCreate() when groupCreate != null:
 return groupCreate(_that.groupId,_that.members);case SessionUpdateDto_ContactsChanged() when contactsChanged != null:
-return contactsChanged(_that.contacts);case SessionUpdateDto_RustPanic() when rustPanic != null:
+return contactsChanged(_that.contacts);case SessionUpdateDto_AgentTurn() when agentTurn != null:
+return agentTurn(_that.dest,_that.state,_that.text);case SessionUpdateDto_AgentCard() when agentCard != null:
+return agentCard(_that.dest,_that.card);case SessionUpdateDto_RustPanic() when rustPanic != null:
 return rustPanic(_that.message);case _:
   return null;
 
@@ -1632,6 +1644,144 @@ class _$SessionUpdateDto_ContactsChangedCopyWithImpl<$Res>
   return _then(SessionUpdateDto_ContactsChanged(
 contacts: null == contacts ? _self._contacts : contacts // ignore: cast_nullable_to_non_nullable
 as List<PersonDto>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SessionUpdateDto_AgentTurn extends SessionUpdateDto {
+  const SessionUpdateDto_AgentTurn({required this.dest, required this.state, required this.text}): super._();
+  
+
+ final  String dest;
+ final  AgentTurnStateDto state;
+ final  String text;
+
+/// Create a copy of SessionUpdateDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SessionUpdateDto_AgentTurnCopyWith<SessionUpdateDto_AgentTurn> get copyWith => _$SessionUpdateDto_AgentTurnCopyWithImpl<SessionUpdateDto_AgentTurn>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionUpdateDto_AgentTurn&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.state, state) || other.state == state)&&(identical(other.text, text) || other.text == text));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,state,text);
+
+@override
+String toString() {
+  return 'SessionUpdateDto.agentTurn(dest: $dest, state: $state, text: $text)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SessionUpdateDto_AgentTurnCopyWith<$Res> implements $SessionUpdateDtoCopyWith<$Res> {
+  factory $SessionUpdateDto_AgentTurnCopyWith(SessionUpdateDto_AgentTurn value, $Res Function(SessionUpdateDto_AgentTurn) _then) = _$SessionUpdateDto_AgentTurnCopyWithImpl;
+@useResult
+$Res call({
+ String dest, AgentTurnStateDto state, String text
+});
+
+
+
+
+}
+/// @nodoc
+class _$SessionUpdateDto_AgentTurnCopyWithImpl<$Res>
+    implements $SessionUpdateDto_AgentTurnCopyWith<$Res> {
+  _$SessionUpdateDto_AgentTurnCopyWithImpl(this._self, this._then);
+
+  final SessionUpdateDto_AgentTurn _self;
+  final $Res Function(SessionUpdateDto_AgentTurn) _then;
+
+/// Create a copy of SessionUpdateDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? state = null,Object? text = null,}) {
+  return _then(SessionUpdateDto_AgentTurn(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,state: null == state ? _self.state : state // ignore: cast_nullable_to_non_nullable
+as AgentTurnStateDto,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SessionUpdateDto_AgentCard extends SessionUpdateDto {
+  const SessionUpdateDto_AgentCard({required this.dest, required this.card}): super._();
+  
+
+ final  String dest;
+ final  AgentCardDto card;
+
+/// Create a copy of SessionUpdateDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SessionUpdateDto_AgentCardCopyWith<SessionUpdateDto_AgentCard> get copyWith => _$SessionUpdateDto_AgentCardCopyWithImpl<SessionUpdateDto_AgentCard>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionUpdateDto_AgentCard&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.card, card) || other.card == card));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,card);
+
+@override
+String toString() {
+  return 'SessionUpdateDto.agentCard(dest: $dest, card: $card)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SessionUpdateDto_AgentCardCopyWith<$Res> implements $SessionUpdateDtoCopyWith<$Res> {
+  factory $SessionUpdateDto_AgentCardCopyWith(SessionUpdateDto_AgentCard value, $Res Function(SessionUpdateDto_AgentCard) _then) = _$SessionUpdateDto_AgentCardCopyWithImpl;
+@useResult
+$Res call({
+ String dest, AgentCardDto card
+});
+
+
+
+
+}
+/// @nodoc
+class _$SessionUpdateDto_AgentCardCopyWithImpl<$Res>
+    implements $SessionUpdateDto_AgentCardCopyWith<$Res> {
+  _$SessionUpdateDto_AgentCardCopyWithImpl(this._self, this._then);
+
+  final SessionUpdateDto_AgentCard _self;
+  final $Res Function(SessionUpdateDto_AgentCard) _then;
+
+/// Create a copy of SessionUpdateDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? card = null,}) {
+  return _then(SessionUpdateDto_AgentCard(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,card: null == card ? _self.card : card // ignore: cast_nullable_to_non_nullable
+as AgentCardDto,
   ));
 }
 

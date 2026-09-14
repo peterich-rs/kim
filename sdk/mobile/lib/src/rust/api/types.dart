@@ -10,7 +10,153 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_profile`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+
+class AgentCardDto {
+  final int v;
+  final String cardType;
+  final String callId;
+  final String name;
+  final String state;
+  final String preview;
+  final bool ok;
+
+  const AgentCardDto({
+    required this.v,
+    required this.cardType,
+    required this.callId,
+    required this.name,
+    required this.state,
+    required this.preview,
+    required this.ok,
+  });
+
+  @override
+  int get hashCode =>
+      v.hashCode ^
+      cardType.hashCode ^
+      callId.hashCode ^
+      name.hashCode ^
+      state.hashCode ^
+      preview.hashCode ^
+      ok.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AgentCardDto &&
+          runtimeType == other.runtimeType &&
+          v == other.v &&
+          cardType == other.cardType &&
+          callId == other.callId &&
+          name == other.name &&
+          state == other.state &&
+          preview == other.preview &&
+          ok == other.ok;
+}
+
+class AgentProfileDto {
+  final String profileId;
+  final String nickname;
+  final String serverAccount;
+  final String bodyJson;
+
+  const AgentProfileDto({
+    required this.profileId,
+    required this.nickname,
+    required this.serverAccount,
+    required this.bodyJson,
+  });
+
+  @override
+  int get hashCode =>
+      profileId.hashCode ^
+      nickname.hashCode ^
+      serverAccount.hashCode ^
+      bodyJson.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AgentProfileDto &&
+          runtimeType == other.runtimeType &&
+          profileId == other.profileId &&
+          nickname == other.nickname &&
+          serverAccount == other.serverAccount &&
+          bodyJson == other.bodyJson;
+}
+
+class AgentRunRequestDto {
+  final String dest;
+  final String profileId;
+  final String text;
+  final PlatformInt64 inReplyTo;
+  final BigInt epoch;
+
+  const AgentRunRequestDto({
+    required this.dest,
+    required this.profileId,
+    required this.text,
+    required this.inReplyTo,
+    required this.epoch,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      profileId.hashCode ^
+      text.hashCode ^
+      inReplyTo.hashCode ^
+      epoch.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AgentRunRequestDto &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          profileId == other.profileId &&
+          text == other.text &&
+          inReplyTo == other.inReplyTo &&
+          epoch == other.epoch;
+}
+
+class AgentRunResultDto {
+  final String dest;
+  final String profileId;
+  final BigInt epoch;
+  final String output;
+  final String? error;
+
+  const AgentRunResultDto({
+    required this.dest,
+    required this.profileId,
+    required this.epoch,
+    required this.output,
+    this.error,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      profileId.hashCode ^
+      epoch.hashCode ^
+      output.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AgentRunResultDto &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          profileId == other.profileId &&
+          epoch == other.epoch &&
+          output == other.output &&
+          error == other.error;
+}
+
+enum AgentTurnStateDto { queued, running, waitingPermission, done, error }
 
 class BotDto {
   final String dest;
@@ -434,6 +580,15 @@ sealed class SessionUpdateDto with _$SessionUpdateDto {
   const factory SessionUpdateDto.contactsChanged({
     required List<PersonDto> contacts,
   }) = SessionUpdateDto_ContactsChanged;
+  const factory SessionUpdateDto.agentTurn({
+    required String dest,
+    required AgentTurnStateDto state,
+    required String text,
+  }) = SessionUpdateDto_AgentTurn;
+  const factory SessionUpdateDto.agentCard({
+    required String dest,
+    required AgentCardDto card,
+  }) = SessionUpdateDto_AgentCard;
   const factory SessionUpdateDto.rustPanic({required String message}) =
       SessionUpdateDto_RustPanic;
 }

@@ -182,6 +182,18 @@ abstract class KimClientPort {
   });
 
   Future<List<rust_types.PersonDto>> refreshContacts();
+
+  Stream<rust_types.AgentRunRequestDto> watchAgentRun();
+
+  Future<void> submitAgentRun(rust_types.AgentRunResultDto result);
+
+  Future<List<rust_types.AgentProfileDto>> listAgentProfiles();
+
+  Future<void> upsertAgentProfile(rust_types.AgentProfileDto row);
+
+  Future<void> deleteAgentProfile(String profileId);
+
+  Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows);
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -784,6 +796,36 @@ class KimBridge implements KimAuthPort, KimClientPort {
   @override
   Future<List<rust_types.PersonDto>> refreshContacts() {
     return _require().refreshContacts();
+  }
+
+  @override
+  Stream<rust_types.AgentRunRequestDto> watchAgentRun() {
+    return _require().watchAgentRun();
+  }
+
+  @override
+  Future<void> submitAgentRun(rust_types.AgentRunResultDto result) {
+    return _require().submitAgentRun(result: result);
+  }
+
+  @override
+  Future<List<rust_types.AgentProfileDto>> listAgentProfiles() {
+    return _require().listAgentProfiles();
+  }
+
+  @override
+  Future<void> upsertAgentProfile(rust_types.AgentProfileDto row) {
+    return _require().upsertAgentProfile(row: row);
+  }
+
+  @override
+  Future<void> deleteAgentProfile(String profileId) {
+    return _require().deleteAgentProfile(profileId: profileId);
+  }
+
+  @override
+  Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows) {
+    return _require().importAgentProfiles(rows: rows);
   }
 
   Future<void> attachStore(String dbPath) async {

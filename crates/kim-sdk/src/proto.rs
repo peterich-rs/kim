@@ -26,6 +26,28 @@ pub trait ProtocolClient: Send + Sync {
         before_id: i64,
         limit: i32,
     ) -> Result<Vec<kim_client::HistoryItem>, SdkError>;
+
+    async fn bot_pending(
+        &self,
+        dest: &str,
+        limit: i32,
+    ) -> Result<Vec<kim_client::BotPendingItem>, SdkError> {
+        let _ = (dest, limit);
+        Ok(vec![])
+    }
+
+    async fn bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        let _ = (dest, body, in_reply_to, client_id);
+        Err(SdkError::InvalidArgument {
+            message: "bot_reply not supported".into(),
+        })
+    }
 }
 
 #[async_trait::async_trait]
@@ -85,6 +107,29 @@ impl ProtocolClient for KimClient {
             .await
             .map_err(|e| map_client(e, dest))
     }
+
+    async fn bot_pending(
+        &self,
+        dest: &str,
+        limit: i32,
+    ) -> Result<Vec<kim_client::BotPendingItem>, SdkError> {
+        KimClient::bot_pending(self, dest, limit)
+            .await
+            .map_err(|e| map_client(e, dest))
+    }
+
+    async fn bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        let result = KimClient::bot_reply(self, dest, body, in_reply_to, client_id)
+            .await
+            .map_err(|e| map_client(e, dest))?;
+        Ok((result.message_id, result.send_time))
+    }
 }
 
 #[async_trait::async_trait]
@@ -122,5 +167,23 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
         limit: i32,
     ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
         ProtocolClient::history(&**self, dest, kind, before_id, limit).await
+    }
+
+    async fn bot_pending(
+        &self,
+        dest: &str,
+        limit: i32,
+    ) -> Result<Vec<kim_client::BotPendingItem>, SdkError> {
+        ProtocolClient::bot_pending(&**self, dest, limit).await
+    }
+
+    async fn bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        ProtocolClient::bot_reply(&**self, dest, body, in_reply_to, client_id).await
     }
 }

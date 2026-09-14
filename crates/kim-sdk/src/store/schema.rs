@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -131,5 +131,29 @@ CREATE TABLE IF NOT EXISTS settings (
   env TEXT NOT NULL DEFAULT 'prod',
   locale TEXT NOT NULL DEFAULT '',
   agent_flags TEXT NOT NULL DEFAULT '{}'
+)
+";
+
+pub const CREATE_AGENT_PROFILES: &str = r"
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  account TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  nickname TEXT NOT NULL,
+  server_account TEXT NOT NULL DEFAULT '',
+  body_json TEXT NOT NULL,
+  key_ciphertext BLOB,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account, profile_id)
+)
+";
+
+pub const CREATE_AGENT_PERMISSIONS: &str = r"
+CREATE TABLE IF NOT EXISTS agent_permissions (
+  account TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account, profile_id, tool)
 )
 ";

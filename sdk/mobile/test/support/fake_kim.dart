@@ -664,6 +664,45 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return settings;
   }
 
+  final agentRunCtrl = StreamController<AgentRunRequestDto>.broadcast();
+  final submittedAgentRuns = <AgentRunResultDto>[];
+  List<AgentProfileDto> agentProfiles = const [];
+
+  @override
+  Stream<AgentRunRequestDto> watchAgentRun() => agentRunCtrl.stream;
+
+  @override
+  Future<void> submitAgentRun(AgentRunResultDto result) async {
+    submittedAgentRuns.add(result);
+  }
+
+  @override
+  Future<List<AgentProfileDto>> listAgentProfiles() async => agentProfiles;
+
+  @override
+  Future<void> upsertAgentProfile(AgentProfileDto row) async {
+    agentProfiles = [
+      for (final p in agentProfiles)
+        if (p.profileId != row.profileId) p,
+      row,
+    ];
+  }
+
+  @override
+  Future<void> deleteAgentProfile(String profileId) async {
+    agentProfiles = [
+      for (final p in agentProfiles)
+        if (p.profileId != profileId) p,
+    ];
+  }
+
+  @override
+  Future<void> importAgentProfiles(List<AgentProfileDto> rows) async {
+    if (agentProfiles.isEmpty) {
+      agentProfiles = rows;
+    }
+  }
+
   @override
   Future<List<PersonDto>> refreshContacts() async {
     final rows = [

@@ -9,6 +9,9 @@ import 'app.dart';
 import 'copy.dart';
 import 'core/logger.dart';
 import 'core/runtime.dart';
+import 'agent/host_support.dart';
+import 'agent_bridge.dart';
+import 'bridge/agent_bridge.dart';
 import 'kim_bridge.dart';
 import 'src/rust/api/types.dart' as rust_types;
 import 'state/providers.dart';
@@ -82,6 +85,9 @@ class _KimBootState extends State<KimBoot> {
           unawaited(runtime.settings.saveToken(''));
       }
     });
+    if (agentHostSupported) {
+      unawaited(AgentRunLoop(bridge, AgentBridge()).start());
+    }
     if (!mounted) {
       return;
     }

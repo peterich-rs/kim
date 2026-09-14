@@ -8,8 +8,9 @@ use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand,
 
 use super::rt;
 use super::types::{
-    MessagePageDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto, SendStatusDto,
-    SessionSnapshotDto, SessionUpdateDto, SettingsDto, TimelineUpdateDto, TokenPersistDto,
+    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, MessagePageDto, PersonDto, ProfileDto,
+    RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto,
+    TimelineUpdateDto, TokenPersistDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -79,7 +80,10 @@ impl KimSdkHandle {
         self.inner
             .attach_store(db_path)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(SdkErrorDto::from)?;
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        self.inner.install_mobile_agent();
+        Ok(())
     }
 
     #[flutter_rust_bridge::frb(sync)]
@@ -415,6 +419,58 @@ impl KimSdkHandle {
         rt().block_on(client.friend_remove(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_agent_run(&self, sink: StreamSink<AgentRunRequestDto>) -> Result<(), String> {
+        let mut rx = self.inner.subscribe_agent_run();
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            while let Some(req) = rx.recv().await {
+                if sink.add(AgentRunRequestDto::from(req)).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    pub async fn submit_agent_run(&self, result: AgentRunResultDto) -> Result<(), SdkErrorDto> {
+        self.inner.submit_agent_run(result.into());
+        Ok(())
+    }
+
+    pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileDto>, SdkErrorDto> {
+        let rows = self
+            .inner
+            .list_agent_profiles()
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(rows.into_iter().map(AgentProfileDto::from).collect())
+    }
+
+    pub async fn upsert_agent_profile(&self, row: AgentProfileDto) -> Result<(), SdkErrorDto> {
+        self.inner
+            .upsert_agent_profile(row.into())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .delete_agent_profile(profile_id)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn import_agent_profiles(
+        &self,
+        rows: Vec<AgentProfileDto>,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .import_agent_profiles(rows.into_iter().map(Into::into).collect())
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]

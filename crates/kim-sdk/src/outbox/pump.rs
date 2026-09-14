@@ -75,8 +75,14 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                     .await?;
                 sdk.publish_timeline(&row.dest).await;
                 sent += 1;
-                if row.payload_type == kim_protocol::MESSAGE_TYPE_TEXT {
-                    sdk.agent()
+                if row.payload_type == kim_protocol::MESSAGE_TYPE_TEXT
+                    && store
+                        .agent_profile_id_for_dest(&session.account, &row.dest)
+                        .await?
+                        .is_some()
+                {
+                    let _ = sdk
+                        .agent()
                         .enqueue_turn(
                             &row.dest,
                             &body,

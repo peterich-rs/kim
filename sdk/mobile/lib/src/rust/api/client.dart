@@ -64,6 +64,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   static KimSdkHandle create() =>
       RustLib.instance.api.crateApiClientKimSdkHandleCreate();
 
+  Future<void> deleteAgentProfile({required String profileId});
+
   Future<void> deleteThread({required String dest});
 
   Future<KimCommandReceipt> enqueueMessage({
@@ -97,6 +99,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required int limit,
   });
 
+  Future<void> importAgentProfiles({required List<AgentProfileDto> rows});
+
   Future<SettingsDto> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
@@ -107,6 +111,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   Future<List<KimInboxItem>> inbox({required int limit});
 
   String linkState();
+
+  Future<List<AgentProfileDto>> listAgentProfiles();
 
   Future<MessagePageDto> loadOlder({
     required String dest,
@@ -179,11 +185,17 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   bool storeAttached();
 
+  Future<void> submitAgentRun({required AgentRunResultDto result});
+
   Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
     required String bio,
   });
+
+  Future<void> upsertAgentProfile({required AgentProfileDto row});
+
+  Stream<AgentRunRequestDto> watchAgentRun();
 
   /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
   /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.

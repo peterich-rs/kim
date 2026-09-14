@@ -145,6 +145,11 @@ class AgentBridge {
     return catalogSurface(vendor: vendor, model: model);
   }
 
+  Future<void> respondPermission({
+    required String callId,
+    required String permission,
+  }) async {}
+
   Future<String> catalogValidateChoice({
     required String vendor,
     required String model,

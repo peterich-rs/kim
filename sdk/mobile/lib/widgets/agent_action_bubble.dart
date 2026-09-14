@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
+import '../agent_bridge.dart';
 import '../copy.dart';
 import '../models/models.dart';
-import '../state/chat_agent.dart';
 import '../theme/kim_theme.dart';
 
 class AgentActionBubble extends ConsumerWidget {
@@ -83,12 +83,10 @@ class AgentActionBubble extends ConsumerWidget {
                     TextButton(
                       onPressed: pending
                           ? () => ref
-                                .read(chatAgentProvider)
+                                .read(agentBridgeProvider)
                                 .respondPermission(
-                                  dest: message.dest,
                                   callId: card.callId,
                                   permission: 'allow_once',
-                                  toolName: card.name,
                                 )
                           : null,
                       child: Text(Copy.agentAllow),
@@ -96,12 +94,10 @@ class AgentActionBubble extends ConsumerWidget {
                     TextButton(
                       onPressed: pending
                           ? () => ref
-                                .read(chatAgentProvider)
+                                .read(agentBridgeProvider)
                                 .respondPermission(
-                                  dest: message.dest,
                                   callId: card.callId,
                                   permission: 'always_allow',
-                                  toolName: card.name,
                                 )
                           : null,
                       child: Text(Copy.agentAlwaysAllow),
@@ -109,12 +105,10 @@ class AgentActionBubble extends ConsumerWidget {
                     TextButton(
                       onPressed: pending
                           ? () => ref
-                                .read(chatAgentProvider)
+                                .read(agentBridgeProvider)
                                 .respondPermission(
-                                  dest: message.dest,
                                   callId: card.callId,
                                   permission: 'deny_once',
-                                  toolName: card.name,
                                 )
                           : null,
                       child: Text(Copy.agentDeny),

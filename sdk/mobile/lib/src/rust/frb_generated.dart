@@ -72,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1224240046;
+  int get rustContentHash => -347714545;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -175,6 +175,11 @@ abstract class RustLibApi extends BaseApi {
 
   KimSdkHandle crateApiClientKimSdkHandleCreate();
 
+  Future<void> crateApiClientKimSdkHandleDeleteAgentProfile({
+    required KimSdkHandle that,
+    required String profileId,
+  });
+
   Future<void> crateApiClientKimSdkHandleDeleteThread({
     required KimSdkHandle that,
     required String dest,
@@ -229,6 +234,11 @@ abstract class RustLibApi extends BaseApi {
     required int limit,
   });
 
+  Future<void> crateApiClientKimSdkHandleImportAgentProfiles({
+    required KimSdkHandle that,
+    required List<AgentProfileDto> rows,
+  });
+
   Future<SettingsDto> crateApiClientKimSdkHandleImportDeviceSettings({
     required KimSdkHandle that,
     required String wsUrl,
@@ -243,6 +253,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   String crateApiClientKimSdkHandleLinkState({required KimSdkHandle that});
+
+  Future<List<AgentProfileDto>> crateApiClientKimSdkHandleListAgentProfiles({
+    required KimSdkHandle that,
+  });
 
   Future<MessagePageDto> crateApiClientKimSdkHandleLoadOlder({
     required KimSdkHandle that,
@@ -344,11 +358,25 @@ abstract class RustLibApi extends BaseApi {
 
   bool crateApiClientKimSdkHandleStoreAttached({required KimSdkHandle that});
 
+  Future<void> crateApiClientKimSdkHandleSubmitAgentRun({
+    required KimSdkHandle that,
+    required AgentRunResultDto result,
+  });
+
   Future<ProfileDto> crateApiClientKimSdkHandleUpdateProfile({
     required KimSdkHandle that,
     required String nickname,
     required String avatar,
     required String bio,
+  });
+
+  Future<void> crateApiClientKimSdkHandleUpsertAgentProfile({
+    required KimSdkHandle that,
+    required AgentProfileDto row,
+  });
+
+  Stream<AgentRunRequestDto> crateApiClientKimSdkHandleWatchAgentRun({
+    required KimSdkHandle that,
   });
 
   Stream<SessionUpdateDto> crateApiClientKimSdkHandleWatchSession({
@@ -994,6 +1022,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "KimSdkHandle_create", argNames: []);
 
   @override
+  Future<void> crateApiClientKimSdkHandleDeleteAgentProfile({
+    required KimSdkHandle that,
+    required String profileId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(profileId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleDeleteAgentProfileConstMeta,
+        argValues: [that, profileId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleDeleteAgentProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_delete_agent_profile",
+        argNames: ["that", "profileId"],
+      );
+
+  @override
   Future<void> crateApiClientKimSdkHandleDeleteThread({
     required KimSdkHandle that,
     required String dest,
@@ -1010,7 +1076,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -1064,7 +1130,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 17,
             port: port_,
           );
         },
@@ -1124,7 +1190,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1160,7 +1226,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1196,7 +1262,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1234,7 +1300,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1272,7 +1338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1310,7 +1376,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1354,7 +1420,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1373,6 +1439,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "KimSdkHandle_history",
         argNames: ["that", "dest", "kind", "beforeId", "limit"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleImportAgentProfiles({
+    required KimSdkHandle that,
+    required List<AgentProfileDto> rows,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_list_agent_profile_dto(rows, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleImportAgentProfilesConstMeta,
+        argValues: [that, rows],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleImportAgentProfilesConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_import_agent_profiles",
+        argNames: ["that", "rows"],
       );
 
   @override
@@ -1398,7 +1502,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1436,7 +1540,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1467,7 +1571,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1483,6 +1587,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientKimSdkHandleLinkStateConstMeta =>
       const TaskConstMeta(
         debugName: "KimSdkHandle_link_state",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<List<AgentProfileDto>> crateApiClientKimSdkHandleListAgentProfiles({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 29,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_agent_profile_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleListAgentProfilesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleListAgentProfilesConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_list_agent_profiles",
         argNames: ["that"],
       );
 
@@ -1511,7 +1651,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1560,7 +1700,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1602,7 +1742,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1638,7 +1778,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1674,7 +1814,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1712,7 +1852,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1748,7 +1888,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1786,7 +1926,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1826,7 +1966,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1866,7 +2006,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1904,7 +2044,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1948,7 +2088,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1990,7 +2130,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2026,7 +2166,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 43,
             port: port_,
           );
         },
@@ -2068,7 +2208,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 44,
             port: port_,
           );
         },
@@ -2112,7 +2252,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 45,
             port: port_,
           );
         },
@@ -2146,7 +2286,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 46,
             port: port_,
           );
         },
@@ -2174,7 +2314,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -2191,6 +2331,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "KimSdkHandle_store_attached",
         argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiClientKimSdkHandleSubmitAgentRun({
+    required KimSdkHandle that,
+    required AgentRunResultDto result,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_box_autoadd_agent_run_result_dto(result, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 48,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSubmitAgentRunConstMeta,
+        argValues: [that, result],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSubmitAgentRunConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_submit_agent_run",
+        argNames: ["that", "result"],
       );
 
   @override
@@ -2214,7 +2392,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 49,
             port: port_,
           );
         },
@@ -2236,6 +2414,78 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiClientKimSdkHandleUpsertAgentProfile({
+    required KimSdkHandle that,
+    required AgentProfileDto row,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_box_autoadd_agent_profile_dto(row, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 50,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleUpsertAgentProfileConstMeta,
+        argValues: [that, row],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleUpsertAgentProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_upsert_agent_profile",
+        argNames: ["that", "row"],
+      );
+
+  @override
+  Stream<AgentRunRequestDto> crateApiClientKimSdkHandleWatchAgentRun({
+    required KimSdkHandle that,
+  }) {
+    final sink = RustStreamSink<AgentRunRequestDto>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_StreamSink_agent_run_request_dto_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleWatchAgentRunConstMeta,
+        argValues: [that, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleWatchAgentRunConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_watch_agent_run",
+        argNames: ["that", "sink"],
+      );
+
+  @override
   Stream<SessionUpdateDto> crateApiClientKimSdkHandleWatchSession({
     required KimSdkHandle that,
   }) {
@@ -2249,7 +2499,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 52)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2283,7 +2533,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 53)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2321,7 +2571,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(dest, serializer);
           sse_encode_i_32(limit, serializer);
           sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 54)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2355,7 +2605,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_token_persist_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 55)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2382,7 +2632,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 56)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2405,7 +2655,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 57)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2433,7 +2683,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 58,
             port: port_,
           );
         },
@@ -2528,6 +2778,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<AgentRunRequestDto>
+  dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -2561,6 +2818,73 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  AgentCardDto dco_decode_agent_card_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return AgentCardDto(
+      v: dco_decode_i_32(arr[0]),
+      cardType: dco_decode_String(arr[1]),
+      callId: dco_decode_String(arr[2]),
+      name: dco_decode_String(arr[3]),
+      state: dco_decode_String(arr[4]),
+      preview: dco_decode_String(arr[5]),
+      ok: dco_decode_bool(arr[6]),
+    );
+  }
+
+  @protected
+  AgentProfileDto dco_decode_agent_profile_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return AgentProfileDto(
+      profileId: dco_decode_String(arr[0]),
+      nickname: dco_decode_String(arr[1]),
+      serverAccount: dco_decode_String(arr[2]),
+      bodyJson: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  AgentRunRequestDto dco_decode_agent_run_request_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return AgentRunRequestDto(
+      dest: dco_decode_String(arr[0]),
+      profileId: dco_decode_String(arr[1]),
+      text: dco_decode_String(arr[2]),
+      inReplyTo: dco_decode_i_64(arr[3]),
+      epoch: dco_decode_u_64(arr[4]),
+    );
+  }
+
+  @protected
+  AgentRunResultDto dco_decode_agent_run_result_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return AgentRunResultDto(
+      dest: dco_decode_String(arr[0]),
+      profileId: dco_decode_String(arr[1]),
+      epoch: dco_decode_u_64(arr[2]),
+      output: dco_decode_String(arr[3]),
+      error: dco_decode_opt_String(arr[4]),
+    );
+  }
+
+  @protected
+  AgentTurnStateDto dco_decode_agent_turn_state_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AgentTurnStateDto.values[raw as int];
   }
 
   @protected
@@ -2598,6 +2922,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       contextTokens: dco_decode_i_32(arr[6]),
       visibility: dco_decode_String(arr[7]),
     );
+  }
+
+  @protected
+  AgentCardDto dco_decode_box_autoadd_agent_card_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_agent_card_dto(raw);
+  }
+
+  @protected
+  AgentProfileDto dco_decode_box_autoadd_agent_profile_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_agent_profile_dto(raw);
+  }
+
+  @protected
+  AgentRunResultDto dco_decode_box_autoadd_agent_run_result_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_agent_run_result_dto(raw);
   }
 
   @protected
@@ -2781,6 +3123,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<AgentProfileDto> dco_decode_list_agent_profile_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_agent_profile_dto).toList();
   }
 
   @protected
@@ -3052,6 +3400,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           contacts: dco_decode_list_person_dto(raw[1]),
         );
       case 15:
+        return SessionUpdateDto_AgentTurn(
+          dest: dco_decode_String(raw[1]),
+          state: dco_decode_agent_turn_state_dto(raw[2]),
+          text: dco_decode_String(raw[3]),
+        );
+      case 16:
+        return SessionUpdateDto_AgentCard(
+          dest: dco_decode_String(raw[1]),
+          card: dco_decode_box_autoadd_agent_card_dto(raw[2]),
+        );
+      case 17:
         return SessionUpdateDto_RustPanic(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
@@ -3269,6 +3628,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<AgentRunRequestDto>
+  sse_decode_StreamSink_agent_run_request_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3303,6 +3671,89 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  AgentCardDto sse_decode_agent_card_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_v = sse_decode_i_32(deserializer);
+    var var_cardType = sse_decode_String(deserializer);
+    var var_callId = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_state = sse_decode_String(deserializer);
+    var var_preview = sse_decode_String(deserializer);
+    var var_ok = sse_decode_bool(deserializer);
+    return AgentCardDto(
+      v: var_v,
+      cardType: var_cardType,
+      callId: var_callId,
+      name: var_name,
+      state: var_state,
+      preview: var_preview,
+      ok: var_ok,
+    );
+  }
+
+  @protected
+  AgentProfileDto sse_decode_agent_profile_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_profileId = sse_decode_String(deserializer);
+    var var_nickname = sse_decode_String(deserializer);
+    var var_serverAccount = sse_decode_String(deserializer);
+    var var_bodyJson = sse_decode_String(deserializer);
+    return AgentProfileDto(
+      profileId: var_profileId,
+      nickname: var_nickname,
+      serverAccount: var_serverAccount,
+      bodyJson: var_bodyJson,
+    );
+  }
+
+  @protected
+  AgentRunRequestDto sse_decode_agent_run_request_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_profileId = sse_decode_String(deserializer);
+    var var_text = sse_decode_String(deserializer);
+    var var_inReplyTo = sse_decode_i_64(deserializer);
+    var var_epoch = sse_decode_u_64(deserializer);
+    return AgentRunRequestDto(
+      dest: var_dest,
+      profileId: var_profileId,
+      text: var_text,
+      inReplyTo: var_inReplyTo,
+      epoch: var_epoch,
+    );
+  }
+
+  @protected
+  AgentRunResultDto sse_decode_agent_run_result_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_profileId = sse_decode_String(deserializer);
+    var var_epoch = sse_decode_u_64(deserializer);
+    var var_output = sse_decode_String(deserializer);
+    var var_error = sse_decode_opt_String(deserializer);
+    return AgentRunResultDto(
+      dest: var_dest,
+      profileId: var_profileId,
+      epoch: var_epoch,
+      output: var_output,
+      error: var_error,
+    );
+  }
+
+  @protected
+  AgentTurnStateDto sse_decode_agent_turn_state_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return AgentTurnStateDto.values[inner];
   }
 
   @protected
@@ -3341,6 +3792,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       contextTokens: var_contextTokens,
       visibility: var_visibility,
     );
+  }
+
+  @protected
+  AgentCardDto sse_decode_box_autoadd_agent_card_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_agent_card_dto(deserializer));
+  }
+
+  @protected
+  AgentProfileDto sse_decode_box_autoadd_agent_profile_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_agent_profile_dto(deserializer));
+  }
+
+  @protected
+  AgentRunResultDto sse_decode_box_autoadd_agent_run_result_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_agent_run_result_dto(deserializer));
   }
 
   @protected
@@ -3551,6 +4026,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <String>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AgentProfileDto> sse_decode_list_agent_profile_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AgentProfileDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_agent_profile_dto(deserializer));
     }
     return ans_;
   }
@@ -3934,6 +4423,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_contacts = sse_decode_list_person_dto(deserializer);
         return SessionUpdateDto_ContactsChanged(contacts: var_contacts);
       case 15:
+        var var_dest = sse_decode_String(deserializer);
+        var var_state = sse_decode_agent_turn_state_dto(deserializer);
+        var var_text = sse_decode_String(deserializer);
+        return SessionUpdateDto_AgentTurn(
+          dest: var_dest,
+          state: var_state,
+          text: var_text,
+        );
+      case 16:
+        var var_dest = sse_decode_String(deserializer);
+        var var_card = sse_decode_box_autoadd_agent_card_dto(deserializer);
+        return SessionUpdateDto_AgentCard(dest: var_dest, card: var_card);
+      case 17:
         var var_message = sse_decode_String(deserializer);
         return SessionUpdateDto_RustPanic(message: var_message);
       default:
@@ -4181,6 +4683,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_agent_run_request_dto_Sse(
+    RustStreamSink<AgentRunRequestDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_agent_run_request_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_session_snapshot_dto_Sse(
     RustStreamSink<SessionSnapshotDto> self,
     SseSerializer serializer,
@@ -4255,6 +4774,65 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_agent_card_dto(AgentCardDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.v, serializer);
+    sse_encode_String(self.cardType, serializer);
+    sse_encode_String(self.callId, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.state, serializer);
+    sse_encode_String(self.preview, serializer);
+    sse_encode_bool(self.ok, serializer);
+  }
+
+  @protected
+  void sse_encode_agent_profile_dto(
+    AgentProfileDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.profileId, serializer);
+    sse_encode_String(self.nickname, serializer);
+    sse_encode_String(self.serverAccount, serializer);
+    sse_encode_String(self.bodyJson, serializer);
+  }
+
+  @protected
+  void sse_encode_agent_run_request_dto(
+    AgentRunRequestDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.profileId, serializer);
+    sse_encode_String(self.text, serializer);
+    sse_encode_i_64(self.inReplyTo, serializer);
+    sse_encode_u_64(self.epoch, serializer);
+  }
+
+  @protected
+  void sse_encode_agent_run_result_dto(
+    AgentRunResultDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.profileId, serializer);
+    sse_encode_u_64(self.epoch, serializer);
+    sse_encode_String(self.output, serializer);
+    sse_encode_opt_String(self.error, serializer);
+  }
+
+  @protected
+  void sse_encode_agent_turn_state_dto(
+    AgentTurnStateDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_auth_session(AuthSession self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.token, serializer);
@@ -4279,6 +4857,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.thinkingEffort, serializer);
     sse_encode_i_32(self.contextTokens, serializer);
     sse_encode_String(self.visibility, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_agent_card_dto(
+    AgentCardDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_agent_card_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_agent_profile_dto(
+    AgentProfileDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_agent_profile_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_agent_run_result_dto(
+    AgentRunResultDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_agent_run_result_dto(self, serializer);
   }
 
   @protected
@@ -4462,6 +5067,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_agent_profile_dto(
+    List<AgentProfileDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_agent_profile_dto(item, serializer);
     }
   }
 
@@ -4797,8 +5414,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case SessionUpdateDto_ContactsChanged(contacts: final contacts):
         sse_encode_i_32(14, serializer);
         sse_encode_list_person_dto(contacts, serializer);
-      case SessionUpdateDto_RustPanic(message: final message):
+      case SessionUpdateDto_AgentTurn(
+        dest: final dest,
+        state: final state,
+        text: final text,
+      ):
         sse_encode_i_32(15, serializer);
+        sse_encode_String(dest, serializer);
+        sse_encode_agent_turn_state_dto(state, serializer);
+        sse_encode_String(text, serializer);
+      case SessionUpdateDto_AgentCard(dest: final dest, card: final card):
+        sse_encode_i_32(16, serializer);
+        sse_encode_String(dest, serializer);
+        sse_encode_box_autoadd_agent_card_dto(card, serializer);
+      case SessionUpdateDto_RustPanic(message: final message):
+        sse_encode_i_32(17, serializer);
         sse_encode_String(message, serializer);
     }
   }
@@ -5078,6 +5708,12 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   Future<void> cancelSend({required String clientId}) => RustLib.instance.api
       .crateApiClientKimSdkHandleCancelSend(that: this, clientId: clientId);
 
+  Future<void> deleteAgentProfile({required String profileId}) =>
+      RustLib.instance.api.crateApiClientKimSdkHandleDeleteAgentProfile(
+        that: this,
+        profileId: profileId,
+      );
+
   Future<void> deleteThread({required String dest}) => RustLib.instance.api
       .crateApiClientKimSdkHandleDeleteThread(that: this, dest: dest);
 
@@ -5135,6 +5771,12 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     limit: limit,
   );
 
+  Future<void> importAgentProfiles({required List<AgentProfileDto> rows}) =>
+      RustLib.instance.api.crateApiClientKimSdkHandleImportAgentProfiles(
+        that: this,
+        rows: rows,
+      );
+
   Future<SettingsDto> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
@@ -5153,6 +5795,9 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
 
   String linkState() =>
       RustLib.instance.api.crateApiClientKimSdkHandleLinkState(that: this);
+
+  Future<List<AgentProfileDto>> listAgentProfiles() => RustLib.instance.api
+      .crateApiClientKimSdkHandleListAgentProfiles(that: this);
 
   Future<MessagePageDto> loadOlder({
     required String dest,
@@ -5284,6 +5929,11 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   bool storeAttached() =>
       RustLib.instance.api.crateApiClientKimSdkHandleStoreAttached(that: this);
 
+  Future<void> submitAgentRun({required AgentRunResultDto result}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandleSubmitAgentRun(that: this, result: result);
+
   Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
@@ -5294,6 +5944,14 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     avatar: avatar,
     bio: bio,
   );
+
+  Future<void> upsertAgentProfile({required AgentProfileDto row}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimSdkHandleUpsertAgentProfile(that: this, row: row);
+
+  Stream<AgentRunRequestDto> watchAgentRun() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleWatchAgentRun(that: this);
 
   /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
   /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.

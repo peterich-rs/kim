@@ -22,7 +22,10 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-pub use agent::{AgentPort, NoopAgent};
+pub use agent::{
+    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime,
+    MobileAgent, NoopAgent, ScriptedRuntime, QUEUE_CAP,
+};
 pub use command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
     SendStatus, StartSession, TimelineQuery,
@@ -39,8 +42,8 @@ pub use store::prepare::{prepare_store_file, PrepareOutcome};
 pub use store::settings::DeviceSettings;
 pub use sync::UnreadPolicy;
 pub use timeline::{
-    LinkStateView, MessageView, PersonRef, SessionSnapshot, SessionUpdate, ThreadView,
-    TimelineDelta, TimelineSnapshot, TimelineUpdate,
+    AgentCard, AgentTurnState, LinkStateView, MessageView, PersonRef, SessionSnapshot,
+    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,6 +71,7 @@ struct Inner {
     outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
     outbox_run: Mutex<CancellationToken>,
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
+    ffi_runtime: Arc<FfiAgentRuntime>,
 }
 
 #[derive(Clone)]
@@ -96,6 +100,7 @@ impl KimSdk {
                 outbox_kick: Mutex::new(None),
                 outbox_run: Mutex::new(CancellationToken::new()),
                 token_persist: Mutex::new(Vec::new()),
+                ffi_runtime: FfiAgentRuntime::new(),
             }),
         })
     }
@@ -311,6 +316,66 @@ impl KimSdk {
 
     pub fn set_agent(&self, agent: Arc<dyn AgentPort>) {
         *lock(&self.inner.agent) = agent;
+    }
+
+    /// Desktop only. Phone leaves [`NoopAgent`].
+    pub fn install_mobile_agent(&self) {
+        let runtime = self.inner.ffi_runtime.clone();
+        self.set_agent(Arc::new(MobileAgent::new(self.clone(), runtime)));
+    }
+
+    pub fn subscribe_agent_run(&self) -> mpsc::Receiver<AgentRunRequest> {
+        self.inner.ffi_runtime.subscribe()
+    }
+
+    pub fn submit_agent_run(&self, result: AgentRunResult) {
+        self.inner.ffi_runtime.submit(result);
+    }
+
+    pub async fn upsert_agent_profile(&self, row: AgentProfileRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store.upsert_agent_profile(session.account, row).await
+    }
+
+    pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store
+            .delete_agent_profile(session.account, profile_id)
+            .await
+    }
+
+    pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store.load_agent_profiles(&session.account).await
+    }
+
+    pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let account = self
+            .session_snapshot()
+            .map(|s| s.account)
+            .unwrap_or_default();
+        store.import_agent_profiles(account, rows).await
+    }
+
+    async fn maybe_agent_catch_up(&self) {
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        let dests = match store.agent_owned_dests(&session.account).await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        if dests.is_empty() {
+            return;
+        }
+        let _ = self.agent().catch_up(&dests, self.current_epoch()).await;
     }
 
     pub(crate) fn agent(&self) -> Arc<dyn AgentPort> {
@@ -563,7 +628,7 @@ impl KimSdk {
         });
     }
 
-    async fn emit_session_wait(&self, update: SessionUpdate) {
+    pub(crate) async fn emit_session_wait(&self, update: SessionUpdate) {
         let subs = lock(&self.inner.session_subs).clone();
         for tx in subs {
             let _ = tx.send(update.clone()).await;
@@ -594,6 +659,16 @@ impl KimSdk {
                                         }
                                         SessionUpdate::AuthExpired { .. } => {
                                             sdk.publish_token_persist(TokenPersistEvent::Clear);
+                                        }
+                                        SessionUpdate::Link {
+                                            state: LinkStateView::Online,
+                                            ..
+                                        }
+                                        | SessionUpdate::SyncProgress {
+                                            catching_up: false,
+                                            ..
+                                        } => {
+                                            sdk.maybe_agent_catch_up().await;
                                         }
                                         _ => {}
                                     }

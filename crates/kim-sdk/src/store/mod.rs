@@ -7,6 +7,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::agent::AgentProfileRow;
 use crate::command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus,
 };
@@ -14,6 +15,7 @@ use crate::error::{map_sqlx, SdkError};
 use crate::sync::UnreadPolicy;
 use crate::timeline::{PersonRef, ThreadView, TimelineSnapshot};
 
+pub mod agent;
 pub mod contacts;
 pub mod cursors;
 pub mod messages;
@@ -111,6 +113,21 @@ enum WriteOp {
     UpsertDeviceSettings {
         row: settings::DeviceSettings,
         mark_imported: bool,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    UpsertAgentProfile {
+        account: String,
+        row: AgentProfileRow,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    DeleteAgentProfile {
+        account: String,
+        profile_id: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    ImportAgentProfiles {
+        account: String,
+        rows: Vec<AgentProfileRow>,
         reply: oneshot::Sender<Result<(), SdkError>>,
     },
 }
@@ -454,6 +471,92 @@ impl Store {
         settings::imported_prefs(&self.pool).await
     }
 
+    pub(crate) async fn agent_profile_id_for_dest(
+        &self,
+        account: &str,
+        dest: &str,
+    ) -> Result<Option<String>, SdkError> {
+        agent::profile_id_for_dest(&self.pool, account, dest).await
+    }
+
+    pub(crate) async fn agent_owned_dests(&self, account: &str) -> Result<Vec<String>, SdkError> {
+        agent::owned_dests(&self.pool, account).await
+    }
+
+    pub(crate) async fn load_agent_profiles(
+        &self,
+        account: &str,
+    ) -> Result<Vec<AgentProfileRow>, SdkError> {
+        agent::load_all(&self.pool, account).await
+    }
+
+    pub(crate) async fn agent_profiles_imported(&self) -> Result<bool, SdkError> {
+        agent::imported(&self.pool).await
+    }
+
+    pub(crate) async fn upsert_agent_profile(
+        &self,
+        account: String,
+        row: AgentProfileRow,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertAgentProfile {
+                account,
+                row,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn delete_agent_profile(
+        &self,
+        account: String,
+        profile_id: String,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::DeleteAgentProfile {
+                account,
+                profile_id,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn import_agent_profiles(
+        &self,
+        account: String,
+        rows: Vec<AgentProfileRow>,
+    ) -> Result<(), SdkError> {
+        if self.agent_profiles_imported().await? {
+            return Ok(());
+        }
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::ImportAgentProfiles {
+                account,
+                rows,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
     pub(crate) async fn upsert_device_settings(
         &self,
         row: settings::DeviceSettings,
@@ -707,6 +810,30 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 let result = upsert_settings_tx(&pool, &row, mark_imported).await;
                 let _ = reply.send(result);
             }
+            WriteOp::UpsertAgentProfile {
+                account,
+                row,
+                reply,
+            } => {
+                let result = upsert_agent_profile_tx(&pool, &account, &row).await;
+                let _ = reply.send(result);
+            }
+            WriteOp::DeleteAgentProfile {
+                account,
+                profile_id,
+                reply,
+            } => {
+                let result = delete_agent_profile_tx(&pool, &account, &profile_id).await;
+                let _ = reply.send(result);
+            }
+            WriteOp::ImportAgentProfiles {
+                account,
+                rows,
+                reply,
+            } => {
+                let result = import_agent_profiles_tx(&pool, &account, &rows).await;
+                let _ = reply.send(result);
+            }
         }
     }
 }
@@ -726,6 +853,46 @@ async fn replace_contacts_tx(
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = contacts::replace_all(&mut conn, account, rows, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn upsert_agent_profile_tx(
+    pool: &SqlitePool,
+    account: &str,
+    row: &AgentProfileRow,
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::upsert_profile(&mut conn, account, row, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn delete_agent_profile_tx(
+    pool: &SqlitePool,
+    account: &str,
+    profile_id: &str,
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::delete_profile(&mut conn, account, profile_id).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn import_agent_profiles_tx(
+    pool: &SqlitePool,
+    account: &str,
+    rows: &[AgentProfileRow],
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        for row in rows {
+            agent::upsert_profile(&mut conn, account, row, now_ms()).await?;
+        }
+        agent::mark_imported(&mut conn).await?;
+        Ok(())
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 

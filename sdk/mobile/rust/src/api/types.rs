@@ -1,6 +1,7 @@
 use kim_sdk::{
-    CommandReceipt, LinkStateView, MessagePage, MessageView, SendStatus, SessionSnapshot,
-    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
+    AgentCard, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentTurnState, CommandReceipt,
+    LinkStateView, MessagePage, MessageView, SendStatus, SessionSnapshot, SessionUpdate,
+    ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
 pub enum SendStatusDto {
@@ -190,9 +191,63 @@ pub enum SessionUpdateDto {
     ContactsChanged {
         contacts: Vec<PersonDto>,
     },
+    AgentTurn {
+        dest: String,
+        state: AgentTurnStateDto,
+        text: String,
+    },
+    AgentCard {
+        dest: String,
+        card: AgentCardDto,
+    },
     RustPanic {
         message: String,
     },
+}
+
+pub enum AgentTurnStateDto {
+    Queued,
+    Running,
+    WaitingPermission,
+    Done,
+    Error,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct AgentCardDto {
+    pub v: i32,
+    pub card_type: String,
+    pub call_id: String,
+    pub name: String,
+    pub state: String,
+    pub preview: String,
+    pub ok: bool,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct AgentRunRequestDto {
+    pub dest: String,
+    pub profile_id: String,
+    pub text: String,
+    pub in_reply_to: i64,
+    pub epoch: u64,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct AgentRunResultDto {
+    pub dest: String,
+    pub profile_id: String,
+    pub epoch: u64,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct AgentProfileDto {
+    pub profile_id: String,
+    pub nickname: String,
+    pub server_account: String,
+    pub body_json: String,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -441,7 +496,88 @@ impl From<SessionUpdate> for SessionUpdateDto {
                     })
                     .collect(),
             },
+            SessionUpdate::AgentTurn { dest, state, text } => Self::AgentTurn {
+                dest,
+                state: state.into(),
+                text,
+            },
+            SessionUpdate::AgentCard { dest, card } => Self::AgentCard {
+                dest,
+                card: card.into(),
+            },
             SessionUpdate::RustPanic { message } => Self::RustPanic { message },
+        }
+    }
+}
+
+impl From<AgentTurnState> for AgentTurnStateDto {
+    fn from(v: AgentTurnState) -> Self {
+        match v {
+            AgentTurnState::Queued => Self::Queued,
+            AgentTurnState::Running => Self::Running,
+            AgentTurnState::WaitingPermission => Self::WaitingPermission,
+            AgentTurnState::Done => Self::Done,
+            AgentTurnState::Error => Self::Error,
+        }
+    }
+}
+
+impl From<AgentCard> for AgentCardDto {
+    fn from(c: AgentCard) -> Self {
+        Self {
+            v: c.v,
+            card_type: c.card_type,
+            call_id: c.call_id,
+            name: c.name,
+            state: c.state,
+            preview: c.preview,
+            ok: c.ok,
+        }
+    }
+}
+
+impl From<AgentRunRequest> for AgentRunRequestDto {
+    fn from(r: AgentRunRequest) -> Self {
+        Self {
+            dest: r.dest,
+            profile_id: r.profile_id,
+            text: r.text,
+            in_reply_to: r.in_reply_to,
+            epoch: r.epoch,
+        }
+    }
+}
+
+impl From<AgentRunResultDto> for AgentRunResult {
+    fn from(r: AgentRunResultDto) -> Self {
+        Self {
+            dest: r.dest,
+            profile_id: r.profile_id,
+            epoch: r.epoch,
+            output: r.output,
+            error: r.error,
+        }
+    }
+}
+
+impl From<AgentProfileRow> for AgentProfileDto {
+    fn from(r: AgentProfileRow) -> Self {
+        Self {
+            profile_id: r.profile_id,
+            nickname: r.nickname,
+            server_account: r.server_account,
+            body_json: r.body_json,
+        }
+    }
+}
+
+impl From<AgentProfileDto> for AgentProfileRow {
+    fn from(r: AgentProfileDto) -> Self {
+        Self {
+            profile_id: r.profile_id,
+            nickname: r.nickname,
+            server_account: r.server_account,
+            body_json: r.body_json,
         }
     }
 }
