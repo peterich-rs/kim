@@ -167,27 +167,21 @@ class AgentBridge {
     return skillPortableList(userRoot: userRoot, projectRoot: projectRoot);
   }
 
-  /// Host FFI: `preview_assembled(profile_json, project_root) -> JSON`.
-  ///
-  /// Expected FRB after host Part A:
-  /// `crateApiSessionPreviewAssembled` / generated `previewAssembled(...)`.
-  /// Returns empty until that symbol is codegen'd — UI uses local tool projection.
+  /// Host FFI: assembled tools + layered prompts (no network).
   Future<String> previewAssembled({
     required String profileJson,
     required String projectRoot,
   }) async {
     await ensure();
-    // Stub: wire to generated `previewAssembled` once rust_agent FRB lands.
-    return '';
+    return AgentRustLib.instance.api.crateApiSessionPreviewAssembled(
+      profileJson: profileJson,
+      projectRoot: projectRoot,
+    );
   }
 
-  /// Host FFI: `capability_catalog_json() -> JSON`.
-  ///
-  /// Expected FRB after host Part A:
-  /// `crateApiSessionCapabilityCatalogJson` / generated `capabilityCatalogJson()`.
+  /// Host FFI: registered capability kinds for UI cards.
   Future<String> capabilityCatalogJson() async {
     await ensure();
-    // Stub: wire to generated `capabilityCatalogJson` once rust_agent FRB lands.
-    return '[]';
+    return AgentRustLib.instance.api.crateApiSessionCapabilityCatalogJson();
   }
 }
