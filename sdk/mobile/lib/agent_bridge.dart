@@ -4,7 +4,11 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'agent/host_support.dart';
-import 'src/rust_agent/api/session.dart';
+import 'src/rust_agent/api/session.dart'
+    hide previewAssembled, capabilityCatalogJson;
+import 'src/rust_agent/api/session.dart'
+    as rust_session
+    show previewAssembled, capabilityCatalogJson;
 import 'src/rust_agent/frb_generated.dart';
 
 export 'src/rust_agent/api/session.dart'
@@ -173,7 +177,7 @@ class AgentBridge {
     required String projectRoot,
   }) async {
     await ensure();
-    return AgentRustLib.instance.api.crateApiSessionPreviewAssembled(
+    return rust_session.previewAssembled(
       profileJson: profileJson,
       projectRoot: projectRoot,
     );
@@ -182,6 +186,6 @@ class AgentBridge {
   /// Host FFI: registered capability kinds for UI cards.
   Future<String> capabilityCatalogJson() async {
     await ensure();
-    return AgentRustLib.instance.api.crateApiSessionCapabilityCatalogJson();
+    return rust_session.capabilityCatalogJson();
   }
 }
