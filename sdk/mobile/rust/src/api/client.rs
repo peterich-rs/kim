@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
 use kim_client::{
-    BotPendingItem, HistoryItem, InboxItem, IncomingTalk, LinkState, OutgoingContent, SessionEvent,
-    SessionSupervisor, TalkResult,
+    BotPendingItem, HistoryItem, InboxItem, LinkState, OutgoingContent, SessionSupervisor,
+    TalkResult,
 };
-use kim_sdk::{
-    KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession, UnreadPolicy,
-};
+use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession};
 
 use super::rt;
 use super::types::{
@@ -47,16 +45,6 @@ pub struct KimInboxItem {
     pub unread: i32,
 }
 
-pub struct KimIncomingTalk {
-    pub dest: String,
-    pub sender: String,
-    pub body: String,
-    pub extra: String,
-    pub message_id: i64,
-    pub send_time: i64,
-    pub msg_type: i32,
-}
-
 pub struct KimHistoryItem {
     pub message_id: i64,
     pub msg_type: i32,
@@ -73,58 +61,7 @@ pub struct KimBotPendingItem {
     pub send_time: i64,
 }
 
-/// Supervisor events. `kind` is link/inbox/talk/sync_progress/sync_done/sync_failed/kick/token/friend/group.
-pub struct KimSessionEvent {
-    pub kind: String,
-    pub state: String,
-    pub attempt: u32,
-    pub items: Vec<KimInboxItem>,
-    pub dest: String,
-    pub sender: String,
-    pub body: String,
-    pub extra: String,
-    pub message_id: i64,
-    pub send_time: i64,
-    pub command: String,
-    pub msg_type: i32,
-    pub pulled: u64,
-    pub page_pending: bool,
-    pub error: String,
-    pub channel_id: String,
-    pub token: String,
-    pub exp: i64,
-    pub nickname: String,
-    pub members: Vec<String>,
-}
-
-impl KimSessionEvent {
-    fn empty() -> Self {
-        Self {
-            kind: String::new(),
-            state: String::new(),
-            attempt: 0,
-            items: Vec::new(),
-            dest: String::new(),
-            sender: String::new(),
-            body: String::new(),
-            extra: String::new(),
-            message_id: 0,
-            send_time: 0,
-            command: String::new(),
-            msg_type: 0,
-            pulled: 0,
-            page_pending: false,
-            error: String::new(),
-            channel_id: String::new(),
-            token: String::new(),
-            exp: 0,
-            nickname: String::new(),
-            members: Vec::new(),
-        }
-    }
-}
-
-/// Opaque handle. Always owns protocol; store attach is opt-in.
+/// Opaque handle. Protocol plus optional store attach (production always attaches).
 pub struct KimSdkHandle {
     inner: Arc<KimSdk>,
 }
@@ -235,32 +172,6 @@ impl KimSdkHandle {
             })
             .await
             .map_err(|e| e.to_string())
-    }
-
-    pub async fn persist_talks(
-        &self,
-        talks: Vec<KimIncomingTalk>,
-        policy: String,
-    ) -> Result<(), SdkErrorDto> {
-        let policy = if policy == "ifInserted" {
-            UnreadPolicy::IfInserted
-        } else {
-            UnreadPolicy::Keep
-        };
-        let talks = talks.into_iter().map(IncomingTalk::from).collect();
-        self.inner
-            .persist_talks(talks, policy)
-            .await
-            .map_err(SdkErrorDto::from)
-    }
-
-    pub async fn persist_inbox(&self, items: Vec<KimInboxItem>) -> Result<(), SdkErrorDto> {
-        let items = items.into_iter().map(InboxItem::from).collect();
-        self.inner
-            .persist_inbox(items)
-            .await
-            .map_err(SdkErrorDto::from)?;
-        Ok(())
     }
 
     pub async fn enqueue_message(
@@ -411,43 +322,6 @@ impl KimSdkHandle {
         }
     }
 
-    /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
-    /// watch_session is Kickout/token/friend, not a replacement inbox.
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn session_events(&self, sink: StreamSink<KimSessionEvent>) -> Result<(), String> {
-        let supervisor = self.supervisor()?;
-        let _guard = rt().enter();
-        let mut rx = supervisor.events();
-        supervisor.ensure_running();
-        let _ = sink.add(map_link(&supervisor));
-        let supervisor = supervisor.clone();
-        rt().spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(ev) => {
-                        let mapped = match ev {
-                            SessionEvent::Link(_) => map_link(&supervisor),
-                            other => map_event(other),
-                        };
-                        if sink.add(mapped).is_err() {
-                            break;
-                        }
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!(skipped, "session event lag");
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-        Ok(())
-    }
-
-    pub fn sync_confirm(&self, cursor: i64) -> Result<(), String> {
-        self.supervisor()?.sync_confirm(cursor);
-        Ok(())
-    }
-
     pub fn notify_radio_up(&self) -> Result<(), String> {
         rt().block_on(self.inner.notify_radio_up())
             .map_err(|e| e.to_string())
@@ -512,12 +386,6 @@ impl KimSdkHandle {
     pub fn mark_read(&self, dest: String, kind: i32, message_id: i64) -> Result<(), String> {
         let client = self.supervisor()?.client();
         rt().block_on(client.mark_read(&dest, kind, message_id))
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn ack(&self, message_id: i64) -> Result<(), String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.ack(message_id))
             .map_err(|e| e.to_string())
     }
 
@@ -723,166 +591,6 @@ impl KimSdkHandle {
     }
 }
 
-fn map_link(supervisor: &SessionSupervisor) -> KimSessionEvent {
-    let mut ev = KimSessionEvent::empty();
-    ev.kind = "link".into();
-    match supervisor.state() {
-        LinkState::Connecting => ev.state = "Connecting".into(),
-        LinkState::Online => ev.state = "Online".into(),
-        LinkState::Reconnecting { attempt } => {
-            ev.state = "Reconnecting".into();
-            ev.attempt = attempt;
-            if let Some(reason) = supervisor.last_drop_reason() {
-                ev.error = reason.as_str().into();
-            }
-        }
-        LinkState::Offline => ev.state = "Offline".into(),
-    }
-    ev
-}
-
-fn map_event(event: SessionEvent) -> KimSessionEvent {
-    match event {
-        SessionEvent::Link(_) => {
-            // Link events are mapped via `map_link(&supervisor)` in session_events.
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "link".into();
-            ev
-        }
-        SessionEvent::Inbox(items) => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "inbox".into();
-            ev.items = items.into_iter().map(KimInboxItem::from).collect();
-            ev
-        }
-        SessionEvent::Talk(t) => KimSessionEvent::from(t),
-        SessionEvent::SyncPage { page_id, talks } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "sync_page".into();
-            ev.message_id = page_id;
-            ev.page_pending = true;
-            ev.body = serde_json::to_string(&talks).unwrap_or_else(|_| "[]".into());
-            ev
-        }
-        SessionEvent::SyncProgress {
-            pulled,
-            page_pending,
-        } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "sync_progress".into();
-            ev.pulled = pulled as u64;
-            ev.page_pending = page_pending;
-            ev
-        }
-        SessionEvent::SyncDone { pulled } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "sync_done".into();
-            ev.pulled = pulled as u64;
-            ev
-        }
-        SessionEvent::SyncFailed(error) => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "sync_failed".into();
-            ev.error = error;
-            ev
-        }
-        SessionEvent::Kickout { channel_id } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "kick".into();
-            ev.channel_id = channel_id;
-            ev
-        }
-        SessionEvent::TokenRenew { token, exp } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "token".into();
-            ev.token = token;
-            ev.exp = exp;
-            ev
-        }
-        SessionEvent::FriendRequest { from, nickname } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "friend".into();
-            ev.dest = from.clone();
-            ev.sender = from;
-            ev.nickname = nickname;
-            ev
-        }
-        SessionEvent::FriendAccepted { from, nickname } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "friend_accepted".into();
-            ev.dest = from.clone();
-            ev.sender = from;
-            ev.nickname = nickname;
-            ev
-        }
-        SessionEvent::ProfileUpdated { profile } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "profile_updated".into();
-            ev.dest = profile.account.clone();
-            ev.sender = profile.account;
-            ev.nickname = profile.nickname;
-            // Reuse `extra` for avatar to avoid FRB schema churn.
-            ev.extra = profile.avatar;
-            ev
-        }
-        SessionEvent::PresenceUpdated {
-            account,
-            status,
-            last_seen,
-        } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "presence".into();
-            ev.dest = account.clone();
-            ev.sender = account;
-            ev.msg_type = status;
-            ev.send_time = last_seen;
-            ev
-        }
-        SessionEvent::TypingUpdated {
-            typer,
-            dest,
-            kind,
-            active,
-        } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "typing".into();
-            ev.dest = dest;
-            ev.sender = typer;
-            ev.msg_type = kind;
-            // Reuse page_pending as active flag to avoid FRB schema churn.
-            ev.page_pending = active;
-            ev
-        }
-        SessionEvent::ReceiptRead {
-            reader,
-            dest,
-            kind,
-            message_id,
-        } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "receipt_read".into();
-            ev.dest = dest;
-            ev.sender = reader;
-            ev.msg_type = kind;
-            ev.message_id = message_id;
-            ev
-        }
-        SessionEvent::GroupCreate { group_id, members } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "group".into();
-            ev.dest = group_id;
-            ev.members = members;
-            ev
-        }
-        SessionEvent::AuthFailed { reason } => {
-            let mut ev = KimSessionEvent::empty();
-            ev.kind = "auth".into();
-            ev.error = reason;
-            ev
-        }
-    }
-}
-
 impl From<TalkResult> for KimTalkResult {
     fn from(r: TalkResult) -> Self {
         Self {
@@ -908,37 +616,6 @@ impl From<InboxItem> for KimInboxItem {
     }
 }
 
-impl From<KimInboxItem> for InboxItem {
-    fn from(i: KimInboxItem) -> Self {
-        Self {
-            dest: i.dest,
-            kind: i.kind,
-            title: i.title,
-            avatar: i.avatar,
-            last_body: i.last_body,
-            last_sender: i.last_sender,
-            last_message_id: i.last_message_id,
-            last_send_time: i.last_send_time,
-            unread: i.unread,
-        }
-    }
-}
-
-impl From<KimIncomingTalk> for IncomingTalk {
-    fn from(t: KimIncomingTalk) -> Self {
-        Self {
-            command: String::new(),
-            dest: t.dest,
-            message_id: t.message_id,
-            sender: t.sender,
-            msg_type: t.msg_type,
-            body: t.body,
-            extra: t.extra,
-            send_time: t.send_time,
-        }
-    }
-}
-
 impl From<HistoryItem> for KimHistoryItem {
     fn from(h: HistoryItem) -> Self {
         Self {
@@ -960,21 +637,5 @@ impl From<BotPendingItem> for KimBotPendingItem {
             body: i.body,
             send_time: i.send_time,
         }
-    }
-}
-
-impl From<IncomingTalk> for KimSessionEvent {
-    fn from(t: IncomingTalk) -> Self {
-        let mut ev = KimSessionEvent::empty();
-        ev.kind = "talk".into();
-        ev.dest = t.dest;
-        ev.sender = t.sender;
-        ev.body = t.body;
-        ev.extra = t.extra;
-        ev.message_id = t.message_id;
-        ev.send_time = t.send_time;
-        ev.command = t.command;
-        ev.msg_type = t.msg_type;
-        ev
     }
 }

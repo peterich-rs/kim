@@ -10,7 +10,6 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/support/fake_kim.dart';
@@ -37,11 +36,8 @@ void main() {
       buildNumber: '1',
     );
     final fake = FakeKim();
-    final store = ConversationStore.memory();
-    addTearDown(store.close);
-
     await tester.pumpWidget(
-      KimAppHost(runtime: runtime, auth: fake, client: fake, store: store),
+      KimAppHost(runtime: runtime, auth: fake, client: fake),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));

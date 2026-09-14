@@ -32,6 +32,16 @@ impl ProtocolClient for KindProto {
     async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
         Ok(())
     }
+
+    async fn history(
+        &self,
+        _dest: &str,
+        _kind: i32,
+        _before_id: i64,
+        _limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        Ok(vec![])
+    }
 }
 
 #[tokio::test]

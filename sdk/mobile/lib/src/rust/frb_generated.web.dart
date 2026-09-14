@@ -74,11 +74,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<KimSessionEvent> dco_decode_StreamSink_kim_session_event_Sse(
-    dynamic raw,
-  );
-
-  @protected
   RustStreamSink<SessionSnapshotDto>
   dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw);
 
@@ -146,13 +141,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimInboxItem dco_decode_kim_inbox_item(dynamic raw);
 
   @protected
-  KimIncomingTalk dco_decode_kim_incoming_talk(dynamic raw);
-
-  @protected
   KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw);
-
-  @protected
-  KimSessionEvent dco_decode_kim_session_event(dynamic raw);
 
   @protected
   KimTalkResult dco_decode_kim_talk_result(dynamic raw);
@@ -171,9 +160,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<KimInboxItem> dco_decode_list_kim_inbox_item(dynamic raw);
-
-  @protected
-  List<KimIncomingTalk> dco_decode_list_kim_incoming_talk(dynamic raw);
 
   @protected
   List<MessageViewDto> dco_decode_list_message_view_dto(dynamic raw);
@@ -302,11 +288,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<KimSessionEvent> sse_decode_StreamSink_kim_session_event_Sse(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   RustStreamSink<SessionSnapshotDto>
   sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer);
 
@@ -388,15 +369,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimInboxItem sse_decode_kim_inbox_item(SseDeserializer deserializer);
 
   @protected
-  KimIncomingTalk sse_decode_kim_incoming_talk(SseDeserializer deserializer);
-
-  @protected
   KimOutgoingContent sse_decode_kim_outgoing_content(
     SseDeserializer deserializer,
   );
-
-  @protected
-  KimSessionEvent sse_decode_kim_session_event(SseDeserializer deserializer);
 
   @protected
   KimTalkResult sse_decode_kim_talk_result(SseDeserializer deserializer);
@@ -419,11 +394,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<KimInboxItem> sse_decode_list_kim_inbox_item(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  List<KimIncomingTalk> sse_decode_list_kim_incoming_talk(
     SseDeserializer deserializer,
   );
 
@@ -575,12 +545,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_StreamSink_kim_session_event_Sse(
-    RustStreamSink<KimSessionEvent> self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_StreamSink_session_snapshot_dto_Sse(
     RustStreamSink<SessionSnapshotDto> self,
     SseSerializer serializer,
@@ -680,20 +644,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_kim_inbox_item(KimInboxItem self, SseSerializer serializer);
 
   @protected
-  void sse_encode_kim_incoming_talk(
-    KimIncomingTalk self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_kim_outgoing_content(
     KimOutgoingContent self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_kim_session_event(
-    KimSessionEvent self,
     SseSerializer serializer,
   );
 
@@ -721,12 +673,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_kim_inbox_item(
     List<KimInboxItem> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_kim_incoming_talk(
-    List<KimIncomingTalk> self,
     SseSerializer serializer,
   );
 

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:kim_mobile/core/media.dart';
-import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
@@ -20,39 +19,33 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int connects = 0;
   int talks = 0;
   int imageTalks = 0;
-  int acks = 0;
   int reads = 0;
   int typingCalls = 0;
   String lastTypingDest = '';
   bool lastTypingActive = false;
   String lastReadDest = '';
   int lastReadMessageId = 0;
-  int talkSendTime = 1;
-  int confirms = 0;
   int radioUps = 0;
   int foregrounds = 0;
   int friendRequests = 0;
   int friendRemoves = 0;
-  int lastConfirm = 0;
-  final eventsController = StreamController<KimEvent>.broadcast();
-  List<KimPerson> friends = const [];
-  List<KimPerson> incoming = const [];
   String lastUserAgent = '';
   String lastOrigin = '';
   String lastAccount = '';
   String lastPassword = '';
   String lastTalkDest = '';
-  int lastTalkKind = 0;
-  String lastTalkBody = '';
-  String lastImageUrl = '';
-  String lastImageExtra = '';
   String lastClientId = '';
   final List<String> clientIds = [];
-  KimLinkState _link = const KimLinkState();
   Completer<void>? sendHold;
+
   final snapshotCtrl = StreamController<SessionSnapshotDto>.broadcast();
   final sessionUpdateCtrl = StreamController<SessionUpdateDto>.broadcast();
   final timelines = <String, StreamController<TimelineUpdateDto>>{};
+  SessionSnapshotDto snapshot = const SessionSnapshotDto(
+    link: LinkStateDto.offline(),
+    threads: [],
+    unreadTotal: 0,
+  );
 
   KimAuthSession _ok() {
     return session ??
@@ -68,6 +61,73 @@ class FakeKim implements KimAuthPort, KimClientPort {
       throw error!;
     }
     return _ok();
+  }
+
+  void pushSnapshot(SessionSnapshotDto s) {
+    snapshot = s;
+    snapshotCtrl.add(s);
+  }
+
+  void pushEvent(SessionUpdateDto e) {
+    sessionUpdateCtrl.add(e);
+  }
+
+  void pushTimeline(String dest, TimelineUpdateDto u) {
+    lastTimeline[dest] = u;
+    timelines
+        .putIfAbsent(dest, StreamController<TimelineUpdateDto>.broadcast)
+        .add(u);
+  }
+
+  void fakeIncomingText({
+    required String dest,
+    required String body,
+    int id = 1,
+  }) {
+    final thread = ThreadViewDto(
+      id: dest,
+      kind: 0,
+      title: dest,
+      avatar: '',
+      lastBody: body,
+      lastAt: id,
+      unread: 1,
+    );
+    final rest = snapshot.threads.where((t) => t.id != dest).toList();
+    pushSnapshot(
+      SessionSnapshotDto(
+        link: snapshot.link,
+        lastError: snapshot.lastError,
+        threads: [thread, ...rest],
+        unreadTotal: snapshot.unreadTotal + 1,
+      ),
+    );
+    pushTimeline(
+      dest,
+      TimelineUpdateDto.delta(
+        delta: TimelineDeltaDto(
+          dest: dest,
+          fromVersion: BigInt.zero,
+          toVersion: BigInt.one,
+          upserts: [
+            MessageViewDto(
+              key: 'm$id',
+              dest: dest,
+              sender: dest,
+              body: body,
+              at: id,
+              sys: false,
+              kind: 1,
+              width: 0,
+              height: 0,
+              messageId: id,
+              sendStatus: SendStatusDto.sent,
+            ),
+          ],
+          deletedKeys: const [],
+        ),
+      ),
+    );
   }
 
   @override
@@ -133,32 +193,45 @@ class FakeKim implements KimAuthPort, KimClientPort {
     if (connectError != null) {
       throw connectError!;
     }
-    _link = const KimLinkState(status: ConnStatus.online);
-    eventsController.add(
-      const KimEvent(kind: KimEventKind.link, state: 'Online'),
+    pushSnapshot(
+      SessionSnapshotDto(
+        link: const LinkStateDto.online(),
+        lastError: snapshot.lastError,
+        threads: snapshot.threads,
+        unreadTotal: snapshot.unreadTotal,
+      ),
     );
   }
 
   @override
   Future<void> stopSession() async {
-    _link = const KimLinkState();
+    pushSnapshot(
+      SessionSnapshotDto(
+        link: const LinkStateDto.offline(),
+        threads: snapshot.threads,
+        unreadTotal: snapshot.unreadTotal,
+      ),
+    );
   }
 
   @override
-  KimLinkState linkState() => _link;
-
-  @override
-  Stream<KimEvent> sessionEvents() => eventsController.stream;
-
-  @override
-  Stream<SessionSnapshotDto> watchSessionSnapshot() => snapshotCtrl.stream;
+  Stream<SessionSnapshotDto> watchSessionSnapshot() async* {
+    yield snapshot;
+    yield* snapshotCtrl.stream;
+  }
 
   @override
   Stream<SessionUpdateDto> watchSessionEvents() => sessionUpdateCtrl.stream;
 
+  final lastTimeline = <String, TimelineUpdateDto>{};
+
   @override
-  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) {
-    return timelines
+  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) async* {
+    final last = lastTimeline[dest];
+    if (last != null) {
+      yield last;
+    }
+    yield* timelines
         .putIfAbsent(dest, StreamController<TimelineUpdateDto>.broadcast)
         .stream;
   }
@@ -175,12 +248,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<void> syncConfirm(int cursor) async {
-    confirms += 1;
-    lastConfirm = cursor;
-  }
-
-  @override
   Future<void> notifyRadioUp() async {
     radioUps += 1;
   }
@@ -191,75 +258,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<KimTalkResult> sendMessage(
-    String dest,
-    ThreadKind kind,
-    KimOutgoingContent content, {
-    required String clientId,
-  }) async {
-    lastClientId = clientId;
-    clientIds.add(clientId);
-    lastTalkDest = dest;
-    lastTalkKind = kind == ThreadKind.group ? 1 : 0;
-    switch (content) {
-      case KimTextContent(:final text):
-        talks += 1;
-        lastTalkBody = text;
-      case KimImageContent(:final url, :final width, :final height):
-        imageTalks += 1;
-        lastImageUrl = url;
-        lastImageExtra = '{"w":$width,"h":$height}';
-      case KimVideoContent(:final url):
-        talks += 1;
-        lastTalkBody = url;
-    }
-    if (talkError != null) {
-      throw talkError!;
-    }
-    final hold = sendHold;
-    if (hold != null) {
-      await hold.future;
-    }
-    return KimTalkResult(messageId: 1, sendTime: talkSendTime);
-  }
-
-  List<KimHistoryMsg> historyRows = const [];
-  int historyCalls = 0;
-  int lastHistoryBeforeId = 0;
-
-  @override
-  Future<List<KimHistoryMsg>> history(
-    String dest,
-    ThreadKind kind, {
-    int beforeId = 0,
-    int limit = 50,
-  }) async {
-    historyCalls += 1;
-    lastHistoryBeforeId = beforeId;
-    if (beforeId <= 0) {
-      return historyRows.take(limit).toList();
-    }
-    return historyRows
-        .where((m) => m.messageId < beforeId)
-        .take(limit)
-        .toList();
-  }
-
-  @override
-  Future<List<KimThread>> inboxList({int limit = 200}) async {
-    return const [];
-  }
-
-  @override
-  Future<void> ack(int messageId) async {
-    acks += 1;
-  }
-
-  @override
   Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
     reads += 1;
     lastReadDest = dest;
     lastReadMessageId = messageId;
+  }
+
+  void emitKick({String channelId = 'ch-1'}) {
+    pushEvent(SessionUpdateDto.kickout(channelId: channelId));
+  }
+
+  void emitAuthExpired({String error = 'unauthorized'}) {
+    pushEvent(SessionUpdateDto.authExpired(reason: error));
   }
 
   void emitFriend({
@@ -267,60 +277,13 @@ class FakeKim implements KimAuthPort, KimClientPort {
     String nickname = '',
     bool accepted = false,
   }) {
-    eventsController.add(
-      KimEvent(
-        kind: accepted ? KimEventKind.friendAccepted : KimEventKind.friend,
-        dest: from,
-        sender: from,
-        nickname: nickname,
-      ),
-    );
-  }
-
-  void emitAuthExpired({String error = 'unauthorized'}) {
-    eventsController.add(
-      KimEvent(kind: KimEventKind.authExpired, error: error),
-    );
-  }
-
-  void emitKick({String channelId = 'ch-1'}) {
-    eventsController.add(KimEvent(kind: KimEventKind.kick, dest: channelId));
-  }
-
-  void emitSyncPage({required int pageId, required List<KimEvent> talks}) {
-    eventsController.add(
-      KimEvent(
-        kind: KimEventKind.syncPage,
-        pageId: pageId,
-        talks: talks,
-        pagePending: true,
-      ),
-    );
-  }
-
-  void emitTalk({
-    required String dest,
-    required String sender,
-    required String body,
-    String extra = '',
-    int sendTime = 0,
-    int messageId = 0,
-  }) {
-    eventsController.add(
-      KimEvent(
-        kind: KimEventKind.talk,
-        dest: dest,
-        sender: sender,
-        body: body,
-        extra: extra,
-        messageId: messageId == 0
-            ? DateTime.now().microsecondsSinceEpoch
-            : messageId,
-        sendTime: sendTime == 0
-            ? DateTime.now().millisecondsSinceEpoch
-            : sendTime,
-      ),
-    );
+    if (accepted) {
+      pushEvent(
+        SessionUpdateDto.friendAccepted(from: from, nickname: nickname),
+      );
+    } else {
+      pushEvent(SessionUpdateDto.friendRequest(from: from, nickname: nickname));
+    }
   }
 
   @override
@@ -328,6 +291,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<List<KimPerson>> friendIncoming() async => incoming;
+
+  List<KimPerson> friends = const [];
+  List<KimPerson> incoming = const [];
 
   @override
   Future<List<KimPerson>> searchUsers(String query) async {
@@ -435,6 +401,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int botPendings = 0;
   List<KimBotPendingItem> pendingItems = const [];
   Duration? botReplyDelay;
+  int botTypings = 0;
+  bool? lastBotTypingActive;
+  String lastBotTypingDest = '';
 
   @override
   Future<KimPerson> botCreate({
@@ -534,10 +503,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return pendingItems.take(limit).toList();
   }
 
-  int botTypings = 0;
-  bool? lastBotTypingActive;
-  String lastBotTypingDest = '';
-
   @override
   Future<void> botTyping(
     String dest, {
@@ -548,27 +513,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastBotTypingDest = dest;
     lastBotTypingActive = active;
   }
-
-  int attachStores = 0;
-  String lastAttachPath = '';
-
-  @override
-  Future<void> attachStore(String dbPath) async {
-    attachStores += 1;
-    lastAttachPath = dbPath;
-  }
-
-  @override
-  bool get rustStoreAttached => false;
-
-  @override
-  Future<void> persistTalks(
-    Iterable<KimChatMsg> msgs, {
-    required UnreadPolicy policy,
-  }) async {}
-
-  @override
-  Future<void> persistInboxThreads(List<KimThread> threads) async {}
 
   int enqueues = 0;
   int retries = 0;
@@ -603,6 +547,39 @@ class FakeKim implements KimAuthPort, KimClientPort {
       KimImageContent(:final url) => url,
       KimVideoContent(:final url) => url,
     };
+    final hold = sendHold;
+    if (hold != null) {
+      await hold.future;
+    }
+    final body = lastEnqueueBody;
+    final failed = talkError != null;
+    pushTimeline(
+      dest,
+      TimelineUpdateDto.delta(
+        delta: TimelineDeltaDto(
+          dest: dest,
+          fromVersion: BigInt.zero,
+          toVersion: BigInt.one,
+          upserts: [
+            MessageViewDto(
+              key: clientId,
+              dest: dest,
+              sender: 'alice',
+              body: body,
+              at: 1,
+              sys: false,
+              kind: 1,
+              width: width,
+              height: height,
+              messageId: 0,
+              sendStatus: failed ? SendStatusDto.failed : SendStatusDto.pending,
+              localPath: localPath.isEmpty ? null : localPath,
+            ),
+          ],
+          deletedKeys: const [],
+        ),
+      ),
+    );
     return KimCommandReceipt(
       requestId: 'req-$enqueues',
       clientId: clientId,

@@ -1,20 +1,13 @@
 library;
 
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../agent/host_support.dart';
 import '../agent/mention.dart';
-import '../core/format.dart';
-import 'agent_profiles.dart';
-import '../core/image_extra.dart';
-import '../data/conversation_store.dart';
 import '../models/models.dart';
-import 'contacts.dart';
-import 'location.dart';
+import 'agent_profiles.dart';
+import 'kim_session.dart';
 import 'providers.dart';
-import 'auth.dart';
 
 class ThreadsState {
   const ThreadsState({required this.threads, this.query = ''});
@@ -78,132 +71,33 @@ List<KimThread> withLocalThreads(
 }
 
 class ThreadsNotifier extends Notifier<ThreadsState> {
+  var _query = '';
+
   @override
   ThreadsState build() {
-    final account = ref.watch(authProvider.select((s) => s.account));
-    if (account.isEmpty) {
-      return ThreadsState.empty();
-    }
-    final store = ref.watch(conversationStoreProvider);
+    final dtos = ref.watch(kimSessionProvider.select((s) => s.threads));
     ref.watch(agentProfilesProvider);
-    final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
-    final loaded = store.loadThreads(account);
-    return ThreadsState(
-      threads: !agentHostSupported ? loaded : withLocalThreads(loaded, agents),
-    );
+    var threads = [for (final t in dtos) kimThreadFromDto(t)];
+    if (agentHostSupported) {
+      final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
+      threads = withLocalThreads(threads, agents);
+    }
+    return ThreadsState(threads: threads, query: _query);
   }
 
   void setQuery(String value) {
+    _query = value;
     state = state.copyWith(query: value);
   }
 
-  void mergeInbox(List<KimThread> incoming) {
-    if (incoming.isEmpty) {
-      return;
-    }
-    final viewing = chatIdFromPath(ref.read(locationProvider));
-    final byId = {for (final t in state.threads) t.id: t};
-    for (final t in incoming) {
-      final prev = byId[t.id];
-      byId[t.id] = KimThread(
-        id: t.id,
-        kind: t.kind,
-        title: t.title.isEmpty ? (prev?.title ?? t.id) : t.title,
-        lastBody: t.lastBody.isEmpty
-            ? (prev?.lastBody ?? '')
-            : previewSnippet(t.lastBody),
-        lastAt: t.lastAt == 0 ? (prev?.lastAt ?? 0) : t.lastAt,
-        unread: _mergedUnread(prev, t, viewing),
-        avatar: t.avatar.isEmpty ? (prev?.avatar ?? '') : t.avatar,
-      );
-    }
-    final next = byId.values.toList()
-      ..sort((a, b) => b.lastAt.compareTo(a.lastAt));
-    state = state.copyWith(threads: next);
-    _persist();
+  Future<void> markRead(String dest) async {
+    final t = state.thread(dest);
+    final kind = t?.kind ?? ThreadKind.user;
+    await ref.read(clientPortProvider).markRead(dest, kind, 0);
   }
 
-  void applyTalk(KimChatMsg msg, {required bool fromSelf}) {
-    final existing = state.thread(msg.dest);
-    final viewing = chatIdFromPath(ref.read(locationProvider));
-    final unread = !ref.read(runtimeProvider).rustStore && viewing == msg.dest
-        ? 0
-        : fromSelf || msg.sys
-        ? (existing?.unread ?? 0)
-        : (existing?.unread ?? 0) + 1;
-    _upsert(
-      KimThread(
-        id: msg.dest,
-        kind: existing?.kind ?? ThreadKind.user,
-        title:
-            existing?.title ??
-            (ref.read(contactsProvider).person(msg.dest)?.title ?? msg.dest),
-        lastBody: msg.sys || msg.isAgentCard
-            ? (existing?.lastBody ?? '')
-            : previewBody(msg),
-        lastAt: msg.at,
-        unread: unread,
-        avatar: existing?.avatar ?? '',
-      ),
-    );
-  }
-
-  void ingest(ApplyResult result) {
-    final existing = state.thread(result.thread.id);
-    final title =
-        existing?.title ??
-        (ref.read(contactsProvider).person(result.thread.id)?.title ??
-            result.thread.title);
-    _upsert(
-      result.thread.copyWith(
-        title: title,
-        kind: existing?.kind ?? result.thread.kind,
-        avatar: (existing?.avatar.isNotEmpty ?? false)
-            ? existing!.avatar
-            : result.thread.avatar,
-      ),
-    );
-  }
-
-  void ingestAll(List<ApplyResult> results) {
-    for (final result in results) {
-      ingest(result);
-    }
-  }
-
-  void markRead(String id) {
-    final existing = state.thread(id);
-    if (existing == null || existing.unread == 0) {
-      return;
-    }
-    _upsert(existing.copyWith(unread: 0));
-    if (ref.read(runtimeProvider).rustStore) {
-      return;
-    }
-    _persist();
-    unawaited(
-      ref
-          .read(conversationStoreProvider)
-          .markThreadRead(ref.read(authProvider).account, id),
-    );
-  }
-
-  /// Refresh DM thread title/avatar when a friend profile push arrives.
-  void patchPeerProfile(
-    String account, {
-    required String title,
-    required String avatar,
-  }) {
-    final existing = state.thread(account);
-    if (existing == null || existing.kind != ThreadKind.user) {
-      return;
-    }
-    final nextTitle = title.isEmpty ? account : title;
-    if (existing.title == nextTitle && existing.avatar == avatar) {
-      return;
-    }
-    _upsert(existing.copyWith(title: nextTitle, avatar: avatar));
-    _persist();
+  Future<void> deleteThread(String id) async {
+    await ref.read(clientPortProvider).deleteThread(id);
   }
 
   KimThread ensureThread({
@@ -211,79 +105,11 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
     ThreadKind kind = ThreadKind.user,
     String? title,
   }) {
-    final existing = state.thread(id);
-    if (existing != null) {
-      if (existing.unread == 0) {
-        return existing;
-      }
-      final next = _upsert(existing.copyWith(unread: 0));
-      _persist();
-      unawaited(
-        ref
-            .read(conversationStoreProvider)
-            .markThreadRead(ref.read(authProvider).account, id),
-      );
-      return next;
-    }
-    final created = KimThread(
-      id: id,
-      kind: kind,
-      title: (title == null || title.isEmpty) ? id : title,
-    );
-    _upsert(created);
-    _persist();
-    return created;
-  }
-
-  Future<void> deleteThread(String id) async {
-    final account = ref.read(authProvider).account;
-    if (ref.read(runtimeProvider).rustStore) {
-      await ref.read(clientPortProvider).deleteThread(id);
-    } else {
-      await ref.read(conversationStoreProvider).deleteThread(account, id);
-    }
-    state = state.copyWith(
-      threads: state.threads.where((t) => t.id != id).toList(),
-    );
-  }
-
-  int _mergedUnread(KimThread? prev, KimThread incoming, String? viewing) {
-    if (!ref.read(runtimeProvider).rustStore && viewing == incoming.id) {
-      return 0;
-    }
-    if (prev != null &&
-        prev.unread == 0 &&
-        sendTimeMs(prev.lastAt) >= sendTimeMs(incoming.lastAt)) {
-      return 0;
-    }
-    return incoming.unread;
-  }
-
-  KimThread _upsert(KimThread thread) {
-    final rest = state.threads.where((t) => t.id != thread.id).toList();
-    final next = [thread, ...rest]
-      ..sort((a, b) => b.lastAt.compareTo(a.lastAt));
-    state = state.copyWith(threads: next);
-    return thread;
-  }
-
-  void _persist() {
-    if (ref.read(runtimeProvider).rustStore) {
-      return;
-    }
-    final account = ref.read(authProvider).account;
-    unawaited(() async {
-      final store = ref.read(conversationStoreProvider);
-      for (final t in state.threads) {
-        await store.upsertThread(account, t);
-      }
-    }());
+    return state.thread(id) ??
+        KimThread(id: id, kind: kind, title: title ?? id);
   }
 }
 
 final threadsProvider = NotifierProvider<ThreadsNotifier, ThreadsState>(
   ThreadsNotifier.new,
 );
-
-/// Alias kept so call sites / tests can migrate off [inboxProvider].
-final inboxProvider = threadsProvider;

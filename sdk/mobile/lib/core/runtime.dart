@@ -16,7 +16,6 @@ class KimRuntime {
     required this.appName,
     required this.version,
     required this.buildNumber,
-    this.rustStore = false,
   });
 
   final KimPaths paths;
@@ -25,7 +24,6 @@ class KimRuntime {
   final String appName;
   final String version;
   final String buildNumber;
-  final bool rustStore;
 
   String get versionLabel => '$version+$buildNumber';
 
@@ -64,7 +62,6 @@ class KimRuntime {
       appName: name,
       version: ver,
       buildNumber: build,
-      rustStore: KimFlags.rustStore(resolvedSettings.prefs),
     );
   }
 }

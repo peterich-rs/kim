@@ -59,9 +59,9 @@ async fn timeline_watch_starts_without_store() {
         dest: "bob".into(),
         limit: 50,
     });
-    let dest = match &*rx.borrow() {
-        kim_sdk::TimelineUpdate::Resync { dest, .. } => dest.clone(),
-        other => panic!("expected resync, got {other:?}"),
-    };
-    assert_eq!(dest, "bob");
+    let init = rx.borrow().clone();
+    match init {
+        kim_sdk::TimelineUpdate::Snapshot { snapshot } => assert_eq!(snapshot.dest, "bob"),
+        other => panic!("expected snapshot, got {other:?}"),
+    }
 }

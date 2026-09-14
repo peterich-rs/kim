@@ -59,27 +59,6 @@ async fn migrate_v1(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         .map_err(map_sqlx)?;
     tx.execute(
         r"
-        INSERT OR IGNORE INTO outbox (
-          account, client_id, dest, kind, payload_type, body, extra,
-          local_path, mime, width, height, byte_size, batch_id, status,
-          message_id, created_at, updated_at
-        )
-        SELECT m.account, m.key, m.dest,
-               CASE IFNULL(t.kind, 'user') WHEN 'group' THEN 1 ELSE 0 END,
-               CASE m.kind WHEN 'image' THEN 2 WHEN 'video' THEN 4 ELSE 1 END,
-               m.body, '', IFNULL(m.local_path, ''), '', m.width, m.height, 0,
-               IFNULL(m.batch_id, ''),
-               CASE m.status WHEN 'failed' THEN 'failed' ELSE 'pending' END,
-               m.message_id, m.at, m.at
-        FROM messages m
-        LEFT JOIN threads t ON t.account = m.account AND t.id = m.dest
-        WHERE m.status IN ('sending', 'failed')
-        ",
-    )
-    .await
-    .map_err(map_sqlx)?;
-    tx.execute(
-        r"
         UPDATE messages SET thread_kind = (
           SELECT CASE t.kind WHEN 'group' THEN 1 ELSE 0 END
           FROM threads t

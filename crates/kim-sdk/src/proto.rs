@@ -19,6 +19,13 @@ pub trait ProtocolClient: Send + Sync {
     async fn ack(&self, message_id: i64) -> Result<(), SdkError>;
     async fn ack_batch(&self, ids: &[i64]) -> Result<(), SdkError>;
     async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError>;
+    async fn history(
+        &self,
+        dest: &str,
+        kind: i32,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError>;
 }
 
 #[async_trait::async_trait]
@@ -66,6 +73,18 @@ impl ProtocolClient for KimClient {
             .await
             .map_err(|e| map_client(e, dest))
     }
+
+    async fn history(
+        &self,
+        dest: &str,
+        kind: i32,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        KimClient::history(self, dest, kind, before_id, limit)
+            .await
+            .map_err(|e| map_client(e, dest))
+    }
 }
 
 #[async_trait::async_trait]
@@ -93,5 +112,15 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
 
     async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError> {
         ProtocolClient::mark_read(&**self, dest, kind, message_id).await
+    }
+
+    async fn history(
+        &self,
+        dest: &str,
+        kind: i32,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        ProtocolClient::history(&**self, dest, kind, before_id, limit).await
     }
 }

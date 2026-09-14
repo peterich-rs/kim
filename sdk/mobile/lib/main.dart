@@ -4,13 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'copy.dart';
 import 'core/logger.dart';
 import 'core/runtime.dart';
-import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'state/providers.dart';
 import 'state/retry.dart';
@@ -63,17 +61,7 @@ class _KimBootState extends State<KimBoot> {
   Future<void> _start() async {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
-    final prefs = await SharedPreferences.getInstance();
-    final store = await ConversationStore.openForRuntime(
-      support: runtime.paths.support,
-      rustStore: runtime.rustStore,
-      attachStore: bridge.attachStore,
-      prefs: prefs,
-    );
-    final account = runtime.settings.account;
-    if (account.isNotEmpty) {
-      await store.warmThreads(account);
-    }
+    await bridge.attachStore('${runtime.paths.support.path}/kim-cache.db');
     if (!mounted) {
       return;
     }
@@ -84,7 +72,6 @@ class _KimBootState extends State<KimBoot> {
           runtime: runtime,
           auth: bridge,
           client: bridge,
-          store: store,
         ),
         child: const KimApp(),
       );

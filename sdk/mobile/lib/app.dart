@@ -13,14 +13,12 @@ import 'package:toastification/toastification.dart';
 import 'copy.dart';
 import 'core/layout.dart';
 import 'core/runtime.dart';
-import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
 import 'router/app_router.dart';
 import 'router/kim_page.dart';
 import 'state/auth.dart';
 import 'state/chats_search.dart';
 import 'state/link.dart';
-import 'state/outbox.dart';
 import 'state/profile.dart';
 import 'state/providers.dart';
 import 'state/retry.dart';
@@ -94,7 +92,6 @@ class KimApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Keep these on the root. IndexedStack tabs pause Riverpod 3 listeners.
     ref.watch(linkProvider);
-    ref.watch(outboxProvider);
     ref.watch(profileProvider);
     final router = ref.watch(routerProvider);
     return ToastificationWrapper(
@@ -144,13 +141,11 @@ class KimAppHost extends StatelessWidget {
     required this.runtime,
     required this.auth,
     required this.client,
-    required this.store,
   });
 
   final KimRuntime runtime;
   final KimAuthPort auth;
   final KimClientPort client;
-  final ConversationStore store;
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +155,6 @@ class KimAppHost extends StatelessWidget {
         runtime: runtime,
         auth: auth,
         client: client,
-        store: store,
       ),
       child: const KimApp(),
     );

@@ -12,12 +12,13 @@ use crate::command::{
 };
 use crate::error::{map_sqlx, SdkError};
 use crate::sync::UnreadPolicy;
-use crate::timeline::ThreadView;
+use crate::timeline::{ThreadView, TimelineSnapshot};
 
 pub mod cursors;
 pub mod messages;
 pub mod migrate;
 pub mod outbox;
+pub mod prepare;
 pub mod schema;
 pub mod threads;
 pub mod watermarks;
@@ -158,6 +159,15 @@ impl Store {
         rx.await.map_err(|_| SdkError::Internal {
             message: "store worker dropped".into(),
         })?
+    }
+
+    pub(crate) async fn load_hot_window(
+        &self,
+        account: &str,
+        dest: &str,
+        limit: i32,
+    ) -> Result<TimelineSnapshot, SdkError> {
+        messages::load_hot_window(&self.pool, account, dest, limit).await
     }
 
     pub(crate) async fn load_older(
@@ -823,6 +833,7 @@ async fn persist_enqueue(
         )
         .await?;
         threads::upsert_on_send(&mut conn, account, &cmd.dest, cmd.kind, &body, now).await?;
+        messages::bump_timeline_version(&mut conn, account, &cmd.dest).await?;
         messages::prune(&mut conn, account, &cmd.dest).await?;
         Ok::<(), SdkError>(())
     }
@@ -890,6 +901,7 @@ async fn persist_talks_tx(
         dests.sort();
         dests.dedup();
         for dest in dests {
+            messages::bump_timeline_version(&mut conn, account, &dest).await?;
             messages::prune(&mut conn, account, &dest).await?;
         }
         Ok::<(), SdkError>(())

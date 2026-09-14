@@ -3,7 +3,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -12,7 +11,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 
 import 'core/format.dart';
 import 'core/logger.dart';
-import 'data/conversation_store.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
 import 'core/jwt.dart';
@@ -52,8 +50,6 @@ class KimAuthSession {
 
 /// Long-lived WGateway session. Tests inject a fake; the app uses [KimBridge].
 abstract class KimClientPort {
-  Stream<KimEvent> sessionEvents();
-
   Stream<rust_types.SessionSnapshotDto> watchSessionSnapshot();
 
   Stream<rust_types.SessionUpdateDto> watchSessionEvents();
@@ -63,16 +59,6 @@ abstract class KimClientPort {
     int limit = 50,
   });
 
-  Future<rust_types.MessagePageDto> loadOlder({
-    required String dest,
-    required int beforeAt,
-    required String beforeKey,
-    int beforeId = 0,
-    int limit = 50,
-  });
-
-  KimLinkState linkState();
-
   Future<void> startSession(
     String url,
     String token, {
@@ -81,18 +67,9 @@ abstract class KimClientPort {
 
   Future<void> stopSession();
 
-  Future<void> syncConfirm(int cursor);
-
   Future<void> notifyRadioUp();
 
   Future<void> notifyForeground();
-
-  Future<KimTalkResult> sendMessage(
-    String dest,
-    ThreadKind kind,
-    KimOutgoingContent content, {
-    required String clientId,
-  });
 
   Future<KimCommandReceipt> enqueueMessage({
     required String dest,
@@ -112,16 +89,13 @@ abstract class KimClientPort {
 
   Future<void> deleteThread(String dest);
 
-  Future<List<KimHistoryMsg>> history(
-    String dest,
-    ThreadKind kind, {
+  Future<rust_types.MessagePageDto> loadOlder({
+    required String dest,
+    required int beforeAt,
+    required String beforeKey,
     int beforeId = 0,
     int limit = 50,
   });
-
-  Future<List<KimThread>> inboxList({int limit = 200});
-
-  Future<void> ack(int messageId);
 
   Future<void> markRead(String dest, ThreadKind kind, int messageId);
 
@@ -190,17 +164,6 @@ abstract class KimClientPort {
 
   /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
   Future<void> botTyping(String dest, {int kind = 0, bool active = true});
-
-  Future<void> attachStore(String dbPath);
-
-  bool get rustStoreAttached;
-
-  Future<void> persistTalks(
-    Iterable<KimChatMsg> msgs, {
-    required UnreadPolicy policy,
-  });
-
-  Future<void> persistInboxThreads(List<KimThread> threads);
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -242,7 +205,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   static bool _inited = false;
   rust.KimSdkHandle? _api;
-  Stream<KimEvent>? _events;
   String? _account;
 
   /// Last WGateway URL passed to [startSession]. Not a second source of truth —
@@ -389,65 +351,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
       account: account,
     );
     _account = account;
-    // Fat session_events is the Dart inbox. watch_session is Kickout/token/friend
-    // only; it does not replace Lagged on the fat stream.
-    final fat = _api!
-        .sessionEvents()
-        .map(_event)
-        .where((event) => event != null)
-        .map((event) => event!);
-    final watch = _api!.watchSession().map(_fromWatch);
-    _events = _mergeEvents(fat, watch);
-  }
-
-  Stream<KimEvent> _mergeEvents(Stream<KimEvent> a, Stream<KimEvent> b) {
-    late StreamController<KimEvent> controller;
-    StreamSubscription<KimEvent>? sa;
-    StreamSubscription<KimEvent>? sb;
-    controller = StreamController<KimEvent>.broadcast(
-      onListen: () {
-        sa = a.listen(controller.add, onError: controller.addError);
-        sb = b.listen(controller.add, onError: controller.addError);
-      },
-      onCancel: () {
-        unawaited(sa?.cancel());
-        unawaited(sb?.cancel());
-      },
-    );
-    return controller.stream;
-  }
-
-  KimEvent _fromWatch(rust_types.SessionUpdateDto dto) {
-    return switch (dto) {
-      rust_types.SessionUpdateDto_Kickout(:final channelId) => KimEvent(
-        kind: KimEventKind.kick,
-        dest: channelId,
-      ),
-      rust_types.SessionUpdateDto_AuthExpired(:final reason) => KimEvent(
-        kind: KimEventKind.authExpired,
-        error: reason,
-      ),
-      rust_types.SessionUpdateDto_TokenRenew(:final token, :final exp) =>
-        KimEvent(kind: KimEventKind.token, token: token, exp: exp.toInt()),
-      rust_types.SessionUpdateDto_FriendRequest(:final from, :final nickname) =>
-        KimEvent(
-          kind: KimEventKind.friend,
-          dest: from,
-          sender: from,
-          nickname: nickname,
-        ),
-      rust_types.SessionUpdateDto_FriendAccepted(
-        :final from,
-        :final nickname,
-      ) =>
-        KimEvent(
-          kind: KimEventKind.friendAccepted,
-          dest: from,
-          sender: from,
-          nickname: nickname,
-        ),
-      _ => const KimEvent(kind: KimEventKind.closed),
-    };
   }
 
   @override
@@ -489,7 +392,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
   Future<void> stopSession() async {
     final api = _api;
     _api = null;
-    _events = null;
     _account = null;
     if (api == null) {
       return;
@@ -502,25 +404,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   @override
-  KimLinkState linkState() {
-    final api = _api;
-    if (api == null) {
-      return const KimLinkState();
-    }
-    return KimLinkState(status: KimLinkState.statusFromLabel(api.linkState()));
-  }
-
-  @override
-  Stream<KimEvent> sessionEvents() {
-    return _events ?? const Stream.empty();
-  }
-
-  @override
-  Future<void> syncConfirm(int cursor) async {
-    await _require().syncConfirm(cursor: cursor);
-  }
-
-  @override
   Future<void> notifyRadioUp() async {
     await _require().notifyRadioUp();
   }
@@ -528,25 +411,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
   @override
   Future<void> notifyForeground() async {
     await _require().notifyForeground();
-  }
-
-  @override
-  Future<KimTalkResult> sendMessage(
-    String dest,
-    ThreadKind kind,
-    KimOutgoingContent content, {
-    required String clientId,
-  }) async {
-    final result = await _require().sendMessage(
-      dest: dest,
-      kind: kind == ThreadKind.group ? 1 : 0,
-      content: _wire(content),
-      clientId: clientId,
-    );
-    return KimTalkResult(
-      messageId: result.messageId.toInt(),
-      sendTime: sendTimeMs(result.sendTime.toInt()),
-    );
   }
 
   rust.KimOutgoingContent _wire(KimOutgoingContent content) {
@@ -571,67 +435,12 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<List<KimHistoryMsg>> history(
-    String dest,
-    ThreadKind kind, {
-    int beforeId = 0,
-    int limit = 50,
-  }) async {
-    final items = await _require().history(
+  Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
+    await _require().markThreadRead(
       dest: dest,
       kind: kind == ThreadKind.group ? 1 : 0,
-      beforeId: beforeId,
-      limit: limit,
+      messageId: messageId,
     );
-    return [
-      for (final item in items)
-        KimHistoryMsg(
-          messageId: item.messageId.toInt(),
-          msgType: item.msgType,
-          body: item.body,
-          extra: item.extra,
-          sender: item.sender,
-          sendTime: item.sendTime.toInt(),
-          direction: item.direction,
-        ),
-    ];
-  }
-
-  @override
-  Future<List<KimThread>> inboxList({int limit = 200}) async {
-    final items = await _require().inbox(limit: limit);
-    return [
-      for (final item in items)
-        KimThread(
-          id: item.dest,
-          kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
-          title: item.title.isEmpty ? item.dest : item.title,
-          lastBody: previewSnippet(item.lastBody),
-          lastAt: sendTimeMs(item.lastSendTime.toInt()),
-          unread: item.unread,
-          avatar: item.avatar,
-        ),
-    ];
-  }
-
-  @override
-  Future<void> ack(int messageId) async {
-    await _require().ack(messageId: messageId);
-  }
-
-  @override
-  Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
-    final api = _require();
-    final wireKind = kind == ThreadKind.group ? 1 : 0;
-    if (rustStoreAttached) {
-      await api.markThreadRead(
-        dest: dest,
-        kind: wireKind,
-        messageId: messageId,
-      );
-      return;
-    }
-    await api.markRead(dest: dest, kind: wireKind, messageId: messageId);
   }
 
   @override
@@ -686,96 +495,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
   @override
   Future<void> deleteThread(String dest) async {
     await _require().deleteThread(dest: dest);
-  }
-
-  KimEvent? _event(rust.KimSessionEvent push) {
-    final kind = switch (push.kind) {
-      'talk' => KimEventKind.talk,
-      'kick' => KimEventKind.kick,
-      'friend' => KimEventKind.friend,
-      'friend_accepted' => KimEventKind.friendAccepted,
-      'profile_updated' => KimEventKind.profileUpdated,
-      'presence' => KimEventKind.presence,
-      'typing' => KimEventKind.typing,
-      'receipt_read' => KimEventKind.receiptRead,
-      'group' => KimEventKind.group,
-      'token' => KimEventKind.token,
-      'link' => KimEventKind.link,
-      'inbox' => KimEventKind.inbox,
-      'sync_progress' => KimEventKind.syncProgress,
-      'sync_done' => KimEventKind.syncDone,
-      'sync_failed' => KimEventKind.syncFailed,
-      'sync_page' => KimEventKind.syncPage,
-      'auth' => KimEventKind.authExpired,
-      'closed' => KimEventKind.closed,
-      _ => null,
-    };
-    if (kind == null) {
-      return null;
-    }
-    return KimEvent(
-      kind: kind,
-      dest: push.dest,
-      sender: push.sender,
-      body: push.body,
-      extra: push.extra,
-      messageId: push.messageId.toInt(),
-      sendTime: push.sendTime.toInt(),
-      token: push.token,
-      exp: push.exp.toInt(),
-      state: push.state,
-      attempt: push.attempt,
-      inbox: [
-        for (final item in push.items)
-          KimThread(
-            id: item.dest,
-            kind: item.kind == 1 ? ThreadKind.group : ThreadKind.user,
-            title: item.title.isEmpty ? item.dest : item.title,
-            lastBody: previewSnippet(item.lastBody),
-            lastAt: sendTimeMs(item.lastSendTime.toInt()),
-            unread: item.unread,
-            avatar: item.avatar,
-          ),
-      ],
-      pulled: push.pulled.toInt(),
-      pagePending: push.pagePending,
-      error: push.error,
-      msgType: push.msgType,
-      nickname: push.nickname,
-      talks: kind == KimEventKind.syncPage
-          ? _talksFromJson(push.body)
-          : const [],
-      pageId: kind == KimEventKind.syncPage ? push.messageId.toInt() : 0,
-    );
-  }
-
-  List<KimEvent> _talksFromJson(String raw) {
-    if (raw.isEmpty) {
-      return const [];
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) {
-        return const [];
-      }
-      return [
-        for (final row in decoded)
-          if (row is Map)
-            KimEvent(
-              kind: KimEventKind.talk,
-              dest: '${row['dest'] ?? ''}',
-              sender: '${row['sender'] ?? ''}',
-              body: '${row['body'] ?? ''}',
-              extra: '${row['extra'] ?? ''}',
-              messageId: (row['message_id'] as num?)?.toInt() ?? 0,
-              sendTime: (row['send_time'] as num?)?.toInt() ?? 0,
-              msgType: (row['msg_type'] as num?)?.toInt() ?? 0,
-            ),
-      ];
-    } catch (e, st) {
-      KimLogger.warn('talksFromJson', e, st);
-      return const [];
-    }
   }
 
   KimPerson _fromPerson(rust_types.PersonDto p) {
@@ -1008,59 +727,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _require().botTyping(dest: dest, kind: kind, active: active);
   }
 
-  @override
   Future<void> attachStore(String dbPath) async {
     await _ensure();
     _api ??= rust.KimSdkHandle.create();
     await _api!.attachStore(dbPath: dbPath);
-  }
-
-  @override
-  bool get rustStoreAttached => _api?.storeAttached() ?? false;
-
-  @override
-  Future<void> persistTalks(
-    Iterable<KimChatMsg> msgs, {
-    required UnreadPolicy policy,
-  }) async {
-    await _require().persistTalks(
-      talks: [
-        for (final m in msgs)
-          rust.KimIncomingTalk(
-            dest: m.dest,
-            sender: m.sender,
-            body: m.body,
-            extra: '',
-            messageId: m.messageId,
-            sendTime: m.at,
-            msgType: switch (m.kind) {
-              KimMsgKind.image => 2,
-              KimMsgKind.video => 4,
-              _ => 1,
-            },
-          ),
-      ],
-      policy: policy == UnreadPolicy.ifInserted ? 'ifInserted' : 'keep',
-    );
-  }
-
-  @override
-  Future<void> persistInboxThreads(List<KimThread> threads) async {
-    await _require().persistInbox(
-      items: [
-        for (final t in threads)
-          rust.KimInboxItem(
-            dest: t.id,
-            kind: t.kind == ThreadKind.group ? 1 : 0,
-            title: t.title,
-            avatar: t.avatar,
-            lastBody: t.lastBody,
-            lastSender: '',
-            lastMessageId: 0,
-            lastSendTime: t.lastAt,
-            unread: t.unread,
-          ),
-      ],
-    );
   }
 }

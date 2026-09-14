@@ -5,10 +5,11 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/logger.dart';
-import '../data/conversation_store.dart';
 import '../models/models.dart';
+import '../src/rust/api/types.dart';
 import 'auth.dart';
 import 'inbox.dart';
+import 'kim_session.dart';
 import 'providers.dart';
 
 class ThreadMessagesState {
@@ -43,74 +44,89 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   ThreadMessagesNotifier(this.dest);
 
   final String dest;
-  var _reconciled = false;
+  StreamSubscription<TimelineUpdateDto>? _sub;
+  var _older = <KimChatMsg>[];
+  var _awaitingSnapshot = false;
 
   @override
   ThreadMessagesState build() {
     final account = ref.watch(authProvider.select((s) => s.account));
     if (account.isEmpty) {
+      unawaited(_sub?.cancel());
+      _sub = null;
+      _older = [];
       return const ThreadMessagesState(items: [], hasMore: false);
     }
-    final store = ref.read(conversationStoreProvider);
-    final page = store.loadMessagesPage(account, dest, limit: 50);
-    if (store.isolateBacked) {
-      unawaited(_hydrate(account, store));
-    }
-    return ThreadMessagesState(items: page.reversed.toList(), hasMore: true);
+    _listen();
+    ref.onDispose(() {
+      unawaited(_sub?.cancel());
+      _sub = null;
+    });
+    return const ThreadMessagesState(items: []);
   }
 
-  Future<void> _hydrate(String account, ConversationStore store) async {
-    await store.ensureMessages(account, dest);
-    if (!ref.mounted) {
-      return;
-    }
-    final page = store.loadMessagesPage(account, dest, limit: 50);
-    if (page.isEmpty) {
-      return;
-    }
-    receiveAll(page.reversed);
-  }
-
-  void receive(KimChatMsg msg) {
-    receiveAll([msg]);
-  }
-
-  void receiveAll(Iterable<KimChatMsg> msgs) {
-    final incoming = [
-      for (final m in msgs)
-        if (m.dest == dest) m,
-    ];
-    if (incoming.isEmpty) {
-      return;
-    }
-    var prev = List<KimChatMsg>.from(state.items);
-    for (final msg in incoming) {
-      final idx = _indexOf(prev, msg);
-      if (idx >= 0) {
-        prev[idx] = _merge(prev[idx], msg);
-      } else {
-        prev.add(msg);
+  void _listen() {
+    unawaited(_sub?.cancel());
+    _awaitingSnapshot = false;
+    _sub = ref.read(clientPortProvider).watchThread(dest).listen((update) {
+      if (!ref.mounted) {
+        return;
       }
+      switch (update) {
+        case TimelineUpdateDto_Snapshot(:final snapshot):
+          _onSnapshot(snapshot);
+        case TimelineUpdateDto_Delta(:final delta):
+          if (_awaitingSnapshot) {
+            return;
+          }
+          _onDelta(delta);
+        case TimelineUpdateDto_Resync():
+          _awaitingSnapshot = true;
+          _older = [];
+          state = state.copyWith(items: const []);
+      }
+    });
+  }
+
+  void _onSnapshot(TimelineSnapshotDto snapshot) {
+    _awaitingSnapshot = false;
+    final hot = [
+      for (final m in snapshot.messages) kimChatFromDto(m),
+      for (final m in snapshot.pending) kimChatFromDto(m),
+    ];
+    final hotKeys = {for (final m in hot) m.key};
+    final older = [
+      for (final m in _older)
+        if (!hotKeys.contains(m.key)) m,
+    ];
+    _older = older;
+    state = state.copyWith(
+      items: _sorted([...older, ...hot]),
+      hasMore: snapshot.hasMore || older.isNotEmpty,
+    );
+  }
+
+  void _onDelta(TimelineDeltaDto delta) {
+    final byKey = {for (final m in state.items) m.key: m};
+    for (final key in delta.deletedKeys) {
+      byKey.remove(key);
+      _older.removeWhere((m) => m.key == key);
     }
-    prev.sort((a, b) {
+    for (final u in delta.upserts) {
+      byKey[u.key] = kimChatFromDto(u);
+    }
+    state = state.copyWith(items: _sorted(byKey.values.toList()));
+  }
+
+  List<KimChatMsg> _sorted(List<KimChatMsg> items) {
+    items.sort((a, b) {
       final byAt = a.at.compareTo(b.at);
       if (byAt != 0) {
         return byAt;
       }
       return a.key.compareTo(b.key);
     });
-    if (prev.length > ConversationStore.maxMessages) {
-      prev = prev.sublist(prev.length - ConversationStore.maxMessages);
-    }
-    state = state.copyWith(items: prev);
-  }
-
-  void patch(String key, KimChatMsg Function(KimChatMsg) update) {
-    final prev = [
-      for (final m in state.items)
-        if (m.key == key) update(m) else m,
-    ];
-    state = state.copyWith(items: prev);
+    return items;
   }
 
   void captureUnreadAnchor({required int unread, required String self}) {
@@ -135,58 +151,48 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     }
   }
 
-  Future<void> loadOlder() async {
-    if (state.loadingOlder || !state.hasMore) {
+  void receiveAll(Iterable<KimChatMsg> msgs) {
+    if (msgs.isEmpty) {
       return;
     }
-    final account = ref.read(authProvider).account;
-    if (account.isEmpty || state.items.isEmpty) {
+    final byKey = {for (final m in state.items) m.key: m};
+    for (final m in msgs) {
+      if (m.dest == dest) {
+        byKey[m.key] = m;
+      }
+    }
+    state = state.copyWith(items: _sorted(byKey.values.toList()));
+  }
+
+  Future<void> loadOlder() async {
+    if (state.loadingOlder || !state.hasMore || state.items.isEmpty) {
       return;
     }
     state = state.copyWith(loadingOlder: true);
     final oldest = state.items.first;
     try {
-      final store = ref.read(conversationStoreProvider);
-      final local = store.loadMessagesPage(
-        account,
-        dest,
-        beforeAt: oldest.at,
-        beforeKey: oldest.key,
-        limit: 50,
-      );
-      var incoming = local.reversed.toList();
-      var remoteLen = 0;
-      final beforeId = _historyBeforeId(state.items);
-      final localHit = local.length >= 50;
-      if (!localHit && beforeId != 0) {
-        try {
-          final remote = await ref
-              .read(clientPortProvider)
-              .history(dest, ThreadKind.user, beforeId: beforeId, limit: 50);
-          remoteLen = remote.length;
-          final repo = ref.read(messageRepositoryProvider);
-          incoming = [
-            ...incoming,
-            for (final row in remote)
-              repo.fromHistory(row, dest: dest, account: account),
-          ];
-        } catch (e, st) {
-          KimLogger.warn('history', e, st);
-        }
-      }
+      final page = await ref
+          .read(clientPortProvider)
+          .loadOlder(
+            dest: dest,
+            beforeAt: oldest.at,
+            beforeKey: oldest.key,
+            beforeId: _historyBeforeId(state.items),
+            limit: 50,
+          );
       if (!ref.mounted) {
         return;
       }
-      final results = await ref
-          .read(messageRepositoryProvider)
-          .applySync(account, incoming);
-      if (!ref.mounted) {
-        return;
+      final incoming = [for (final m in page.messages) kimChatFromDto(m)];
+      _older = _sorted([...incoming, ..._older]);
+      final byKey = {for (final m in state.items) m.key: m};
+      for (final m in incoming) {
+        byKey.putIfAbsent(m.key, () => m);
       }
-      receiveAll([for (final r in results) r.message]);
       state = state.copyWith(
+        items: _sorted(byKey.values.toList()),
         loadingOlder: false,
-        hasMore: local.length >= 50 || remoteLen >= 50,
+        hasMore: page.hasMore,
       );
     } catch (e, st) {
       KimLogger.warn('loadOlder', e, st);
@@ -196,48 +202,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     }
   }
 
-  Future<void> reconcile() async {
-    final account = ref.read(authProvider).account;
-    if (account.isEmpty) {
-      return;
-    }
-    try {
-      final remote = await ref
-          .read(clientPortProvider)
-          .history(dest, ThreadKind.user, beforeId: 0, limit: 50);
-      if (!ref.mounted) {
-        return;
-      }
-      final repo = ref.read(messageRepositoryProvider);
-      final msgs = [
-        for (final row in remote)
-          repo.fromHistory(row, dest: dest, account: account),
-      ];
-      final results = await repo.applySync(account, msgs);
-      if (!ref.mounted) {
-        return;
-      }
-      receiveAll([for (final r in results) r.message]);
-      _reconciled = true;
-      state = state.copyWith(hasMore: remote.length >= 50);
-    } catch (e, st) {
-      KimLogger.warn('reconcile', e, st);
-      if (ref.mounted && !_reconciled) {
-        state = state.copyWith(hasMore: true);
-      }
-    }
-  }
-
   Future<void> markRead() async {
-    final account = ref.read(authProvider).account;
-    if (account.isEmpty) {
-      return;
-    }
-    ref.read(threadsProvider.notifier).markRead(dest);
-    final rustStore = ref.read(runtimeProvider).rustStore;
-    if (!rustStore) {
-      await ref.read(conversationStoreProvider).markThreadRead(account, dest);
-    }
     var messageId = 0;
     for (final m in state.items.reversed) {
       if (m.messageId != 0) {
@@ -261,33 +226,6 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       }
     }
     return 0;
-  }
-
-  int _indexOf(List<KimChatMsg> rows, KimChatMsg msg) {
-    for (var i = 0; i < rows.length; i++) {
-      final row = rows[i];
-      if (row.key == msg.key) {
-        return i;
-      }
-      if (msg.messageId != 0 && row.messageId == msg.messageId) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  KimChatMsg _merge(KimChatMsg prev, KimChatMsg next) {
-    return prev.copyWith(
-      body: next.body,
-      failed: next.failed,
-      kind: next.kind,
-      width: next.width,
-      height: next.height,
-      messageId: next.messageId == 0 ? prev.messageId : next.messageId,
-      status: next.status,
-      at: next.at == 0 ? prev.at : next.at,
-      localPath: next.localPath,
-    );
   }
 }
 

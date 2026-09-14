@@ -3,7 +3,7 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use super::schema::MAX_MESSAGES;
 use crate::command::{PageCursor, SendStatus};
 use crate::error::{map_sqlx, SdkError};
-use crate::timeline::{kind_from_name, kind_name, MessageView};
+use crate::timeline::{kind_from_name, kind_name, MessageView, TimelineSnapshot};
 
 pub(crate) struct OwnInsert<'a> {
     pub account: &'a str,
@@ -152,6 +152,116 @@ pub(crate) async fn load_page(
         out.push(row_to_view(&row)?);
     }
     Ok((out, has_more))
+}
+
+pub(crate) async fn load_hot_window(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    limit: i32,
+) -> Result<TimelineSnapshot, SdkError> {
+    let limit = if limit <= 0 { 50 } else { limit.min(50) };
+    let sent = sqlx::query(
+        r"
+        SELECT key, dest, sender, body, at, sys, kind, width, height,
+               message_id, batch_id, status, local_path
+        FROM messages
+        WHERE account = ? AND dest = ? AND status = 'sent'
+        ORDER BY at DESC, key DESC
+        LIMIT ?
+        ",
+    )
+    .bind(account)
+    .bind(dest)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let pending_rows = sqlx::query(
+        r"
+        SELECT key, dest, sender, body, at, sys, kind, width, height,
+               message_id, batch_id, status, local_path
+        FROM messages
+        WHERE account = ? AND dest = ? AND status IN ('sending', 'failed')
+        ORDER BY at ASC, key ASC
+        ",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let extra = sqlx::query_scalar::<_, i64>(
+        r"
+        SELECT COUNT(*) FROM messages
+        WHERE account = ? AND dest = ? AND status = 'sent'
+        ",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let unread = sqlx::query_scalar::<_, i32>(
+        "SELECT IFNULL((SELECT unread FROM threads WHERE account = ? AND id = ?), 0)",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let last_read = sqlx::query_scalar::<_, i64>(
+        "SELECT IFNULL((SELECT last_read_message_id FROM read_watermarks WHERE account = ? AND dest = ?), 0)",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let version = sqlx::query_scalar::<_, i64>(
+        "SELECT IFNULL((SELECT version FROM timeline_meta WHERE account = ? AND dest = ?), 0)",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)?;
+    let mut messages = Vec::with_capacity(sent.len());
+    for row in sent.into_iter().rev() {
+        messages.push(row_to_view(&row)?);
+    }
+    let mut pending = Vec::with_capacity(pending_rows.len());
+    for row in pending_rows {
+        pending.push(row_to_view(&row)?);
+    }
+    Ok(TimelineSnapshot {
+        dest: dest.into(),
+        version: u64::try_from(version).unwrap_or(0),
+        messages,
+        pending,
+        unread,
+        last_read_message_id: last_read,
+        has_more: extra > i64::from(limit),
+    })
+}
+
+pub(crate) async fn bump_timeline_version(
+    tx: &mut SqliteConnection,
+    account: &str,
+    dest: &str,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        r"
+        INSERT INTO timeline_meta (account, dest, version) VALUES (?, ?, 1)
+        ON CONFLICT(account, dest) DO UPDATE SET version = version + 1
+        ",
+    )
+    .bind(account)
+    .bind(dest)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
 }
 
 fn row_to_view(row: &sqlx::sqlite::SqliteRow) -> Result<MessageView, SdkError> {

@@ -11,7 +11,6 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/widgets/conversation_tile.dart';
@@ -22,7 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_kim.dart';
 
-Future<({KimRuntime runtime, ConversationStore store})> testRuntime({
+Future<({KimRuntime runtime})> testRuntime({
   String token = '',
   String account = '',
 }) async {
@@ -46,13 +45,11 @@ Future<({KimRuntime runtime, ConversationStore store})> testRuntime({
     version: '1.0.0',
     buildNumber: '1',
   );
-  final store = ConversationStore.memory();
-  addTearDown(store.close);
-  return (runtime: runtime, store: store);
+  return (runtime: runtime);
 }
 
-Widget host(KimRuntime runtime, FakeKim fake, ConversationStore store) {
-  return KimAppHost(runtime: runtime, auth: fake, client: fake, store: store);
+Widget host(KimRuntime runtime, FakeKim fake) {
+  return KimAppHost(runtime: runtime, auth: fake, client: fake);
 }
 
 Future<void> pumpUi(WidgetTester tester) async {
@@ -96,7 +93,7 @@ void main() {
   testWidgets('signed-out shows login form, not the chat list', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     expect(find.text(Copy.loginTitle), findsWidgets);
@@ -109,7 +106,7 @@ void main() {
   ) async {
     final env = await testRuntime();
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     final field = tester.widget<TextField>(find.byType(TextField).first);
@@ -123,7 +120,7 @@ void main() {
   testWidgets('invalid account stays on form', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'ab');
@@ -137,7 +134,7 @@ void main() {
   testWidgets('login strips CR LF from macOS password field', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -152,7 +149,7 @@ void main() {
   testWidgets('successful login opens conversation list', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -175,7 +172,7 @@ void main() {
     try {
       final env = await testRuntime();
       final fake = FakeKim();
-      await tester.pumpWidget(host(env.runtime, fake, env.store));
+      await tester.pumpWidget(host(env.runtime, fake));
       await pumpUi(tester);
 
       await tester.enterText(find.byType(TextField).first, 'alice');
@@ -192,7 +189,7 @@ void main() {
   testWidgets('kick returns to the login form with a notice', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
     expect(find.byType(KimDock), findsOneWidget);
     expect(fake.connects, greaterThan(0));
@@ -208,7 +205,7 @@ void main() {
   testWidgets('login IME done and button do not double-submit', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim()..loginDelay = const Duration(milliseconds: 80);
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -233,7 +230,7 @@ void main() {
         'PlatformException(Unexpected security result code, Code: -34018, Message: A required entitlement isn\'t present., -34018, null)',
       ),
     );
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'peterich');
@@ -247,7 +244,7 @@ void main() {
   testWidgets('http 401 maps to bad credentials', (tester) async {
     final env = await testRuntime();
     final fake = FakeKim(error: Exception('http 401: 账号或密码错误'));
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -263,7 +260,7 @@ void main() {
     final fake = FakeKim(
       session: const KimAuthSession(token: 'reg.jwt', exp: 2, account: 'bob_1'),
     );
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
     await tapKey(tester, const Key('auth-toggle'));
     expect(find.text(Copy.registerTitle), findsOneWidget);
@@ -279,7 +276,7 @@ void main() {
   testWidgets('me tab logout returns to login', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
     expect(find.byType(KimDock), findsOneWidget);
 
@@ -299,7 +296,7 @@ void main() {
   ) async {
     final env = await testRuntime();
     env.runtime.connectivity.online.value = false;
-    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
+    await tester.pumpWidget(host(env.runtime, FakeKim()));
     await pumpUi(tester);
     expect(find.textContaining(Copy.offlineBanner), findsOneWidget);
   });
@@ -308,7 +305,7 @@ void main() {
     tester,
   ) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
-    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
+    await tester.pumpWidget(host(env.runtime, FakeKim()));
     await pumpUi(tester);
     expect(find.byType(KimDock), findsOneWidget);
     expect(find.textContaining(Copy.offlineBanner), findsNothing);
@@ -321,7 +318,7 @@ void main() {
   testWidgets('contacts tab requires adding friends', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
     await tester.tap(find.byKey(const Key('nav-contacts')));
     await pumpUi(tester);
@@ -334,7 +331,7 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
     await tester.tap(find.byKey(const Key('compose-chat')));
     await pumpUi(tester);
@@ -346,29 +343,23 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(
-      dest: 'bob',
-      sender: 'bob',
-      body: 'hello from bob',
-      sendTime: 1788077118498491646,
-    );
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
 
     expect(find.text('hello from bob'), findsOneWidget);
-    expect(fake.acks, greaterThan(0));
   });
 
   testWidgets('leaving a chat does not use ref after dispose', (tester) async {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -385,10 +376,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -402,10 +393,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -424,10 +415,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -450,10 +441,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -476,10 +467,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -494,7 +485,7 @@ void main() {
     tester,
   ) async {
     final env = await testRuntime();
-    await tester.pumpWidget(host(env.runtime, FakeKim(), env.store));
+    await tester.pumpWidget(host(env.runtime, FakeKim()));
     await pumpUi(tester);
 
     await tester.enterText(find.byType(TextField).first, 'alice');
@@ -509,10 +500,10 @@ void main() {
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
     fake.talkError = Exception('offline');
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
     await tester.tap(find.text('hello from bob'));
     await pumpUi(tester);
@@ -532,10 +523,10 @@ void main() {
     final env = await testRuntime(token: 'tok.jwt', account: 'alice');
     final fake = FakeKim();
     fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake, env.store));
+    await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
-    fake.emitTalk(dest: 'bob', sender: 'bob', body: 'hello from bob');
+    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
     await pumpUi(tester);
 
     tester.view.physicalSize = const Size(1100, 800);

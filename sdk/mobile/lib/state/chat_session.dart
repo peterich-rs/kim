@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../agent/mention.dart';
 import '../copy.dart';
@@ -17,7 +18,6 @@ import 'contacts.dart';
 import 'inbox.dart';
 import 'messages.dart';
 import 'mutations.dart';
-import 'outbox.dart';
 import 'presence.dart';
 import 'providers.dart';
 import 'session.dart';
@@ -70,7 +70,6 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       unread: unread,
       self: ref.read(sessionProvider).account,
     );
-    unawaited(messages.reconcile());
     unawaited(messages.markRead());
     await _maybeRegisterLocalAgent();
     if (!ref.mounted) {
@@ -216,7 +215,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
         final serverDest = state.redirectDest;
         if (serverDest != null && serverDest.isNotEmpty) {
           await sendMessageMutation(serverDest).run(ref, (tsx) {
-            return tsx.get(outboxProvider.notifier).sendText(serverDest, text);
+            return _enqueueText(tsx.get(clientPortProvider), serverDest, text);
           });
           return true;
         }
@@ -224,7 +223,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
         return true;
       }
       await sendMessageMutation(dest).run(ref, (tsx) {
-        return tsx.get(outboxProvider.notifier).sendText(dest, text);
+        return _enqueueText(tsx.get(clientPortProvider), dest, text);
       });
       return true;
     } on StateError catch (err) {
@@ -267,7 +266,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   Future<void> sendImages(List<KimMediaAsset> assets) async {
     try {
       await sendImagesMutation(dest).run(ref, (tsx) {
-        return tsx.get(outboxProvider.notifier).sendImages(dest, assets);
+        return _enqueueImages(tsx.get(clientPortProvider), dest, assets);
       });
     } on StateError catch (err) {
       _toast(err.message, error: true);
@@ -278,7 +277,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
 
   Future<void> retry(String key) async {
     try {
-      await ref.read(outboxProvider.notifier).retry(dest, key);
+      await ref.read(clientPortProvider).retrySend(key);
     } on StateError catch (err) {
       _toast(err.message, error: true);
     } catch (_) {}
@@ -288,6 +287,80 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     if (state.toast != null) {
       state = ChatSessionState(redirectDest: state.redirectDest);
     }
+  }
+
+  Future<KimChatMsg> _enqueueText(
+    KimClientPort client,
+    String dest,
+    String text,
+  ) async {
+    final body = text.trim();
+    if (body.isEmpty) {
+      throw StateError(Copy.required);
+    }
+    final id = const Uuid().v4();
+    await client.enqueueMessage(
+      dest: dest,
+      kind: ThreadKind.user,
+      content: KimOutgoingContent.text(body),
+      clientId: id,
+    );
+    return KimChatMsg(
+      key: id,
+      dest: dest,
+      sender: ref.read(sessionProvider).account,
+      body: body,
+      at: DateTime.now().millisecondsSinceEpoch,
+      status: KimSendStatus.sending,
+    );
+  }
+
+  Future<List<KimChatMsg>> _enqueueImages(
+    KimClientPort client,
+    String dest,
+    List<KimMediaAsset> assets,
+  ) async {
+    final out = <KimChatMsg>[];
+    for (final asset in assets) {
+      if (asset.path.isEmpty) {
+        continue;
+      }
+      final id = const Uuid().v4();
+      final content = asset.isVideo
+          ? KimOutgoingContent.video(url: asset.path)
+          : KimOutgoingContent.image(
+              url: asset.path,
+              width: asset.width,
+              height: asset.height,
+            );
+      await client.enqueueMessage(
+        dest: dest,
+        kind: ThreadKind.user,
+        content: content,
+        clientId: id,
+        localPath: asset.path,
+        width: asset.width,
+        height: asset.height,
+      );
+      out.add(
+        KimChatMsg(
+          key: id,
+          dest: dest,
+          sender: ref.read(sessionProvider).account,
+          body: asset.path,
+          at: DateTime.now().millisecondsSinceEpoch,
+          kind: asset.isVideo ? KimMsgKind.video : KimMsgKind.image,
+          width: asset.width,
+          height: asset.height,
+          status: KimSendStatus.sending,
+          localPath: asset.path,
+        ),
+      );
+    }
+    if (out.isEmpty) {
+      throw StateError(Copy.required);
+    }
+    return out;
   }
 
   void _toast(String message, {bool error = false}) {

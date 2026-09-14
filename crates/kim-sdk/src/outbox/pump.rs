@@ -73,6 +73,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                         message_id,
                     )
                     .await?;
+                sdk.publish_timeline(&row.dest).await;
                 sent += 1;
                 if row.payload_type == kim_protocol::MESSAGE_TYPE_TEXT {
                     sdk.agent()
@@ -97,11 +98,13 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                         crate::store::now_ms().saturating_add(delay),
                     )
                     .await?;
+                sdk.publish_timeline(&row.dest).await;
             }
             Err(_) => {
                 store
                     .mark_failed(epoch, session.account.clone(), row.client_id)
                     .await?;
+                sdk.publish_timeline(&row.dest).await;
             }
         }
     }

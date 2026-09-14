@@ -35,6 +35,7 @@ pub use ids::{
 pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
 pub use metrics::SdkMetrics;
 pub use proto::ProtocolClient;
+pub use store::prepare::{prepare_store_file, PrepareOutcome};
 pub use sync::UnreadPolicy;
 pub use timeline::{
     LinkStateView, MessageView, PersonRef, SessionSnapshot, SessionUpdate, ThreadView,
@@ -90,7 +91,7 @@ impl KimSdk {
         })
     }
 
-    /// Flag-on / `cargo test -p kim-sdk` fixture. protocol_only + attach_store.
+    /// Test / CLI fixture: protocol_only + attach_store. Production bootstrap always attach_store.
     pub async fn open(db_path: String) -> Result<Arc<Self>, SdkError> {
         let sdk = Self::protocol_only();
         sdk.attach_store(db_path).await?;
@@ -114,15 +115,22 @@ impl KimSdk {
         }
         let path = PathBuf::from(db_path);
         let migrate_path = path.clone();
-        tokio::task::spawn_blocking(move || migrate_blocking(migrate_path))
+        let wiped = tokio::task::spawn_blocking(move || migrate_blocking(migrate_path))
             .await
             .map_err(|e| SdkError::Internal {
                 message: format!("join: {e}"),
             })??;
+        if wiped {
+            self.inner.metrics.inc_store_wipe();
+        }
         let epoch = self.inner.epoch.clone();
         let store = Store::open(path, epoch).await?;
         *lock(&self.inner.store) = Some(store);
         Ok(())
+    }
+
+    pub fn store_wipe_total(&self) -> u64 {
+        self.inner.metrics.store_wipe_total()
     }
 
     pub async fn start_session(&self, s: StartSession) -> Result<(), SdkError> {
@@ -209,6 +217,8 @@ impl KimSdk {
             client_id = %receipt.client_id,
             "enqueue committed"
         );
+        self.publish_timeline(&receipt.dest).await;
+        self.publish_session_snapshot().await;
         self.kick_outbox();
         Ok(receipt)
     }
@@ -218,7 +228,12 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store.cancel(epoch, session.account, id).await
+        let dest = store.get_row(&session.account, &id).await?.map(|r| r.dest);
+        store.cancel(epoch, session.account, id).await?;
+        if let Some(dest) = dest {
+            self.publish_timeline(&dest).await;
+        }
+        Ok(())
     }
 
     pub async fn retry_send(&self, id: String) -> Result<CommandReceipt, SdkError> {
@@ -235,6 +250,7 @@ impl KimSdk {
                 .ok_or_else(|| SdkError::NotFound {
                     what: "outbox".into(),
                 })?;
+        self.publish_timeline(&row.dest).await;
         self.kick_outbox();
         Ok(CommandReceipt {
             request_id: uuid::Uuid::new_v4().to_string(),
@@ -262,6 +278,8 @@ impl KimSdk {
                 .mark_read(&marker.dest, marker.kind, marker.visible_message_id)
                 .await;
         }
+        self.publish_session_snapshot().await;
+        self.publish_timeline(&marker.dest).await;
         Ok(())
     }
 
@@ -270,7 +288,12 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store.delete_thread(epoch, session.account, dest).await
+        store
+            .delete_thread(epoch, session.account, dest.clone())
+            .await?;
+        self.publish_timeline_resync(&dest, "deleted").await;
+        self.publish_session_snapshot().await;
+        Ok(())
     }
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
@@ -310,7 +333,50 @@ impl KimSdk {
     pub async fn load_older(&self, cursor: PageCursor) -> Result<MessagePage, SdkError> {
         let store = self.store()?;
         let session = self.session_snapshot()?;
-        store.load_older(&session.account, cursor).await
+        let dest = cursor.dest.clone();
+        let limit = cursor.limit;
+        let before_id = cursor.before_id;
+        let mut page = store.load_older(&session.account, cursor.clone()).await?;
+        if (page.messages.len() as i32) < limit && before_id != 0 {
+            if let Ok(proto) = self.protocol() {
+                let kind = store
+                    .load_threads(&session.account)
+                    .await
+                    .ok()
+                    .and_then(|ts| ts.into_iter().find(|t| t.id == dest).map(|t| t.kind))
+                    .unwrap_or(0);
+                if let Ok(remote) = proto.history(&dest, kind, before_id, limit).await {
+                    let talks: Vec<kim_client::IncomingTalk> = remote
+                        .into_iter()
+                        .map(|h| kim_client::IncomingTalk {
+                            command: String::new(),
+                            dest: dest.clone(),
+                            message_id: h.message_id,
+                            sender: h.sender,
+                            msg_type: h.msg_type,
+                            body: h.body,
+                            extra: h.extra,
+                            send_time: h.send_time,
+                        })
+                        .collect();
+                    if !talks.is_empty() {
+                        let _ = self
+                            .persist_talks_for(
+                                self.current_epoch().0,
+                                session.account.clone(),
+                                talks,
+                                UnreadPolicy::Keep,
+                            )
+                            .await;
+                        if let Ok(again) = store.load_older(&session.account, cursor).await {
+                            page = again;
+                        }
+                    }
+                }
+            }
+        }
+        self.publish_timeline(&dest).await;
+        Ok(page)
     }
 
     pub async fn persist_talks(
@@ -332,8 +398,18 @@ impl KimSdk {
         policy: UnreadPolicy,
     ) -> Result<(), SdkError> {
         let store = self.store()?;
+        let dests: Vec<String> = {
+            let mut d: Vec<String> = talks.iter().map(|t| t.dest.clone()).collect();
+            d.sort();
+            d.dedup();
+            d
+        };
         store.persist_talks(epoch, account, talks, policy).await?;
         self.inner.metrics.inc_persist_talk();
+        for dest in dests {
+            self.publish_timeline(&dest).await;
+        }
+        self.publish_session_snapshot().await;
         Ok(())
     }
 
@@ -358,9 +434,11 @@ impl KimSdk {
     ) -> Result<Vec<ThreadView>, SdkError> {
         let store = self.store()?;
         let views = store.persist_inbox(epoch, account, items).await?;
-        self.emit_session(SessionUpdate::Inbox {
+        self.publish_session_snapshot().await;
+        self.emit_session_wait(SessionUpdate::Inbox {
             threads: views.clone(),
-        });
+        })
+        .await;
         Ok(views)
     }
 
@@ -406,6 +484,9 @@ impl KimSdk {
                         match ev {
                             Ok(ev) => {
                                 if let Some(update) = session_update_from_event(ev) {
+                                    if matches!(update, SessionUpdate::Link { .. }) {
+                                        sdk.publish_session_snapshot().await;
+                                    }
                                     sdk.emit_session_wait(update).await;
                                 }
                             }
@@ -491,21 +572,95 @@ impl KimSdk {
     }
 
     pub fn subscribe_timeline(&self, query: TimelineQuery) -> watch::Receiver<TimelineUpdate> {
-        let dest = if query.dest.is_empty() {
-            String::new()
-        } else {
-            query.dest.clone()
-        };
-        let init = TimelineUpdate::Resync {
-            dest: dest.clone(),
-            reason: "subscribe".into(),
+        let dest = query.dest.clone();
+        let limit = if query.limit <= 0 { 50 } else { query.limit };
+        let init = TimelineUpdate::Snapshot {
+            snapshot: TimelineSnapshot {
+                dest: dest.clone(),
+                version: 0,
+                messages: Vec::new(),
+                pending: Vec::new(),
+                unread: 0,
+                last_read_message_id: 0,
+                has_more: false,
+            },
         };
         let mut map = lock(&self.inner.timelines);
         let tx = map
-            .entry(dest)
+            .entry(dest.clone())
             .or_insert_with(|| watch::channel(init).0)
             .clone();
+        drop(map);
+        let sdk = self.clone();
+        tokio::spawn(async move {
+            sdk.publish_timeline_limit(&dest, limit).await;
+        });
         tx.subscribe()
+    }
+
+    async fn publish_session_snapshot(&self) {
+        let (link, last_error) = match self.supervisor() {
+            Ok(sup) => {
+                let link = match sup.state() {
+                    kim_client::LinkState::Connecting => LinkStateView::Connecting,
+                    kim_client::LinkState::Online => LinkStateView::Online,
+                    kim_client::LinkState::Reconnecting { attempt } => {
+                        LinkStateView::Reconnecting { attempt }
+                    }
+                    kim_client::LinkState::Offline => LinkStateView::Offline,
+                };
+                let last_error = sup.last_drop_reason().map(|r| r.as_str().to_string());
+                (link, last_error)
+            }
+            Err(_) => (LinkStateView::Offline, None),
+        };
+        let threads = match (self.store(), self.session_snapshot()) {
+            (Ok(store), Ok(session)) => store
+                .load_threads(&session.account)
+                .await
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        let unread_total = threads
+            .iter()
+            .map(|t| i64::from(t.unread.max(0)))
+            .sum::<i64>()
+            .clamp(0, i64::from(i32::MAX)) as i32;
+        let _ = self.inner.session_snapshot.send(SessionSnapshot {
+            link,
+            last_error,
+            threads,
+            unread_total,
+        });
+    }
+
+    pub(crate) async fn publish_timeline(&self, dest: &str) {
+        self.publish_timeline_limit(dest, 50).await;
+    }
+
+    async fn publish_timeline_limit(&self, dest: &str, limit: i32) {
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        let Ok(snapshot) = store.load_hot_window(&session.account, dest, limit).await else {
+            return;
+        };
+        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
+            let _ = tx.send(TimelineUpdate::Snapshot { snapshot });
+        }
+    }
+
+    async fn publish_timeline_resync(&self, dest: &str, reason: &str) {
+        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
+            let _ = tx.send(TimelineUpdate::Resync {
+                dest: dest.into(),
+                reason: reason.into(),
+            });
+        }
+        self.publish_timeline(dest).await;
     }
 
     pub async fn notify_radio_up(&self) -> Result<(), SdkError> {
@@ -619,6 +774,47 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
             pulled: pulled as u64,
             catching_up: page_pending,
         }),
+        kim_client::SessionEvent::ProfileUpdated { profile } => {
+            Some(SessionUpdate::ProfileUpdated {
+                account: profile.account,
+                nickname: profile.nickname,
+                avatar: profile.avatar,
+            })
+        }
+        kim_client::SessionEvent::PresenceUpdated {
+            account,
+            status,
+            last_seen,
+        } => Some(SessionUpdate::Presence {
+            account,
+            status,
+            last_seen,
+        }),
+        kim_client::SessionEvent::TypingUpdated {
+            typer,
+            dest,
+            kind,
+            active,
+        } => Some(SessionUpdate::Typing {
+            typer,
+            dest,
+            kind,
+            active,
+        }),
+        kim_client::SessionEvent::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        } => Some(SessionUpdate::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        }),
+        kim_client::SessionEvent::GroupCreate { group_id, members } => {
+            Some(SessionUpdate::GroupCreate { group_id, members })
+        }
         _ => None,
     }
 }
@@ -635,12 +831,15 @@ fn sdk_to_persist(err: SdkError) -> kim_client::PersistError {
     }
 }
 
-fn migrate_blocking(path: PathBuf) -> Result<(), SdkError> {
+fn migrate_blocking(path: PathBuf) -> Result<bool, SdkError> {
+    let outcome = prepare_store_file(&path)?;
+    let wiped = matches!(outcome, PrepareOutcome::CreateEmpty { wiped: true });
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| SdkError::Internal {
             message: format!("runtime: {e}"),
         })?;
-    rt.block_on(store::migrate_path(path))
+    rt.block_on(store::migrate_path(path))?;
+    Ok(wiped)
 }

@@ -9,13 +9,11 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import 'types.dart';
 
-// These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`, `supervisor`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `supervisor`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>>
 abstract class KimSdkHandle implements RustOpaqueInterface {
-  Future<void> ack({required PlatformInt64 messageId});
-
   Future<void> attachStore({required String dbPath});
 
   Future<PersonDto> botCreate({
@@ -127,13 +125,6 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<void> notifyRadioUp();
 
-  Future<void> persistInbox({required List<KimInboxItem> items});
-
-  Future<void> persistTalks({
-    required List<KimIncomingTalk> talks,
-    required String policy,
-  });
-
   Future<ProfileDto> profile({required String dest});
 
   Future<KimCommandReceipt> retrySend({required String clientId});
@@ -160,10 +151,6 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
-  /// watch_session is Kickout/token/friend, not a replacement inbox.
-  Stream<KimSessionEvent> sessionEvents();
-
   Future<void> startSession({
     required String url,
     required String token,
@@ -174,8 +161,6 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   Future<void> stop();
 
   bool storeAttached();
-
-  Future<void> syncConfirm({required PlatformInt64 cursor});
 
   Future<ProfileDto> updateProfile({
     required String nickname,
@@ -348,49 +333,6 @@ class KimInboxItem {
           unread == other.unread;
 }
 
-class KimIncomingTalk {
-  final String dest;
-  final String sender;
-  final String body;
-  final String extra;
-  final PlatformInt64 messageId;
-  final PlatformInt64 sendTime;
-  final int msgType;
-
-  const KimIncomingTalk({
-    required this.dest,
-    required this.sender,
-    required this.body,
-    required this.extra,
-    required this.messageId,
-    required this.sendTime,
-    required this.msgType,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      sender.hashCode ^
-      body.hashCode ^
-      extra.hashCode ^
-      messageId.hashCode ^
-      sendTime.hashCode ^
-      msgType.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimIncomingTalk &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          sender == other.sender &&
-          body == other.body &&
-          extra == other.extra &&
-          messageId == other.messageId &&
-          sendTime == other.sendTime &&
-          msgType == other.msgType;
-}
-
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
 class KimOutgoingContent {
   final int kind;
@@ -414,102 +356,6 @@ class KimOutgoingContent {
           kind == other.kind &&
           body == other.body &&
           extra == other.extra;
-}
-
-/// Supervisor events. `kind` is link/inbox/talk/sync_progress/sync_done/sync_failed/kick/token/friend/group.
-class KimSessionEvent {
-  final String kind;
-  final String state;
-  final int attempt;
-  final List<KimInboxItem> items;
-  final String dest;
-  final String sender;
-  final String body;
-  final String extra;
-  final PlatformInt64 messageId;
-  final PlatformInt64 sendTime;
-  final String command;
-  final int msgType;
-  final BigInt pulled;
-  final bool pagePending;
-  final String error;
-  final String channelId;
-  final String token;
-  final PlatformInt64 exp;
-  final String nickname;
-  final List<String> members;
-
-  const KimSessionEvent({
-    required this.kind,
-    required this.state,
-    required this.attempt,
-    required this.items,
-    required this.dest,
-    required this.sender,
-    required this.body,
-    required this.extra,
-    required this.messageId,
-    required this.sendTime,
-    required this.command,
-    required this.msgType,
-    required this.pulled,
-    required this.pagePending,
-    required this.error,
-    required this.channelId,
-    required this.token,
-    required this.exp,
-    required this.nickname,
-    required this.members,
-  });
-
-  @override
-  int get hashCode =>
-      kind.hashCode ^
-      state.hashCode ^
-      attempt.hashCode ^
-      items.hashCode ^
-      dest.hashCode ^
-      sender.hashCode ^
-      body.hashCode ^
-      extra.hashCode ^
-      messageId.hashCode ^
-      sendTime.hashCode ^
-      command.hashCode ^
-      msgType.hashCode ^
-      pulled.hashCode ^
-      pagePending.hashCode ^
-      error.hashCode ^
-      channelId.hashCode ^
-      token.hashCode ^
-      exp.hashCode ^
-      nickname.hashCode ^
-      members.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimSessionEvent &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          state == other.state &&
-          attempt == other.attempt &&
-          items == other.items &&
-          dest == other.dest &&
-          sender == other.sender &&
-          body == other.body &&
-          extra == other.extra &&
-          messageId == other.messageId &&
-          sendTime == other.sendTime &&
-          command == other.command &&
-          msgType == other.msgType &&
-          pulled == other.pulled &&
-          pagePending == other.pagePending &&
-          error == other.error &&
-          channelId == other.channelId &&
-          token == other.token &&
-          exp == other.exp &&
-          nickname == other.nickname &&
-          members == other.members;
 }
 
 class KimTalkResult {
