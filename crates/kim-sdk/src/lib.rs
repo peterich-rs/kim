@@ -72,6 +72,7 @@ struct Inner {
     outbox_run: Mutex<CancellationToken>,
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
     ffi_runtime: Arc<FfiAgentRuntime>,
+    media_dir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Clone)]
@@ -101,6 +102,7 @@ impl KimSdk {
                 outbox_run: Mutex::new(CancellationToken::new()),
                 token_persist: Mutex::new(Vec::new()),
                 ffi_runtime: FfiAgentRuntime::new(),
+                media_dir: Mutex::new(None),
             }),
         })
     }
@@ -138,8 +140,11 @@ impl KimSdk {
             self.inner.metrics.inc_store_wipe();
         }
         let epoch = self.inner.epoch.clone();
-        let store = Store::open(path, epoch).await?;
+        let store = Store::open(path.clone(), epoch).await?;
         *lock(&self.inner.store) = Some(store);
+        if let Some(parent) = path.parent() {
+            *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
+        }
         Ok(())
     }
 
@@ -359,6 +364,109 @@ impl KimSdk {
             .map(|s| s.account)
             .unwrap_or_default();
         store.import_agent_profiles(account, rows).await
+    }
+
+    pub async fn search_messages(
+        &self,
+        query: String,
+        dest: Option<String>,
+    ) -> Result<Vec<MessageView>, SdkError> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let rows = store
+            .search_messages(&session.account, q, dest.as_deref())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(d, key, sender, body, at, message_id)| MessageView {
+                key,
+                dest: d,
+                sender,
+                body,
+                local_path: None,
+                at,
+                sys: false,
+                kind: 1,
+                width: 0,
+                height: 0,
+                message_id,
+                batch_id: None,
+                send_status: SendStatus::Sent,
+            })
+            .collect())
+    }
+
+    pub fn current_session(&self) -> Result<StartSession, SdkError> {
+        self.session_snapshot()
+    }
+
+    pub async fn upload_media(&self, media: MediaRef) -> Result<String, SdkError> {
+        let session = self.session_snapshot()?;
+        self.uploader()?.upload_image(&session.token, &media).await
+    }
+
+    pub async fn fetch_media(&self, url: String) -> Result<String, SdkError> {
+        if url.trim().is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: "media url is required".into(),
+            });
+        }
+        let store = self.store()?;
+        if let Some(row) = store.lookup_media(&url).await? {
+            if tokio::fs::metadata(&row.local_path).await.is_ok() {
+                store.touch_media(url).await?;
+                return Ok(row.local_path);
+            }
+        }
+        let dir = lock(&self.inner.media_dir)
+            .clone()
+            .ok_or_else(|| SdkError::InvalidArgument {
+                message: "media dir missing".into(),
+            })?;
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| SdkError::Disk {
+                message: e.to_string(),
+            })?;
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .build()
+            .map_err(|e| SdkError::Internal {
+                message: format!("reqwest: {e}"),
+            })?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| SdkError::Internal {
+                message: format!("fetch: {e}"),
+            })?;
+        if !resp.status().is_success() {
+            return Err(SdkError::Protocol {
+                status: i32::from(resp.status().as_u16()),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|e| SdkError::Internal {
+            message: format!("fetch body: {e}"),
+        })?;
+        let name = media_cache_name(&url);
+        let path = dir.join(name);
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| SdkError::Disk {
+                message: e.to_string(),
+            })?;
+        let size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+        let local = path.to_string_lossy().into_owned();
+        let evicted = store.upsert_media(url, local.clone(), size).await?;
+        for old in evicted {
+            let _ = tokio::fs::remove_file(old).await;
+        }
+        Ok(local)
     }
 
     async fn maybe_agent_catch_up(&self) {
@@ -1027,4 +1135,11 @@ fn migrate_blocking(path: PathBuf) -> Result<bool, SdkError> {
         })?;
     rt.block_on(store::migrate_path(path))?;
     Ok(wiped)
+}
+
+fn media_cache_name(url: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("{:016x}.bin", hasher.finish())
 }

@@ -63,7 +63,12 @@ List<Override> kimProviderOverrides({
     runtimeProvider.overrideWithValue(runtime),
     authPortProvider.overrideWithValue(auth),
     clientPortProvider.overrideWithValue(client),
-    mediaPortProvider.overrideWithValue(media ?? KimMediaClient()),
+    mediaPortProvider.overrideWithValue(
+      media ??
+          (client is KimMediaPort
+              ? client as KimMediaPort
+              : (throw StateError('mediaPort required'))),
+    ),
   ];
 }
 

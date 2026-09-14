@@ -18,6 +18,7 @@ use crate::timeline::{PersonRef, ThreadView, TimelineSnapshot};
 pub mod agent;
 pub mod contacts;
 pub mod cursors;
+pub mod media;
 pub mod messages;
 pub mod migrate;
 pub mod outbox;
@@ -129,6 +130,16 @@ enum WriteOp {
         account: String,
         rows: Vec<AgentProfileRow>,
         reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    TouchMedia {
+        url: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    UpsertMedia {
+        url: String,
+        local_path: String,
+        byte_size: i64,
+        reply: oneshot::Sender<Result<Vec<String>, SdkError>>,
     },
 }
 
@@ -534,6 +545,56 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn lookup_media(
+        &self,
+        url: &str,
+    ) -> Result<Option<media::MediaCacheRow>, SdkError> {
+        media::lookup(&self.pool, url).await
+    }
+
+    pub(crate) async fn touch_media(&self, url: String) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::TouchMedia { url, reply })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn upsert_media(
+        &self,
+        url: String,
+        local_path: String,
+        byte_size: i64,
+    ) -> Result<Vec<String>, SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertMedia {
+                url,
+                local_path,
+                byte_size,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn search_messages(
+        &self,
+        account: &str,
+        query: &str,
+        dest: Option<&str>,
+    ) -> Result<Vec<(String, String, String, String, i64, i64)>, SdkError> {
+        media::search_messages(&self.pool, account, query, dest, schema::SEARCH_CAP).await
+    }
+
     pub(crate) async fn import_agent_profiles(
         &self,
         account: String,
@@ -834,6 +895,19 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 let result = import_agent_profiles_tx(&pool, &account, &rows).await;
                 let _ = reply.send(result);
             }
+            WriteOp::TouchMedia { url, reply } => {
+                let result = touch_media_tx(&pool, &url).await;
+                let _ = reply.send(result);
+            }
+            WriteOp::UpsertMedia {
+                url,
+                local_path,
+                byte_size,
+                reply,
+            } => {
+                let result = upsert_media_tx(&pool, &url, &local_path, byte_size).await;
+                let _ = reply.send(result);
+            }
         }
     }
 }
@@ -875,6 +949,25 @@ async fn delete_agent_profile_tx(
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = agent::delete_profile(&mut conn, account, profile_id).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn touch_media_tx(pool: &SqlitePool, url: &str) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = media::touch(&mut conn, url, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn upsert_media_tx(
+    pool: &SqlitePool,
+    url: &str,
+    local_path: &str,
+    byte_size: i64,
+) -> Result<Vec<String>, SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = media::upsert(&mut conn, url, local_path, byte_size, now_ms()).await;
     finish_conn(&mut conn, result).await
 }
 

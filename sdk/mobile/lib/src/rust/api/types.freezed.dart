@@ -2478,4 +2478,1272 @@ String toString() {
 
 
 
+/// @nodoc
+mixin _$UiCommandDto {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'UiCommandDto()';
+}
+
+
+}
+
+/// @nodoc
+class $UiCommandDtoCopyWith<$Res>  {
+$UiCommandDtoCopyWith(UiCommandDto _, $Res Function(UiCommandDto) __);
+}
+
+
+/// Adds pattern-matching-related methods to [UiCommandDto].
+extension UiCommandDtoPatterns on UiCommandDto {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( UiCommandDto_SendText value)?  sendText,TResult Function( UiCommandDto_SendMedia value)?  sendMedia,TResult Function( UiCommandDto_RetrySend value)?  retrySend,TResult Function( UiCommandDto_CancelSend value)?  cancelSend,TResult Function( UiCommandDto_MarkThreadRead value)?  markThreadRead,TResult Function( UiCommandDto_DeleteThread value)?  deleteThread,TResult Function( UiCommandDto_FriendRequest value)?  friendRequest,TResult Function( UiCommandDto_FriendAccept value)?  friendAccept,TResult Function( UiCommandDto_FriendReject value)?  friendReject,TResult Function( UiCommandDto_FriendRemove value)?  friendRemove,TResult Function( UiCommandDto_AgentEnqueueTurn value)?  agentEnqueueTurn,TResult Function( UiCommandDto_AgentRespondPermission value)?  agentRespondPermission,TResult Function( UiCommandDto_AgentAbortTurn value)?  agentAbortTurn,TResult Function( UiCommandDto_AgentRunResult value)?  agentRunResult,TResult Function( UiCommandDto_SettingsPatch value)?  settingsPatch,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case UiCommandDto_SendText() when sendText != null:
+return sendText(_that);case UiCommandDto_SendMedia() when sendMedia != null:
+return sendMedia(_that);case UiCommandDto_RetrySend() when retrySend != null:
+return retrySend(_that);case UiCommandDto_CancelSend() when cancelSend != null:
+return cancelSend(_that);case UiCommandDto_MarkThreadRead() when markThreadRead != null:
+return markThreadRead(_that);case UiCommandDto_DeleteThread() when deleteThread != null:
+return deleteThread(_that);case UiCommandDto_FriendRequest() when friendRequest != null:
+return friendRequest(_that);case UiCommandDto_FriendAccept() when friendAccept != null:
+return friendAccept(_that);case UiCommandDto_FriendReject() when friendReject != null:
+return friendReject(_that);case UiCommandDto_FriendRemove() when friendRemove != null:
+return friendRemove(_that);case UiCommandDto_AgentEnqueueTurn() when agentEnqueueTurn != null:
+return agentEnqueueTurn(_that);case UiCommandDto_AgentRespondPermission() when agentRespondPermission != null:
+return agentRespondPermission(_that);case UiCommandDto_AgentAbortTurn() when agentAbortTurn != null:
+return agentAbortTurn(_that);case UiCommandDto_AgentRunResult() when agentRunResult != null:
+return agentRunResult(_that);case UiCommandDto_SettingsPatch() when settingsPatch != null:
+return settingsPatch(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( UiCommandDto_SendText value)  sendText,required TResult Function( UiCommandDto_SendMedia value)  sendMedia,required TResult Function( UiCommandDto_RetrySend value)  retrySend,required TResult Function( UiCommandDto_CancelSend value)  cancelSend,required TResult Function( UiCommandDto_MarkThreadRead value)  markThreadRead,required TResult Function( UiCommandDto_DeleteThread value)  deleteThread,required TResult Function( UiCommandDto_FriendRequest value)  friendRequest,required TResult Function( UiCommandDto_FriendAccept value)  friendAccept,required TResult Function( UiCommandDto_FriendReject value)  friendReject,required TResult Function( UiCommandDto_FriendRemove value)  friendRemove,required TResult Function( UiCommandDto_AgentEnqueueTurn value)  agentEnqueueTurn,required TResult Function( UiCommandDto_AgentRespondPermission value)  agentRespondPermission,required TResult Function( UiCommandDto_AgentAbortTurn value)  agentAbortTurn,required TResult Function( UiCommandDto_AgentRunResult value)  agentRunResult,required TResult Function( UiCommandDto_SettingsPatch value)  settingsPatch,}){
+final _that = this;
+switch (_that) {
+case UiCommandDto_SendText():
+return sendText(_that);case UiCommandDto_SendMedia():
+return sendMedia(_that);case UiCommandDto_RetrySend():
+return retrySend(_that);case UiCommandDto_CancelSend():
+return cancelSend(_that);case UiCommandDto_MarkThreadRead():
+return markThreadRead(_that);case UiCommandDto_DeleteThread():
+return deleteThread(_that);case UiCommandDto_FriendRequest():
+return friendRequest(_that);case UiCommandDto_FriendAccept():
+return friendAccept(_that);case UiCommandDto_FriendReject():
+return friendReject(_that);case UiCommandDto_FriendRemove():
+return friendRemove(_that);case UiCommandDto_AgentEnqueueTurn():
+return agentEnqueueTurn(_that);case UiCommandDto_AgentRespondPermission():
+return agentRespondPermission(_that);case UiCommandDto_AgentAbortTurn():
+return agentAbortTurn(_that);case UiCommandDto_AgentRunResult():
+return agentRunResult(_that);case UiCommandDto_SettingsPatch():
+return settingsPatch(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( UiCommandDto_SendText value)?  sendText,TResult? Function( UiCommandDto_SendMedia value)?  sendMedia,TResult? Function( UiCommandDto_RetrySend value)?  retrySend,TResult? Function( UiCommandDto_CancelSend value)?  cancelSend,TResult? Function( UiCommandDto_MarkThreadRead value)?  markThreadRead,TResult? Function( UiCommandDto_DeleteThread value)?  deleteThread,TResult? Function( UiCommandDto_FriendRequest value)?  friendRequest,TResult? Function( UiCommandDto_FriendAccept value)?  friendAccept,TResult? Function( UiCommandDto_FriendReject value)?  friendReject,TResult? Function( UiCommandDto_FriendRemove value)?  friendRemove,TResult? Function( UiCommandDto_AgentEnqueueTurn value)?  agentEnqueueTurn,TResult? Function( UiCommandDto_AgentRespondPermission value)?  agentRespondPermission,TResult? Function( UiCommandDto_AgentAbortTurn value)?  agentAbortTurn,TResult? Function( UiCommandDto_AgentRunResult value)?  agentRunResult,TResult? Function( UiCommandDto_SettingsPatch value)?  settingsPatch,}){
+final _that = this;
+switch (_that) {
+case UiCommandDto_SendText() when sendText != null:
+return sendText(_that);case UiCommandDto_SendMedia() when sendMedia != null:
+return sendMedia(_that);case UiCommandDto_RetrySend() when retrySend != null:
+return retrySend(_that);case UiCommandDto_CancelSend() when cancelSend != null:
+return cancelSend(_that);case UiCommandDto_MarkThreadRead() when markThreadRead != null:
+return markThreadRead(_that);case UiCommandDto_DeleteThread() when deleteThread != null:
+return deleteThread(_that);case UiCommandDto_FriendRequest() when friendRequest != null:
+return friendRequest(_that);case UiCommandDto_FriendAccept() when friendAccept != null:
+return friendAccept(_that);case UiCommandDto_FriendReject() when friendReject != null:
+return friendReject(_that);case UiCommandDto_FriendRemove() when friendRemove != null:
+return friendRemove(_that);case UiCommandDto_AgentEnqueueTurn() when agentEnqueueTurn != null:
+return agentEnqueueTurn(_that);case UiCommandDto_AgentRespondPermission() when agentRespondPermission != null:
+return agentRespondPermission(_that);case UiCommandDto_AgentAbortTurn() when agentAbortTurn != null:
+return agentAbortTurn(_that);case UiCommandDto_AgentRunResult() when agentRunResult != null:
+return agentRunResult(_that);case UiCommandDto_SettingsPatch() when settingsPatch != null:
+return settingsPatch(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String dest,  String text,  int kind)?  sendText,TResult Function( String dest,  String path,  String mime,  int width,  int height,  PlatformInt64 byteSize,  int kind)?  sendMedia,TResult Function( String clientId)?  retrySend,TResult Function( String clientId)?  cancelSend,TResult Function( String dest,  int kind,  PlatformInt64 visibleMessageId)?  markThreadRead,TResult Function( String dest)?  deleteThread,TResult Function( String dest)?  friendRequest,TResult Function( String dest)?  friendAccept,TResult Function( String dest)?  friendReject,TResult Function( String dest)?  friendRemove,TResult Function( String dest,  String text,  PlatformInt64 inReplyTo)?  agentEnqueueTurn,TResult Function( String dest,  String callId,  String permission)?  agentRespondPermission,TResult Function( String dest)?  agentAbortTurn,TResult Function( String dest,  String profileId,  BigInt epoch,  String output,  String? error)?  agentRunResult,TResult Function( String? wsUrl,  String? httpOrigin,  String? env)?  settingsPatch,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case UiCommandDto_SendText() when sendText != null:
+return sendText(_that.dest,_that.text,_that.kind);case UiCommandDto_SendMedia() when sendMedia != null:
+return sendMedia(_that.dest,_that.path,_that.mime,_that.width,_that.height,_that.byteSize,_that.kind);case UiCommandDto_RetrySend() when retrySend != null:
+return retrySend(_that.clientId);case UiCommandDto_CancelSend() when cancelSend != null:
+return cancelSend(_that.clientId);case UiCommandDto_MarkThreadRead() when markThreadRead != null:
+return markThreadRead(_that.dest,_that.kind,_that.visibleMessageId);case UiCommandDto_DeleteThread() when deleteThread != null:
+return deleteThread(_that.dest);case UiCommandDto_FriendRequest() when friendRequest != null:
+return friendRequest(_that.dest);case UiCommandDto_FriendAccept() when friendAccept != null:
+return friendAccept(_that.dest);case UiCommandDto_FriendReject() when friendReject != null:
+return friendReject(_that.dest);case UiCommandDto_FriendRemove() when friendRemove != null:
+return friendRemove(_that.dest);case UiCommandDto_AgentEnqueueTurn() when agentEnqueueTurn != null:
+return agentEnqueueTurn(_that.dest,_that.text,_that.inReplyTo);case UiCommandDto_AgentRespondPermission() when agentRespondPermission != null:
+return agentRespondPermission(_that.dest,_that.callId,_that.permission);case UiCommandDto_AgentAbortTurn() when agentAbortTurn != null:
+return agentAbortTurn(_that.dest);case UiCommandDto_AgentRunResult() when agentRunResult != null:
+return agentRunResult(_that.dest,_that.profileId,_that.epoch,_that.output,_that.error);case UiCommandDto_SettingsPatch() when settingsPatch != null:
+return settingsPatch(_that.wsUrl,_that.httpOrigin,_that.env);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String dest,  String text,  int kind)  sendText,required TResult Function( String dest,  String path,  String mime,  int width,  int height,  PlatformInt64 byteSize,  int kind)  sendMedia,required TResult Function( String clientId)  retrySend,required TResult Function( String clientId)  cancelSend,required TResult Function( String dest,  int kind,  PlatformInt64 visibleMessageId)  markThreadRead,required TResult Function( String dest)  deleteThread,required TResult Function( String dest)  friendRequest,required TResult Function( String dest)  friendAccept,required TResult Function( String dest)  friendReject,required TResult Function( String dest)  friendRemove,required TResult Function( String dest,  String text,  PlatformInt64 inReplyTo)  agentEnqueueTurn,required TResult Function( String dest,  String callId,  String permission)  agentRespondPermission,required TResult Function( String dest)  agentAbortTurn,required TResult Function( String dest,  String profileId,  BigInt epoch,  String output,  String? error)  agentRunResult,required TResult Function( String? wsUrl,  String? httpOrigin,  String? env)  settingsPatch,}) {final _that = this;
+switch (_that) {
+case UiCommandDto_SendText():
+return sendText(_that.dest,_that.text,_that.kind);case UiCommandDto_SendMedia():
+return sendMedia(_that.dest,_that.path,_that.mime,_that.width,_that.height,_that.byteSize,_that.kind);case UiCommandDto_RetrySend():
+return retrySend(_that.clientId);case UiCommandDto_CancelSend():
+return cancelSend(_that.clientId);case UiCommandDto_MarkThreadRead():
+return markThreadRead(_that.dest,_that.kind,_that.visibleMessageId);case UiCommandDto_DeleteThread():
+return deleteThread(_that.dest);case UiCommandDto_FriendRequest():
+return friendRequest(_that.dest);case UiCommandDto_FriendAccept():
+return friendAccept(_that.dest);case UiCommandDto_FriendReject():
+return friendReject(_that.dest);case UiCommandDto_FriendRemove():
+return friendRemove(_that.dest);case UiCommandDto_AgentEnqueueTurn():
+return agentEnqueueTurn(_that.dest,_that.text,_that.inReplyTo);case UiCommandDto_AgentRespondPermission():
+return agentRespondPermission(_that.dest,_that.callId,_that.permission);case UiCommandDto_AgentAbortTurn():
+return agentAbortTurn(_that.dest);case UiCommandDto_AgentRunResult():
+return agentRunResult(_that.dest,_that.profileId,_that.epoch,_that.output,_that.error);case UiCommandDto_SettingsPatch():
+return settingsPatch(_that.wsUrl,_that.httpOrigin,_that.env);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String dest,  String text,  int kind)?  sendText,TResult? Function( String dest,  String path,  String mime,  int width,  int height,  PlatformInt64 byteSize,  int kind)?  sendMedia,TResult? Function( String clientId)?  retrySend,TResult? Function( String clientId)?  cancelSend,TResult? Function( String dest,  int kind,  PlatformInt64 visibleMessageId)?  markThreadRead,TResult? Function( String dest)?  deleteThread,TResult? Function( String dest)?  friendRequest,TResult? Function( String dest)?  friendAccept,TResult? Function( String dest)?  friendReject,TResult? Function( String dest)?  friendRemove,TResult? Function( String dest,  String text,  PlatformInt64 inReplyTo)?  agentEnqueueTurn,TResult? Function( String dest,  String callId,  String permission)?  agentRespondPermission,TResult? Function( String dest)?  agentAbortTurn,TResult? Function( String dest,  String profileId,  BigInt epoch,  String output,  String? error)?  agentRunResult,TResult? Function( String? wsUrl,  String? httpOrigin,  String? env)?  settingsPatch,}) {final _that = this;
+switch (_that) {
+case UiCommandDto_SendText() when sendText != null:
+return sendText(_that.dest,_that.text,_that.kind);case UiCommandDto_SendMedia() when sendMedia != null:
+return sendMedia(_that.dest,_that.path,_that.mime,_that.width,_that.height,_that.byteSize,_that.kind);case UiCommandDto_RetrySend() when retrySend != null:
+return retrySend(_that.clientId);case UiCommandDto_CancelSend() when cancelSend != null:
+return cancelSend(_that.clientId);case UiCommandDto_MarkThreadRead() when markThreadRead != null:
+return markThreadRead(_that.dest,_that.kind,_that.visibleMessageId);case UiCommandDto_DeleteThread() when deleteThread != null:
+return deleteThread(_that.dest);case UiCommandDto_FriendRequest() when friendRequest != null:
+return friendRequest(_that.dest);case UiCommandDto_FriendAccept() when friendAccept != null:
+return friendAccept(_that.dest);case UiCommandDto_FriendReject() when friendReject != null:
+return friendReject(_that.dest);case UiCommandDto_FriendRemove() when friendRemove != null:
+return friendRemove(_that.dest);case UiCommandDto_AgentEnqueueTurn() when agentEnqueueTurn != null:
+return agentEnqueueTurn(_that.dest,_that.text,_that.inReplyTo);case UiCommandDto_AgentRespondPermission() when agentRespondPermission != null:
+return agentRespondPermission(_that.dest,_that.callId,_that.permission);case UiCommandDto_AgentAbortTurn() when agentAbortTurn != null:
+return agentAbortTurn(_that.dest);case UiCommandDto_AgentRunResult() when agentRunResult != null:
+return agentRunResult(_that.dest,_that.profileId,_that.epoch,_that.output,_that.error);case UiCommandDto_SettingsPatch() when settingsPatch != null:
+return settingsPatch(_that.wsUrl,_that.httpOrigin,_that.env);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_SendText extends UiCommandDto {
+  const UiCommandDto_SendText({required this.dest, required this.text, required this.kind}): super._();
+  
+
+ final  String dest;
+ final  String text;
+ final  int kind;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_SendTextCopyWith<UiCommandDto_SendText> get copyWith => _$UiCommandDto_SendTextCopyWithImpl<UiCommandDto_SendText>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_SendText&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.text, text) || other.text == text)&&(identical(other.kind, kind) || other.kind == kind));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,text,kind);
+
+@override
+String toString() {
+  return 'UiCommandDto.sendText(dest: $dest, text: $text, kind: $kind)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_SendTextCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_SendTextCopyWith(UiCommandDto_SendText value, $Res Function(UiCommandDto_SendText) _then) = _$UiCommandDto_SendTextCopyWithImpl;
+@useResult
+$Res call({
+ String dest, String text, int kind
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_SendTextCopyWithImpl<$Res>
+    implements $UiCommandDto_SendTextCopyWith<$Res> {
+  _$UiCommandDto_SendTextCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_SendText _self;
+  final $Res Function(UiCommandDto_SendText) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? text = null,Object? kind = null,}) {
+  return _then(UiCommandDto_SendText(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_SendMedia extends UiCommandDto {
+  const UiCommandDto_SendMedia({required this.dest, required this.path, required this.mime, required this.width, required this.height, required this.byteSize, required this.kind}): super._();
+  
+
+ final  String dest;
+ final  String path;
+ final  String mime;
+ final  int width;
+ final  int height;
+ final  PlatformInt64 byteSize;
+ final  int kind;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_SendMediaCopyWith<UiCommandDto_SendMedia> get copyWith => _$UiCommandDto_SendMediaCopyWithImpl<UiCommandDto_SendMedia>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_SendMedia&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.path, path) || other.path == path)&&(identical(other.mime, mime) || other.mime == mime)&&(identical(other.width, width) || other.width == width)&&(identical(other.height, height) || other.height == height)&&(identical(other.byteSize, byteSize) || other.byteSize == byteSize)&&(identical(other.kind, kind) || other.kind == kind));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,path,mime,width,height,byteSize,kind);
+
+@override
+String toString() {
+  return 'UiCommandDto.sendMedia(dest: $dest, path: $path, mime: $mime, width: $width, height: $height, byteSize: $byteSize, kind: $kind)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_SendMediaCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_SendMediaCopyWith(UiCommandDto_SendMedia value, $Res Function(UiCommandDto_SendMedia) _then) = _$UiCommandDto_SendMediaCopyWithImpl;
+@useResult
+$Res call({
+ String dest, String path, String mime, int width, int height, PlatformInt64 byteSize, int kind
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_SendMediaCopyWithImpl<$Res>
+    implements $UiCommandDto_SendMediaCopyWith<$Res> {
+  _$UiCommandDto_SendMediaCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_SendMedia _self;
+  final $Res Function(UiCommandDto_SendMedia) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? path = null,Object? mime = null,Object? width = null,Object? height = null,Object? byteSize = null,Object? kind = null,}) {
+  return _then(UiCommandDto_SendMedia(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,path: null == path ? _self.path : path // ignore: cast_nullable_to_non_nullable
+as String,mime: null == mime ? _self.mime : mime // ignore: cast_nullable_to_non_nullable
+as String,width: null == width ? _self.width : width // ignore: cast_nullable_to_non_nullable
+as int,height: null == height ? _self.height : height // ignore: cast_nullable_to_non_nullable
+as int,byteSize: null == byteSize ? _self.byteSize : byteSize // ignore: cast_nullable_to_non_nullable
+as PlatformInt64,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_RetrySend extends UiCommandDto {
+  const UiCommandDto_RetrySend({required this.clientId}): super._();
+  
+
+ final  String clientId;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_RetrySendCopyWith<UiCommandDto_RetrySend> get copyWith => _$UiCommandDto_RetrySendCopyWithImpl<UiCommandDto_RetrySend>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_RetrySend&&(identical(other.clientId, clientId) || other.clientId == clientId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,clientId);
+
+@override
+String toString() {
+  return 'UiCommandDto.retrySend(clientId: $clientId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_RetrySendCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_RetrySendCopyWith(UiCommandDto_RetrySend value, $Res Function(UiCommandDto_RetrySend) _then) = _$UiCommandDto_RetrySendCopyWithImpl;
+@useResult
+$Res call({
+ String clientId
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_RetrySendCopyWithImpl<$Res>
+    implements $UiCommandDto_RetrySendCopyWith<$Res> {
+  _$UiCommandDto_RetrySendCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_RetrySend _self;
+  final $Res Function(UiCommandDto_RetrySend) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? clientId = null,}) {
+  return _then(UiCommandDto_RetrySend(
+clientId: null == clientId ? _self.clientId : clientId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_CancelSend extends UiCommandDto {
+  const UiCommandDto_CancelSend({required this.clientId}): super._();
+  
+
+ final  String clientId;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_CancelSendCopyWith<UiCommandDto_CancelSend> get copyWith => _$UiCommandDto_CancelSendCopyWithImpl<UiCommandDto_CancelSend>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_CancelSend&&(identical(other.clientId, clientId) || other.clientId == clientId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,clientId);
+
+@override
+String toString() {
+  return 'UiCommandDto.cancelSend(clientId: $clientId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_CancelSendCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_CancelSendCopyWith(UiCommandDto_CancelSend value, $Res Function(UiCommandDto_CancelSend) _then) = _$UiCommandDto_CancelSendCopyWithImpl;
+@useResult
+$Res call({
+ String clientId
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_CancelSendCopyWithImpl<$Res>
+    implements $UiCommandDto_CancelSendCopyWith<$Res> {
+  _$UiCommandDto_CancelSendCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_CancelSend _self;
+  final $Res Function(UiCommandDto_CancelSend) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? clientId = null,}) {
+  return _then(UiCommandDto_CancelSend(
+clientId: null == clientId ? _self.clientId : clientId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_MarkThreadRead extends UiCommandDto {
+  const UiCommandDto_MarkThreadRead({required this.dest, required this.kind, required this.visibleMessageId}): super._();
+  
+
+ final  String dest;
+ final  int kind;
+ final  PlatformInt64 visibleMessageId;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_MarkThreadReadCopyWith<UiCommandDto_MarkThreadRead> get copyWith => _$UiCommandDto_MarkThreadReadCopyWithImpl<UiCommandDto_MarkThreadRead>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_MarkThreadRead&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.visibleMessageId, visibleMessageId) || other.visibleMessageId == visibleMessageId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,kind,visibleMessageId);
+
+@override
+String toString() {
+  return 'UiCommandDto.markThreadRead(dest: $dest, kind: $kind, visibleMessageId: $visibleMessageId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_MarkThreadReadCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_MarkThreadReadCopyWith(UiCommandDto_MarkThreadRead value, $Res Function(UiCommandDto_MarkThreadRead) _then) = _$UiCommandDto_MarkThreadReadCopyWithImpl;
+@useResult
+$Res call({
+ String dest, int kind, PlatformInt64 visibleMessageId
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_MarkThreadReadCopyWithImpl<$Res>
+    implements $UiCommandDto_MarkThreadReadCopyWith<$Res> {
+  _$UiCommandDto_MarkThreadReadCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_MarkThreadRead _self;
+  final $Res Function(UiCommandDto_MarkThreadRead) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? kind = null,Object? visibleMessageId = null,}) {
+  return _then(UiCommandDto_MarkThreadRead(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as int,visibleMessageId: null == visibleMessageId ? _self.visibleMessageId : visibleMessageId // ignore: cast_nullable_to_non_nullable
+as PlatformInt64,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_DeleteThread extends UiCommandDto {
+  const UiCommandDto_DeleteThread({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_DeleteThreadCopyWith<UiCommandDto_DeleteThread> get copyWith => _$UiCommandDto_DeleteThreadCopyWithImpl<UiCommandDto_DeleteThread>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_DeleteThread&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.deleteThread(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_DeleteThreadCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_DeleteThreadCopyWith(UiCommandDto_DeleteThread value, $Res Function(UiCommandDto_DeleteThread) _then) = _$UiCommandDto_DeleteThreadCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_DeleteThreadCopyWithImpl<$Res>
+    implements $UiCommandDto_DeleteThreadCopyWith<$Res> {
+  _$UiCommandDto_DeleteThreadCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_DeleteThread _self;
+  final $Res Function(UiCommandDto_DeleteThread) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_DeleteThread(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_FriendRequest extends UiCommandDto {
+  const UiCommandDto_FriendRequest({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_FriendRequestCopyWith<UiCommandDto_FriendRequest> get copyWith => _$UiCommandDto_FriendRequestCopyWithImpl<UiCommandDto_FriendRequest>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_FriendRequest&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.friendRequest(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_FriendRequestCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_FriendRequestCopyWith(UiCommandDto_FriendRequest value, $Res Function(UiCommandDto_FriendRequest) _then) = _$UiCommandDto_FriendRequestCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_FriendRequestCopyWithImpl<$Res>
+    implements $UiCommandDto_FriendRequestCopyWith<$Res> {
+  _$UiCommandDto_FriendRequestCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_FriendRequest _self;
+  final $Res Function(UiCommandDto_FriendRequest) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_FriendRequest(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_FriendAccept extends UiCommandDto {
+  const UiCommandDto_FriendAccept({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_FriendAcceptCopyWith<UiCommandDto_FriendAccept> get copyWith => _$UiCommandDto_FriendAcceptCopyWithImpl<UiCommandDto_FriendAccept>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_FriendAccept&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.friendAccept(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_FriendAcceptCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_FriendAcceptCopyWith(UiCommandDto_FriendAccept value, $Res Function(UiCommandDto_FriendAccept) _then) = _$UiCommandDto_FriendAcceptCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_FriendAcceptCopyWithImpl<$Res>
+    implements $UiCommandDto_FriendAcceptCopyWith<$Res> {
+  _$UiCommandDto_FriendAcceptCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_FriendAccept _self;
+  final $Res Function(UiCommandDto_FriendAccept) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_FriendAccept(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_FriendReject extends UiCommandDto {
+  const UiCommandDto_FriendReject({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_FriendRejectCopyWith<UiCommandDto_FriendReject> get copyWith => _$UiCommandDto_FriendRejectCopyWithImpl<UiCommandDto_FriendReject>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_FriendReject&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.friendReject(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_FriendRejectCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_FriendRejectCopyWith(UiCommandDto_FriendReject value, $Res Function(UiCommandDto_FriendReject) _then) = _$UiCommandDto_FriendRejectCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_FriendRejectCopyWithImpl<$Res>
+    implements $UiCommandDto_FriendRejectCopyWith<$Res> {
+  _$UiCommandDto_FriendRejectCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_FriendReject _self;
+  final $Res Function(UiCommandDto_FriendReject) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_FriendReject(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_FriendRemove extends UiCommandDto {
+  const UiCommandDto_FriendRemove({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_FriendRemoveCopyWith<UiCommandDto_FriendRemove> get copyWith => _$UiCommandDto_FriendRemoveCopyWithImpl<UiCommandDto_FriendRemove>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_FriendRemove&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.friendRemove(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_FriendRemoveCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_FriendRemoveCopyWith(UiCommandDto_FriendRemove value, $Res Function(UiCommandDto_FriendRemove) _then) = _$UiCommandDto_FriendRemoveCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_FriendRemoveCopyWithImpl<$Res>
+    implements $UiCommandDto_FriendRemoveCopyWith<$Res> {
+  _$UiCommandDto_FriendRemoveCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_FriendRemove _self;
+  final $Res Function(UiCommandDto_FriendRemove) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_FriendRemove(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_AgentEnqueueTurn extends UiCommandDto {
+  const UiCommandDto_AgentEnqueueTurn({required this.dest, required this.text, required this.inReplyTo}): super._();
+  
+
+ final  String dest;
+ final  String text;
+ final  PlatformInt64 inReplyTo;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_AgentEnqueueTurnCopyWith<UiCommandDto_AgentEnqueueTurn> get copyWith => _$UiCommandDto_AgentEnqueueTurnCopyWithImpl<UiCommandDto_AgentEnqueueTurn>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_AgentEnqueueTurn&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.text, text) || other.text == text)&&(identical(other.inReplyTo, inReplyTo) || other.inReplyTo == inReplyTo));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,text,inReplyTo);
+
+@override
+String toString() {
+  return 'UiCommandDto.agentEnqueueTurn(dest: $dest, text: $text, inReplyTo: $inReplyTo)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_AgentEnqueueTurnCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_AgentEnqueueTurnCopyWith(UiCommandDto_AgentEnqueueTurn value, $Res Function(UiCommandDto_AgentEnqueueTurn) _then) = _$UiCommandDto_AgentEnqueueTurnCopyWithImpl;
+@useResult
+$Res call({
+ String dest, String text, PlatformInt64 inReplyTo
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_AgentEnqueueTurnCopyWithImpl<$Res>
+    implements $UiCommandDto_AgentEnqueueTurnCopyWith<$Res> {
+  _$UiCommandDto_AgentEnqueueTurnCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_AgentEnqueueTurn _self;
+  final $Res Function(UiCommandDto_AgentEnqueueTurn) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? text = null,Object? inReplyTo = null,}) {
+  return _then(UiCommandDto_AgentEnqueueTurn(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,inReplyTo: null == inReplyTo ? _self.inReplyTo : inReplyTo // ignore: cast_nullable_to_non_nullable
+as PlatformInt64,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_AgentRespondPermission extends UiCommandDto {
+  const UiCommandDto_AgentRespondPermission({required this.dest, required this.callId, required this.permission}): super._();
+  
+
+ final  String dest;
+ final  String callId;
+ final  String permission;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_AgentRespondPermissionCopyWith<UiCommandDto_AgentRespondPermission> get copyWith => _$UiCommandDto_AgentRespondPermissionCopyWithImpl<UiCommandDto_AgentRespondPermission>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_AgentRespondPermission&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.callId, callId) || other.callId == callId)&&(identical(other.permission, permission) || other.permission == permission));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,callId,permission);
+
+@override
+String toString() {
+  return 'UiCommandDto.agentRespondPermission(dest: $dest, callId: $callId, permission: $permission)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_AgentRespondPermissionCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_AgentRespondPermissionCopyWith(UiCommandDto_AgentRespondPermission value, $Res Function(UiCommandDto_AgentRespondPermission) _then) = _$UiCommandDto_AgentRespondPermissionCopyWithImpl;
+@useResult
+$Res call({
+ String dest, String callId, String permission
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_AgentRespondPermissionCopyWithImpl<$Res>
+    implements $UiCommandDto_AgentRespondPermissionCopyWith<$Res> {
+  _$UiCommandDto_AgentRespondPermissionCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_AgentRespondPermission _self;
+  final $Res Function(UiCommandDto_AgentRespondPermission) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? callId = null,Object? permission = null,}) {
+  return _then(UiCommandDto_AgentRespondPermission(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,callId: null == callId ? _self.callId : callId // ignore: cast_nullable_to_non_nullable
+as String,permission: null == permission ? _self.permission : permission // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_AgentAbortTurn extends UiCommandDto {
+  const UiCommandDto_AgentAbortTurn({required this.dest}): super._();
+  
+
+ final  String dest;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_AgentAbortTurnCopyWith<UiCommandDto_AgentAbortTurn> get copyWith => _$UiCommandDto_AgentAbortTurnCopyWithImpl<UiCommandDto_AgentAbortTurn>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_AgentAbortTurn&&(identical(other.dest, dest) || other.dest == dest));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest);
+
+@override
+String toString() {
+  return 'UiCommandDto.agentAbortTurn(dest: $dest)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_AgentAbortTurnCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_AgentAbortTurnCopyWith(UiCommandDto_AgentAbortTurn value, $Res Function(UiCommandDto_AgentAbortTurn) _then) = _$UiCommandDto_AgentAbortTurnCopyWithImpl;
+@useResult
+$Res call({
+ String dest
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_AgentAbortTurnCopyWithImpl<$Res>
+    implements $UiCommandDto_AgentAbortTurnCopyWith<$Res> {
+  _$UiCommandDto_AgentAbortTurnCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_AgentAbortTurn _self;
+  final $Res Function(UiCommandDto_AgentAbortTurn) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,}) {
+  return _then(UiCommandDto_AgentAbortTurn(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_AgentRunResult extends UiCommandDto {
+  const UiCommandDto_AgentRunResult({required this.dest, required this.profileId, required this.epoch, required this.output, this.error}): super._();
+  
+
+ final  String dest;
+ final  String profileId;
+ final  BigInt epoch;
+ final  String output;
+ final  String? error;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_AgentRunResultCopyWith<UiCommandDto_AgentRunResult> get copyWith => _$UiCommandDto_AgentRunResultCopyWithImpl<UiCommandDto_AgentRunResult>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_AgentRunResult&&(identical(other.dest, dest) || other.dest == dest)&&(identical(other.profileId, profileId) || other.profileId == profileId)&&(identical(other.epoch, epoch) || other.epoch == epoch)&&(identical(other.output, output) || other.output == output)&&(identical(other.error, error) || other.error == error));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,dest,profileId,epoch,output,error);
+
+@override
+String toString() {
+  return 'UiCommandDto.agentRunResult(dest: $dest, profileId: $profileId, epoch: $epoch, output: $output, error: $error)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_AgentRunResultCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_AgentRunResultCopyWith(UiCommandDto_AgentRunResult value, $Res Function(UiCommandDto_AgentRunResult) _then) = _$UiCommandDto_AgentRunResultCopyWithImpl;
+@useResult
+$Res call({
+ String dest, String profileId, BigInt epoch, String output, String? error
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_AgentRunResultCopyWithImpl<$Res>
+    implements $UiCommandDto_AgentRunResultCopyWith<$Res> {
+  _$UiCommandDto_AgentRunResultCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_AgentRunResult _self;
+  final $Res Function(UiCommandDto_AgentRunResult) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? dest = null,Object? profileId = null,Object? epoch = null,Object? output = null,Object? error = freezed,}) {
+  return _then(UiCommandDto_AgentRunResult(
+dest: null == dest ? _self.dest : dest // ignore: cast_nullable_to_non_nullable
+as String,profileId: null == profileId ? _self.profileId : profileId // ignore: cast_nullable_to_non_nullable
+as String,epoch: null == epoch ? _self.epoch : epoch // ignore: cast_nullable_to_non_nullable
+as BigInt,output: null == output ? _self.output : output // ignore: cast_nullable_to_non_nullable
+as String,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class UiCommandDto_SettingsPatch extends UiCommandDto {
+  const UiCommandDto_SettingsPatch({this.wsUrl, this.httpOrigin, this.env}): super._();
+  
+
+ final  String? wsUrl;
+ final  String? httpOrigin;
+ final  String? env;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UiCommandDto_SettingsPatchCopyWith<UiCommandDto_SettingsPatch> get copyWith => _$UiCommandDto_SettingsPatchCopyWithImpl<UiCommandDto_SettingsPatch>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UiCommandDto_SettingsPatch&&(identical(other.wsUrl, wsUrl) || other.wsUrl == wsUrl)&&(identical(other.httpOrigin, httpOrigin) || other.httpOrigin == httpOrigin)&&(identical(other.env, env) || other.env == env));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,wsUrl,httpOrigin,env);
+
+@override
+String toString() {
+  return 'UiCommandDto.settingsPatch(wsUrl: $wsUrl, httpOrigin: $httpOrigin, env: $env)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UiCommandDto_SettingsPatchCopyWith<$Res> implements $UiCommandDtoCopyWith<$Res> {
+  factory $UiCommandDto_SettingsPatchCopyWith(UiCommandDto_SettingsPatch value, $Res Function(UiCommandDto_SettingsPatch) _then) = _$UiCommandDto_SettingsPatchCopyWithImpl;
+@useResult
+$Res call({
+ String? wsUrl, String? httpOrigin, String? env
+});
+
+
+
+
+}
+/// @nodoc
+class _$UiCommandDto_SettingsPatchCopyWithImpl<$Res>
+    implements $UiCommandDto_SettingsPatchCopyWith<$Res> {
+  _$UiCommandDto_SettingsPatchCopyWithImpl(this._self, this._then);
+
+  final UiCommandDto_SettingsPatch _self;
+  final $Res Function(UiCommandDto_SettingsPatch) _then;
+
+/// Create a copy of UiCommandDto
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? wsUrl = freezed,Object? httpOrigin = freezed,Object? env = freezed,}) {
+  return _then(UiCommandDto_SettingsPatch(
+wsUrl: freezed == wsUrl ? _self.wsUrl : wsUrl // ignore: cast_nullable_to_non_nullable
+as String?,httpOrigin: freezed == httpOrigin ? _self.httpOrigin : httpOrigin // ignore: cast_nullable_to_non_nullable
+as String?,env: freezed == env ? _self.env : env // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
 // dart format on

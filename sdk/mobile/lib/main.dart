@@ -98,6 +98,7 @@ class _KimBootState extends State<KimBoot> {
           runtime: runtime,
           auth: bridge,
           client: bridge,
+          media: bridge,
         ),
         child: const KimApp(),
       );

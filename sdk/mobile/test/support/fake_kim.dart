@@ -704,6 +704,46 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
+  Future<CommandAckDto> command(UiCommandDto cmd) async {
+    return const CommandAckDto(
+      requestId: '',
+      clientId: '',
+      dest: '',
+      acceptedAt: 0,
+      sendStatus: SendStatusDto.sent,
+    );
+  }
+
+  @override
+  Future<List<MessageViewDto>> searchMessages(
+    String query, {
+    String? dest,
+  }) async {
+    return const [];
+  }
+
+  @override
+  Future<LocalMediaDto> mediaFetch(String url) async {
+    return const LocalMediaDto(localPath: '', byteSize: 0, width: 0, height: 0);
+  }
+
+  @override
+  Future<LocalMediaDto> mediaUpload({
+    required String path,
+    required String mime,
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  }) async {
+    return LocalMediaDto(
+      localPath: path,
+      byteSize: byteSize,
+      width: width,
+      height: height,
+    );
+  }
+
+  @override
   Future<List<PersonDto>> refreshContacts() async {
     final rows = [
       for (final p in friends)

@@ -31,8 +31,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth;
 
   CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_KimSdkHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle;
+  get rust_arc_decrement_strong_count_KimUiHandlePtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle;
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
@@ -44,8 +44,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     dynamic raw,
   );
 
@@ -56,8 +56,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     dynamic raw,
   );
 
@@ -68,8 +68,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     dynamic raw,
   );
 
@@ -153,6 +153,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TimelineSnapshotDto dco_decode_box_autoadd_timeline_snapshot_dto(dynamic raw);
 
   @protected
+  UiCommandDto dco_decode_box_autoadd_ui_command_dto(dynamic raw);
+
+  @protected
   CommandAckDto dco_decode_command_ack_dto(dynamic raw);
 
   @protected
@@ -166,12 +169,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   KimCommandReceipt dco_decode_kim_command_receipt(dynamic raw);
-
-  @protected
-  KimHistoryItem dco_decode_kim_history_item(dynamic raw);
-
-  @protected
-  KimInboxItem dco_decode_kim_inbox_item(dynamic raw);
 
   @protected
   KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw);
@@ -190,12 +187,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<KimBotPendingItem> dco_decode_list_kim_bot_pending_item(dynamic raw);
-
-  @protected
-  List<KimHistoryItem> dco_decode_list_kim_history_item(dynamic raw);
-
-  @protected
-  List<KimInboxItem> dco_decode_list_kim_inbox_item(dynamic raw);
 
   @protected
   List<MessageViewDto> dco_decode_list_message_view_dto(dynamic raw);
@@ -279,6 +270,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_u_8(dynamic raw);
 
   @protected
+  UiCommandDto dco_decode_ui_command_dto(dynamic raw);
+
+  @protected
   void dco_decode_unit(dynamic raw);
 
   @protected
@@ -294,8 +288,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     SseDeserializer deserializer,
   );
 
@@ -306,8 +300,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     SseDeserializer deserializer,
   );
 
@@ -318,8 +312,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  KimSdkHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  KimUiHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     SseDeserializer deserializer,
   );
 
@@ -425,6 +419,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  UiCommandDto sse_decode_box_autoadd_ui_command_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CommandAckDto sse_decode_command_ack_dto(SseDeserializer deserializer);
 
   @protected
@@ -442,12 +441,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimCommandReceipt sse_decode_kim_command_receipt(
     SseDeserializer deserializer,
   );
-
-  @protected
-  KimHistoryItem sse_decode_kim_history_item(SseDeserializer deserializer);
-
-  @protected
-  KimInboxItem sse_decode_kim_inbox_item(SseDeserializer deserializer);
 
   @protected
   KimOutgoingContent sse_decode_kim_outgoing_content(
@@ -470,16 +463,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<KimBotPendingItem> sse_decode_list_kim_bot_pending_item(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  List<KimHistoryItem> sse_decode_list_kim_history_item(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  List<KimInboxItem> sse_decode_list_kim_inbox_item(
     SseDeserializer deserializer,
   );
 
@@ -577,6 +560,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
+  UiCommandDto sse_decode_ui_command_dto(SseDeserializer deserializer);
+
+  @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
@@ -597,8 +583,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
-    KimSdkHandle self,
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+    KimUiHandle self,
     SseSerializer serializer,
   );
 
@@ -611,8 +597,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
-    KimSdkHandle self,
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+    KimUiHandle self,
     SseSerializer serializer,
   );
 
@@ -625,8 +611,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
-    KimSdkHandle self,
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+    KimUiHandle self,
     SseSerializer serializer,
   );
 
@@ -757,6 +743,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_ui_command_dto(
+    UiCommandDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_command_ack_dto(CommandAckDto self, SseSerializer serializer);
 
   @protected
@@ -776,15 +768,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     KimCommandReceipt self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_kim_history_item(
-    KimHistoryItem self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_kim_inbox_item(KimInboxItem self, SseSerializer serializer);
 
   @protected
   void sse_encode_kim_outgoing_content(
@@ -810,18 +793,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_kim_bot_pending_item(
     List<KimBotPendingItem> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_kim_history_item(
-    List<KimHistoryItem> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_kim_inbox_item(
-    List<KimInboxItem> self,
     SseSerializer serializer,
   );
 
@@ -949,6 +920,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_ui_command_dto(UiCommandDto self, SseSerializer serializer);
+
+  @protected
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
@@ -977,18 +951,18 @@ class RustLibWire implements BaseWire {
       );
 
   void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     int ptr,
   ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
         ptr,
       );
 
   void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     int ptr,
   ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
         ptr,
       );
 }
@@ -1010,12 +984,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   );
 
   external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     int ptr,
   );
 
   external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     int ptr,
   );
 }

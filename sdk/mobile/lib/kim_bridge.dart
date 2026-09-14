@@ -3,7 +3,7 @@
 library;
 
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
@@ -11,6 +11,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 
 import 'core/format.dart';
 import 'core/logger.dart';
+import 'core/media.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
 import 'models/models.dart';
@@ -194,6 +195,23 @@ abstract class KimClientPort {
   Future<void> deleteAgentProfile(String profileId);
 
   Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows);
+
+  Future<rust_types.CommandAckDto> command(rust_types.UiCommandDto cmd);
+
+  Future<List<rust_types.MessageViewDto>> searchMessages(
+    String query, {
+    String? dest,
+  });
+
+  Future<rust_types.LocalMediaDto> mediaFetch(String url);
+
+  Future<rust_types.LocalMediaDto> mediaUpload({
+    required String path,
+    required String mime,
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  });
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -229,12 +247,12 @@ abstract class KimAuthPort {
   String httpOriginFromWs(String wsUrl);
 }
 
-class KimBridge implements KimAuthPort, KimClientPort {
+class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   static const flutterPin = '3.47.2';
   static const ffiReady = true;
 
   static bool _inited = false;
-  rust.KimSdkHandle? _api;
+  rust.KimUiHandle? _api;
   String? _account;
 
   /// Last WGateway URL passed to [startSession]. Device URL lives in Rust.
@@ -278,7 +296,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     );
   }
 
-  rust.KimSdkHandle _require() {
+  rust.KimUiHandle _require() {
     final api = _api;
     if (api == null) {
       throw StateError('startSession first');
@@ -363,7 +381,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     await _ensure();
     lastUrl = url;
-    _api ??= rust.KimSdkHandle.create();
+    _api ??= rust.KimUiHandle.create();
     if (_account != null && _account!.isNotEmpty) {
       try {
         await _api!.notifyRadioUp();
@@ -828,9 +846,74 @@ class KimBridge implements KimAuthPort, KimClientPort {
     return _require().importAgentProfiles(rows: rows);
   }
 
+  @override
+  Future<rust_types.CommandAckDto> command(rust_types.UiCommandDto cmd) {
+    return _require().command(cmd: cmd);
+  }
+
+  @override
+  Future<List<rust_types.MessageViewDto>> searchMessages(
+    String query, {
+    String? dest,
+  }) {
+    return _require().searchMessages(query: query, dest: dest);
+  }
+
+  @override
+  Future<rust_types.LocalMediaDto> mediaFetch(String url) {
+    return _require().mediaFetch(url: url);
+  }
+
+  @override
+  Future<rust_types.LocalMediaDto> mediaUpload({
+    required String path,
+    required String mime,
+    int width = 0,
+    int height = 0,
+    int byteSize = 0,
+  }) {
+    return _require().mediaUpload(
+      path: path,
+      mime: mime,
+      width: width,
+      height: height,
+      byteSize: byteSize,
+    );
+  }
+
+  @override
+  Future<UploadedObject> uploadImage({
+    required String token,
+    required List<int> bytes,
+    required String contentType,
+  }) async {
+    final _ = token;
+    final file = File(
+      '${Directory.systemTemp.path}/kim-up-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    try {
+      final dto = await mediaUpload(
+        path: file.path,
+        mime: contentType,
+        byteSize: bytes.length,
+      );
+      return UploadedObject(
+        key: '',
+        url: dto.localPath,
+        contentType: contentType,
+        bytes: bytes.length,
+      );
+    } finally {
+      if (file.existsSync()) {
+        await file.delete();
+      }
+    }
+  }
+
   Future<void> attachStore(String dbPath) async {
     await _ensure();
-    _api ??= rust.KimSdkHandle.create();
+    _api ??= rust.KimUiHandle.create();
     await _api!.attachStore(dbPath: dbPath);
   }
 }

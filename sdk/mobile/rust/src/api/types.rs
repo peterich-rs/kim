@@ -273,9 +273,86 @@ pub struct LocalMediaDto {
     pub height: i32,
 }
 
+pub enum UiCommandDto {
+    SendText {
+        dest: String,
+        text: String,
+        kind: i32,
+    },
+    SendMedia {
+        dest: String,
+        path: String,
+        mime: String,
+        width: i32,
+        height: i32,
+        byte_size: i64,
+        kind: i32,
+    },
+    RetrySend {
+        client_id: String,
+    },
+    CancelSend {
+        client_id: String,
+    },
+    MarkThreadRead {
+        dest: String,
+        kind: i32,
+        visible_message_id: i64,
+    },
+    DeleteThread {
+        dest: String,
+    },
+    FriendRequest {
+        dest: String,
+    },
+    FriendAccept {
+        dest: String,
+    },
+    FriendReject {
+        dest: String,
+    },
+    FriendRemove {
+        dest: String,
+    },
+    AgentEnqueueTurn {
+        dest: String,
+        text: String,
+        in_reply_to: i64,
+    },
+    AgentRespondPermission {
+        dest: String,
+        call_id: String,
+        permission: String,
+    },
+    AgentAbortTurn {
+        dest: String,
+    },
+    AgentRunResult {
+        dest: String,
+        profile_id: String,
+        epoch: u64,
+        output: String,
+        error: Option<String>,
+    },
+    SettingsPatch {
+        ws_url: Option<String>,
+        http_origin: Option<String>,
+        env: Option<String>,
+    },
+}
+
 pub struct SdkErrorDto {
     pub kind: String,
     pub message: String,
+}
+
+impl SdkErrorDto {
+    pub(crate) fn from_str(message: String) -> Self {
+        Self {
+            kind: "internal".into(),
+            message,
+        }
+    }
 }
 
 impl From<SendStatus> for SendStatusDto {

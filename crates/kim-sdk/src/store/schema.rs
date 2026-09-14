@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -157,3 +157,15 @@ CREATE TABLE IF NOT EXISTS agent_permissions (
   PRIMARY KEY (account, profile_id, tool)
 )
 ";
+
+pub const CREATE_MEDIA_CACHE: &str = r"
+CREATE TABLE IF NOT EXISTS media_cache (
+  url TEXT PRIMARY KEY NOT NULL,
+  local_path TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  last_access INTEGER NOT NULL
+)
+";
+
+pub const MEDIA_CACHE_CAP_BYTES: i64 = 512 * 1024 * 1024;
+pub const SEARCH_CAP: i32 = 50;

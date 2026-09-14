@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
-use kim_client::{
-    BotPendingItem, HistoryItem, InboxItem, LinkState, OutgoingContent, SessionSupervisor,
-    TalkResult,
-};
+use kim_client::{BotPendingItem, SessionSupervisor, TalkResult};
 use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession};
 
 use super::rt;
 use super::types::{
-    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, MessagePageDto, PersonDto, ProfileDto,
-    RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto,
-    TimelineUpdateDto, TokenPersistDto,
+    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, LocalMediaDto,
+    MessagePageDto, MessageViewDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto,
+    SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto, TimelineUpdateDto,
+    TokenPersistDto, UiCommandDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -34,28 +32,6 @@ pub struct KimOutgoingContent {
     pub extra: String,
 }
 
-pub struct KimInboxItem {
-    pub dest: String,
-    pub kind: i32,
-    pub title: String,
-    pub avatar: String,
-    pub last_body: String,
-    pub last_sender: String,
-    pub last_message_id: i64,
-    pub last_send_time: i64,
-    pub unread: i32,
-}
-
-pub struct KimHistoryItem {
-    pub message_id: i64,
-    pub msg_type: i32,
-    pub body: String,
-    pub extra: String,
-    pub sender: String,
-    pub send_time: i64,
-    pub direction: i32,
-}
-
 pub struct KimBotPendingItem {
     pub message_id: i64,
     pub body: String,
@@ -63,11 +39,11 @@ pub struct KimBotPendingItem {
 }
 
 /// Opaque handle. Protocol plus optional store attach (production always attaches).
-pub struct KimSdkHandle {
+pub struct KimUiHandle {
     inner: Arc<KimSdk>,
 }
 
-impl KimSdkHandle {
+impl KimUiHandle {
     /// Always callable. Does not open SQLite.
     #[flutter_rust_bridge::frb(sync)]
     pub fn create() -> Self {
@@ -84,6 +60,199 @@ impl KimSdkHandle {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         self.inner.install_mobile_agent();
         Ok(())
+    }
+
+    pub async fn command(&self, cmd: UiCommandDto) -> Result<CommandAckDto, SdkErrorDto> {
+        match cmd {
+            UiCommandDto::SendText { dest, text, kind } => {
+                let receipt = self
+                    .enqueue_message(
+                        dest,
+                        kind,
+                        KimOutgoingContent {
+                            kind: 1,
+                            body: text,
+                            extra: String::new(),
+                        },
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        0,
+                        0,
+                        0,
+                    )
+                    .await?;
+                Ok(ack_from_receipt(receipt))
+            }
+            UiCommandDto::SendMedia {
+                dest,
+                path,
+                mime,
+                width,
+                height,
+                byte_size,
+                kind,
+            } => {
+                let receipt = self
+                    .enqueue_message(
+                        dest,
+                        kind,
+                        KimOutgoingContent {
+                            kind: if kind == 0 { 2 } else { kind },
+                            body: path.clone(),
+                            extra: String::new(),
+                        },
+                        String::new(),
+                        path,
+                        mime,
+                        width,
+                        height,
+                        byte_size,
+                    )
+                    .await?;
+                Ok(ack_from_receipt(receipt))
+            }
+            UiCommandDto::RetrySend { client_id } => {
+                let receipt = self.retry_send(client_id).await?;
+                Ok(ack_from_receipt(receipt))
+            }
+            UiCommandDto::CancelSend { client_id } => {
+                self.cancel_send(client_id).await?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::MarkThreadRead {
+                dest,
+                kind,
+                visible_message_id,
+            } => {
+                self.mark_thread_read(dest, kind, visible_message_id)
+                    .await?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::DeleteThread { dest } => {
+                self.delete_thread(dest).await?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::FriendRequest { dest } => {
+                self.friend_request(dest).map_err(SdkErrorDto::from_str)?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::FriendAccept { dest } => {
+                self.friend_accept(dest).map_err(SdkErrorDto::from_str)?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::FriendReject { dest } => {
+                self.friend_reject(dest).map_err(SdkErrorDto::from_str)?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::FriendRemove { dest } => {
+                self.friend_remove(dest).map_err(SdkErrorDto::from_str)?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::AgentEnqueueTurn {
+                dest,
+                text,
+                in_reply_to,
+            } => {
+                let _ = (dest, text, in_reply_to);
+                Ok(empty_ack())
+            }
+            UiCommandDto::AgentRespondPermission {
+                dest,
+                call_id,
+                permission,
+            } => {
+                let _ = (dest, call_id, permission);
+                Ok(empty_ack())
+            }
+            UiCommandDto::AgentAbortTurn { dest } => {
+                let _ = dest;
+                Ok(empty_ack())
+            }
+            UiCommandDto::AgentRunResult {
+                dest,
+                profile_id,
+                epoch,
+                output,
+                error,
+            } => {
+                self.submit_agent_run(AgentRunResultDto {
+                    dest,
+                    profile_id,
+                    epoch,
+                    output,
+                    error,
+                })
+                .await?;
+                Ok(empty_ack())
+            }
+            UiCommandDto::SettingsPatch {
+                ws_url,
+                http_origin,
+                env,
+            } => {
+                self.settings_patch(ws_url, http_origin, env).await?;
+                Ok(empty_ack())
+            }
+        }
+    }
+
+    pub async fn search_messages(
+        &self,
+        query: String,
+        dest: Option<String>,
+    ) -> Result<Vec<MessageViewDto>, SdkErrorDto> {
+        let rows = self
+            .inner
+            .search_messages(query, dest)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(rows.into_iter().map(MessageViewDto::from).collect())
+    }
+
+    pub async fn media_fetch(&self, url: String) -> Result<LocalMediaDto, SdkErrorDto> {
+        let path = self
+            .inner
+            .fetch_media(url)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        let size = tokio::fs::metadata(&path)
+            .await
+            .map(|m| i64::try_from(m.len()).unwrap_or(0))
+            .unwrap_or(0);
+        Ok(LocalMediaDto {
+            local_path: path,
+            byte_size: size,
+            width: 0,
+            height: 0,
+        })
+    }
+
+    pub async fn media_upload(
+        &self,
+        path: String,
+        mime: String,
+        width: i32,
+        height: i32,
+        byte_size: i64,
+    ) -> Result<LocalMediaDto, SdkErrorDto> {
+        let url = self
+            .inner
+            .upload_media(MediaRef {
+                path: path.clone(),
+                mime,
+                width,
+                height,
+                byte_size,
+            })
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(LocalMediaDto {
+            local_path: url,
+            byte_size,
+            width,
+            height,
+        })
     }
 
     #[flutter_rust_bridge::frb(sync)]
@@ -313,19 +482,6 @@ impl KimSdkHandle {
         let _ = rt().block_on(inner.stop_session());
     }
 
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn link_state(&self) -> String {
-        let Ok(supervisor) = self.supervisor() else {
-            return "Offline".into();
-        };
-        match supervisor.state() {
-            LinkState::Connecting => "Connecting".into(),
-            LinkState::Online => "Online".into(),
-            LinkState::Reconnecting { .. } => "Reconnecting".into(),
-            LinkState::Offline => "Offline".into(),
-        }
-    }
-
     pub fn notify_radio_up(&self) -> Result<(), String> {
         rt().block_on(self.inner.notify_radio_up())
             .map_err(|e| e.to_string())
@@ -336,56 +492,7 @@ impl KimSdkHandle {
             .map_err(|e| e.to_string())
     }
 
-    pub fn send_message(
-        &self,
-        dest: String,
-        kind: i32,
-        content: KimOutgoingContent,
-        client_id: String,
-    ) -> Result<KimTalkResult, String> {
-        let outgoing = match content.kind {
-            2 => OutgoingContent::Image {
-                url: content.body,
-                extra: content.extra,
-            },
-            3 => OutgoingContent::Voice {
-                url: content.body,
-                extra: content.extra,
-            },
-            4 => OutgoingContent::Video {
-                url: content.body,
-                extra: content.extra,
-            },
-            _ => OutgoingContent::Text(content.body),
-        };
-        let client = self.supervisor()?.client();
-        let result = rt()
-            .block_on(client.send_message(&dest, kind, outgoing, &client_id))
-            .map_err(|e| e.to_string())?;
-        Ok(KimTalkResult::from(result))
-    }
 
-    pub fn history(
-        &self,
-        dest: String,
-        kind: i32,
-        before_id: i64,
-        limit: i32,
-    ) -> Result<Vec<KimHistoryItem>, String> {
-        let client = self.supervisor()?.client();
-        let items = rt()
-            .block_on(client.history(&dest, kind, before_id, limit))
-            .map_err(|e| e.to_string())?;
-        Ok(items.into_iter().map(KimHistoryItem::from).collect())
-    }
-
-    pub fn inbox(&self, limit: i32) -> Result<Vec<KimInboxItem>, String> {
-        let client = self.supervisor()?.client();
-        let items = rt()
-            .block_on(client.inbox_list(limit))
-            .map_err(|e| e.to_string())?;
-        Ok(items.into_iter().map(KimInboxItem::from).collect())
-    }
 
     pub fn mark_read(&self, dest: String, kind: i32, message_id: i64) -> Result<(), String> {
         let client = self.supervisor()?.client();
@@ -751,41 +858,31 @@ impl KimSdkHandle {
     }
 }
 
+fn empty_ack() -> CommandAckDto {
+    CommandAckDto {
+        request_id: String::new(),
+        client_id: String::new(),
+        dest: String::new(),
+        accepted_at: 0,
+        send_status: SendStatusDto::Sent,
+    }
+}
+
+fn ack_from_receipt(r: KimCommandReceipt) -> CommandAckDto {
+    CommandAckDto {
+        request_id: r.request_id,
+        client_id: r.client_id,
+        dest: r.dest,
+        accepted_at: r.accepted_at,
+        send_status: r.send_status,
+    }
+}
+
 impl From<TalkResult> for KimTalkResult {
     fn from(r: TalkResult) -> Self {
         Self {
             message_id: r.message_id,
             send_time: r.send_time,
-        }
-    }
-}
-
-impl From<InboxItem> for KimInboxItem {
-    fn from(i: InboxItem) -> Self {
-        Self {
-            dest: i.dest,
-            kind: i.kind,
-            title: i.title,
-            avatar: i.avatar,
-            last_body: i.last_body,
-            last_sender: i.last_sender,
-            last_message_id: i.last_message_id,
-            last_send_time: i.last_send_time,
-            unread: i.unread,
-        }
-    }
-}
-
-impl From<HistoryItem> for KimHistoryItem {
-    fn from(h: HistoryItem) -> Self {
-        Self {
-            message_id: h.message_id,
-            msg_type: h.msg_type,
-            body: h.body,
-            extra: h.extra,
-            sender: h.sender,
-            send_time: h.send_time,
-            direction: h.direction,
         }
     }
 }

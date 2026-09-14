@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `from_profile`
+// These functions are ignored because they are not marked as `pub`: `from_profile`, `from_str`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCardDto {
@@ -779,4 +779,67 @@ sealed class TokenPersistDto with _$TokenPersistDto {
   const factory TokenPersistDto.write({required String token}) =
       TokenPersistDto_Write;
   const factory TokenPersistDto.clear() = TokenPersistDto_Clear;
+}
+
+@freezed
+sealed class UiCommandDto with _$UiCommandDto {
+  const UiCommandDto._();
+
+  const factory UiCommandDto.sendText({
+    required String dest,
+    required String text,
+    required int kind,
+  }) = UiCommandDto_SendText;
+  const factory UiCommandDto.sendMedia({
+    required String dest,
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+    required int kind,
+  }) = UiCommandDto_SendMedia;
+  const factory UiCommandDto.retrySend({required String clientId}) =
+      UiCommandDto_RetrySend;
+  const factory UiCommandDto.cancelSend({required String clientId}) =
+      UiCommandDto_CancelSend;
+  const factory UiCommandDto.markThreadRead({
+    required String dest,
+    required int kind,
+    required PlatformInt64 visibleMessageId,
+  }) = UiCommandDto_MarkThreadRead;
+  const factory UiCommandDto.deleteThread({required String dest}) =
+      UiCommandDto_DeleteThread;
+  const factory UiCommandDto.friendRequest({required String dest}) =
+      UiCommandDto_FriendRequest;
+  const factory UiCommandDto.friendAccept({required String dest}) =
+      UiCommandDto_FriendAccept;
+  const factory UiCommandDto.friendReject({required String dest}) =
+      UiCommandDto_FriendReject;
+  const factory UiCommandDto.friendRemove({required String dest}) =
+      UiCommandDto_FriendRemove;
+  const factory UiCommandDto.agentEnqueueTurn({
+    required String dest,
+    required String text,
+    required PlatformInt64 inReplyTo,
+  }) = UiCommandDto_AgentEnqueueTurn;
+  const factory UiCommandDto.agentRespondPermission({
+    required String dest,
+    required String callId,
+    required String permission,
+  }) = UiCommandDto_AgentRespondPermission;
+  const factory UiCommandDto.agentAbortTurn({required String dest}) =
+      UiCommandDto_AgentAbortTurn;
+  const factory UiCommandDto.agentRunResult({
+    required String dest,
+    required String profileId,
+    required BigInt epoch,
+    required String output,
+    String? error,
+  }) = UiCommandDto_AgentRunResult;
+  const factory UiCommandDto.settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  }) = UiCommandDto_SettingsPatch;
 }
