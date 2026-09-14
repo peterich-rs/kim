@@ -54,7 +54,7 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
   if (need.isEmpty) {
     return const [];
   }
-  final t = profile.tools;
+  final t = projectToolSet(profile.resolveCapabilities());
   final have = <String>{
     if (t.sendMessage) 'send_message',
     if (t.searchContacts) 'search_contacts',
@@ -73,33 +73,9 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
 }
 
 AgentToolSet enableRequiredTools(AgentToolSet tools, List<String> missing) {
-  var next = tools;
-  for (final name in missing) {
-    switch (name) {
-      case 'send_message':
-        next = next.copyWith(sendMessage: true);
-      case 'search_contacts':
-        next = next.copyWith(searchContacts: true);
-      case 'search_messages':
-        next = next.copyWith(searchMessages: true);
-      case 'get_conversation_context':
-        next = next.copyWith(getConversationContext: true);
-      case 'list_profiles':
-        next = next.copyWith(listProfiles: true);
-      case 'read_clipboard':
-        next = next.copyWith(readClipboard: true);
-      case 'fs':
-        next = next.copyWith(fs: true);
-      case 'fs_write':
-        next = next.copyWith(fs: true, fsWrite: true);
-      case 'bash':
-        // S-KD 7: never AlwaysAllow bash; only enable the tool with ask_before.
-        next = next.copyWith(bash: true);
-      default:
-        break;
-    }
-  }
-  return next;
+  return projectToolSet(
+    enableRequiredCapabilities(capabilitiesFromLegacy(tools, const []), missing),
+  );
 }
 
 List<CatalogSkill> parseSkillsJson(String raw) {

@@ -96,12 +96,17 @@ class _AgentSkillsPageState extends ConsumerState<AgentSkillsPage> {
     if (profile == null) {
       return;
     }
-    final next = profile.copyWith(
+    var next = profile.copyWith(
       skills: skills ?? _assigned,
       portableDenylist: denylist ?? _denylist,
       tools: tools,
       permissionOverrides: permissionOverrides,
     );
+    if (tools != null) {
+      next = next.withCapabilities(
+        capabilitiesFromLegacy(tools, next.extensions),
+      );
+    }
     // Optimistic: flip switches immediately; disk/network save follows.
     setState(() {
       _profile = next;

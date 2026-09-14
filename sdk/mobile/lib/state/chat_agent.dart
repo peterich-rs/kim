@@ -868,6 +868,8 @@ class ChatAgent {
         jsonEncode([for (final s in a.skills) s.toJson()]) !=
             jsonEncode([for (final s in b.skills) s.toJson()]) ||
         jsonEncode(a.portableDenylist) != jsonEncode(b.portableDenylist) ||
+        jsonEncode([for (final c in a.resolveCapabilities()) c.toJson()]) !=
+            jsonEncode([for (final c in b.resolveCapabilities()) c.toJson()]) ||
         jsonEncode(a.tools.toJson()) != jsonEncode(b.tools.toJson()) ||
         jsonEncode([for (final e in a.extensions) e.toJson()]) !=
             jsonEncode([for (final e in b.extensions) e.toJson()]);

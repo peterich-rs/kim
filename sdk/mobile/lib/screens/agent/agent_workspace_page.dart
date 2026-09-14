@@ -186,19 +186,23 @@ class _AgentWorkspacePageState extends ConsumerState<AgentWorkspacePage> {
       await workspaceAccess.clearBookmark(profile.id);
     }
     final store = ref.read(agentProfilesProvider.notifier);
-    final next = profile.copyWith(
-      workspace: workspace,
-      tools: profile.tools.copyWith(fs: fs, fsWrite: _fsWrite, bash: _bash),
-      permissionOverrides: () {
-        final map = Map<String, String>.from(profile.permissionOverrides);
-        if (_bash) {
-          map['bash'] = map['bash'] == 'never_allow'
-              ? 'never_allow'
-              : 'ask_before';
-        }
-        return map;
-      }(),
-    );
+    final tools = profile.tools.copyWith(fs: fs, fsWrite: _fsWrite, bash: _bash);
+    final next = profile
+        .copyWith(
+          workspace: workspace,
+          permissionOverrides: () {
+            final map = Map<String, String>.from(profile.permissionOverrides);
+            if (_bash) {
+              map['bash'] = map['bash'] == 'never_allow'
+                  ? 'never_allow'
+                  : 'ask_before';
+            }
+            return map;
+          }(),
+        )
+        .withCapabilities(
+          capabilitiesFromLegacy(tools, profile.extensions),
+        );
     await store.saveEditor(next);
     if (!mounted) {
       return;

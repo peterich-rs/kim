@@ -211,6 +211,36 @@
   "agentToolClipboard": "Clipboard",
   "agentToolSearchContacts": "Search contacts",
   "agentToolSearchMessages": "Search messages",
+  "agentToolGetConversationContext": "Conversation context",
+  "agentToolListProfiles": "List personas",
+  "agentCapabilitiesEntry": "Capabilities",
+  "agentCapabilitiesTitle": "Capabilities",
+  "agentCapabilitiesSubtitleEmpty": "No tools · no skills",
+  "agentCapabilitiesSubtitleTools": "{count} tools",
+  "@agentCapabilitiesSubtitleTools": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentCapabilitiesSubtitleSkills": "{count} skills",
+  "@agentCapabilitiesSubtitleSkills": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentCapabilitiesPreview": "Assembly preview",
+  "agentCapabilitiesPreviewEmpty": "No tools (chat only)",
+  "agentCapabilitiesPreviewLocal": "Host preview unavailable · {tools}",
+  "@agentCapabilitiesPreviewLocal": {
+    "placeholders": {
+      "tools": { "type": "String" }
+    }
+  },
+  "agentCapabilitiesImSection": "Messaging",
+  "agentCapabilitiesFsSection": "Files & shell",
+  "agentCapabilitiesMcpSection": "MCP",
+  "agentCapabilitiesMcpSave": "Save MCP lines",
+  "agentCapabilitiesSkillsSection": "Skills",
   "agentMoreComing": "Turn on multiple local agents to manage the list",
   "agentMultiProfile": "Show multiple local agents",
   "agentServerIdentity": "Sync assistant chats to other devices",
