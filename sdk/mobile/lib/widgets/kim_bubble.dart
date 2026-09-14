@@ -85,6 +85,11 @@ class KimMessageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (message.isAgentCard) {
+      final card = AgentToolCard.parse(message.body);
+      // Hide tool execution traces; keep permission prompts only.
+      if (!card.isConfirmation) {
+        return const SizedBox.shrink();
+      }
       return AgentActionBubble(message: message);
     }
     if (message.sys) {

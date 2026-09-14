@@ -110,6 +110,8 @@ void main() {
     expect(prompt.decoration?.hintText, kDefaultSystemPrompt);
     expect(find.text('留空则使用该默认'), findsOneWidget);
     expect(find.text('高级'), findsNothing);
+    expect(find.byKey(const Key('agent-entry-workspace')), findsNothing);
+    expect(find.byKey(const Key('agent-workspace-fs')), findsNothing);
     expect(find.byKey(const Key('agent-inline-key')), findsNothing);
     expect(find.byKey(const Key('agent-add-provider')), findsNothing);
 
@@ -124,7 +126,11 @@ void main() {
     await _pumpEditor(tester, env.container, profileId: id);
     prompt = tester.widget<TextField>(find.byKey(const Key('agent-prompt')));
     expect(prompt.decoration?.hintText, kDefaultSystemPrompt);
-    expect(find.text('高级'), findsOneWidget);
+    expect(find.text('高级'), findsNothing);
+    expect(find.byKey(const Key('agent-entry-workspace')), findsOneWidget);
+    expect(find.byKey(const Key('agent-entry-skills')), findsOneWidget);
+    expect(find.byKey(const Key('agent-entry-tools')), findsOneWidget);
+    expect(find.byKey(const Key('agent-open-chat')), findsOneWidget);
   });
 
   testWidgets('model picker only lists the selected provider models', (

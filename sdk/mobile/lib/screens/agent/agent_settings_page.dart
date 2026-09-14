@@ -5,17 +5,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import '../../agent/catalog.dart';
 import '../../agent/mention.dart';
 import '../../copy.dart';
+import '../../models/models.dart';
+import '../../router/open_chat.dart';
 import '../../state/agent_profiles.dart';
 import '../../state/provider_accounts.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/kim_group.dart';
 import '../../widgets/kim_header.dart';
+import 'agent_overview_status.dart';
 import 'provider_account_page.dart';
 import 'reasoning_controls.dart';
 
@@ -41,15 +45,11 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   late final TextEditingController _aliases;
   late final TextEditingController _prompt;
   late final TextEditingController _model;
-  late final TextEditingController _mcp;
   late final TextEditingController _advanced;
   ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
   ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
-  var _fs = false;
-  var _bash = false;
   var _loaded = false;
   String _accountId = '';
-  Map<String, String> _permissions = {};
   List<VendorSummaryDto> _vendors = const [];
   List<String> _pendingModels = const [];
   AgentProfile? _draft;
@@ -61,7 +61,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     _aliases = TextEditingController();
     _prompt = TextEditingController();
     _model = TextEditingController();
-    _mcp = TextEditingController();
     _advanced = TextEditingController();
     unawaited(_bootstrap());
   }
@@ -72,7 +71,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     _aliases.dispose();
     _prompt.dispose();
     _model.dispose();
-    _mcp.dispose();
     _advanced.dispose();
     super.dispose();
   }
@@ -174,14 +172,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     _prompt.text = profile.systemPrompt;
     _accountId = profile.accountId;
     _model.text = profile.model;
-    _fs = profile.tools.fs;
-    _bash = profile.tools.bash;
-    _permissions = Map<String, String>.from(profile.permissionOverrides);
-    _mcp.text = [
-      for (final e in profile.extensions)
-        if (e.name.isNotEmpty && e.command.isNotEmpty)
-          '${e.name} ${e.command.join(' ')}',
-    ].join('\n');
     _choice =
         profile.reasoning ??
         ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
@@ -378,39 +368,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     unawaited(_reloadSurface(toastDropped: true));
   }
 
-  List<AgentExtension> _parseMcp(String raw) {
-    final out = <AgentExtension>[];
-    for (final line in raw.split('\n')) {
-      final parts = line
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((p) => p.isNotEmpty)
-          .toList();
-      if (parts.length < 2) {
-        continue;
-      }
-      out.add(AgentExtension(name: parts.first, command: parts.sublist(1)));
-    }
-    return out;
-  }
-
-  String _permissionValue(String tool) {
-    final raw = _permissions[tool];
-    if (tool == 'bash') {
-      if (raw == 'never_allow') {
-        return raw!;
-      }
-      return 'ask_before';
-    }
-    if (raw == 'always_allow' || raw == 'ask_before' || raw == 'never_allow') {
-      return raw!;
-    }
-    if (tool == 'send_message' || tool == 'read_clipboard') {
-      return 'ask_before';
-    }
-    return 'always_allow';
-  }
-
   Future<void> _save() async {
     final l10n = AppLocalizations.of(context);
     final name = _displayName.text.trim();
@@ -456,7 +413,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     await store.ensureLoaded();
     final existing = _profile;
     final AgentProfile next;
-    if (widget.isCreate && existing == null) {
+    final creating = widget.isCreate && existing == null;
+    if (creating) {
       final draft = store.draftNew(accountId: account.id, model: model);
       next = draft.copyWith(
         displayName: name,
@@ -472,12 +430,11 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         }
         return;
       }
-      final base = existing;
       final aliases = [
         for (final part in _aliases.text.split(RegExp(r'[,，\s]+')))
           if (part.trim().isNotEmpty) part.trim(),
       ];
-      next = base.copyWith(
+      next = existing.copyWith(
         displayName: name,
         aliases: aliases,
         accountId: account.id,
@@ -485,9 +442,6 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         thinkingEffort: choice.value ?? '',
         reasoning: choice,
         systemPrompt: _prompt.text,
-        tools: base.tools.copyWith(fs: _fs, bash: _bash),
-        permissionOverrides: _permissions,
-        extensions: _parseMcp(_mcp.text),
       );
     }
     await store.saveEditor(next);
@@ -500,6 +454,20 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       type: ToastificationType.success,
       title: Text(Copy.agentSaved),
       autoCloseDuration: const Duration(seconds: 2),
+    );
+    if (creating && GoRouter.maybeOf(context) != null) {
+      context.go('/agent/${next.id}');
+    }
+  }
+
+  void _openChat(AgentProfile profile) {
+    final person = personForProfile(profile);
+    openKimChat(
+      context,
+      ref,
+      id: person.account,
+      kind: ThreadKind.user,
+      title: profile.displayName,
     );
   }
 
@@ -532,6 +500,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     final l10n = AppLocalizations.of(context);
     final accounts = ref.watch(providerAccountsProvider);
     final providerValue = _accountId.isNotEmpty ? _accountId : null;
+    final overview = !widget.isCreate ? _profile : null;
 
     return Scaffold(
       body: CustomScrollView(
@@ -697,109 +666,43 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                     ),
                   ],
                 ),
-                if (!widget.isCreate) ...[
+                if (overview != null) ...[
                   const Gap(18),
-                  ExpansionTile(
-                    title: Text(l10n.agentAdvanced),
+                  KimGroupCard(
                     children: [
-                      KimGroupCard(
-                        children: [
-                          SwitchListTile(
-                            title: Text(l10n.agentFsReadonly),
-                            value: _fs,
-                            onChanged: (next) => setState(() => _fs = next),
-                          ),
-                          const Divider(height: 1),
-                          SwitchListTile(
-                            title: Text(l10n.agentBashDanger),
-                            subtitle: Text(l10n.agentBashLater),
-                            value: _bash,
-                            onChanged: (next) => setState(() {
-                              _bash = next;
-                              if (next) {
-                                _permissions['bash'] = 'ask_before';
-                              }
-                            }),
-                          ),
-                        ],
+                      ListTile(
+                        key: const Key('agent-entry-workspace'),
+                        title: Text(l10n.agentWorkspaceEntry),
+                        subtitle: Text(agentWorkspaceSubtitle(l10n, overview)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () =>
+                            context.push('/agent/${overview.id}/workspace'),
                       ),
-                      const Gap(18),
-                      Text(
-                        l10n.agentMcp,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      const Divider(height: 1),
+                      ListTile(
+                        key: const Key('agent-entry-skills'),
+                        title: Text(l10n.agentSkillsEntry),
+                        subtitle: Text(agentSkillsSubtitle(l10n, overview)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () =>
+                            context.push('/agent/${overview.id}/skills'),
                       ),
-                      const Gap(8),
-                      KimGroupCard(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                            child: TextField(
-                              controller: _mcp,
-                              maxLines: 4,
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                hintText: l10n.agentMcpHint,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Gap(18),
-                      Text(
-                        l10n.agentPermissions,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Gap(8),
-                      KimGroupCard(
-                        children: [
-                          for (final entry in [
-                            ('send_message', l10n.agentToolSendMessage),
-                            ('read_clipboard', l10n.agentToolClipboard),
-                            ('search_contacts', l10n.agentToolSearchContacts),
-                            ('search_messages', l10n.agentToolSearchMessages),
-                            ('bash', l10n.agentBashDanger),
-                          ]) ...[
-                            if (entry.$1 != 'send_message')
-                              const Divider(height: 1),
-                            ListTile(
-                              title: Text(entry.$2),
-                              trailing: DropdownButton<String>(
-                                value: _permissionValue(entry.$1),
-                                items: [
-                                  if (entry.$1 != 'bash')
-                                    DropdownMenuItem(
-                                      value: 'always_allow',
-                                      child: Text(l10n.agentPermissionAlways),
-                                    ),
-                                  DropdownMenuItem(
-                                    value: 'ask_before',
-                                    child: Text(l10n.agentPermissionAsk),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'never_allow',
-                                    child: Text(l10n.agentPermissionNever),
-                                  ),
-                                ],
-                                onChanged: (next) {
-                                  if (next == null) {
-                                    return;
-                                  }
-                                  if (entry.$1 == 'bash' &&
-                                      next == 'always_allow') {
-                                    return;
-                                  }
-                                  setState(() => _permissions[entry.$1] = next);
-                                },
-                              ),
-                            ),
-                          ],
-                        ],
+                      const Divider(height: 1),
+                      ListTile(
+                        key: const Key('agent-entry-tools'),
+                        title: Text(l10n.agentToolsEntry),
+                        subtitle: Text(agentToolsSubtitle(l10n, overview)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () =>
+                            context.push('/agent/${overview.id}/tools'),
                       ),
                     ],
+                  ),
+                  const Gap(18),
+                  OutlinedButton(
+                    key: const Key('agent-open-chat'),
+                    onPressed: () => _openChat(overview),
+                    child: Text(l10n.agentOpenChat),
                   ),
                 ],
                 const Gap(20),

@@ -506,6 +506,21 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return pendingItems.take(limit).toList();
   }
 
+  int botTypings = 0;
+  bool? lastBotTypingActive;
+  String lastBotTypingDest = '';
+
+  @override
+  Future<void> botTyping(
+    String dest, {
+    int kind = 0,
+    bool active = true,
+  }) async {
+    botTypings += 1;
+    lastBotTypingDest = dest;
+    lastBotTypingActive = active;
+  }
+
   int attachStores = 0;
   String lastAttachPath = '';
 

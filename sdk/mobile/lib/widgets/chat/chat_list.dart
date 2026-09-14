@@ -330,16 +330,24 @@ class _ChatListState extends State<ChatList> {
                   slivers: [
                     if (widget.footer != null)
                       SliverPadding(
+                        // reverse:true → padding.bottom clears the composer.
                         padding: EdgeInsets.only(
                           left: widget.padding.left,
                           right: widget.padding.right,
-                          bottom: 0,
-                          top: 0,
+                          bottom: widget.padding.bottom,
                         ),
                         sliver: SliverToBoxAdapter(child: widget.footer),
                       ),
                     SliverPadding(
-                      padding: widget.padding,
+                      // Footer owns the visual-bottom inset when present.
+                      padding: widget.footer != null
+                          ? EdgeInsets.fromLTRB(
+                              widget.padding.left,
+                              widget.padding.top,
+                              widget.padding.right,
+                              0,
+                            )
+                          : widget.padding,
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate((context, index) {
                           final chrono = widget.items.length - 1 - index;

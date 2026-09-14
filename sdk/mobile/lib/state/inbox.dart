@@ -138,7 +138,9 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
         title:
             existing?.title ??
             (ref.read(contactsProvider).person(msg.dest)?.title ?? msg.dest),
-        lastBody: msg.sys ? (existing?.lastBody ?? '') : previewBody(msg),
+        lastBody: msg.sys || msg.isAgentCard
+            ? (existing?.lastBody ?? '')
+            : previewBody(msg),
         lastAt: msg.at,
         unread: unread,
         avatar: existing?.avatar ?? '',

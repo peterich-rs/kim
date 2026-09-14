@@ -7,12 +7,14 @@ use bytes::Bytes;
 use harness::*;
 use kim_protocol::pkt::{
     BotCreateReq, BotCreateResp, BotReplyReq, BotUpdateReq, Flag, InboxReq, MessagePush,
-    MessageReq, MessageResp, Status, UserListResp, UserSearchReq, UserSearchResp,
+    MessageReq, MessageResp, Status, TypingPush, TypingReq, UserListResp, UserSearchReq,
+    UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
-    CMD_BOT_UPDATE, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST,
-    CMD_USER_SEARCH, MESSAGE_TYPE_TEXT, PROFILE_KIND_BOT,
+    CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_USER_TALK, CMD_FRIEND_LIST, CMD_FRIEND_REMOVE,
+    CMD_FRIEND_REQUEST, CMD_TYPING, CMD_USER_SEARCH, INBOX_KIND_USER, MESSAGE_TYPE_TEXT,
+    PROFILE_KIND_BOT,
 };
 
 fn dest_pkt(command: &str, seq: u32, dest: &str) -> LogicPkt {
@@ -322,4 +324,71 @@ async fn bot_create_and_update_persist_owner_only_config() {
     assert_eq!(cfg.context_tokens, Some(16000));
     assert_eq!(cfg.visibility, "private");
     assert_eq!(resp.profile.expect("profile").account, bot_acc);
+}
+
+#[tokio::test]
+async fn bot_typing_owner_only_and_typer_is_bot() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login_with_device("alice", &url, "web").await;
+    let (alice_phone, _) = login_with_device("alice", &url, "phone").await;
+    let (bob, _) = login("bob", &url).await;
+
+    let mut create = LogicPkt::new(CMD_BOT_CREATE, 2, Bytes::new());
+    create.write_body(&BotCreateReq {
+        client_profile_id: "goose".into(),
+        nickname: "助手".into(),
+        avatar: String::new(),
+        bio: String::new(),
+        ..Default::default()
+    });
+    alice
+        .send(marshal(&Packet::Logic(create)))
+        .await
+        .expect("create");
+    let p = wait_resp(&alice, CMD_BOT_CREATE).await;
+    assert_eq!(p.header.status, Status::Success as i32);
+    let bot_acc = p
+        .read_body::<BotCreateResp>()
+        .expect("create")
+        .profile
+        .expect("profile")
+        .account;
+
+    // Phone is online under the same owner account; typing fans out by
+    // owner locations (no room-enter required — same as bot.reply).
+    let mut typing = dest_pkt(CMD_BOT_TYPING, 4, &bot_acc);
+    typing.write_body(&TypingReq {
+        dest: bot_acc.clone(),
+        kind: INBOX_KIND_USER,
+        active: true,
+    });
+    alice
+        .send(marshal(&Packet::Logic(typing)))
+        .await
+        .expect("typing");
+    assert_eq!(
+        status_of(&timeout_read(&alice).await),
+        Status::Success as i32
+    );
+
+    let push = wait_push(&alice_phone, CMD_TYPING).await;
+    let body: TypingPush = push.read_body().expect("TypingPush");
+    assert_eq!(body.typer, bot_acc);
+    assert_eq!(body.dest, "alice");
+    assert!(body.active);
+
+    let mut steal = dest_pkt(CMD_BOT_TYPING, 5, &bot_acc);
+    steal.write_body(&TypingReq {
+        dest: bot_acc.clone(),
+        kind: INBOX_KIND_USER,
+        active: true,
+    });
+    bob.send(marshal(&Packet::Logic(steal)))
+        .await
+        .expect("bob typing");
+    assert_eq!(
+        status_of(&timeout_read(&bob).await),
+        Status::NotBotOwner as i32
+    );
 }

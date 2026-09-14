@@ -170,6 +170,9 @@ abstract class KimClientPort {
 
   Future<List<KimBotPendingItem>> botPending(String dest, {int limit = 20});
 
+  /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
+  Future<void> botTyping(String dest, {int kind = 0, bool active = true});
+
   Future<void> attachStore(String dbPath);
 
   bool get rustStoreAttached;
@@ -947,6 +950,15 @@ class KimBridge implements KimAuthPort, KimClientPort {
           sendTime: item.sendTime.toInt(),
         ),
     ];
+  }
+
+  @override
+  Future<void> botTyping(
+    String dest, {
+    int kind = 0,
+    bool active = true,
+  }) async {
+    await _require().botTyping(dest: dest, kind: kind, active: active);
   }
 
   @override

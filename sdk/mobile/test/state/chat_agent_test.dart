@@ -290,6 +290,63 @@ void main() {
     expect(cards.first.body, contains('pending'));
   });
 
+  test('tool_started and tool_finished do not append chat cards', () async {
+    final session = _OneShotSession('done');
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+    });
+    await env.container
+        .read(chatAgentProvider)
+        .sendDirect(dest: kGooseAgentId, text: 'hi');
+    session.emit(
+      AgentUiEvent(
+        kind: 'tool_started',
+        operationId: 'op1',
+        callId: 'tool-1',
+        name: 'bash',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '',
+        ok: false,
+        stopReason: '',
+        message: '',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    session.emit(
+      AgentUiEvent(
+        kind: 'tool_finished',
+        operationId: 'op1',
+        callId: 'tool-1',
+        name: 'bash',
+        delta: '',
+        argumentsJson: '',
+        outputPreview: '{"ok":true}',
+        ok: true,
+        stopReason: '',
+        message: '',
+        inputTokens: BigInt.zero,
+        outputTokens: BigInt.zero,
+        resumedOps: const [],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final cards = env.container
+        .read(threadMessagesProvider(kGooseAgentId))
+        .items
+        .where((m) => m.key == 'agent-card-tool-1')
+        .toList();
+    expect(cards, isEmpty);
+  });
+
   test('two profiles open two sessions on the same thread dest', () async {
     final session = _OneShotSession('ok');
     final bridge = _RecordingAgentBridge()..session = session;
@@ -827,6 +884,32 @@ void main() {
         .items
         .where((m) => m.key.startsWith('agent-'));
     expect(localAgent, isEmpty);
+  });
+
+  test('registered prompt emits chat.bot.typing', () async {
+    final session = _HoldSession();
+    final bridge = _RecordingAgentBridge()..session = session;
+    final env = await _agentHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [agentBridgeProvider.overrideWithValue(bridge)],
+    );
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+      'agent.api_key': 'sk-live',
+      'agent.api_key.goose': 'sk-live',
+    });
+    final store = env.container.read(agentProfilesProvider.notifier);
+    await store.ensureLoaded();
+    await store.setServerIdentity(true);
+    await store.saveProfile(store.goose!.copyWith(serverAccount: 'b_bot'));
+    final agent = env.container.read(chatAgentProvider);
+    expect(agent.enqueueTurn('b_bot', 'hello', 1), isTrue);
+    await _until(() => session.prompts.length == 1);
+    await _until(() => env.fake.botTypings >= 1);
+    expect(env.fake.lastBotTypingDest, 'b_bot');
+    expect(env.fake.lastBotTypingActive, isTrue);
+    session.release();
+    await _until(() => env.fake.botReplies.isNotEmpty);
   });
 
   test(

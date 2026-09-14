@@ -1,5 +1,6 @@
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -193,6 +194,126 @@ class AgentExtension {
   }
 }
 
+/// Per-agent cwd. Missing / unknown → sandbox (S-KD 4).
+class WorkspaceSpec {
+  const WorkspaceSpec({
+    this.kind = kindSandbox,
+    this.path = '',
+    this.bookmarkRef = '',
+  });
+
+  static const kindSandbox = 'sandbox';
+  static const kindRepo = 'repo';
+  static const sandbox = WorkspaceSpec();
+
+  final String kind;
+  final String path;
+
+  /// Keychain / support key for macOS security-scoped bookmark (PR2).
+  /// Persisted in prefs with the profile; stripped from [toHostJson].
+  final String bookmarkRef;
+
+  bool get isSandbox => kind != kindRepo;
+  bool get isRepo => kind == kindRepo;
+
+  Map<String, Object?> toJson() => {
+    'kind': isRepo ? kindRepo : kindSandbox,
+    if (path.isNotEmpty) 'path': path,
+    if (bookmarkRef.isNotEmpty) 'bookmark_ref': bookmarkRef,
+  };
+
+  /// Host only needs kind + path; bookmark stays on the Dart side.
+  Map<String, Object?> toHostJson() => {
+    'kind': isRepo ? kindRepo : kindSandbox,
+    if (path.isNotEmpty) 'path': path,
+  };
+
+  factory WorkspaceSpec.fromJson(Map<String, Object?>? json) {
+    if (json == null) {
+      return sandbox;
+    }
+    final kind = '${json['kind'] ?? ''}'.trim();
+    return WorkspaceSpec(
+      kind: kind == kindRepo ? kindRepo : kindSandbox,
+      path: '${json['path'] ?? ''}',
+      bookmarkRef: '${json['bookmark_ref'] ?? ''}',
+    );
+  }
+
+  WorkspaceSpec copyWith({String? kind, String? path, String? bookmarkRef}) {
+    return WorkspaceSpec(
+      kind: kind ?? this.kind,
+      path: path ?? this.path,
+      bookmarkRef: bookmarkRef ?? this.bookmarkRef,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is WorkspaceSpec &&
+        other.kind == kind &&
+        other.path == path &&
+        other.bookmarkRef == bookmarkRef;
+  }
+
+  @override
+  int get hashCode => Object.hash(kind, path, bookmarkRef);
+}
+
+/// App / built-in skill assignment (portable skills are discovered, not stored).
+class SkillRef {
+  const SkillRef({
+    required this.id,
+    this.className = classApp,
+    this.origin = 'bundled',
+    this.version = '',
+    this.enabled = true,
+  });
+
+  static const classApp = 'app';
+  static const classPortable = 'portable';
+
+  final String id;
+  final String className;
+  final String origin;
+  final String version;
+  final bool enabled;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'class': className,
+    if (origin.isNotEmpty) 'origin': origin,
+    if (version.isNotEmpty) 'version': version,
+    'enabled': enabled,
+  };
+
+  factory SkillRef.fromJson(Map<String, Object?> json) {
+    return SkillRef(
+      id: '${json['id'] ?? ''}',
+      className: '${json['class'] ?? classApp}',
+      origin: '${json['origin'] ?? 'bundled'}',
+      version: '${json['version'] ?? ''}',
+      enabled: json['enabled'] != false,
+    );
+  }
+
+  SkillRef copyWith({
+    String? id,
+    String? className,
+    String? origin,
+    String? version,
+    bool? enabled,
+  }) {
+    return SkillRef(
+      id: id ?? this.id,
+      className: className ?? this.className,
+      origin: origin ?? this.origin,
+      version: version ?? this.version,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+}
+
 class ReasoningChoice {
   const ReasoningChoice({
     this.v = 1,
@@ -264,6 +385,9 @@ class AgentProfile {
     this.tools = const AgentToolSet(),
     this.permissionOverrides = const {},
     this.extensions = const [],
+    this.workspace = WorkspaceSpec.sandbox,
+    this.skills = const [],
+    this.portableDenylist = const [],
     this.enabled = true,
     this.steer = '',
     this.serverAccount = '',
@@ -286,6 +410,9 @@ class AgentProfile {
   final AgentToolSet tools;
   final Map<String, String> permissionOverrides;
   final List<AgentExtension> extensions;
+  final WorkspaceSpec workspace;
+  final List<SkillRef> skills;
+  final List<String> portableDenylist;
   final bool enabled;
   final String steer;
 
@@ -310,6 +437,9 @@ class AgentProfile {
     AgentToolSet? tools,
     Map<String, String>? permissionOverrides,
     List<AgentExtension>? extensions,
+    WorkspaceSpec? workspace,
+    List<SkillRef>? skills,
+    List<String>? portableDenylist,
     bool? enabled,
     String? steer,
     String? serverAccount,
@@ -332,6 +462,9 @@ class AgentProfile {
       tools: tools ?? this.tools,
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       extensions: extensions ?? this.extensions,
+      workspace: workspace ?? this.workspace,
+      skills: skills ?? this.skills,
+      portableDenylist: portableDenylist ?? this.portableDenylist,
       enabled: enabled ?? this.enabled,
       steer: steer ?? this.steer,
       serverAccount: serverAccount ?? this.serverAccount,
@@ -357,18 +490,28 @@ class AgentProfile {
     'tools': tools.toJson(),
     'permissions': {'tools': permissionOverrides},
     'extensions': [for (final e in extensions) e.toJson()],
+    'workspace': workspace.toJson(),
+    'skills': [for (final s in skills) s.toJson()],
+    if (portableDenylist.isNotEmpty) 'portable_denylist': portableDenylist,
     'enabled': enabled,
     if (steer.isNotEmpty) 'steer': steer,
     'server_account': serverAccount,
   };
 
-  Map<String, Object?> toHostJson(ProviderAccount account) {
+  Map<String, Object?> toHostJson(
+    ProviderAccount account, {
+    String userAgentsSkills = '',
+  }) {
     final json = toJson();
     json['provider'] = {
       'kind': canonicalizeVendorId(account.vendorId),
       'base_url': account.baseUrl,
       'key_ref': '',
     };
+    json['workspace'] = workspace.toHostJson();
+    if (userAgentsSkills.isNotEmpty) {
+      json['user_agents_skills'] = userAgentsSkills;
+    }
     return json;
   }
 
@@ -395,6 +538,9 @@ class AgentProfile {
     }
     final aliasesRaw = json['aliases'];
     final reasoningRaw = json['reasoning'];
+    final workspaceRaw = json['workspace'];
+    final skillsRaw = json['skills'];
+    final denylistRaw = json['portable_denylist'];
     final kind = canonicalizeVendorId(providerMap['kind'] as String? ?? '');
     return AgentProfile(
       id: json['id'] as String? ?? kGooseAgentId,
@@ -434,6 +580,21 @@ class AgentProfile {
               AgentExtension.fromJson(Map<String, Object?>.from(item)),
         ];
       }(),
+      workspace: WorkspaceSpec.fromJson(
+        workspaceRaw is Map ? Map<String, Object?>.from(workspaceRaw) : null,
+      ),
+      skills: () {
+        if (skillsRaw is! List) {
+          return const <SkillRef>[];
+        }
+        return [
+          for (final item in skillsRaw)
+            if (item is Map) SkillRef.fromJson(Map<String, Object?>.from(item)),
+        ];
+      }(),
+      portableDenylist: denylistRaw is List
+          ? [for (final d in denylistRaw) '$d']
+          : const [],
       enabled: json['enabled'] != false,
       steer: json['steer'] as String? ?? '',
       serverAccount: json['server_account'] as String? ?? '',
@@ -577,7 +738,8 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         for (final p in state)
           if (p.id == next.id) next else p,
       ]);
-      await _syncBotConfig(profile);
+      // Local prefs already updated; server nickname/model sync can lag.
+      unawaited(_syncBotConfig(next));
     }
   }
 
@@ -950,6 +1112,9 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       tools: source.tools,
       permissionOverrides: source.permissionOverrides,
       extensions: source.extensions,
+      workspace: source.workspace,
+      skills: source.skills,
+      portableDenylist: source.portableDenylist,
       enabled: true,
       steer: source.steer,
     );

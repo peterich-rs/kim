@@ -1,10 +1,10 @@
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
     BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
-    BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status,
+    BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status, TypingPush, TypingReq,
 };
-use kim_protocol::{CMD_CHAT_USER_TALK, PROFILE_KIND_BOT};
-use kim_router::{Context, RouterError};
+use kim_protocol::{AccountId, CMD_CHAT_USER_TALK, CMD_TYPING, INBOX_KIND_USER, PROFILE_KIND_BOT};
+use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::filter::ContentFilter;
@@ -343,6 +343,76 @@ pub async fn do_bot_pending(
         Err(err) => {
             ctx.resp_with_error(store_status(&err), &err).await?;
         }
+    }
+    Ok(())
+}
+
+/// Owner-sent bot typing. Same auth as `do_bot_reply`; Push typer is the bot
+/// so peer UIs never confuse it with the owner typing (S-KD 26).
+///
+/// Fanout matches `do_bot_reply`: every online owner device. Room interest is
+/// too strict for same-account multi-device busy sync (phone can talk while
+/// enter failed / left; Mac local bars do not prove the push landed).
+pub async fn do_bot_typing(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
+    if ctx.header().dest.is_empty() {
+        ctx.resp_with_error(Status::NoDestination, &TalkError::NoDestination)
+            .await?;
+        return Ok(());
+    }
+    let bot = ctx.header().dest.clone();
+    let req = match ctx.read_body::<TypingReq>() {
+        Ok(r) => r,
+        Err(err) => {
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
+        }
+    };
+    if req.kind != INBOX_KIND_USER {
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let presence = match lookup_bot(users, &ctx.session().app, &bot).await {
+        Ok(p) => p,
+        Err(status) => {
+            ctx.resp_bytes(status, bytes::Bytes::new()).await?;
+            return Ok(());
+        }
+    };
+    if presence.owner_account != ctx.session().account {
+        ctx.resp_bytes(Status::NotBotOwner, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let owner = ctx.session().account.clone();
+
+    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
+
+    let body = TypingPush {
+        typer: bot.clone(),
+        dest: owner.clone(),
+        kind: INBOX_KIND_USER,
+        active: req.active,
+    };
+
+    let owner_id = match AccountId::parse(&owner) {
+        Ok(id) => id,
+        Err(_) => return Ok(()),
+    };
+    let locs = match ctx.list_locations(&owner_id).await {
+        Ok(v) => v,
+        Err(SessionError::NotFound) => return Ok(()),
+        Err(err) => {
+            warn!(%err, owner = %owner, "bot typing owner locations");
+            return Ok(());
+        }
+    };
+    if locs.is_empty() {
+        return Ok(());
+    }
+    // Fanout reuses CMD_TYPING so clients keep one decoder; body.typer is the bot.
+    if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &locs).await {
+        warn!(%err, bot = %bot, "bot typing fanout failed");
     }
     Ok(())
 }

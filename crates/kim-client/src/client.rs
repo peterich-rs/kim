@@ -17,10 +17,10 @@ use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
     decode_event, encode_ack, encode_ack_batch, encode_bot_create, encode_bot_pending,
-    encode_bot_reply, encode_bot_update, encode_dest_cmd, encode_empty_cmd, encode_history,
-    encode_inbox_list, encode_inbox_read, encode_offline_content, encode_offline_index,
-    encode_outgoing, encode_ping, encode_room_enter, encode_room_leave, encode_typing,
-    encode_user_search, encode_user_update,
+    encode_bot_reply, encode_bot_typing, encode_bot_update, encode_dest_cmd, encode_empty_cmd,
+    encode_history, encode_inbox_list, encode_inbox_read, encode_offline_content,
+    encode_offline_index, encode_outgoing, encode_ping, encode_room_enter, encode_room_leave,
+    encode_typing, encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -580,6 +580,16 @@ impl KimClient {
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
         self.write_ack(encode_typing(seq, dest, kind, active)).await
+    }
+
+    /// Owner → bot typing for registered 1:1 (S-KD 26). `dest` is the bot account.
+    pub async fn bot_typing(&self, dest: &str, kind: i32, active: bool) -> Result<(), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_ack(encode_bot_typing(seq, dest, kind, active))
+            .await
     }
 
     async fn dest_status(&self, command: &str, dest: &str) -> Result<(), ClientError> {

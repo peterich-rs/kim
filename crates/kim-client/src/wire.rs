@@ -10,13 +10,13 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
-    CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
-    CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY,
-    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING,
-    CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG,
-    INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO,
-    MESSAGE_TYPE_VOICE,
+    CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK,
+    CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
+    CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN,
+    CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER,
+    CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
+    CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
@@ -311,6 +311,17 @@ pub fn encode_room_leave(seq: u32, dest: &str, kind: i32) -> Bytes {
 
 pub fn encode_typing(seq: u32, dest: &str, kind: i32, active: bool) -> Bytes {
     let mut pkt = LogicPkt::new(CMD_TYPING, seq, Bytes::new());
+    pkt.write_body(&TypingReq {
+        dest: dest.to_string(),
+        kind,
+        active,
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_bot_typing(seq: u32, dest: &str, kind: i32, active: bool) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_BOT_TYPING, seq, Bytes::new());
+    pkt.set_dest(dest);
     pkt.write_body(&TypingReq {
         dest: dest.to_string(),
         kind,

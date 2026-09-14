@@ -29,7 +29,20 @@ and logged in, registered 1:1 user↔agent traffic goes through WGateway
 4. Tap the contact and chat like a friend. Registered 1:1 messages are stored on the server so phone / web can read and send. Goose still runs only on this desktop; the owner session posts `chat.bot.reply`.
 5. Human 1:1 composer does **not** intercept `@助手`. Talk to an Agent by opening its 1:1. Mentions stay available for a later group-@ path.
 
-Shape: [impl/agent-provider-persona.md](impl/agent-provider-persona.md) (IA); [impl/multi-agent-vendor-catalog.md](impl/multi-agent-vendor-catalog.md) (catalog).
+Shape: [impl/agent-provider-persona.md](impl/agent-provider-persona.md) (IA); [impl/multi-agent-vendor-catalog.md](impl/multi-agent-vendor-catalog.md) (catalog); [impl/agent-productivity.md](impl/agent-productivity.md) (workspace / Skill / plaza / typing).
+
+## Workspace and Skills
+
+Each persona has a **Workspace** (`sandbox` | `repo`) that becomes Goose `project_root`. Sandbox lives under Application Support `agent/workspaces/<id>/` with seed `AGENTS.md` / `MEMORY.md` / `notes/`. Repo is a user-picked absolute folder (macOS security-scoped bookmark on Release).
+
+**Skills** are two classes (see glossary):
+
+- **portable** — discovered under real `~/.agents/skills` and `<cwd>/.agents/skills`; muted via `portable_denylist`. Never copied into the app.
+- **app / `kim-*`** — assigned in `/agent/:id/skills` or the plaza KIM shelf; resolved by `SkillResolver` (bundled → cache). Bodies inject only via `activate_skill`.
+
+Global plaza: `/agent/plaza` (ecosystem shelf + KIM shelf). Import writes into real `~/.agents/skills`, not Application Support.
+
+Registered 1:1 busy state reuses `typingProvider` / `KimTypingRow`. Desktop lights bars locally; owner also sends `chat.bot.typing` so phones see `TypingPush.typer=bot`.
 
 ## Layout
 
@@ -38,8 +51,10 @@ Flutter composer  --talk-->  kim_client_ffi (IM / WGateway)
                  --unregistered dest=goose / agent:<id>-->  kim_agent_ffi
                       --> kim-agent-host
                            AgentProfile → MachineFactory → Goose
+                           (+ AGENTS.md + skill catalog + SkillOp)
                  --registered 1:1 TalkResp-->  kim_agent_ffi
                       --> assistant_finished → chat.bot.reply
+                      --> Running → chat.bot.typing (heartbeat)
 ```
 
 Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients. `kim_agent_ffi` must not depend on `kim-client`.
@@ -48,5 +63,6 @@ Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients. `kim_age
 
 ```bash
 cargo test -p kim-agent-host
-cd sdk/mobile && flutter test test/agent_mention_test.dart test/agent_settings_test.dart test/agent/catalog_test.dart test/agent/reasoning_controls_test.dart test/state/chat_agent_test.dart
+cargo test -p kim-protocol --lib
+cd sdk/mobile && flutter test test/agent_mention_test.dart test/agent_settings_test.dart test/agent/catalog_test.dart test/agent/reasoning_controls_test.dart test/state/chat_agent_test.dart test/agent_paths_test.dart
 ```

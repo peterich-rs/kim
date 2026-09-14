@@ -253,6 +253,99 @@
   "composerHint": "Send a message",
   "agentNameHint": "Name this agent",
   "agentAdvanced": "Advanced",
+  "agentWorkspaceEntry": "Workspace & capabilities",
+  "agentWorkspaceTitle": "Workspace & capabilities",
+  "agentWorkspaceSubtitleOff": "In-app sandbox · no file access",
+  "agentWorkspaceSubtitleFs": "In-app sandbox · read-only",
+  "agentWorkspaceSubtitleWrite": "In-app sandbox · read · write",
+  "agentWorkspaceSubtitleBash": "In-app sandbox · shell",
+  "agentWorkspaceSubtitleFsBash": "In-app sandbox · read-only · shell",
+  "agentWorkspaceSubtitleWriteBash": "In-app sandbox · read · write · shell",
+  "agentWorkspaceCapsOff": "no file access",
+  "agentWorkspaceCapsFs": "read-only",
+  "agentWorkspaceCapsWrite": "read · write",
+  "agentWorkspaceCapsBash": "shell",
+  "agentWorkspaceCapsFsBash": "read-only · shell",
+  "agentWorkspaceCapsWriteBash": "read · write · shell",
+  "agentWorkspacePath": "Working directory",
+  "agentWorkspaceKindSandbox": "In-app sandbox",
+  "agentWorkspaceKindRepo": "Local repository",
+  "agentWorkspaceUseRepo": "Use local repository",
+  "agentWorkspaceUseRepoHint": "Point read/write/shell at a folder you pick (system permission required)",
+  "agentWorkspacePickRepo": "Choose local repository…",
+  "agentWorkspaceRepoRequired": "Coding workspace needs a repository first",
+  "agentWorkspaceRepoReselect": "Repository access expired; choose it again",
+  "agentFsWrite": "Workspace write",
+  "agentFsWriteHint": "Allow creating and editing files in the sandbox (e.g. MEMORY.md)",
+  "agentWorkspacePresetKnowledge": "Knowledge",
+  "agentWorkspacePresetCoding": "Coding",
+  "agentWorkspacePresetHint": "Presets only change this page; they do not replace the persona",
+  "agentSkillsEntry": "Skills",
+  "agentSkillsTitle": "Skills",
+  "agentSkillsNone": "None assigned",
+  "agentSkillsEmptyTitle": "No skills to configure yet",
+  "agentSkillsEmptyHint": "Later you can assign KIM skills here, or discover ecosystem skills in the plaza",
+  "agentSkillsOpenPlaza": "Browse plaza",
+  "agentSkillsAppSection": "KIM skills",
+  "agentSkillsAppEmpty": "No built-in skills",
+  "agentSkillsAppEmptyHint": "Desktop Agent runtime is required to list kim-*",
+  "agentSkillsPortableSection": "Ecosystem skills (discover / mute)",
+  "agentSkillsPortableEmpty": "No ecosystem skills found",
+  "agentSkillsPortableEmptyHint": "Enable read/write or pick a local repo to scan ~/.agents and project .agents",
+  "agentSkillsPortableScanOff": "Ecosystem scan is off",
+  "agentSkillsPortableScanOffHint": "Sandbox personas without filesystem tools do not inherit ~/.agents into the catalog",
+  "agentSkillsPortableMuteHint": "On = mute from catalog",
+  "agentSkillsNeedsToolsTitle": "Tools required",
+  "agentSkillsNeedsToolsBody": "Assigning {skillId} needs: {tools}. Switches are never changed silently.",
+  "@agentSkillsNeedsToolsBody": {
+    "placeholders": {
+      "skillId": { "type": "String" },
+      "tools": { "type": "String" }
+    }
+  },
+  "agentSkillsNeedsToolsEnable": "Turn these on",
+  "agentSkillsNeedsToolsCancel": "Cancel",
+  "agentSkillsNeedsToolsToast": "Required tools stay off; skill not assigned",
+  "agentToolsEntry": "Permissions & extensions",
+  "agentToolsTitle": "Permissions & extensions",
+  "agentToolsSubtitleDefault": "Defaults · no MCP",
+  "agentToolsSubtitleMcp": "Defaults · MCP {count}",
+  "@agentToolsSubtitleMcp": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentPlazaTitle": "Skill plaza",
+  "agentPlazaEmptyTitle": "Plaza coming soon",
+  "agentPlazaEmptyHint": "Browse ecosystem skills and KIM built-ins here later",
+  "agentPlazaKimSection": "KIM shelf",
+  "agentPlazaEcoSection": "Ecosystem shelf",
+  "agentPlazaEcoEmpty": "Ecosystem shelf is empty",
+  "agentPlazaEcoEmptyHint": "No SKILL.md under the real ~/.agents/skills yet",
+  "agentPlazaAssign": "Assign",
+  "agentPlazaAssigningTo": "Picking for persona “{name}”",
+  "@agentPlazaAssigningTo": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "agentPlazaPickAgentFirst": "Open the plaza from a persona’s Skills page to assign",
+  "agentPlazaAssigned": "Assigned {id}",
+  "@agentPlazaAssigned": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  },
+  "agentPlazaImport": "Import folder into ~/.agents…",
+  "agentPlazaImported": "Imported {id}",
+  "@agentPlazaImported": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  },
+  "agentPlazaImportFailed": "Import failed (need a folder with SKILL.md)",
+  "agentPlazaImportNoHome": "Real ~/.agents/skills is unavailable",
+  "agentOpenChat": "Open chat",
   "emptyChatTitle": "Select a conversation",
   "emptyChatSubtitle": "Open a chat from the list, or start a new one",
   "routeNotFound": "Page not found",

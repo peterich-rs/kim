@@ -71,7 +71,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 2095911914;
+  int get rustContentHash => -487020881;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -157,6 +157,13 @@ abstract class AgentRustLibApi extends BaseApi {
   });
 
   Future<SessionOpenOpts> crateApiSessionSessionOpenOptsDefault();
+
+  Future<String> crateApiSessionSkillAppCatalog({required String cacheRoot});
+
+  Future<String> crateApiSessionSkillPortableList({
+    required String userRoot,
+    required String projectRoot,
+  });
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_AgentSession;
@@ -808,6 +815,72 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
 
   TaskConstMeta get kCrateApiSessionSessionOpenOptsDefaultConstMeta =>
       const TaskConstMeta(debugName: "session_open_opts_default", argNames: []);
+
+  @override
+  Future<String> crateApiSessionSkillAppCatalog({required String cacheRoot}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(cacheRoot, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionSkillAppCatalogConstMeta,
+        argValues: [cacheRoot],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionSkillAppCatalogConstMeta =>
+      const TaskConstMeta(
+        debugName: "skill_app_catalog",
+        argNames: ["cacheRoot"],
+      );
+
+  @override
+  Future<String> crateApiSessionSkillPortableList({
+    required String userRoot,
+    required String projectRoot,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(userRoot, serializer);
+          sse_encode_String(projectRoot, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionSkillPortableListConstMeta,
+        argValues: [userRoot, projectRoot],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionSkillPortableListConstMeta =>
+      const TaskConstMeta(
+        debugName: "skill_portable_list",
+        argNames: ["userRoot", "projectRoot"],
+      );
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_AgentSession => wire

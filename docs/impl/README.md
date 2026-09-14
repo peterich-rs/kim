@@ -46,6 +46,7 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 | Rust 惯用法升级 | [rust-idiom-upgrade.md](./rust-idiom-upgrade.md)：对照陈天课五刀。worktree `refactor/rust-idiom-upgrade`。第 1 刀 [rust-idiom-p1-ids.md](./rust-idiom-p1-ids.md) |
 | Goose 个性化 Agent | [goose-personalized-agents.md](./goose-personalized-agents.md)：AgentProfile → MachineFactory；Dart IM 工具 + Rust 进程内工具；PR0–PR9 |
 | 端侧 Agent 的后台 bot 身份 | [goose-bot-first-class.md](./goose-bot-first-class.md)：Goose 仍本机跑；1:1 走 WGateway；`chat.bot.create` 自动成友；owner 代发 `chat.bot.reply` |
+| Agent 生产力（工作区 / Skill / 广场） | [agent-productivity.md](./agent-productivity.md)：per-agent sandbox 与 repo cwd；Skill 显式分配 + `activate_skill`；本机广场。**待执行** |
 
 ## 待写 / 待执行
 
@@ -58,5 +59,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 | — | 客户端 | Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
 | — | 客户端 | 链接控制域（keepalive / CODE_PING / 看门狗 / 退避复位） | 不改 gateway ACK | [07-mobile-link-control.md](./07-mobile-link-control.md) |
 | — | 客户端 | kim-sdk 所有权下沉：store / outbox / persist-then-ack | 不改服务端 ACK；先 PR 1 保护 pending；推翻 06 Decision 2/4 | [08-kim-sdk-ownership.md](./08-kim-sdk-ownership.md) |
+| — | 客户端 | Agent 生产力：工作区 / 能力 / Skill / 本机广场 | 不改 gateway；桌面 Goose；零后台 | [agent-productivity.md](./agent-productivity.md) |
 
 G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。

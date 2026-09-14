@@ -73,24 +73,58 @@ class KimPaths {
 
   Directory get agentRoot => Directory('${support.path}/agent');
   Directory get agentSessions => Directory('${support.path}/agent/sessions');
+
+  /// Legacy shared root. Unused as `projectRoot` after per-agent sandboxes.
   Directory get agentWorkspace => Directory('${support.path}/agent/workspace');
+
+  Directory get agentWorkspaces =>
+      Directory('${support.path}/agent/workspaces');
+
+  Directory get appSkillCache =>
+      Directory('${support.path}/agent/app-skills/cache');
+
+  Directory sandboxFor(String profileId) {
+    final safe = _sandboxSegment(profileId);
+    return Directory('${agentWorkspaces.path}/$safe');
+  }
+
+  static String _sandboxSegment(String profileId) {
+    if (profileId.isEmpty ||
+        profileId.contains('/') ||
+        profileId.contains('\\') ||
+        profileId.contains('..')) {
+      throw ArgumentError.value(profileId, 'profileId', 'unsafe sandbox id');
+    }
+    return profileId;
+  }
 
   Future<void> ensureAgentDirs() async {
     await Future.wait([
       agentRoot.create(recursive: true),
       agentSessions.create(recursive: true),
-      agentWorkspace.create(recursive: true),
-      Directory('${agentWorkspace.path}/.agents/skills')
-          .create(recursive: true),
+      agentWorkspaces.create(recursive: true),
     ]);
-    final agentsMd = File('${agentWorkspace.path}/AGENTS.md');
+  }
+
+  /// Per-agent sandbox. Seeds `AGENTS.md` / `MEMORY.md` / `notes/` once.
+  /// Does **not** create `.agents/skills` (S-KD 18).
+  Future<Directory> ensureSandbox(String profileId) async {
+    final dir = sandboxFor(profileId);
+    await dir.create(recursive: true);
+    await Directory('${dir.path}/notes').create(recursive: true);
+    final agentsMd = File('${dir.path}/AGENTS.md');
     if (!await agentsMd.exists()) {
       await agentsMd.writeAsString(
-        '# KIM Goose workspace\n\n'
-        'Local project root for the desktop Goose host.\n'
-        'Open the Agent contact in the address book to chat 1:1.\n',
+        '# Private workspace\n\n'
+        'This is a private workspace for this KIM agent.\n'
+        'Long-term notes live in MEMORY.md and notes/.\n',
       );
     }
+    final memoryMd = File('${dir.path}/MEMORY.md');
+    if (!await memoryMd.exists()) {
+      await memoryMd.writeAsString('');
+    }
+    return dir;
   }
 
   /// Last two path segments, for the shell status line.

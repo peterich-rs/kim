@@ -55,7 +55,9 @@ use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
 pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
-pub use bot::{do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_update};
+pub use bot::{
+    do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_typing, do_bot_update,
+};
 pub use echo::do_echo;
 pub use filter::{
     builtin_talk_filter, ContentFilter, FilterChain, ImageFilter, NoopFilter, TextWordFilter,
@@ -621,6 +623,13 @@ impl ChatHandler {
             router.handle(Command::BotPending, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_pending(ctx, svc.store.as_ref(), svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(Command::BotTyping, move |ctx| {
+                let svc = svc.clone();
+                async move { do_bot_typing(ctx, svc.users.as_ref()).await }
             });
         }
         Self {

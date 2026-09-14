@@ -84,6 +84,7 @@ Future<KimHarness> kimHarness({
       ...overrides,
     ],
   );
+  addTearDown(container.dispose);
   return KimHarness(
     container: container,
     fake: fake,
