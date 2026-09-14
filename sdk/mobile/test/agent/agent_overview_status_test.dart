@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/screens/agent/agent_overview_status.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_overview_status.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
 
 AgentProfile _profile({
   bool fs = false,

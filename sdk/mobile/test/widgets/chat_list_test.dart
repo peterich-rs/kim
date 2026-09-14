@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/widgets/chat/chat_list.dart';
-import 'package:kim_mobile/widgets/kim_bubble.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/chat/chat_list.dart';
+import 'package:kim_mobile/design/kim_bubble.dart';
 
 KimChatMsg _msg(String key, String body, {int at = 1, String sender = 'bob'}) {
   return KimChatMsg(key: key, dest: 'bob', sender: sender, body: body, at: at);

@@ -5,18 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'app.dart';
-import 'copy.dart';
-import 'core/logger.dart';
-import 'core/runtime.dart';
-import 'agent/host_support.dart';
-import 'agent_bridge.dart';
-import 'bridge/agent_bridge.dart';
-import 'kim_bridge.dart';
-import 'src/rust/api/types.dart' as rust_types;
-import 'state/providers.dart';
-import 'state/retry.dart';
-import 'theme/kim_theme.dart';
+import 'package:kim_mobile/app.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/core/runtime.dart';
+import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/bridge/agent_bridge.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/retry.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

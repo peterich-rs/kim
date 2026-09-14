@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/theme/kim_tokens.dart';
-import 'package:kim_mobile/widgets/kim_group.dart';
-import 'package:kim_mobile/widgets/kim_hairline.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/kim_tokens.dart';
+import 'package:kim_mobile/design/kim_group.dart';
+import 'package:kim_mobile/design/kim_hairline.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

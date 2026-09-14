@@ -4,8 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/haptics.dart';
-import '../core/layout.dart';
+import 'package:kim_mobile/core/haptics.dart';
+import 'package:kim_mobile/core/layout.dart';
 
 void openKimPeerProfile(
   BuildContext context,

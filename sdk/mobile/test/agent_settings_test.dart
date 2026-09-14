@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform
 // ignore: depend_on_referenced_packages
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/state/agent_settings.dart';
+import 'package:kim_mobile/features/agent/agent_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

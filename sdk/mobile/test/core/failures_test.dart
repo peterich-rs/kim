@@ -3,7 +3,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
-import 'package:kim_mobile/state/retry.dart';
+import 'package:kim_mobile/features/session/retry.dart';
 
 const _allKinds = <String>[
   'not_friends',

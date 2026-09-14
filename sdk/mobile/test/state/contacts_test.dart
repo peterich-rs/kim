@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/agent/mention.dart';
+import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
-import 'package:kim_mobile/state/contacts.dart';
-import 'package:kim_mobile/state/link.dart';
-import 'package:kim_mobile/state/profile.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/profile/profile.dart';
 
 import '../support/harness.dart';
 

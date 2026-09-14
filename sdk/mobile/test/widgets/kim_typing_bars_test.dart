@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/widgets/kim_typing_bars.dart';
+import 'package:kim_mobile/design/kim_typing_bars.dart';
 
 void main() {
   testWidgets('KimTypingBars paints staggered bars', (tester) async {

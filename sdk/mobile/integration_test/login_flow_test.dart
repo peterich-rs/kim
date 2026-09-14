@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/widgets/kim_dock.dart';
+import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';

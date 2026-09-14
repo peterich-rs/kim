@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/agent/mention.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
 
 AgentProfile _profile({
   required String id,

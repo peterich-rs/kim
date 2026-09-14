@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/messages.dart';
+import 'package:kim_mobile/features/chats/messages.dart';
 
 import '../support/harness.dart';
 import '../support/jwt.dart';

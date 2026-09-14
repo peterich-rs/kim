@@ -3,10 +3,10 @@ library;
 
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'connectivity.dart';
-import 'paths.dart';
-import 'permissions.dart';
-import 'settings.dart';
+import 'package:kim_mobile/core/connectivity.dart';
+import 'package:kim_mobile/core/paths.dart';
+import 'package:kim_mobile/core/permissions.dart';
+import 'package:kim_mobile/core/settings.dart';
 
 class KimRuntime {
   KimRuntime({

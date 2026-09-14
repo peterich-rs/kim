@@ -2,10 +2,10 @@ import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/auth.dart';
-import 'package:kim_mobile/state/link.dart';
-import 'package:kim_mobile/state/mutations.dart';
-import 'package:kim_mobile/state/session.dart';
+import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/session/mutations.dart';
+import 'package:kim_mobile/features/session/session.dart';
 
 import '../support/harness.dart';
 

@@ -1,0 +1,80 @@
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/session.dart';
+import 'package:kim_mobile/design/motion.dart';
+
+/// App-wide offline strip. Radio from connectivity_plus; socket from gateway.
+class KimOfflineBanner extends ConsumerWidget {
+  const KimOfflineBanner({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final linkUp = ref.watch(radioOnlineProvider);
+    final session = ref.watch(sessionProvider);
+    final noRadio = !linkUp;
+    final noSocket = session.signedIn && session.status == ConnStatus.offline;
+    final show = noRadio || noSocket;
+    final scheme = Theme.of(context).colorScheme;
+    final label = noRadio ? Copy.offlineBanner : Copy.offline;
+    return Column(
+      children: [
+        AnimatedSize(
+          duration: KimMotion.short,
+          curve: KimMotion.standard,
+          alignment: Alignment.topCenter,
+          child: show
+              ? Material(
+                  color: scheme.errorContainer,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            LucideIcons.wifiOff,
+                            size: 16,
+                            color: scheme.onErrorContainer,
+                          ),
+                          const Gap(8),
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.onErrorContainer),
+                            ),
+                          ),
+                          if (noSocket && !noRadio)
+                            TextButton(
+                              onPressed: () =>
+                                  ref.read(linkProvider.notifier).retry(),
+                              child: Text(
+                                Copy.retry,
+                                style: TextStyle(
+                                  color: scheme.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity, height: 0),
+        ),
+        Expanded(child: child),
+      ],
+    );
+  }
+}

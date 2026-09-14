@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/widgets/conversation_tile.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/conversation_tile.dart';
 
 void main() {
   KimThread thread({int unread = 0}) => KimThread(

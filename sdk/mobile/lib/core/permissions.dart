@@ -6,7 +6,7 @@ library;
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'settings.dart';
+import 'package:kim_mobile/core/settings.dart';
 
 abstract final class KimPermissions {
   static Future<PermissionStatus> requestNotifications() {

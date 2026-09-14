@@ -1,7 +1,7 @@
 library;
 
-import '../copy.dart';
-import 'failures.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/failures.dart';
 
 /// Errors that must not trip Riverpod 3 automatic retry (auth, validation).
 bool isPermanentClientError(Object err) {

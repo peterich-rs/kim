@@ -1,11 +1,11 @@
 /// Forwards MobileAgent run requests to desktop `rust_agent`. No queue/LRU here.
 library;
 
-import '../agent/host_support.dart';
-import '../agent_bridge.dart';
-import '../core/logger.dart';
-import '../kim_bridge.dart';
-import '../src/rust/api/types.dart';
+import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 
 class AgentRunLoop {
   AgentRunLoop(this.client, this.goose);

@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/agent/workspace.dart';
-import 'package:kim_mobile/agent/workspace_access.dart';
+import 'package:kim_mobile/features/agent/workspace.dart';
+import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/screens/agent/agent_overview_status.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_overview_status.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 AgentProfile _profile(

@@ -6,7 +6,7 @@ library;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'logger.dart';
+import 'package:kim_mobile/core/logger.dart';
 
 class SettingsStore {
   SettingsStore({required this._prefs, this._secure});

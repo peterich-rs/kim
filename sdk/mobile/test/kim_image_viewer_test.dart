@@ -2,8 +2,8 @@ import 'package:dismissible_page/dismissible_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/widgets/kim_image_viewer.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/kim_image_viewer.dart';
 import 'package:photo_view/photo_view.dart';
 
 void main() {

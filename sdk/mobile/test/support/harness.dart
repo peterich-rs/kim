@@ -7,8 +7,8 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/state/providers.dart';
-import 'package:kim_mobile/state/retry.dart';
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/retry.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_kim.dart';

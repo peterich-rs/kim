@@ -10,21 +10,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:toastification/toastification.dart';
 
-import 'copy.dart';
-import 'core/layout.dart';
-import 'core/runtime.dart';
-import 'kim_bridge.dart';
-import 'router/app_router.dart';
-import 'router/kim_page.dart';
-import 'state/auth.dart';
-import 'state/chats_search.dart';
-import 'state/link.dart';
-import 'state/profile.dart';
-import 'state/providers.dart';
-import 'state/retry.dart';
-import 'theme/kim_theme.dart';
-import 'widgets/kim_offline_banner.dart';
-import 'widgets/new_chat_sheet.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/core/runtime.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/router/app_router.dart';
+import 'package:kim_mobile/router/kim_page.dart';
+import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/chats/chats_search.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/retry.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/kim_offline_banner.dart';
+import 'package:kim_mobile/design/new_chat_sheet.dart';
 
 /// Phone: tap outside an input to drop the software keyboard.
 /// Desktop: that same pointer-down also hits the focused field and IME

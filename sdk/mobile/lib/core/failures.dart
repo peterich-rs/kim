@@ -1,7 +1,7 @@
 /// Dart view of kim-sdk `SdkError` (19 kinds). No string matching on messages.
 library;
 
-import '../src/rust/api/types.dart' show SdkErrorDto;
+import 'package:kim_mobile/src/rust/api/types.dart' show SdkErrorDto;
 
 enum KimErrorKind {
   notFriends,

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
-import 'package:kim_mobile/state/link.dart';
+import 'package:kim_mobile/features/session/link.dart';
 
 import '../support/harness.dart';
 import '../support/jwt.dart';

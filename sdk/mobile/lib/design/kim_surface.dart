@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../theme/kim_tokens.dart';
+import 'package:kim_mobile/design/kim_tokens.dart';
 
 class KimRaised extends StatelessWidget {
   const KimRaised({super.key, required this.child, this.border = true});
