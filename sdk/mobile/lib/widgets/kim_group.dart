@@ -2,7 +2,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../theme/kim_theme.dart';
+import '../design/kim_surface.dart';
 
 /// Raised, opaque group with a hairline. Replaces alpha-washed cards.
 class KimGroupCard extends StatelessWidget {
@@ -12,15 +12,6 @@ class KimGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: KimTheme.raisedOf(context),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KimTheme.radiusCard),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return KimRaised(child: Column(children: children));
   }
 }

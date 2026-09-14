@@ -1,5 +1,6 @@
 library;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 
@@ -22,6 +23,35 @@ final clientPortProvider = Provider<KimClientPort>((ref) {
 final mediaPortProvider = Provider<KimMediaPort>((ref) {
   throw StateError('mediaPortProvider must be overridden in main / tests');
 });
+
+ThemeMode kimThemeModeFromPrefs(String raw) {
+  return switch (raw) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
+}
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    return kimThemeModeFromPrefs(ref.watch(runtimeProvider).settings.theme);
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    final value = switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+    await ref.read(runtimeProvider).settings.saveTheme(value);
+    state = mode;
+  }
+}
 
 List<Override> kimProviderOverrides({
   required KimRuntime runtime,

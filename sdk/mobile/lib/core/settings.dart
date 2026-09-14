@@ -23,6 +23,7 @@ class SettingsStore {
   static const _kAccount = 'kim.account';
   static const _kAvatar = 'kim.avatar';
   static const _kNotifAsked = 'kim.notifications_asked';
+  static const _kTheme = 'kim.theme';
   static const _kToken = 'kim.jwt';
   static const _kWrap = 'kim.agent_wrap';
 
@@ -45,6 +46,7 @@ class SettingsStore {
   String avatar = '';
   bool notificationsAsked = false;
   bool discardedExpiredToken = false;
+  String theme = 'system';
 
   /// macOS Data Protection keychain (iOS-style). No login-keychain password
   /// dialog, no biometry, no passcode. Available after first unlock.
@@ -100,6 +102,7 @@ class SettingsStore {
         ? _prefs.getString(_kHttp)!.trim()
         : defaultHttp;
     notificationsAsked = _prefs.getBool(_kNotifAsked) ?? false;
+    theme = _prefs.getString(_kTheme)?.trim() ?? 'system';
     token = await _readToken();
     account = await _readAccount();
     avatar = avatarOf(account);
@@ -209,6 +212,14 @@ class SettingsStore {
   Future<void> saveToken(String value) async {
     token = value.trim();
     await _writeSecret(_kToken, token, fallbackKey: _kTokenFallback);
+  }
+
+  Future<void> saveTheme(String value) async {
+    theme = switch (value.trim()) {
+      'light' || 'dark' => value.trim(),
+      _ => 'system',
+    };
+    await _prefs.setString(_kTheme, theme);
   }
 
   Future<void> markNotificationsAsked() async {

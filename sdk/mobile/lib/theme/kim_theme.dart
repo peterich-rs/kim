@@ -5,6 +5,8 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'kim_tokens.dart';
+
 abstract final class KimTheme {
   static const Color seed = Color(0xFF0F766E);
   static const Color outgoing = Color(0xFF0D9488);
@@ -28,32 +30,21 @@ abstract final class KimTheme {
   static const Duration motionBase = Duration(milliseconds: 260);
   static const Curve motionEmphasized = Curves.easeOutCubic;
 
-  static const Color _chatCanvasLight = Color(0xFFF2F5F8);
-  static const Color _chatCanvasDark = Color(0xFF0E1621);
+  static Color canvasOf(BuildContext context) => KimTokens.of(context).canvas;
 
-  static Color canvasOf(BuildContext context) =>
-      Theme.of(context).colorScheme.surfaceContainerLowest;
+  static Color chromeOf(BuildContext context) => KimTokens.of(context).chrome;
 
-  static Color chromeOf(BuildContext context) =>
-      Theme.of(context).colorScheme.surface;
+  static Color raisedOf(BuildContext context) => KimTokens.of(context).raised;
 
-  static Color raisedOf(BuildContext context) =>
-      Theme.of(context).colorScheme.surfaceContainerLow;
-
-  static Color chatCanvasOf(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark ? _chatCanvasDark : _chatCanvasLight;
-  }
+  static Color chatCanvasOf(BuildContext context) =>
+      KimTokens.of(context).chatCanvas;
 
   static Color hairlineOf(BuildContext context) =>
-      Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.72);
+      KimTokens.of(context).hairline;
 
   /// Semi-transparent frosted chip fill (floating chrome over chat).
-  static Color frostFillOf(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return (dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF))
-        .withValues(alpha: dark ? 0.45 : 0.65);
-  }
+  static Color frostFillOf(BuildContext context) =>
+      KimTokens.of(context).frostFill;
 
   static ThemeData light() => _from(Brightness.light);
 
@@ -158,6 +149,9 @@ abstract final class KimTheme {
         space: 0.5,
         thickness: 0.5,
       ),
+      extensions: <ThemeExtension<dynamic>>[
+        KimTokens.fromScheme(scheme, brightness),
+      ],
       searchBarTheme: base.searchBarTheme.copyWith(
         elevation: const WidgetStatePropertyAll(0),
         backgroundColor: WidgetStatePropertyAll(scheme.surfaceContainerLow),

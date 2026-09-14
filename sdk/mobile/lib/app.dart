@@ -100,7 +100,7 @@ class KimApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: KimTheme.light(),
         darkTheme: KimTheme.dark(),
-        themeMode: ThemeMode.system,
+        themeMode: ref.watch(themeModeProvider),
         locale: const Locale('zh'),
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,

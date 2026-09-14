@@ -93,6 +93,14 @@ void main() {
     expect(store.account, isEmpty);
   });
 
+  test('theme pref is dart-only and defaults to system', () async {
+    final first = await SettingsStore.load(useSecureStorage: false);
+    expect(first.theme, 'system');
+    await first.saveTheme('dark');
+    final second = await SettingsStore.load(useSecureStorage: false);
+    expect(second.theme, 'dark');
+  });
+
   test('notifications-asked flag is sticky and not spammed', () async {
     final first = await SettingsStore.load(useSecureStorage: false);
     expect(first.notificationsAsked, isFalse);
