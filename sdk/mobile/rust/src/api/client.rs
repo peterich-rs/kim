@@ -134,19 +134,19 @@ impl KimUiHandle {
                 Ok(empty_ack())
             }
             UiCommandDto::FriendRequest { dest } => {
-                self.friend_request(dest).map_err(SdkErrorDto::from_str)?;
+                self.friend_request(dest).await?;
                 Ok(empty_ack())
             }
             UiCommandDto::FriendAccept { dest } => {
-                self.friend_accept(dest).map_err(SdkErrorDto::from_str)?;
+                self.friend_accept(dest).await?;
                 Ok(empty_ack())
             }
             UiCommandDto::FriendReject { dest } => {
-                self.friend_reject(dest).map_err(SdkErrorDto::from_str)?;
+                self.friend_reject(dest).await?;
                 Ok(empty_ack())
             }
             UiCommandDto::FriendRemove { dest } => {
-                self.friend_remove(dest).map_err(SdkErrorDto::from_str)?;
+                self.friend_remove(dest).await?;
                 Ok(empty_ack())
             }
             UiCommandDto::AgentEnqueueTurn {
@@ -154,21 +154,22 @@ impl KimUiHandle {
                 text,
                 in_reply_to,
             } => {
-                let _ = (dest, text, in_reply_to);
+                self.inner
+                    .enqueue_agent_turn(dest, text, in_reply_to)
+                    .await
+                    .map_err(SdkErrorDto::from)?;
                 Ok(empty_ack())
             }
-            UiCommandDto::AgentRespondPermission {
-                dest,
-                call_id,
-                permission,
-            } => {
-                let _ = (dest, call_id, permission);
-                Ok(empty_ack())
-            }
-            UiCommandDto::AgentAbortTurn { dest } => {
-                let _ = dest;
-                Ok(empty_ack())
-            }
+            UiCommandDto::AgentRespondPermission { .. } => Err(SdkErrorDto::from(
+                kim_sdk::SdkError::InvalidArgument {
+                    message: "respond permission via rust_agent session".into(),
+                },
+            )),
+            UiCommandDto::AgentAbortTurn { .. } => Err(SdkErrorDto::from(
+                kim_sdk::SdkError::InvalidArgument {
+                    message: "abort turn via rust_agent session".into(),
+                },
+            )),
             UiCommandDto::AgentRunResult {
                 dest,
                 profile_id,
@@ -293,8 +294,7 @@ impl KimUiHandle {
         Ok(())
     }
 
-    /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
-    /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
+    /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
     #[flutter_rust_bridge::frb(sync)]
     pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), String> {
         let mut rx = self.inner.subscribe_session();
@@ -505,38 +505,45 @@ impl KimUiHandle {
 
 
 
-    pub fn mark_read(&self, dest: String, kind: i32, message_id: i64) -> Result<(), String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.mark_read(&dest, kind, message_id))
-            .map_err(|e| e.to_string())
+    pub async fn mark_read(
+        &self,
+        dest: String,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<(), SdkErrorDto> {
+        self.mark_thread_read(dest, kind, message_id).await
     }
 
-    pub fn friend_request(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.friend_request(&dest))
-            .map_err(|e| e.to_string())?;
-        Ok("ok".into())
+    pub async fn friend_request(&self, dest: String) -> Result<(), SdkErrorDto> {
+        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+        client
+            .friend_request(&dest)
+            .await
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
     }
 
-    pub fn friend_accept(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.friend_accept(&dest))
-            .map_err(|e| e.to_string())?;
-        Ok("ok".into())
+    pub async fn friend_accept(&self, dest: String) -> Result<(), SdkErrorDto> {
+        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+        client
+            .friend_accept(&dest)
+            .await
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
     }
 
-    pub fn friend_reject(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.friend_reject(&dest))
-            .map_err(|e| e.to_string())?;
-        Ok("ok".into())
+    pub async fn friend_reject(&self, dest: String) -> Result<(), SdkErrorDto> {
+        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+        client
+            .friend_reject(&dest)
+            .await
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
     }
 
-    pub fn friend_remove(&self, dest: String) -> Result<String, String> {
-        let client = self.supervisor()?.client();
-        rt().block_on(client.friend_remove(&dest))
-            .map_err(|e| e.to_string())?;
-        Ok("ok".into())
+    pub async fn friend_remove(&self, dest: String) -> Result<(), SdkErrorDto> {
+        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+        client
+            .friend_remove(&dest)
+            .await
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
     }
 
     #[flutter_rust_bridge::frb(sync)]

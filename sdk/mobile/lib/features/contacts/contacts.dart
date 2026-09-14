@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
@@ -381,21 +382,17 @@ final contactsProvider = NotifierProvider<ContactsNotifier, ContactsState>(
 );
 
 String socialError(Object err) {
-  final msg = err.toString();
-  if (msg.contains('status 108')) {
-    return Copy.userNotFound;
-  }
-  if (msg.contains('status 110')) {
-    return Copy.blocked;
-  }
-  if (msg.contains('status 101')) {
-    return Copy.cannotAddSelf;
-  }
-  if (msg.contains('status 109')) {
-    return Copy.notFriends;
-  }
-  if (msg.contains('status 113')) {
-    return Copy.botSocialDenied;
+  final kim = KimException.tryFrom(err);
+  if (kim != null) {
+    return switch (kim.kind) {
+      KimErrorKind.userNotFound => Copy.userNotFound,
+      KimErrorKind.blocked => Copy.blocked,
+      KimErrorKind.cannotChatSelf => Copy.cannotAddSelf,
+      KimErrorKind.notFriends => Copy.notFriends,
+      KimErrorKind.protocol when kim.message.contains('113') =>
+        Copy.botSocialDenied,
+      _ => Copy.sendFailed,
+    };
   }
   return Copy.sendFailed;
 }

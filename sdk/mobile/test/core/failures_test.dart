@@ -3,6 +3,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 
 const _allKinds = <String>[
@@ -113,6 +114,31 @@ void main() {
     expect(
       kimRetry(0, const SdkErrorDto(kind: 'not_friends', message: 'x')),
       isNull,
+    );
+  });
+
+  test('socialError maps SdkErrorDto kind, not status strings', () {
+    expect(
+      socialError(const SdkErrorDto(kind: 'user_not_found', message: 'x')),
+      Copy.userNotFound,
+    );
+    expect(
+      socialError(const SdkErrorDto(kind: 'blocked', message: 'x')),
+      Copy.blocked,
+    );
+    expect(
+      socialError(const SdkErrorDto(kind: 'cannot_chat_self', message: 'x')),
+      Copy.cannotAddSelf,
+    );
+    expect(
+      socialError(const SdkErrorDto(kind: 'not_friends', message: 'x')),
+      Copy.notFriends,
+    );
+    expect(
+      socialError(
+        const SdkErrorDto(kind: 'protocol', message: 'protocol status 113'),
+      ),
+      Copy.botSocialDenied,
     );
   });
 }

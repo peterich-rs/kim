@@ -119,6 +119,22 @@ async fn newer_than_sdk_is_hard_error() {
 }
 
 #[tokio::test]
+async fn wipe_errors_if_primary_still_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    std::fs::create_dir(&path).unwrap();
+    let err = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || prepare_store_file(&path)
+    })
+    .await
+    .unwrap()
+    .expect_err("directory cannot be wiped as a file");
+    assert!(matches!(err, SdkError::Disk { .. }));
+    assert!(path.exists());
+}
+
+#[tokio::test]
 async fn non_sqlite_file_is_wiped() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("kim-cache.db");

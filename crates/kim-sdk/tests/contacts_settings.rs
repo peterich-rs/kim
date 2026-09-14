@@ -75,3 +75,28 @@ async fn import_device_settings_is_once() {
     assert_eq!(patched.ws_url, "wss://c.example/");
     let _ = DeviceSettings::default();
 }
+
+#[tokio::test]
+async fn agent_profiles_imported_before_login_are_visible_after_start() {
+    use kim_sdk::AgentProfileRow;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = KimSdk::open(path.to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    sdk.import_agent_profiles(vec![AgentProfileRow {
+        profile_id: "goose".into(),
+        nickname: "助手".into(),
+        server_account: "b_bot".into(),
+        body_json: "{}".into(),
+    }])
+    .await
+    .unwrap();
+    let before = sdk.list_agent_profiles().await.unwrap();
+    assert_eq!(before.len(), 1);
+    sdk.start_session(session()).await.unwrap();
+    let after = sdk.list_agent_profiles().await.unwrap();
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].profile_id, "goose");
+    assert_eq!(after[0].server_account, "b_bot");
+}

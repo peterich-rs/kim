@@ -301,7 +301,7 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   rust.KimUiHandle _require() {
     final api = _api;
     if (api == null) {
-      throw StateError('startSession first');
+      throw StateError('attachStore first');
     }
     return api;
   }
@@ -383,16 +383,17 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
     }
     await _ensure();
     lastUrl = url;
-    _api ??= rust.KimUiHandle.create();
+    final api = _api ?? rust.KimUiHandle.create();
+    _api = api;
     if (_account != null && _account!.isNotEmpty) {
       try {
-        await _api!.notifyRadioUp();
+        await api.notifyRadioUp();
       } catch (e, st) {
         KimLogger.warn('notifyRadioUp', e, st);
       }
       return;
     }
-    await _api!.startSession(
+    await api.startSession(
       url: url,
       token: token,
       userAgent: userAgent,
@@ -438,9 +439,8 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
 
   @override
   Future<void> stopSession() async {
-    final api = _api;
-    _api = null;
     _account = null;
+    final api = _api;
     if (api == null) {
       return;
     }

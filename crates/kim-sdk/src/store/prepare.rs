@@ -39,17 +39,31 @@ pub fn prepare_store_file(path: &Path) -> Result<PrepareOutcome, SdkError> {
     }
 }
 
+fn remove_optional(path: &Path) -> Result<(), SdkError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(SdkError::Disk {
+            message: format!("wipe {}: {e}", path.display()),
+        }),
+    }
+}
+
 pub(crate) fn wipe_store_files(path: &Path) -> Result<(), SdkError> {
-    let _ = std::fs::remove_file(path);
+    remove_optional(path)?;
     let wal = path.with_extension("db-wal");
     let shm = path.with_extension("db-shm");
-    // `kim-cache.db-wal` when path already ends in `.db`.
     let wal_alt = Path::new(&format!("{}-wal", path.display())).to_path_buf();
     let shm_alt = Path::new(&format!("{}-shm", path.display())).to_path_buf();
-    let _ = std::fs::remove_file(wal);
-    let _ = std::fs::remove_file(shm);
-    let _ = std::fs::remove_file(wal_alt);
-    let _ = std::fs::remove_file(shm_alt);
+    remove_optional(&wal)?;
+    remove_optional(&shm)?;
+    remove_optional(&wal_alt)?;
+    remove_optional(&shm_alt)?;
+    if path.exists() {
+        return Err(SdkError::Disk {
+            message: "store wipe failed; file still exists".into(),
+        });
+    }
     Ok(())
 }
 

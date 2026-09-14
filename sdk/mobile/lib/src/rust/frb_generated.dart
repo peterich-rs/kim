@@ -203,7 +203,7 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 byteSize,
   });
 
-  Future<String> crateApiClientKimUiHandleFriendAccept({
+  Future<void> crateApiClientKimUiHandleFriendAccept({
     required KimUiHandle that,
     required String dest,
   });
@@ -216,17 +216,17 @@ abstract class RustLibApi extends BaseApi {
     required KimUiHandle that,
   });
 
-  Future<String> crateApiClientKimUiHandleFriendReject({
+  Future<void> crateApiClientKimUiHandleFriendReject({
     required KimUiHandle that,
     required String dest,
   });
 
-  Future<String> crateApiClientKimUiHandleFriendRemove({
+  Future<void> crateApiClientKimUiHandleFriendRemove({
     required KimUiHandle that,
     required String dest,
   });
 
-  Future<String> crateApiClientKimUiHandleFriendRequest({
+  Future<void> crateApiClientKimUiHandleFriendRequest({
     required KimUiHandle that,
     required String dest,
   });
@@ -1218,7 +1218,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimUiHandleFriendAccept({
+  Future<void> crateApiClientKimUiHandleFriendAccept({
     required KimUiHandle that,
     required String dest,
   }) {
@@ -1239,8 +1239,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendAcceptConstMeta,
         argValues: [that, dest],
@@ -1328,7 +1328,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimUiHandleFriendReject({
+  Future<void> crateApiClientKimUiHandleFriendReject({
     required KimUiHandle that,
     required String dest,
   }) {
@@ -1349,8 +1349,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRejectConstMeta,
         argValues: [that, dest],
@@ -1366,7 +1366,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimUiHandleFriendRemove({
+  Future<void> crateApiClientKimUiHandleFriendRemove({
     required KimUiHandle that,
     required String dest,
   }) {
@@ -1387,8 +1387,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRemoveConstMeta,
         argValues: [that, dest],
@@ -1404,7 +1404,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimUiHandleFriendRequest({
+  Future<void> crateApiClientKimUiHandleFriendRequest({
     required KimUiHandle that,
     required String dest,
   }) {
@@ -1425,8 +1425,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRequestConstMeta,
         argValues: [that, dest],
@@ -1639,7 +1639,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_sdk_error_dto,
         ),
         constMeta: kCrateApiClientKimUiHandleMarkReadConstMeta,
         argValues: [that, dest, kind, messageId],
@@ -5964,7 +5964,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     byteSize: byteSize,
   );
 
-  Future<String> friendAccept({required String dest}) => RustLib.instance.api
+  Future<void> friendAccept({required String dest}) => RustLib.instance.api
       .crateApiClientKimUiHandleFriendAccept(that: this, dest: dest);
 
   Future<List<PersonDto>> friendIncoming() =>
@@ -5973,13 +5973,13 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Future<List<PersonDto>> friendList() =>
       RustLib.instance.api.crateApiClientKimUiHandleFriendList(that: this);
 
-  Future<String> friendReject({required String dest}) => RustLib.instance.api
+  Future<void> friendReject({required String dest}) => RustLib.instance.api
       .crateApiClientKimUiHandleFriendReject(that: this, dest: dest);
 
-  Future<String> friendRemove({required String dest}) => RustLib.instance.api
+  Future<void> friendRemove({required String dest}) => RustLib.instance.api
       .crateApiClientKimUiHandleFriendRemove(that: this, dest: dest);
 
-  Future<String> friendRequest({required String dest}) => RustLib.instance.api
+  Future<void> friendRequest({required String dest}) => RustLib.instance.api
       .crateApiClientKimUiHandleFriendRequest(that: this, dest: dest);
 
   Future<void> importAgentProfiles({required List<AgentProfileDto> rows}) =>
@@ -6177,8 +6177,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Stream<AgentRunRequestDto> watchAgentRun() =>
       RustLib.instance.api.crateApiClientKimUiHandleWatchAgentRun(that: this);
 
-  /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
-  /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
+  /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
   Stream<SessionUpdateDto> watchSession() =>
       RustLib.instance.api.crateApiClientKimUiHandleWatchSession(that: this);
 

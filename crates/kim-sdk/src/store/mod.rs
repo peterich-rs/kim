@@ -131,6 +131,11 @@ enum WriteOp {
         rows: Vec<AgentProfileRow>,
         reply: oneshot::Sender<Result<(), SdkError>>,
     },
+    RekeyAgentProfiles {
+        from: String,
+        to: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
     TouchMedia {
         url: String,
         reply: oneshot::Sender<Result<(), SdkError>>,
@@ -618,6 +623,25 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn rekey_agent_profiles(
+        &self,
+        from: String,
+        to: String,
+    ) -> Result<(), SdkError> {
+        if from == to {
+            return Ok(());
+        }
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::RekeyAgentProfiles { from, to, reply })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
     pub(crate) async fn upsert_device_settings(
         &self,
         row: settings::DeviceSettings,
@@ -895,6 +919,10 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 let result = import_agent_profiles_tx(&pool, &account, &rows).await;
                 let _ = reply.send(result);
             }
+            WriteOp::RekeyAgentProfiles { from, to, reply } => {
+                let result = rekey_agent_profiles_tx(&pool, &from, &to).await;
+                let _ = reply.send(result);
+            }
             WriteOp::TouchMedia { url, reply } => {
                 let result = touch_media_tx(&pool, &url).await;
                 let _ = reply.send(result);
@@ -986,6 +1014,13 @@ async fn import_agent_profiles_tx(
         Ok(())
     }
     .await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn rekey_agent_profiles_tx(pool: &SqlitePool, from: &str, to: &str) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::rekey(&mut conn, from, to).await;
     finish_conn(&mut conn, result).await
 }
 

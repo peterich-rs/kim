@@ -82,17 +82,17 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
-  Future<String> friendAccept({required String dest});
+  Future<void> friendAccept({required String dest});
 
   Future<List<PersonDto>> friendIncoming();
 
   Future<List<PersonDto>> friendList();
 
-  Future<String> friendReject({required String dest});
+  Future<void> friendReject({required String dest});
 
-  Future<String> friendRemove({required String dest});
+  Future<void> friendRemove({required String dest});
 
-  Future<String> friendRequest({required String dest});
+  Future<void> friendRequest({required String dest});
 
   Future<void> importAgentProfiles({required List<AgentProfileDto> rows});
 
@@ -198,8 +198,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Stream<AgentRunRequestDto> watchAgentRun();
 
-  /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
-  /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
+  /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
   Stream<SessionUpdateDto> watchSession();
 
   Stream<SessionSnapshotDto> watchSessionSnapshot();

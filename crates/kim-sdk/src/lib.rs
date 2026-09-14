@@ -30,7 +30,7 @@ pub use command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
     SendStatus, StartSession, TimelineQuery,
 };
-pub use error::SdkError;
+pub use error::{map_client, SdkError};
 pub use ids::{
     incoming_message_key, is_client_key, prefer_key, AccountId, ClientMessageId, DestId,
     SessionEpoch,
@@ -178,6 +178,11 @@ impl KimSdk {
         self.spawn_session_bridge(&sup);
         self.spawn_outbox_worker();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
+        if let Ok(store) = self.store() {
+            store
+                .rekey_agent_profiles(String::new(), s.account.clone())
+                .await?;
+        }
         Ok(())
     }
 
@@ -337,33 +342,47 @@ impl KimSdk {
         self.inner.ffi_runtime.submit(result);
     }
 
+    fn agent_account_key(&self) -> String {
+        self.session_snapshot()
+            .map(|s| s.account)
+            .unwrap_or_default()
+    }
+
     pub async fn upsert_agent_profile(&self, row: AgentProfileRow) -> Result<(), SdkError> {
         let store = self.store()?;
-        let session = self.session_snapshot()?;
-        store.upsert_agent_profile(session.account, row).await
+        store
+            .upsert_agent_profile(self.agent_account_key(), row)
+            .await
     }
 
     pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkError> {
         let store = self.store()?;
-        let session = self.session_snapshot()?;
         store
-            .delete_agent_profile(session.account, profile_id)
+            .delete_agent_profile(self.agent_account_key(), profile_id)
             .await
     }
 
     pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
         let store = self.store()?;
-        let session = self.session_snapshot()?;
-        store.load_agent_profiles(&session.account).await
+        store.load_agent_profiles(&self.agent_account_key()).await
     }
 
     pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
         let store = self.store()?;
-        let account = self
-            .session_snapshot()
-            .map(|s| s.account)
-            .unwrap_or_default();
-        store.import_agent_profiles(account, rows).await
+        store
+            .import_agent_profiles(self.agent_account_key(), rows)
+            .await
+    }
+
+    pub async fn enqueue_agent_turn(
+        &self,
+        dest: String,
+        text: String,
+        in_reply_to: i64,
+    ) -> Result<(), SdkError> {
+        self.agent()
+            .enqueue_turn(&dest, &text, in_reply_to, self.current_epoch())
+            .await
     }
 
     pub async fn search_messages(
@@ -469,7 +488,19 @@ impl KimSdk {
         Ok(local)
     }
 
+    fn spawn_agent_catch_up(&self) {
+        let epoch = self.current_epoch();
+        let sdk = self.clone();
+        tokio::spawn(async move {
+            if sdk.current_epoch() != epoch {
+                return;
+            }
+            sdk.maybe_agent_catch_up().await;
+        });
+    }
+
     async fn maybe_agent_catch_up(&self) {
+        let epoch = self.current_epoch();
         let Ok(store) = self.store() else {
             return;
         };
@@ -483,7 +514,31 @@ impl KimSdk {
         if dests.is_empty() {
             return;
         }
-        let _ = self.agent().catch_up(&dests, self.current_epoch()).await;
+        if self.current_epoch() != epoch {
+            return;
+        }
+        let _ = self.agent().catch_up(&dests, epoch).await;
+    }
+
+    async fn recover_lagged_fatal(&self) {
+        let Ok(sup) = self.supervisor() else {
+            return;
+        };
+        match sup.last_drop_reason() {
+            Some(kim_client::DropReason::Kickout) => {
+                self.emit_session_wait(SessionUpdate::Kickout {
+                    channel_id: "lagged".into(),
+                })
+                .await;
+            }
+            Some(kim_client::DropReason::AuthFailed) => {
+                self.emit_session_wait(SessionUpdate::AuthExpired {
+                    reason: "lagged".into(),
+                })
+                .await;
+            }
+            _ => {}
+        }
     }
 
     pub(crate) fn agent(&self) -> Arc<dyn AgentPort> {
@@ -727,13 +782,12 @@ impl KimSdk {
         rx
     }
 
-    fn publish_token_persist(&self, event: TokenPersistEvent) {
-        let mut subs = lock(&self.inner.token_persist);
-        subs.retain(|tx| match tx.try_send(event.clone()) {
-            Ok(()) => true,
-            Err(mpsc::error::TrySendError::Full(_)) => true,
-            Err(mpsc::error::TrySendError::Closed(_)) => false,
-        });
+    async fn publish_token_persist(&self, event: TokenPersistEvent) {
+        let subs = lock(&self.inner.token_persist).clone();
+        for tx in subs {
+            let _ = tx.send(event.clone()).await;
+        }
+        lock(&self.inner.token_persist).retain(|tx| !tx.is_closed());
     }
 
     /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
@@ -779,10 +833,12 @@ impl KimSdk {
                                         SessionUpdate::TokenRenew { token, .. } => {
                                             sdk.publish_token_persist(TokenPersistEvent::Write {
                                                 token: token.clone(),
-                                            });
+                                            })
+                                            .await;
                                         }
                                         SessionUpdate::AuthExpired { .. } => {
-                                            sdk.publish_token_persist(TokenPersistEvent::Clear);
+                                            sdk.publish_token_persist(TokenPersistEvent::Clear)
+                                                .await;
                                         }
                                         SessionUpdate::Link {
                                             state: LinkStateView::Online,
@@ -792,14 +848,17 @@ impl KimSdk {
                                             catching_up: false,
                                             ..
                                         } => {
-                                            sdk.maybe_agent_catch_up().await;
+                                            sdk.spawn_agent_catch_up();
                                         }
                                         _ => {}
                                     }
                                     sdk.emit_session_wait(update).await;
                                 }
                             }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                sdk.publish_session_snapshot().await;
+                                sdk.recover_lagged_fatal().await;
+                            }
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
                     }

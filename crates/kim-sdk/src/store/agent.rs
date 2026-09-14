@@ -129,6 +129,51 @@ pub(crate) async fn imported(pool: &SqlitePool) -> Result<bool, SdkError> {
     Ok(row.is_some())
 }
 
+pub(crate) async fn rekey(tx: &mut SqliteConnection, from: &str, to: &str) -> Result<(), SdkError> {
+    if from == to {
+        return Ok(());
+    }
+    sqlx::query(
+        r"
+        INSERT OR IGNORE INTO agent_profiles (
+          account, profile_id, nickname, server_account, body_json, key_ciphertext, updated_at
+        )
+        SELECT ?, profile_id, nickname, server_account, body_json, key_ciphertext, updated_at
+        FROM agent_profiles WHERE account = ?
+        ",
+    )
+    .bind(to)
+    .bind(from)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM agent_profiles WHERE account = ?")
+        .bind(from)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    sqlx::query(
+        r"
+        INSERT OR IGNORE INTO agent_permissions (
+          account, profile_id, tool, decision, updated_at
+        )
+        SELECT ?, profile_id, tool, decision, updated_at
+        FROM agent_permissions WHERE account = ?
+        ",
+    )
+    .bind(to)
+    .bind(from)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    sqlx::query("DELETE FROM agent_permissions WHERE account = ?")
+        .bind(from)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
 pub(crate) async fn mark_imported(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     sqlx::query("INSERT OR REPLACE INTO meta (key, value) VALUES ('imported_agent_profiles', '1')")
         .execute(&mut *tx)
