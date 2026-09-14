@@ -257,6 +257,14 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                     ),
                   ),
                   const Gap(12),
+                ] else ...[
+                  Text(
+                    l10n.agentPlazaPickAgentFirst,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Gap(12),
                 ],
                 Text(
                   l10n.agentPlazaKimSection,

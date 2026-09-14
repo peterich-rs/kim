@@ -111,6 +111,7 @@ void main() {
     expect(find.text('留空则使用该默认'), findsOneWidget);
     expect(find.text('高级'), findsNothing);
     expect(find.byKey(const Key('agent-entry-workspace')), findsNothing);
+    expect(find.byKey(const Key('agent-entry-capabilities')), findsNothing);
     expect(find.byKey(const Key('agent-workspace-fs')), findsNothing);
     expect(find.byKey(const Key('agent-inline-key')), findsNothing);
     expect(find.byKey(const Key('agent-add-provider')), findsNothing);
@@ -127,9 +128,10 @@ void main() {
     prompt = tester.widget<TextField>(find.byKey(const Key('agent-prompt')));
     expect(prompt.decoration?.hintText, kDefaultSystemPrompt);
     expect(find.text('高级'), findsNothing);
-    expect(find.byKey(const Key('agent-entry-workspace')), findsOneWidget);
-    expect(find.byKey(const Key('agent-entry-skills')), findsOneWidget);
-    expect(find.byKey(const Key('agent-entry-tools')), findsOneWidget);
+    expect(find.byKey(const Key('agent-entry-capabilities')), findsOneWidget);
+    expect(find.byKey(const Key('agent-entry-workspace')), findsNothing);
+    expect(find.byKey(const Key('agent-entry-skills')), findsNothing);
+    expect(find.byKey(const Key('agent-entry-tools')), findsNothing);
     expect(find.byKey(const Key('agent-open-chat')), findsOneWidget);
   });
 

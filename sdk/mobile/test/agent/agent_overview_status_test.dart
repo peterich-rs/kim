@@ -11,6 +11,11 @@ AgentProfile _profile({
   int mcp = 0,
   List<SkillRef> skills = const [],
 }) {
+  final tools = AgentToolSet(fs: fs, fsWrite: fsWrite, bash: bash);
+  final extensions = [
+    for (var i = 0; i < mcp; i++)
+      AgentExtension(name: 'm$i', command: const ['cmd']),
+  ];
   return AgentProfile(
     id: 'a1',
     displayName: 'Work',
@@ -19,12 +24,10 @@ AgentProfile _profile({
     model: 'gpt-4o',
     keyRef: 'k',
     systemPrompt: '',
-    tools: AgentToolSet(fs: fs, fsWrite: fsWrite, bash: bash),
+    tools: tools,
+    capabilities: capabilitiesFromLegacy(tools, extensions),
     skills: skills,
-    extensions: [
-      for (var i = 0; i < mcp; i++)
-        AgentExtension(name: 'm$i', command: const ['cmd']),
-    ],
+    extensions: extensions,
   );
 }
 

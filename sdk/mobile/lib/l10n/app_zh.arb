@@ -211,6 +211,36 @@
   "agentToolClipboard": "剪贴板",
   "agentToolSearchContacts": "搜索联系人",
   "agentToolSearchMessages": "搜索消息",
+  "agentToolGetConversationContext": "会话上下文",
+  "agentToolListProfiles": "列出人设",
+  "agentCapabilitiesEntry": "能力",
+  "agentCapabilitiesTitle": "能力",
+  "agentCapabilitiesSubtitleEmpty": "未启用工具 · 未分配技能",
+  "agentCapabilitiesSubtitleTools": "{count} 个工具",
+  "@agentCapabilitiesSubtitleTools": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentCapabilitiesSubtitleSkills": "{count} 个技能",
+  "@agentCapabilitiesSubtitleSkills": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "agentCapabilitiesPreview": "装配预览",
+  "agentCapabilitiesPreviewEmpty": "当前无工具（纯对话）",
+  "agentCapabilitiesPreviewLocal": "主机预览不可用 · {tools}",
+  "@agentCapabilitiesPreviewLocal": {
+    "placeholders": {
+      "tools": { "type": "String" }
+    }
+  },
+  "agentCapabilitiesImSection": "即时通讯",
+  "agentCapabilitiesFsSection": "文件与命令行",
+  "agentCapabilitiesMcpSection": "MCP",
+  "agentCapabilitiesMcpSave": "保存 MCP 行",
+  "agentCapabilitiesSkillsSection": "技能",
   "agentMoreComing": "打开「多个本地 Agent」后可管理列表",
   "agentMultiProfile": "在通讯录展示多个本地 Agent",
   "agentServerIdentity": "同步助手会话到其它设备",

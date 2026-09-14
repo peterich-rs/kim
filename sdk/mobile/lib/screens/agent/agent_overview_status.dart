@@ -4,9 +4,10 @@ import '../../copy.dart';
 import '../../state/agent_profiles.dart';
 
 String agentWorkspaceSubtitle(AppLocalizations l10n, AgentProfile profile) {
-  final fs = profile.tools.fs || profile.tools.fsWrite;
-  final write = profile.tools.fsWrite;
-  final bash = profile.tools.bash;
+  final tools = projectToolSet(profile.resolveCapabilities());
+  final fs = tools.fs || tools.fsWrite;
+  final write = tools.fsWrite;
+  final bash = tools.bash;
   final kind = profile.workspace.isRepo
       ? l10n.agentWorkspaceKindRepo
       : l10n.agentWorkspaceKindSandbox;
@@ -43,11 +44,28 @@ String agentSkillsSubtitle(AppLocalizations l10n, AgentProfile profile) {
 }
 
 String agentToolsSubtitle(AppLocalizations l10n, AgentProfile profile) {
-  final mcp = profile.extensions
-      .where((e) => e.name.isNotEmpty && e.command.isNotEmpty)
-      .length;
-  if (mcp == 0) {
+  final mcp = profile.resolveCapabilities().where(
+    (c) => c.enabled && c.kind == CapabilityKinds.mcp,
+  );
+  final count = mcp.length;
+  if (count == 0) {
     return l10n.agentToolsSubtitleDefault;
   }
-  return l10n.agentToolsSubtitleMcp(mcp);
+  return l10n.agentToolsSubtitleMcp(count);
+}
+
+String agentCapabilitiesSubtitle(AppLocalizations l10n, AgentProfile profile) {
+  final names = projectedToolNames(profile.resolveCapabilities());
+  final skills = [
+    for (final s in profile.skills)
+      if (s.enabled && s.id.isNotEmpty) s.id,
+  ];
+  if (names.isEmpty && skills.isEmpty) {
+    return l10n.agentCapabilitiesSubtitleEmpty;
+  }
+  final parts = <String>[
+    if (names.isNotEmpty) l10n.agentCapabilitiesSubtitleTools(names.length),
+    if (skills.isNotEmpty) l10n.agentCapabilitiesSubtitleSkills(skills.length),
+  ];
+  return parts.join(' · ');
 }
