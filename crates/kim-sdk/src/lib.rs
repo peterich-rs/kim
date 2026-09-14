@@ -36,11 +36,18 @@ pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX
 pub use metrics::SdkMetrics;
 pub use proto::ProtocolClient;
 pub use store::prepare::{prepare_store_file, PrepareOutcome};
+pub use store::settings::DeviceSettings;
 pub use sync::UnreadPolicy;
 pub use timeline::{
     LinkStateView, MessageView, PersonRef, SessionSnapshot, SessionUpdate, ThreadView,
     TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TokenPersistEvent {
+    Write { token: String },
+    Clear,
+}
 
 use crate::session::lock;
 use crate::store::Store;
@@ -60,6 +67,7 @@ struct Inner {
     metrics: SdkMetrics,
     outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
     outbox_run: Mutex<CancellationToken>,
+    token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
 }
 
 #[derive(Clone)]
@@ -87,6 +95,7 @@ impl KimSdk {
                 metrics: SdkMetrics::default(),
                 outbox_kick: Mutex::new(None),
                 outbox_run: Mutex::new(CancellationToken::new()),
+                token_persist: Mutex::new(Vec::new()),
             }),
         })
     }
@@ -448,6 +457,96 @@ impl KimSdk {
         store.load_threads(&session.account).await
     }
 
+    pub async fn replace_contacts(&self, rows: Vec<PersonRef>) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store
+            .replace_contacts(session.account, rows.clone())
+            .await?;
+        self.emit_session_wait(SessionUpdate::ContactsChanged { contacts: rows })
+            .await;
+        Ok(())
+    }
+
+    pub async fn load_contacts(&self) -> Result<Vec<PersonRef>, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store.load_contacts(&session.account).await
+    }
+
+    pub async fn settings_get(&self) -> Result<DeviceSettings, SdkError> {
+        let mut row = match self.store() {
+            Ok(store) => store.load_device_settings().await?,
+            Err(_) => DeviceSettings::default(),
+        };
+        if let Ok(session) = self.session_snapshot() {
+            row.account = session.account;
+        }
+        Ok(row)
+    }
+
+    pub async fn settings_patch(
+        &self,
+        ws_url: Option<String>,
+        http_origin: Option<String>,
+        env: Option<String>,
+        locale: Option<String>,
+    ) -> Result<DeviceSettings, SdkError> {
+        let store = self.store()?;
+        let mut row = store.load_device_settings().await?;
+        if let Some(v) = ws_url {
+            row.ws_url = v;
+        }
+        if let Some(v) = http_origin {
+            row.http_origin = v;
+        }
+        if let Some(v) = env {
+            row.env = v;
+        }
+        if let Some(v) = locale {
+            row.locale = v;
+        }
+        store.upsert_device_settings(row, false).await?;
+        self.settings_get().await
+    }
+
+    pub async fn import_device_settings(
+        &self,
+        ws_url: String,
+        http_origin: String,
+        env: String,
+        locale: String,
+    ) -> Result<DeviceSettings, SdkError> {
+        let store = self.store()?;
+        if store.prefs_imported().await? {
+            return self.settings_get().await;
+        }
+        let row = DeviceSettings {
+            ws_url,
+            http_origin,
+            env: if env.is_empty() { "prod".into() } else { env },
+            locale,
+            account: String::new(),
+        };
+        store.upsert_device_settings(row, true).await?;
+        self.settings_get().await
+    }
+
+    pub fn subscribe_token_persist(&self) -> mpsc::Receiver<TokenPersistEvent> {
+        let (tx, rx) = mpsc::channel(8);
+        lock(&self.inner.token_persist).push(tx);
+        rx
+    }
+
+    fn publish_token_persist(&self, event: TokenPersistEvent) {
+        let mut subs = lock(&self.inner.token_persist);
+        subs.retain(|tx| match tx.try_send(event.clone()) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => true,
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        });
+    }
+
     /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
     pub fn subscribe_session(&self) -> mpsc::Receiver<SessionUpdate> {
         let (tx, rx) = mpsc::channel(64);
@@ -486,6 +585,17 @@ impl KimSdk {
                                 if let Some(update) = session_update_from_event(ev) {
                                     if matches!(update, SessionUpdate::Link { .. }) {
                                         sdk.publish_session_snapshot().await;
+                                    }
+                                    match &update {
+                                        SessionUpdate::TokenRenew { token, .. } => {
+                                            sdk.publish_token_persist(TokenPersistEvent::Write {
+                                                token: token.clone(),
+                                            });
+                                        }
+                                        SessionUpdate::AuthExpired { .. } => {
+                                            sdk.publish_token_persist(TokenPersistEvent::Clear);
+                                        }
+                                        _ => {}
                                     }
                                     sdk.emit_session_wait(update).await;
                                 }

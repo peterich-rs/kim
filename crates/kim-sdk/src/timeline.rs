@@ -130,6 +130,7 @@ pub struct PersonRef {
     pub avatar: String,
     pub bio: String,
     pub relation: String,
+    pub kind: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

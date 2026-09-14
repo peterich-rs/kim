@@ -12,14 +12,16 @@ use crate::command::{
 };
 use crate::error::{map_sqlx, SdkError};
 use crate::sync::UnreadPolicy;
-use crate::timeline::{ThreadView, TimelineSnapshot};
+use crate::timeline::{PersonRef, ThreadView, TimelineSnapshot};
 
+pub mod contacts;
 pub mod cursors;
 pub mod messages;
 pub mod migrate;
 pub mod outbox;
 pub mod prepare;
 pub mod schema;
+pub mod settings;
 pub mod threads;
 pub mod watermarks;
 
@@ -99,6 +101,16 @@ enum WriteOp {
     DueNow {
         epoch: u64,
         account: String,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    ReplaceContacts {
+        account: String,
+        rows: Vec<PersonRef>,
+        reply: oneshot::Sender<Result<(), SdkError>>,
+    },
+    UpsertDeviceSettings {
+        row: settings::DeviceSettings,
+        mark_imported: bool,
         reply: oneshot::Sender<Result<(), SdkError>>,
     },
 }
@@ -410,6 +422,58 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn replace_contacts(
+        &self,
+        account: String,
+        rows: Vec<PersonRef>,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::ReplaceContacts {
+                account,
+                rows,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn load_contacts(&self, account: &str) -> Result<Vec<PersonRef>, SdkError> {
+        contacts::load_all(&self.pool, account).await
+    }
+
+    pub(crate) async fn load_device_settings(&self) -> Result<settings::DeviceSettings, SdkError> {
+        settings::load_device(&self.pool).await
+    }
+
+    pub(crate) async fn prefs_imported(&self) -> Result<bool, SdkError> {
+        settings::imported_prefs(&self.pool).await
+    }
+
+    pub(crate) async fn upsert_device_settings(
+        &self,
+        row: settings::DeviceSettings,
+        mark_imported: bool,
+    ) -> Result<(), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertDeviceSettings {
+                row,
+                mark_imported,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
     pub(crate) async fn mark_failed(
         &self,
         epoch: u64,
@@ -627,6 +691,22 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 };
                 let _ = reply.send(result);
             }
+            WriteOp::ReplaceContacts {
+                account,
+                rows,
+                reply,
+            } => {
+                let result = replace_contacts_tx(&pool, &account, &rows).await;
+                let _ = reply.send(result);
+            }
+            WriteOp::UpsertDeviceSettings {
+                row,
+                mark_imported,
+                reply,
+            } => {
+                let result = upsert_settings_tx(&pool, &row, mark_imported).await;
+                let _ = reply.send(result);
+            }
         }
     }
 }
@@ -635,6 +715,35 @@ async fn cancel_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = outbox::cancel(&mut conn, account, client_id).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn replace_contacts_tx(
+    pool: &SqlitePool,
+    account: &str,
+    rows: &[PersonRef],
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = contacts::replace_all(&mut conn, account, rows, now_ms()).await;
+    finish_conn(&mut conn, result).await
+}
+
+async fn upsert_settings_tx(
+    pool: &SqlitePool,
+    row: &settings::DeviceSettings,
+    mark_imported: bool,
+) -> Result<(), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        settings::upsert_device(&mut conn, row).await?;
+        if mark_imported {
+            settings::mark_imported(&mut conn).await?;
+        }
+        Ok(())
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 

@@ -87,6 +87,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<TokenPersistDto> dco_decode_StreamSink_token_persist_dto_Sse(
+    dynamic raw,
+  );
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -299,6 +304,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<TimelineUpdateDto>
   sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<TokenPersistDto> sse_decode_StreamSink_token_persist_dto_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -559,6 +569,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_timeline_update_dto_Sse(
     RustStreamSink<TimelineUpdateDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_token_persist_dto_Sse(
+    RustStreamSink<TokenPersistDto> self,
     SseSerializer serializer,
   );
 

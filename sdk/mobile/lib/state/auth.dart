@@ -8,7 +8,6 @@ import '../copy.dart';
 import '../core/haptics.dart';
 import '../core/logger.dart';
 import '../core/secure_origin.dart';
-import '../core/jwt.dart';
 import '../core/user_agent.dart';
 import 'providers.dart';
 
@@ -27,17 +26,9 @@ class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
     final settings = ref.watch(runtimeProvider).settings;
-    final expired =
-        settings.token.isNotEmpty && JwtPeek.isExpired(settings.token);
-    if (expired && !settings.discardedExpiredToken) {
-      settings.discardedExpiredToken = true;
-      unawaited(settings.saveToken(''));
-    }
-    if (settings.token.isEmpty || expired) {
+    if (settings.token.isEmpty) {
       return AuthState.signedOut(
-        notice: (expired || settings.discardedExpiredToken)
-            ? Copy.sessionExpired
-            : null,
+        notice: settings.discardedExpiredToken ? Copy.sessionExpired : null,
       );
     }
     return AuthState(signedIn: true, account: settings.account);

@@ -11,6 +11,7 @@ import '../copy.dart';
 import '../core/errors.dart';
 import '../core/haptics.dart';
 import '../core/layout.dart';
+import '../core/logger.dart';
 import '../core/validation.dart';
 import '../state/auth.dart';
 import '../state/mutations.dart';
@@ -284,6 +285,17 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     enabled: !busy,
                     onTap: () async {
                       await settings.useLocal();
+                      try {
+                        await ref
+                            .read(clientPortProvider)
+                            .settingsPatch(
+                              wsUrl: settings.url,
+                              httpOrigin: settings.httpOrigin,
+                              env: settings.env,
+                            );
+                      } catch (e, st) {
+                        KimLogger.warn('settingsPatch local', e, st);
+                      }
                       setState(() {});
                     },
                   ),
@@ -294,6 +306,17 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     enabled: !busy,
                     onTap: () async {
                       await settings.useProd();
+                      try {
+                        await ref
+                            .read(clientPortProvider)
+                            .settingsPatch(
+                              wsUrl: settings.url,
+                              httpOrigin: settings.httpOrigin,
+                              env: settings.env,
+                            );
+                      } catch (e, st) {
+                        KimLogger.warn('settingsPatch prod', e, st);
+                      }
                       setState(() {});
                     },
                   ),

@@ -9,7 +9,7 @@ use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand,
 use super::rt;
 use super::types::{
     MessagePageDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto, SendStatusDto,
-    SessionSnapshotDto, SessionUpdateDto, TimelineUpdateDto,
+    SessionSnapshotDto, SessionUpdateDto, SettingsDto, TimelineUpdateDto, TokenPersistDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -415,6 +415,110 @@ impl KimSdkHandle {
         rt().block_on(client.friend_remove(&dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_token_persist(&self, sink: StreamSink<TokenPersistDto>) -> Result<(), String> {
+        let mut rx = self.inner.subscribe_token_persist();
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            while let Some(ev) = rx.recv().await {
+                let dto = match ev {
+                    kim_sdk::TokenPersistEvent::Write { token } => TokenPersistDto::Write { token },
+                    kim_sdk::TokenPersistEvent::Clear => TokenPersistDto::Clear,
+                };
+                if sink.add(dto).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    pub async fn settings_get(&self) -> Result<SettingsDto, SdkErrorDto> {
+        let row = self.inner.settings_get().await.map_err(SdkErrorDto::from)?;
+        Ok(SettingsDto {
+            ws_url: row.ws_url,
+            http_origin: row.http_origin,
+            env: row.env,
+            locale: row.locale,
+            account: row.account,
+        })
+    }
+
+    pub async fn settings_patch(
+        &self,
+        ws_url: Option<String>,
+        http_origin: Option<String>,
+        env: Option<String>,
+    ) -> Result<SettingsDto, SdkErrorDto> {
+        let row = self
+            .inner
+            .settings_patch(ws_url, http_origin, env, None)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(SettingsDto {
+            ws_url: row.ws_url,
+            http_origin: row.http_origin,
+            env: row.env,
+            locale: row.locale,
+            account: row.account,
+        })
+    }
+
+    pub async fn import_device_settings(
+        &self,
+        ws_url: String,
+        http_origin: String,
+        env: String,
+        locale: String,
+    ) -> Result<SettingsDto, SdkErrorDto> {
+        let row = self
+            .inner
+            .import_device_settings(ws_url, http_origin, env, locale)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(SettingsDto {
+            ws_url: row.ws_url,
+            http_origin: row.http_origin,
+            env: row.env,
+            locale: row.locale,
+            account: row.account,
+        })
+    }
+
+    pub fn refresh_contacts(&self) -> Result<Vec<PersonDto>, String> {
+        let client = self.supervisor()?.client();
+        let friends = rt()
+            .block_on(client.friend_list())
+            .map_err(|e| e.to_string())?;
+        let incoming = rt()
+            .block_on(client.friend_incoming())
+            .map_err(|e| e.to_string())?;
+        let mut rows = Vec::new();
+        for p in friends {
+            rows.push(kim_sdk::PersonRef {
+                account: p.account,
+                nickname: p.nickname,
+                avatar: p.avatar,
+                bio: p.bio,
+                relation: "friend".into(),
+                kind: p.kind,
+            });
+        }
+        for p in incoming {
+            rows.push(kim_sdk::PersonRef {
+                account: p.account,
+                nickname: p.nickname,
+                avatar: p.avatar,
+                bio: p.bio,
+                relation: "incoming".into(),
+                kind: p.kind,
+            });
+        }
+        rt().block_on(self.inner.replace_contacts(rows.clone()))
+            .map_err(|e| e.to_string())?;
+        Ok(rows.into_iter().map(PersonDto::from).collect())
     }
 
     pub fn friend_list(&self) -> Result<Vec<PersonDto>, String> {

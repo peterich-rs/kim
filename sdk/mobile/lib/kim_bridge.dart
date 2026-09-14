@@ -13,7 +13,6 @@ import 'core/format.dart';
 import 'core/logger.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
-import 'core/jwt.dart';
 import 'models/models.dart';
 import 'src/rust/api/auth.dart' as rust_auth;
 import 'src/rust/api/client.dart' as rust;
@@ -164,6 +163,25 @@ abstract class KimClientPort {
 
   /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
   Future<void> botTyping(String dest, {int kind = 0, bool active = true});
+
+  Stream<rust_types.TokenPersistDto> watchTokenPersist();
+
+  Future<rust_types.SettingsDto> settingsGet();
+
+  Future<rust_types.SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  });
+
+  Future<rust_types.SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    String env = 'prod',
+    String locale = '',
+  });
+
+  Future<List<rust_types.PersonDto>> refreshContacts();
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -207,8 +225,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
   rust.KimSdkHandle? _api;
   String? _account;
 
-  /// Last WGateway URL passed to [startSession]. Not a second source of truth —
-  /// [SettingsStore] persists it.
+  /// Last WGateway URL passed to [startSession]. Device URL lives in Rust.
   String? lastUrl;
 
   String get ffiStatus => 'FFI: kim-client via flutter_rust_bridge 2.13';
@@ -334,9 +351,8 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     await _ensure();
     lastUrl = url;
-    final account = JwtPeek.account(token) ?? '';
     _api ??= rust.KimSdkHandle.create();
-    if (_account == account && account.isNotEmpty) {
+    if (_account != null && _account!.isNotEmpty) {
       try {
         await _api!.notifyRadioUp();
       } catch (e, st) {
@@ -348,9 +364,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
       url: url,
       token: token,
       userAgent: userAgent,
-      account: account,
+      account: '',
     );
-    _account = account;
+    _account = 'session';
   }
 
   @override
@@ -725,6 +741,49 @@ class KimBridge implements KimAuthPort, KimClientPort {
     bool active = true,
   }) async {
     await _require().botTyping(dest: dest, kind: kind, active: active);
+  }
+
+  @override
+  Stream<rust_types.TokenPersistDto> watchTokenPersist() {
+    return _require().watchTokenPersist();
+  }
+
+  @override
+  Future<rust_types.SettingsDto> settingsGet() {
+    return _require().settingsGet();
+  }
+
+  @override
+  Future<rust_types.SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  }) {
+    return _require().settingsPatch(
+      wsUrl: wsUrl,
+      httpOrigin: httpOrigin,
+      env: env,
+    );
+  }
+
+  @override
+  Future<rust_types.SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    String env = 'prod',
+    String locale = '',
+  }) {
+    return _require().importDeviceSettings(
+      wsUrl: wsUrl,
+      httpOrigin: httpOrigin,
+      env: env,
+      locale: locale,
+    );
+  }
+
+  @override
+  Future<List<rust_types.PersonDto>> refreshContacts() {
+    return _require().refreshContacts();
   }
 
   Future<void> attachStore(String dbPath) async {

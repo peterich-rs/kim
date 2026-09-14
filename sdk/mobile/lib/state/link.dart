@@ -14,7 +14,6 @@ import '../core/user_agent.dart';
 import '../models/models.dart';
 import '../src/rust/api/types.dart';
 import 'auth.dart';
-import 'contacts.dart';
 import 'kim_session.dart';
 import 'presence.dart';
 import 'providers.dart';
@@ -169,20 +168,10 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
           unawaited(ref.read(authProvider.notifier).signOut(expired: true));
         case SessionUpdateDto_TokenRenew(:final token):
           unawaited(ref.read(authProvider.notifier).savePushedToken(token));
-        case SessionUpdateDto_FriendRequest(:final from, :final nickname):
+        case SessionUpdateDto_FriendRequest():
           unawaited(KimHaptics.light());
-          ref.read(contactsProvider.notifier).onRequest(from, nickname);
-        case SessionUpdateDto_FriendAccepted(:final from, :final nickname):
+        case SessionUpdateDto_FriendAccepted():
           unawaited(KimHaptics.success());
-          ref.read(contactsProvider.notifier).onAccepted(from, nickname);
-        case SessionUpdateDto_ProfileUpdated(
-          :final account,
-          :final nickname,
-          :final avatar,
-        ):
-          ref
-              .read(contactsProvider.notifier)
-              .onProfileUpdated(account, nickname, avatar);
         case SessionUpdateDto_Presence(
           :final account,
           :final status,
@@ -216,6 +205,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         case SessionUpdateDto_Link():
         case SessionUpdateDto_Inbox():
         case SessionUpdateDto_ThreadUpsert():
+        case SessionUpdateDto_ProfileUpdated():
+        case SessionUpdateDto_ContactsChanged():
           break;
         default:
           break;

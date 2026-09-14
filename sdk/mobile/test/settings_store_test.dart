@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'support/jwt.dart';
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -36,17 +34,17 @@ void main() {
     expect(store.account, 'peterich');
   });
 
-  test('url and dest persist via SharedPreferences, not the token', () async {
+  test('dest persists via SharedPreferences; url and token do not', () async {
     final first = await SettingsStore.load(useSecureStorage: false);
     await first.saveUrl(SettingsStore.localUrl);
     await first.saveDest('carol');
     await first.saveToken('header.payload.sig');
     expect(first.token, 'header.payload.sig');
+    expect(first.url, SettingsStore.localUrl);
 
     final second = await SettingsStore.load(useSecureStorage: false);
-    expect(second.url, SettingsStore.localUrl);
     expect(second.dest, 'carol');
-    // New store: in-memory vault is empty. JWT is not in SharedPreferences.
+    expect(second.url, SettingsStore.defaultUrl);
     expect(second.token, isEmpty);
   });
 
@@ -69,36 +67,21 @@ void main() {
     expect(store.httpOrigin, SettingsStore.defaultHttp);
   });
 
-  test('avatar is stored per account and reloaded', () async {
-    final first = await SettingsStore.load(useSecureStorage: false);
-    await first.saveSession(token: 'tok', account: 'alice');
-    await first.saveAvatar('https://media.kim.ainexc.com/alice/a.jpg');
-    expect(first.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
-
-    final second = await SettingsStore.load(useSecureStorage: false);
-    expect(second.account, 'alice');
-    expect(second.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
+  test('avatar is stored per account', () async {
+    final store = await SettingsStore.load(useSecureStorage: false);
+    await store.saveSession(token: 'tok', account: 'alice');
+    await store.saveAvatar('https://media.kim.ainexc.com/alice/a.jpg');
+    expect(store.avatar, 'https://media.kim.ainexc.com/alice/a.jpg');
+    expect(store.avatarOf('alice'), 'https://media.kim.ainexc.com/alice/a.jpg');
   });
 
-  test('reload discards an expired JWT', () async {
+  test('reload keeps a token without peeking JWT expiry', () async {
     final store = await SettingsStore.load(useSecureStorage: false);
-    await store.saveSession(
-      token: testJwt(acc: 'alice', exp: 1),
-      account: 'alice',
-    );
+    await store.saveSession(token: 'tok.jwt', account: 'alice');
     expect(store.token, isNotEmpty);
     await store.reload();
-    expect(store.token, isEmpty);
-    expect(store.discardedExpiredToken, isTrue);
-  });
-
-  test('reload recovers account from JWT when prefs are empty', () async {
-    final store = await SettingsStore.load(useSecureStorage: false);
-    await store.saveToken(testJwt(acc: 'alice', exp: 4_000_000_000));
-    await store.saveAccount('');
-    await store.reload();
-    expect(store.token, isNotEmpty);
-    expect(store.account, 'alice');
+    expect(store.token, 'tok.jwt');
+    expect(store.discardedExpiredToken, isFalse);
   });
 
   test('clearSession drops token and account', () async {

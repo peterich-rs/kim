@@ -8,18 +8,13 @@ import 'package:kim_mobile/state/mutations.dart';
 import 'package:kim_mobile/state/session.dart';
 
 import '../support/harness.dart';
-import '../support/jwt.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('expired JWT is signed out and does not open a session', () async {
-    final env = await kimHarness(
-      token: testJwt(acc: 'alice', exp: 1),
-      account: 'alice',
-    );
+  test('empty token is signed out and does not open a session', () async {
+    final env = await kimHarness();
     expect(env.container.read(authProvider).signedIn, isFalse);
-    expect(env.container.read(authProvider).notice, Copy.sessionExpired);
     env.container.read(linkProvider);
     await Future<void>.delayed(Duration.zero);
     expect(env.fake.connects, 0);

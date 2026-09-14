@@ -10,9 +10,11 @@ import '../copy.dart';
 import '../core/haptics.dart';
 import '../core/logger.dart';
 import '../models/models.dart';
+import '../src/rust/api/types.dart';
 import 'agent_profiles.dart';
+import 'auth.dart';
+import 'kim_session.dart';
 import 'providers.dart';
-import 'session.dart';
 
 class ContactsState {
   const ContactsState({
@@ -84,27 +86,36 @@ class ContactsState {
 }
 
 class ContactsNotifier extends Notifier<ContactsState> {
+  StreamSubscription<SessionUpdateDto>? _events;
+
   @override
   ContactsState build() {
-    ref.listen(sessionProvider.select((s) => s.signedIn), (prev, next) {
+    ref.onDispose(() {
+      unawaited(_events?.cancel());
+      _events = null;
+    });
+    ref.listen(authProvider.select((s) => s.signedIn), (prev, next) {
       if (next == false) {
         state = ContactsState.empty();
       }
     });
-    ref.listen(sessionProvider.select((s) => s.status), (prev, next) {
-      if (next == ConnStatus.online) {
+    ref.listen(kimSessionProvider.select((s) => s.link), (prev, next) {
+      if (next is LinkStateDto_Online) {
         unawaited(refresh());
       }
     });
+    _listenEvents();
     Future.microtask(() {
       if (!ref.mounted) {
         return;
       }
-      if (ref.read(sessionProvider).status == ConnStatus.online) {
+      if (ref.read(kimSessionProvider).link is LinkStateDto_Online) {
         unawaited(refresh());
       }
     });
-    ref.watch(agentProfilesProvider);
+    ref.listen(agentProfilesProvider, (prev, next) {
+      _syncLocalAgents();
+    });
     final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     return ContactsState(
       friends: !agentHostSupported
@@ -116,36 +127,59 @@ class ContactsNotifier extends Notifier<ContactsState> {
     );
   }
 
+  void _syncLocalAgents() {
+    if (!ref.mounted) {
+      return;
+    }
+    final humans = [
+      for (final p in state.friends)
+        if (!isAgentDest(p.account)) p,
+    ];
+    final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
+    state = state.copyWith(
+      friends: !agentHostSupported ? humans : withLocalAgents(humans, agents),
+    );
+  }
+
+  void _listenEvents() {
+    if (_events != null) {
+      return;
+    }
+    _events = ref.read(clientPortProvider).watchSessionEvents().listen((event) {
+      if (!ref.mounted) {
+        return;
+      }
+      switch (event) {
+        case SessionUpdateDto_FriendRequest(:final from, :final nickname):
+          onRequest(from, nickname);
+        case SessionUpdateDto_FriendAccepted(:final from, :final nickname):
+          onAccepted(from, nickname);
+        case SessionUpdateDto_ProfileUpdated(
+          :final account,
+          :final nickname,
+          :final avatar,
+        ):
+          onProfileUpdated(account, nickname, avatar);
+        case SessionUpdateDto_ContactsChanged(:final contacts):
+          applyChanged(contacts);
+        default:
+          break;
+      }
+    });
+  }
+
   Future<void> refresh() async {
-    final session = ref.read(sessionProvider);
-    if (session.status != ConnStatus.online) {
+    if (ref.read(kimSessionProvider).link is! LinkStateDto_Online) {
       return;
     }
     final client = ref.read(clientPortProvider);
     state = state.copyWith(loading: true);
     try {
-      final friends = await client.friendList();
+      final rows = await client.refreshContacts();
       if (!ref.mounted) {
         return;
       }
-      final incoming = await client.friendIncoming();
-      if (!ref.mounted) {
-        return;
-      }
-      final friendIds = {for (final p in friends) p.account};
-      state = state.copyWith(
-        friends: () {
-          if (!agentHostSupported) {
-            return friends;
-          }
-          final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
-          return withLocalAgents(friends, agents);
-        }(),
-        incoming: incoming,
-        outgoing: {...state.outgoing}..removeWhere(friendIds.contains),
-        ready: true,
-        loading: false,
-      );
+      applyChanged(rows);
     } catch (e, st) {
       KimLogger.warn('contacts refresh', e, st);
       if (ref.mounted) {
@@ -231,6 +265,43 @@ class ContactsNotifier extends Notifier<ContactsState> {
       outgoing: {...state.outgoing}..remove(dest),
     );
     await KimHaptics.success();
+  }
+
+  void applyChanged(List<PersonDto> contacts) {
+    final friends = <KimPerson>[];
+    final incoming = <KimPerson>[];
+    final outgoing = <String>{};
+    for (final p in contacts) {
+      final person = KimPerson(
+        account: p.account,
+        nickname: p.nickname.isEmpty ? p.account : p.nickname,
+        avatar: p.avatar,
+        bio: p.bio,
+        kind: p.kind == ProfileKind.bot ? ProfileKind.bot : ProfileKind.user,
+      );
+      switch (p.relation) {
+        case 'incoming':
+          incoming.add(person);
+        case 'outgoing':
+          outgoing.add(p.account);
+        default:
+          friends.add(person);
+      }
+    }
+    final friendIds = {for (final p in friends) p.account};
+    state = state.copyWith(
+      friends: !agentHostSupported
+          ? friends
+          : withLocalAgents(
+              friends,
+              ref.read(agentProfilesProvider.notifier).visibleAgents,
+            ),
+      incoming: incoming,
+      outgoing: {...state.outgoing, ...outgoing}
+        ..removeWhere(friendIds.contains),
+      ready: true,
+      loading: false,
+    );
   }
 
   void onRequest(String from, String nickname) {

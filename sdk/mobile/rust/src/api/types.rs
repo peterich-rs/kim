@@ -437,11 +437,37 @@ impl From<SessionUpdate> for SessionUpdateDto {
                         avatar: p.avatar,
                         bio: p.bio,
                         relation: p.relation,
-                        kind: 1,
+                        kind: p.kind,
                     })
                     .collect(),
             },
             SessionUpdate::RustPanic { message } => Self::RustPanic { message },
+        }
+    }
+}
+
+impl From<kim_sdk::PersonRef> for PersonDto {
+    fn from(p: kim_sdk::PersonRef) -> Self {
+        Self {
+            account: p.account,
+            nickname: p.nickname,
+            avatar: p.avatar,
+            bio: p.bio,
+            relation: p.relation,
+            kind: p.kind,
+        }
+    }
+}
+
+impl From<PersonDto> for kim_sdk::PersonRef {
+    fn from(p: PersonDto) -> Self {
+        Self {
+            account: p.account,
+            nickname: p.nickname,
+            avatar: p.avatar,
+            bio: p.bio,
+            relation: p.relation,
+            kind: p.kind,
         }
     }
 }

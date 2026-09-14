@@ -72,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1341395377;
+  int get rustContentHash => -1224240046;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -229,6 +229,14 @@ abstract class RustLibApi extends BaseApi {
     required int limit,
   });
 
+  Future<SettingsDto> crateApiClientKimSdkHandleImportDeviceSettings({
+    required KimSdkHandle that,
+    required String wsUrl,
+    required String httpOrigin,
+    required String env,
+    required String locale,
+  });
+
   Future<List<KimInboxItem>> crateApiClientKimSdkHandleInbox({
     required KimSdkHandle that,
     required int limit,
@@ -272,6 +280,10 @@ abstract class RustLibApi extends BaseApi {
     required String dest,
   });
 
+  Future<List<PersonDto>> crateApiClientKimSdkHandleRefreshContacts({
+    required KimSdkHandle that,
+  });
+
   Future<KimCommandReceipt> crateApiClientKimSdkHandleRetrySend({
     required KimSdkHandle that,
     required String clientId,
@@ -309,6 +321,17 @@ abstract class RustLibApi extends BaseApi {
     required bool active,
   });
 
+  Future<SettingsDto> crateApiClientKimSdkHandleSettingsGet({
+    required KimSdkHandle that,
+  });
+
+  Future<SettingsDto> crateApiClientKimSdkHandleSettingsPatch({
+    required KimSdkHandle that,
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  });
+
   Future<void> crateApiClientKimSdkHandleStartSession({
     required KimSdkHandle that,
     required String url,
@@ -340,6 +363,10 @@ abstract class RustLibApi extends BaseApi {
     required KimSdkHandle that,
     required String dest,
     required int limit,
+  });
+
+  Stream<TokenPersistDto> crateApiClientKimSdkHandleWatchTokenPersist({
+    required KimSdkHandle that,
   });
 
   String crateApiSimpleGreet({required String name});
@@ -1349,6 +1376,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<SettingsDto> crateApiClientKimSdkHandleImportDeviceSettings({
+    required KimSdkHandle that,
+    required String wsUrl,
+    required String httpOrigin,
+    required String env,
+    required String locale,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(wsUrl, serializer);
+          sse_encode_String(httpOrigin, serializer);
+          sse_encode_String(env, serializer);
+          sse_encode_String(locale, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_settings_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleImportDeviceSettingsConstMeta,
+        argValues: [that, wsUrl, httpOrigin, env, locale],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleImportDeviceSettingsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_import_device_settings",
+        argNames: ["that", "wsUrl", "httpOrigin", "env", "locale"],
+      );
+
+  @override
   Future<List<KimInboxItem>> crateApiClientKimSdkHandleInbox({
     required KimSdkHandle that,
     required int limit,
@@ -1365,7 +1436,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1396,7 +1467,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 25)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1440,7 +1511,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1489,7 +1560,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1531,7 +1602,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1567,7 +1638,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1603,7 +1674,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1641,7 +1712,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1663,6 +1734,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<PersonDto>> crateApiClientKimSdkHandleRefreshContacts({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 33,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_person_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleRefreshContactsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleRefreshContactsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_refresh_contacts",
+        argNames: ["that"],
+      );
+
+  @override
   Future<KimCommandReceipt> crateApiClientKimSdkHandleRetrySend({
     required KimSdkHandle that,
     required String clientId,
@@ -1679,7 +1786,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1719,7 +1826,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1759,7 +1866,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1797,7 +1904,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1841,7 +1948,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1883,7 +1990,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1902,6 +2009,84 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "KimSdkHandle_send_typing",
         argNames: ["that", "dest", "kind", "active"],
+      );
+
+  @override
+  Future<SettingsDto> crateApiClientKimSdkHandleSettingsGet({
+    required KimSdkHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 40,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_settings_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSettingsGetConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSettingsGetConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_settings_get",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<SettingsDto> crateApiClientKimSdkHandleSettingsPatch({
+    required KimSdkHandle that,
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_opt_String(wsUrl, serializer);
+          sse_encode_opt_String(httpOrigin, serializer);
+          sse_encode_opt_String(env, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 41,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_settings_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleSettingsPatchConstMeta,
+        argValues: [that, wsUrl, httpOrigin, env],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleSettingsPatchConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_settings_patch",
+        argNames: ["that", "wsUrl", "httpOrigin", "env"],
       );
 
   @override
@@ -1927,7 +2112,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1961,7 +2146,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1989,7 +2174,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -2029,7 +2214,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 45,
             port: port_,
           );
         },
@@ -2064,7 +2249,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 42)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2098,7 +2283,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2136,7 +2321,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(dest, serializer);
           sse_encode_i_32(limit, serializer);
           sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2157,13 +2342,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Stream<TokenPersistDto> crateApiClientKimSdkHandleWatchTokenPersist({
+    required KimSdkHandle that,
+  }) {
+    final sink = RustStreamSink<TokenPersistDto>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_StreamSink_token_persist_dto_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleWatchTokenPersistConstMeta,
+        argValues: [that, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleWatchTokenPersistConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_watch_token_persist",
+        argNames: ["that", "sink"],
+      );
+
+  @override
   String crateApiSimpleGreet({required String name}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 45)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2186,7 +2405,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2214,7 +2433,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 52,
             port: port_,
           );
         },
@@ -2326,6 +2545,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RustStreamSink<TimelineUpdateDto>
   dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<TokenPersistDto> dco_decode_StreamSink_token_persist_dto_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -3059,6 +3286,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RustStreamSink<TimelineUpdateDto>
   sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<TokenPersistDto> sse_decode_StreamSink_token_persist_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -3997,6 +4232,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_token_persist_dto_Sse(
+    RustStreamSink<TokenPersistDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_token_persist_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
@@ -4883,6 +5135,19 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     limit: limit,
   );
 
+  Future<SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    required String env,
+    required String locale,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleImportDeviceSettings(
+    that: this,
+    wsUrl: wsUrl,
+    httpOrigin: httpOrigin,
+    env: env,
+    locale: locale,
+  );
+
   Future<List<KimInboxItem>> inbox({required int limit}) => RustLib.instance.api
       .crateApiClientKimSdkHandleInbox(that: this, limit: limit);
 
@@ -4935,6 +5200,9 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   Future<ProfileDto> profile({required String dest}) => RustLib.instance.api
       .crateApiClientKimSdkHandleProfile(that: this, dest: dest);
 
+  Future<List<PersonDto>> refreshContacts() => RustLib.instance.api
+      .crateApiClientKimSdkHandleRefreshContacts(that: this);
+
   Future<KimCommandReceipt> retrySend({required String clientId}) => RustLib
       .instance
       .api
@@ -4983,6 +5251,20 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     active: active,
   );
 
+  Future<SettingsDto> settingsGet() =>
+      RustLib.instance.api.crateApiClientKimSdkHandleSettingsGet(that: this);
+
+  Future<SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleSettingsPatch(
+    that: this,
+    wsUrl: wsUrl,
+    httpOrigin: httpOrigin,
+    env: env,
+  );
+
   Future<void> startSession({
     required String url,
     required String token,
@@ -5029,4 +5311,7 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     dest: dest,
     limit: limit,
   );
+
+  Stream<TokenPersistDto> watchTokenPersist() => RustLib.instance.api
+      .crateApiClientKimSdkHandleWatchTokenPersist(that: this);
 }

@@ -11,7 +11,12 @@ import '../support/harness.dart';
 
 Future<void> _online(dynamic env) async {
   env.container.read(linkProvider);
-  await Future<void>.delayed(Duration.zero);
+  for (var i = 0; i < 20; i++) {
+    await Future<void>.delayed(Duration.zero);
+    if (env.container.read(linkProvider).status == ConnStatus.online) {
+      return;
+    }
+  }
 }
 
 void main() {

@@ -10,6 +10,7 @@ import 'copy.dart';
 import 'core/logger.dart';
 import 'core/runtime.dart';
 import 'kim_bridge.dart';
+import 'src/rust/api/types.dart' as rust_types;
 import 'state/providers.dart';
 import 'state/retry.dart';
 import 'theme/kim_theme.dart';
@@ -62,6 +63,25 @@ class _KimBootState extends State<KimBoot> {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
     await bridge.attachStore('${runtime.paths.support.path}/kim-cache.db');
+    final imported = await bridge.importDeviceSettings(
+      wsUrl: runtime.settings.url,
+      httpOrigin: runtime.settings.httpOrigin,
+    );
+    runtime.settings.applyRemote(
+      wsUrl: imported.wsUrl,
+      httpOrigin: imported.httpOrigin,
+      account: imported.account,
+      env: imported.env,
+    );
+    await runtime.settings.dropImportedPrefs();
+    bridge.watchTokenPersist().listen((event) {
+      switch (event) {
+        case rust_types.TokenPersistDto_Write(:final token):
+          unawaited(runtime.settings.saveToken(token));
+        case rust_types.TokenPersistDto_Clear():
+          unawaited(runtime.settings.saveToken(''));
+      }
+    });
     if (!mounted) {
       return;
     }

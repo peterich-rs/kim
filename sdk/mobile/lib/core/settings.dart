@@ -1,12 +1,11 @@
-/// Last WGateway URL + dest in SharedPreferences.
-/// JWT only in flutter_secure_storage (Keychain / Android Keystore).
+/// Token + account live in Keychain. Device URL/origin/env live in Rust
+/// settings (account=''). Prefs keep dest, avatar, notification flag only.
 /// Never mint a token in the app. Never commit one.
 library;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'jwt.dart';
 import 'logger.dart';
 
 class SettingsStore {
@@ -25,9 +24,11 @@ class SettingsStore {
   static const _kAvatar = 'kim.avatar';
   static const _kNotifAsked = 'kim.notifications_asked';
   static const _kToken = 'kim.jwt';
+  static const _kWrap = 'kim.agent_wrap';
 
   /// Used only when Keychain throws (macOS ad-hoc -34018). Not the happy path.
   static const _kTokenFallback = 'kim.jwt.fallback';
+  static const _kAccountFallback = 'kim.account.fallback';
 
   final SharedPreferences _prefs;
   final FlutterSecureStorage? _secure;
@@ -38,6 +39,7 @@ class SettingsStore {
   String url = defaultUrl;
   String dest = defaultDest;
   String httpOrigin = defaultHttp;
+  String env = 'prod';
   String account = '';
   String token = '';
   String avatar = '';
@@ -97,16 +99,42 @@ class SettingsStore {
     httpOrigin = _prefs.getString(_kHttp)?.trim().isNotEmpty == true
         ? _prefs.getString(_kHttp)!.trim()
         : defaultHttp;
-    account = _prefs.getString(_kAccount)?.trim() ?? '';
-    avatar = avatarOf(account);
     notificationsAsked = _prefs.getBool(_kNotifAsked) ?? false;
     token = await _readToken();
-    if (account.isEmpty && token.isNotEmpty) {
-      final acc = JwtPeek.account(token);
-      if (acc != null && acc.isNotEmpty) {
-        await saveAccount(acc);
-      }
+    account = await _readAccount();
+    avatar = avatarOf(account);
+  }
+
+  void applyRemote({
+    required String wsUrl,
+    required String httpOrigin,
+    required String account,
+    String env = '',
+  }) {
+    if (wsUrl.isNotEmpty) {
+      url = wsUrl;
     }
+    if (httpOrigin.isNotEmpty) {
+      this.httpOrigin = httpOrigin.replaceAll(RegExp(r'/$'), '');
+    }
+    if (env.isNotEmpty) {
+      this.env = env;
+    }
+    if (account.isNotEmpty) {
+      this.account = account;
+      avatar = avatarOf(account);
+    }
+  }
+
+  Future<void> dropImportedPrefs() async {
+    if (account.isNotEmpty) {
+      await saveAccount(account);
+    }
+    await _prefs.remove(_kUrl);
+    await _prefs.remove(_kHttp);
+    await _prefs.remove(_kAccount);
+    await _prefs.remove(_kTokenFallback);
+    await _prefs.remove(_kAccountFallback);
   }
 
   String avatarOf(String account) {
@@ -118,7 +146,6 @@ class SettingsStore {
 
   Future<void> saveUrl(String value) async {
     url = value.trim().isEmpty ? defaultUrl : value.trim();
-    await _prefs.setString(_kUrl, url);
   }
 
   Future<void> saveDest(String value) async {
@@ -130,16 +157,12 @@ class SettingsStore {
     httpOrigin = value.trim().isEmpty
         ? defaultHttp
         : value.trim().replaceAll(RegExp(r'/$'), '');
-    await _prefs.setString(_kHttp, httpOrigin);
   }
 
   Future<void> saveAccount(String value) async {
     account = value.trim();
-    if (account.isEmpty) {
-      await _prefs.remove(_kAccount);
-    } else {
-      await _prefs.setString(_kAccount, account);
-    }
+    await _writeSecret(_kAccount, account, fallbackKey: _kAccountFallback);
+    await _prefs.remove(_kAccount);
   }
 
   Future<void> saveAvatar(String value) async {
@@ -174,39 +197,18 @@ class SettingsStore {
   Future<void> useLocal() async {
     await saveUrl(localUrl);
     await saveHttpOrigin(localHttp);
+    env = 'dev';
   }
 
   Future<void> useProd() async {
     await saveUrl(defaultUrl);
     await saveHttpOrigin(defaultHttp);
+    env = 'prod';
   }
 
   Future<void> saveToken(String value) async {
     token = value.trim();
-    final secure = _secure;
-    if (secure != null) {
-      try {
-        if (token.isEmpty) {
-          await secure.delete(key: _kToken);
-        } else {
-          await secure.write(key: _kToken, value: token);
-        }
-        await _prefs.remove(_kTokenFallback);
-        return;
-      } catch (e, st) {
-        // Missing Keychain entitlement (-34018) must not fail login.
-        KimLogger.warn('saveToken keychain', e, st);
-      }
-    }
-    if (token.isEmpty) {
-      _memorySecure.remove(_kToken);
-      await _prefs.remove(_kTokenFallback);
-    } else {
-      _memorySecure[_kToken] = token;
-      if (secure != null) {
-        await _prefs.setString(_kTokenFallback, token);
-      }
-    }
+    await _writeSecret(_kToken, token, fallbackKey: _kTokenFallback);
   }
 
   Future<void> markNotificationsAsked() async {
@@ -216,37 +218,85 @@ class SettingsStore {
 
   Future<String> _readToken() async {
     try {
-      final raw = (await _readTokenRaw()).trim();
-      if (raw.isEmpty) {
-        return '';
-      }
-      if (JwtPeek.isExpired(raw)) {
-        discardedExpiredToken = true;
-        await saveToken('');
-        return '';
-      }
-      return raw;
+      return (await _readSecret(_kToken, fallbackKey: _kTokenFallback)).trim();
     } catch (e, st) {
       KimLogger.warn('readToken', e, st);
       return '';
     }
   }
 
-  Future<String> _readTokenRaw() async {
+  Future<String> _readAccount() async {
+    try {
+      final fromSecret = (await _readSecret(
+        _kAccount,
+        fallbackKey: _kAccountFallback,
+      )).trim();
+      if (fromSecret.isNotEmpty) {
+        return fromSecret;
+      }
+    } catch (e, st) {
+      KimLogger.warn('readAccount', e, st);
+    }
+    return _prefs.getString(_kAccount)?.trim() ?? '';
+  }
+
+  Future<void> _writeSecret(
+    String key,
+    String value, {
+    required String fallbackKey,
+  }) async {
+    final secure = _secure;
+    if (secure != null) {
+      try {
+        if (value.isEmpty) {
+          await secure.delete(key: key);
+        } else {
+          await secure.write(key: key, value: value);
+        }
+        await _prefs.remove(fallbackKey);
+        return;
+      } catch (e, st) {
+        // Missing Keychain entitlement (-34018) must not fail login.
+        KimLogger.warn('writeSecret keychain', e, st);
+      }
+    }
+    if (value.isEmpty) {
+      _memorySecure.remove(key);
+      await _prefs.remove(fallbackKey);
+    } else {
+      _memorySecure[key] = value;
+      if (secure != null) {
+        await _prefs.setString(fallbackKey, value);
+      }
+    }
+  }
+
+  Future<String> _readSecret(String key, {required String fallbackKey}) async {
     final secure = _secure;
     if (secure == null) {
-      return _memorySecure[_kToken] ?? '';
+      return _memorySecure[key] ?? '';
     }
     try {
-      final fromKeychain = (await secure.read(key: _kToken))?.trim() ?? '';
+      final fromKeychain = (await secure.read(key: key))?.trim() ?? '';
       if (fromKeychain.isNotEmpty) {
         return fromKeychain;
       }
     } catch (e, st) {
-      KimLogger.warn('readTokenRaw keychain', e, st);
+      KimLogger.warn('readSecret keychain', e, st);
     }
-    return _prefs.getString(_kTokenFallback)?.trim() ??
-        _memorySecure[_kToken] ??
-        '';
+    return _prefs.getString(fallbackKey)?.trim() ?? _memorySecure[key] ?? '';
+  }
+
+  /// Independent of JWT. Created empty until P4 fills the wrapping key.
+  Future<String> readAgentWrapKey() async {
+    try {
+      return (await _readSecret(
+        _kWrap,
+        fallbackKey: '$_kWrap.fallback',
+      )).trim();
+    } catch (e, st) {
+      KimLogger.warn('readAgentWrapKey', e, st);
+      return '';
+    }
   }
 }

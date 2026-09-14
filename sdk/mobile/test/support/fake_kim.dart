@@ -613,6 +613,82 @@ class FakeKim implements KimAuthPort, KimClientPort {
     deletes += 1;
     lastTalkDest = dest;
   }
+
+  final tokenPersistCtrl = StreamController<TokenPersistDto>.broadcast();
+  SettingsDto settings = const SettingsDto(
+    wsUrl: 'wss://kim.ainexc.com/',
+    httpOrigin: 'https://kim.ainexc.com',
+    env: 'prod',
+    locale: '',
+    account: '',
+  );
+
+  @override
+  Stream<TokenPersistDto> watchTokenPersist() => tokenPersistCtrl.stream;
+
+  @override
+  Future<SettingsDto> settingsGet() async => settings;
+
+  @override
+  Future<SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  }) async {
+    settings = SettingsDto(
+      wsUrl: wsUrl ?? settings.wsUrl,
+      httpOrigin: httpOrigin ?? settings.httpOrigin,
+      env: env ?? settings.env,
+      locale: settings.locale,
+      account: settings.account,
+    );
+    return settings;
+  }
+
+  @override
+  Future<SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    String env = 'prod',
+    String locale = '',
+  }) async {
+    if (settings.wsUrl.isEmpty || settings.wsUrl == 'wss://kim.ainexc.com/') {
+      settings = SettingsDto(
+        wsUrl: wsUrl,
+        httpOrigin: httpOrigin,
+        env: env,
+        locale: locale,
+        account: settings.account,
+      );
+    }
+    return settings;
+  }
+
+  @override
+  Future<List<PersonDto>> refreshContacts() async {
+    final rows = [
+      for (final p in friends)
+        PersonDto(
+          account: p.account,
+          nickname: p.nickname,
+          avatar: p.avatar,
+          bio: p.bio,
+          relation: 'friend',
+          kind: p.kind,
+        ),
+      for (final p in incoming)
+        PersonDto(
+          account: p.account,
+          nickname: p.nickname,
+          avatar: p.avatar,
+          bio: p.bio,
+          relation: 'incoming',
+          kind: p.kind,
+        ),
+    ];
+    pushEvent(SessionUpdateDto.contactsChanged(contacts: rows));
+    return rows;
+  }
 }
 
 class FakeKimMedia implements KimMediaPort {

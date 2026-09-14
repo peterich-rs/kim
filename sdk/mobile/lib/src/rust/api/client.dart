@@ -97,6 +97,13 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required int limit,
   });
 
+  Future<SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    required String env,
+    required String locale,
+  });
+
   Future<List<KimInboxItem>> inbox({required int limit});
 
   String linkState();
@@ -127,6 +134,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<ProfileDto> profile({required String dest});
 
+  Future<List<PersonDto>> refreshContacts();
+
   Future<KimCommandReceipt> retrySend({required String clientId});
 
   Future<List<RoomMemberDto>> roomEnter({
@@ -149,6 +158,14 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String dest,
     required int kind,
     required bool active,
+  });
+
+  Future<SettingsDto> settingsGet();
+
+  Future<SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
   });
 
   Future<void> startSession({
@@ -178,6 +195,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String dest,
     required int limit,
   });
+
+  Stream<TokenPersistDto> watchTokenPersist();
 }
 
 class KimBotPendingItem {

@@ -14,8 +14,9 @@ import 'package:toastification/toastification.dart';
 
 import '../../agent/host_support.dart';
 import '../../copy.dart';
-import '../../core/ota_info.dart';
 import '../../core/haptics.dart';
+import '../../core/logger.dart';
+import '../../core/ota_info.dart';
 import '../../models/models.dart';
 import '../../state/auth.dart';
 import '../../state/link.dart';
@@ -173,6 +174,17 @@ class MePage extends ConsumerWidget {
                             await settings.useLocal();
                           } else {
                             await settings.useProd();
+                          }
+                          try {
+                            await ref
+                                .read(clientPortProvider)
+                                .settingsPatch(
+                                  wsUrl: settings.url,
+                                  httpOrigin: settings.httpOrigin,
+                                  env: settings.env,
+                                );
+                          } catch (e, st) {
+                            KimLogger.warn('settingsPatch env', e, st);
                           }
                           ref.read(linkProvider.notifier).retry();
                         },
