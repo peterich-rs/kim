@@ -477,6 +477,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentSaved => 'Agent 设置已保存';
 
   @override
+  String get agentSaveFailed => '无法保存 Agent 设置';
+
+  @override
   String get agentKeyMissing => '需要 API Key';
 
   @override
@@ -602,6 +605,57 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentToolSearchMessages => '搜索消息';
+
+  @override
+  String get agentToolGetConversationContext => '会话上下文';
+
+  @override
+  String get agentToolListProfiles => '列出人设';
+
+  @override
+  String get agentCapabilitiesEntry => '能力';
+
+  @override
+  String get agentCapabilitiesTitle => '能力';
+
+  @override
+  String get agentCapabilitiesSubtitleEmpty => '未启用工具 · 未分配技能';
+
+  @override
+  String agentCapabilitiesSubtitleTools(int count) {
+    return '$count 个工具';
+  }
+
+  @override
+  String agentCapabilitiesSubtitleSkills(int count) {
+    return '$count 个技能';
+  }
+
+  @override
+  String get agentCapabilitiesPreview => '装配预览';
+
+  @override
+  String get agentCapabilitiesPreviewEmpty => '当前无工具（纯对话）';
+
+  @override
+  String agentCapabilitiesPreviewLocal(String tools) {
+    return '主机预览不可用 · $tools';
+  }
+
+  @override
+  String get agentCapabilitiesImSection => '即时通讯';
+
+  @override
+  String get agentCapabilitiesFsSection => '文件与命令行';
+
+  @override
+  String get agentCapabilitiesMcpSection => 'MCP';
+
+  @override
+  String get agentCapabilitiesMcpSave => '保存 MCP 行';
+
+  @override
+  String get agentCapabilitiesSkillsSection => '技能';
 
   @override
   String get agentMoreComing => '打开「多个本地 Agent」后可管理列表';

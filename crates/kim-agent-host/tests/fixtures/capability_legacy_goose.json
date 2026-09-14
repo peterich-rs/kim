@@ -1,0 +1,33 @@
+{
+  "id": "goose",
+  "display_name": "助手",
+  "provider": {
+    "kind": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "key_ref": "agent.api_key.goose"
+  },
+  "model": { "name": "gpt-4o" },
+  "system_prompt": "",
+  "mode": "smart_approve",
+  "max_turns": 16,
+  "tools": {
+    "send_message": true,
+    "search_contacts": true,
+    "search_messages": true,
+    "get_conversation_context": true,
+    "read_clipboard": true,
+    "list_profiles": true,
+    "fs": false,
+    "fs_write": false,
+    "bash": false,
+    "subagent": false
+  },
+  "permissions": { "tools": {} },
+  "extensions": [],
+  "enabled": true,
+  "steer": "",
+  "workspace": { "kind": "sandbox", "path": "" },
+  "skills": [],
+  "portable_denylist": [],
+  "user_agents_skills": ""
+}

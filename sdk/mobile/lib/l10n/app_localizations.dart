@@ -1028,6 +1028,12 @@ abstract class AppLocalizations {
   /// **'Agent 设置已保存'**
   String get agentSaved;
 
+  /// No description provided for @agentSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法保存 Agent 设置'**
+  String get agentSaveFailed;
+
   /// No description provided for @agentKeyMissing.
   ///
   /// In zh, this message translates to:
@@ -1273,6 +1279,96 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'搜索消息'**
   String get agentToolSearchMessages;
+
+  /// No description provided for @agentToolGetConversationContext.
+  ///
+  /// In zh, this message translates to:
+  /// **'会话上下文'**
+  String get agentToolGetConversationContext;
+
+  /// No description provided for @agentToolListProfiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'列出人设'**
+  String get agentToolListProfiles;
+
+  /// No description provided for @agentCapabilitiesEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'能力'**
+  String get agentCapabilitiesEntry;
+
+  /// No description provided for @agentCapabilitiesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'能力'**
+  String get agentCapabilitiesTitle;
+
+  /// No description provided for @agentCapabilitiesSubtitleEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'未启用工具 · 未分配技能'**
+  String get agentCapabilitiesSubtitleEmpty;
+
+  /// No description provided for @agentCapabilitiesSubtitleTools.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个工具'**
+  String agentCapabilitiesSubtitleTools(int count);
+
+  /// No description provided for @agentCapabilitiesSubtitleSkills.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个技能'**
+  String agentCapabilitiesSubtitleSkills(int count);
+
+  /// No description provided for @agentCapabilitiesPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'装配预览'**
+  String get agentCapabilitiesPreview;
+
+  /// No description provided for @agentCapabilitiesPreviewEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前无工具（纯对话）'**
+  String get agentCapabilitiesPreviewEmpty;
+
+  /// No description provided for @agentCapabilitiesPreviewLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'主机预览不可用 · {tools}'**
+  String agentCapabilitiesPreviewLocal(String tools);
+
+  /// No description provided for @agentCapabilitiesImSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'即时通讯'**
+  String get agentCapabilitiesImSection;
+
+  /// No description provided for @agentCapabilitiesFsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件与命令行'**
+  String get agentCapabilitiesFsSection;
+
+  /// No description provided for @agentCapabilitiesMcpSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'MCP'**
+  String get agentCapabilitiesMcpSection;
+
+  /// No description provided for @agentCapabilitiesMcpSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存 MCP 行'**
+  String get agentCapabilitiesMcpSave;
+
+  /// No description provided for @agentCapabilitiesSkillsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能'**
+  String get agentCapabilitiesSkillsSection;
 
   /// No description provided for @agentMoreComing.
   ///

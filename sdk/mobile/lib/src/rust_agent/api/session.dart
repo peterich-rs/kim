@@ -66,6 +66,19 @@ Future<String> skillAppCatalog({required String cacheRoot}) => AgentRustLib
     .api
     .crateApiSessionSkillAppCatalog(cacheRoot: cacheRoot);
 
+/// Preview assembled tools + layered prompts for a profile (no network).
+Future<String> previewAssembled({
+  required String profileJson,
+  required String projectRoot,
+}) => AgentRustLib.instance.api.crateApiSessionPreviewAssembled(
+  profileJson: profileJson,
+  projectRoot: projectRoot,
+);
+
+/// Registered capability kinds + risk + param_schema for UI cards.
+Future<String> capabilityCatalogJson() =>
+    AgentRustLib.instance.api.crateApiSessionCapabilityCatalogJson();
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
 abstract class AgentSession implements RustOpaqueInterface {
   Future<void> abort();

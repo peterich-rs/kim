@@ -671,30 +671,14 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                   KimGroupCard(
                     children: [
                       ListTile(
-                        key: const Key('agent-entry-workspace'),
-                        title: Text(l10n.agentWorkspaceEntry),
-                        subtitle: Text(agentWorkspaceSubtitle(l10n, overview)),
+                        key: const Key('agent-entry-capabilities'),
+                        title: Text(l10n.agentCapabilitiesEntry),
+                        subtitle: Text(
+                          agentCapabilitiesSubtitle(l10n, overview),
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () =>
-                            context.push('/agent/${overview.id}/workspace'),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        key: const Key('agent-entry-skills'),
-                        title: Text(l10n.agentSkillsEntry),
-                        subtitle: Text(agentSkillsSubtitle(l10n, overview)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () =>
-                            context.push('/agent/${overview.id}/skills'),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        key: const Key('agent-entry-tools'),
-                        title: Text(l10n.agentToolsEntry),
-                        subtitle: Text(agentToolsSubtitle(l10n, overview)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () =>
-                            context.push('/agent/${overview.id}/tools'),
+                            context.push('/agent/${overview.id}/capabilities'),
                       ),
                     ],
                   ),

@@ -4,6 +4,7 @@
 //! assembles Goose's unrolled loop (`goose-agent`) with `goose-providers`
 //! (OpenAI Completions/Responses and Anthropic Messages).
 
+pub mod capability;
 mod catalog;
 mod events;
 mod machine;
@@ -28,6 +29,10 @@ use goose_provider_types::model::ModelConfig;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
+pub use capability::{
+    preview_assembled, AssembledPreview, CapabilityRef, PermissionMatch, PermissionRule,
+    PreviewTool, RiskTier,
+};
 pub use catalog::{
     catalog_surface_json, catalog_validate, catalog_vendors_json, normalize_vendor_id,
     ReasoningChoice, ReasoningSurface, VendorSummary,
@@ -58,13 +63,13 @@ pub(crate) use events::HostEffect;
 /// Built-in persona: mention `@助手` or `@goose` in an IM thread.
 pub const DEFAULT_AGENT_ID: &str = "goose";
 pub const DEFAULT_AGENT_NAME: &str = "助手";
-pub const DEFAULT_SYSTEM_PROMPT: &str =
-    "You are 助手, a local desktop agent inside the KIM messenger. \
-You run on the user's machine (not a cloud bot). Reply in the user's language. \
-Be concise. You can see the current conversation because the host pasted it into this session. \
-You have search_contacts, search_messages, get_conversation_context, list_profiles, \
-send_message, and read_clipboard. send_message and clipboard require user confirmation. \
-You do not have filesystem or shell access. Do not claim you have tools you were not given.";
+/// Identity-only fallback. Tool lists belong in the generated capability digest.
+pub const DEFAULT_IDENTITY_PROMPT: &str =
+    "You are a local desktop agent inside the KIM messenger. \
+You run on the user's machine (not a cloud bot). Reply in the user's language. Be concise. \
+Only use tools that appear in your tool list; never claim tools you were not given.";
+/// Deprecated alias: identity only (no tool laundry list). Prefer `DEFAULT_IDENTITY_PROMPT`.
+pub const DEFAULT_SYSTEM_PROMPT: &str = DEFAULT_IDENTITY_PROMPT;
 
 pub(crate) struct HostSession {
     pub id: String,
@@ -168,9 +173,10 @@ impl AgentHost {
     }
 
     pub async fn connect_extensions(&self) -> Result<(), HostError> {
+        let extensions = self.inner.profile.project_extensions();
         self.inner
             .mcp
-            .connect(&self.inner.profile.extensions, &self.inner.project_root)
+            .connect(&extensions, &self.inner.project_root)
             .await
     }
 
@@ -238,7 +244,7 @@ impl AgentHost {
             if !ops::permission::unanswered_confirmations(conversation).is_empty() {
                 return Err(HostError::UnknownToolCall(call_id.to_string()));
             }
-            let pending = kim_pending(conversation, &self.inner.profile.tools);
+            let pending = kim_pending(conversation, &self.inner.profile.project_toolset());
             if !pending.iter().any(|p| p.call_id == call_id) {
                 return Err(HostError::UnknownToolCall(call_id.to_string()));
             }
@@ -301,7 +307,7 @@ impl AgentHost {
         store
             .conversations
             .get(session_id)
-            .map(|c| session_pending(c, &self.inner.profile.tools))
+            .map(|c| session_pending(c, &self.inner.profile.project_toolset()))
             .unwrap_or_default()
     }
 
@@ -311,7 +317,7 @@ impl AgentHost {
             return;
         };
         let confirmations = ops::permission::unanswered_confirmations(conversation);
-        let pending = kim_pending(conversation, &self.inner.profile.tools);
+        let pending = kim_pending(conversation, &self.inner.profile.project_toolset());
         if confirmations.is_empty() && pending.is_empty() {
             return;
         }
@@ -341,7 +347,7 @@ impl AgentHost {
     }
 
     pub fn kim_tool_names(&self) -> Vec<&'static str> {
-        self.inner.profile.tools.kim_world_names()
+        self.inner.profile.project_toolset().kim_world_names()
     }
 
     #[cfg(test)]
@@ -388,7 +394,8 @@ impl AgentHost {
 
         match outcome {
             Ok(session) => {
-                let pending = session_pending(&session.conversation, &self.inner.profile.tools);
+                let pending =
+                    session_pending(&session.conversation, &self.inner.profile.project_toolset());
                 if let Some(first) = pending.first() {
                     tracing::info!(
                         session_id,

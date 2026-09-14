@@ -486,6 +486,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSaved => 'Agent settings saved';
 
   @override
+  String get agentSaveFailed => 'Could not save agent settings';
+
+  @override
   String get agentKeyMissing => 'API key required';
 
   @override
@@ -615,6 +618,57 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentToolSearchMessages => 'Search messages';
+
+  @override
+  String get agentToolGetConversationContext => 'Conversation context';
+
+  @override
+  String get agentToolListProfiles => 'List personas';
+
+  @override
+  String get agentCapabilitiesEntry => 'Capabilities';
+
+  @override
+  String get agentCapabilitiesTitle => 'Capabilities';
+
+  @override
+  String get agentCapabilitiesSubtitleEmpty => 'No tools · no skills';
+
+  @override
+  String agentCapabilitiesSubtitleTools(int count) {
+    return '$count tools';
+  }
+
+  @override
+  String agentCapabilitiesSubtitleSkills(int count) {
+    return '$count skills';
+  }
+
+  @override
+  String get agentCapabilitiesPreview => 'Assembly preview';
+
+  @override
+  String get agentCapabilitiesPreviewEmpty => 'No tools (chat only)';
+
+  @override
+  String agentCapabilitiesPreviewLocal(String tools) {
+    return 'Host preview unavailable · $tools';
+  }
+
+  @override
+  String get agentCapabilitiesImSection => 'Messaging';
+
+  @override
+  String get agentCapabilitiesFsSection => 'Files & shell';
+
+  @override
+  String get agentCapabilitiesMcpSection => 'MCP';
+
+  @override
+  String get agentCapabilitiesMcpSave => 'Save MCP lines';
+
+  @override
+  String get agentCapabilitiesSkillsSection => 'Skills';
 
   @override
   String get agentMoreComing =>

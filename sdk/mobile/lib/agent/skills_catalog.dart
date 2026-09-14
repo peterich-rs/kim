@@ -54,7 +54,7 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
   if (need.isEmpty) {
     return const [];
   }
-  final t = profile.tools;
+  final t = projectToolSet(profile.resolveCapabilities());
   final have = <String>{
     if (t.sendMessage) 'send_message',
     if (t.searchContacts) 'search_contacts',
@@ -73,33 +73,41 @@ List<String> missingToolsForAppSkill(AgentProfile profile, String id) {
 }
 
 AgentToolSet enableRequiredTools(AgentToolSet tools, List<String> missing) {
-  var next = tools;
-  for (final name in missing) {
-    switch (name) {
-      case 'send_message':
-        next = next.copyWith(sendMessage: true);
-      case 'search_contacts':
-        next = next.copyWith(searchContacts: true);
-      case 'search_messages':
-        next = next.copyWith(searchMessages: true);
-      case 'get_conversation_context':
-        next = next.copyWith(getConversationContext: true);
-      case 'list_profiles':
-        next = next.copyWith(listProfiles: true);
-      case 'read_clipboard':
-        next = next.copyWith(readClipboard: true);
-      case 'fs':
-        next = next.copyWith(fs: true);
-      case 'fs_write':
-        next = next.copyWith(fs: true, fsWrite: true);
-      case 'bash':
-        // S-KD 7: never AlwaysAllow bash; only enable the tool with ask_before.
-        next = next.copyWith(bash: true);
-      default:
-        break;
+  return projectToolSet(
+    enableRequiredCapabilities(
+      capabilitiesFromLegacy(tools, const []),
+      missing,
+    ),
+  );
+}
+
+/// Plaza / skills assign: persist required caps (not tools-only) + skill ref.
+AgentProfile assignAppSkillToProfile({
+  required AgentProfile profile,
+  required CatalogSkill skill,
+  required bool enableMissingTools,
+}) {
+  var caps = List<CapabilityRef>.from(profile.resolveCapabilities());
+  var perms = Map<String, String>.from(profile.permissionOverrides);
+  if (enableMissingTools) {
+    final missing = missingToolsForAppSkill(profile, skill.id);
+    if (missing.isNotEmpty) {
+      caps = enableRequiredCapabilities(caps, missing);
+      if (missing.contains('bash')) {
+        perms['bash'] = perms['bash'] == 'never_allow'
+            ? 'never_allow'
+            : 'ask_before';
+      }
     }
   }
-  return next;
+  final skills = [
+    for (final s in profile.skills)
+      if (s.id != skill.id) s,
+    appSkillRef(skill),
+  ];
+  return profile
+      .withCapabilities(caps)
+      .copyWith(skills: skills, permissionOverrides: perms);
 }
 
 List<CatalogSkill> parseSkillsJson(String raw) {

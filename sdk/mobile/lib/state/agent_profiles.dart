@@ -24,8 +24,14 @@ const _kMultiMigrated = 'agent.multi_profile_migrated_on';
 const _kServerIdentity = 'agent.server_identity';
 const _kIdentityMigrated = 'agent.identity_migrated_on';
 
-/// Byte-identical to Rust `DEFAULT_SYSTEM_PROMPT`. Empty prompt injects this.
+/// Byte-identical to Rust `DEFAULT_IDENTITY_PROMPT`. Empty prompt injects this.
 const kDefaultSystemPrompt =
+    'You are a local desktop agent inside the KIM messenger. '
+    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. Be concise. '
+    'Only use tools that appear in your tool list; never claim tools you were not given.';
+
+/// Pre-B-KD 4 identity that enumerated every IM tool. Load as empty.
+const kLegacyToolLaundryIdentity =
     'You are 助手, a local desktop agent inside the KIM messenger. '
     'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
     'Be concise. You can see the current conversation because the host pasted it into this session. '
@@ -33,11 +39,437 @@ const kDefaultSystemPrompt =
     'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
     'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
 
-/// New Agent tools. Do not rewrite an existing goose row.
-const kCreateDefaultTools = AgentToolSet(
-  sendMessage: true,
-  readClipboard: true,
-);
+bool isLegacyToolLaundryIdentity(String prompt) {
+  final t = prompt.trim();
+  if (t.isEmpty) {
+    return false;
+  }
+  if (t == kLegacyToolLaundryIdentity) {
+    return true;
+  }
+  return t.contains('You are 助手') &&
+      t.contains('search_contacts') &&
+      t.contains('search_messages') &&
+      t.contains('get_conversation_context') &&
+      t.contains('list_profiles') &&
+      t.contains('send_message') &&
+      t.contains('read_clipboard') &&
+      t.contains('You do not have filesystem or shell access');
+}
+
+String migrateIdentityPrompt(String prompt) {
+  return isLegacyToolLaundryIdentity(prompt) ? '' : prompt;
+}
+
+/// Default capabilities for a new persona (B-KD create defaults).
+const kCreateDefaultCapabilities = <CapabilityRef>[
+  CapabilityRef(kind: CapabilityKinds.imSendMessage),
+  CapabilityRef(kind: CapabilityKinds.imReadClipboard),
+];
+
+/// Projection of [kCreateDefaultCapabilities] for one-release ToolSet compat.
+final kCreateDefaultTools = projectToolSet(kCreateDefaultCapabilities);
+
+/// Capability kind strings — keep in sync with host registry (B-KD 2).
+abstract final class CapabilityKinds {
+  static const imSendMessage = 'im.send_message';
+  static const imSearchContacts = 'im.search_contacts';
+  static const imSearchMessages = 'im.search_messages';
+  static const imGetConversationContext = 'im.get_conversation_context';
+  static const imReadClipboard = 'im.read_clipboard';
+  static const imListProfiles = 'im.list_profiles';
+  static const fs = 'fs';
+  static const bash = 'bash';
+  static const mcp = 'mcp';
+  static const subagent = 'subagent';
+}
+
+/// Persisted capability reference. Mirrors host `CapabilityRef` serde.
+class CapabilityRef {
+  const CapabilityRef({
+    required this.kind,
+    this.id = '',
+    this.params = const {},
+    this.enabled = true,
+  });
+
+  final String kind;
+  final String id;
+  final Map<String, Object?> params;
+  final bool enabled;
+
+  Map<String, Object?> toJson() => {
+    'kind': kind,
+    if (id.isNotEmpty) 'id': id,
+    if (params.isNotEmpty) 'params': params,
+    'enabled': enabled,
+  };
+
+  factory CapabilityRef.fromJson(Map<String, Object?> json) {
+    final rawParams = json['params'];
+    return CapabilityRef(
+      kind: '${json['kind'] ?? ''}',
+      id: '${json['id'] ?? ''}',
+      params: rawParams is Map
+          ? Map<String, Object?>.from(rawParams)
+          : const {},
+      enabled: json['enabled'] != false,
+    );
+  }
+
+  CapabilityRef copyWith({
+    String? kind,
+    String? id,
+    Map<String, Object?>? params,
+    bool? enabled,
+  }) {
+    return CapabilityRef(
+      kind: kind ?? this.kind,
+      id: id ?? this.id,
+      params: params ?? this.params,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CapabilityRef &&
+        other.kind == kind &&
+        other.id == id &&
+        other.enabled == enabled &&
+        jsonEncode(other.params) == jsonEncode(params);
+  }
+
+  @override
+  int get hashCode => Object.hash(kind, id, enabled, jsonEncode(params));
+}
+
+/// Appendix A / host `CapabilityRef::from_legacy`.
+List<CapabilityRef> capabilitiesFromLegacy(
+  AgentToolSet tools,
+  List<AgentExtension> extensions,
+) {
+  final out = <CapabilityRef>[];
+  if (tools.sendMessage) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.imSendMessage));
+  }
+  if (tools.searchContacts) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.imSearchContacts));
+  }
+  if (tools.searchMessages) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.imSearchMessages));
+  }
+  if (tools.getConversationContext) {
+    out.add(
+      const CapabilityRef(kind: CapabilityKinds.imGetConversationContext),
+    );
+  }
+  if (tools.readClipboard) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.imReadClipboard));
+  }
+  if (tools.listProfiles) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.imListProfiles));
+  }
+  if (tools.fsWrite) {
+    out.add(
+      const CapabilityRef(kind: CapabilityKinds.fs, params: {'writable': true}),
+    );
+  } else if (tools.fs) {
+    out.add(
+      const CapabilityRef(
+        kind: CapabilityKinds.fs,
+        params: {'writable': false},
+      ),
+    );
+  }
+  if (tools.bash) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.bash));
+  }
+  if (tools.subagent) {
+    out.add(const CapabilityRef(kind: CapabilityKinds.subagent));
+  }
+  for (final e in extensions) {
+    if (e.name.isEmpty) {
+      continue;
+    }
+    out.add(
+      CapabilityRef(
+        kind: CapabilityKinds.mcp,
+        id: 'mcp:${e.name}',
+        params: {
+          'name': e.name,
+          'command': e.command,
+          'transport': e.transport,
+          if (e.url.isNotEmpty) 'url': e.url,
+        },
+      ),
+    );
+  }
+  return out;
+}
+
+/// Host `ToolSet::from_capabilities` / `project_toolset`.
+AgentToolSet projectToolSet(List<CapabilityRef> capabilities) {
+  var sendMessage = false;
+  var searchContacts = false;
+  var searchMessages = false;
+  var getConversationContext = false;
+  var readClipboard = false;
+  var listProfiles = false;
+  var fs = false;
+  var fsWrite = false;
+  var bash = false;
+  var subagent = false;
+  for (final c in capabilities) {
+    if (!c.enabled) {
+      continue;
+    }
+    switch (c.kind) {
+      case CapabilityKinds.imSendMessage:
+        sendMessage = true;
+      case CapabilityKinds.imSearchContacts:
+        searchContacts = true;
+      case CapabilityKinds.imSearchMessages:
+        searchMessages = true;
+      case CapabilityKinds.imGetConversationContext:
+        getConversationContext = true;
+      case CapabilityKinds.imReadClipboard:
+        readClipboard = true;
+      case CapabilityKinds.imListProfiles:
+        listProfiles = true;
+      case CapabilityKinds.fs:
+        fs = true;
+        if (c.params['writable'] == true) {
+          fsWrite = true;
+        }
+      case CapabilityKinds.bash:
+        bash = true;
+      case CapabilityKinds.subagent:
+        subagent = true;
+      default:
+        break;
+    }
+  }
+  return AgentToolSet(
+    sendMessage: sendMessage,
+    searchContacts: searchContacts,
+    searchMessages: searchMessages,
+    getConversationContext: getConversationContext,
+    readClipboard: readClipboard,
+    listProfiles: listProfiles,
+    fs: fs,
+    fsWrite: fsWrite,
+    bash: bash,
+    subagent: subagent,
+  );
+}
+
+/// MCP capability refs → [AgentExtension] rows (one-release dual write).
+/// Empty input → empty output (clearing MCP must wipe leftover extensions).
+List<AgentExtension> projectExtensions(List<CapabilityRef> capabilities) {
+  final out = <AgentExtension>[];
+  for (final c in capabilities) {
+    if (!c.enabled || c.kind != CapabilityKinds.mcp) {
+      continue;
+    }
+    final name = '${c.params['name'] ?? ''}'.trim();
+    if (name.isEmpty) {
+      continue;
+    }
+    final cmd = c.params['command'];
+    out.add(
+      AgentExtension(
+        name: name,
+        transport: '${c.params['transport'] ?? 'stdio'}',
+        command: cmd is List ? [for (final x in cmd) '$x'] : const [],
+        url: '${c.params['url'] ?? ''}',
+      ),
+    );
+  }
+  return out;
+}
+
+/// Parse MCP textarea lines (`name argv0 argv1…`).
+List<CapabilityRef> mcpCapsFromText(String text) {
+  final mcp = <CapabilityRef>[];
+  for (final line in text.split('\n')) {
+    final parts = line
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.length < 2) {
+      continue;
+    }
+    final name = parts.first;
+    mcp.add(
+      CapabilityRef(
+        kind: CapabilityKinds.mcp,
+        id: 'mcp:$name',
+        params: {
+          'name': name,
+          'command': parts.sublist(1),
+          'transport': 'stdio',
+        },
+      ),
+    );
+  }
+  return mcp;
+}
+
+String mcpTextFromCaps(List<CapabilityRef> caps) {
+  final lines = <String>[];
+  for (final c in caps) {
+    if (!c.enabled || c.kind != CapabilityKinds.mcp) {
+      continue;
+    }
+    final name = '${c.params['name'] ?? ''}'.trim();
+    final cmd = c.params['command'];
+    final args = cmd is List ? [for (final x in cmd) '$x'] : const <String>[];
+    if (name.isEmpty || args.isEmpty) {
+      continue;
+    }
+    lines.add('$name ${args.join(' ')}');
+  }
+  return lines.join('\n');
+}
+
+/// Keep singleton caps, replace MCP from the textarea (autosave must not drop it).
+List<CapabilityRef> mergeCapsWithMcpLines(
+  List<CapabilityRef> caps,
+  String mcpText,
+) {
+  return [
+    for (final c in caps)
+      if (c.kind != CapabilityKinds.mcp) c,
+    ...mcpCapsFromText(mcpText),
+  ];
+}
+
+/// Local fallback tool names when host `preview_assembled` is unavailable.
+List<String> projectedToolNames(List<CapabilityRef> capabilities) {
+  final tools = projectToolSet(capabilities);
+  final names = <String>[
+    if (tools.sendMessage) 'send_message',
+    if (tools.searchContacts) 'search_contacts',
+    if (tools.searchMessages) 'search_messages',
+    if (tools.getConversationContext) 'get_conversation_context',
+    if (tools.readClipboard) 'read_clipboard',
+    if (tools.listProfiles) 'list_profiles',
+    if (tools.fs || tools.fsWrite) 'read_file',
+    if (tools.fs || tools.fsWrite) 'list_dir',
+    if (tools.fsWrite) 'write_file',
+    if (tools.bash) 'bash',
+    if (tools.subagent) 'delegate',
+  ];
+  for (final c in capabilities) {
+    if (c.enabled && c.kind == CapabilityKinds.mcp) {
+      final name = '${c.params['name'] ?? ''}'.trim();
+      if (name.isNotEmpty) {
+        names.add('mcp:$name');
+      }
+    }
+  }
+  return names;
+}
+
+/// Upsert/remove a singleton kind (IM / fs / bash / subagent).
+List<CapabilityRef> upsertCapability(
+  List<CapabilityRef> current, {
+  required String kind,
+  required bool enabled,
+  Map<String, Object?> params = const {},
+  String id = '',
+}) {
+  final without = [
+    for (final c in current)
+      if (c.kind != kind || (id.isNotEmpty && c.id != id)) c,
+  ];
+  if (!enabled) {
+    return without;
+  }
+  return [
+    ...without,
+    CapabilityRef(kind: kind, id: id, params: params, enabled: true),
+  ];
+}
+
+/// Enable capability kinds required by legacy tool-name requires lists.
+List<CapabilityRef> enableRequiredCapabilities(
+  List<CapabilityRef> caps,
+  List<String> missingToolNames,
+) {
+  var next = List<CapabilityRef>.from(caps);
+  for (final name in missingToolNames) {
+    switch (name) {
+      case 'send_message':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imSendMessage,
+          enabled: true,
+        );
+      case 'search_contacts':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imSearchContacts,
+          enabled: true,
+        );
+      case 'search_messages':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imSearchMessages,
+          enabled: true,
+        );
+      case 'get_conversation_context':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imGetConversationContext,
+          enabled: true,
+        );
+      case 'list_profiles':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imListProfiles,
+          enabled: true,
+        );
+      case 'read_clipboard':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.imReadClipboard,
+          enabled: true,
+        );
+      case 'fs':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.fs,
+          enabled: true,
+          params: const {'writable': false},
+        );
+      case 'fs_write':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.fs,
+          enabled: true,
+          params: const {'writable': true},
+        );
+      case 'bash':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.bash,
+          enabled: true,
+        );
+      case 'subagent':
+        next = upsertCapability(
+          next,
+          kind: CapabilityKinds.subagent,
+          enabled: true,
+        );
+      default:
+        break;
+    }
+  }
+  return next;
+}
 
 /// Aligns with Chat `BOT_MAX_PER_OWNER`.
 const kMaxBotsPerOwner = 20;
@@ -383,6 +815,7 @@ class AgentProfile {
     this.accountId = '',
     this.reasoning,
     this.tools = const AgentToolSet(),
+    this.capabilities = const [],
     this.permissionOverrides = const {},
     this.extensions = const [],
     this.workspace = WorkspaceSpec.sandbox,
@@ -408,6 +841,9 @@ class AgentProfile {
   final String accountId;
   final ReasoningChoice? reasoning;
   final AgentToolSet tools;
+
+  /// Authoritative assembly units (B-KD 1). Empty only for chat-only personas.
+  final List<CapabilityRef> capabilities;
   final Map<String, String> permissionOverrides;
   final List<AgentExtension> extensions;
   final WorkspaceSpec workspace;
@@ -420,6 +856,28 @@ class AgentProfile {
   final String serverAccount;
 
   String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
+
+  /// Resolve capabilities for UI / host; derive from legacy tools when empty.
+  List<CapabilityRef> resolveCapabilities() {
+    if (capabilities.isNotEmpty) {
+      return capabilities;
+    }
+    return capabilitiesFromLegacy(tools, extensions);
+  }
+
+  /// Copy with capabilities as source of truth; projects [tools] (+ MCP [extensions]).
+  AgentProfile withCapabilities(
+    List<CapabilityRef> next, {
+    List<AgentExtension>? extensionsOverride,
+  }) {
+    final projected = projectToolSet(next);
+    final mcp = projectExtensions(next);
+    return copyWith(
+      capabilities: next,
+      tools: projected,
+      extensions: extensionsOverride ?? mcp,
+    );
+  }
 
   AgentProfile copyWith({
     String? displayName,
@@ -435,6 +893,7 @@ class AgentProfile {
     String? accountId,
     ReasoningChoice? reasoning,
     AgentToolSet? tools,
+    List<CapabilityRef>? capabilities,
     Map<String, String>? permissionOverrides,
     List<AgentExtension>? extensions,
     WorkspaceSpec? workspace,
@@ -460,6 +919,7 @@ class AgentProfile {
       accountId: accountId ?? this.accountId,
       reasoning: reasoning ?? this.reasoning,
       tools: tools ?? this.tools,
+      capabilities: capabilities ?? this.capabilities,
       permissionOverrides: permissionOverrides ?? this.permissionOverrides,
       extensions: extensions ?? this.extensions,
       workspace: workspace ?? this.workspace,
@@ -472,31 +932,38 @@ class AgentProfile {
   }
 
   /// Disk JSON: no `provider` block (C-KD 1).
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'display_name': displayName,
-    'aliases': aliases,
-    if (accountId.isNotEmpty) 'account_id': accountId,
-    'model': {
-      'name': model,
-      if (reasoning == null && thinkingEffort.isNotEmpty)
-        'thinking_effort': thinkingEffort,
-      if (contextTokens != null) 'context_tokens': contextTokens,
-    },
-    if (reasoning != null) 'reasoning': reasoning!.toJson(),
-    'system_prompt': systemPrompt,
-    'mode': mode,
-    'max_turns': maxTurns,
-    'tools': tools.toJson(),
-    'permissions': {'tools': permissionOverrides},
-    'extensions': [for (final e in extensions) e.toJson()],
-    'workspace': workspace.toJson(),
-    'skills': [for (final s in skills) s.toJson()],
-    if (portableDenylist.isNotEmpty) 'portable_denylist': portableDenylist,
-    'enabled': enabled,
-    if (steer.isNotEmpty) 'steer': steer,
-    'server_account': serverAccount,
-  };
+  Map<String, Object?> toJson() {
+    final caps = resolveCapabilities();
+    final projectedTools = projectToolSet(caps);
+    final mcpExt = projectExtensions(caps);
+    return {
+      'id': id,
+      'display_name': displayName,
+      'aliases': aliases,
+      if (accountId.isNotEmpty) 'account_id': accountId,
+      'model': {
+        'name': model,
+        if (reasoning == null && thinkingEffort.isNotEmpty)
+          'thinking_effort': thinkingEffort,
+        if (contextTokens != null) 'context_tokens': contextTokens,
+      },
+      if (reasoning != null) 'reasoning': reasoning!.toJson(),
+      'system_prompt': systemPrompt,
+      'mode': mode,
+      'max_turns': maxTurns,
+      'capabilities': [for (final c in caps) c.toJson()],
+      // One-release ToolSet projection for old readers.
+      'tools': projectedTools.toJson(),
+      'permissions': {'tools': permissionOverrides},
+      'extensions': [for (final e in mcpExt) e.toJson()],
+      'workspace': workspace.toJson(),
+      'skills': [for (final s in skills) s.toJson()],
+      if (portableDenylist.isNotEmpty) 'portable_denylist': portableDenylist,
+      'enabled': enabled,
+      if (steer.isNotEmpty) 'steer': steer,
+      'server_account': serverAccount,
+    };
+  }
 
   Map<String, Object?> toHostJson(
     ProviderAccount account, {
@@ -541,7 +1008,37 @@ class AgentProfile {
     final workspaceRaw = json['workspace'];
     final skillsRaw = json['skills'];
     final denylistRaw = json['portable_denylist'];
+    final capsRaw = json['capabilities'];
     final kind = canonicalizeVendorId(providerMap['kind'] as String? ?? '');
+    final tools = toolsRaw is Map
+        ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
+        : const AgentToolSet();
+    final extensions = () {
+      final raw = json['extensions'];
+      if (raw is! List) {
+        return const <AgentExtension>[];
+      }
+      return [
+        for (final item in raw)
+          if (item is Map)
+            AgentExtension.fromJson(Map<String, Object?>.from(item)),
+      ];
+    }();
+    var capabilities = <CapabilityRef>[];
+    if (capsRaw is List) {
+      for (final item in capsRaw) {
+        if (item is Map) {
+          capabilities.add(
+            CapabilityRef.fromJson(Map<String, Object?>.from(item)),
+          );
+        }
+      }
+    }
+    if (capabilities.isEmpty) {
+      capabilities = capabilitiesFromLegacy(tools, extensions);
+    }
+    final projectedTools = projectToolSet(capabilities);
+    final projectedExt = projectExtensions(capabilities);
     return AgentProfile(
       id: json['id'] as String? ?? kGooseAgentId,
       displayName: json['display_name'] as String? ?? kGooseAgentName,
@@ -552,7 +1049,9 @@ class AgentProfile {
       baseUrl: providerMap['base_url'] as String? ?? '',
       model: modelMap['name'] as String? ?? 'gpt-4o',
       keyRef: providerMap['key_ref'] as String? ?? 'agent.api_key.goose',
-      systemPrompt: json['system_prompt'] as String? ?? '',
+      systemPrompt: migrateIdentityPrompt(
+        json['system_prompt'] as String? ?? '',
+      ),
       mode: json['mode'] as String? ?? 'smart_approve',
       maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
       thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
@@ -565,21 +1064,10 @@ class AgentProfile {
           : ReasoningChoice.fromThinkingEffort(
               modelMap['thinking_effort'] as String? ?? '',
             ),
-      tools: toolsRaw is Map
-          ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
-          : const AgentToolSet(),
+      tools: projectedTools,
+      capabilities: capabilities,
       permissionOverrides: overrides,
-      extensions: () {
-        final raw = json['extensions'];
-        if (raw is! List) {
-          return const <AgentExtension>[];
-        }
-        return [
-          for (final item in raw)
-            if (item is Map)
-              AgentExtension.fromJson(Map<String, Object?>.from(item)),
-        ];
-      }(),
+      extensions: projectedExt,
       workspace: WorkspaceSpec.fromJson(
         workspaceRaw is Map ? Map<String, Object?>.from(workspaceRaw) : null,
       ),
@@ -602,6 +1090,14 @@ class AgentProfile {
   }
 
   static AgentProfile gooseFromSettings(AgentSettings s) {
+    const caps = <CapabilityRef>[
+      CapabilityRef(kind: CapabilityKinds.imSendMessage),
+      CapabilityRef(kind: CapabilityKinds.imSearchContacts),
+      CapabilityRef(kind: CapabilityKinds.imSearchMessages),
+      CapabilityRef(kind: CapabilityKinds.imGetConversationContext),
+      CapabilityRef(kind: CapabilityKinds.imReadClipboard),
+      CapabilityRef(kind: CapabilityKinds.imListProfiles),
+    ];
     return AgentProfile(
       id: kGooseAgentId,
       displayName: kGooseAgentName,
@@ -611,19 +1107,13 @@ class AgentProfile {
       model: s.model,
       keyRef: _kGooseKey,
       accountId: '',
-      systemPrompt: kDefaultSystemPrompt,
+      systemPrompt: '',
       mode: 'smart_approve',
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,
       reasoning: ReasoningChoice.fromThinkingEffort(s.thinkingEffort),
-      tools: const AgentToolSet(
-        sendMessage: true,
-        searchContacts: true,
-        searchMessages: true,
-        getConversationContext: true,
-        readClipboard: true,
-        listProfiles: true,
-      ),
+      capabilities: caps,
+      tools: projectToolSet(caps),
     );
   }
 }
@@ -1110,6 +1600,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       maxTurns: source.maxTurns,
       thinkingEffort: source.thinkingEffort,
       tools: source.tools,
+      capabilities: source.capabilities,
       permissionOverrides: source.permissionOverrides,
       extensions: source.extensions,
       workspace: source.workspace,
@@ -1135,6 +1626,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       keyRef: '',
       accountId: accountId,
       systemPrompt: '',
+      capabilities: kCreateDefaultCapabilities,
       tools: kCreateDefaultTools,
     );
   }

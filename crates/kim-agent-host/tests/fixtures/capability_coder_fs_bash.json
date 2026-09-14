@@ -1,0 +1,33 @@
+{
+  "id": "coder",
+  "display_name": "coder",
+  "provider": {
+    "kind": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "key_ref": "agent.api_key.coder"
+  },
+  "model": { "name": "gpt-4o" },
+  "system_prompt": "You are a software assistant. The workspace is project_root. Do not send messages.",
+  "mode": "approve",
+  "max_turns": 32,
+  "tools": {
+    "send_message": false,
+    "search_contacts": false,
+    "search_messages": false,
+    "get_conversation_context": false,
+    "read_clipboard": false,
+    "list_profiles": false,
+    "fs": true,
+    "fs_write": true,
+    "bash": true,
+    "subagent": false
+  },
+  "permissions": { "tools": {} },
+  "extensions": [],
+  "enabled": true,
+  "steer": "",
+  "workspace": { "kind": "repo", "path": "" },
+  "skills": [],
+  "portable_denylist": [],
+  "user_agents_skills": ""
+}

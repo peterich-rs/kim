@@ -107,8 +107,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
       return;
     }
     final missing = missingToolsForAppSkill(profile, skill.id);
-    var tools = profile.tools;
-    var perms = Map<String, String>.from(profile.permissionOverrides);
+    var enableMissing = missing.isEmpty;
     if (missing.isNotEmpty) {
       final open = await showDialog<bool>(
         context: context,
@@ -140,22 +139,12 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
         }
         return;
       }
-      tools = enableRequiredTools(tools, missing);
-      if (missing.contains('bash')) {
-        perms['bash'] = perms['bash'] == 'never_allow'
-            ? 'never_allow'
-            : 'ask_before';
-      }
+      enableMissing = true;
     }
-    final skills = [
-      for (final s in profile.skills)
-        if (s.id != skill.id) s,
-      appSkillRef(skill),
-    ];
-    final next = profile.copyWith(
-      skills: skills,
-      tools: tools,
-      permissionOverrides: perms,
+    final next = assignAppSkillToProfile(
+      profile: profile,
+      skill: skill,
+      enableMissingTools: enableMissing,
     );
     await ref.read(agentProfilesProvider.notifier).saveEditor(next);
     if (!mounted) {
@@ -252,6 +241,14 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                 if (_assignProfile != null) ...[
                   Text(
                     l10n.agentPlazaAssigningTo(_assignProfile!.displayName),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Gap(12),
+                ] else ...[
+                  Text(
+                    l10n.agentPlazaPickAgentFirst,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),

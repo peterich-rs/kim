@@ -798,6 +798,21 @@ pub fn skill_app_catalog(cache_root: String) -> Result<String, String> {
     Ok(kim_agent_host::skill_app_catalog_json(path))
 }
 
+/// Preview assembled tools + layered prompts for a profile (no network).
+pub fn preview_assembled(profile_json: String, project_root: String) -> Result<String, String> {
+    let profile: AgentProfile =
+        serde_json::from_str(&profile_json).map_err(|e| format!("profile_json: {e}"))?;
+    let preview = kim_agent_host::preview_assembled(&profile, std::path::Path::new(&project_root))
+        .map_err(map_host_err)?;
+    serde_json::to_string(&preview).map_err(|e| e.to_string())
+}
+
+/// Registered capability kinds + risk + param_schema for UI cards.
+pub fn capability_catalog_json() -> Result<String, String> {
+    let entries = kim_agent_host::capability::catalog_entries();
+    serde_json::to_string(&entries).map_err(|e| e.to_string())
+}
+
 fn map_host_err(err: HostError) -> String {
     err.to_string()
 }
