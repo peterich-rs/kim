@@ -7,24 +7,19 @@ use goose_agent::tool::ToolOperation;
 use goose_provider_types::base::Provider;
 use goose_provider_types::model::ModelConfig;
 
+use crate::capability::{
+    build_prompt_layers, flatten_deferred, flatten_providers, merge_permission_config, resolve_parts,
+};
 use crate::events::HostEffect;
-use crate::ops::bash::BashToolProvider;
 use crate::ops::chat_guard::ChatGuardOp;
 use crate::ops::compaction::CompactionOp;
-use crate::ops::fs::FsToolProvider;
 use crate::ops::max_turns::MaxTurnsOp;
-use crate::ops::mcp::{McpHub, McpToolProvider};
+use crate::ops::mcp::McpHub;
 use crate::ops::permission::PermissionOp;
+use crate::ops::prompt_compose::PromptComposeOp;
 use crate::ops::skill::SkillOp;
-use crate::ops::steer::SteerOp;
-use crate::ops::subagent::SubagentOp;
-use crate::ops::system_prompt::SystemPromptOp;
 use crate::ops::unknown_tool::UnknownToolOp;
-use crate::profile::{AgentProfile, ModelSpec, WorkspaceKind};
-use crate::skills::{
-    build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry,
-    SkillResolver,
-};
+use crate::profile::{AgentProfile, ModelSpec};
 use crate::{HostError, HostSession};
 
 pub struct MachineFactory;
@@ -37,55 +32,35 @@ impl MachineFactory {
         project_root: &Path,
         mcp: Arc<McpHub>,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
-        let mut prompt = profile.effective_system_prompt().to_string();
         if profile.system_prompt.trim().is_empty() {
             tracing::debug!(profile_id = %profile.id, "system_prompt_fallback");
         }
 
-        // S-KD 3: only profiles that can read the workspace inherit the
-        // ecosystem shelves. A sandbox IM-only persona must not see
-        // `git-commit` in its catalog.
-        let scan_portable = profile.tools.fs
-            || profile.tools.fs_write
-            || profile.workspace.kind == WorkspaceKind::Repo;
-        let resolver = Arc::new(SkillResolver::new());
-        let registry = Arc::new(if scan_portable || !profile.skills.is_empty() {
-            if let Some(agents_md) = read_agents_md(project_root) {
-                prompt.push_str("\n\nWorkspace AGENTS.md:\n");
-                prompt.push_str(&agents_md);
-            }
-            build_registry(
-                &profile.skills,
-                &profile.portable_denylist,
-                &RegistryScan {
-                    user_root: &profile.user_agents_skills,
-                    project_root,
-                    enabled: scan_portable,
-                },
-                &resolver,
-            )
-        } else {
-            SkillRegistry::default()
-        });
-        // S-KD 13: the catalog goes in, skill bodies never do.
-        let catalog = catalog_prompt_block(&registry);
-        if !catalog.is_empty() {
-            prompt.push_str("\n\n");
-            prompt.push_str(&catalog);
+        let resolved = resolve_parts(
+            profile,
+            project_root,
+            Arc::clone(&mcp),
+            Arc::clone(&provider),
+            model.clone(),
+        );
+        let layers = build_prompt_layers(
+            profile,
+            project_root,
+            &resolved.parts,
+            &resolved.skill_registry,
+        );
+        for warning in &resolved.warnings {
+            tracing::warn!(profile_id = %profile.id, %warning, "capability resolve warning");
         }
         tracing::debug!(
             profile_id = %profile.id,
             workspace_kind = ?profile.workspace.kind,
-            skills_n = registry.len(),
+            skills_n = resolved.skill_registry.len(),
+            caps_n = resolved.parts.len(),
             "assembled skill catalog"
         );
 
-        let mut steps = vec![Step::Operation(Arc::new(SystemPromptOp { prompt }))];
-        if !profile.steer.trim().is_empty() {
-            steps.push(Step::Operation(Arc::new(SteerOp {
-                steer: profile.steer.clone(),
-            })));
-        }
+        let mut steps = vec![Step::Operation(Arc::new(PromptComposeOp { layers }))];
         if let Some(max) = profile.max_turns {
             steps.push(Step::Operation(Arc::new(MaxTurnsOp { max })));
         }
@@ -93,57 +68,43 @@ impl MachineFactory {
             provider: Arc::clone(&provider),
             model: model.model_name.clone(),
         })));
-        if profile.mode == goose_provider_types::goose_mode::GooseMode::Chat
-            && profile.tools.has_any()
+
+        let projected = profile.project_toolset();
+        if profile.mode == goose_provider_types::goose_mode::GooseMode::Chat && projected.has_any()
         {
             tracing::warn!(
                 profile_id = %profile.id,
-                "GooseMode::Chat ignored because ToolSet is non-empty"
+                "GooseMode::Chat ignored because projected ToolSet is non-empty"
             );
         }
-        // A catalogued skill needs `activate_skill`, so it also needs the tool
-        // pipeline even when no other tool is on.
-        let chat_only =
-            !profile.tools.has_any() && profile.extensions.is_empty() && registry.is_empty();
+
+        let deferred = flatten_deferred(&resolved.parts);
+        let providers = flatten_providers(&resolved.parts);
+        let chat_only = deferred.is_empty()
+            && providers.is_empty()
+            && resolved.skill_registry.is_empty()
+            && profile.extensions.is_empty();
+
         if !chat_only {
+            let config = merge_permission_config(profile, &resolved.parts);
             steps.push(Step::Operation(Arc::new(PermissionOp {
                 mode: profile.mode,
-                config: profile.permissions.clone(),
+                config,
             })));
-            let kim = profile.tools.kim_world_names();
-            if !kim.is_empty() {
+            if !deferred.is_empty() {
                 steps.push(Step::Operation(Arc::new(
-                    crate::ops::deferred_kim::DeferredKimToolOp {
-                        names: kim.into_iter().map(str::to_string).collect(),
-                    },
+                    crate::ops::deferred_kim::DeferredKimToolOp { names: deferred },
                 )));
             }
             let mut tools = ToolOperation::new();
-            if profile.tools.fs || profile.tools.fs_write {
-                tools = tools.with_provider(Arc::new(FsToolProvider {
-                    root: project_root.to_path_buf(),
-                    writable: profile.tools.fs_write,
-                }));
-            }
-            if profile.tools.bash {
-                tools = tools.with_provider(Arc::new(BashToolProvider {
-                    root: project_root.to_path_buf(),
-                }));
-            }
-            if !profile.extensions.is_empty() {
-                tools = tools.with_provider(Arc::new(McpToolProvider { hub: mcp }));
-            }
-            if profile.tools.subagent {
-                tools = tools.with_provider(Arc::new(SubagentOp {
-                    provider: Arc::clone(&provider),
-                    model: model.clone(),
-                }));
+            for provider in providers {
+                tools = tools.with_provider(provider);
             }
             steps.push(Step::Operation(Arc::new(tools)));
-            if !registry.is_empty() {
+            if !resolved.skill_registry.is_empty() {
                 steps.push(Step::Operation(Arc::new(SkillOp::new(
-                    Arc::clone(&registry),
-                    Arc::clone(&resolver),
+                    Arc::clone(&resolved.skill_registry),
+                    Arc::clone(&resolved.skill_resolver),
                 ))));
             }
             steps.push(Step::Operation(Arc::new(UnknownToolOp)));
@@ -189,7 +150,7 @@ pub fn model_config(spec: &ModelSpec) -> Result<ModelConfig, HostError> {
 mod tests {
     use super::*;
     use crate::profile::{LegacyOpenOpts, ProviderSpec, ToolSet};
-    use crate::{HostSession, DEFAULT_SYSTEM_PROMPT};
+    use crate::{HostSession, DEFAULT_IDENTITY_PROMPT};
     use async_trait::async_trait;
     use goose_provider_types::base::{MessageStream, Provider};
     use goose_provider_types::conversation::message::Message;
@@ -230,10 +191,12 @@ mod tests {
                 ..Default::default()
             },
             reasoning: None,
-            system_prompt: DEFAULT_SYSTEM_PROMPT.into(),
+            system_prompt: DEFAULT_IDENTITY_PROMPT.into(),
             mode: goose_provider_types::goose_mode::GooseMode::Chat,
             max_turns: Some(16),
             tools,
+            capabilities: Vec::new(),
+            permission_rules: Vec::new(),
             permissions: crate::profile::PermissionConfig::default(),
             sandbox: crate::profile::SandboxPolicy::default(),
             extensions: Vec::new(),
@@ -256,7 +219,7 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + compaction + chat_guard + inference
+        // prompt_compose + max_turns + compaction + chat_guard + inference
         assert_eq!(steps.len(), 5);
     }
 
@@ -274,7 +237,7 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + compaction + permission + tools + unknown + inference
+        // prompt_compose + max_turns + compaction + permission + tools + unknown + inference
         assert_eq!(steps.len(), 7);
     }
 
@@ -291,9 +254,9 @@ mod tests {
             Arc::new(McpHub::new()),
         );
         let Step::Operation(op) = &steps[0] else {
-            panic!("expected system prompt operation");
+            panic!("expected prompt compose operation");
         };
-        assert_eq!(op.name(), "system_prompt");
+        assert_eq!(op.name(), "prompt_compose");
         let session = HostSession {
             id: "t".into(),
             conversation: goose_provider_types::conversation::Conversation::empty(),
@@ -305,7 +268,8 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(parts[0].1, DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(parts[0].1, DEFAULT_IDENTITY_PROMPT);
+        assert!(!parts.iter().any(|(_, t)| t.contains("send_message")));
     }
 
     #[tokio::test]
@@ -326,7 +290,7 @@ mod tests {
             Arc::new(McpHub::new()),
         );
         let Step::Operation(op) = &steps[0] else {
-            panic!("expected system prompt operation");
+            panic!("expected prompt compose operation");
         };
         let session = HostSession {
             id: "t".into(),
@@ -339,7 +303,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(parts[0].1, DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(parts[0].1, DEFAULT_IDENTITY_PROMPT);
     }
 
     #[tokio::test]
@@ -355,7 +319,7 @@ mod tests {
             Arc::new(McpHub::new()),
         );
         let Step::Operation(op) = &steps[0] else {
-            panic!("expected system prompt operation");
+            panic!("expected prompt compose operation");
         };
         let session = HostSession {
             id: "t".into(),
@@ -381,9 +345,9 @@ mod tests {
             .collect()
     }
 
-    async fn system_prompt(steps: &[Step<'static, HostSession, HostEffect>]) -> String {
+    async fn assembled_prompt(steps: &[Step<'static, HostSession, HostEffect>]) -> String {
         let Step::Operation(op) = &steps[0] else {
-            panic!("expected system prompt operation");
+            panic!("expected prompt compose operation");
         };
         let session = HostSession {
             id: "t".into(),
@@ -396,7 +360,11 @@ mod tests {
             )
             .await
             .unwrap();
-        parts[0].1.clone()
+        parts
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect::<Vec<_>>()
+            .join("\n\n")
     }
 
     fn write_portable_skill(project_root: &Path, id: &str) {
@@ -435,7 +403,7 @@ mod tests {
                 .map(|i| i - 1),
             "skills runs before unknown_tool: {names:?}"
         );
-        let prompt = system_prompt(&steps).await;
+        let prompt = assembled_prompt(&steps).await;
         assert!(prompt.contains("KIM app skills"), "{prompt}");
         assert!(prompt.contains("- kim-im: "), "{prompt}");
         assert!(!prompt.contains("Project/user skills"), "{prompt}");
@@ -459,7 +427,7 @@ mod tests {
             Arc::new(McpHub::new()),
         );
         assert!(step_names(&steps).contains(&"skills"));
-        let prompt = system_prompt(&steps).await;
+        let prompt = assembled_prompt(&steps).await;
         assert!(
             prompt.contains("- git-commit: Create Conventional Commits"),
             "{prompt}"
@@ -485,9 +453,10 @@ mod tests {
             Arc::new(McpHub::new()),
         );
         assert!(!step_names(&steps).contains(&"skills"));
-        let prompt = system_prompt(&steps).await;
+        let prompt = assembled_prompt(&steps).await;
         assert!(!prompt.contains("git-commit"), "{prompt}");
         assert!(!prompt.contains("should stay unread"), "{prompt}");
+        assert!(prompt.contains("send_message"), "{prompt}");
     }
 
     #[test]
@@ -505,7 +474,26 @@ mod tests {
             Path::new("/tmp"),
             Arc::new(McpHub::new()),
         );
-        // system + max_turns + compaction + permission + deferred + tools + unknown + inference
+        // prompt_compose + max_turns + compaction + permission + deferred + tools + unknown + inference
         assert_eq!(steps.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn digest_omits_send_message_when_disabled() {
+        let profile = profile_with(ToolSet {
+            search_contacts: true,
+            ..ToolSet::default()
+        });
+        let provider: Arc<dyn Provider> = Arc::new(DummyProvider);
+        let steps = MachineFactory::assemble(
+            &profile,
+            provider,
+            ModelConfig::new("gpt-4o"),
+            Path::new("/tmp"),
+            Arc::new(McpHub::new()),
+        );
+        let prompt = assembled_prompt(&steps).await;
+        assert!(prompt.contains("search_contacts"), "{prompt}");
+        assert!(!prompt.contains("send_message"), "{prompt}");
     }
 }

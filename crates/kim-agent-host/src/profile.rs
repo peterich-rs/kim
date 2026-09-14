@@ -7,10 +7,11 @@ use goose_provider_types::thinking::ThinkingEffort;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::capability::{CapabilityRef, PermissionRule};
 use crate::catalog::ReasoningChoice;
 use crate::provider::ProviderConfig;
 use crate::skills::SkillRef;
-use crate::{HostError, DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_SYSTEM_PROMPT};
+use crate::{HostError, DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_IDENTITY_PROMPT};
 
 fn enabled_true() -> bool {
     true
@@ -41,6 +42,12 @@ pub struct AgentProfile {
     pub max_turns: Option<u32>,
     #[serde(default)]
     pub tools: ToolSet,
+    /// Authoritative capability list. Empty → derived from `tools` + `extensions`.
+    #[serde(default)]
+    pub capabilities: Vec<CapabilityRef>,
+    /// Ordered permission rules (Phase 3 engine). Phase 1 merges Tool matches into the map.
+    #[serde(default)]
+    pub permission_rules: Vec<PermissionRule>,
     #[serde(default)]
     pub permissions: PermissionConfig,
     #[serde(default)]
@@ -277,6 +284,8 @@ impl AgentProfile {
             mode,
             max_turns: Some(16),
             tools,
+            capabilities: Vec::new(),
+            permission_rules: Vec::new(),
             permissions: PermissionConfig::default(),
             sandbox: SandboxPolicy::default(),
             extensions: Vec::new(),
@@ -294,7 +303,15 @@ impl AgentProfile {
         if self.mode != GooseMode::Auto {
             return;
         }
-        self.mode = if self.tools.has_any() || !self.extensions.is_empty() {
+        let tools = self.project_toolset();
+        self.mode = if tools.has_any()
+            || !self.extensions.is_empty()
+            || !self.skills.is_empty()
+            || self
+                .resolve_capabilities()
+                .iter()
+                .any(|c| c.enabled && c.kind == "mcp")
+        {
             GooseMode::SmartApprove
         } else {
             GooseMode::Chat
@@ -323,14 +340,32 @@ impl AgentProfile {
         }
     }
 
-    /// Empty / whitespace prompt uses the built-in English default at assemble.
-    pub fn effective_system_prompt(&self) -> &str {
+    /// Capabilities are authoritative when non-empty; otherwise derive from legacy tools.
+    pub fn resolve_capabilities(&self) -> Vec<CapabilityRef> {
+        if !self.capabilities.is_empty() {
+            return self.capabilities.clone();
+        }
+        CapabilityRef::from_legacy(&self.tools, &self.extensions)
+    }
+
+    /// Project resolved capabilities onto the legacy `ToolSet` surface.
+    pub fn project_toolset(&self) -> ToolSet {
+        ToolSet::from_capabilities(&self.resolve_capabilities())
+    }
+
+    /// Identity text only — never lists tools (B-KD 4).
+    pub fn effective_identity_prompt(&self) -> &str {
         let t = self.system_prompt.trim();
         if t.is_empty() {
-            DEFAULT_SYSTEM_PROMPT
+            DEFAULT_IDENTITY_PROMPT
         } else {
             t
         }
+    }
+
+    /// Empty / whitespace prompt uses the identity-only default at assemble.
+    pub fn effective_system_prompt(&self) -> &str {
+        self.effective_identity_prompt()
     }
 }
 
@@ -358,10 +393,12 @@ impl ResolvedProfile {
                     ..Default::default()
                 },
                 reasoning: None,
-                system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+                system_prompt: DEFAULT_IDENTITY_PROMPT.to_string(),
                 mode: GooseMode::Chat,
                 max_turns: Some(16),
                 tools: ToolSet::default(),
+                capabilities: Vec::new(),
+                permission_rules: Vec::new(),
                 permissions: PermissionConfig::default(),
                 sandbox: SandboxPolicy::default(),
                 extensions: Vec::new(),
@@ -413,7 +450,7 @@ fn goose_template() -> AgentProfile {
             ..Default::default()
         },
         reasoning: None,
-        system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+        system_prompt: DEFAULT_IDENTITY_PROMPT.to_string(),
         mode: GooseMode::SmartApprove,
         max_turns: Some(16),
         tools: ToolSet {
@@ -425,6 +462,8 @@ fn goose_template() -> AgentProfile {
             read_clipboard: true,
             ..ToolSet::default()
         },
+        capabilities: Vec::new(),
+        permission_rules: Vec::new(),
         permissions: PermissionConfig::default(),
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
@@ -456,6 +495,8 @@ fn translator_template() -> AgentProfile {
         mode: GooseMode::Chat,
         max_turns: Some(16),
         tools: ToolSet::default(),
+        capabilities: Vec::new(),
+        permission_rules: Vec::new(),
         permissions: PermissionConfig::default(),
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
@@ -493,6 +534,8 @@ fn coder_template() -> AgentProfile {
             fs_write: true,
             ..ToolSet::default()
         },
+        capabilities: Vec::new(),
+        permission_rules: Vec::new(),
         permissions: PermissionConfig::default(),
         sandbox: SandboxPolicy::default(),
         extensions: Vec::new(),
@@ -652,16 +695,16 @@ mod tests {
         }"#;
         let profile: AgentProfile = serde_json::from_str(json).unwrap();
         assert_eq!(profile.system_prompt, "");
-        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_IDENTITY_PROMPT);
     }
 
     #[test]
     fn empty_system_prompt_uses_builtin_default() {
         let mut profile = goose_template();
         profile.system_prompt = String::new();
-        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_IDENTITY_PROMPT);
         profile.system_prompt = "  \n".into();
-        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_IDENTITY_PROMPT);
         profile.system_prompt = "Stay terse.".into();
         assert_eq!(profile.effective_system_prompt(), "Stay terse.");
     }
@@ -670,6 +713,12 @@ mod tests {
     fn from_legacy_writes_empty_system_prompt() {
         let profile = AgentProfile::from_legacy(&LegacyOpenOpts::default());
         assert_eq!(profile.system_prompt, "");
-        assert_eq!(profile.effective_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(profile.effective_system_prompt(), DEFAULT_IDENTITY_PROMPT);
+    }
+
+    #[test]
+    fn identity_prompt_never_lists_tools() {
+        assert!(!DEFAULT_IDENTITY_PROMPT.contains("send_message"));
+        assert!(!DEFAULT_IDENTITY_PROMPT.contains("search_contacts"));
     }
 }

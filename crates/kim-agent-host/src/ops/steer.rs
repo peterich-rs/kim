@@ -6,6 +6,7 @@ use goose_provider_types::conversation::Conversation;
 use crate::events::HostEffect;
 use crate::HostSession;
 
+#[allow(dead_code)] // Folded into PromptComposeOp; kept for tests / optional standalone use.
 pub struct SteerOp {
     pub steer: String,
 }
