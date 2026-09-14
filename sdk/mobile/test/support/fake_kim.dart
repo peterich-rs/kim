@@ -4,6 +4,7 @@ import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/data/conversation_store.dart';
 import 'package:kim_mobile/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 
 class FakeKim implements KimAuthPort, KimClientPort {
   FakeKim({this.session, this.error, this.connectError});
@@ -49,6 +50,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
   final List<String> clientIds = [];
   KimLinkState _link = const KimLinkState();
   Completer<void>? sendHold;
+  final snapshotCtrl = StreamController<SessionSnapshotDto>.broadcast();
+  final sessionUpdateCtrl = StreamController<SessionUpdateDto>.broadcast();
+  final timelines = <String, StreamController<TimelineUpdateDto>>{};
 
   KimAuthSession _ok() {
     return session ??
@@ -145,6 +149,30 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Stream<KimEvent> sessionEvents() => eventsController.stream;
+
+  @override
+  Stream<SessionSnapshotDto> watchSessionSnapshot() => snapshotCtrl.stream;
+
+  @override
+  Stream<SessionUpdateDto> watchSessionEvents() => sessionUpdateCtrl.stream;
+
+  @override
+  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) {
+    return timelines
+        .putIfAbsent(dest, StreamController<TimelineUpdateDto>.broadcast)
+        .stream;
+  }
+
+  @override
+  Future<MessagePageDto> loadOlder({
+    required String dest,
+    required int beforeAt,
+    required String beforeKey,
+    int beforeId = 0,
+    int limit = 50,
+  }) async {
+    return MessagePageDto(dest: dest, messages: const [], hasMore: false);
+  }
 
   @override
   Future<void> syncConfirm(int cursor) async {

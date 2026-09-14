@@ -72,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1687965703;
+  int get rustContentHash => 1441919899;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -123,7 +123,7 @@ abstract class RustLibApi extends BaseApi {
     required String dbPath,
   });
 
-  Future<String> crateApiClientKimSdkHandleBotCreate({
+  Future<PersonDto> crateApiClientKimSdkHandleBotCreate({
     required KimSdkHandle that,
     required String clientProfileId,
     required String nickname,
@@ -161,7 +161,7 @@ abstract class RustLibApi extends BaseApi {
     required bool active,
   });
 
-  Future<String> crateApiClientKimSdkHandleBotUpdate({
+  Future<PersonDto> crateApiClientKimSdkHandleBotUpdate({
     required KimSdkHandle that,
     required String dest,
     required String nickname,
@@ -203,11 +203,11 @@ abstract class RustLibApi extends BaseApi {
     required String dest,
   });
 
-  Future<String> crateApiClientKimSdkHandleFriendIncoming({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleFriendIncoming({
     required KimSdkHandle that,
   });
 
-  Future<String> crateApiClientKimSdkHandleFriendList({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleFriendList({
     required KimSdkHandle that,
   });
 
@@ -240,6 +240,15 @@ abstract class RustLibApi extends BaseApi {
   });
 
   String crateApiClientKimSdkHandleLinkState({required KimSdkHandle that});
+
+  Future<MessagePageDto> crateApiClientKimSdkHandleLoadOlder({
+    required KimSdkHandle that,
+    required String dest,
+    required PlatformInt64 beforeAt,
+    required String beforeKey,
+    required PlatformInt64 beforeId,
+    required int limit,
+  });
 
   Future<void> crateApiClientKimSdkHandleMarkRead({
     required KimSdkHandle that,
@@ -274,7 +283,7 @@ abstract class RustLibApi extends BaseApi {
     required String policy,
   });
 
-  Future<String> crateApiClientKimSdkHandleProfile({
+  Future<ProfileDto> crateApiClientKimSdkHandleProfile({
     required KimSdkHandle that,
     required String dest,
   });
@@ -284,7 +293,7 @@ abstract class RustLibApi extends BaseApi {
     required String clientId,
   });
 
-  Future<String> crateApiClientKimSdkHandleRoomEnter({
+  Future<List<RoomMemberDto>> crateApiClientKimSdkHandleRoomEnter({
     required KimSdkHandle that,
     required String dest,
     required int kind,
@@ -296,7 +305,7 @@ abstract class RustLibApi extends BaseApi {
     required int kind,
   });
 
-  Future<String> crateApiClientKimSdkHandleSearchUsers({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleSearchUsers({
     required KimSdkHandle that,
     required String query,
   });
@@ -337,7 +346,7 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 cursor,
   });
 
-  Future<String> crateApiClientKimSdkHandleUpdateProfile({
+  Future<ProfileDto> crateApiClientKimSdkHandleUpdateProfile({
     required KimSdkHandle that,
     required String nickname,
     required String avatar,
@@ -345,6 +354,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Stream<SessionUpdateDto> crateApiClientKimSdkHandleWatchSession({
+    required KimSdkHandle that,
+  });
+
+  Stream<SessionSnapshotDto> crateApiClientKimSdkHandleWatchSessionSnapshot({
     required KimSdkHandle that,
   });
 
@@ -648,7 +661,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleBotCreate({
+  Future<PersonDto> crateApiClientKimSdkHandleBotCreate({
     required KimSdkHandle that,
     required String clientProfileId,
     required String nickname,
@@ -683,7 +696,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_person_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleBotCreateConstMeta,
@@ -884,7 +897,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleBotUpdate({
+  Future<PersonDto> crateApiClientKimSdkHandleBotUpdate({
     required KimSdkHandle that,
     required String dest,
     required String nickname,
@@ -919,7 +932,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_person_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleBotUpdateConstMeta,
@@ -1169,7 +1182,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleFriendIncoming({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleFriendIncoming({
     required KimSdkHandle that,
   }) {
     return handler.executeNormal(
@@ -1188,7 +1201,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_person_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleFriendIncomingConstMeta,
@@ -1205,7 +1218,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleFriendList({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleFriendList({
     required KimSdkHandle that,
   }) {
     return handler.executeNormal(
@@ -1224,7 +1237,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_person_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleFriendListConstMeta,
@@ -1466,6 +1479,59 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<MessagePageDto> crateApiClientKimSdkHandleLoadOlder({
+    required KimSdkHandle that,
+    required String dest,
+    required PlatformInt64 beforeAt,
+    required String beforeKey,
+    required PlatformInt64 beforeId,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          sse_encode_i_64(beforeAt, serializer);
+          sse_encode_String(beforeKey, serializer);
+          sse_encode_i_64(beforeId, serializer);
+          sse_encode_i_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_message_page_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleLoadOlderConstMeta,
+        argValues: [that, dest, beforeAt, beforeKey, beforeId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleLoadOlderConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_load_older",
+        argNames: [
+          "that",
+          "dest",
+          "beforeAt",
+          "beforeKey",
+          "beforeId",
+          "limit",
+        ],
+      );
+
+  @override
   Future<void> crateApiClientKimSdkHandleMarkRead({
     required KimSdkHandle that,
     required String dest,
@@ -1486,7 +1552,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1528,7 +1594,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1564,7 +1630,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1600,7 +1666,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1638,7 +1704,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1678,7 +1744,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1700,7 +1766,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleProfile({
+  Future<ProfileDto> crateApiClientKimSdkHandleProfile({
     required KimSdkHandle that,
     required String dest,
   }) {
@@ -1716,12 +1782,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 34,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_profile_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleProfileConstMeta,
@@ -1754,7 +1820,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1776,7 +1842,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleRoomEnter({
+  Future<List<RoomMemberDto>> crateApiClientKimSdkHandleRoomEnter({
     required KimSdkHandle that,
     required String dest,
     required int kind,
@@ -1794,12 +1860,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_room_member_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleRoomEnterConstMeta,
@@ -1834,7 +1900,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1856,7 +1922,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleSearchUsers({
+  Future<List<PersonDto>> crateApiClientKimSdkHandleSearchUsers({
     required KimSdkHandle that,
     required String query,
   }) {
@@ -1872,12 +1938,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_person_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleSearchUsersConstMeta,
@@ -1916,7 +1982,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1958,7 +2024,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1993,7 +2059,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_kim_session_event_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 41)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2036,7 +2102,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2070,7 +2136,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 43,
             port: port_,
           );
         },
@@ -2098,7 +2164,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -2134,7 +2200,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 45,
             port: port_,
           );
         },
@@ -2156,7 +2222,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiClientKimSdkHandleUpdateProfile({
+  Future<ProfileDto> crateApiClientKimSdkHandleUpdateProfile({
     required KimSdkHandle that,
     required String nickname,
     required String avatar,
@@ -2176,12 +2242,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 46,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_profile_dto,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiClientKimSdkHandleUpdateProfileConstMeta,
@@ -2211,7 +2277,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2228,6 +2294,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientKimSdkHandleWatchSessionConstMeta =>
       const TaskConstMeta(
         debugName: "KimSdkHandle_watch_session",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Stream<SessionSnapshotDto> crateApiClientKimSdkHandleWatchSessionSnapshot({
+    required KimSdkHandle that,
+  }) {
+    final sink = RustStreamSink<SessionSnapshotDto>();
+    handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimSdkHandle(
+            that,
+            serializer,
+          );
+          sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClientKimSdkHandleWatchSessionSnapshotConstMeta,
+        argValues: [that, sink],
+        apiImpl: this,
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimSdkHandleWatchSessionSnapshotConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimSdkHandle_watch_session_snapshot",
         argNames: ["that", "sink"],
       );
 
@@ -2249,7 +2349,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(dest, serializer);
           sse_encode_i_32(limit, serializer);
           sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2276,7 +2376,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2299,7 +2399,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2327,7 +2427,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 52,
             port: port_,
           );
         },
@@ -2430,6 +2530,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<SessionSnapshotDto>
+  dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   RustStreamSink<SessionUpdateDto> dco_decode_StreamSink_session_update_dto_Sse(
     dynamic raw,
   ) {
@@ -2470,9 +2577,80 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BotDto dco_decode_bot_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return BotDto(
+      dest: dco_decode_String(arr[0]),
+      nickname: dco_decode_String(arr[1]),
+      avatar: dco_decode_String(arr[2]),
+      bio: dco_decode_String(arr[3]),
+      model: dco_decode_String(arr[4]),
+      thinkingEffort: dco_decode_String(arr[5]),
+      contextTokens: dco_decode_i_32(arr[6]),
+      visibility: dco_decode_String(arr[7]),
+    );
+  }
+
+  @protected
+  int dco_decode_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_i_64(raw);
+  }
+
+  @protected
   KimOutgoingContent dco_decode_box_autoadd_kim_outgoing_content(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_kim_outgoing_content(raw);
+  }
+
+  @protected
+  LinkStateDto dco_decode_box_autoadd_link_state_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_link_state_dto(raw);
+  }
+
+  @protected
+  ThreadViewDto dco_decode_box_autoadd_thread_view_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_thread_view_dto(raw);
+  }
+
+  @protected
+  TimelineDeltaDto dco_decode_box_autoadd_timeline_delta_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_timeline_delta_dto(raw);
+  }
+
+  @protected
+  TimelineSnapshotDto dco_decode_box_autoadd_timeline_snapshot_dto(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_timeline_snapshot_dto(raw);
+  }
+
+  @protected
+  CommandAckDto dco_decode_command_ack_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return CommandAckDto(
+      requestId: dco_decode_String(arr[0]),
+      clientId: dco_decode_String(arr[1]),
+      dest: dco_decode_String(arr[2]),
+      acceptedAt: dco_decode_i_64(arr[3]),
+      sendStatus: dco_decode_send_status_dto(arr[4]),
+    );
   }
 
   @protected
@@ -2511,7 +2689,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       clientId: dco_decode_String(arr[1]),
       dest: dco_decode_String(arr[2]),
       acceptedAt: dco_decode_i_64(arr[3]),
-      sendStatus: dco_decode_String(arr[4]),
+      sendStatus: dco_decode_send_status_dto(arr[4]),
     );
   }
 
@@ -2624,6 +2802,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  LinkStateDto dco_decode_link_state_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return LinkStateDto_Connecting();
+      case 1:
+        return LinkStateDto_Online();
+      case 2:
+        return LinkStateDto_Reconnecting(attempt: dco_decode_u_32(raw[1]));
+      case 3:
+        return LinkStateDto_Offline();
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
@@ -2654,15 +2849,145 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MessageViewDto> dco_decode_list_message_view_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_message_view_dto).toList();
+  }
+
+  @protected
+  List<PersonDto> dco_decode_list_person_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_person_dto).toList();
+  }
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
   }
 
   @protected
+  List<RoomMemberDto> dco_decode_list_room_member_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_room_member_dto).toList();
+  }
+
+  @protected
+  List<ThreadViewDto> dco_decode_list_thread_view_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_thread_view_dto).toList();
+  }
+
+  @protected
+  LocalMediaDto dco_decode_local_media_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return LocalMediaDto(
+      localPath: dco_decode_String(arr[0]),
+      byteSize: dco_decode_i_64(arr[1]),
+      width: dco_decode_i_32(arr[2]),
+      height: dco_decode_i_32(arr[3]),
+    );
+  }
+
+  @protected
+  MessagePageDto dco_decode_message_page_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return MessagePageDto(
+      dest: dco_decode_String(arr[0]),
+      messages: dco_decode_list_message_view_dto(arr[1]),
+      hasMore: dco_decode_bool(arr[2]),
+    );
+  }
+
+  @protected
+  MessageViewDto dco_decode_message_view_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    return MessageViewDto(
+      key: dco_decode_String(arr[0]),
+      dest: dco_decode_String(arr[1]),
+      sender: dco_decode_String(arr[2]),
+      body: dco_decode_String(arr[3]),
+      localPath: dco_decode_opt_String(arr[4]),
+      at: dco_decode_i_64(arr[5]),
+      sys: dco_decode_bool(arr[6]),
+      kind: dco_decode_i_32(arr[7]),
+      width: dco_decode_i_32(arr[8]),
+      height: dco_decode_i_32(arr[9]),
+      messageId: dco_decode_i_64(arr[10]),
+      batchId: dco_decode_opt_String(arr[11]),
+      sendStatus: dco_decode_send_status_dto(arr[12]),
+    );
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_32(raw);
+  }
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  PersonDto dco_decode_person_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return PersonDto(
+      account: dco_decode_String(arr[0]),
+      nickname: dco_decode_String(arr[1]),
+      avatar: dco_decode_String(arr[2]),
+      bio: dco_decode_String(arr[3]),
+      relation: dco_decode_String(arr[4]),
+      kind: dco_decode_i_32(arr[5]),
+    );
+  }
+
+  @protected
+  ProfileDto dco_decode_profile_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return ProfileDto(
+      account: dco_decode_String(arr[0]),
+      nickname: dco_decode_String(arr[1]),
+      avatar: dco_decode_String(arr[2]),
+      bio: dco_decode_String(arr[3]),
+      kind: dco_decode_i_32(arr[4]),
+    );
+  }
+
+  @protected
+  RoomMemberDto dco_decode_room_member_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return RoomMemberDto(
+      account: dco_decode_String(arr[0]),
+      status: dco_decode_i_32(arr[1]),
+      lastSeen: dco_decode_i_64(arr[2]),
+    );
   }
 
   @protected
@@ -2678,42 +3003,207 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  SessionUpdateDto dco_decode_session_update_dto(dynamic raw) {
+  SendStatusDto dco_decode_send_status_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SendStatusDto.values[raw as int];
+  }
+
+  @protected
+  SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 11)
-      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
-    return SessionUpdateDto(
-      kind: dco_decode_String(arr[0]),
-      channelId: dco_decode_String(arr[1]),
-      reason: dco_decode_String(arr[2]),
-      token: dco_decode_String(arr[3]),
-      exp: dco_decode_i_64(arr[4]),
-      from: dco_decode_String(arr[5]),
-      nickname: dco_decode_String(arr[6]),
-      pulled: dco_decode_u_64(arr[7]),
-      catchingUp: dco_decode_bool(arr[8]),
-      lastError: dco_decode_opt_String(arr[9]),
-      inboxCount: dco_decode_i_32(arr[10]),
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return SessionSnapshotDto(
+      link: dco_decode_link_state_dto(arr[0]),
+      lastError: dco_decode_opt_String(arr[1]),
+      threads: dco_decode_list_thread_view_dto(arr[2]),
+      unreadTotal: dco_decode_i_32(arr[3]),
+    );
+  }
+
+  @protected
+  SessionUpdateDto dco_decode_session_update_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return SessionUpdateDto_Link(
+          state: dco_decode_box_autoadd_link_state_dto(raw[1]),
+          lastError: dco_decode_opt_String(raw[2]),
+        );
+      case 1:
+        return SessionUpdateDto_Inbox(
+          threads: dco_decode_list_thread_view_dto(raw[1]),
+        );
+      case 2:
+        return SessionUpdateDto_ThreadUpsert(
+          thread: dco_decode_box_autoadd_thread_view_dto(raw[1]),
+        );
+      case 3:
+        return SessionUpdateDto_SyncProgress(
+          pulled: dco_decode_u_64(raw[1]),
+          catchingUp: dco_decode_bool(raw[2]),
+        );
+      case 4:
+        return SessionUpdateDto_Kickout(channelId: dco_decode_String(raw[1]));
+      case 5:
+        return SessionUpdateDto_AuthExpired(reason: dco_decode_String(raw[1]));
+      case 6:
+        return SessionUpdateDto_TokenRenew(
+          token: dco_decode_String(raw[1]),
+          exp: dco_decode_i_64(raw[2]),
+        );
+      case 7:
+        return SessionUpdateDto_FriendRequest(
+          from: dco_decode_String(raw[1]),
+          nickname: dco_decode_String(raw[2]),
+        );
+      case 8:
+        return SessionUpdateDto_FriendAccepted(
+          from: dco_decode_String(raw[1]),
+          nickname: dco_decode_String(raw[2]),
+        );
+      case 9:
+        return SessionUpdateDto_ProfileUpdated(
+          account: dco_decode_String(raw[1]),
+          nickname: dco_decode_String(raw[2]),
+          avatar: dco_decode_String(raw[3]),
+        );
+      case 10:
+        return SessionUpdateDto_Presence(
+          account: dco_decode_String(raw[1]),
+          status: dco_decode_i_32(raw[2]),
+          lastSeen: dco_decode_i_64(raw[3]),
+        );
+      case 11:
+        return SessionUpdateDto_Typing(
+          typer: dco_decode_String(raw[1]),
+          dest: dco_decode_String(raw[2]),
+          kind: dco_decode_i_32(raw[3]),
+          active: dco_decode_bool(raw[4]),
+        );
+      case 12:
+        return SessionUpdateDto_ReceiptRead(
+          reader: dco_decode_String(raw[1]),
+          dest: dco_decode_String(raw[2]),
+          kind: dco_decode_i_32(raw[3]),
+          messageId: dco_decode_i_64(raw[4]),
+        );
+      case 13:
+        return SessionUpdateDto_GroupCreate(
+          groupId: dco_decode_String(raw[1]),
+          members: dco_decode_list_String(raw[2]),
+        );
+      case 14:
+        return SessionUpdateDto_ContactsChanged(
+          contacts: dco_decode_list_person_dto(raw[1]),
+        );
+      case 15:
+        return SessionUpdateDto_RustPanic(message: dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  SettingsDto dco_decode_settings_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return SettingsDto(
+      wsUrl: dco_decode_String(arr[0]),
+      httpOrigin: dco_decode_String(arr[1]),
+      env: dco_decode_String(arr[2]),
+      locale: dco_decode_String(arr[3]),
+      account: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  ThreadViewDto dco_decode_thread_view_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return ThreadViewDto(
+      id: dco_decode_String(arr[0]),
+      kind: dco_decode_i_32(arr[1]),
+      title: dco_decode_String(arr[2]),
+      avatar: dco_decode_String(arr[3]),
+      lastBody: dco_decode_String(arr[4]),
+      lastAt: dco_decode_i_64(arr[5]),
+      unread: dco_decode_i_32(arr[6]),
+    );
+  }
+
+  @protected
+  TimelineDeltaDto dco_decode_timeline_delta_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return TimelineDeltaDto(
+      dest: dco_decode_String(arr[0]),
+      fromVersion: dco_decode_u_64(arr[1]),
+      toVersion: dco_decode_u_64(arr[2]),
+      upserts: dco_decode_list_message_view_dto(arr[3]),
+      deletedKeys: dco_decode_list_String(arr[4]),
+      unread: dco_decode_opt_box_autoadd_i_32(arr[5]),
+      lastReadMessageId: dco_decode_opt_box_autoadd_i_64(arr[6]),
+    );
+  }
+
+  @protected
+  TimelineSnapshotDto dco_decode_timeline_snapshot_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return TimelineSnapshotDto(
+      dest: dco_decode_String(arr[0]),
+      version: dco_decode_u_64(arr[1]),
+      messages: dco_decode_list_message_view_dto(arr[2]),
+      pending: dco_decode_list_message_view_dto(arr[3]),
+      unread: dco_decode_i_32(arr[4]),
+      lastReadMessageId: dco_decode_i_64(arr[5]),
+      hasMore: dco_decode_bool(arr[6]),
     );
   }
 
   @protected
   TimelineUpdateDto dco_decode_timeline_update_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
-    return TimelineUpdateDto(
-      kind: dco_decode_String(arr[0]),
-      dest: dco_decode_String(arr[1]),
-      version: dco_decode_u_64(arr[2]),
-      fromVersion: dco_decode_u_64(arr[3]),
-      toVersion: dco_decode_u_64(arr[4]),
-      unread: dco_decode_i_32(arr[5]),
-      hasMore: dco_decode_bool(arr[6]),
-      reason: dco_decode_String(arr[7]),
-    );
+    switch (raw[0]) {
+      case 0:
+        return TimelineUpdateDto_Snapshot(
+          snapshot: dco_decode_box_autoadd_timeline_snapshot_dto(raw[1]),
+        );
+      case 1:
+        return TimelineUpdateDto_Delta(
+          delta: dco_decode_box_autoadd_timeline_delta_dto(raw[1]),
+        );
+      case 2:
+        return TimelineUpdateDto_Resync(
+          dest: dco_decode_String(raw[1]),
+          reason: dco_decode_String(raw[2]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  TokenPersistDto dco_decode_token_persist_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return TokenPersistDto_Write(token: dco_decode_String(raw[1]));
+      case 1:
+        return TokenPersistDto_Clear();
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -2834,6 +3324,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<SessionSnapshotDto>
+  sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<SessionUpdateDto> sse_decode_StreamSink_session_update_dto_Sse(
     SseDeserializer deserializer,
   ) {
@@ -2871,11 +3368,95 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BotDto sse_decode_bot_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_nickname = sse_decode_String(deserializer);
+    var var_avatar = sse_decode_String(deserializer);
+    var var_bio = sse_decode_String(deserializer);
+    var var_model = sse_decode_String(deserializer);
+    var var_thinkingEffort = sse_decode_String(deserializer);
+    var var_contextTokens = sse_decode_i_32(deserializer);
+    var var_visibility = sse_decode_String(deserializer);
+    return BotDto(
+      dest: var_dest,
+      nickname: var_nickname,
+      avatar: var_avatar,
+      bio: var_bio,
+      model: var_model,
+      thinkingEffort: var_thinkingEffort,
+      contextTokens: var_contextTokens,
+      visibility: var_visibility,
+    );
+  }
+
+  @protected
+  int sse_decode_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_i_32(deserializer));
+  }
+
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_i_64(deserializer));
+  }
+
+  @protected
   KimOutgoingContent sse_decode_box_autoadd_kim_outgoing_content(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_kim_outgoing_content(deserializer));
+  }
+
+  @protected
+  LinkStateDto sse_decode_box_autoadd_link_state_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_link_state_dto(deserializer));
+  }
+
+  @protected
+  ThreadViewDto sse_decode_box_autoadd_thread_view_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_thread_view_dto(deserializer));
+  }
+
+  @protected
+  TimelineDeltaDto sse_decode_box_autoadd_timeline_delta_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_timeline_delta_dto(deserializer));
+  }
+
+  @protected
+  TimelineSnapshotDto sse_decode_box_autoadd_timeline_snapshot_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_timeline_snapshot_dto(deserializer));
+  }
+
+  @protected
+  CommandAckDto sse_decode_command_ack_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_requestId = sse_decode_String(deserializer);
+    var var_clientId = sse_decode_String(deserializer);
+    var var_dest = sse_decode_String(deserializer);
+    var var_acceptedAt = sse_decode_i_64(deserializer);
+    var var_sendStatus = sse_decode_send_status_dto(deserializer);
+    return CommandAckDto(
+      requestId: var_requestId,
+      clientId: var_clientId,
+      dest: var_dest,
+      acceptedAt: var_acceptedAt,
+      sendStatus: var_sendStatus,
+    );
   }
 
   @protected
@@ -2914,7 +3495,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_clientId = sse_decode_String(deserializer);
     var var_dest = sse_decode_String(deserializer);
     var var_acceptedAt = sse_decode_i_64(deserializer);
-    var var_sendStatus = sse_decode_String(deserializer);
+    var var_sendStatus = sse_decode_send_status_dto(deserializer);
     return KimCommandReceipt(
       requestId: var_requestId,
       clientId: var_clientId,
@@ -3058,6 +3639,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  LinkStateDto sse_decode_link_state_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return LinkStateDto_Connecting();
+      case 1:
+        return LinkStateDto_Online();
+      case 2:
+        var var_attempt = sse_decode_u_32(deserializer);
+        return LinkStateDto_Reconnecting(attempt: var_attempt);
+      case 3:
+        return LinkStateDto_Offline();
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3126,10 +3727,125 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MessageViewDto> sse_decode_list_message_view_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <MessageViewDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_message_view_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PersonDto> sse_decode_list_person_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PersonDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_person_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<RoomMemberDto> sse_decode_list_room_member_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <RoomMemberDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_room_member_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<ThreadViewDto> sse_decode_list_thread_view_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ThreadViewDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_thread_view_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  LocalMediaDto sse_decode_local_media_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_localPath = sse_decode_String(deserializer);
+    var var_byteSize = sse_decode_i_64(deserializer);
+    var var_width = sse_decode_i_32(deserializer);
+    var var_height = sse_decode_i_32(deserializer);
+    return LocalMediaDto(
+      localPath: var_localPath,
+      byteSize: var_byteSize,
+      width: var_width,
+      height: var_height,
+    );
+  }
+
+  @protected
+  MessagePageDto sse_decode_message_page_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_messages = sse_decode_list_message_view_dto(deserializer);
+    var var_hasMore = sse_decode_bool(deserializer);
+    return MessagePageDto(
+      dest: var_dest,
+      messages: var_messages,
+      hasMore: var_hasMore,
+    );
+  }
+
+  @protected
+  MessageViewDto sse_decode_message_view_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_String(deserializer);
+    var var_dest = sse_decode_String(deserializer);
+    var var_sender = sse_decode_String(deserializer);
+    var var_body = sse_decode_String(deserializer);
+    var var_localPath = sse_decode_opt_String(deserializer);
+    var var_at = sse_decode_i_64(deserializer);
+    var var_sys = sse_decode_bool(deserializer);
+    var var_kind = sse_decode_i_32(deserializer);
+    var var_width = sse_decode_i_32(deserializer);
+    var var_height = sse_decode_i_32(deserializer);
+    var var_messageId = sse_decode_i_64(deserializer);
+    var var_batchId = sse_decode_opt_String(deserializer);
+    var var_sendStatus = sse_decode_send_status_dto(deserializer);
+    return MessageViewDto(
+      key: var_key,
+      dest: var_dest,
+      sender: var_sender,
+      body: var_body,
+      localPath: var_localPath,
+      at: var_at,
+      sys: var_sys,
+      kind: var_kind,
+      width: var_width,
+      height: var_height,
+      messageId: var_messageId,
+      batchId: var_batchId,
+      sendStatus: var_sendStatus,
+    );
   }
 
   @protected
@@ -3144,6 +3860,77 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_i_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_i_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PersonDto sse_decode_person_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_account = sse_decode_String(deserializer);
+    var var_nickname = sse_decode_String(deserializer);
+    var var_avatar = sse_decode_String(deserializer);
+    var var_bio = sse_decode_String(deserializer);
+    var var_relation = sse_decode_String(deserializer);
+    var var_kind = sse_decode_i_32(deserializer);
+    return PersonDto(
+      account: var_account,
+      nickname: var_nickname,
+      avatar: var_avatar,
+      bio: var_bio,
+      relation: var_relation,
+      kind: var_kind,
+    );
+  }
+
+  @protected
+  ProfileDto sse_decode_profile_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_account = sse_decode_String(deserializer);
+    var var_nickname = sse_decode_String(deserializer);
+    var var_avatar = sse_decode_String(deserializer);
+    var var_bio = sse_decode_String(deserializer);
+    var var_kind = sse_decode_i_32(deserializer);
+    return ProfileDto(
+      account: var_account,
+      nickname: var_nickname,
+      avatar: var_avatar,
+      bio: var_bio,
+      kind: var_kind,
+    );
+  }
+
+  @protected
+  RoomMemberDto sse_decode_room_member_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_account = sse_decode_String(deserializer);
+    var var_status = sse_decode_i_32(deserializer);
+    var var_lastSeen = sse_decode_i_64(deserializer);
+    return RoomMemberDto(
+      account: var_account,
+      status: var_status,
+      lastSeen: var_lastSeen,
+    );
+  }
+
+  @protected
   SdkErrorDto sse_decode_sdk_error_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_String(deserializer);
@@ -3152,31 +3939,216 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SendStatusDto sse_decode_send_status_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SendStatusDto.values[inner];
+  }
+
+  @protected
+  SessionSnapshotDto sse_decode_session_snapshot_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_link = sse_decode_link_state_dto(deserializer);
+    var var_lastError = sse_decode_opt_String(deserializer);
+    var var_threads = sse_decode_list_thread_view_dto(deserializer);
+    var var_unreadTotal = sse_decode_i_32(deserializer);
+    return SessionSnapshotDto(
+      link: var_link,
+      lastError: var_lastError,
+      threads: var_threads,
+      unreadTotal: var_unreadTotal,
+    );
+  }
+
+  @protected
   SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_kind = sse_decode_String(deserializer);
-    var var_channelId = sse_decode_String(deserializer);
-    var var_reason = sse_decode_String(deserializer);
-    var var_token = sse_decode_String(deserializer);
-    var var_exp = sse_decode_i_64(deserializer);
-    var var_from = sse_decode_String(deserializer);
-    var var_nickname = sse_decode_String(deserializer);
-    var var_pulled = sse_decode_u_64(deserializer);
-    var var_catchingUp = sse_decode_bool(deserializer);
-    var var_lastError = sse_decode_opt_String(deserializer);
-    var var_inboxCount = sse_decode_i_32(deserializer);
-    return SessionUpdateDto(
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_state = sse_decode_box_autoadd_link_state_dto(deserializer);
+        var var_lastError = sse_decode_opt_String(deserializer);
+        return SessionUpdateDto_Link(
+          state: var_state,
+          lastError: var_lastError,
+        );
+      case 1:
+        var var_threads = sse_decode_list_thread_view_dto(deserializer);
+        return SessionUpdateDto_Inbox(threads: var_threads);
+      case 2:
+        var var_thread = sse_decode_box_autoadd_thread_view_dto(deserializer);
+        return SessionUpdateDto_ThreadUpsert(thread: var_thread);
+      case 3:
+        var var_pulled = sse_decode_u_64(deserializer);
+        var var_catchingUp = sse_decode_bool(deserializer);
+        return SessionUpdateDto_SyncProgress(
+          pulled: var_pulled,
+          catchingUp: var_catchingUp,
+        );
+      case 4:
+        var var_channelId = sse_decode_String(deserializer);
+        return SessionUpdateDto_Kickout(channelId: var_channelId);
+      case 5:
+        var var_reason = sse_decode_String(deserializer);
+        return SessionUpdateDto_AuthExpired(reason: var_reason);
+      case 6:
+        var var_token = sse_decode_String(deserializer);
+        var var_exp = sse_decode_i_64(deserializer);
+        return SessionUpdateDto_TokenRenew(token: var_token, exp: var_exp);
+      case 7:
+        var var_from = sse_decode_String(deserializer);
+        var var_nickname = sse_decode_String(deserializer);
+        return SessionUpdateDto_FriendRequest(
+          from: var_from,
+          nickname: var_nickname,
+        );
+      case 8:
+        var var_from = sse_decode_String(deserializer);
+        var var_nickname = sse_decode_String(deserializer);
+        return SessionUpdateDto_FriendAccepted(
+          from: var_from,
+          nickname: var_nickname,
+        );
+      case 9:
+        var var_account = sse_decode_String(deserializer);
+        var var_nickname = sse_decode_String(deserializer);
+        var var_avatar = sse_decode_String(deserializer);
+        return SessionUpdateDto_ProfileUpdated(
+          account: var_account,
+          nickname: var_nickname,
+          avatar: var_avatar,
+        );
+      case 10:
+        var var_account = sse_decode_String(deserializer);
+        var var_status = sse_decode_i_32(deserializer);
+        var var_lastSeen = sse_decode_i_64(deserializer);
+        return SessionUpdateDto_Presence(
+          account: var_account,
+          status: var_status,
+          lastSeen: var_lastSeen,
+        );
+      case 11:
+        var var_typer = sse_decode_String(deserializer);
+        var var_dest = sse_decode_String(deserializer);
+        var var_kind = sse_decode_i_32(deserializer);
+        var var_active = sse_decode_bool(deserializer);
+        return SessionUpdateDto_Typing(
+          typer: var_typer,
+          dest: var_dest,
+          kind: var_kind,
+          active: var_active,
+        );
+      case 12:
+        var var_reader = sse_decode_String(deserializer);
+        var var_dest = sse_decode_String(deserializer);
+        var var_kind = sse_decode_i_32(deserializer);
+        var var_messageId = sse_decode_i_64(deserializer);
+        return SessionUpdateDto_ReceiptRead(
+          reader: var_reader,
+          dest: var_dest,
+          kind: var_kind,
+          messageId: var_messageId,
+        );
+      case 13:
+        var var_groupId = sse_decode_String(deserializer);
+        var var_members = sse_decode_list_String(deserializer);
+        return SessionUpdateDto_GroupCreate(
+          groupId: var_groupId,
+          members: var_members,
+        );
+      case 14:
+        var var_contacts = sse_decode_list_person_dto(deserializer);
+        return SessionUpdateDto_ContactsChanged(contacts: var_contacts);
+      case 15:
+        var var_message = sse_decode_String(deserializer);
+        return SessionUpdateDto_RustPanic(message: var_message);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  SettingsDto sse_decode_settings_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_wsUrl = sse_decode_String(deserializer);
+    var var_httpOrigin = sse_decode_String(deserializer);
+    var var_env = sse_decode_String(deserializer);
+    var var_locale = sse_decode_String(deserializer);
+    var var_account = sse_decode_String(deserializer);
+    return SettingsDto(
+      wsUrl: var_wsUrl,
+      httpOrigin: var_httpOrigin,
+      env: var_env,
+      locale: var_locale,
+      account: var_account,
+    );
+  }
+
+  @protected
+  ThreadViewDto sse_decode_thread_view_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_kind = sse_decode_i_32(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_avatar = sse_decode_String(deserializer);
+    var var_lastBody = sse_decode_String(deserializer);
+    var var_lastAt = sse_decode_i_64(deserializer);
+    var var_unread = sse_decode_i_32(deserializer);
+    return ThreadViewDto(
+      id: var_id,
       kind: var_kind,
-      channelId: var_channelId,
-      reason: var_reason,
-      token: var_token,
-      exp: var_exp,
-      from: var_from,
-      nickname: var_nickname,
-      pulled: var_pulled,
-      catchingUp: var_catchingUp,
-      lastError: var_lastError,
-      inboxCount: var_inboxCount,
+      title: var_title,
+      avatar: var_avatar,
+      lastBody: var_lastBody,
+      lastAt: var_lastAt,
+      unread: var_unread,
+    );
+  }
+
+  @protected
+  TimelineDeltaDto sse_decode_timeline_delta_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_fromVersion = sse_decode_u_64(deserializer);
+    var var_toVersion = sse_decode_u_64(deserializer);
+    var var_upserts = sse_decode_list_message_view_dto(deserializer);
+    var var_deletedKeys = sse_decode_list_String(deserializer);
+    var var_unread = sse_decode_opt_box_autoadd_i_32(deserializer);
+    var var_lastReadMessageId = sse_decode_opt_box_autoadd_i_64(deserializer);
+    return TimelineDeltaDto(
+      dest: var_dest,
+      fromVersion: var_fromVersion,
+      toVersion: var_toVersion,
+      upserts: var_upserts,
+      deletedKeys: var_deletedKeys,
+      unread: var_unread,
+      lastReadMessageId: var_lastReadMessageId,
+    );
+  }
+
+  @protected
+  TimelineSnapshotDto sse_decode_timeline_snapshot_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_version = sse_decode_u_64(deserializer);
+    var var_messages = sse_decode_list_message_view_dto(deserializer);
+    var var_pending = sse_decode_list_message_view_dto(deserializer);
+    var var_unread = sse_decode_i_32(deserializer);
+    var var_lastReadMessageId = sse_decode_i_64(deserializer);
+    var var_hasMore = sse_decode_bool(deserializer);
+    return TimelineSnapshotDto(
+      dest: var_dest,
+      version: var_version,
+      messages: var_messages,
+      pending: var_pending,
+      unread: var_unread,
+      lastReadMessageId: var_lastReadMessageId,
+      hasMore: var_hasMore,
     );
   }
 
@@ -3185,24 +4157,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_kind = sse_decode_String(deserializer);
-    var var_dest = sse_decode_String(deserializer);
-    var var_version = sse_decode_u_64(deserializer);
-    var var_fromVersion = sse_decode_u_64(deserializer);
-    var var_toVersion = sse_decode_u_64(deserializer);
-    var var_unread = sse_decode_i_32(deserializer);
-    var var_hasMore = sse_decode_bool(deserializer);
-    var var_reason = sse_decode_String(deserializer);
-    return TimelineUpdateDto(
-      kind: var_kind,
-      dest: var_dest,
-      version: var_version,
-      fromVersion: var_fromVersion,
-      toVersion: var_toVersion,
-      unread: var_unread,
-      hasMore: var_hasMore,
-      reason: var_reason,
-    );
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_snapshot = sse_decode_box_autoadd_timeline_snapshot_dto(
+          deserializer,
+        );
+        return TimelineUpdateDto_Snapshot(snapshot: var_snapshot);
+      case 1:
+        var var_delta = sse_decode_box_autoadd_timeline_delta_dto(deserializer);
+        return TimelineUpdateDto_Delta(delta: var_delta);
+      case 2:
+        var var_dest = sse_decode_String(deserializer);
+        var var_reason = sse_decode_String(deserializer);
+        return TimelineUpdateDto_Resync(dest: var_dest, reason: var_reason);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  TokenPersistDto sse_decode_token_persist_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_token = sse_decode_String(deserializer);
+        return TokenPersistDto_Write(token: var_token);
+      case 1:
+        return TokenPersistDto_Clear();
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -3339,6 +4327,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_session_snapshot_dto_Sse(
+    RustStreamSink<SessionSnapshotDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_session_snapshot_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_session_update_dto_Sse(
     RustStreamSink<SessionUpdateDto> self,
     SseSerializer serializer,
@@ -3393,12 +4398,89 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_bot_dto(BotDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.nickname, serializer);
+    sse_encode_String(self.avatar, serializer);
+    sse_encode_String(self.bio, serializer);
+    sse_encode_String(self.model, serializer);
+    sse_encode_String(self.thinkingEffort, serializer);
+    sse_encode_i_32(self.contextTokens, serializer);
+    sse_encode_String(self.visibility, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_kim_outgoing_content(
     KimOutgoingContent self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_kim_outgoing_content(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_link_state_dto(
+    LinkStateDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_link_state_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_thread_view_dto(
+    ThreadViewDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_thread_view_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_timeline_delta_dto(
+    TimelineDeltaDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_timeline_delta_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_timeline_snapshot_dto(
+    TimelineSnapshotDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_timeline_snapshot_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_command_ack_dto(
+    CommandAckDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.requestId, serializer);
+    sse_encode_String(self.clientId, serializer);
+    sse_encode_String(self.dest, serializer);
+    sse_encode_i_64(self.acceptedAt, serializer);
+    sse_encode_send_status_dto(self.sendStatus, serializer);
   }
 
   @protected
@@ -3434,7 +4516,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.clientId, serializer);
     sse_encode_String(self.dest, serializer);
     sse_encode_i_64(self.acceptedAt, serializer);
-    sse_encode_String(self.sendStatus, serializer);
+    sse_encode_send_status_dto(self.sendStatus, serializer);
   }
 
   @protected
@@ -3531,6 +4613,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_link_state_dto(LinkStateDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case LinkStateDto_Connecting():
+        sse_encode_i_32(0, serializer);
+      case LinkStateDto_Online():
+        sse_encode_i_32(1, serializer);
+      case LinkStateDto_Reconnecting(attempt: final attempt):
+        sse_encode_i_32(2, serializer);
+        sse_encode_u_32(attempt, serializer);
+      case LinkStateDto_Offline():
+        sse_encode_i_32(3, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -3588,6 +4686,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_message_view_dto(
+    List<MessageViewDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_message_view_dto(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_person_dto(
+    List<PersonDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_person_dto(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -3595,6 +4717,74 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_list_room_member_dto(
+    List<RoomMemberDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_room_member_dto(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_thread_view_dto(
+    List<ThreadViewDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_thread_view_dto(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_local_media_dto(
+    LocalMediaDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.localPath, serializer);
+    sse_encode_i_64(self.byteSize, serializer);
+    sse_encode_i_32(self.width, serializer);
+    sse_encode_i_32(self.height, serializer);
+  }
+
+  @protected
+  void sse_encode_message_page_dto(
+    MessagePageDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_list_message_view_dto(self.messages, serializer);
+    sse_encode_bool(self.hasMore, serializer);
+  }
+
+  @protected
+  void sse_encode_message_view_dto(
+    MessageViewDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.key, serializer);
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.sender, serializer);
+    sse_encode_String(self.body, serializer);
+    sse_encode_opt_String(self.localPath, serializer);
+    sse_encode_i_64(self.at, serializer);
+    sse_encode_bool(self.sys, serializer);
+    sse_encode_i_32(self.kind, serializer);
+    sse_encode_i_32(self.width, serializer);
+    sse_encode_i_32(self.height, serializer);
+    sse_encode_i_64(self.messageId, serializer);
+    sse_encode_opt_String(self.batchId, serializer);
+    sse_encode_send_status_dto(self.sendStatus, serializer);
   }
 
   @protected
@@ -3608,10 +4798,86 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_person_dto(PersonDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.account, serializer);
+    sse_encode_String(self.nickname, serializer);
+    sse_encode_String(self.avatar, serializer);
+    sse_encode_String(self.bio, serializer);
+    sse_encode_String(self.relation, serializer);
+    sse_encode_i_32(self.kind, serializer);
+  }
+
+  @protected
+  void sse_encode_profile_dto(ProfileDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.account, serializer);
+    sse_encode_String(self.nickname, serializer);
+    sse_encode_String(self.avatar, serializer);
+    sse_encode_String(self.bio, serializer);
+    sse_encode_i_32(self.kind, serializer);
+  }
+
+  @protected
+  void sse_encode_room_member_dto(
+    RoomMemberDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.account, serializer);
+    sse_encode_i_32(self.status, serializer);
+    sse_encode_i_64(self.lastSeen, serializer);
+  }
+
+  @protected
   void sse_encode_sdk_error_dto(SdkErrorDto self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.kind, serializer);
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_send_status_dto(
+    SendStatusDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_session_snapshot_dto(
+    SessionSnapshotDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_link_state_dto(self.link, serializer);
+    sse_encode_opt_String(self.lastError, serializer);
+    sse_encode_list_thread_view_dto(self.threads, serializer);
+    sse_encode_i_32(self.unreadTotal, serializer);
   }
 
   @protected
@@ -3620,17 +4886,160 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.kind, serializer);
-    sse_encode_String(self.channelId, serializer);
-    sse_encode_String(self.reason, serializer);
-    sse_encode_String(self.token, serializer);
-    sse_encode_i_64(self.exp, serializer);
-    sse_encode_String(self.from, serializer);
-    sse_encode_String(self.nickname, serializer);
-    sse_encode_u_64(self.pulled, serializer);
-    sse_encode_bool(self.catchingUp, serializer);
-    sse_encode_opt_String(self.lastError, serializer);
-    sse_encode_i_32(self.inboxCount, serializer);
+    switch (self) {
+      case SessionUpdateDto_Link(
+        state: final state,
+        lastError: final lastError,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_box_autoadd_link_state_dto(state, serializer);
+        sse_encode_opt_String(lastError, serializer);
+      case SessionUpdateDto_Inbox(threads: final threads):
+        sse_encode_i_32(1, serializer);
+        sse_encode_list_thread_view_dto(threads, serializer);
+      case SessionUpdateDto_ThreadUpsert(thread: final thread):
+        sse_encode_i_32(2, serializer);
+        sse_encode_box_autoadd_thread_view_dto(thread, serializer);
+      case SessionUpdateDto_SyncProgress(
+        pulled: final pulled,
+        catchingUp: final catchingUp,
+      ):
+        sse_encode_i_32(3, serializer);
+        sse_encode_u_64(pulled, serializer);
+        sse_encode_bool(catchingUp, serializer);
+      case SessionUpdateDto_Kickout(channelId: final channelId):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(channelId, serializer);
+      case SessionUpdateDto_AuthExpired(reason: final reason):
+        sse_encode_i_32(5, serializer);
+        sse_encode_String(reason, serializer);
+      case SessionUpdateDto_TokenRenew(token: final token, exp: final exp):
+        sse_encode_i_32(6, serializer);
+        sse_encode_String(token, serializer);
+        sse_encode_i_64(exp, serializer);
+      case SessionUpdateDto_FriendRequest(
+        from: final from,
+        nickname: final nickname,
+      ):
+        sse_encode_i_32(7, serializer);
+        sse_encode_String(from, serializer);
+        sse_encode_String(nickname, serializer);
+      case SessionUpdateDto_FriendAccepted(
+        from: final from,
+        nickname: final nickname,
+      ):
+        sse_encode_i_32(8, serializer);
+        sse_encode_String(from, serializer);
+        sse_encode_String(nickname, serializer);
+      case SessionUpdateDto_ProfileUpdated(
+        account: final account,
+        nickname: final nickname,
+        avatar: final avatar,
+      ):
+        sse_encode_i_32(9, serializer);
+        sse_encode_String(account, serializer);
+        sse_encode_String(nickname, serializer);
+        sse_encode_String(avatar, serializer);
+      case SessionUpdateDto_Presence(
+        account: final account,
+        status: final status,
+        lastSeen: final lastSeen,
+      ):
+        sse_encode_i_32(10, serializer);
+        sse_encode_String(account, serializer);
+        sse_encode_i_32(status, serializer);
+        sse_encode_i_64(lastSeen, serializer);
+      case SessionUpdateDto_Typing(
+        typer: final typer,
+        dest: final dest,
+        kind: final kind,
+        active: final active,
+      ):
+        sse_encode_i_32(11, serializer);
+        sse_encode_String(typer, serializer);
+        sse_encode_String(dest, serializer);
+        sse_encode_i_32(kind, serializer);
+        sse_encode_bool(active, serializer);
+      case SessionUpdateDto_ReceiptRead(
+        reader: final reader,
+        dest: final dest,
+        kind: final kind,
+        messageId: final messageId,
+      ):
+        sse_encode_i_32(12, serializer);
+        sse_encode_String(reader, serializer);
+        sse_encode_String(dest, serializer);
+        sse_encode_i_32(kind, serializer);
+        sse_encode_i_64(messageId, serializer);
+      case SessionUpdateDto_GroupCreate(
+        groupId: final groupId,
+        members: final members,
+      ):
+        sse_encode_i_32(13, serializer);
+        sse_encode_String(groupId, serializer);
+        sse_encode_list_String(members, serializer);
+      case SessionUpdateDto_ContactsChanged(contacts: final contacts):
+        sse_encode_i_32(14, serializer);
+        sse_encode_list_person_dto(contacts, serializer);
+      case SessionUpdateDto_RustPanic(message: final message):
+        sse_encode_i_32(15, serializer);
+        sse_encode_String(message, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_settings_dto(SettingsDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.wsUrl, serializer);
+    sse_encode_String(self.httpOrigin, serializer);
+    sse_encode_String(self.env, serializer);
+    sse_encode_String(self.locale, serializer);
+    sse_encode_String(self.account, serializer);
+  }
+
+  @protected
+  void sse_encode_thread_view_dto(
+    ThreadViewDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_i_32(self.kind, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_String(self.avatar, serializer);
+    sse_encode_String(self.lastBody, serializer);
+    sse_encode_i_64(self.lastAt, serializer);
+    sse_encode_i_32(self.unread, serializer);
+  }
+
+  @protected
+  void sse_encode_timeline_delta_dto(
+    TimelineDeltaDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_u_64(self.fromVersion, serializer);
+    sse_encode_u_64(self.toVersion, serializer);
+    sse_encode_list_message_view_dto(self.upserts, serializer);
+    sse_encode_list_String(self.deletedKeys, serializer);
+    sse_encode_opt_box_autoadd_i_32(self.unread, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.lastReadMessageId, serializer);
+  }
+
+  @protected
+  void sse_encode_timeline_snapshot_dto(
+    TimelineSnapshotDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_u_64(self.version, serializer);
+    sse_encode_list_message_view_dto(self.messages, serializer);
+    sse_encode_list_message_view_dto(self.pending, serializer);
+    sse_encode_i_32(self.unread, serializer);
+    sse_encode_i_64(self.lastReadMessageId, serializer);
+    sse_encode_bool(self.hasMore, serializer);
   }
 
   @protected
@@ -3639,14 +5048,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.kind, serializer);
-    sse_encode_String(self.dest, serializer);
-    sse_encode_u_64(self.version, serializer);
-    sse_encode_u_64(self.fromVersion, serializer);
-    sse_encode_u_64(self.toVersion, serializer);
-    sse_encode_i_32(self.unread, serializer);
-    sse_encode_bool(self.hasMore, serializer);
-    sse_encode_String(self.reason, serializer);
+    switch (self) {
+      case TimelineUpdateDto_Snapshot(snapshot: final snapshot):
+        sse_encode_i_32(0, serializer);
+        sse_encode_box_autoadd_timeline_snapshot_dto(snapshot, serializer);
+      case TimelineUpdateDto_Delta(delta: final delta):
+        sse_encode_i_32(1, serializer);
+        sse_encode_box_autoadd_timeline_delta_dto(delta, serializer);
+      case TimelineUpdateDto_Resync(dest: final dest, reason: final reason):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(dest, serializer);
+        sse_encode_String(reason, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_token_persist_dto(
+    TokenPersistDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case TokenPersistDto_Write(token: final token):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(token, serializer);
+      case TokenPersistDto_Clear():
+        sse_encode_i_32(1, serializer);
+    }
   }
 
   @protected
@@ -3756,7 +5184,7 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   Future<void> attachStore({required String dbPath}) => RustLib.instance.api
       .crateApiClientKimSdkHandleAttachStore(that: this, dbPath: dbPath);
 
-  Future<String> botCreate({
+  Future<PersonDto> botCreate({
     required String clientProfileId,
     required String nickname,
     required String avatar,
@@ -3813,7 +5241,7 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     active: active,
   );
 
-  Future<String> botUpdate({
+  Future<PersonDto> botUpdate({
     required String dest,
     required String nickname,
     required String avatar,
@@ -3866,10 +5294,10 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   Future<String> friendAccept({required String dest}) => RustLib.instance.api
       .crateApiClientKimSdkHandleFriendAccept(that: this, dest: dest);
 
-  Future<String> friendIncoming() =>
+  Future<List<PersonDto>> friendIncoming() =>
       RustLib.instance.api.crateApiClientKimSdkHandleFriendIncoming(that: this);
 
-  Future<String> friendList() =>
+  Future<List<PersonDto>> friendList() =>
       RustLib.instance.api.crateApiClientKimSdkHandleFriendList(that: this);
 
   Future<String> friendReject({required String dest}) => RustLib.instance.api
@@ -3899,6 +5327,21 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
 
   String linkState() =>
       RustLib.instance.api.crateApiClientKimSdkHandleLinkState(that: this);
+
+  Future<MessagePageDto> loadOlder({
+    required String dest,
+    required PlatformInt64 beforeAt,
+    required String beforeKey,
+    required PlatformInt64 beforeId,
+    required int limit,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleLoadOlder(
+    that: this,
+    dest: dest,
+    beforeAt: beforeAt,
+    beforeKey: beforeKey,
+    beforeId: beforeId,
+    limit: limit,
+  );
 
   Future<void> markRead({
     required String dest,
@@ -3942,7 +5385,7 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
     policy: policy,
   );
 
-  Future<String> profile({required String dest}) => RustLib.instance.api
+  Future<ProfileDto> profile({required String dest}) => RustLib.instance.api
       .crateApiClientKimSdkHandleProfile(that: this, dest: dest);
 
   Future<KimCommandReceipt> retrySend({required String clientId}) => RustLib
@@ -3950,18 +5393,23 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
       .api
       .crateApiClientKimSdkHandleRetrySend(that: this, clientId: clientId);
 
-  /// Returns JSON array of `{account,status,last_seen}`.
-  Future<String> roomEnter({required String dest, required int kind}) => RustLib
-      .instance
-      .api
-      .crateApiClientKimSdkHandleRoomEnter(that: this, dest: dest, kind: kind);
+  Future<List<RoomMemberDto>> roomEnter({
+    required String dest,
+    required int kind,
+  }) => RustLib.instance.api.crateApiClientKimSdkHandleRoomEnter(
+    that: this,
+    dest: dest,
+    kind: kind,
+  );
 
   Future<String> roomLeave({required String dest, required int kind}) => RustLib
       .instance
       .api
       .crateApiClientKimSdkHandleRoomLeave(that: this, dest: dest, kind: kind);
 
-  Future<String> searchUsers({required String query}) => RustLib.instance.api
+  Future<List<PersonDto>> searchUsers({required String query}) => RustLib
+      .instance
+      .api
       .crateApiClientKimSdkHandleSearchUsers(that: this, query: query);
 
   Future<KimTalkResult> sendMessage({
@@ -4017,7 +5465,7 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
       .api
       .crateApiClientKimSdkHandleSyncConfirm(that: this, cursor: cursor);
 
-  Future<String> updateProfile({
+  Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
     required String bio,
@@ -4032,6 +5480,9 @@ class KimSdkHandleImpl extends RustOpaque implements KimSdkHandle {
   /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
   Stream<SessionUpdateDto> watchSession() =>
       RustLib.instance.api.crateApiClientKimSdkHandleWatchSession(that: this);
+
+  Stream<SessionSnapshotDto> watchSessionSnapshot() => RustLib.instance.api
+      .crateApiClientKimSdkHandleWatchSessionSnapshot(that: this);
 
   Stream<TimelineUpdateDto> watchTimeline({
     required String dest,

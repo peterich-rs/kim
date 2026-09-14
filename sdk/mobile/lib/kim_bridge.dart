@@ -54,6 +54,23 @@ class KimAuthSession {
 abstract class KimClientPort {
   Stream<KimEvent> sessionEvents();
 
+  Stream<rust_types.SessionSnapshotDto> watchSessionSnapshot();
+
+  Stream<rust_types.SessionUpdateDto> watchSessionEvents();
+
+  Stream<rust_types.TimelineUpdateDto> watchThread(
+    String dest, {
+    int limit = 50,
+  });
+
+  Future<rust_types.MessagePageDto> loadOlder({
+    required String dest,
+    required int beforeAt,
+    required String beforeKey,
+    int beforeId = 0,
+    int limit = 50,
+  });
+
   KimLinkState linkState();
 
   Future<void> startSession(
@@ -401,35 +418,71 @@ class KimBridge implements KimAuthPort, KimClientPort {
   }
 
   KimEvent _fromWatch(rust_types.SessionUpdateDto dto) {
-    return switch (dto.kind) {
-      'kickout' => KimEvent(kind: KimEventKind.kick, dest: dto.channelId),
-      'auth_expired' => KimEvent(
+    return switch (dto) {
+      rust_types.SessionUpdateDto_Kickout(:final channelId) => KimEvent(
+        kind: KimEventKind.kick,
+        dest: channelId,
+      ),
+      rust_types.SessionUpdateDto_AuthExpired(:final reason) => KimEvent(
         kind: KimEventKind.authExpired,
-        error: dto.reason,
+        error: reason,
       ),
-      'token' => KimEvent(
-        kind: KimEventKind.token,
-        token: dto.token,
-        exp: dto.exp.toInt(),
-      ),
-      'friend' => KimEvent(
-        kind: KimEventKind.friend,
-        dest: dto.from,
-        sender: dto.from,
-        nickname: dto.nickname,
-      ),
-      'friend_accepted' => KimEvent(
-        kind: KimEventKind.friendAccepted,
-        dest: dto.from,
-        sender: dto.from,
-        nickname: dto.nickname,
-      ),
-      // Fat session_events already maps Link with supervisor.state.
-      // SessionUpdateDto drops LinkStateView (`Link { last_error, .. }`), so a
-      // watch "link" event has empty `state` and would paint the UI Offline.
-      'link' => const KimEvent(kind: KimEventKind.closed),
+      rust_types.SessionUpdateDto_TokenRenew(:final token, :final exp) =>
+        KimEvent(kind: KimEventKind.token, token: token, exp: exp.toInt()),
+      rust_types.SessionUpdateDto_FriendRequest(:final from, :final nickname) =>
+        KimEvent(
+          kind: KimEventKind.friend,
+          dest: from,
+          sender: from,
+          nickname: nickname,
+        ),
+      rust_types.SessionUpdateDto_FriendAccepted(
+        :final from,
+        :final nickname,
+      ) =>
+        KimEvent(
+          kind: KimEventKind.friendAccepted,
+          dest: from,
+          sender: from,
+          nickname: nickname,
+        ),
       _ => const KimEvent(kind: KimEventKind.closed),
     };
+  }
+
+  @override
+  Stream<rust_types.SessionSnapshotDto> watchSessionSnapshot() {
+    return _require().watchSessionSnapshot();
+  }
+
+  @override
+  Stream<rust_types.SessionUpdateDto> watchSessionEvents() {
+    return _require().watchSession();
+  }
+
+  @override
+  Stream<rust_types.TimelineUpdateDto> watchThread(
+    String dest, {
+    int limit = 50,
+  }) {
+    return _require().watchTimeline(dest: dest, limit: limit);
+  }
+
+  @override
+  Future<rust_types.MessagePageDto> loadOlder({
+    required String dest,
+    required int beforeAt,
+    required String beforeKey,
+    int beforeId = 0,
+    int limit = 50,
+  }) {
+    return _require().loadOlder(
+      dest: dest,
+      beforeAt: beforeAt,
+      beforeKey: beforeKey,
+      beforeId: beforeId,
+      limit: limit,
+    );
   }
 
   @override
@@ -609,7 +662,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       clientId: receipt.clientId,
       dest: receipt.dest,
       acceptedAt: receipt.acceptedAt.toInt(),
-      sendStatus: receipt.sendStatus,
+      sendStatus: _sendStatusLabel(receipt.sendStatus),
     );
   }
 
@@ -626,7 +679,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
       clientId: receipt.clientId,
       dest: receipt.dest,
       acceptedAt: receipt.acceptedAt.toInt(),
-      sendStatus: receipt.sendStatus,
+      sendStatus: _sendStatusLabel(receipt.sendStatus),
     );
   }
 
@@ -725,37 +778,53 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
   }
 
-  List<KimPerson> _people(String raw) {
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) {
-      return const [];
-    }
-    return [
-      for (final item in decoded)
-        if (item is Map)
-          KimPerson(
-            account: '${item['account'] ?? ''}',
-            nickname: '${item['nickname'] ?? ''}',
-            avatar: '${item['avatar'] ?? ''}',
-            bio: '${item['bio'] ?? ''}',
-            kind: _profileKind(item['kind']),
-          ),
-    ].where((p) => p.account.isNotEmpty).toList();
+  KimPerson _fromPerson(rust_types.PersonDto p) {
+    return KimPerson(
+      account: p.account,
+      nickname: p.nickname,
+      avatar: p.avatar,
+      bio: p.bio,
+      kind: _profileKind(p.kind),
+    );
+  }
+
+  KimPerson _fromProfile(rust_types.ProfileDto p) {
+    return KimPerson(
+      account: p.account,
+      nickname: p.nickname,
+      avatar: p.avatar,
+      bio: p.bio,
+      kind: _profileKind(p.kind),
+    );
+  }
+
+  String _sendStatusLabel(rust_types.SendStatusDto status) {
+    return switch (status) {
+      rust_types.SendStatusDto.pending => 'pending',
+      rust_types.SendStatusDto.uploading => 'uploading',
+      rust_types.SendStatusDto.sending => 'sending',
+      rust_types.SendStatusDto.sent => 'sent',
+      rust_types.SendStatusDto.failed => 'failed',
+      rust_types.SendStatusDto.cancelled => 'cancelled',
+    };
   }
 
   @override
   Future<List<KimPerson>> friendList() async {
-    return _people(await _require().friendList());
+    return [for (final p in await _require().friendList()) _fromPerson(p)];
   }
 
   @override
   Future<List<KimPerson>> friendIncoming() async {
-    return _people(await _require().friendIncoming());
+    return [for (final p in await _require().friendIncoming()) _fromPerson(p)];
   }
 
   @override
   Future<List<KimPerson>> searchUsers(String query) async {
-    return _people(await _require().searchUsers(query: query));
+    return [
+      for (final p in await _require().searchUsers(query: query))
+        _fromPerson(p),
+    ];
   }
 
   @override
@@ -778,24 +847,6 @@ class KimBridge implements KimAuthPort, KimClientPort {
     await _require().friendRemove(dest: dest);
   }
 
-  KimPerson _person(String raw) {
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map) {
-      throw StateError('bad profile');
-    }
-    final account = '${decoded['account'] ?? ''}';
-    if (account.isEmpty) {
-      throw StateError('bad profile');
-    }
-    return KimPerson(
-      account: account,
-      nickname: '${decoded['nickname'] ?? ''}',
-      avatar: '${decoded['avatar'] ?? ''}',
-      bio: '${decoded['bio'] ?? ''}',
-      kind: _profileKind(decoded['kind']),
-    );
-  }
-
   int _profileKind(Object? raw) {
     if (raw == 'bot' || raw == '2') {
       return ProfileKind.bot;
@@ -810,7 +861,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimPerson> profile({String dest = ''}) async {
-    return _person(await _require().profile(dest: dest));
+    return _fromProfile(await _require().profile(dest: dest));
   }
 
   @override
@@ -819,7 +870,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     required String avatar,
     String bio = '',
   }) async {
-    return _person(
+    return _fromProfile(
       await _require().updateProfile(
         nickname: nickname,
         avatar: avatar,
@@ -833,24 +884,14 @@ class KimBridge implements KimAuthPort, KimClientPort {
     String dest, {
     int kind = 0,
   }) async {
-    final raw = await _require().roomEnter(dest: dest, kind: kind);
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) {
-      return const [];
-    }
+    final rows = await _require().roomEnter(dest: dest, kind: kind);
     return [
-      for (final row in decoded)
-        if (row is Map)
-          {
-            'account': '${row['account'] ?? ''}',
-            'status': row['status'] is int
-                ? row['status'] as int
-                : int.tryParse('${row['status']}') ?? 0,
-            'lastSeen': row['last_seen'] is int
-                ? row['last_seen'] as int
-                : int.tryParse('${row['last_seen'] ?? row['lastSeen'] ?? 0}') ??
-                      0,
-          },
+      for (final row in rows)
+        {
+          'account': row.account,
+          'status': row.status,
+          'lastSeen': row.lastSeen.toInt(),
+        },
     ];
   }
 
@@ -879,7 +920,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     int? contextTokens,
     String visibility = '',
   }) async {
-    return _person(
+    return _fromPerson(
       await _require().botCreate(
         clientProfileId: clientProfileId,
         nickname: nickname,
@@ -909,7 +950,7 @@ class KimBridge implements KimAuthPort, KimClientPort {
     int? contextTokens,
     String visibility = '',
   }) async {
-    return _person(
+    return _fromPerson(
       await _require().botUpdate(
         dest: dest,
         nickname: nickname,

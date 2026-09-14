@@ -6,8 +6,321 @@
 import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
+part 'types.freezed.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `from_profile`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+
+class BotDto {
+  final String dest;
+  final String nickname;
+  final String avatar;
+  final String bio;
+  final String model;
+  final String thinkingEffort;
+  final int contextTokens;
+  final String visibility;
+
+  const BotDto({
+    required this.dest,
+    required this.nickname,
+    required this.avatar,
+    required this.bio,
+    required this.model,
+    required this.thinkingEffort,
+    required this.contextTokens,
+    required this.visibility,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      nickname.hashCode ^
+      avatar.hashCode ^
+      bio.hashCode ^
+      model.hashCode ^
+      thinkingEffort.hashCode ^
+      contextTokens.hashCode ^
+      visibility.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BotDto &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          nickname == other.nickname &&
+          avatar == other.avatar &&
+          bio == other.bio &&
+          model == other.model &&
+          thinkingEffort == other.thinkingEffort &&
+          contextTokens == other.contextTokens &&
+          visibility == other.visibility;
+}
+
+class CommandAckDto {
+  final String requestId;
+  final String clientId;
+  final String dest;
+  final PlatformInt64 acceptedAt;
+  final SendStatusDto sendStatus;
+
+  const CommandAckDto({
+    required this.requestId,
+    required this.clientId,
+    required this.dest,
+    required this.acceptedAt,
+    required this.sendStatus,
+  });
+
+  @override
+  int get hashCode =>
+      requestId.hashCode ^
+      clientId.hashCode ^
+      dest.hashCode ^
+      acceptedAt.hashCode ^
+      sendStatus.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommandAckDto &&
+          runtimeType == other.runtimeType &&
+          requestId == other.requestId &&
+          clientId == other.clientId &&
+          dest == other.dest &&
+          acceptedAt == other.acceptedAt &&
+          sendStatus == other.sendStatus;
+}
+
+@freezed
+sealed class LinkStateDto with _$LinkStateDto {
+  const LinkStateDto._();
+
+  const factory LinkStateDto.connecting() = LinkStateDto_Connecting;
+  const factory LinkStateDto.online() = LinkStateDto_Online;
+  const factory LinkStateDto.reconnecting({required int attempt}) =
+      LinkStateDto_Reconnecting;
+  const factory LinkStateDto.offline() = LinkStateDto_Offline;
+}
+
+class LocalMediaDto {
+  final String localPath;
+  final PlatformInt64 byteSize;
+  final int width;
+  final int height;
+
+  const LocalMediaDto({
+    required this.localPath,
+    required this.byteSize,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  int get hashCode =>
+      localPath.hashCode ^ byteSize.hashCode ^ width.hashCode ^ height.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocalMediaDto &&
+          runtimeType == other.runtimeType &&
+          localPath == other.localPath &&
+          byteSize == other.byteSize &&
+          width == other.width &&
+          height == other.height;
+}
+
+class MessagePageDto {
+  final String dest;
+  final List<MessageViewDto> messages;
+  final bool hasMore;
+
+  const MessagePageDto({
+    required this.dest,
+    required this.messages,
+    required this.hasMore,
+  });
+
+  @override
+  int get hashCode => dest.hashCode ^ messages.hashCode ^ hasMore.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MessagePageDto &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          messages == other.messages &&
+          hasMore == other.hasMore;
+}
+
+class MessageViewDto {
+  final String key;
+  final String dest;
+  final String sender;
+  final String body;
+  final String? localPath;
+  final PlatformInt64 at;
+  final bool sys;
+  final int kind;
+  final int width;
+  final int height;
+  final PlatformInt64 messageId;
+  final String? batchId;
+  final SendStatusDto sendStatus;
+
+  const MessageViewDto({
+    required this.key,
+    required this.dest,
+    required this.sender,
+    required this.body,
+    this.localPath,
+    required this.at,
+    required this.sys,
+    required this.kind,
+    required this.width,
+    required this.height,
+    required this.messageId,
+    this.batchId,
+    required this.sendStatus,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      dest.hashCode ^
+      sender.hashCode ^
+      body.hashCode ^
+      localPath.hashCode ^
+      at.hashCode ^
+      sys.hashCode ^
+      kind.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      messageId.hashCode ^
+      batchId.hashCode ^
+      sendStatus.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MessageViewDto &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          dest == other.dest &&
+          sender == other.sender &&
+          body == other.body &&
+          localPath == other.localPath &&
+          at == other.at &&
+          sys == other.sys &&
+          kind == other.kind &&
+          width == other.width &&
+          height == other.height &&
+          messageId == other.messageId &&
+          batchId == other.batchId &&
+          sendStatus == other.sendStatus;
+}
+
+class PersonDto {
+  final String account;
+  final String nickname;
+  final String avatar;
+  final String bio;
+  final String relation;
+  final int kind;
+
+  const PersonDto({
+    required this.account,
+    required this.nickname,
+    required this.avatar,
+    required this.bio,
+    required this.relation,
+    required this.kind,
+  });
+
+  @override
+  int get hashCode =>
+      account.hashCode ^
+      nickname.hashCode ^
+      avatar.hashCode ^
+      bio.hashCode ^
+      relation.hashCode ^
+      kind.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PersonDto &&
+          runtimeType == other.runtimeType &&
+          account == other.account &&
+          nickname == other.nickname &&
+          avatar == other.avatar &&
+          bio == other.bio &&
+          relation == other.relation &&
+          kind == other.kind;
+}
+
+class ProfileDto {
+  final String account;
+  final String nickname;
+  final String avatar;
+  final String bio;
+  final int kind;
+
+  const ProfileDto({
+    required this.account,
+    required this.nickname,
+    required this.avatar,
+    required this.bio,
+    required this.kind,
+  });
+
+  @override
+  int get hashCode =>
+      account.hashCode ^
+      nickname.hashCode ^
+      avatar.hashCode ^
+      bio.hashCode ^
+      kind.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProfileDto &&
+          runtimeType == other.runtimeType &&
+          account == other.account &&
+          nickname == other.nickname &&
+          avatar == other.avatar &&
+          bio == other.bio &&
+          kind == other.kind;
+}
+
+class RoomMemberDto {
+  final String account;
+  final int status;
+  final PlatformInt64 lastSeen;
+
+  const RoomMemberDto({
+    required this.account,
+    required this.status,
+    required this.lastSeen,
+  });
+
+  @override
+  int get hashCode => account.hashCode ^ status.hashCode ^ lastSeen.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoomMemberDto &&
+          runtimeType == other.runtimeType &&
+          account == other.account &&
+          status == other.status &&
+          lastSeen == other.lastSeen;
+}
 
 class SdkErrorDto implements FrbException {
   final String kind;
@@ -27,108 +340,288 @@ class SdkErrorDto implements FrbException {
           message == other.message;
 }
 
-class SessionUpdateDto {
-  final String kind;
-  final String channelId;
-  final String reason;
-  final String token;
-  final PlatformInt64 exp;
-  final String from;
-  final String nickname;
-  final BigInt pulled;
-  final bool catchingUp;
-  final String? lastError;
-  final int inboxCount;
+enum SendStatusDto { pending, uploading, sending, sent, failed, cancelled }
 
-  const SessionUpdateDto({
-    required this.kind,
-    required this.channelId,
-    required this.reason,
-    required this.token,
-    required this.exp,
-    required this.from,
-    required this.nickname,
-    required this.pulled,
-    required this.catchingUp,
+class SessionSnapshotDto {
+  final LinkStateDto link;
+  final String? lastError;
+  final List<ThreadViewDto> threads;
+  final int unreadTotal;
+
+  const SessionSnapshotDto({
+    required this.link,
     this.lastError,
-    required this.inboxCount,
+    required this.threads,
+    required this.unreadTotal,
   });
 
   @override
   int get hashCode =>
-      kind.hashCode ^
-      channelId.hashCode ^
-      reason.hashCode ^
-      token.hashCode ^
-      exp.hashCode ^
-      from.hashCode ^
-      nickname.hashCode ^
-      pulled.hashCode ^
-      catchingUp.hashCode ^
+      link.hashCode ^
       lastError.hashCode ^
-      inboxCount.hashCode;
+      threads.hashCode ^
+      unreadTotal.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is SessionUpdateDto &&
+      other is SessionSnapshotDto &&
           runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          channelId == other.channelId &&
-          reason == other.reason &&
-          token == other.token &&
-          exp == other.exp &&
-          from == other.from &&
-          nickname == other.nickname &&
-          pulled == other.pulled &&
-          catchingUp == other.catchingUp &&
+          link == other.link &&
           lastError == other.lastError &&
-          inboxCount == other.inboxCount;
+          threads == other.threads &&
+          unreadTotal == other.unreadTotal;
 }
 
-class TimelineUpdateDto {
-  final String kind;
-  final String dest;
-  final BigInt version;
-  final BigInt fromVersion;
-  final BigInt toVersion;
-  final int unread;
-  final bool hasMore;
-  final String reason;
+@freezed
+sealed class SessionUpdateDto with _$SessionUpdateDto {
+  const SessionUpdateDto._();
 
-  const TimelineUpdateDto({
-    required this.kind,
-    required this.dest,
-    required this.version,
-    required this.fromVersion,
-    required this.toVersion,
-    required this.unread,
-    required this.hasMore,
-    required this.reason,
+  const factory SessionUpdateDto.link({
+    required LinkStateDto state,
+    String? lastError,
+  }) = SessionUpdateDto_Link;
+  const factory SessionUpdateDto.inbox({required List<ThreadViewDto> threads}) =
+      SessionUpdateDto_Inbox;
+  const factory SessionUpdateDto.threadUpsert({required ThreadViewDto thread}) =
+      SessionUpdateDto_ThreadUpsert;
+  const factory SessionUpdateDto.syncProgress({
+    required BigInt pulled,
+    required bool catchingUp,
+  }) = SessionUpdateDto_SyncProgress;
+  const factory SessionUpdateDto.kickout({required String channelId}) =
+      SessionUpdateDto_Kickout;
+  const factory SessionUpdateDto.authExpired({required String reason}) =
+      SessionUpdateDto_AuthExpired;
+  const factory SessionUpdateDto.tokenRenew({
+    required String token,
+    required PlatformInt64 exp,
+  }) = SessionUpdateDto_TokenRenew;
+  const factory SessionUpdateDto.friendRequest({
+    required String from,
+    required String nickname,
+  }) = SessionUpdateDto_FriendRequest;
+  const factory SessionUpdateDto.friendAccepted({
+    required String from,
+    required String nickname,
+  }) = SessionUpdateDto_FriendAccepted;
+  const factory SessionUpdateDto.profileUpdated({
+    required String account,
+    required String nickname,
+    required String avatar,
+  }) = SessionUpdateDto_ProfileUpdated;
+  const factory SessionUpdateDto.presence({
+    required String account,
+    required int status,
+    required PlatformInt64 lastSeen,
+  }) = SessionUpdateDto_Presence;
+  const factory SessionUpdateDto.typing({
+    required String typer,
+    required String dest,
+    required int kind,
+    required bool active,
+  }) = SessionUpdateDto_Typing;
+  const factory SessionUpdateDto.receiptRead({
+    required String reader,
+    required String dest,
+    required int kind,
+    required PlatformInt64 messageId,
+  }) = SessionUpdateDto_ReceiptRead;
+  const factory SessionUpdateDto.groupCreate({
+    required String groupId,
+    required List<String> members,
+  }) = SessionUpdateDto_GroupCreate;
+  const factory SessionUpdateDto.contactsChanged({
+    required List<PersonDto> contacts,
+  }) = SessionUpdateDto_ContactsChanged;
+  const factory SessionUpdateDto.rustPanic({required String message}) =
+      SessionUpdateDto_RustPanic;
+}
+
+class SettingsDto {
+  final String wsUrl;
+  final String httpOrigin;
+  final String env;
+  final String locale;
+  final String account;
+
+  const SettingsDto({
+    required this.wsUrl,
+    required this.httpOrigin,
+    required this.env,
+    required this.locale,
+    required this.account,
   });
 
   @override
   int get hashCode =>
-      kind.hashCode ^
-      dest.hashCode ^
-      version.hashCode ^
-      fromVersion.hashCode ^
-      toVersion.hashCode ^
-      unread.hashCode ^
-      hasMore.hashCode ^
-      reason.hashCode;
+      wsUrl.hashCode ^
+      httpOrigin.hashCode ^
+      env.hashCode ^
+      locale.hashCode ^
+      account.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TimelineUpdateDto &&
+      other is SettingsDto &&
           runtimeType == other.runtimeType &&
+          wsUrl == other.wsUrl &&
+          httpOrigin == other.httpOrigin &&
+          env == other.env &&
+          locale == other.locale &&
+          account == other.account;
+}
+
+class ThreadViewDto {
+  final String id;
+  final int kind;
+  final String title;
+  final String avatar;
+  final String lastBody;
+  final PlatformInt64 lastAt;
+  final int unread;
+
+  const ThreadViewDto({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.avatar,
+    required this.lastBody,
+    required this.lastAt,
+    required this.unread,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      kind.hashCode ^
+      title.hashCode ^
+      avatar.hashCode ^
+      lastBody.hashCode ^
+      lastAt.hashCode ^
+      unread.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ThreadViewDto &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
           kind == other.kind &&
+          title == other.title &&
+          avatar == other.avatar &&
+          lastBody == other.lastBody &&
+          lastAt == other.lastAt &&
+          unread == other.unread;
+}
+
+class TimelineDeltaDto {
+  final String dest;
+  final BigInt fromVersion;
+  final BigInt toVersion;
+  final List<MessageViewDto> upserts;
+  final List<String> deletedKeys;
+  final int? unread;
+  final PlatformInt64? lastReadMessageId;
+
+  const TimelineDeltaDto({
+    required this.dest,
+    required this.fromVersion,
+    required this.toVersion,
+    required this.upserts,
+    required this.deletedKeys,
+    this.unread,
+    this.lastReadMessageId,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      fromVersion.hashCode ^
+      toVersion.hashCode ^
+      upserts.hashCode ^
+      deletedKeys.hashCode ^
+      unread.hashCode ^
+      lastReadMessageId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineDeltaDto &&
+          runtimeType == other.runtimeType &&
           dest == other.dest &&
-          version == other.version &&
           fromVersion == other.fromVersion &&
           toVersion == other.toVersion &&
+          upserts == other.upserts &&
+          deletedKeys == other.deletedKeys &&
           unread == other.unread &&
-          hasMore == other.hasMore &&
-          reason == other.reason;
+          lastReadMessageId == other.lastReadMessageId;
+}
+
+class TimelineSnapshotDto {
+  final String dest;
+  final BigInt version;
+  final List<MessageViewDto> messages;
+  final List<MessageViewDto> pending;
+  final int unread;
+  final PlatformInt64 lastReadMessageId;
+  final bool hasMore;
+
+  const TimelineSnapshotDto({
+    required this.dest,
+    required this.version,
+    required this.messages,
+    required this.pending,
+    required this.unread,
+    required this.lastReadMessageId,
+    required this.hasMore,
+  });
+
+  @override
+  int get hashCode =>
+      dest.hashCode ^
+      version.hashCode ^
+      messages.hashCode ^
+      pending.hashCode ^
+      unread.hashCode ^
+      lastReadMessageId.hashCode ^
+      hasMore.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineSnapshotDto &&
+          runtimeType == other.runtimeType &&
+          dest == other.dest &&
+          version == other.version &&
+          messages == other.messages &&
+          pending == other.pending &&
+          unread == other.unread &&
+          lastReadMessageId == other.lastReadMessageId &&
+          hasMore == other.hasMore;
+}
+
+@freezed
+sealed class TimelineUpdateDto with _$TimelineUpdateDto {
+  const TimelineUpdateDto._();
+
+  const factory TimelineUpdateDto.snapshot({
+    required TimelineSnapshotDto snapshot,
+  }) = TimelineUpdateDto_Snapshot;
+  const factory TimelineUpdateDto.delta({required TimelineDeltaDto delta}) =
+      TimelineUpdateDto_Delta;
+  const factory TimelineUpdateDto.resync({
+    required String dest,
+    required String reason,
+  }) = TimelineUpdateDto_Resync;
+}
+
+@freezed
+sealed class TokenPersistDto with _$TokenPersistDto {
+  const TokenPersistDto._();
+
+  const factory TokenPersistDto.write({required String token}) =
+      TokenPersistDto_Write;
+  const factory TokenPersistDto.clear() = TokenPersistDto_Clear;
 }

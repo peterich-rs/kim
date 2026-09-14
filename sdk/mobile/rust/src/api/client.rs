@@ -9,7 +9,10 @@ use kim_sdk::{
 };
 
 use super::rt;
-use super::types::{SdkErrorDto, SessionUpdateDto, TimelineUpdateDto};
+use super::types::{
+    MessagePageDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto, SendStatusDto,
+    SessionSnapshotDto, SessionUpdateDto, TimelineUpdateDto,
+};
 use crate::frb_generated::StreamSink;
 
 pub struct KimTalkResult {
@@ -22,7 +25,7 @@ pub struct KimCommandReceipt {
     pub client_id: String,
     pub dest: String,
     pub accepted_at: i64,
-    pub send_status: String,
+    pub send_status: SendStatusDto,
 }
 
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
@@ -145,6 +148,28 @@ impl KimSdkHandle {
     #[flutter_rust_bridge::frb(sync)]
     pub fn store_attached(&self) -> bool {
         self.inner.store_attached()
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_session_snapshot(
+        &self,
+        sink: StreamSink<SessionSnapshotDto>,
+    ) -> Result<(), String> {
+        let rx = self.inner.subscribe_session_snapshot();
+        let _guard = rt().enter();
+        rt().spawn(async move {
+            let mut rx = rx;
+            loop {
+                let snap = rx.borrow().clone();
+                if sink.add(SessionSnapshotDto::from(snap)).is_err() {
+                    break;
+                }
+                if rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
     }
 
     /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
@@ -290,7 +315,7 @@ impl KimSdkHandle {
             client_id: receipt.client_id,
             dest: receipt.dest,
             accepted_at: receipt.accepted_at,
-            send_status: receipt.send_status.as_str().into(),
+            send_status: receipt.send_status.into(),
         })
     }
 
@@ -312,8 +337,30 @@ impl KimSdkHandle {
             client_id: receipt.client_id,
             dest: receipt.dest,
             accepted_at: receipt.accepted_at,
-            send_status: receipt.send_status.as_str().into(),
+            send_status: receipt.send_status.into(),
         })
+    }
+
+    pub async fn load_older(
+        &self,
+        dest: String,
+        before_at: i64,
+        before_key: String,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<MessagePageDto, SdkErrorDto> {
+        let page = self
+            .inner
+            .load_older(kim_sdk::PageCursor {
+                dest,
+                before_at,
+                before_key,
+                before_id,
+                limit,
+            })
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(page.into())
     }
 
     pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
@@ -502,28 +549,34 @@ impl KimSdkHandle {
         Ok("ok".into())
     }
 
-    pub fn friend_list(&self) -> Result<String, String> {
+    pub fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.friend_list())
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_list(&users)
+        Ok(users
+            .into_iter()
+            .map(|p| PersonDto::from_profile(p, "friend"))
+            .collect())
     }
 
-    pub fn friend_incoming(&self) -> Result<String, String> {
+    pub fn friend_incoming(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.friend_incoming())
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_list(&users)
+        Ok(users
+            .into_iter()
+            .map(|p| PersonDto::from_profile(p, "incoming"))
+            .collect())
     }
 
-    pub fn profile(&self, dest: String) -> Result<String, String> {
+    pub fn profile(&self, dest: String) -> Result<ProfileDto, String> {
         let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.profile(&dest))
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_one(&p)
+        Ok(p.into())
     }
 
     pub fn update_profile(
@@ -531,41 +584,38 @@ impl KimSdkHandle {
         nickname: String,
         avatar: String,
         bio: String,
-    ) -> Result<String, String> {
+    ) -> Result<ProfileDto, String> {
         let client = self.supervisor()?.client();
         let p = rt()
             .block_on(client.update_profile(&nickname, &avatar, &bio))
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_one(&p)
+        Ok(p.into())
     }
 
-    pub fn search_users(&self, query: String) -> Result<String, String> {
+    pub fn search_users(&self, query: String) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
         let users = rt()
             .block_on(client.search_users(&query))
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_list(&users)
+        Ok(users
+            .into_iter()
+            .map(|p| PersonDto::from_profile(p, "none"))
+            .collect())
     }
 
-    /// Returns JSON array of `{account,status,last_seen}`.
-    pub fn room_enter(&self, dest: String, kind: i32) -> Result<String, String> {
+    pub fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMemberDto>, String> {
         let client = self.supervisor()?.client();
         let rows = rt()
             .block_on(client.room_enter(&dest, kind))
             .map_err(|e| e.to_string())?;
-        serde_json::to_string(
-            &rows
-                .into_iter()
-                .map(|e| {
-                    serde_json::json!({
-                        "account": e.account,
-                        "status": e.status,
-                        "last_seen": e.last_seen,
-                    })
-                })
-                .collect::<Vec<_>>(),
-        )
-        .map_err(|e| e.to_string())
+        Ok(rows
+            .into_iter()
+            .map(|e| RoomMemberDto {
+                account: e.account,
+                status: e.status,
+                last_seen: e.last_seen,
+            })
+            .collect())
     }
 
     pub fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
@@ -591,7 +641,7 @@ impl KimSdkHandle {
         thinking_effort: String,
         context_tokens: i32,
         visibility: String,
-    ) -> Result<String, String> {
+    ) -> Result<PersonDto, String> {
         let client = self.supervisor()?.client();
         let config = kim_client::BotConfig {
             model,
@@ -606,7 +656,7 @@ impl KimSdkHandle {
         let p = rt()
             .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio, &config))
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_one(&p)
+        Ok(PersonDto::from_profile(p, "none"))
     }
 
     pub fn bot_delete(&self, dest: String) -> Result<String, String> {
@@ -626,7 +676,7 @@ impl KimSdkHandle {
         thinking_effort: String,
         context_tokens: i32,
         visibility: String,
-    ) -> Result<String, String> {
+    ) -> Result<PersonDto, String> {
         let client = self.supervisor()?.client();
         let config = kim_client::BotConfig {
             model,
@@ -641,7 +691,7 @@ impl KimSdkHandle {
         let p = rt()
             .block_on(client.bot_update(&dest, &nickname, &avatar, &bio, &config))
             .map_err(|e| e.to_string())?;
-        kim_client::Profile::encode_one(&p)
+        Ok(PersonDto::from_profile(p, "none"))
     }
 
     pub fn bot_reply(

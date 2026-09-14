@@ -114,6 +114,22 @@ pub enum SessionUpdate {
         group_id: String,
         members: Vec<String>,
     },
+    ContactsChanged {
+        contacts: Vec<PersonRef>,
+    },
+    RustPanic {
+        message: String,
+    },
+}
+
+/// Lightweight contact row for `SessionUpdate::ContactsChanged` (P3 fills this).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersonRef {
+    pub account: String,
+    pub nickname: String,
+    pub avatar: String,
+    pub bio: String,
+    pub relation: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -132,6 +148,7 @@ pub struct SessionSnapshot {
     pub link: LinkStateView,
     pub last_error: Option<String>,
     pub threads: Vec<ThreadView>,
+    pub unread_total: i32,
 }
 
 impl Default for SessionSnapshot {
@@ -140,6 +157,7 @@ impl Default for SessionSnapshot {
             link: LinkStateView::Offline,
             last_error: None,
             threads: Vec::new(),
+            unread_total: 0,
         }
     }
 }

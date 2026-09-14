@@ -18,7 +18,7 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<void> attachStore({required String dbPath});
 
-  Future<String> botCreate({
+  Future<PersonDto> botCreate({
     required String clientProfileId,
     required String nickname,
     required String avatar,
@@ -49,7 +49,7 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  Future<String> botUpdate({
+  Future<PersonDto> botUpdate({
     required String dest,
     required String nickname,
     required String avatar,
@@ -82,9 +82,9 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<String> friendAccept({required String dest});
 
-  Future<String> friendIncoming();
+  Future<List<PersonDto>> friendIncoming();
 
-  Future<String> friendList();
+  Future<List<PersonDto>> friendList();
 
   Future<String> friendReject({required String dest});
 
@@ -102,6 +102,14 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   Future<List<KimInboxItem>> inbox({required int limit});
 
   String linkState();
+
+  Future<MessagePageDto> loadOlder({
+    required String dest,
+    required PlatformInt64 beforeAt,
+    required String beforeKey,
+    required PlatformInt64 beforeId,
+    required int limit,
+  });
 
   Future<void> markRead({
     required String dest,
@@ -126,16 +134,18 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required String policy,
   });
 
-  Future<String> profile({required String dest});
+  Future<ProfileDto> profile({required String dest});
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
-  /// Returns JSON array of `{account,status,last_seen}`.
-  Future<String> roomEnter({required String dest, required int kind});
+  Future<List<RoomMemberDto>> roomEnter({
+    required String dest,
+    required int kind,
+  });
 
   Future<String> roomLeave({required String dest, required int kind});
 
-  Future<String> searchUsers({required String query});
+  Future<List<PersonDto>> searchUsers({required String query});
 
   Future<KimTalkResult> sendMessage({
     required String dest,
@@ -167,7 +177,7 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<void> syncConfirm({required PlatformInt64 cursor});
 
-  Future<String> updateProfile({
+  Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
     required String bio,
@@ -176,6 +186,8 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
   /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
   /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
   Stream<SessionUpdateDto> watchSession();
+
+  Stream<SessionSnapshotDto> watchSessionSnapshot();
 
   Stream<TimelineUpdateDto> watchTimeline({
     required String dest,
@@ -212,7 +224,7 @@ class KimCommandReceipt {
   final String clientId;
   final String dest;
   final PlatformInt64 acceptedAt;
-  final String sendStatus;
+  final SendStatusDto sendStatus;
 
   const KimCommandReceipt({
     required this.requestId,

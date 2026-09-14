@@ -37,8 +37,8 @@ pub use metrics::SdkMetrics;
 pub use proto::ProtocolClient;
 pub use sync::UnreadPolicy;
 pub use timeline::{
-    LinkStateView, MessageView, SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta,
-    TimelineSnapshot, TimelineUpdate,
+    LinkStateView, MessageView, PersonRef, SessionSnapshot, SessionUpdate, ThreadView,
+    TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
 use crate::session::lock;
