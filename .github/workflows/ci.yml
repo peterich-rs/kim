@@ -185,7 +185,9 @@ jobs:
           flutter test
 
       - name: cargo fmt
-        run: cargo fmt --manifest-path sdk/mobile/rust/Cargo.toml -- --check
+        run: |
+          cargo fmt --manifest-path sdk/mobile/rust/Cargo.toml -- --check
+          cargo fmt --manifest-path sdk/mobile/rust_agent/Cargo.toml -- --check
 
       - name: flutter test
         working-directory: sdk/mobile

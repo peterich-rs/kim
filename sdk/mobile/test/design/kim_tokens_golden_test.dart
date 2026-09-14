@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
@@ -7,6 +9,8 @@ import 'package:kim_mobile/design/kim_hairline.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // PNGs were captured on macOS; Linux CI fonts/AA will not match.
+  final skipGoldens = !Platform.isMacOS;
 
   Widget wrap({required ThemeData theme, required Widget child}) {
     return MaterialApp(
@@ -50,7 +54,7 @@ void main() {
       find.byType(KimGroupCard),
       matchesGoldenFile('goldens/kim_group_light_zh.png'),
     );
-  });
+  }, skip: skipGoldens);
 
   testWidgets('group card golden dark zh', (tester) async {
     await tester.pumpWidget(
@@ -72,5 +76,5 @@ void main() {
       find.byType(KimGroupCard),
       matchesGoldenFile('goldens/kim_group_dark_zh.png'),
     );
-  });
+  }, skip: skipGoldens);
 }
