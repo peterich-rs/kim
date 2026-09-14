@@ -205,7 +205,7 @@ mod tests {
             command: vec!["uvx".into(), "mcp".into()],
             url: String::new(),
         };
-        let caps = from_legacy(&ToolSet::default(), &[ext.clone()]);
+        let caps = from_legacy(&ToolSet::default(), std::slice::from_ref(&ext));
         assert_eq!(extensions_from_capabilities(&caps), vec![ext]);
         assert!(extensions_from_capabilities(&[]).is_empty());
         let im_only = from_legacy(

@@ -49,10 +49,7 @@ class AgentListPage extends ConsumerWidget {
                   unawaited(KimHaptics.light());
                   context.push('/agent/plaza');
                 },
-                icon: Icon(
-                  LucideIcons.store,
-                  color: scheme.onSurfaceVariant,
-                ),
+                icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
               ),
               IconButton(
                 key: const Key('agent-new'),
