@@ -9,6 +9,7 @@ import '../agent/host_support.dart';
 import '../copy.dart';
 import '../core/connectivity.dart';
 import '../core/haptics.dart';
+import '../core/logger.dart';
 import '../core/image_extra.dart';
 import '../core/permissions.dart';
 import '../core/user_agent.dart';
@@ -84,7 +85,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       try {
         await ref.read(clientPortProvider).notifyRadioUp();
         return;
-      } catch (_) {}
+      } catch (e, st) {
+        KimLogger.warn('retry notifyRadioUp', e, st);
+      }
     }
     await _start();
   }
@@ -96,7 +99,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     try {
       await ref.read(clientPortProvider).notifyRadioUp();
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('radioUp', e, st);
       await _start();
     }
   }
@@ -107,7 +111,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     try {
       await ref.read(clientPortProvider).notifyForeground();
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('foreground', e, st);
+    }
   }
 
   Future<void> _stop() async {
@@ -117,7 +123,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     _events = null;
     try {
       await ref.read(clientPortProvider).stopSession();
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('stopSession', e, st);
+    }
   }
 
   Future<void> _start() async {
@@ -179,7 +187,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         _eventChain = _eventChain.then((_) async {
           try {
             await _onEvent(event, gen);
-          } catch (_) {}
+          } catch (e, st) {
+            KimLogger.warn('session event', e, st);
+          }
         });
       },
       onError: (_) {
@@ -389,7 +399,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (event.pageId != 0) {
       try {
         await ref.read(clientPortProvider).syncConfirm(event.pageId);
-      } catch (_) {}
+      } catch (e, st) {
+        KimLogger.warn('syncConfirm', e, st);
+      }
     }
   }
 
@@ -474,7 +486,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     try {
       await ref.read(clientPortProvider).ack(event.messageId);
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('ack', e, st);
+    }
   }
 
   void _onTyping(KimEvent event) {

@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'jwt.dart';
+import 'logger.dart';
 
 class KimFlags {
   static const rustStorePref = 'kim.rustStore';
@@ -205,8 +206,9 @@ class SettingsStore {
         }
         await _prefs.remove(_kTokenFallback);
         return;
-      } catch (_) {
+      } catch (e, st) {
         // Missing Keychain entitlement (-34018) must not fail login.
+        KimLogger.warn('saveToken keychain', e, st);
       }
     }
     if (token.isEmpty) {
@@ -237,8 +239,8 @@ class SettingsStore {
         return '';
       }
       return raw;
-    } catch (_) {
-      // Missing plugin / Keystore errors: treat as empty, never mint.
+    } catch (e, st) {
+      KimLogger.warn('readToken', e, st);
       return '';
     }
   }
@@ -253,7 +255,9 @@ class SettingsStore {
       if (fromKeychain.isNotEmpty) {
         return fromKeychain;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('readTokenRaw keychain', e, st);
+    }
     return _prefs.getString(_kTokenFallback)?.trim() ??
         _memorySecure[_kToken] ??
         '';

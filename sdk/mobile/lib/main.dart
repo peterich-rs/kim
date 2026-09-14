@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'copy.dart';
+import 'core/logger.dart';
 import 'core/runtime.dart';
 import 'data/conversation_store.dart';
 import 'kim_bridge.dart';
@@ -17,8 +18,19 @@ import 'theme/kim_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    KimLogger.error('flutter', details.exception, details.stack);
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    KimLogger.error('platform', error, stack);
+    return true;
+  };
   await _enableMaxRefreshRate();
-  runApp(const KimBoot());
+  runZonedGuarded(
+    () => runApp(const KimBoot()),
+    (error, stack) => KimLogger.error('zone', error, stack),
+  );
 }
 
 Future<void> _enableMaxRefreshRate() async {
@@ -27,8 +39,8 @@ Future<void> _enableMaxRefreshRate() async {
   }
   try {
     await FlutterDisplayMode.setHighRefreshRate();
-  } catch (_) {
-    // Unsupported devices / emulators: keep OS default.
+  } catch (e, st) {
+    KimLogger.warn('display mode', e, st);
   }
 }
 

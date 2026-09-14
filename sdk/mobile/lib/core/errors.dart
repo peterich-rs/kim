@@ -1,10 +1,14 @@
 library;
 
 import '../copy.dart';
-import '../src/rust/api/types.dart' show SdkErrorDto;
+import 'failures.dart';
 
 /// Errors that must not trip Riverpod 3 automatic retry (auth, validation).
 bool isPermanentClientError(Object err) {
+  final kim = KimException.tryFrom(err);
+  if (kim != null) {
+    return !kim.retryable;
+  }
   final msg = err.toString();
   return msg.contains('401') ||
       msg.contains('409') ||
@@ -15,15 +19,21 @@ bool isPermanentClientError(Object err) {
       msg.contains('invalid account') ||
       msg.contains('invalid password') ||
       msg.contains('unauthorized') ||
-      msg.contains('invalid token') ||
-      msg.contains('status 101') ||
-      msg.contains('status 105') ||
-      msg.contains('status 108') ||
-      msg.contains('status 109') ||
-      msg.contains('status 110');
+      msg.contains('invalid token');
 }
 
 String mapUserError(Object err) {
+  final kim = KimException.tryFrom(err);
+  if (kim != null) {
+    return switch (kim.kind) {
+      KimErrorKind.unauthorized ||
+      KimErrorKind.authExpired => Copy.badCredentials,
+      KimErrorKind.invalidArgument => Copy.invalidAccount,
+      KimErrorKind.notConnected => Copy.network,
+      KimErrorKind.disk => Copy.sessionPersistFailed,
+      _ => Copy.unavailable,
+    };
+  }
   final msg = err.toString();
   if (msg.contains('-34018') ||
       msg.contains('entitlement isn\'t present') ||
@@ -59,31 +69,16 @@ String mapUserError(Object err) {
 }
 
 String mapTalkError(Object err) {
-  if (err is SdkErrorDto) {
-    return switch (err.kind) {
-      'not_friends' => Copy.notFriends,
-      'blocked' => Copy.blocked,
-      'user_not_found' => Copy.userNotFound,
-      'cannot_chat_self' => Copy.cannotAddSelf,
-      'not_connected' => Copy.notConnected,
-      _ => Copy.sendFailed,
-    };
+  final kim = KimException.tryFrom(err);
+  if (kim == null) {
+    return Copy.sendFailed;
   }
-  final msg = err.toString();
-  if (msg.contains(Copy.notConnected) || msg.contains('not connected')) {
-    return Copy.notConnected;
-  }
-  if (msg.contains('status 109') || msg.contains(Copy.notFriends)) {
-    return Copy.notFriends;
-  }
-  if (msg.contains('status 110') || msg.contains(Copy.blocked)) {
-    return Copy.blocked;
-  }
-  if (msg.contains('status 108') || msg.contains(Copy.userNotFound)) {
-    return Copy.userNotFound;
-  }
-  if (msg.contains('status 101') || msg.contains(Copy.cannotAddSelf)) {
-    return Copy.cannotAddSelf;
-  }
-  return Copy.sendFailed;
+  return switch (kim.kind) {
+    KimErrorKind.notFriends => Copy.notFriends,
+    KimErrorKind.blocked => Copy.blocked,
+    KimErrorKind.userNotFound => Copy.userNotFound,
+    KimErrorKind.cannotChatSelf => Copy.cannotAddSelf,
+    KimErrorKind.notConnected => Copy.notConnected,
+    _ => Copy.sendFailed,
+  };
 }

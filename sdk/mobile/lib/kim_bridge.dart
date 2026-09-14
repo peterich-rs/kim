@@ -11,6 +11,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
 
 import 'core/format.dart';
+import 'core/logger.dart';
 import 'data/conversation_store.dart';
 import 'core/ota_info.dart';
 import 'core/image_extra.dart';
@@ -359,7 +360,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
     if (_account == account && account.isNotEmpty) {
       try {
         await _api!.notifyRadioUp();
-      } catch (_) {}
+      } catch (e, st) {
+        KimLogger.warn('notifyRadioUp', e, st);
+      }
       return;
     }
     await _api!.startSession(
@@ -440,7 +443,9 @@ class KimBridge implements KimAuthPort, KimClientPort {
     }
     try {
       await api.stop();
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('stopSession', e, st);
+    }
   }
 
   @override
@@ -714,7 +719,8 @@ class KimBridge implements KimAuthPort, KimClientPort {
               msgType: (row['msg_type'] as num?)?.toInt() ?? 0,
             ),
       ];
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('talksFromJson', e, st);
       return const [];
     }
   }

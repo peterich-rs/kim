@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 
 import '../core/errors.dart';
+import '../core/failures.dart';
 
 /// Retry transient provider failures; never retry auth / validation errors.
 ///
@@ -14,6 +15,12 @@ Duration? kimRetry(int retryCount, Object error) {
     ProviderException(:final exception) => exception,
     _ => error,
   };
+  final kim = KimException.tryFrom(inner);
+  if (kim != null) {
+    return kim.retryable
+        ? ProviderContainer.defaultRetry(retryCount, inner)
+        : null;
+  }
   if (isPermanentClientError(inner)) {
     return null;
   }

@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/logger.dart';
 import '../data/conversation_store.dart';
 import '../models/models.dart';
 import 'auth.dart';
@@ -169,7 +170,9 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
             for (final row in remote)
               repo.fromHistory(row, dest: dest, account: account),
           ];
-        } catch (_) {}
+        } catch (e, st) {
+          KimLogger.warn('history', e, st);
+        }
       }
       if (!ref.mounted) {
         return;
@@ -185,7 +188,8 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
         loadingOlder: false,
         hasMore: local.length >= 50 || remoteLen >= 50,
       );
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('loadOlder', e, st);
       if (ref.mounted) {
         state = state.copyWith(loadingOlder: false);
       }
@@ -216,7 +220,8 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
       receiveAll([for (final r in results) r.message]);
       _reconciled = true;
       state = state.copyWith(hasMore: remote.length >= 50);
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('reconcile', e, st);
       if (ref.mounted && !_reconciled) {
         state = state.copyWith(hasMore: true);
       }
@@ -244,7 +249,9 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
         ref.read(threadsProvider).thread(dest)?.kind ?? ThreadKind.user;
     try {
       await ref.read(clientPortProvider).markRead(dest, kind, messageId);
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('markRead', e, st);
+    }
   }
 
   int _historyBeforeId(List<KimChatMsg> items) {

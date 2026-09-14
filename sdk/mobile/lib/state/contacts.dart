@@ -8,6 +8,7 @@ import '../agent/host_support.dart';
 import '../agent/mention.dart';
 import '../copy.dart';
 import '../core/haptics.dart';
+import '../core/logger.dart';
 import '../models/models.dart';
 import 'agent_profiles.dart';
 import 'providers.dart';
@@ -145,7 +146,8 @@ class ContactsNotifier extends Notifier<ContactsState> {
         ready: true,
         loading: false,
       );
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('contacts refresh', e, st);
       if (ref.mounted) {
         state = state.copyWith(ready: true, loading: false);
       }

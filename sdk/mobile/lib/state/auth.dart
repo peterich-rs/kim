@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../copy.dart';
 import '../core/haptics.dart';
+import '../core/logger.dart';
 import '../core/secure_origin.dart';
 import '../core/jwt.dart';
 import '../core/user_agent.dart';
@@ -88,7 +89,9 @@ class AuthNotifier extends Notifier<AuthState> {
     final client = ref.read(clientPortProvider);
     try {
       await client.stopSession();
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('signOut stopSession', e, st);
+    }
     if (!ref.mounted) {
       return;
     }
@@ -98,7 +101,9 @@ class AuthNotifier extends Notifier<AuthState> {
         userAgent: kimUserAgent(runtime),
         token: runtime.settings.token,
       );
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('signOut logout', e, st);
+    }
     if (!ref.mounted) {
       return;
     }
