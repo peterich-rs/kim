@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
-use kim_sdk::{KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, StartSession};
+use kim_sdk::{
+    KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, StartSession,
+};
 
 struct OkProto;
 
@@ -80,10 +82,7 @@ async fn search_like_is_capped_and_can_scope_dest() {
     .await
     .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-    let global = sdk
-        .search_messages("hello".into(), None)
-        .await
-        .unwrap();
+    let global = sdk.search_messages("hello".into(), None).await.unwrap();
     assert!(global.len() >= 2);
     let bob = sdk
         .search_messages("hello".into(), Some("bob".into()))

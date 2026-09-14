@@ -20,10 +20,10 @@ void main() {
     expect(opts.authenticationUIBehavior, 'u_AuthUIF');
   });
 
-  test('load uses production URL and dest defaults; token is empty', () async {
+  test('load uses production URL; dest and token are empty', () async {
     final store = await SettingsStore.load(useSecureStorage: false);
     expect(store.url, SettingsStore.defaultUrl);
-    expect(store.dest, SettingsStore.defaultDest);
+    expect(store.dest, isEmpty);
     expect(store.token, isEmpty);
   });
 
@@ -48,12 +48,12 @@ void main() {
     expect(second.token, isEmpty);
   });
 
-  test('empty url/dest fall back to defaults', () async {
+  test('empty url falls back to default; dest stays empty', () async {
     final store = await SettingsStore.load(useSecureStorage: false);
     await store.saveUrl('   ');
     await store.saveDest('');
     expect(store.url, SettingsStore.defaultUrl);
-    expect(store.dest, SettingsStore.defaultDest);
+    expect(store.dest, isEmpty);
   });
 
   test('local/prod presets keep http origin next to wgateway', () async {

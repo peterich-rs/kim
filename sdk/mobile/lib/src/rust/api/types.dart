@@ -370,6 +370,37 @@ class MessageViewDto {
           sendStatus == other.sendStatus;
 }
 
+class MetricsDto {
+  final BigInt enqueueTotal;
+  final BigInt persistTalkTotal;
+  final BigInt epochDropTotal;
+  final BigInt storeWipeTotal;
+
+  const MetricsDto({
+    required this.enqueueTotal,
+    required this.persistTalkTotal,
+    required this.epochDropTotal,
+    required this.storeWipeTotal,
+  });
+
+  @override
+  int get hashCode =>
+      enqueueTotal.hashCode ^
+      persistTalkTotal.hashCode ^
+      epochDropTotal.hashCode ^
+      storeWipeTotal.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MetricsDto &&
+          runtimeType == other.runtimeType &&
+          enqueueTotal == other.enqueueTotal &&
+          persistTalkTotal == other.persistTalkTotal &&
+          epochDropTotal == other.epochDropTotal &&
+          storeWipeTotal == other.storeWipeTotal;
+}
+
 class PersonDto {
   final String account;
   final String nickname;

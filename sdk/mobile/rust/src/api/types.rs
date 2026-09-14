@@ -273,6 +273,14 @@ pub struct LocalMediaDto {
     pub height: i32,
 }
 
+#[flutter_rust_bridge::frb(unignore)]
+pub struct MetricsDto {
+    pub enqueue_total: u64,
+    pub persist_talk_total: u64,
+    pub epoch_drop_total: u64,
+    pub store_wipe_total: u64,
+}
+
 pub enum UiCommandDto {
     SendText {
         dest: String,

@@ -15,7 +15,6 @@ class SettingsStore {
   static const localUrl = 'ws://127.0.0.1:8001/';
   static const defaultHttp = 'https://kim.ainexc.com';
   static const localHttp = 'http://127.0.0.1:8080';
-  static const defaultDest = 'bob';
 
   static const _kUrl = 'kim.wgateway_url';
   static const _kDest = 'kim.dest_account';
@@ -38,7 +37,7 @@ class SettingsStore {
   final Map<String, String> _memorySecure = {};
 
   String url = defaultUrl;
-  String dest = defaultDest;
+  String dest = '';
   String httpOrigin = defaultHttp;
   String env = 'prod';
   String account = '';
@@ -95,9 +94,7 @@ class SettingsStore {
     url = _prefs.getString(_kUrl)?.trim().isNotEmpty == true
         ? _prefs.getString(_kUrl)!.trim()
         : defaultUrl;
-    dest = _prefs.getString(_kDest)?.trim().isNotEmpty == true
-        ? _prefs.getString(_kDest)!.trim()
-        : defaultDest;
+    dest = _prefs.getString(_kDest)?.trim() ?? '';
     httpOrigin = _prefs.getString(_kHttp)?.trim().isNotEmpty == true
         ? _prefs.getString(_kHttp)!.trim()
         : defaultHttp;
@@ -152,7 +149,7 @@ class SettingsStore {
   }
 
   Future<void> saveDest(String value) async {
-    dest = value.trim().isEmpty ? defaultDest : value.trim();
+    dest = value.trim();
     await _prefs.setString(_kDest, dest);
   }
 

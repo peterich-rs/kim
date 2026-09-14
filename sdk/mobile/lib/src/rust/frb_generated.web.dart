@@ -213,6 +213,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MessageViewDto dco_decode_message_view_dto(dynamic raw);
 
   @protected
+  MetricsDto dco_decode_metrics_dto(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -495,6 +498,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   MessageViewDto sse_decode_message_view_dto(SseDeserializer deserializer);
+
+  @protected
+  MetricsDto sse_decode_metrics_dto(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -840,6 +846,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     MessageViewDto self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_metrics_dto(MetricsDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);

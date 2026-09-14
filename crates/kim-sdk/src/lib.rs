@@ -595,8 +595,24 @@ impl KimSdk {
         Ok(())
     }
 
-    pub fn metrics(&self) -> (u64, u64, u64) {
+    pub fn metrics(&self) -> (u64, u64, u64, u64) {
         self.inner.metrics.snapshot()
+    }
+
+    pub fn install_panic_hook(&self) {
+        let inner = self.inner.clone();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info.to_string();
+            if let Ok(subs) = inner.session_subs.try_lock() {
+                for tx in subs.iter() {
+                    let _ = tx.try_send(SessionUpdate::RustPanic {
+                        message: message.clone(),
+                    });
+                }
+            }
+            previous(info);
+        }));
     }
 
     pub async fn persist_inbox(

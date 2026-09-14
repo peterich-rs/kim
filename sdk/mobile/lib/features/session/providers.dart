@@ -67,7 +67,7 @@ List<Override> kimProviderOverrides({
       media ??
           (client is KimMediaPort
               ? client as KimMediaPort
-              : (throw StateError('mediaPort required'))),
+              : const UnsupportedKimMedia()),
     ),
   ];
 }

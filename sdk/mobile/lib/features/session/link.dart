@@ -15,6 +15,7 @@ import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
+import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
@@ -202,6 +203,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 kind: kind,
                 messageId: messageId.toInt(),
               );
+        case SessionUpdateDto_RustPanic(:final message):
+          ref.read(rustPanicProvider.notifier).setMessage(message);
         case SessionUpdateDto_Link():
         case SessionUpdateDto_Inbox():
         case SessionUpdateDto_ThreadUpsert():

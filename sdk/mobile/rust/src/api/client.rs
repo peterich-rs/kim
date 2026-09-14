@@ -6,7 +6,7 @@ use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand,
 use super::rt;
 use super::types::{
     AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, LocalMediaDto,
-    MessagePageDto, MessageViewDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto,
+    MessagePageDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto,
     SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto, TimelineUpdateDto,
     TokenPersistDto, UiCommandDto,
 };
@@ -47,9 +47,9 @@ impl KimUiHandle {
     /// Always callable. Does not open SQLite.
     #[flutter_rust_bridge::frb(sync)]
     pub fn create() -> Self {
-        Self {
-            inner: KimSdk::protocol_only(),
-        }
+        let inner = KimSdk::protocol_only();
+        inner.install_panic_hook();
+        Self { inner }
     }
 
     pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
@@ -258,6 +258,17 @@ impl KimUiHandle {
     #[flutter_rust_bridge::frb(sync)]
     pub fn store_attached(&self) -> bool {
         self.inner.store_attached()
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn metrics_snapshot(&self) -> MetricsDto {
+        let (enqueue, persist, epoch_drop, wipe) = self.inner.metrics();
+        MetricsDto {
+            enqueue_total: enqueue,
+            persist_talk_total: persist,
+            epoch_drop_total: epoch_drop,
+            store_wipe_total: wipe,
+        }
     }
 
     #[flutter_rust_bridge::frb(sync)]

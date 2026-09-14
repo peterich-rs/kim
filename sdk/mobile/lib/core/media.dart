@@ -23,6 +23,20 @@ abstract class KimMediaPort {
   });
 }
 
+/// Tests that don't upload can leave [mediaPortProvider] on this no-op.
+class UnsupportedKimMedia implements KimMediaPort {
+  const UnsupportedKimMedia();
+
+  @override
+  Future<UploadedObject> uploadImage({
+    required String token,
+    required List<int> bytes,
+    required String contentType,
+  }) async {
+    throw StateError('media port not attached');
+  }
+}
+
 /// Worker `kim-media` only accepts these Content-Types.
 abstract final class KimImageTypes {
   static const jpeg = 'image/jpeg';

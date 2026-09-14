@@ -744,6 +744,16 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
+  Future<MetricsDto> metricsSnapshot() async {
+    return MetricsDto(
+      enqueueTotal: BigInt.zero,
+      persistTalkTotal: BigInt.zero,
+      epochDropTotal: BigInt.zero,
+      storeWipeTotal: BigInt.zero,
+    );
+  }
+
+  @override
   Future<List<PersonDto>> refreshContacts() async {
     final rows = [
       for (final p in friends)

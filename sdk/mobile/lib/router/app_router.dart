@@ -16,7 +16,9 @@ import 'package:kim_mobile/features/agent/agent_settings_page.dart';
 import 'package:kim_mobile/features/agent/agent_capabilities_page.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
 import 'package:kim_mobile/features/agent/provider_accounts_page.dart';
+import 'package:kim_mobile/core/env.dart';
 import 'package:kim_mobile/features/profile/me_page.dart';
+import 'package:kim_mobile/features/settings/dev_panel.dart';
 import 'package:kim_mobile/features/contacts/peer_profile_page.dart';
 import 'package:kim_mobile/features/auth/password_page.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
@@ -112,6 +114,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      if (kimDevPanelEnabled)
+        GoRoute(
+          path: '/dev',
+          pageBuilder: (context, state) => kimPushPage(
+            key: state.pageKey,
+            name: state.name,
+            child: const DevPanelPage(),
+          ),
+        ),
       GoRoute(
         path: '/peer/:id',
         name: 'peer',

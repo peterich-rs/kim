@@ -135,6 +135,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
+  MetricsDto metricsSnapshot();
+
   Future<void> notifyForeground();
 
   Future<void> notifyRadioUp();

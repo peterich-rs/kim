@@ -14,8 +14,7 @@ import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/haptics.dart';
-import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/core/env.dart';
 import 'package:kim_mobile/core/ota_info.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
@@ -40,10 +39,8 @@ class MePage extends ConsumerWidget {
     final me = ref.watch(profileProvider);
     final runtime = ref.watch(runtimeProvider);
     final logout = ref.watch(signOutMutation);
-    final settings = runtime.settings;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final local = settings.httpOrigin.contains('127.0.0.1');
     final loggingOut = logout is MutationPending;
 
     return Scaffold(
@@ -147,50 +144,18 @@ class MePage extends ConsumerWidget {
                       ),
                       const Divider(indent: 56),
                     ],
-                    ListTile(
-                      leading: const Icon(LucideIcons.server),
-                      title: Text(Copy.environment),
-                      subtitle: Text(
-                        local ? Copy.localServer : Copy.prodServer,
+                    if (kimDevPanelEnabled) ...[
+                      ListTile(
+                        leading: const Icon(LucideIcons.bug),
+                        title: const Text('DevPanel'),
+                        trailing: const Icon(
+                          LucideIcons.chevronRight,
+                          size: 18,
+                        ),
+                        onTap: () => context.push('/dev'),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            label: Text(Copy.prodServer),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: Text(Copy.localServer),
-                          ),
-                        ],
-                        selected: {local},
-                        onSelectionChanged: (next) async {
-                          KimHaptics.selection();
-                          if (next.first) {
-                            await settings.useLocal();
-                          } else {
-                            await settings.useProd();
-                          }
-                          try {
-                            await ref
-                                .read(clientPortProvider)
-                                .settingsPatch(
-                                  wsUrl: settings.url,
-                                  httpOrigin: settings.httpOrigin,
-                                  env: settings.env,
-                                );
-                          } catch (e, st) {
-                            KimLogger.warn('settingsPatch env', e, st);
-                          }
-                          ref.read(linkProvider.notifier).retry();
-                        },
-                      ),
-                    ),
-                    const Divider(indent: 56),
+                      const Divider(indent: 56),
+                    ],
                     ListTile(
                       leading: const Icon(LucideIcons.info),
                       title: Text(Copy.about),

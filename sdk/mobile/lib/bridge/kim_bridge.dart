@@ -212,6 +212,8 @@ abstract class KimClientPort {
     int height = 0,
     int byteSize = 0,
   });
+
+  Future<rust_types.MetricsDto> metricsSnapshot();
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -879,6 +881,12 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
       height: height,
       byteSize: byteSize,
     );
+  }
+
+  @override
+  @override
+  Future<rust_types.MetricsDto> metricsSnapshot() async {
+    return _require().metricsSnapshot();
   }
 
   @override

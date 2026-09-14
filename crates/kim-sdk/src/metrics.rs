@@ -31,11 +31,12 @@ impl SdkMetrics {
         self.store_wipe_total.load(Ordering::Relaxed)
     }
 
-    pub fn snapshot(&self) -> (u64, u64, u64) {
+    pub fn snapshot(&self) -> (u64, u64, u64, u64) {
         (
             self.enqueue_total.load(Ordering::Relaxed),
             self.persist_talk_total.load(Ordering::Relaxed),
             self.epoch_drop_total.load(Ordering::Relaxed),
+            self.store_wipe_total(),
         )
     }
 }
