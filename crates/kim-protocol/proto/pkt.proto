@@ -645,3 +645,14 @@ message AgentSpecUpsertReq {
 message AgentSpecUpsertResp {
   AgentSpecRecord record = 1;
 }
+
+// Chat → Royal HMAC. Owner is the Chat session account.
+message InternalAgentSpecQuery {
+  string owner = 1;
+}
+
+message InternalAgentSpecUpsert {
+  string owner = 1;
+  AgentSpecRecord record = 2;
+  AgentProviderAccount account = 3;
+}

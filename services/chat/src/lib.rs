@@ -57,8 +57,9 @@ use crate::users::{MemoryUserDirectory, UserDirectory};
 pub use ack::do_talk_ack;
 pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
 pub use agent_spec::{
-    do_agent_spec_sync, do_agent_spec_upsert, open_agent_spec_store, AgentSpecRecord,
-    AgentSpecStore, MemoryAgentSpecStore,
+    account_from_pb, account_to_pb, do_agent_spec_sync, do_agent_spec_upsert,
+    open_agent_spec_store, record_from_pb, record_to_pb, AgentProviderAccount, AgentSpecError,
+    AgentSpecRecord, AgentSpecStore, MemoryAgentSpecStore,
 };
 pub use bot::{
     do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_typing, do_bot_update,
@@ -85,7 +86,7 @@ pub use offline::{do_offline_content, do_offline_index};
 pub use profile::{do_user_profile, do_user_search, do_user_update};
 pub use royal::{
     http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt,
-    http_backends_with_pool,
+    http_backends_with_pool, HttpAgentSpecStore,
 };
 pub use royal_pool::RoyalPool;
 pub use social_cache::{CachedSocial, CachedUserDirectory};
@@ -179,6 +180,28 @@ impl ChatHandler {
         groups: Arc<dyn GroupDirectory>,
     ) -> Self {
         Self::with_seams_and_zone(container, cache, store, groups, String::new())
+    }
+
+    pub fn with_seams_agent_specs(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        agent_specs: Arc<dyn AgentSpecStore>,
+    ) -> Self {
+        Self::with_agent_specs(
+            container,
+            cache,
+            store,
+            groups,
+            String::new(),
+            Arc::new(NoopFilter),
+            Arc::new(MemoryUserDirectory::new()),
+            Arc::new(MemorySocialDirectory::new()),
+            pending_receipt_enabled(),
+            Arc::new(MemoryRoomInterest::new()),
+            agent_specs,
+        )
     }
 
     pub fn with_seams_pending(

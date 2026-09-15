@@ -171,7 +171,7 @@ impl AgentSpecStore for MemoryAgentSpecStore {
     }
 }
 
-fn to_pb(r: &AgentSpecRecord) -> PbRecord {
+pub fn record_to_pb(r: &AgentSpecRecord) -> PbRecord {
     PbRecord {
         profile_id: r.profile_id.clone(),
         nickname: r.nickname.clone(),
@@ -183,7 +183,7 @@ fn to_pb(r: &AgentSpecRecord) -> PbRecord {
     }
 }
 
-fn to_pb_account(a: &AgentProviderAccount) -> PbAccount {
+pub fn account_to_pb(a: &AgentProviderAccount) -> PbAccount {
     PbAccount {
         id: a.id.clone(),
         vendor_id: a.vendor_id.clone(),
@@ -196,7 +196,7 @@ fn to_pb_account(a: &AgentProviderAccount) -> PbAccount {
     }
 }
 
-fn from_pb_account(a: PbAccount) -> AgentProviderAccount {
+pub fn account_from_pb(a: PbAccount) -> AgentProviderAccount {
     AgentProviderAccount {
         id: a.id,
         vendor_id: a.vendor_id,
@@ -209,7 +209,7 @@ fn from_pb_account(a: PbAccount) -> AgentProviderAccount {
     }
 }
 
-fn from_pb(r: PbRecord) -> AgentSpecRecord {
+pub fn record_from_pb(r: PbRecord) -> AgentSpecRecord {
     AgentSpecRecord {
         profile_id: r.profile_id,
         nickname: r.nickname,
@@ -267,8 +267,8 @@ pub async fn do_agent_spec_sync(
     ctx.resp(
         Status::Success,
         Some(&AgentSpecSyncResp {
-            records: records.iter().map(to_pb).collect(),
-            accounts: accounts.iter().map(to_pb_account).collect(),
+            records: records.iter().map(record_to_pb).collect(),
+            accounts: accounts.iter().map(account_to_pb).collect(),
         }),
     )
     .await?;
@@ -299,7 +299,7 @@ pub async fn do_agent_spec_upsert(
         return Ok(());
     }
     if let Some(acc) = req.account {
-        let rec = from_pb_account(acc);
+        let rec = account_from_pb(acc);
         if rec.id.is_empty() {
             ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
                 .await?;
@@ -316,7 +316,7 @@ pub async fn do_agent_spec_upsert(
             .await?;
         return Ok(());
     };
-    let rec = from_pb(pb);
+    let rec = record_from_pb(pb);
     if rec.profile_id.is_empty() || rec.spec.is_empty() {
         ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
             .await?;
@@ -327,7 +327,7 @@ pub async fn do_agent_spec_upsert(
             ctx.resp(
                 Status::Success,
                 Some(&AgentSpecUpsertResp {
-                    record: Some(to_pb(&stored)),
+                    record: Some(record_to_pb(&stored)),
                 }),
             )
             .await?;

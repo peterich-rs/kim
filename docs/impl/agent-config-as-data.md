@@ -222,7 +222,7 @@ Sync 路径 **按字节原样存放**（LWW 整包覆盖，A-KD 7）。不在 sy
 
 ### 3.5 上云路径（A-KD 6 / A-KD 7 / A-KD 8）
 
-**A-KD 6（revises）— 云同步 = `ProfileStore` 的远端实现，走 `ProtocolClient`；新建 owner-scoped `agent_specs` 表，不复用 `bot_config`，不新建服务进程。**
+**A-KD 6（revises）— 云同步 = `ProfileStore` 的远端实现，走 `ProtocolClient`；新建 owner-scoped `agent_specs` 表，不复用 `bot_config`，不新建服务进程。Postgres 只由 Royal 写；Chat 经 HMAC `/api/v1/agent/spec/*` 读写，与消息 / `bot_config` 同一扇门。**
 
 阶段划分：
 
@@ -231,7 +231,7 @@ Sync 路径 **按字节原样存放**（LWW 整包覆盖，A-KD 7）。不在 sy
 | **P0（已达成）** | 正文 `body_json` 本地 SQLite 权威；云身份投影 `BotConfig` 同步 | ✅ #118 / #122 / #124 / #125 |
 | **P1 本地收敛** | `agent.proto` + `body_blob`；provider_accounts / overlay / 全局开关入 SQLite；Dart watch 单一来源；JSON 只读迁移 | `kim-protocol` + `kim-sdk` + Dart store，不动服务端 |
 | **P2 装配解耦** | `from_spec` 唯一入口；`SessionOpenOpts` 收窄；修 `AgentRunLoop` wiring；`reconfigure` diff 重建 | `kim-agent-host` + `rust_agent` FFI |
-| **P3 云同步** | chat `agent_specs` BYTEA + `chat.agent.spec.sync/upsert/delete`（protobuf 信封，与本地 `body_blob` 同一串）；LWW + tombstone；密钥**默认不上云**，用户显式开启才走 `key_ciphertext`（端侧加密）。P3 **不做**向其它 session 的主动 Push，避免插 gateway 热路径 | `services/chat` 新 RPC + kim-sdk。优先 chat 本表，不绑 Royal HMAC |
+| **P3 云同步** | Postgres `agent_specs` BYTEA + `chat.agent.spec.sync/upsert`（protobuf 信封，与本地 `body_blob` 同一串）；LWW + tombstone；密钥**默认不上云**，用户显式开启才走 `key_ciphertext`（端侧加密）。P3 **不做**向其它 session 的主动 Push，避免插 gateway 热路径 | Chat RPC 面 + Royal HMAC（`/api/v1/agent/spec/*`）。表由 Royal 写，Chat 生产不直连 `DATABASE_URL` |
 | **P4 云执行** | `placement: cloud` 的 Spec 由服务端 runner（复用 `kim-agent-host`，同一 crate 同一 `from_spec`）执行，经既有 `bot_reply` 通道回消息；本地只做 UI | 新 `services/agentd`（或 chat 内 worker），`kim-agent-host` 保持可脱离 tokio-net 独立装配 |
 
 **A-KD 7 — 同步语义：per-spec `updated_at` LWW + 软删除 tombstone 行（保留 30 天），冲突不做字段级合并。** 依据：Spec 是低频编辑、单 owner；LoweChat/Assistant API 均无字段级合并。首启多设备 adopt：远端为空 → 推本地全量；本地为空 → 拉远端全量。
@@ -263,7 +263,7 @@ Sync 路径 **按字节原样存放**（LWW 整包覆盖，A-KD 7）。不在 sy
 | **PR 3** Spec 定形 | JSON→proto 回填；DTO `body_json` → `body_blob`；Dart 停写 `toJson` 权威；`from_json` 仅迁移 | FFI DTO | 旧 JSON fixture → proto → 再 decode 等价 |
 | **PR 4** 装配解耦 | `from_spec` + `KeyVault` + Overlay；`SessionOpenOpts` 收窄；**修 `AgentRunLoop` 硬编码 wiring** | `rust_agent` FFI 签名（内部 app） | 桌面 agent 聊天：改模型 → reconfigure 生效 |
 | **PR 5** reconfigure diff | watch Spec 变化 → 分级重建 | 无 | 单测：三类变更各只触发对应重建 |
-| **PR 6**（P3，后台轨） | `chat.agent.spec.*` 信封进 `pkt.proto`；`agent_specs` BYTEA；LWW + tombstone；可选 E2E key。旧客户端不发则服务端零行为 | 新 RPC，缺省兼容 | 双设备：A 写 prompt → B sync 看到 |
+| **PR 6**（P3，后台轨） | `chat.agent.spec.*` 信封进 `pkt.proto`；Royal `agent_specs` BYTEA + HMAC API；LWW + tombstone；可选 E2E key。旧客户端不发则服务端零行为 | 新 RPC，缺省兼容 | 双设备：A 写 prompt → B sync 看到 |
 | **PR 7**（P4，独立排期） | `placement: cloud` + 服务端 runner 复用 `kim-agent-host`；`bot_reply` 回投 | 服务端 | scripted provider 跑通云回合 |
 
 P1–P2（PR 1–5）是纯客户端轨，遵守 next-stage.md 分轨原则：不插后台 PR 队列。P3/P4 走后台轨评审。

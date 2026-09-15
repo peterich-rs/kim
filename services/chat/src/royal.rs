@@ -6,19 +6,24 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use kim_protocol::pkt::{
-    AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, BotCreateResp,
-    BotPendingQuery, BotPendingResp, BotReplyStoreReq, ConversationRead, DeliveryBackfillReq,
-    DeliveryTarget as PbDeliveryTarget, GroupCreateResp, GroupDetail, GroupListReq, GroupListResp,
-    GroupMembersResp, HistoryQuery, HistoryResp, InboxQuery, InboxResp, InsertFanout,
-    InsertMessageReq, InsertMessageResp, InternalBotConfig, InternalBotCreate, InternalBotUpdate,
-    InternalGroupCreate, InternalGroupMember, InternalGroupQuery, MessageContentReq,
-    MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq,
-    UserListResp, UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
+    AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, AgentSpecSyncResp,
+    AgentSpecUpsertResp, BotCreateResp, BotPendingQuery, BotPendingResp, BotReplyStoreReq,
+    ConversationRead, DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget, GroupCreateResp,
+    GroupDetail, GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery, HistoryResp,
+    InboxQuery, InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp,
+    InternalAgentSpecQuery, InternalAgentSpecUpsert, InternalBotConfig, InternalBotCreate,
+    InternalBotUpdate, InternalGroupCreate, InternalGroupMember, InternalGroupQuery,
+    MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq,
+    ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
 use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
 use reqwest::StatusCode;
 use tracing::warn;
 
+use crate::agent_spec::{
+    account_from_pb, account_to_pb, record_from_pb, record_to_pb, AgentProviderAccount,
+    AgentSpecError, AgentSpecRecord, AgentSpecStore,
+};
 use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo, GroupSummary};
 use crate::inbox::parse_kind;
 use crate::royal_pool::RoyalPool;
@@ -1285,6 +1290,122 @@ pub fn http_backends_with_pool_receipt(
         Arc::new(HttpUserDirectory { pool: pool.clone() }),
         Arc::new(HttpSocialDirectory { pool }),
     ))
+}
+
+pub struct HttpAgentSpecStore {
+    pool: Arc<RoyalPool>,
+}
+
+impl HttpAgentSpecStore {
+    pub fn new(base: &str) -> Result<Self, AgentSpecError> {
+        Ok(Self {
+            pool: Arc::new(
+                RoyalPool::new(Some(base), None, &resolve_internal_hmac_secret(""))
+                    .map_err(|e| AgentSpecError::Backend(e.to_string()))?,
+            ),
+        })
+    }
+
+    #[must_use]
+    pub fn from_pool(pool: Arc<RoyalPool>) -> Self {
+        Self { pool }
+    }
+}
+
+fn spec_err(e: StoreError) -> AgentSpecError {
+    match e {
+        StoreError::Http { status: 400, .. } => AgentSpecError::Invalid,
+        StoreError::Http { status: 403, .. } => AgentSpecError::NotOwner,
+        other => AgentSpecError::Backend(other.to_string()),
+    }
+}
+
+#[async_trait]
+impl AgentSpecStore for HttpAgentSpecStore {
+    async fn list(&self, _app: &str, owner: &str) -> Result<Vec<AgentSpecRecord>, AgentSpecError> {
+        let body = InternalAgentSpecQuery {
+            owner: owner.to_string(),
+        };
+        let resp: AgentSpecSyncResp = self
+            .pool
+            .send_pb(
+                reqwest::Method::POST,
+                "/api/v1/agent/spec/sync",
+                Some(&body),
+            )
+            .await
+            .map_err(spec_err)?;
+        Ok(resp.records.into_iter().map(record_from_pb).collect())
+    }
+
+    async fn upsert(
+        &self,
+        _app: &str,
+        owner: &str,
+        rec: AgentSpecRecord,
+    ) -> Result<AgentSpecRecord, AgentSpecError> {
+        let body = InternalAgentSpecUpsert {
+            owner: owner.to_string(),
+            record: Some(record_to_pb(&rec)),
+            account: None,
+        };
+        let resp: AgentSpecUpsertResp = self
+            .pool
+            .send_pb(
+                reqwest::Method::POST,
+                "/api/v1/agent/spec/upsert",
+                Some(&body),
+            )
+            .await
+            .map_err(spec_err)?;
+        match resp.record {
+            Some(r) => Ok(record_from_pb(r)),
+            None => Err(AgentSpecError::Backend("upsert missing record".into())),
+        }
+    }
+
+    async fn list_accounts(
+        &self,
+        _app: &str,
+        owner: &str,
+    ) -> Result<Vec<AgentProviderAccount>, AgentSpecError> {
+        let body = InternalAgentSpecQuery {
+            owner: owner.to_string(),
+        };
+        let resp: AgentSpecSyncResp = self
+            .pool
+            .send_pb(
+                reqwest::Method::POST,
+                "/api/v1/agent/spec/sync",
+                Some(&body),
+            )
+            .await
+            .map_err(spec_err)?;
+        Ok(resp.accounts.into_iter().map(account_from_pb).collect())
+    }
+
+    async fn upsert_account(
+        &self,
+        _app: &str,
+        owner: &str,
+        rec: AgentProviderAccount,
+    ) -> Result<AgentProviderAccount, AgentSpecError> {
+        let body = InternalAgentSpecUpsert {
+            owner: owner.to_string(),
+            record: None,
+            account: Some(account_to_pb(&rec)),
+        };
+        let _: AgentSpecUpsertResp = self
+            .pool
+            .send_pb(
+                reqwest::Method::POST,
+                "/api/v1/agent/spec/upsert",
+                Some(&body),
+            )
+            .await
+            .map_err(spec_err)?;
+        Ok(rec)
+    }
 }
 
 #[cfg(test)]

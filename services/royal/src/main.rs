@@ -280,6 +280,11 @@ async fn main() -> anyhow::Result<()> {
             revoke,
         )
         .with_pending_receipt(pending_receipt)
+        .with_agent_specs(
+            chat::open_agent_spec_store(Some(&db))
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?,
+        )
     } else {
         RoyalState::memory_with_jwt_receipt(idgen, jwt, pending_receipt).with_revoke(revoke)
     };

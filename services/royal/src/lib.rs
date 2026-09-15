@@ -1,5 +1,6 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
+mod agent_spec;
 mod auth;
 mod bot;
 mod device;
@@ -25,7 +26,7 @@ use chat::store::{
     MessageStore,
 };
 use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
-use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
+use chat::{AgentSpecStore, HmacNonceGuard, MemoryAgentSpecStore, MemoryHmacNonceGuard};
 use http_body_util::BodyExt;
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
@@ -85,6 +86,7 @@ pub struct RoyalState {
     pub(crate) password_seal: Option<kim_protocol::PasswordSealKey>,
     /// When true (or no seal key), plaintext password fields are accepted.
     pub(crate) allow_plaintext_password: bool,
+    pub(crate) agent_specs: Arc<dyn AgentSpecStore>,
 }
 
 impl RoyalState {
@@ -129,6 +131,7 @@ impl RoyalState {
             metrics: None,
             password_seal: None,
             allow_plaintext_password: true,
+            agent_specs: Arc::new(MemoryAgentSpecStore::new()),
         }
     }
 
@@ -199,7 +202,14 @@ impl RoyalState {
             metrics: None,
             password_seal: None,
             allow_plaintext_password: true,
+            agent_specs: Arc::new(MemoryAgentSpecStore::new()),
         }
+    }
+
+    #[must_use]
+    pub fn with_agent_specs(mut self, store: Arc<dyn AgentSpecStore>) -> Self {
+        self.agent_specs = store;
+        self
     }
 
     #[must_use]
@@ -292,6 +302,8 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/bot/config", post(bot::bot_config))
         .route("/api/v1/bot/reply", post(bot::bot_reply))
         .route("/api/v1/bot/pending", post(bot::bot_pending))
+        .route("/api/v1/agent/spec/sync", post(agent_spec::spec_sync))
+        .route("/api/v1/agent/spec/upsert", post(agent_spec::spec_upsert))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_hmac))
         .route("/health", get(health))
         .route("/api/v1/auth/register", post(auth::register))
