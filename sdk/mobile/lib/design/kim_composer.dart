@@ -75,6 +75,10 @@ class KimComposerState extends State<KimComposer> {
     _focus.requestFocus();
   }
 
+  void clear() {
+    _controller.clear();
+  }
+
   void _onText() {
     final raw = _controller.text;
     widget.onTypingChanged?.call(raw);
@@ -104,7 +108,6 @@ class KimComposerState extends State<KimComposer> {
     KimHaptics.selection();
     widget.onSend(text);
     widget.onTypingChanged?.call('');
-    _controller.clear();
   }
 
   @override

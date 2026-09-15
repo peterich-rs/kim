@@ -1,28 +1,31 @@
 use bytes::Bytes;
 use kim_core::Frame;
 use kim_protocol::pkt::{
-    AuthResp, BotCreateReq, BotCreateResp, BotPendingResp, BotReplyReq, ConversationReadReq, Flag,
-    FriendRequestNotify, GroupCreateNotify, HistoryReq, HistoryResp, InboxReq, InboxResp,
-    KickoutNotify, LoginReq, MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq,
-    MessageIndexResp, MessagePush, MessageReq, MessageResp, PresencePush, ReadReceiptPush,
-    RoomEnterReq, RoomEnterResp, RoomLeaveReq, Status, TypingPush, TypingReq, UserListResp,
-    UserProfile, UserProfileUpdate, UserSearchReq, UserSearchResp,
+    AgentProviderAccount as PbAgentProviderAccount, AgentSpecRecord as PbAgentSpecRecord,
+    AgentSpecSyncResp, AgentSpecUpsertReq, AgentSpecUpsertResp, AuthResp, BotCreateReq,
+    BotCreateResp, BotPendingResp, BotReplyReq, ConversationReadReq, Flag, FriendRequestNotify,
+    GroupCreateNotify, HistoryReq, HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq,
+    MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq, MessageIndexResp,
+    MessagePush, MessageReq, MessageResp, PresencePush, ReadReceiptPush, RoomEnterReq,
+    RoomEnterResp, RoomLeaveReq, Status, TypingPush, TypingReq, UserListResp, UserProfile,
+    UserProfileUpdate, UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
-    marshal, read, BasicPkt, LogicPkt, Packet, CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY,
-    CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK,
-    CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
-    CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN,
-    CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER,
-    CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
-    CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
-    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
+    marshal, read, BasicPkt, LogicPkt, Packet, CMD_AGENT_SPEC_SYNC, CMD_AGENT_SPEC_UPSERT,
+    CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY, CMD_BOT_TYPING, CMD_BOT_UPDATE,
+    CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
+    CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING,
+    CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG,
+    INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO,
+    MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
 use crate::events::{
-    BotPendingItem, Event, HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex,
-    OutgoingContent, Profile, TalkResult,
+    AgentProviderAccount, AgentSpecRecord, BotPendingItem, Event, HistoryItem, InboxItem,
+    IncomingTalk, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
 };
 use crate::ClientError;
 
@@ -274,6 +277,74 @@ pub fn encode_bot_reply(
         in_reply_to,
     });
     marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_agent_spec_sync(seq: u32) -> Bytes {
+    let pkt = LogicPkt::new(CMD_AGENT_SPEC_SYNC, seq, Bytes::new());
+    marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_agent_spec_upsert(
+    seq: u32,
+    record: Option<&AgentSpecRecord>,
+    account: Option<&AgentProviderAccount>,
+) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_AGENT_SPEC_UPSERT, seq, Bytes::new());
+    pkt.write_body(&AgentSpecUpsertReq {
+        record: record.map(pb_agent_spec),
+        account: account.map(pb_agent_account),
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+fn pb_agent_spec(record: &AgentSpecRecord) -> PbAgentSpecRecord {
+    PbAgentSpecRecord {
+        profile_id: record.profile_id.clone(),
+        nickname: record.nickname.clone(),
+        server_account: record.server_account.clone(),
+        spec: record.spec.clone(),
+        key_ciphertext: record.key_ciphertext.clone(),
+        updated_at: record.updated_at,
+        deleted_at: record.deleted_at,
+    }
+}
+
+fn from_pb_agent_spec(r: PbAgentSpecRecord) -> AgentSpecRecord {
+    AgentSpecRecord {
+        profile_id: r.profile_id,
+        nickname: r.nickname,
+        server_account: r.server_account,
+        spec: r.spec,
+        key_ciphertext: r.key_ciphertext,
+        updated_at: r.updated_at,
+        deleted_at: r.deleted_at,
+    }
+}
+
+fn pb_agent_account(a: &AgentProviderAccount) -> PbAgentProviderAccount {
+    PbAgentProviderAccount {
+        id: a.id.clone(),
+        vendor_id: a.vendor_id.clone(),
+        base_url: a.base_url.clone(),
+        key_ref: a.key_ref.clone(),
+        display_name: a.display_name.clone(),
+        models: a.models.clone(),
+        updated_at: a.updated_at,
+        deleted_at: a.deleted_at,
+    }
+}
+
+fn from_pb_agent_account(a: PbAgentProviderAccount) -> AgentProviderAccount {
+    AgentProviderAccount {
+        id: a.id,
+        vendor_id: a.vendor_id,
+        base_url: a.base_url,
+        key_ref: a.key_ref,
+        display_name: a.display_name,
+        models: a.models,
+        updated_at: a.updated_at,
+        deleted_at: a.deleted_at,
+    }
 }
 
 pub fn encode_bot_pending(seq: u32, dest: &str, limit: i32) -> Bytes {
@@ -692,6 +763,39 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
                     extra: m.extra,
                 })
                 .collect(),
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_AGENT_SPEC_SYNC {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: AgentSpecSyncResp = p.read_body()?;
+        return Ok(Event::AgentSpecSync {
+            sequence: p.header.sequence,
+            records: resp.records.into_iter().map(from_pb_agent_spec).collect(),
+            accounts: resp
+                .accounts
+                .into_iter()
+                .map(from_pb_agent_account)
+                .collect(),
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_AGENT_SPEC_UPSERT {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: AgentSpecUpsertResp = p.read_body()?;
+        return Ok(Event::AgentSpecUpsert {
+            sequence: p.header.sequence,
+            record: from_pb_agent_spec(resp.record.unwrap_or_default()),
         });
     }
     Ok(Event::Status {

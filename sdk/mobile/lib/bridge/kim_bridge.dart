@@ -4,6 +4,7 @@ library;
 
 import 'dart:async';
 import 'dart:io' show Directory, File, Platform;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
@@ -17,6 +18,7 @@ import 'package:kim_mobile/core/image_extra.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/auth.dart' as rust_auth;
 import 'package:kim_mobile/src/rust/api/client.dart' as rust;
+import 'package:kim_mobile/src/rust/api/simple.dart' as rust_simple;
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/src/rust/frb_generated.dart';
 
@@ -89,13 +91,7 @@ abstract class KimClientPort {
 
   Future<void> deleteThread(String dest);
 
-  Future<rust_types.MessagePageDto> loadOlder({
-    required String dest,
-    required int beforeAt,
-    required String beforeKey,
-    int beforeId = 0,
-    int limit = 50,
-  });
+  Future<void> loadOlder({required String dest});
 
   Future<void> markRead(String dest, ThreadKind kind, int messageId);
 
@@ -182,7 +178,9 @@ abstract class KimClientPort {
     String locale = '',
   });
 
-  Future<List<rust_types.PersonDto>> refreshContacts();
+  Future<void> refreshContacts();
+
+  Stream<rust_types.ContactsSnapshotDto> watchContacts();
 
   Stream<rust_types.AgentRunRequestDto> watchAgentRun();
 
@@ -195,6 +193,26 @@ abstract class KimClientPort {
   Future<void> deleteAgentProfile(String profileId);
 
   Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows);
+
+  Future<List<rust_types.ProviderAccountDto>> listProviderAccounts();
+
+  Future<void> upsertProviderAccount(rust_types.ProviderAccountDto row);
+
+  Future<void> deleteProviderAccount(String id);
+
+  Future<rust_types.DeviceOverlayDto?> getDeviceOverlay(String profileId);
+
+  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlayDto row);
+
+  Future<String> agentFlags();
+
+  Future<void> setAgentFlags(String flagsJson);
+
+  Future<void> syncAgentSpecs();
+
+  Future<Uint8List> specJsonToBlob(String bodyJson);
+
+  Future<String> specBlobToJson(List<int> blob);
 
   Future<rust_types.CommandAckDto> command(rust_types.UiCommandDto cmd);
 
@@ -421,20 +439,8 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.MessagePageDto> loadOlder({
-    required String dest,
-    required int beforeAt,
-    required String beforeKey,
-    int beforeId = 0,
-    int limit = 50,
-  }) {
-    return _require().loadOlder(
-      dest: dest,
-      beforeAt: beforeAt,
-      beforeKey: beforeKey,
-      beforeId: beforeId,
-      limit: limit,
-    );
+  Future<void> loadOlder({required String dest}) {
+    return _require().loadOlder(dest: dest);
   }
 
   @override
@@ -814,8 +820,13 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<List<rust_types.PersonDto>> refreshContacts() {
+  Future<void> refreshContacts() {
     return _require().refreshContacts();
+  }
+
+  @override
+  Stream<rust_types.ContactsSnapshotDto> watchContacts() {
+    return _require().watchContacts();
   }
 
   @override
@@ -846,6 +857,56 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   @override
   Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows) {
     return _require().importAgentProfiles(rows: rows);
+  }
+
+  @override
+  Future<List<rust_types.ProviderAccountDto>> listProviderAccounts() {
+    return _require().listProviderAccounts();
+  }
+
+  @override
+  Future<void> upsertProviderAccount(rust_types.ProviderAccountDto row) {
+    return _require().upsertProviderAccount(row: row);
+  }
+
+  @override
+  Future<void> deleteProviderAccount(String id) {
+    return _require().deleteProviderAccount(id: id);
+  }
+
+  @override
+  Future<rust_types.DeviceOverlayDto?> getDeviceOverlay(String profileId) {
+    return _require().getDeviceOverlay(profileId: profileId);
+  }
+
+  @override
+  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlayDto row) {
+    return _require().upsertDeviceOverlay(row: row);
+  }
+
+  @override
+  Future<String> agentFlags() {
+    return _require().agentFlags();
+  }
+
+  @override
+  Future<void> setAgentFlags(String flagsJson) {
+    return _require().setAgentFlags(flagsJson: flagsJson);
+  }
+
+  @override
+  Future<void> syncAgentSpecs() {
+    return _require().syncAgentSpecs();
+  }
+
+  @override
+  Future<Uint8List> specJsonToBlob(String bodyJson) {
+    return rust_simple.specJsonToBlob(bodyJson: bodyJson);
+  }
+
+  @override
+  Future<String> specBlobToJson(List<int> blob) {
+    return rust_simple.specBlobToJson(blob: blob);
   }
 
   @override

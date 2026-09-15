@@ -982,7 +982,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentPlazaEcoEmptyHint =>
-      'No SKILL.md under the real ~/.agents/skills yet';
+      'Use the header action to import a folder with SKILL.md. It is copied into ~/.agents/skills so Claude, Cursor, and others can find it.';
 
   @override
   String get agentPlazaAssign => 'Assign';
@@ -1002,7 +1002,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get agentPlazaImport => 'Import folder into ~/.agents…';
+  String get agentPlazaImport => 'Import skill folder';
 
   @override
   String agentPlazaImported(String id) {

@@ -76,6 +76,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<ContactsSnapshotDto>
+  dco_decode_StreamSink_contacts_snapshot_dto_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw);
 
@@ -130,6 +134,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentRunResultDto dco_decode_box_autoadd_agent_run_result_dto(dynamic raw);
 
   @protected
+  DeviceOverlayDto dco_decode_box_autoadd_device_overlay_dto(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_i_32(dynamic raw);
 
   @protected
@@ -140,6 +147,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LinkStateDto dco_decode_box_autoadd_link_state_dto(dynamic raw);
+
+  @protected
+  ProviderAccountDto dco_decode_box_autoadd_provider_account_dto(dynamic raw);
 
   @protected
   ThreadViewDto dco_decode_box_autoadd_thread_view_dto(dynamic raw);
@@ -155,6 +165,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommandAckDto dco_decode_command_ack_dto(dynamic raw);
+
+  @protected
+  ContactsSnapshotDto dco_decode_contacts_snapshot_dto(dynamic raw);
+
+  @protected
+  DeviceOverlayDto dco_decode_device_overlay_dto(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -193,7 +209,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PersonDto> dco_decode_list_person_dto(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<ProviderAccountDto> dco_decode_list_provider_account_dto(dynamic raw);
 
   @protected
   List<RoomMemberDto> dco_decode_list_room_member_dto(dynamic raw);
@@ -205,9 +227,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LocalMediaDto dco_decode_local_media_dto(dynamic raw);
 
   @protected
-  MessagePageDto dco_decode_message_page_dto(dynamic raw);
-
-  @protected
   MessageViewDto dco_decode_message_view_dto(dynamic raw);
 
   @protected
@@ -215,6 +234,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  DeviceOverlayDto? dco_decode_opt_box_autoadd_device_overlay_dto(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_i_32(dynamic raw);
@@ -227,6 +249,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ProfileDto dco_decode_profile_dto(dynamic raw);
+
+  @protected
+  ProviderAccountDto dco_decode_provider_account_dto(dynamic raw);
 
   @protected
   RoomMemberDto dco_decode_room_member_dto(dynamic raw);
@@ -323,6 +348,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   sse_decode_StreamSink_agent_run_request_dto_Sse(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<ContactsSnapshotDto>
+  sse_decode_StreamSink_contacts_snapshot_dto_Sse(SseDeserializer deserializer);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer);
 
@@ -389,6 +418,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  DeviceOverlayDto sse_decode_box_autoadd_device_overlay_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_i_32(SseDeserializer deserializer);
 
   @protected
@@ -401,6 +435,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LinkStateDto sse_decode_box_autoadd_link_state_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ProviderAccountDto sse_decode_box_autoadd_provider_account_dto(
     SseDeserializer deserializer,
   );
 
@@ -426,6 +465,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CommandAckDto sse_decode_command_ack_dto(SseDeserializer deserializer);
+
+  @protected
+  ContactsSnapshotDto sse_decode_contacts_snapshot_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DeviceOverlayDto sse_decode_device_overlay_dto(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -476,7 +523,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PersonDto> sse_decode_list_person_dto(SseDeserializer deserializer);
 
   @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<ProviderAccountDto> sse_decode_list_provider_account_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<RoomMemberDto> sse_decode_list_room_member_dto(
@@ -492,9 +547,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LocalMediaDto sse_decode_local_media_dto(SseDeserializer deserializer);
 
   @protected
-  MessagePageDto sse_decode_message_page_dto(SseDeserializer deserializer);
-
-  @protected
   MessageViewDto sse_decode_message_view_dto(SseDeserializer deserializer);
 
   @protected
@@ -502,6 +554,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  DeviceOverlayDto? sse_decode_opt_box_autoadd_device_overlay_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer);
@@ -514,6 +571,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ProfileDto sse_decode_profile_dto(SseDeserializer deserializer);
+
+  @protected
+  ProviderAccountDto sse_decode_provider_account_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RoomMemberDto sse_decode_room_member_dto(SseDeserializer deserializer);
@@ -627,6 +689,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_contacts_snapshot_dto_Sse(
+    RustStreamSink<ContactsSnapshotDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_session_snapshot_dto_Sse(
     RustStreamSink<SessionSnapshotDto> self,
     SseSerializer serializer,
@@ -708,6 +776,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_device_overlay_dto(
+    DeviceOverlayDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -725,6 +799,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_link_state_dto(
     LinkStateDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_provider_account_dto(
+    ProviderAccountDto self,
     SseSerializer serializer,
   );
 
@@ -754,6 +834,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_command_ack_dto(CommandAckDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_contacts_snapshot_dto(
+    ContactsSnapshotDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_device_overlay_dto(
+    DeviceOverlayDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -813,8 +905,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_provider_account_dto(
+    List<ProviderAccountDto> self,
     SseSerializer serializer,
   );
 
@@ -834,12 +935,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_local_media_dto(LocalMediaDto self, SseSerializer serializer);
 
   @protected
-  void sse_encode_message_page_dto(
-    MessagePageDto self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_message_view_dto(
     MessageViewDto self,
     SseSerializer serializer,
@@ -850,6 +945,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_device_overlay_dto(
+    DeviceOverlayDto? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer);
@@ -865,6 +966,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_profile_dto(ProfileDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_provider_account_dto(
+    ProviderAccountDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_room_member_dto(RoomMemberDto self, SseSerializer serializer);

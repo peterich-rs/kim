@@ -5,10 +5,10 @@ use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand,
 
 use super::rt;
 use super::types::{
-    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, LocalMediaDto,
-    MessagePageDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto, RoomMemberDto, SdkErrorDto,
-    SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto, TimelineUpdateDto,
-    TokenPersistDto, UiCommandDto,
+    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, ContactsSnapshotDto,
+    DeviceOverlayDto, LocalMediaDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto,
+    ProviderAccountDto, RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto,
+    SessionUpdateDto, SettingsDto, TimelineUpdateDto, TokenPersistDto, UiCommandDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -335,6 +335,25 @@ impl KimUiHandle {
         Ok(())
     }
 
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn watch_contacts(&self, sink: StreamSink<ContactsSnapshotDto>) -> Result<(), String> {
+        let _guard = rt().enter();
+        let rx = self.inner.subscribe_contacts();
+        rt().spawn(async move {
+            let mut rx = rx;
+            loop {
+                let snapshot = rx.borrow().clone();
+                if sink.add(ContactsSnapshotDto::from(snapshot)).is_err() {
+                    break;
+                }
+                if rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
     pub async fn start_session(
         &self,
         url: String,
@@ -436,26 +455,8 @@ impl KimUiHandle {
         })
     }
 
-    pub async fn load_older(
-        &self,
-        dest: String,
-        before_at: i64,
-        before_key: String,
-        before_id: i64,
-        limit: i32,
-    ) -> Result<MessagePageDto, SdkErrorDto> {
-        let page = self
-            .inner
-            .load_older(kim_sdk::PageCursor {
-                dest,
-                before_at,
-                before_key,
-                before_id,
-                limit,
-            })
-            .await
-            .map_err(SdkErrorDto::from)?;
-        Ok(page.into())
+    pub async fn load_older(&self, dest: String) -> Result<(), SdkErrorDto> {
+        self.inner.load_older(dest).await.map_err(SdkErrorDto::from)
     }
 
     pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
@@ -517,7 +518,11 @@ impl KimUiHandle {
         client
             .friend_request(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))?;
+        self.inner
+            .mark_outgoing_contact(dest)
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     pub async fn friend_accept(&self, dest: String) -> Result<(), SdkErrorDto> {
@@ -541,7 +546,11 @@ impl KimUiHandle {
         client
             .friend_remove(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
+            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))?;
+        self.inner
+            .remove_contact(dest)
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]
@@ -592,6 +601,69 @@ impl KimUiHandle {
     ) -> Result<(), SdkErrorDto> {
         self.inner
             .import_agent_profiles(rows.into_iter().map(Into::into).collect())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountDto>, SdkErrorDto> {
+        let rows = self
+            .inner
+            .list_provider_accounts()
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(rows.into_iter().map(ProviderAccountDto::from).collect())
+    }
+
+    pub async fn upsert_provider_account(
+        &self,
+        row: ProviderAccountDto,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .upsert_provider_account(row.into())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn delete_provider_account(&self, id: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .delete_provider_account(id)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn get_device_overlay(
+        &self,
+        profile_id: String,
+    ) -> Result<Option<DeviceOverlayDto>, SdkErrorDto> {
+        let row = self
+            .inner
+            .get_device_overlay(profile_id)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(row.map(DeviceOverlayDto::from))
+    }
+
+    pub async fn upsert_device_overlay(&self, row: DeviceOverlayDto) -> Result<(), SdkErrorDto> {
+        self.inner
+            .upsert_device_overlay(row.into())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn agent_flags(&self) -> Result<String, SdkErrorDto> {
+        self.inner.agent_flags().await.map_err(SdkErrorDto::from)
+    }
+
+    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .set_agent_flags(flags_json)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn sync_agent_specs(&self) -> Result<(), SdkErrorDto> {
+        self.inner
+            .sync_agent_specs()
             .await
             .map_err(SdkErrorDto::from)
     }
@@ -666,38 +738,11 @@ impl KimUiHandle {
         })
     }
 
-    pub fn refresh_contacts(&self) -> Result<Vec<PersonDto>, String> {
-        let client = self.supervisor()?.client();
-        let friends = rt()
-            .block_on(client.friend_list())
-            .map_err(|e| e.to_string())?;
-        let incoming = rt()
-            .block_on(client.friend_incoming())
-            .map_err(|e| e.to_string())?;
-        let mut rows = Vec::new();
-        for p in friends {
-            rows.push(kim_sdk::PersonRef {
-                account: p.account,
-                nickname: p.nickname,
-                avatar: p.avatar,
-                bio: p.bio,
-                relation: "friend".into(),
-                kind: p.kind,
-            });
-        }
-        for p in incoming {
-            rows.push(kim_sdk::PersonRef {
-                account: p.account,
-                nickname: p.nickname,
-                avatar: p.avatar,
-                bio: p.bio,
-                relation: "incoming".into(),
-                kind: p.kind,
-            });
-        }
-        rt().block_on(self.inner.replace_contacts(rows.clone()))
-            .map_err(|e| e.to_string())?;
-        Ok(rows.into_iter().map(PersonDto::from).collect())
+    pub async fn refresh_contacts(&self) -> Result<(), SdkErrorDto> {
+        self.inner
+            .refresh_contacts()
+            .await
+            .map_err(SdkErrorDto::from)
     }
 
     pub fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
@@ -813,6 +858,8 @@ impl KimUiHandle {
     pub fn bot_delete(&self, dest: String) -> Result<String, String> {
         let client = self.supervisor()?.client();
         rt().block_on(client.bot_delete(&dest))
+            .map_err(|e| e.to_string())?;
+        rt().block_on(self.inner.remove_contact(dest))
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }

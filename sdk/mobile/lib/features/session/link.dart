@@ -30,6 +30,8 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   var _startedFor = '';
   var _askedNotes = false;
   var _radioWasUp = false;
+  var _specSynced = false;
+  var _specSyncing = false;
   var _lifecycleBound = false;
   StreamSubscription<SessionUpdateDto>? _events;
 
@@ -52,11 +54,13 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (!signedIn) {
       _startedFor = '';
       _radioWasUp = false;
+      _specSynced = false;
       unawaited(_stop());
       return const KimLinkState();
     }
     if (_startedFor != account) {
       _startedFor = account;
+      _specSynced = false;
       unawaited(_start());
     } else if (radio && !_radioWasUp) {
       unawaited(_radioUp());
@@ -66,6 +70,11 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     final mapped = kimLinkFromDto(snap.link, snap.lastError);
     if (mapped.status == ConnStatus.online) {
       _askNotifications();
+      if (!_specSynced && !_specSyncing) {
+        unawaited(_syncAgentSpecs());
+      }
+    } else {
+      _specSynced = false;
     }
     return mapped;
   }
@@ -87,6 +96,25 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       }
     }
     await _start();
+  }
+
+  Future<void> _syncAgentSpecs() async {
+    if (_specSyncing || _specSynced) {
+      return;
+    }
+    _specSyncing = true;
+    final gen = _sessionGen;
+    final account = _startedFor;
+    try {
+      await ref.read(clientPortProvider).syncAgentSpecs();
+      if (ref.mounted && gen == _sessionGen && account == _startedFor) {
+        _specSynced = true;
+      }
+    } catch (e, st) {
+      KimLogger.warn('agent spec sync', e, st);
+    } finally {
+      _specSyncing = false;
+    }
   }
 
   Future<void> _radioUp() async {

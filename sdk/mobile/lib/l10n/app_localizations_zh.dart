@@ -950,7 +950,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentPlazaEcoEmpty => '生态架为空';
 
   @override
-  String get agentPlazaEcoEmptyHint => '真实用户家目录 ~/.agents/skills 里尚无 SKILL.md';
+  String get agentPlazaEcoEmptyHint =>
+      '右上角可导入含 SKILL.md 的文件夹。会复制到本机 ~/.agents/skills，Claude、Cursor 等也能读到。';
 
   @override
   String get agentPlazaAssign => '分配';
@@ -969,7 +970,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get agentPlazaImport => '导入文件夹到 ~/.agents…';
+  String get agentPlazaImport => '导入技能文件夹';
 
   @override
   String agentPlazaImported(String id) {

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
@@ -522,11 +523,21 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
+    final plazaAction = IconButton(
+      key: const Key('agent-skills-plaza'),
+      tooltip: l10n.agentSkillsOpenPlaza,
+      onPressed: () =>
+          context.push('/agent/plaza?assignTo=${widget.profileId}'),
+      icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
+    );
     if (!_loaded) {
       return Scaffold(
         body: CustomScrollView(
           slivers: [
-            KimSliverHeader(title: l10n.agentCapabilitiesTitle),
+            KimSliverHeader(
+              title: l10n.agentCapabilitiesTitle,
+              actions: [plazaAction],
+            ),
             const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
             ),
@@ -540,7 +551,10 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          KimSliverHeader(title: l10n.agentCapabilitiesTitle),
+          KimSliverHeader(
+            title: l10n.agentCapabilitiesTitle,
+            actions: [plazaAction],
+          ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverList.list(
@@ -788,15 +802,13 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                         SwitchListTile(
                           key: Key('agent-skills-app-${_appCatalog[i].id}'),
                           title: Text(_appCatalog[i].name),
-                          subtitle: Text(
-                            [
-                              _appCatalog[i].id,
-                              if (_appCatalog[i].description.isNotEmpty)
-                                _appCatalog[i].description,
-                            ].join(' · '),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          subtitle: _appCatalog[i].listDescription.isEmpty
+                              ? null
+                              : Text(
+                                  _appCatalog[i].listDescription,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                           value: _isAssigned(_appCatalog[i].id),
                           onChanged: (v) =>
                               unawaited(_toggleApp(_appCatalog[i], v)),
@@ -824,10 +836,11 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                           key: Key('agent-skills-mute-${_portable[i].id}'),
                           title: Text(_portable[i].name),
                           subtitle: Text(
-                            [
-                              _portable[i].id,
-                              l10n.agentSkillsPortableMuteHint,
-                            ].join(' · '),
+                            _portable[i].listDescription.isEmpty
+                                ? l10n.agentSkillsPortableMuteHint
+                                : _portable[i].listDescription,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           value: _denylist.contains(_portable[i].id),
                           onChanged: (muted) => unawaited(
@@ -836,13 +849,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                         ),
                       ],
                   ],
-                ),
-                const Gap(12),
-                OutlinedButton(
-                  key: const Key('agent-skills-plaza'),
-                  onPressed: () =>
-                      context.push('/agent/plaza?assignTo=${widget.profileId}'),
-                  child: Text(l10n.agentSkillsOpenPlaza),
                 ),
               ],
             ),

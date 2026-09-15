@@ -18,6 +18,30 @@ pub(crate) async fn load(pool: &SqlitePool, account: &str, dest: &str) -> Result
     }
 }
 
+pub(crate) async fn peek(
+    tx: &mut SqliteConnection,
+    account: &str,
+    dest: &str,
+) -> Result<(i32, i64), SdkError> {
+    let unread = sqlx::query_scalar::<_, i32>(
+        "SELECT IFNULL((SELECT unread FROM threads WHERE account = ? AND id = ?), 0)",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    let last_read = sqlx::query_scalar::<_, i64>(
+        "SELECT IFNULL((SELECT last_read_message_id FROM read_watermarks WHERE account = ? AND dest = ?), 0)",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok((unread, last_read))
+}
+
 pub(crate) async fn advance(
     tx: &mut SqliteConnection,
     account: &str,

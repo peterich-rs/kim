@@ -85,6 +85,68 @@ void main() {
     expect(items.any((m) => m.key == 'cid-1' && m.body == 'hi'), isTrue);
   });
 
+  test('loadOlder renders the SDK-expanded timeline snapshot', () async {
+    final env = await kimHarness(
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
+      account: 'alice',
+    );
+    final notifier = env.container.read(threadMessagesProvider('bob').notifier);
+    env.fake.pushTimeline(
+      'bob',
+      TimelineUpdateDto.snapshot(
+        snapshot: TimelineSnapshotDto(
+          dest: 'bob',
+          version: BigInt.one,
+          messages: [
+            MessageViewDto(
+              key: 'newer',
+              dest: 'bob',
+              sender: 'bob',
+              body: 'newer',
+              at: 2,
+              sys: false,
+              kind: 1,
+              width: 0,
+              height: 0,
+              messageId: 2,
+              sendStatus: SendStatusDto.sent,
+            ),
+          ],
+          pending: const [],
+          unread: 0,
+          lastReadMessageId: 0,
+          hasMore: true,
+          loadingOlder: false,
+          historyError: null,
+        ),
+      ),
+    );
+    env.fake.setOlderTimeline('bob', [
+      MessageViewDto(
+        key: 'older',
+        dest: 'bob',
+        sender: 'bob',
+        body: 'older',
+        at: 1,
+        sys: false,
+        kind: 1,
+        width: 0,
+        height: 0,
+        messageId: 1,
+        sendStatus: SendStatusDto.sent,
+      ),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+
+    await notifier.loadOlder();
+    await Future<void>.delayed(Duration.zero);
+
+    final state = env.container.read(threadMessagesProvider('bob'));
+    expect(state.items.map((message) => message.key), ['older', 'newer']);
+    expect(state.hasMore, isFalse);
+    expect(state.loadingOlder, isFalse);
+  });
+
   test('query filters snapshot threads without a second list', () async {
     final env = await kimHarness(
       token: testJwt(acc: 'alice', exp: 4_000_000_000),

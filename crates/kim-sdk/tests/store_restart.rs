@@ -1,5 +1,8 @@
 #![allow(clippy::unwrap_used)]
-use kim_sdk::{KimSdk, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus, StartSession};
+use kim_sdk::{
+    KimSdk, OutgoingPayload, SendMessageCommand, SendStatus, StartSession, TimelineQuery,
+    TimelineUpdate,
+};
 
 fn session(account: &str) -> StartSession {
     StartSession {
@@ -39,19 +42,27 @@ async fn pending_survives_reopen() {
 
     let sdk = KimSdk::open(path_s).await.expect("reopen");
     sdk.start_session(session("alice")).await.expect("session");
-    let page = sdk
-        .load_older(PageCursor {
-            dest: "bob".into(),
-            before_at: 0,
-            before_key: String::new(),
-            limit: 50,
-            before_id: 0,
-        })
-        .await
-        .expect("load");
-    assert_eq!(page.messages.len(), 1);
-    assert_eq!(page.messages[0].key, client_id);
-    assert_eq!(page.messages[0].send_status, SendStatus::Pending);
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
+                if let Some(message) = snapshot
+                    .pending
+                    .iter()
+                    .find(|message| message.key == client_id)
+                {
+                    assert_eq!(message.send_status, SendStatus::Pending);
+                    return;
+                }
+            }
+            timeline.changed().await.expect("timeline open");
+        }
+    })
+    .await
+    .expect("reopened pending timeline");
 }
 
 #[tokio::test]
@@ -70,21 +81,26 @@ async fn prune_does_not_drop_outbox_rows() {
 
     let sdk = KimSdk::open(path_s).await.expect("reopen");
     sdk.start_session(session("alice")).await.expect("session");
-    let page = sdk
-        .load_older(PageCursor {
-            dest: "bob".into(),
-            before_at: 0,
-            before_key: String::new(),
-            limit: 500,
-            before_id: 0,
-        })
-        .await
-        .expect("load");
-    assert_eq!(page.messages.len(), 401);
-    assert!(page
-        .messages
-        .iter()
-        .all(|m| m.send_status == SendStatus::Pending));
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
+                if snapshot.pending.len() == 401 {
+                    assert!(snapshot
+                        .pending
+                        .iter()
+                        .all(|message| message.send_status == SendStatus::Pending));
+                    return;
+                }
+            }
+            timeline.changed().await.expect("timeline open");
+        }
+    })
+    .await
+    .expect("reopened pending timeline");
 }
 
 #[tokio::test]

@@ -91,7 +91,7 @@ impl Default for SkillRef {
     }
 }
 
-/// The three frontmatter keys KIM reads. Anything else stays in the body.
+/// Frontmatter fields KIM surfaces. Unknown YAML keys are ignored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SkillMeta {
     pub name: String,
@@ -197,35 +197,164 @@ pub struct Activation {
     pub truncated: bool,
 }
 
-fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
-    let rest = text
-        .strip_prefix("---\n")
-        .or_else(|| text.strip_prefix("---\r\n"))?;
-    let mut offset = 0usize;
-    for line in rest.split_inclusive('\n') {
-        if line.trim_end() == "---" {
-            return Some((&rest[..offset], &rest[offset + line.len()..]));
-        }
-        offset += line.len();
-    }
-    None
+#[derive(Debug, Deserialize)]
+struct SkillFrontmatter {
+    #[serde(default)]
+    name: Option<serde_yaml::Value>,
+    #[serde(default)]
+    description: Option<serde_yaml::Value>,
+    #[serde(default)]
+    version: Option<serde_yaml::Value>,
 }
 
-fn unquote(value: &str) -> String {
-    let mut chars = value.chars();
-    match (chars.next(), value.chars().next_back()) {
-        (Some('"'), Some('"')) | (Some('\''), Some('\'')) if value.chars().count() >= 2 => {
-            let inner: String = value.chars().collect();
-            inner[1..inner.len() - 1].to_string()
+fn split_frontmatter(text: &str) -> Option<(String, String)> {
+    let mut lines = text.lines();
+    if !matches!(lines.next(), Some(line) if line.trim() == "---") {
+        return None;
+    }
+    let mut frontmatter_lines = Vec::new();
+    let mut found_closing = false;
+    for line in lines.by_ref() {
+        if line.trim() == "---" {
+            found_closing = true;
+            break;
         }
-        _ => value.to_string(),
+        frontmatter_lines.push(line);
+    }
+    if !found_closing {
+        return None;
+    }
+    Some((
+        frontmatter_lines.join("\n"),
+        lines.collect::<Vec<_>>().join("\n"),
+    ))
+}
+
+fn yaml_scalar_line(value: Option<serde_yaml::Value>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+    let raw = match value {
+        serde_yaml::Value::String(s) => s,
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Null
+        | serde_yaml::Value::Sequence(_)
+        | serde_yaml::Value::Mapping(_) => {
+            return String::new();
+        }
+        serde_yaml::Value::Tagged(tagged) => return yaml_scalar_line(Some(tagged.value)),
+    };
+    sanitize_single_line(&raw)
+}
+
+fn sanitize_single_line(raw: &str) -> String {
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Quote unquoted scalars that YAML rejects (`Build for AWS: ECS`, `<duration: e.g. 7d>`).
+/// Block scalars (`|`, `>`) are left alone.
+fn repair_frontmatter_scalar_fields(frontmatter: &str) -> Option<String> {
+    let mut changed = false;
+    let mut block_scalar_indent: Option<usize> = None;
+    let mut repaired_lines = Vec::new();
+    for line in frontmatter.lines() {
+        let indent = line
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        if let Some(block_indent) = block_scalar_indent {
+            if line.trim().is_empty() || indent > block_indent {
+                repaired_lines.push(line.to_string());
+                continue;
+            }
+            block_scalar_indent = None;
+        }
+
+        let Some((key, value)) = line.split_once(':') else {
+            repaired_lines.push(line.to_string());
+            continue;
+        };
+        if key.trim().is_empty() || !value.chars().next().is_none_or(char::is_whitespace) {
+            repaired_lines.push(line.to_string());
+            continue;
+        }
+
+        let trimmed_start = value.trim_start();
+        let leading_whitespace = &value[..value.len() - trimmed_start.len()];
+        let mut scalar = trimmed_start;
+        let mut comment = "";
+        for (index, character) in trimmed_start.char_indices() {
+            if character == '#'
+                && (index == 0
+                    || trimmed_start[..index]
+                        .chars()
+                        .next_back()
+                        .is_some_and(char::is_whitespace))
+            {
+                let comment_start = trimmed_start[..index].trim_end().len();
+                scalar = &trimmed_start[..comment_start];
+                comment = &trimmed_start[comment_start..];
+                break;
+            }
+        }
+
+        let scalar = scalar.trim_end();
+        let Some(first_char) = scalar.chars().next() else {
+            repaired_lines.push(line.to_string());
+            continue;
+        };
+        if matches!(first_char, '|' | '>') {
+            block_scalar_indent = Some(indent);
+            repaired_lines.push(line.to_string());
+            continue;
+        }
+        if matches!(first_char, '\'' | '"') {
+            repaired_lines.push(line.to_string());
+            continue;
+        }
+        let mut has_colon_separator = false;
+        let mut chars = scalar.chars().peekable();
+        while let Some(character) = chars.next() {
+            if character == ':'
+                && matches!(chars.peek(), Some(next_character) if next_character.is_whitespace())
+            {
+                has_colon_separator = true;
+                break;
+            }
+        }
+        let invalid_flow_like_scalar = matches!(first_char, '[' | '{' | '@' | '`')
+            && serde_yaml::from_str::<serde_yaml::Value>(scalar).is_err();
+        if !has_colon_separator && !invalid_flow_like_scalar {
+            repaired_lines.push(line.to_string());
+            continue;
+        }
+
+        let quoted_scalar = format!("'{}'", scalar.replace('\'', "''"));
+        repaired_lines.push(format!(
+            "{key}:{leading_whitespace}{quoted_scalar}{comment}"
+        ));
+        changed = true;
+    }
+    changed.then(|| repaired_lines.join("\n"))
+}
+
+fn parse_frontmatter_yaml(block: &str) -> Option<SkillFrontmatter> {
+    match serde_yaml::from_str(block) {
+        Ok(parsed) => Some(parsed),
+        Err(_) => {
+            let repaired = repair_frontmatter_scalar_fields(block)?;
+            serde_yaml::from_str(&repaired).ok()
+        }
     }
 }
 
-/// Minimal `---` frontmatter reader: top-level `key: value` lines only.
+/// YAML frontmatter + markdown body.
 ///
-/// A YAML dependency would buy nesting KIM does not read; indented lines,
-/// list items, and comments are skipped so `metadata.kim` blocks are ignored.
+/// Folded/literal scalars and nested maps come from `serde_yaml`. Unquoted
+/// colons are repaired so wild `~/.agents` skills still parse. Name and
+/// description are collapsed to one line for list rows. Invalid YAML keeps
+/// the body and empty meta so a scan never dies on one bad skill.
 pub fn parse_skill_md(raw: &str) -> SkillDoc {
     let text = raw.strip_prefix('\u{feff}').unwrap_or(raw);
     let Some((block, body)) = split_frontmatter(text) else {
@@ -234,22 +363,13 @@ pub fn parse_skill_md(raw: &str) -> SkillDoc {
             body: text.trim().to_string(),
         };
     };
-    let mut meta = SkillMeta::default();
-    for line in block.lines() {
-        if line.starts_with([' ', '\t', '-', '#']) {
-            continue;
-        }
-        let Some((key, value)) = line.split_once(':') else {
-            continue;
-        };
-        let value = unquote(value.trim());
-        match key.trim().to_ascii_lowercase().as_str() {
-            "name" => meta.name = value,
-            "description" => meta.description = value,
-            "version" => meta.version = value,
-            _ => {}
-        }
-    }
+    let meta = parse_frontmatter_yaml(&block)
+        .map(|parsed| SkillMeta {
+            name: yaml_scalar_line(parsed.name),
+            description: yaml_scalar_line(parsed.description),
+            version: yaml_scalar_line(parsed.version),
+        })
+        .unwrap_or_default();
     SkillDoc {
         meta,
         body: body.trim().to_string(),
@@ -694,6 +814,33 @@ mod tests {
         assert_eq!(doc.meta.description, "Conventional Commits");
         assert_eq!(doc.meta.version, "2.1");
         assert_eq!(doc.body, "# Body\ntext");
+    }
+
+    #[test]
+    fn frontmatter_folded_description_joins_indented_lines() {
+        let doc = parse_skill_md(
+            "---\nname: codegraph\ndescription: >\n  Query this repo's local CodeGraph index\n  instead of grep.\nlicense: MIT\n---\n\n# Body\n",
+        );
+        assert_eq!(doc.meta.name, "codegraph");
+        assert_eq!(
+            doc.meta.description,
+            "Query this repo's local CodeGraph index instead of grep."
+        );
+        assert_eq!(doc.body, "# Body");
+    }
+
+    #[test]
+    fn frontmatter_repairs_unquoted_colons_and_keeps_block_scalars() {
+        let colon = parse_skill_md(
+            "---\nname: deploy\ndescription: Build for AWS: ECS\nargument-hint: <duration: e.g. 7d>\n---\n\n# Body\n",
+        );
+        assert_eq!(colon.meta.description, "Build for AWS: ECS");
+        assert_eq!(colon.body, "# Body");
+
+        let block = parse_skill_md(
+            "---\nname: block\ndescription: |-\n  Build for AWS: ECS\nargument-hint: <duration: e.g. 7d>\n---\n\n# Body\n",
+        );
+        assert_eq!(block.meta.description, "Build for AWS: ECS");
     }
 
     #[test]

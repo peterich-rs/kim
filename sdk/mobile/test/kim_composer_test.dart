@@ -9,11 +9,13 @@ void main() {
     var album = 0;
     var camera = 0;
     var sent = '';
+    final composer = GlobalKey<KimComposerState>();
     await tester.pumpWidget(
       MaterialApp(
         theme: KimTheme.light(),
         home: Scaffold(
           body: KimComposer(
+            key: composer,
             onSend: (text) => sent = text,
             onPickAlbum: () => album += 1,
             onTakePhoto: () => camera += 1,
@@ -54,5 +56,16 @@ void main() {
     await tester.tap(find.byKey(const Key('composer-send')));
     await tester.pumpAndSettle();
     expect(sent, 'hello');
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'hello',
+    );
+
+    composer.currentState!.clear();
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
   });
 }

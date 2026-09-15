@@ -13,6 +13,7 @@ members = [
     "crates/kim-client",
     "crates/kim-sdk",
     "crates/kim-agent-host",
+    "crates/kim-agent-codec",
     "services/gateway",
     "services/chat",
     "services/royal",
@@ -64,6 +65,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 serde_json = "1"
+serde_yaml = "0.9"
 clap = { version = "4", features = ["derive"] }
 humantime = "2"
 prometheus = { version = "0.14", default-features = false }
@@ -80,3 +82,4 @@ dashmap = "6"
 arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
 kim-agent-host = { path = "crates/kim-agent-host" }
+kim-agent-codec = { path = "crates/kim-agent-codec" }

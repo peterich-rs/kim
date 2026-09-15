@@ -2,11 +2,13 @@
 
 mod agent;
 mod command;
+mod contacts;
 mod error;
 mod ids;
 mod media;
 mod metrics;
 mod proto;
+mod query;
 mod session;
 mod store;
 mod timeline;
@@ -16,15 +18,15 @@ pub mod sync;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 pub use agent::{
-    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime,
-    MobileAgent, NoopAgent, ScriptedRuntime, QUEUE_CAP,
+    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, DeviceOverlayRow,
+    FfiAgentRuntime, MobileAgent, NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
 };
 pub use command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
@@ -42,8 +44,8 @@ pub use store::prepare::{prepare_store_file, PrepareOutcome};
 pub use store::settings::DeviceSettings;
 pub use sync::UnreadPolicy;
 pub use timeline::{
-    AgentCard, AgentTurnState, LinkStateView, MessageView, PersonRef, SessionSnapshot,
-    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
+    AgentCard, AgentTurnState, ContactsSnapshot, LinkStateView, MessageView, PersonRef,
+    SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,10 +54,15 @@ pub enum TokenPersistEvent {
     Clear,
 }
 
+use crate::contacts::ContactsErrorOp;
+use crate::query::{spawn_query_publisher, TimelineSub};
 use crate::session::lock;
+use crate::store::changes::{ChangeLog, CommitEffect};
 use crate::store::Store;
 
-struct Inner {
+const APPLY_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+pub(crate) struct Inner {
     epoch: Arc<AtomicU64>,
     cancel: Mutex<CancellationToken>,
     session: Mutex<Option<StartSession>>,
@@ -64,7 +71,19 @@ struct Inner {
     protocol: Mutex<Option<Arc<dyn ProtocolClient>>>,
     uploader: Mutex<Option<Arc<MediaUploader>>>,
     session_subs: Mutex<Vec<mpsc::Sender<SessionUpdate>>>,
-    timelines: Mutex<HashMap<String, watch::Sender<TimelineUpdate>>>,
+    timelines: Mutex<HashMap<String, TimelineSub>>,
+    contacts_watch: watch::Sender<ContactsSnapshot>,
+    contacts_account: Mutex<String>,
+    contacts_epoch: AtomicU64,
+    contacts_version: AtomicU64,
+    /// Source of truth for `ContactsSnapshot.sync_error`. Mutated only while
+    /// publishing a snapshot so a QueryPublisher rebuild cannot clobber a
+    /// failed refresh.
+    contacts_sync_error: Mutex<Option<String>>,
+    changes: Mutex<Option<Arc<ChangeLog>>>,
+    /// Only cancelled when the last `KimSdk` is dropped; session reconnects
+    /// must not stop the query publisher.
+    store_life: CancellationToken,
     session_snapshot: watch::Sender<SessionSnapshot>,
     agent: Mutex<Arc<dyn AgentPort>>,
     metrics: SdkMetrics,
@@ -73,6 +92,12 @@ struct Inner {
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
     ffi_runtime: Arc<FfiAgentRuntime>,
     media_dir: Mutex<Option<PathBuf>>,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        self.store_life.cancel();
+    }
 }
 
 #[derive(Clone)]
@@ -95,6 +120,18 @@ impl KimSdk {
                 uploader: Mutex::new(None),
                 session_subs: Mutex::new(Vec::new()),
                 timelines: Mutex::new(HashMap::new()),
+                contacts_watch: watch::channel(ContactsSnapshot {
+                    version: 0,
+                    contacts: Vec::new(),
+                    sync_error: None,
+                })
+                .0,
+                contacts_account: Mutex::new(String::new()),
+                contacts_epoch: AtomicU64::new(0),
+                contacts_version: AtomicU64::new(0),
+                contacts_sync_error: Mutex::new(None),
+                changes: Mutex::new(None),
+                store_life: CancellationToken::new(),
                 session_snapshot: watch::channel(SessionSnapshot::default()).0,
                 agent: Mutex::new(Arc::new(NoopAgent)),
                 metrics: SdkMetrics::default(),
@@ -112,6 +149,19 @@ impl KimSdk {
         let sdk = Self::protocol_only();
         sdk.attach_store(db_path).await?;
         Ok(sdk)
+    }
+
+    pub(crate) fn downgrade(&self) -> std::sync::Weak<Inner> {
+        Arc::downgrade(&self.inner)
+    }
+
+    pub(crate) fn from_inner(inner: Arc<Inner>) -> Self {
+        Self { inner }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_inner_strong_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 
     /// Open `kim-cache.db`. Migration runs on a blocking thread.
@@ -141,7 +191,10 @@ impl KimSdk {
         }
         let epoch = self.inner.epoch.clone();
         let store = Store::open(path.clone(), epoch).await?;
+        let changes = store.changes();
         *lock(&self.inner.store) = Some(store);
+        *lock(&self.inner.changes) = Some(changes.clone());
+        spawn_query_publisher(self.clone(), changes, self.inner.store_life.clone());
         if let Some(parent) = path.parent() {
             *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
         }
@@ -158,15 +211,61 @@ impl KimSdk {
                 message: "account is required".into(),
             });
         }
+        let prev_account = lock(&self.inner.session)
+            .as_ref()
+            .map(|session| session.account.clone());
         let _ = self.bump_epoch();
         self.stop_supervisor();
         *lock(&self.inner.outbox_kick) = None;
         self.replace_session(s.clone());
+        let epoch = self.current_epoch().0;
+        let same_account = matches!(prev_account.as_deref(), None | Some(""))
+            || prev_account.as_deref() == Some(s.account.as_str());
+        {
+            let mut timelines = lock(&self.inner.timelines);
+            if same_account {
+                for sub in timelines.values_mut() {
+                    if sub.account.is_empty() || sub.account == s.account {
+                        sub.account = s.account.clone();
+                        sub.epoch = epoch;
+                    }
+                }
+            } else {
+                for sub in timelines.values() {
+                    let _ = sub.tx.send(TimelineUpdate::Resync {
+                        dest: sub.dest.clone(),
+                        reason: "account".into(),
+                    });
+                }
+            }
+        }
+        let contacts_active = !self.inner.contacts_watch.is_closed();
+        *lock(&self.inner.contacts_account) = s.account.clone();
+        self.inner.contacts_epoch.store(epoch, Ordering::SeqCst);
+        if !same_account {
+            self.publish_contacts_snapshot(Vec::new(), ContactsErrorOp::Clear);
+        }
+        if same_account {
+            if let Some(changes) = lock(&self.inner.changes).clone() {
+                let dests: Vec<String> = lock(&self.inner.timelines).keys().cloned().collect();
+                let mut effect = CommitEffect::inbox();
+                for dest in dests {
+                    effect.merge(CommitEffect::timeline(dest));
+                }
+                if contacts_active {
+                    effect.merge(CommitEffect::contacts());
+                }
+                changes.record(s.account.clone(), epoch, effect);
+            }
+        } else if contacts_active {
+            if let Some(changes) = lock(&self.inner.changes).clone() {
+                changes.record(s.account.clone(), epoch, CommitEffect::contacts());
+            }
+        }
         let cfg = kim_client::ClientConfig::new(s.url.clone(), s.token.clone())
             .with_user_agent(s.user_agent.clone())
             .with_device(kim_client::device_for_target_os(std::env::consts::OS).to_string());
         let mut sup = kim_client::SessionSupervisor::new(cfg);
-        let epoch = self.current_epoch().0;
         if self.store_attached() {
             sup = sup.with_persist(Arc::new(SdkPersistHook {
                 sdk: self.clone(),
@@ -180,9 +279,9 @@ impl KimSdk {
         self.spawn_outbox_worker();
         sup.ensure_running();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
-        self.publish_session_snapshot().await;
+        self.refresh_session_snapshot().await;
         if let Ok(store) = self.store() {
-            store
+            let ((), _seq) = store
                 .rekey_agent_profiles(String::new(), s.account.clone())
                 .await?;
         }
@@ -237,15 +336,14 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        let receipt = store.enqueue(epoch, session.account, cmd).await?;
+        let (receipt, sequence) = store.enqueue(epoch, session.account, cmd).await?;
         self.inner.metrics.inc_enqueue();
         tracing::debug!(
             request_id = %receipt.request_id,
             client_id = %receipt.client_id,
             "enqueue committed"
         );
-        self.publish_timeline(&receipt.dest).await;
-        self.publish_session_snapshot().await;
+        self.after_command(sequence).await;
         self.kick_outbox();
         Ok(receipt)
     }
@@ -255,11 +353,8 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        let dest = store.get_row(&session.account, &id).await?.map(|r| r.dest);
-        store.cancel(epoch, session.account, id).await?;
-        if let Some(dest) = dest {
-            self.publish_timeline(&dest).await;
-        }
+        let ((), sequence) = store.cancel(epoch, session.account, id).await?;
+        self.after_command(sequence).await;
         Ok(())
     }
 
@@ -267,7 +362,7 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store
+        let ((), sequence) = store
             .requeue(epoch, session.account.clone(), id.clone())
             .await?;
         let row =
@@ -277,7 +372,7 @@ impl KimSdk {
                 .ok_or_else(|| SdkError::NotFound {
                     what: "outbox".into(),
                 })?;
-        self.publish_timeline(&row.dest).await;
+        self.after_command(sequence).await;
         self.kick_outbox();
         Ok(CommandReceipt {
             request_id: uuid::Uuid::new_v4().to_string(),
@@ -292,7 +387,7 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store
+        let ((), sequence) = store
             .mark_read_local(
                 epoch,
                 session.account,
@@ -300,13 +395,19 @@ impl KimSdk {
                 marker.visible_message_id,
             )
             .await?;
+        self.after_command(sequence).await;
         if let Ok(proto) = self.protocol() {
-            let _ = proto
-                .mark_read(&marker.dest, marker.kind, marker.visible_message_id)
-                .await;
+            let sdk = self.clone();
+            let dest = marker.dest;
+            let kind = marker.kind;
+            let visible_message_id = marker.visible_message_id;
+            tokio::spawn(async move {
+                if sdk.current_epoch().0 != epoch {
+                    return;
+                }
+                let _ = proto.mark_read(&dest, kind, visible_message_id).await;
+            });
         }
-        self.publish_session_snapshot().await;
-        self.publish_timeline(&marker.dest).await;
         Ok(())
     }
 
@@ -315,11 +416,17 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store
+        let ((), sequence) = store
             .delete_thread(epoch, session.account, dest.clone())
             .await?;
+        if let Some(sub) = lock(&self.inner.timelines).get_mut(&dest) {
+            sub.older_bound = None;
+            sub.has_more = false;
+            sub.loading_older = false;
+            sub.history_error = None;
+        }
         self.publish_timeline_resync(&dest, "deleted").await;
-        self.publish_session_snapshot().await;
+        self.after_command(sequence).await;
         Ok(())
     }
 
@@ -353,28 +460,199 @@ impl KimSdk {
 
     pub async fn upsert_agent_profile(&self, row: AgentProfileRow) -> Result<(), SdkError> {
         let store = self.store()?;
-        store
+        let ((), _seq) = store
             .upsert_agent_profile(self.agent_account_key(), row)
-            .await
+            .await?;
+        Ok(())
     }
 
     pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkError> {
         let store = self.store()?;
-        store
+        let ((), _seq) = store
             .delete_agent_profile(self.agent_account_key(), profile_id)
-            .await
+            .await?;
+        Ok(())
     }
 
     pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
         let store = self.store()?;
-        store.load_agent_profiles(&self.agent_account_key()).await
+        let rows = store.load_agent_profiles(&self.agent_account_key()).await?;
+        Ok(rows.into_iter().filter(|r| r.deleted_at == 0).collect())
     }
 
     pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
         let store = self.store()?;
-        store
+        let ((), _seq) = store
             .import_agent_profiles(self.agent_account_key(), rows)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountRow>, SdkError> {
+        let store = self.store()?;
+        store
+            .load_provider_accounts(&self.agent_account_key())
             .await
+    }
+
+    pub async fn upsert_provider_account(&self, row: ProviderAccountRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .upsert_provider_account(self.agent_account_key(), row)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_provider_account(&self, id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .delete_provider_account(self.agent_account_key(), id)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_device_overlay(
+        &self,
+        profile_id: String,
+    ) -> Result<Option<DeviceOverlayRow>, SdkError> {
+        let store = self.store()?;
+        store
+            .load_device_overlay(&self.agent_account_key(), &profile_id)
+            .await
+    }
+
+    pub async fn upsert_device_overlay(&self, row: DeviceOverlayRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .upsert_device_overlay(self.agent_account_key(), row)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn agent_flags(&self) -> Result<String, SdkError> {
+        let store = self.store()?;
+        store.load_agent_flags().await
+    }
+
+    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store.upsert_agent_flags(flags_json).await?;
+        Ok(())
+    }
+
+    pub async fn sync_agent_specs(&self) -> Result<(), SdkError> {
+        let proto = match self.protocol() {
+            Ok(p) => p,
+            Err(_) => return Ok(()),
+        };
+        let (remote_specs, remote_accounts) = proto.agent_spec_sync().await?;
+        self.apply_remote_accounts(&remote_accounts).await?;
+        let store = self.store()?;
+        let account = self.agent_account_key();
+        let local_specs = store.load_agent_profiles(&account).await?;
+        let mut local_by_id: HashMap<String, AgentProfileRow> = local_specs
+            .into_iter()
+            .map(|r| (r.profile_id.clone(), r))
+            .collect();
+        for rec in remote_specs {
+            if rec.profile_id.is_empty() || rec.spec.is_empty() {
+                continue;
+            }
+            let local_ts = local_by_id
+                .get(&rec.profile_id)
+                .map(|r| r.updated_at)
+                .unwrap_or(0);
+            if rec.updated_at >= local_ts {
+                self.upsert_agent_profile(AgentProfileRow {
+                    profile_id: rec.profile_id.clone(),
+                    nickname: rec.nickname,
+                    server_account: rec.server_account,
+                    body_json: String::new(),
+                    body_blob: rec.spec,
+                    placement: "local".into(),
+                    updated_at: rec.updated_at,
+                    deleted_at: rec.deleted_at,
+                })
+                .await?;
+                local_by_id.remove(&rec.profile_id);
+            }
+        }
+        let local_accounts = store.load_provider_accounts_all(&account).await?;
+        let mut push_err: Option<SdkError> = None;
+        for row in local_by_id.into_values() {
+            if row.body_blob.is_empty() && row.deleted_at == 0 {
+                continue;
+            }
+            if let Err(err) = proto
+                .agent_spec_upsert(Some(&row_to_spec_record(&row)), None)
+                .await
+            {
+                tracing::warn!(
+                    error = %err,
+                    profile_id = %row.profile_id,
+                    "agent spec upsert failed"
+                );
+                if push_err.is_none() {
+                    push_err = Some(err);
+                }
+            }
+        }
+        for acc in &local_accounts {
+            let remote_ts = remote_accounts
+                .iter()
+                .find(|a| a.id == acc.id)
+                .map(|a| a.updated_at);
+            if remote_ts.is_some_and(|ts| acc.updated_at <= ts) {
+                continue;
+            }
+            if let Err(err) = proto
+                .agent_spec_upsert(None, Some(&row_to_provider_account(acc)))
+                .await
+            {
+                tracing::warn!(error = %err, account_id = %acc.id, "provider account upsert failed");
+                if push_err.is_none() {
+                    push_err = Some(err);
+                }
+            }
+        }
+        match push_err {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
+    async fn apply_remote_accounts(
+        &self,
+        remote: &[kim_client::AgentProviderAccount],
+    ) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let local = store
+            .load_provider_accounts_all(&self.agent_account_key())
+            .await?;
+        let local_ts: HashMap<&str, i64> = local
+            .iter()
+            .map(|a| (a.id.as_str(), a.updated_at))
+            .collect();
+        for acc in remote {
+            if acc.id.is_empty() {
+                continue;
+            }
+            let ts = local_ts.get(acc.id.as_str()).copied().unwrap_or(0);
+            if acc.updated_at >= ts {
+                self.upsert_provider_account(ProviderAccountRow {
+                    id: acc.id.clone(),
+                    vendor_id: acc.vendor_id.clone(),
+                    base_url: acc.base_url.clone(),
+                    key_ref: acc.key_ref.clone(),
+                    display_name: acc.display_name.clone(),
+                    models_json: serde_json::to_string(&acc.models).unwrap_or_else(|_| "[]".into()),
+                    updated_at: acc.updated_at,
+                    deleted_at: acc.deleted_at,
+                })
+                .await?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn enqueue_agent_turn(
@@ -440,7 +718,7 @@ impl KimSdk {
         let store = self.store()?;
         if let Some(row) = store.lookup_media(&url).await? {
             if tokio::fs::metadata(&row.local_path).await.is_ok() {
-                store.touch_media(url).await?;
+                let ((), _seq) = store.touch_media(url).await?;
                 return Ok(row.local_path);
             }
         }
@@ -484,7 +762,7 @@ impl KimSdk {
             })?;
         let size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
         let local = path.to_string_lossy().into_owned();
-        let evicted = store.upsert_media(url, local.clone(), size).await?;
+        let (evicted, _seq) = store.upsert_media(url, local.clone(), size).await?;
         for old in evicted {
             let _ = tokio::fs::remove_file(old).await;
         }
@@ -570,53 +848,134 @@ impl KimSdk {
         Err(SdkError::NotConnected)
     }
 
-    pub async fn load_older(&self, cursor: PageCursor) -> Result<MessagePage, SdkError> {
-        let store = self.store()?;
-        let session = self.session_snapshot()?;
-        let dest = cursor.dest.clone();
-        let limit = cursor.limit;
-        let before_id = cursor.before_id;
-        let mut page = store.load_older(&session.account, cursor.clone()).await?;
-        if (page.messages.len() as i32) < limit && before_id != 0 {
-            if let Ok(proto) = self.protocol() {
-                let kind = store
-                    .load_threads(&session.account)
-                    .await
-                    .ok()
-                    .and_then(|ts| ts.into_iter().find(|t| t.id == dest).map(|t| t.kind))
-                    .unwrap_or(0);
-                if let Ok(remote) = proto.history(&dest, kind, before_id, limit).await {
-                    let talks: Vec<kim_client::IncomingTalk> = remote
-                        .into_iter()
-                        .map(|h| kim_client::IncomingTalk {
-                            command: String::new(),
-                            dest: dest.clone(),
-                            message_id: h.message_id,
-                            sender: h.sender,
-                            msg_type: h.msg_type,
-                            body: h.body,
-                            extra: h.extra,
-                            send_time: h.send_time,
-                        })
-                        .collect();
-                    if !talks.is_empty() {
-                        let _ = self
-                            .persist_talks_for(
-                                self.current_epoch().0,
-                                session.account.clone(),
+    /// Expands the registered timeline window. Data is returned only through
+    /// `subscribe_timeline`; callers never merge a returned page themselves.
+    pub async fn load_older(&self, dest: String) -> Result<(), SdkError> {
+        let (account, epoch, limit) = {
+            let mut timelines = lock(&self.inner.timelines);
+            let sub = timelines
+                .get_mut(&dest)
+                .ok_or_else(|| SdkError::InvalidArgument {
+                    message: "no timeline subscriber".into(),
+                })?;
+            sub.loading_older = true;
+            sub.history_error = None;
+            (sub.account.clone(), sub.epoch, sub.limit)
+        };
+        self.record_timeline_and_wait(&account, epoch, &dest).await;
+
+        let result: Result<(Option<(i64, String)>, bool), SdkError> = async {
+            let window = self.timeline_window_snapshot(&dest, &account, epoch)?;
+            let mut rows: Vec<&MessageView> = window
+                .messages
+                .iter()
+                .chain(window.pending.iter())
+                .collect();
+            rows.sort_by(|left, right| {
+                left.at
+                    .cmp(&right.at)
+                    .then_with(|| left.key.cmp(&right.key))
+            });
+            let Some(oldest) = rows.first() else {
+                return Ok((None, false));
+            };
+            let before_id = rows
+                .iter()
+                .filter_map(|message| (message.message_id != 0).then_some(message.message_id))
+                .min()
+                .unwrap_or(0);
+            let cursor = PageCursor {
+                dest: dest.clone(),
+                before_at: oldest.at,
+                before_key: oldest.key.clone(),
+                before_id,
+                limit,
+            };
+            let store = self.store()?;
+            let (mut page, local_has_more) = store.load_page(&account, &cursor).await?;
+            let mut has_more = local_has_more;
+
+            if !local_has_more {
+                let sent = store.count_sent(&account, &dest).await?;
+                let cap = i64::from(store::schema::MAX_MESSAGES);
+                if sent >= cap {
+                    has_more = false;
+                } else if (page.len() as i32) < limit && before_id != 0 {
+                    let room = cap.saturating_sub(sent);
+                    let fetch_limit = i32::try_from(room).unwrap_or(limit).min(limit);
+                    if fetch_limit <= 0 {
+                        has_more = false;
+                    } else {
+                        let proto = self.protocol()?;
+                        let kind = store
+                            .load_threads(&account)
+                            .await?
+                            .into_iter()
+                            .find(|thread| thread.id == dest)
+                            .map(|thread| thread.kind)
+                            .unwrap_or(0);
+                        let remote = proto.history(&dest, kind, before_id, fetch_limit).await?;
+                        let remote_full = remote.len() as i32 >= fetch_limit;
+                        let talks: Vec<kim_client::IncomingTalk> = remote
+                            .into_iter()
+                            .take(usize::try_from(fetch_limit).unwrap_or(0))
+                            .map(|history| kim_client::IncomingTalk {
+                                command: String::new(),
+                                dest: dest.clone(),
+                                message_id: history.message_id,
+                                sender: history.sender,
+                                msg_type: history.msg_type,
+                                body: history.body,
+                                extra: history.extra,
+                                send_time: history.send_time,
+                            })
+                            .collect();
+                        if !talks.is_empty() {
+                            self.persist_talks_for(
+                                epoch,
+                                account.clone(),
                                 talks,
                                 UnreadPolicy::Keep,
                             )
-                            .await;
-                        if let Ok(again) = store.load_older(&session.account, cursor).await {
-                            page = again;
+                            .await?;
+                            (page, _) = store.load_page(&account, &cursor).await?;
                         }
+                        let sent_after = store.count_sent(&account, &dest).await?;
+                        has_more = sent_after < cap && remote_full;
                     }
+                } else {
+                    has_more = false;
                 }
             }
+
+            let older_bound = rows
+                .into_iter()
+                .chain(page.iter())
+                .map(|message| (message.at, message.key.clone()))
+                .min();
+            Ok((older_bound, has_more))
         }
-        self.publish_timeline(&dest).await;
-        Ok(page)
+        .await;
+
+        match result {
+            Ok((older_bound, has_more)) => {
+                self.finish_timeline_load(&dest, &account, epoch, older_bound, has_more, None)
+                    .await;
+                Ok(())
+            }
+            Err(error) => {
+                self.finish_timeline_load(
+                    &dest,
+                    &account,
+                    epoch,
+                    None,
+                    true,
+                    Some(error.to_string()),
+                )
+                .await;
+                Err(error)
+            }
+        }
     }
 
     pub async fn persist_talks(
@@ -628,6 +987,7 @@ impl KimSdk {
         let epoch = self.current_epoch().0;
         self.persist_talks_for(epoch, session.account, talks, policy)
             .await
+            .map(|_| ())
     }
 
     pub(crate) async fn persist_talks_for(
@@ -636,25 +996,27 @@ impl KimSdk {
         account: String,
         talks: Vec<kim_client::IncomingTalk>,
         policy: UnreadPolicy,
-    ) -> Result<(), SdkError> {
+    ) -> Result<u64, SdkError> {
         let store = self.store()?;
-        let dests: Vec<String> = {
-            let mut d: Vec<String> = talks.iter().map(|t| t.dest.clone()).collect();
-            d.sort();
-            d.dedup();
-            d
-        };
-        store.persist_talks(epoch, account, talks, policy).await?;
+        let ((), sequence) = store.persist_talks(epoch, account, talks, policy).await?;
         self.inner.metrics.inc_persist_talk();
-        for dest in dests {
-            self.publish_timeline(&dest).await;
-        }
-        self.publish_session_snapshot().await;
-        Ok(())
+        Ok(sequence)
     }
 
     pub fn metrics(&self) -> (u64, u64, u64, u64) {
         self.inner.metrics.snapshot()
+    }
+
+    pub fn query_refresh_total(&self) -> u64 {
+        self.inner.metrics.query_refresh_total()
+    }
+
+    pub fn query_stale_skip_total(&self) -> u64 {
+        self.inner.metrics.query_stale_skip_total()
+    }
+
+    pub fn query_apply_wait_timeout_total(&self) -> u64 {
+        self.inner.metrics.query_apply_wait_timeout_total()
     }
 
     pub fn install_panic_hook(&self) {
@@ -689,8 +1051,7 @@ impl KimSdk {
         items: Vec<kim_client::InboxItem>,
     ) -> Result<Vec<ThreadView>, SdkError> {
         let store = self.store()?;
-        let views = store.persist_inbox(epoch, account, items).await?;
-        self.publish_session_snapshot().await;
+        let (views, _sequence) = store.persist_inbox(epoch, account, items).await?;
         self.emit_session_wait(SessionUpdate::Inbox {
             threads: views.clone(),
         })
@@ -707,9 +1068,11 @@ impl KimSdk {
     pub async fn replace_contacts(&self, rows: Vec<PersonRef>) -> Result<(), SdkError> {
         let store = self.store()?;
         let session = self.session_snapshot()?;
-        store
-            .replace_contacts(session.account, rows.clone())
+        let epoch = self.current_epoch().0;
+        let ((), sequence) = store
+            .replace_contacts(epoch, session.account, rows.clone())
             .await?;
+        self.after_command(sequence).await;
         self.emit_session_wait(SessionUpdate::ContactsChanged { contacts: rows })
             .await;
         Ok(())
@@ -753,7 +1116,7 @@ impl KimSdk {
         if let Some(v) = locale {
             row.locale = v;
         }
-        store.upsert_device_settings(row, false).await?;
+        let ((), _seq) = store.upsert_device_settings(row, false).await?;
         self.settings_get().await
     }
 
@@ -775,7 +1138,7 @@ impl KimSdk {
             locale,
             account: String::new(),
         };
-        store.upsert_device_settings(row, true).await?;
+        let ((), _seq) = store.upsert_device_settings(row, true).await?;
         self.settings_get().await
     }
 
@@ -828,9 +1191,15 @@ impl KimSdk {
                     ev = rx.recv() => {
                         match ev {
                             Ok(ev) => {
+                                if let Err(error) = sdk.persist_contact_event(&ev).await {
+                                    tracing::warn!(
+                                        error = %error,
+                                        "persisting contact session event failed"
+                                    );
+                                }
                                 if let Some(update) = session_update_from_event(ev) {
                                     if matches!(update, SessionUpdate::Link { .. }) {
-                                        sdk.publish_session_snapshot().await;
+                                        sdk.refresh_session_snapshot().await;
                                     }
                                     match &update {
                                         SessionUpdate::TokenRenew { token, .. } => {
@@ -859,7 +1228,7 @@ impl KimSdk {
                                 }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                                sdk.publish_session_snapshot().await;
+                                sdk.refresh_session_snapshot().await;
                                 sdk.recover_lagged_fatal().await;
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -944,7 +1313,16 @@ impl KimSdk {
 
     pub fn subscribe_timeline(&self, query: TimelineQuery) -> watch::Receiver<TimelineUpdate> {
         let dest = query.dest.clone();
-        let limit = if query.limit <= 0 { 50 } else { query.limit };
+        let limit = if query.limit <= 0 {
+            50
+        } else {
+            query.limit.min(50)
+        };
+        let account = self
+            .session_snapshot()
+            .map(|session| session.account)
+            .unwrap_or_default();
+        let epoch = self.current_epoch().0;
         let init = TimelineUpdate::Snapshot {
             snapshot: TimelineSnapshot {
                 dest: dest.clone(),
@@ -954,26 +1332,65 @@ impl KimSdk {
                 unread: 0,
                 last_read_message_id: 0,
                 has_more: false,
+                loading_older: false,
+                history_error: None,
             },
         };
         let mut map = lock(&self.inner.timelines);
-        let tx = map
-            .entry(dest.clone())
-            .or_insert_with(|| watch::channel(init).0)
-            .clone();
+        let rx = if let Some(sub) = map.get_mut(&dest) {
+            if sub.tx.is_closed() {
+                let (tx, rx) = watch::channel(init);
+                *sub = TimelineSub {
+                    account: account.clone(),
+                    epoch,
+                    dest: dest.clone(),
+                    limit,
+                    tx,
+                    older_bound: None,
+                    has_more: false,
+                    loading_older: false,
+                    history_error: None,
+                };
+                rx
+            } else {
+                sub.account = account.clone();
+                sub.epoch = epoch;
+                sub.limit = limit;
+                sub.tx.subscribe()
+            }
+        } else {
+            let (tx, rx) = watch::channel(init);
+            map.insert(
+                dest.clone(),
+                TimelineSub {
+                    account: account.clone(),
+                    epoch,
+                    dest: dest.clone(),
+                    limit,
+                    tx,
+                    older_bound: None,
+                    has_more: false,
+                    loading_older: false,
+                    history_error: None,
+                },
+            );
+            rx
+        };
         drop(map);
-        let sdk = self.clone();
         // FRB sync watchers are not inside a Tokio context unless the FFI
         // layer enters one first. Skip the eager load rather than panic.
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        if let (Ok(handle), Some(changes)) = (
+            tokio::runtime::Handle::try_current(),
+            lock(&self.inner.changes).clone(),
+        ) {
             handle.spawn(async move {
-                sdk.publish_timeline_limit(&dest, limit).await;
+                changes.record(account, epoch, CommitEffect::timeline(dest));
             });
         }
-        tx.subscribe()
+        rx
     }
 
-    async fn publish_session_snapshot(&self) {
+    pub(crate) async fn refresh_session_snapshot(&self) {
         let (link, last_error) = match self.supervisor() {
             Ok(sup) => {
                 let link = match sup.state() {
@@ -1007,35 +1424,181 @@ impl KimSdk {
             threads,
             unread_total,
         });
+        self.inner.metrics.inc_query_refresh();
     }
 
-    pub(crate) async fn publish_timeline(&self, dest: &str) {
-        self.publish_timeline_limit(dest, 50).await;
-    }
-
-    async fn publish_timeline_limit(&self, dest: &str, limit: i32) {
+    pub(crate) async fn refresh_timeline(
+        &self,
+        dest: &str,
+        notice_epoch: u64,
+        notice_account: &str,
+    ) {
+        let Some(sub) = lock(&self.inner.timelines).get(dest).cloned() else {
+            return;
+        };
+        if sub.epoch != notice_epoch || sub.account != notice_account {
+            self.inner.metrics.inc_query_stale_skip();
+            return;
+        }
         let Ok(store) = self.store() else {
             return;
         };
-        let Ok(session) = self.session_snapshot() else {
+        let mut snapshot = match store
+            .load_timeline_window(&sub.account, dest, sub.limit, sub.older_bound.as_ref())
+            .await
+        {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                tracing::warn!(
+                    account = %notice_account,
+                    epoch = notice_epoch,
+                    dest,
+                    error = %error,
+                    "refreshing timeline failed"
+                );
+                match sub.tx.borrow().clone() {
+                    TimelineUpdate::Snapshot { snapshot } => snapshot,
+                    TimelineUpdate::Delta { .. } | TimelineUpdate::Resync { .. } => return,
+                }
+            }
+        };
+        snapshot.has_more = if sub.older_bound.is_some() || sub.history_error.is_some() {
+            sub.has_more
+        } else {
+            snapshot.has_more
+        };
+        snapshot.loading_older = sub.loading_older;
+        snapshot.history_error = sub.history_error.clone();
+        let Some(still) = lock(&self.inner.timelines).get(dest).cloned() else {
             return;
         };
-        let Ok(snapshot) = store.load_hot_window(&session.account, dest, limit).await else {
+        if still.epoch != notice_epoch || still.account != notice_account {
+            self.inner.metrics.inc_query_stale_skip();
             return;
-        };
-        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
-            let _ = tx.send(TimelineUpdate::Snapshot { snapshot });
+        }
+        let _ = still.tx.send(TimelineUpdate::Snapshot { snapshot });
+        self.inner.metrics.inc_query_refresh();
+    }
+
+    fn timeline_window_snapshot(
+        &self,
+        dest: &str,
+        account: &str,
+        epoch: u64,
+    ) -> Result<TimelineSnapshot, SdkError> {
+        let timelines = lock(&self.inner.timelines);
+        let sub = timelines
+            .get(dest)
+            .ok_or_else(|| SdkError::InvalidArgument {
+                message: "no timeline subscriber".into(),
+            })?;
+        if sub.account != account || sub.epoch != epoch {
+            return Err(SdkError::StaleEpoch {
+                expected: epoch,
+                actual: self.current_epoch().0,
+            });
+        }
+        let update = sub.tx.borrow().clone();
+        match update {
+            TimelineUpdate::Snapshot { snapshot } => Ok(snapshot),
+            TimelineUpdate::Delta { .. } | TimelineUpdate::Resync { .. } => {
+                Err(SdkError::InvalidArgument {
+                    message: "timeline snapshot unavailable".into(),
+                })
+            }
         }
     }
 
+    async fn finish_timeline_load(
+        &self,
+        dest: &str,
+        account: &str,
+        epoch: u64,
+        older_bound: Option<(i64, String)>,
+        has_more: bool,
+        history_error: Option<String>,
+    ) {
+        {
+            let mut timelines = lock(&self.inner.timelines);
+            let Some(sub) = timelines.get_mut(dest) else {
+                return;
+            };
+            if sub.account != account || sub.epoch != epoch {
+                return;
+            }
+            if let Some(older_bound) = older_bound {
+                sub.older_bound = Some(older_bound);
+            }
+            sub.has_more = has_more;
+            sub.loading_older = false;
+            sub.history_error = history_error;
+        }
+        self.record_timeline_and_wait(account, epoch, dest).await;
+    }
+
+    async fn record_timeline_and_wait(&self, account: &str, epoch: u64, dest: &str) {
+        let Some(changes) = lock(&self.inner.changes).clone() else {
+            return;
+        };
+        let sequence = changes.record(account.to_string(), epoch, CommitEffect::timeline(dest));
+        changes.wait_applied(sequence, APPLY_WAIT).await;
+    }
+
+    pub(crate) async fn refresh_contacts_view(&self, epoch: u64, clear_error: bool) {
+        if self.current_epoch().0 != epoch || self.inner.contacts_watch.is_closed() {
+            return;
+        }
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        let account = session.account;
+        if lock(&self.inner.contacts_account).as_str() != account
+            || self.inner.contacts_epoch.load(Ordering::SeqCst) != epoch
+        {
+            self.inner.metrics.inc_query_stale_skip();
+            return;
+        }
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let contacts = match store.load_contacts(&account).await {
+            Ok(contacts) => contacts,
+            Err(error) => {
+                tracing::warn!(
+                    account = %account,
+                    epoch,
+                    error = %error,
+                    "refreshing contacts failed"
+                );
+                return;
+            }
+        };
+        if self.current_epoch().0 != epoch
+            || lock(&self.inner.contacts_account).as_str() != account
+            || self.inner.contacts_epoch.load(Ordering::SeqCst) != epoch
+        {
+            self.inner.metrics.inc_query_stale_skip();
+            return;
+        }
+        self.publish_contacts_snapshot(
+            contacts,
+            if clear_error {
+                ContactsErrorOp::Clear
+            } else {
+                ContactsErrorOp::Keep
+            },
+        );
+        self.inner.metrics.inc_query_refresh();
+    }
+
     async fn publish_timeline_resync(&self, dest: &str, reason: &str) {
-        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
-            let _ = tx.send(TimelineUpdate::Resync {
+        if let Some(sub) = lock(&self.inner.timelines).get(dest) {
+            let _ = sub.tx.send(TimelineUpdate::Resync {
                 dest: dest.into(),
                 reason: reason.into(),
             });
+            self.inner.metrics.inc_timeline_resync();
         }
-        self.publish_timeline(dest).await;
     }
 
     pub async fn notify_radio_up(&self) -> Result<(), SdkError> {
@@ -1051,10 +1614,24 @@ impl KimSdk {
     async fn wake_outbox(&self) -> Result<(), SdkError> {
         if let (Ok(store), Ok(session)) = (self.store(), self.session_snapshot()) {
             let epoch = self.current_epoch().0;
-            store.due_now(epoch, session.account).await?;
+            let ((), _seq) = store.due_now(epoch, session.account).await?;
         }
         self.kick_outbox();
         Ok(())
+    }
+
+    async fn after_command(&self, sequence: u64) {
+        let Some(changes) = lock(&self.inner.changes).clone() else {
+            return;
+        };
+        if !changes.wait_applied(sequence, APPLY_WAIT).await {
+            self.inner.metrics.inc_query_apply_wait_timeout();
+            tracing::warn!(sequence, "timed out waiting for query refresh");
+        }
+    }
+
+    fn next_contacts_version(&self) -> u64 {
+        self.inner.contacts_version.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     pub(crate) fn store(&self) -> Result<Arc<Store>, SdkError> {
@@ -1086,6 +1663,7 @@ impl kim_client::PersistHook for SdkPersistHook {
         self.sdk
             .persist_talks_for(self.epoch, self.account.clone(), talks.to_vec(), mapped)
             .await
+            .map(|_| ())
             .map_err(sdk_to_persist)
     }
 
@@ -1203,6 +1781,32 @@ fn sdk_to_persist(err: SdkError) -> kim_client::PersistError {
         other => kim_client::PersistError::Disk {
             message: other.to_string(),
         },
+    }
+}
+
+fn row_to_spec_record(row: &AgentProfileRow) -> kim_client::AgentSpecRecord {
+    kim_client::AgentSpecRecord {
+        profile_id: row.profile_id.clone(),
+        nickname: row.nickname.clone(),
+        server_account: row.server_account.clone(),
+        spec: row.body_blob.clone(),
+        key_ciphertext: Vec::new(),
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    }
+}
+
+fn row_to_provider_account(row: &ProviderAccountRow) -> kim_client::AgentProviderAccount {
+    let models: Vec<String> = serde_json::from_str(&row.models_json).unwrap_or_default();
+    kim_client::AgentProviderAccount {
+        id: row.id.clone(),
+        vendor_id: row.vendor_id.clone(),
+        base_url: row.base_url.clone(),
+        key_ref: row.key_ref.clone(),
+        display_name: row.display_name.clone(),
+        models,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
     }
 }
 

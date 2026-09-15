@@ -233,6 +233,9 @@ fn resolved_from_opts(
     project_root: String,
 ) -> Result<ResolvedProfile, String> {
     let mut profile = if opts.profile_json.trim().is_empty() {
+        if !opts.profile_id.trim().is_empty() {
+            return Err("profile_json required when profile_id is set".into());
+        }
         AgentProfile::from_legacy(&LegacyOpenOpts {
             model: opts.model.clone(),
             llm_backend: opts.llm_backend.clone(),
@@ -582,17 +585,32 @@ impl AgentSession {
 
     pub fn reconfigure(&self, opts: SessionOpenOpts) -> Result<(), String> {
         let _guard = rt().enter();
-        let host = AgentHost::from_resolved(resolved_from_opts(&opts, String::new())?)
-            .map_err(map_host_err)?;
-        rt().block_on(host.connect_extensions())
-            .map_err(map_host_err)?;
+        let resolved = resolved_from_opts(&opts, String::new())?;
         let inner = self.inner.clone();
         rt().block_on(async move {
+            {
+                let slot = inner.host.read().await;
+                let current = slot.profile_snapshot();
+                if current.provider.kind == resolved.profile.provider.kind
+                    && current.provider.base_url == resolved.profile.provider.base_url
+                    && current.model.name == resolved.profile.model.name
+                {
+                    slot.replace_prompt_steer(
+                        resolved.profile.system_prompt,
+                        resolved.profile.steer,
+                    );
+                    return Ok(());
+                }
+            }
+            let host = AgentHost::from_resolved(resolved).map_err(map_host_err)?;
+            host.connect_extensions().await.map_err(map_host_err)?;
             let mut slot = inner.host.write().await;
+            let state = slot.runtime_state().await;
+            host.restore_runtime_state(state).await;
             slot.disconnect_extensions().await;
             *slot = host;
-        });
-        Ok(())
+            Ok(())
+        })
     }
 
     pub fn close(&self) -> Result<(), String> {

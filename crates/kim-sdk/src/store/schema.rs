@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 6;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -141,8 +141,38 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
   nickname TEXT NOT NULL,
   server_account TEXT NOT NULL DEFAULT '',
   body_json TEXT NOT NULL,
+  body_blob BLOB,
+  placement TEXT NOT NULL DEFAULT 'local',
   key_ciphertext BLOB,
   updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  PRIMARY KEY (account, profile_id)
+)
+";
+
+pub const CREATE_PROVIDER_ACCOUNTS: &str = r"
+CREATE TABLE IF NOT EXISTS provider_accounts (
+  account TEXT NOT NULL,
+  id TEXT NOT NULL,
+  vendor_id TEXT NOT NULL,
+  base_url TEXT NOT NULL DEFAULT '',
+  key_ref TEXT NOT NULL DEFAULT '',
+  display_name TEXT NOT NULL DEFAULT '',
+  models_json TEXT NOT NULL DEFAULT '[]',
+  key_ciphertext BLOB,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  PRIMARY KEY (account, id)
+)
+";
+
+pub const CREATE_AGENT_DEVICE_OVERLAY: &str = r"
+CREATE TABLE IF NOT EXISTS agent_device_overlay (
+  account TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  workspace_path TEXT NOT NULL DEFAULT '',
+  workspace_bookmark TEXT NOT NULL DEFAULT '',
+  user_agents_skills TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (account, profile_id)
 )
 ";

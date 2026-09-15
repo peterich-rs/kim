@@ -19,6 +19,7 @@ import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
+import 'package:kim_mobile/design/kim_pinned_footer.dart';
 import 'package:kim_mobile/features/agent/agent_overview_status.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
 import 'package:kim_mobile/features/agent/reasoning_controls.dart';
@@ -503,6 +504,13 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     final overview = !widget.isCreate ? _profile : null;
 
     return Scaffold(
+      bottomNavigationBar: KimPinnedFooter(
+        child: FilledButton(
+          key: const Key('agent-save'),
+          onPressed: _save,
+          child: Text(Copy.save),
+        ),
+      ),
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(
@@ -511,6 +519,18 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                 : (_displayName.text.isEmpty
                       ? Copy.agentSettings
                       : _displayName.text),
+            actions: [
+              if (overview != null)
+                IconButton(
+                  key: const Key('agent-open-chat'),
+                  tooltip: l10n.agentOpenChat,
+                  onPressed: () => _openChat(overview),
+                  icon: Icon(
+                    LucideIcons.messageCircle,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -682,19 +702,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                       ),
                     ],
                   ),
-                  const Gap(18),
-                  OutlinedButton(
-                    key: const Key('agent-open-chat'),
-                    onPressed: () => _openChat(overview),
-                    child: Text(l10n.agentOpenChat),
-                  ),
                 ],
-                const Gap(20),
-                FilledButton(
-                  key: const Key('agent-save'),
-                  onPressed: _save,
-                  child: Text(Copy.save),
-                ),
               ],
             ),
           ),

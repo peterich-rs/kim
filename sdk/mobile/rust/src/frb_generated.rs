@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -880066413;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -310040788;
 
 // Section: executor
 
@@ -293,6 +293,62 @@ fn wire__crate__api__auth__KimAuth_register_impl(
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())
+            }
+        },
+    )
+}
+fn wire__crate__api__client__KimUiHandle_agent_flags_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_agent_flags",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::client::KimUiHandle::agent_flags(&*api_that_guard).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
             }
         },
     )
@@ -920,6 +976,66 @@ fn wire__crate__api__client__KimUiHandle_delete_agent_profile_impl(
         },
     )
 }
+fn wire__crate__api__client__KimUiHandle_delete_provider_account_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_delete_provider_account",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::delete_provider_account(
+                            &*api_that_guard,
+                            api_id,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__client__KimUiHandle_delete_thread_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1396,6 +1512,66 @@ fn wire__crate__api__client__KimUiHandle_friend_request_impl(
         },
     )
 }
+fn wire__crate__api__client__KimUiHandle_get_device_overlay_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_get_device_overlay",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_profile_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::get_device_overlay(
+                            &*api_that_guard,
+                            api_profile_id,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__client__KimUiHandle_import_agent_profiles_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1579,6 +1755,64 @@ fn wire__crate__api__client__KimUiHandle_list_agent_profiles_impl(
         },
     )
 }
+fn wire__crate__api__client__KimUiHandle_list_provider_accounts_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_list_provider_accounts",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::list_provider_accounts(
+                            &*api_that_guard,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__client__KimUiHandle_load_older_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1605,10 +1839,6 @@ fn wire__crate__api__client__KimUiHandle_load_older_impl(
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
             >>::sse_decode(&mut deserializer);
             let api_dest = <String>::sse_decode(&mut deserializer);
-            let api_before_at = <i64>::sse_decode(&mut deserializer);
-            let api_before_key = <String>::sse_decode(&mut deserializer);
-            let api_before_id = <i64>::sse_decode(&mut deserializer);
-            let api_limit = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, crate::api::types::SdkErrorDto>(
@@ -1630,15 +1860,9 @@ fn wire__crate__api__client__KimUiHandle_load_older_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = crate::api::client::KimUiHandle::load_older(
-                            &*api_that_guard,
-                            api_dest,
-                            api_before_at,
-                            api_before_key,
-                            api_before_id,
-                            api_limit,
-                        )
-                        .await?;
+                        let output_ok =
+                            crate::api::client::KimUiHandle::load_older(&*api_that_guard, api_dest)
+                                .await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -2106,7 +2330,7 @@ fn wire__crate__api__client__KimUiHandle_refresh_contacts_impl(
     rust_vec_len_: i32,
     data_len_: i32,
 ) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "KimUiHandle_refresh_contacts",
             port: Some(port_),
@@ -2126,26 +2350,33 @@ fn wire__crate__api__client__KimUiHandle_refresh_contacts_impl(
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            move |context| {
-                transform_result_sse::<_, String>((move || {
-                    let mut api_that_guard = None;
-                    let decode_indices_ =
-                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
-                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, false,
-                            ),
-                        ]);
-                    for i in decode_indices_ {
-                        match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
-                            _ => unreachable!(),
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
                         }
-                    }
-                    let api_that_guard = api_that_guard.unwrap();
-                    let output_ok =
-                        crate::api::client::KimUiHandle::refresh_contacts(&*api_that_guard)?;
-                    std::result::Result::Ok(output_ok)
-                })())
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::client::KimUiHandle::refresh_contacts(&*api_that_guard)
+                                .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
             }
         },
     )
@@ -2486,6 +2717,66 @@ fn wire__crate__api__client__KimUiHandle_send_typing_impl(
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())
+            }
+        },
+    )
+}
+fn wire__crate__api__client__KimUiHandle_set_agent_flags_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_set_agent_flags",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_flags_json = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::set_agent_flags(
+                            &*api_that_guard,
+                            api_flags_json,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
             }
         },
     )
@@ -2835,6 +3126,63 @@ fn wire__crate__api__client__KimUiHandle_submit_agent_run_impl(
         },
     )
 }
+fn wire__crate__api__client__KimUiHandle_sync_agent_specs_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_sync_agent_specs",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::client::KimUiHandle::sync_agent_specs(&*api_that_guard)
+                                .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__client__KimUiHandle_update_profile_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2952,6 +3300,126 @@ fn wire__crate__api__client__KimUiHandle_upsert_agent_profile_impl(
         },
     )
 }
+fn wire__crate__api__client__KimUiHandle_upsert_device_overlay_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_upsert_device_overlay",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_row = <crate::api::types::DeviceOverlayDto>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::upsert_device_overlay(
+                            &*api_that_guard,
+                            api_row,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__client__KimUiHandle_upsert_provider_account_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_upsert_provider_account",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_row = <crate::api::types::ProviderAccountDto>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                    (move || async move {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_that_guard =
+                                        Some(api_that.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::client::KimUiHandle::upsert_provider_account(
+                            &*api_that_guard,
+                            api_row,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__client__KimUiHandle_watch_agent_run_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2998,6 +3466,57 @@ fn wire__crate__api__client__KimUiHandle_watch_agent_run_impl(
                 let api_that_guard = api_that_guard.unwrap();
                 let output_ok =
                     crate::api::client::KimUiHandle::watch_agent_run(&*api_that_guard, api_sink)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__client__KimUiHandle_watch_contacts_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KimUiHandle_watch_contacts",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>,
+            >>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::api::types::ContactsSnapshotDto,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok =
+                    crate::api::client::KimUiHandle::watch_contacts(&*api_that_guard, api_sink)?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -3311,6 +3830,72 @@ fn wire__crate__api__simple__init_app_impl(
         },
     )
 }
+fn wire__crate__api__simple__spec_blob_to_json_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "spec_blob_to_json",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_blob = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::simple::spec_blob_to_json(api_blob)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__simple__spec_json_to_blob_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "spec_json_to_blob",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_body_json = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::simple::spec_json_to_blob(api_body_json)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 
 // Section: related_funcs
 
@@ -3372,6 +3957,19 @@ impl SseDecode
 impl SseDecode
     for StreamSink<
         crate::api::types::AgentRunRequestDto,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
+    for StreamSink<
+        crate::api::types::ContactsSnapshotDto,
         flutter_rust_bridge::for_generated::SseCodec,
     >
 {
@@ -3468,11 +4066,17 @@ impl SseDecode for crate::api::types::AgentProfileDto {
         let mut var_nickname = <String>::sse_decode(deserializer);
         let mut var_serverAccount = <String>::sse_decode(deserializer);
         let mut var_bodyJson = <String>::sse_decode(deserializer);
+        let mut var_bodyBlob = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_placement = <String>::sse_decode(deserializer);
+        let mut var_updatedAt = <i64>::sse_decode(deserializer);
         return crate::api::types::AgentProfileDto {
             profile_id: var_profileId,
             nickname: var_nickname,
             server_account: var_serverAccount,
             body_json: var_bodyJson,
+            body_blob: var_bodyBlob,
+            placement: var_placement,
+            updated_at: var_updatedAt,
         };
     }
 }
@@ -3587,6 +4191,36 @@ impl SseDecode for crate::api::types::CommandAckDto {
             dest: var_dest,
             accepted_at: var_acceptedAt,
             send_status: var_sendStatus,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::ContactsSnapshotDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_version = <u64>::sse_decode(deserializer);
+        let mut var_contacts = <Vec<crate::api::types::PersonDto>>::sse_decode(deserializer);
+        let mut var_syncError = <Option<String>>::sse_decode(deserializer);
+        return crate::api::types::ContactsSnapshotDto {
+            version: var_version,
+            contacts: var_contacts,
+            sync_error: var_syncError,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::DeviceOverlayDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_profileId = <String>::sse_decode(deserializer);
+        let mut var_workspacePath = <String>::sse_decode(deserializer);
+        let mut var_workspaceBookmark = <String>::sse_decode(deserializer);
+        let mut var_userAgentsSkills = <String>::sse_decode(deserializer);
+        return crate::api::types::DeviceOverlayDto {
+            profile_id: var_profileId,
+            workspace_path: var_workspacePath,
+            workspace_bookmark: var_workspaceBookmark,
+            user_agents_skills: var_userAgentsSkills,
         };
     }
 }
@@ -3768,6 +4402,20 @@ impl SseDecode for Vec<u8> {
     }
 }
 
+impl SseDecode for Vec<crate::api::types::ProviderAccountDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::ProviderAccountDto>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::types::RoomMemberDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3804,20 +4452,6 @@ impl SseDecode for crate::api::types::LocalMediaDto {
             byte_size: var_byteSize,
             width: var_width,
             height: var_height,
-        };
-    }
-}
-
-impl SseDecode for crate::api::types::MessagePageDto {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_dest = <String>::sse_decode(deserializer);
-        let mut var_messages = <Vec<crate::api::types::MessageViewDto>>::sse_decode(deserializer);
-        let mut var_hasMore = <bool>::sse_decode(deserializer);
-        return crate::api::types::MessagePageDto {
-            dest: var_dest,
-            messages: var_messages,
-            has_more: var_hasMore,
         };
     }
 }
@@ -3883,6 +4517,19 @@ impl SseDecode for Option<String> {
     }
 }
 
+impl SseDecode for Option<crate::api::types::DeviceOverlayDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::types::DeviceOverlayDto>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<i32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3939,6 +4586,30 @@ impl SseDecode for crate::api::types::ProfileDto {
             avatar: var_avatar,
             bio: var_bio,
             kind: var_kind,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::ProviderAccountDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_vendorId = <String>::sse_decode(deserializer);
+        let mut var_baseUrl = <String>::sse_decode(deserializer);
+        let mut var_keyRef = <String>::sse_decode(deserializer);
+        let mut var_displayName = <String>::sse_decode(deserializer);
+        let mut var_modelsJson = <String>::sse_decode(deserializer);
+        let mut var_updatedAt = <i64>::sse_decode(deserializer);
+        let mut var_deletedAt = <i64>::sse_decode(deserializer);
+        return crate::api::types::ProviderAccountDto {
+            id: var_id,
+            vendor_id: var_vendorId,
+            base_url: var_baseUrl,
+            key_ref: var_keyRef,
+            display_name: var_displayName,
+            models_json: var_modelsJson,
+            updated_at: var_updatedAt,
+            deleted_at: var_deletedAt,
         };
     }
 }
@@ -4230,6 +4901,8 @@ impl SseDecode for crate::api::types::TimelineSnapshotDto {
         let mut var_unread = <i32>::sse_decode(deserializer);
         let mut var_lastReadMessageId = <i64>::sse_decode(deserializer);
         let mut var_hasMore = <bool>::sse_decode(deserializer);
+        let mut var_loadingOlder = <bool>::sse_decode(deserializer);
+        let mut var_historyError = <Option<String>>::sse_decode(deserializer);
         return crate::api::types::TimelineSnapshotDto {
             dest: var_dest,
             version: var_version,
@@ -4238,6 +4911,8 @@ impl SseDecode for crate::api::types::TimelineSnapshotDto {
             unread: var_unread,
             last_read_message_id: var_lastReadMessageId,
             has_more: var_hasMore,
+            loading_older: var_loadingOlder,
+            history_error: var_historyError,
         };
     }
 }
@@ -4470,220 +5145,270 @@ fn pde_ffi_dispatcher_primary_impl(
         2 => wire__crate__api__auth__KimAuth_login_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__auth__KimAuth_logout_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__auth__KimAuth_register_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__client__KimUiHandle_attach_store_impl(
+        6 => wire__crate__api__client__KimUiHandle_agent_flags_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        7 => {
+        7 => wire__crate__api__client__KimUiHandle_attach_store_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        8 => {
             wire__crate__api__client__KimUiHandle_bot_create_impl(port, ptr, rust_vec_len, data_len)
         }
-        8 => {
+        9 => {
             wire__crate__api__client__KimUiHandle_bot_delete_impl(port, ptr, rust_vec_len, data_len)
         }
-        9 => wire__crate__api__client__KimUiHandle_bot_pending_impl(
+        10 => wire__crate__api__client__KimUiHandle_bot_pending_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        10 => {
+        11 => {
             wire__crate__api__client__KimUiHandle_bot_reply_impl(port, ptr, rust_vec_len, data_len)
         }
-        11 => {
+        12 => {
             wire__crate__api__client__KimUiHandle_bot_typing_impl(port, ptr, rust_vec_len, data_len)
         }
-        12 => {
+        13 => {
             wire__crate__api__client__KimUiHandle_bot_update_impl(port, ptr, rust_vec_len, data_len)
         }
-        13 => wire__crate__api__client__KimUiHandle_cancel_send_impl(
+        14 => wire__crate__api__client__KimUiHandle_cancel_send_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        14 => wire__crate__api__client__KimUiHandle_command_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__client__KimUiHandle_delete_agent_profile_impl(
+        15 => wire__crate__api__client__KimUiHandle_command_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__client__KimUiHandle_delete_agent_profile_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__crate__api__client__KimUiHandle_delete_thread_impl(
+        18 => wire__crate__api__client__KimUiHandle_delete_provider_account_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__crate__api__client__KimUiHandle_enqueue_message_impl(
+        19 => wire__crate__api__client__KimUiHandle_delete_thread_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__client__KimUiHandle_friend_accept_impl(
+        20 => wire__crate__api__client__KimUiHandle_enqueue_message_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => wire__crate__api__client__KimUiHandle_friend_incoming_impl(
+        21 => wire__crate__api__client__KimUiHandle_friend_accept_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        21 => wire__crate__api__client__KimUiHandle_friend_list_impl(
+        22 => wire__crate__api__client__KimUiHandle_friend_incoming_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__client__KimUiHandle_friend_reject_impl(
+        23 => wire__crate__api__client__KimUiHandle_friend_list_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__crate__api__client__KimUiHandle_friend_remove_impl(
+        24 => wire__crate__api__client__KimUiHandle_friend_reject_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        24 => wire__crate__api__client__KimUiHandle_friend_request_impl(
+        25 => wire__crate__api__client__KimUiHandle_friend_remove_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__crate__api__client__KimUiHandle_import_agent_profiles_impl(
+        26 => wire__crate__api__client__KimUiHandle_friend_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__client__KimUiHandle_import_device_settings_impl(
+        27 => wire__crate__api__client__KimUiHandle_get_device_overlay_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__client__KimUiHandle_list_agent_profiles_impl(
+        28 => wire__crate__api__client__KimUiHandle_import_agent_profiles_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => {
+        29 => wire__crate__api__client__KimUiHandle_import_device_settings_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        30 => wire__crate__api__client__KimUiHandle_list_agent_profiles_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        31 => wire__crate__api__client__KimUiHandle_list_provider_accounts_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        32 => {
             wire__crate__api__client__KimUiHandle_load_older_impl(port, ptr, rust_vec_len, data_len)
         }
-        29 => {
+        33 => {
             wire__crate__api__client__KimUiHandle_mark_read_impl(port, ptr, rust_vec_len, data_len)
         }
-        30 => wire__crate__api__client__KimUiHandle_mark_thread_read_impl(
+        34 => wire__crate__api__client__KimUiHandle_mark_thread_read_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__client__KimUiHandle_media_fetch_impl(
+        35 => wire__crate__api__client__KimUiHandle_media_fetch_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__crate__api__client__KimUiHandle_media_upload_impl(
+        36 => wire__crate__api__client__KimUiHandle_media_upload_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => wire__crate__api__client__KimUiHandle_notify_foreground_impl(
+        38 => wire__crate__api__client__KimUiHandle_notify_foreground_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        35 => wire__crate__api__client__KimUiHandle_notify_radio_up_impl(
+        39 => wire__crate__api__client__KimUiHandle_notify_radio_up_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        36 => wire__crate__api__client__KimUiHandle_profile_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__client__KimUiHandle_refresh_contacts_impl(
+        40 => wire__crate__api__client__KimUiHandle_profile_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__client__KimUiHandle_refresh_contacts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        38 => {
+        42 => {
             wire__crate__api__client__KimUiHandle_retry_send_impl(port, ptr, rust_vec_len, data_len)
         }
-        39 => {
+        43 => {
             wire__crate__api__client__KimUiHandle_room_enter_impl(port, ptr, rust_vec_len, data_len)
         }
-        40 => {
+        44 => {
             wire__crate__api__client__KimUiHandle_room_leave_impl(port, ptr, rust_vec_len, data_len)
         }
-        41 => wire__crate__api__client__KimUiHandle_search_messages_impl(
+        45 => wire__crate__api__client__KimUiHandle_search_messages_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        42 => wire__crate__api__client__KimUiHandle_search_users_impl(
+        46 => wire__crate__api__client__KimUiHandle_search_users_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        43 => wire__crate__api__client__KimUiHandle_send_typing_impl(
+        47 => wire__crate__api__client__KimUiHandle_send_typing_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        44 => wire__crate__api__client__KimUiHandle_settings_get_impl(
+        48 => wire__crate__api__client__KimUiHandle_set_agent_flags_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        45 => wire__crate__api__client__KimUiHandle_settings_patch_impl(
+        49 => wire__crate__api__client__KimUiHandle_settings_get_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        46 => wire__crate__api__client__KimUiHandle_start_session_impl(
+        50 => wire__crate__api__client__KimUiHandle_settings_patch_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        47 => wire__crate__api__client__KimUiHandle_stop_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__client__KimUiHandle_submit_agent_run_impl(
+        51 => wire__crate__api__client__KimUiHandle_start_session_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        50 => wire__crate__api__client__KimUiHandle_update_profile_impl(
+        52 => wire__crate__api__client__KimUiHandle_stop_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__client__KimUiHandle_submit_agent_run_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        51 => wire__crate__api__client__KimUiHandle_upsert_agent_profile_impl(
+        55 => wire__crate__api__client__KimUiHandle_sync_agent_specs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        59 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__client__KimUiHandle_update_profile_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        57 => wire__crate__api__client__KimUiHandle_upsert_agent_profile_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        58 => wire__crate__api__client__KimUiHandle_upsert_device_overlay_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        59 => wire__crate__api__client__KimUiHandle_upsert_provider_account_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        68 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__simple__spec_blob_to_json_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__simple__spec_json_to_blob_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4697,32 +5422,35 @@ fn pde_ffi_dispatcher_sync_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         4 => wire__crate__api__auth__KimAuth_new_impl(ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__client__KimUiHandle_create_impl(ptr, rust_vec_len, data_len),
-        33 => {
+        16 => wire__crate__api__client__KimUiHandle_create_impl(ptr, rust_vec_len, data_len),
+        37 => {
             wire__crate__api__client__KimUiHandle_metrics_snapshot_impl(ptr, rust_vec_len, data_len)
         }
-        48 => {
+        53 => {
             wire__crate__api__client__KimUiHandle_store_attached_impl(ptr, rust_vec_len, data_len)
         }
-        52 => {
+        60 => {
             wire__crate__api__client__KimUiHandle_watch_agent_run_impl(ptr, rust_vec_len, data_len)
         }
-        53 => wire__crate__api__client__KimUiHandle_watch_session_impl(ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__client__KimUiHandle_watch_session_snapshot_impl(
+        61 => {
+            wire__crate__api__client__KimUiHandle_watch_contacts_impl(ptr, rust_vec_len, data_len)
+        }
+        62 => wire__crate__api__client__KimUiHandle_watch_session_impl(ptr, rust_vec_len, data_len),
+        63 => wire__crate__api__client__KimUiHandle_watch_session_snapshot_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        55 => {
+        64 => {
             wire__crate__api__client__KimUiHandle_watch_timeline_impl(ptr, rust_vec_len, data_len)
         }
-        56 => wire__crate__api__client__KimUiHandle_watch_token_persist_impl(
+        65 => wire__crate__api__client__KimUiHandle_watch_token_persist_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        57 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
-        58 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__auth__http_origin_from_ws_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4793,6 +5521,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::types::AgentProfileDto {
             self.nickname.into_into_dart().into_dart(),
             self.server_account.into_into_dart().into_dart(),
             self.body_json.into_into_dart().into_dart(),
+            self.body_blob.into_into_dart().into_dart(),
+            self.placement.into_into_dart().into_dart(),
+            self.updated_at.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4946,6 +5677,51 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::types::CommandAckDto>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::types::ContactsSnapshotDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.version.into_into_dart().into_dart(),
+            self.contacts.into_into_dart().into_dart(),
+            self.sync_error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::types::ContactsSnapshotDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::types::ContactsSnapshotDto>
+    for crate::api::types::ContactsSnapshotDto
+{
+    fn into_into_dart(self) -> crate::api::types::ContactsSnapshotDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::types::DeviceOverlayDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.profile_id.into_into_dart().into_dart(),
+            self.workspace_path.into_into_dart().into_dart(),
+            self.workspace_bookmark.into_into_dart().into_dart(),
+            self.user_agents_skills.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::types::DeviceOverlayDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::types::DeviceOverlayDto>
+    for crate::api::types::DeviceOverlayDto
+{
+    fn into_into_dart(self) -> crate::api::types::DeviceOverlayDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::client::KimBotPendingItem {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5085,28 +5861,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::types::LocalMediaDto>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::types::MessagePageDto {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.dest.into_into_dart().into_dart(),
-            self.messages.into_into_dart().into_dart(),
-            self.has_more.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::types::MessagePageDto
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::types::MessagePageDto>
-    for crate::api::types::MessagePageDto
-{
-    fn into_into_dart(self) -> crate::api::types::MessagePageDto {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::types::MessageViewDto {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5198,6 +5952,33 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::types::ProfileDto>
     for crate::api::types::ProfileDto
 {
     fn into_into_dart(self) -> crate::api::types::ProfileDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::types::ProviderAccountDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.vendor_id.into_into_dart().into_dart(),
+            self.base_url.into_into_dart().into_dart(),
+            self.key_ref.into_into_dart().into_dart(),
+            self.display_name.into_into_dart().into_dart(),
+            self.models_json.into_into_dart().into_dart(),
+            self.updated_at.into_into_dart().into_dart(),
+            self.deleted_at.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::types::ProviderAccountDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::types::ProviderAccountDto>
+    for crate::api::types::ProviderAccountDto
+{
+    fn into_into_dart(self) -> crate::api::types::ProviderAccountDto {
         self
     }
 }
@@ -5518,6 +6299,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::types::TimelineSnapshotDto {
             self.unread.into_into_dart().into_dart(),
             self.last_read_message_id.into_into_dart().into_dart(),
             self.has_more.into_into_dart().into_dart(),
+            self.loading_older.into_into_dart().into_dart(),
+            self.history_error.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5777,6 +6560,18 @@ impl SseEncode
 
 impl SseEncode
     for StreamSink<
+        crate::api::types::ContactsSnapshotDto,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
+    for StreamSink<
         crate::api::types::SessionSnapshotDto,
         flutter_rust_bridge::for_generated::SseCodec,
     >
@@ -5847,6 +6642,9 @@ impl SseEncode for crate::api::types::AgentProfileDto {
         <String>::sse_encode(self.nickname, serializer);
         <String>::sse_encode(self.server_account, serializer);
         <String>::sse_encode(self.body_json, serializer);
+        <Vec<u8>>::sse_encode(self.body_blob, serializer);
+        <String>::sse_encode(self.placement, serializer);
+        <i64>::sse_encode(self.updated_at, serializer);
     }
 }
 
@@ -5929,6 +6727,25 @@ impl SseEncode for crate::api::types::CommandAckDto {
         <String>::sse_encode(self.dest, serializer);
         <i64>::sse_encode(self.accepted_at, serializer);
         <crate::api::types::SendStatusDto>::sse_encode(self.send_status, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::ContactsSnapshotDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.version, serializer);
+        <Vec<crate::api::types::PersonDto>>::sse_encode(self.contacts, serializer);
+        <Option<String>>::sse_encode(self.sync_error, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::DeviceOverlayDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.profile_id, serializer);
+        <String>::sse_encode(self.workspace_path, serializer);
+        <String>::sse_encode(self.workspace_bookmark, serializer);
+        <String>::sse_encode(self.user_agents_skills, serializer);
     }
 }
 
@@ -6067,6 +6884,16 @@ impl SseEncode for Vec<u8> {
     }
 }
 
+impl SseEncode for Vec<crate::api::types::ProviderAccountDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::ProviderAccountDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::types::RoomMemberDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6094,15 +6921,6 @@ impl SseEncode for crate::api::types::LocalMediaDto {
         <i64>::sse_encode(self.byte_size, serializer);
         <i32>::sse_encode(self.width, serializer);
         <i32>::sse_encode(self.height, serializer);
-    }
-}
-
-impl SseEncode for crate::api::types::MessagePageDto {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.dest, serializer);
-        <Vec<crate::api::types::MessageViewDto>>::sse_encode(self.messages, serializer);
-        <bool>::sse_encode(self.has_more, serializer);
     }
 }
 
@@ -6141,6 +6959,16 @@ impl SseEncode for Option<String> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::types::DeviceOverlayDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::types::DeviceOverlayDto>::sse_encode(value, serializer);
         }
     }
 }
@@ -6185,6 +7013,20 @@ impl SseEncode for crate::api::types::ProfileDto {
         <String>::sse_encode(self.avatar, serializer);
         <String>::sse_encode(self.bio, serializer);
         <i32>::sse_encode(self.kind, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::ProviderAccountDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.vendor_id, serializer);
+        <String>::sse_encode(self.base_url, serializer);
+        <String>::sse_encode(self.key_ref, serializer);
+        <String>::sse_encode(self.display_name, serializer);
+        <String>::sse_encode(self.models_json, serializer);
+        <i64>::sse_encode(self.updated_at, serializer);
+        <i64>::sse_encode(self.deleted_at, serializer);
     }
 }
 
@@ -6405,6 +7247,8 @@ impl SseEncode for crate::api::types::TimelineSnapshotDto {
         <i32>::sse_encode(self.unread, serializer);
         <i64>::sse_encode(self.last_read_message_id, serializer);
         <bool>::sse_encode(self.has_more, serializer);
+        <bool>::sse_encode(self.loading_older, serializer);
+        <Option<String>>::sse_encode(self.history_error, serializer);
     }
 }
 

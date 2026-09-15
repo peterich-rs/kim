@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/features/chats/chat_session.dart';
 import 'package:kim_mobile/features/chats/messages.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';
 import '../support/jwt.dart';
@@ -8,22 +9,53 @@ import '../support/jwt.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('enqueueMessage writes pending onto timeline', () async {
+  test('send receipt does not insert a message before timeline push', () async {
     final env = await kimHarness(
       token: testJwt(acc: 'alice', exp: 4_000_000_000),
       account: 'alice',
     );
+    env.fake.autoPushEnqueueTimeline = false;
     env.container.read(threadMessagesProvider('bob'));
-    await env.fake.enqueueMessage(
-      dest: 'bob',
-      kind: ThreadKind.user,
-      content: const KimOutgoingContent.text('queued'),
-      clientId: 'q1',
+    final accepted = await env.container
+        .read(chatSessionProvider('bob').notifier)
+        .sendText('queued');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(accepted, isTrue);
+    expect(env.container.read(threadMessagesProvider('bob')).items, isEmpty);
+    expect(env.fake.enqueues, 1);
+
+    final clientId = env.fake.lastClientId;
+    env.fake.pushTimeline(
+      'bob',
+      TimelineUpdateDto.delta(
+        delta: TimelineDeltaDto(
+          dest: 'bob',
+          fromVersion: BigInt.zero,
+          toVersion: BigInt.one,
+          upserts: [
+            MessageViewDto(
+              key: clientId,
+              dest: 'bob',
+              sender: 'alice',
+              body: 'queued',
+              at: 1,
+              sys: false,
+              kind: 1,
+              width: 0,
+              height: 0,
+              messageId: 0,
+              sendStatus: SendStatusDto.pending,
+            ),
+          ],
+          deletedKeys: const [],
+        ),
+      ),
     );
     await Future<void>.delayed(Duration.zero);
+
     final items = env.container.read(threadMessagesProvider('bob')).items;
-    expect(items.single.key, 'q1');
+    expect(items.single.key, clientId);
     expect(items.single.body, 'queued');
-    expect(env.fake.enqueues, 1);
   });
 }

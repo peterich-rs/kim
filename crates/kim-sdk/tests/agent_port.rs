@@ -95,6 +95,7 @@ async fn sent_text_enqueues_agent_turn() {
         nickname: "bot".into(),
         server_account: "b_bot".into(),
         body_json: "{}".into(),
+        ..Default::default()
     })
     .await
     .expect("profile");
@@ -141,6 +142,7 @@ async fn put_bot(sdk: &KimSdk, dest: &str, profile_id: &str) {
         nickname: profile_id.into(),
         server_account: dest.into(),
         body_json: "{}".into(),
+        ..Default::default()
     })
     .await
     .expect("profile");

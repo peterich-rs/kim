@@ -14,6 +14,8 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>>
 abstract class KimUiHandle implements RustOpaqueInterface {
+  Future<String> agentFlags();
+
   Future<void> attachStore({required String dbPath});
 
   Future<PersonDto> botCreate({
@@ -68,6 +70,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> deleteAgentProfile({required String profileId});
 
+  Future<void> deleteProviderAccount({required String id});
+
   Future<void> deleteThread({required String dest});
 
   Future<KimCommandReceipt> enqueueMessage({
@@ -94,6 +98,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> friendRequest({required String dest});
 
+  Future<DeviceOverlayDto?> getDeviceOverlay({required String profileId});
+
   Future<void> importAgentProfiles({required List<AgentProfileDto> rows});
 
   Future<SettingsDto> importDeviceSettings({
@@ -105,13 +111,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<List<AgentProfileDto>> listAgentProfiles();
 
-  Future<MessagePageDto> loadOlder({
-    required String dest,
-    required PlatformInt64 beforeAt,
-    required String beforeKey,
-    required PlatformInt64 beforeId,
-    required int limit,
-  });
+  Future<List<ProviderAccountDto>> listProviderAccounts();
+
+  Future<void> loadOlder({required String dest});
 
   Future<void> markRead({
     required String dest,
@@ -143,7 +145,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<ProfileDto> profile({required String dest});
 
-  Future<List<PersonDto>> refreshContacts();
+  Future<void> refreshContacts();
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
@@ -167,6 +169,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required bool active,
   });
 
+  Future<void> setAgentFlags({required String flagsJson});
+
   Future<SettingsDto> settingsGet();
 
   Future<SettingsDto> settingsPatch({
@@ -188,6 +192,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> submitAgentRun({required AgentRunResultDto result});
 
+  Future<void> syncAgentSpecs();
+
   Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
@@ -196,7 +202,13 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> upsertAgentProfile({required AgentProfileDto row});
 
+  Future<void> upsertDeviceOverlay({required DeviceOverlayDto row});
+
+  Future<void> upsertProviderAccount({required ProviderAccountDto row});
+
   Stream<AgentRunRequestDto> watchAgentRun();
+
+  Stream<ContactsSnapshotDto> watchContacts();
 
   /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
   Stream<SessionUpdateDto> watchSession();

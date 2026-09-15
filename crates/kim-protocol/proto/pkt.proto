@@ -605,3 +605,43 @@ message InternalGroupMember {
   string groupId = 2;
   string account = 3;
 }
+
+// Owner-only AgentSpec copy. `spec` is opaque kim.agent.AgentSpec bytes
+// (same as local body_blob). Chat does not walk fields (A-KD 11).
+message AgentSpecRecord {
+  string profileId = 1;
+  string nickname = 2;
+  string serverAccount = 3;
+  bytes spec = 5;
+  bytes keyCiphertext = 6;
+  int64 updatedAt = 7;
+  int64 deletedAt = 8;
+}
+
+// Synced with AgentSpec (A-KD 13). No key bytes.
+message AgentProviderAccount {
+  string id = 1;
+  string vendorId = 2;
+  string baseUrl = 3;
+  string keyRef = 4;
+  string displayName = 5;
+  repeated string models = 6;
+  int64 updatedAt = 7;
+  int64 deletedAt = 8;
+}
+
+message AgentSpecSyncReq {}
+
+message AgentSpecSyncResp {
+  repeated AgentSpecRecord records = 1;
+  repeated AgentProviderAccount accounts = 2;
+}
+
+message AgentSpecUpsertReq {
+  AgentSpecRecord record = 1;
+  AgentProviderAccount account = 2;
+}
+
+message AgentSpecUpsertResp {
+  AgentSpecRecord record = 1;
+}

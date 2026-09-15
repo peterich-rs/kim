@@ -57,5 +57,17 @@ void main() {
     expect(skills, hasLength(1));
     expect(skills.first.id, 'kim-im');
     expect(skills.first.isApp, isTrue);
+    expect(skills.first.listDescription, 'send');
+  });
+
+  test('listDescription is frontmatter desc, not id or name', () {
+    const named = CatalogSkill(
+      id: 'git-commit',
+      name: 'git-commit',
+      description: ' Create Conventional Commits ',
+    );
+    expect(named.listDescription, 'Create Conventional Commits');
+    const empty = CatalogSkill(id: 'x', name: 'x', description: '  ');
+    expect(empty.listDescription, isEmpty);
   });
 }

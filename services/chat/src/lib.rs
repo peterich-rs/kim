@@ -2,6 +2,7 @@
 
 mod ack;
 pub mod admin;
+mod agent_spec;
 mod bot;
 pub mod directory;
 mod echo;
@@ -55,6 +56,10 @@ use crate::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
 pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
+pub use agent_spec::{
+    do_agent_spec_sync, do_agent_spec_upsert, open_agent_spec_store, AgentSpecRecord,
+    AgentSpecStore, MemoryAgentSpecStore,
+};
 pub use bot::{
     do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_typing, do_bot_update,
 };
@@ -93,6 +98,7 @@ pub(crate) struct ChatSvc {
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
     social: Arc<dyn SocialDirectory>,
+    agent_specs: Arc<dyn AgentSpecStore>,
     presence: Arc<PresenceHub>,
     metrics: Arc<Mutex<Option<Arc<KimMetrics>>>>,
     pending_receipt: bool,
@@ -286,6 +292,35 @@ impl ChatHandler {
         pending_receipt: bool,
         interest: Arc<dyn RoomInterestStore>,
     ) -> Self {
+        Self::with_agent_specs(
+            container,
+            cache,
+            store,
+            groups,
+            zone,
+            filter,
+            users,
+            social,
+            pending_receipt,
+            interest,
+            Arc::new(MemoryAgentSpecStore::new()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_agent_specs(
+        container: Arc<Container>,
+        cache: Arc<dyn SessionStorage>,
+        store: Arc<dyn MessageStore>,
+        groups: Arc<dyn GroupDirectory>,
+        zone: String,
+        filter: Arc<dyn ContentFilter>,
+        users: Arc<dyn UserDirectory>,
+        social: Arc<dyn SocialDirectory>,
+        pending_receipt: bool,
+        interest: Arc<dyn RoomInterestStore>,
+        agent_specs: Arc<dyn AgentSpecStore>,
+    ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let presence = Arc::new(PresenceHub::new(
             interest,
@@ -331,6 +366,7 @@ impl ChatHandler {
             filter,
             users,
             social,
+            agent_specs,
             presence,
             metrics: Arc::new(Mutex::new(None)),
             pending_receipt,
@@ -630,6 +666,20 @@ impl ChatHandler {
             router.handle(Command::BotTyping, move |ctx| {
                 let svc = svc.clone();
                 async move { do_bot_typing(ctx, svc.users.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(Command::AgentSpecSync, move |ctx| {
+                let svc = svc.clone();
+                async move { do_agent_spec_sync(ctx, svc.agent_specs.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(Command::AgentSpecUpsert, move |ctx| {
+                let svc = svc.clone();
+                async move { do_agent_spec_upsert(ctx, svc.agent_specs.as_ref()).await }
             });
         }
         Self {

@@ -2,14 +2,14 @@ library;
 
 import 'package:flutter_riverpod/experimental/mutation.dart';
 
-import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
 
 final signInMutation = Mutation<void>(label: 'auth.signIn');
 final registerMutation = Mutation<void>(label: 'auth.register');
 final signOutMutation = Mutation<void>(label: 'auth.signOut');
 final changePasswordMutation = Mutation<void>(label: 'auth.changePassword');
-final sendMessageMutation = Mutation<KimChatMsg>(label: 'inbox.send');
-final sendImagesMutation = Mutation<List<KimChatMsg>>(
+final sendMessageMutation = Mutation<KimCommandReceipt>(label: 'inbox.send');
+final sendImagesMutation = Mutation<List<KimCommandReceipt>>(
   label: 'inbox.sendImages',
 );
 final friendRequestMutation = Mutation<void>(label: 'contacts.request');
