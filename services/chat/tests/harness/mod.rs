@@ -9,7 +9,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use chat::directory::GroupDirectory;
 use chat::store::MessageStore;
-use chat::ChatHandler;
+use chat::{AgentSpecStore, ChatHandler};
 use gateway::{GatewayHandler, KickHook};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, OpCode, Server};
@@ -60,6 +60,17 @@ pub async fn spawn_stack_seams(
     groups: Arc<dyn GroupDirectory>,
 ) -> Stack {
     spawn_stack_with_chat(move |c, cache| ChatHandler::with_seams(c, cache, store, groups)).await
+}
+
+pub async fn spawn_stack_agent_specs(
+    store: Arc<dyn MessageStore>,
+    groups: Arc<dyn GroupDirectory>,
+    agent_specs: Arc<dyn AgentSpecStore>,
+) -> Stack {
+    spawn_stack_with_chat(move |c, cache| {
+        ChatHandler::with_seams_agent_specs(c, cache, store, groups, agent_specs)
+    })
+    .await
 }
 
 pub async fn spawn_stack_pending(

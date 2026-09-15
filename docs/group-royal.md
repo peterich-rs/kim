@@ -26,7 +26,7 @@ group id 仍是雪花 **base36**，与 talk dest 相同。**不要**改成小册
 
 进程：`services/royal`，默认 `127.0.0.1:8080`。消息/群：`Content-Type` / `Accept` `application/x-protobuf`。Token：JSON。
 
-Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore` 与 `GroupDirectory` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`（bootstrap / 无 Consul 时的唯一地址）；Postgres 只由 Royal 写。
+Chat `ROYAL_URL` 或 `config.toml royal_url` 非空时，`MessageStore`、`GroupDirectory` 与 `AgentSpecStore` 都走 HTTP。空则仍是进程内 Memory（默认测试、本机 `cargo run`）。生产 compose 必设 `ROYAL_URL`（bootstrap / 无 Consul 时的唯一地址）；Postgres 只由 Royal 写。
 
 Chat 对 Royal 走 `RoyalPool`：无 Consul 时池退化为 `ROYAL_URL` 单地址。有 Consul 时每 10s `find("royal")` 全量替换实例列表（按 base 合并熔断状态）。连接错误 / 超时 / 500/502/503/504 计连续失败，满 5 次熔断摘除；4xx 与 2xx 重置。`pick` 先对已熔断实例做半开探测（30s 窗，`compare_exchange` 每实例只放行一个），再轮询健康实例——有健康 peer 时仍探测，恢复后才能回池。池空回 `StoreError::Backend("no royal available")`（chat 99）。
 
@@ -52,6 +52,8 @@ Chat 对 Royal 走 `RoyalPool`：无 Consul 时池退化为 `ROYAL_URL` 单地�
 | POST | `/api/v1/group/quit` | protobuf `InternalGroupMember` |
 | POST | `/api/v1/group/members` | protobuf `InternalGroupQuery` → `GroupMembersResp` |
 | POST | `/api/v1/group/detail` | protobuf `InternalGroupQuery` → `GroupDetail` |
+| POST | `/api/v1/agent/spec/sync` | protobuf `InternalAgentSpecQuery` → `AgentSpecSyncResp` |
+| POST | `/api/v1/agent/spec/upsert` | protobuf `InternalAgentSpecUpsert` → `AgentSpecUpsertResp` |
 
 `app` 不在 URL 里。群与 offline content 的内部 body 带 Chat session 的 `app`；Royal 用请求值，不用进程 `KIM_APP`。其它仍走进程 `KIM_APP` / 配置（默认 `kim`）。Token：HS256，claims `acc` / `app` / `exp` / `jti` / `ver`（`token_epoch`，旧 token 缺省 0）/ 可选 `did`（仅 enroll 或出示有效 device credential 时写入），密钥与网关相同（`KIM_JWT_SECRET`）。产品页走 `/api/v1/auth/register|login|logout`，不再开放签发。公网 Caddy 反代 `/api/lookup` 与 `/api/v1/auth/*`。**不要**反代 `/internal/*`。
 

@@ -7,12 +7,13 @@ use anyhow::Context;
 
 use chat::directory::MemoryGroupDirectory;
 use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
-use chat::royal::http_backends_with_pool;
+use chat::royal::{http_backends_with_pool, HttpAgentSpecStore};
 use chat::royal_pool::RoyalPool;
 use chat::social_cache::{CachedSocial, CachedUserDirectory};
 use chat::store::{open_message_store, PoolConfig};
 use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
+use chat::{open_agent_spec_store, AgentSpecStore};
 use chat::{open_room_interest, RoomInterestStore};
 use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
@@ -235,37 +236,44 @@ async fn main() -> anyhow::Result<()> {
     let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
     let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
     let metrics = kim_metrics::KimMetrics::new(&service_id, &service_name).ok();
-    let (store, groups, users, social) =
-        if let Some(royal) = royal_url_from_env_or_cfg(&cfg.this.royal_url) {
-            let pool = Arc::new(RoyalPool::with_metrics(
-                Some(&royal),
-                consul.as_ref().map(|_| naming.clone()),
-                &hmac,
-                metrics.clone(),
-            )?);
-            pool.spawn_refresh();
-            http_backends_with_pool(pool)?
-        } else {
-            let store = open_message_store(
-                database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
-                redis_url.as_deref(),
-                idgen.clone(),
-                PoolConfig {
-                    max_connections: cfg.this.db_max_connections.max(1),
-                    acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
-                    idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
-                    ..PoolConfig::default()
-                },
-            )
-            .await
-            .context("store")?;
-            let groups: Arc<dyn chat::directory::GroupDirectory> =
-                Arc::new(MemoryGroupDirectory::new(idgen));
-            let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
-            let social: Arc<dyn chat::social::SocialDirectory> =
-                Arc::new(chat::social::MemorySocialDirectory::new());
-            (store, groups, users, social)
-        };
+    let (store, groups, users, social, agent_specs) = if let Some(royal) =
+        royal_url_from_env_or_cfg(&cfg.this.royal_url)
+    {
+        let pool = Arc::new(RoyalPool::with_metrics(
+            Some(&royal),
+            consul.as_ref().map(|_| naming.clone()),
+            &hmac,
+            metrics.clone(),
+        )?);
+        pool.spawn_refresh();
+        let (store, groups, users, social) = http_backends_with_pool(pool.clone())?;
+        let agent_specs: Arc<dyn AgentSpecStore> = Arc::new(HttpAgentSpecStore::from_pool(pool));
+        (store, groups, users, social, agent_specs)
+    } else {
+        let store = open_message_store(
+            database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
+            redis_url.as_deref(),
+            idgen.clone(),
+            PoolConfig {
+                max_connections: cfg.this.db_max_connections.max(1),
+                acquire_timeout: Duration::from_millis(cfg.this.db_acquire_timeout_ms.max(1)),
+                idle_timeout: Duration::from_secs(cfg.this.db_idle_timeout_secs.max(1)),
+                ..PoolConfig::default()
+            },
+        )
+        .await
+        .context("store")?;
+        let groups: Arc<dyn chat::directory::GroupDirectory> =
+            Arc::new(MemoryGroupDirectory::new(idgen));
+        let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
+        let social: Arc<dyn chat::social::SocialDirectory> =
+            Arc::new(chat::social::MemorySocialDirectory::new());
+        let agent_specs =
+            open_agent_spec_store(database_url_from_env_or_cfg(&cfg.this.database_url).as_deref())
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+        (store, groups, users, social, agent_specs)
+    };
     let users = CachedUserDirectory::wrap(users);
     let social = CachedSocial::wrap(social);
 
@@ -285,13 +293,6 @@ async fn main() -> anyhow::Result<()> {
     let interest: Arc<dyn RoomInterestStore> = open_room_interest(redis_url.as_deref())
         .await
         .context("interest")?;
-    let db_url = database_url_from_env_or_cfg(&cfg.this.database_url);
-    if kim_protocol::strict_runtime() && db_url.as_deref().unwrap_or("").is_empty() {
-        anyhow::bail!("production agent spec store requires DATABASE_URL");
-    }
-    let agent_specs = chat::open_agent_spec_store(db_url.as_deref())
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?;
     let handler = Arc::new(ChatHandler::with_agent_specs(
         container.clone(),
         cache,

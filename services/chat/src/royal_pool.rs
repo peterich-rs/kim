@@ -345,6 +345,7 @@ fn classify(path: &str) -> &'static str {
         ("/api/v1/delivery", "delivery"),
         ("/api/v1/inbox", "inbox"),
         ("/api/v1/history", "history"),
+        ("/api/v1/agent", "agent"),
         ("/internal", "internal"),
     ];
     for (prefix, group) in PREFIXES {
@@ -583,6 +584,8 @@ mod tests {
             "/api/v1/inbox",
             "/api/v1/history",
             "/api/v1/inbox/read",
+            "/api/v1/agent/spec/sync",
+            "/api/v1/agent/spec/upsert",
         ];
         for path in HMAC_PATHS {
             assert_ne!(classify(path), "other", "{path}");
