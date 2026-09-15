@@ -1,21 +1,21 @@
-# Agent 配置即数据：存储抽象与执行解耦（上云前置）
+# Agent 配置即数据：protobuf 权威字节 + 存储抽象 + 多设备下发
 
 | 字段 | 值 |
 |---|---|
-| 状态 | Draft（调研 + 方案，未排期执行） |
+| 状态 | Draft（调研 + 方案；PR 1 schema/`agent.proto` 已开工） |
 | 日期 | 2026-09-15 |
-| 对照代码 | HEAD `af32f78`（`refactor(sdk): post-commit query publishing...`）。行号以标识符为准；引用均已对当前树核验 |
+| 对照代码 | 行号以标识符为准 |
 | 父规格 | [multi-agent-vendor-catalog.md](./multi-agent-vendor-catalog.md)（C-KD 三层拆分）、[agent-provider-persona.md](./agent-provider-persona.md)（P-KD 信息架构）、[agent-capability-blocks.md](./agent-capability-blocks.md)（B-KD 装配单元）、[agent-productivity.md](./agent-productivity.md)（S-KD 四层对象）、[goose-bot-first-class.md](./goose-bot-first-class.md)（bot-KD 云身份） |
-| 范围 | `crates/kim-agent-host`（装配）、`crates/kim-sdk`（profile 存储）、`sdk/mobile`（消费面）、`services/chat`（远端投影，Phase 3 才动）。不动 gateway / royal 热路径、ACK 协议 |
-| 编号 | 本文决策写作 **A-KD *n***。修订父决策时写 **revises C-KD / P-KD / B-KD / S-KD / bot-KD *n*** |
+| 范围 | `crates/kim-protocol/proto/agent.proto`（权威正文）、`crates/kim-agent-host`（装配）、`crates/kim-sdk`（profile 存储）、`sdk/mobile`（消费面）、`services/chat`（owner-only Spec 副本，Phase 3）。不动 gateway / royal 热路径、ACK 协议 |
+| 编号 | 本文决策写作 **A-KD *n***。修订父决策时写 **revises C-KD / P-KD / B-KD / S-KD / bot-KD *n***。本修订新增 A-KD 9–13，revises A-KD 1 / 5 / 6 |
 
 ---
 
 ## Overview
 
-**一句话**：Agent 启动时需要的那包东西——人设、模型、推理、能力、权限、工作区、Skill、密钥引用——今天已经是可序列化数据（`AgentProfile` JSON），但**存在三处、装配走两条轨、执行入口还带硬编码默认值**。本方案把它收敛成**单一权威数据结构（`AgentSpec`）+ 存储抽象（`ProfileStore` trait）+ 一次装配入口（`AgentHost::from_spec`）**，使"配置存本地还是存远端"变成 `ProfileStore` 的实现选择，与执行完全解耦，为多设备同步与云端执行铺路。
+**一句话**：Agent 启动时需要的那包东西——人设、模型、推理、能力、权限、工作区、Skill、密钥引用——今天已经是可序列化数据（`AgentProfile` JSON），但**存在三处、装配走两条轨、执行入口还带硬编码默认值**。本方案把它收敛成**单一权威数据结构（`AgentSpec` protobuf 字节）+ 存储抽象（`ProfileStore` trait）+ 一次装配入口（`AgentHost::from_spec`）**。本地 SQLite `body_blob` 与云端 BYTEA 是**同一串 bytes**；chat 不解析正文。换一台 macOS 登录同一账号即可拉到已配置 Agent；客户端升级加字段只发客户端，不部署 chat。
 
-不新建领域模型。`AgentSpec` = 现有 `AgentProfile` 的正文 + `ProviderAccount` 引用，名字换成 Spec 是为了强调"它是数据，不是执行器配置"。
+不新建领域模型。`AgentSpec` = 现有 `AgentProfile` 的正文 + `ProviderAccount` 引用。名字换成 Spec 是为了强调"它是数据，不是执行器配置"。JSON 降为一个 release 的读路径，不再是权威。
 
 ---
 
@@ -105,16 +105,17 @@ SessionOpenOpts(
 
 ## 3. 目标设计
 
-### 3.1 数据结构：`AgentSpec`（A-KD 1）
+### 3.1 数据结构：`AgentSpec`（A-KD 1，revises：序列化形态是 protobuf）
 
-**A-KD 1 — `AgentSpec` 是 Agent 的唯一权威配置数据；它不含 secret，不含执行态。**
+**A-KD 1 — `AgentSpec` 是 Agent 的唯一权威配置数据；它不含 secret，不含执行态。权威序列化是 `kim.agent.AgentSpec` protobuf 字节，不是 JSON。**
 
 ```text
-AgentSpec                          # 序列化即 body_json / 云端行正文
+AgentSpec                          # 序列化 = kim.agent.AgentSpec proto bytes
 ├── meta
+│   ├── schema_version: uint32     # ★ 当前 1；过高 → 拒绝应用并提示升级
 │   ├── id: string                 # 现 profile_id，如 "goose" / "p-1726..."
 │   ├── display_name, aliases
-│   ├── enabled: bool
+│   ├── enabled: bool              # proto optional；unset → true
 │   ├── placement: local | cloud   # ★ 新增：在哪执行（Phase 4 用，缺省 local）
 │   └── updated_at: i64            # ★ 新增：同步用单调版本（LWW + tombstone 判据）
 ├── identity
@@ -123,21 +124,22 @@ AgentSpec                          # 序列化即 body_json / 云端行正文
 ├── model_ref                      # ★ 从内嵌 provider/model 收窄为引用
 │   ├── account_id: string         # → provider_accounts 表
 │   ├── model: string
-│   └── reasoning: ReasoningChoice # C-KD 形状不变
+│   └── reasoning: ReasoningChoice # C-KD 形状不变；advanced 走 bytes 口袋
 ├── assembly                        # B-KD / S-KD 形状不变
-│   ├── capabilities: [CapabilityRef]
-│   ├── permission_rules, permissions
-│   ├── workspace: WorkspaceSpec
-│   ├── skills: [SkillRef], portable_denylist, user_agents_skills
+│   ├── capabilities: [CapabilityRef]  # params 走 bytes 口袋
+│   ├── permission_rules
+│   ├── workspace.kind             # path 不在 Spec 里（A-KD 12）
+│   ├── skills: [SkillRef], portable_denylist
 │   └── steer, max_turns, mode
-└── (不存在 api_key / key 值；account 行持 key_ref 指向 Keychain)
+└── (不存在 api_key / key 值 / workspace.path / user_agents_skills)
 ```
 
 要点：
 
-- **不推翻现有 `AgentProfile` serde**。Phase 1 只是"收窄 + 加三列"（account_id 引用化、placement、updated_at），`from_json` 对旧 body 全兼容（B-KD 读迁移模式复用）。
-- `ProviderAccount` 升格为 SDK SQLite 表 `provider_accounts(id, vendor_id, base_url, key_ref, display_name, models_json, updated_at)`，与 `agent_profiles` 同库同事务。Keychain 只存值，引用关系进库。
-- Spec/Status 分离（K8s 思想）：`AgentTurnState`、会话转录、LRU 全部不在 Spec 里，也不随 Spec 同步。
+- 运行时结构仍是 `AgentProfile`。`from_json` 只服务一个 release 的旧 `body_json` 导入，导入后 encode proto 回写 `body_blob`。
+- `ProviderAccount` 升格为 SDK SQLite 表 `provider_accounts(...)`，与 `agent_profiles` 同库。Keychain 只存值，引用关系进库；账号行随 Spec 同步（A-KD 13）。
+- Spec/Status 分离：`AgentTurnState`、会话转录、LRU 不在 Spec 里，也不随 Spec 同步。
+- 本机路径进 `agent_device_overlay`，不同步（A-KD 12）。
 
 ### 3.2 存储抽象：`ProfileStore` trait（A-KD 2 / A-KD 3）
 
@@ -179,23 +181,57 @@ pub trait ProfileStore: Send + Sync {
 ```
 
 - `KeyVault` trait 先只有 Keychain 实现（Dart 侧保留 secure storage，FFI 传 key_ref + 值由宿主解析）；云端 vault（Phase 4）同 trait。
-- **修复 1.4 的 wiring 缺陷**：`AgentRunLoop._promptGoose` 改为 `store.get(req.profileId)` → `toHostJson` → `open`。配置只从 store 来，`SessionOpenOpts` 收窄为 `{ profile_json, session_id, resume_on_open }`（api_key 经 key_ref + vault，不再裸穿 FFI 扁平字段）。
+- **修复 1.4 的 wiring 缺陷**：`AgentRunLoop._promptGoose` 改为 `store.get(req.profileId)` → decode proto → `from_spec`。配置只从 store 来，`SessionOpenOpts` 收窄为 `{ spec_blob, session_id, resume_on_open }`（api_key 经 key_ref + vault，不再裸穿 FFI 扁平字段）。
 - `reconfigure` 语义升级为：watch 到 Spec 变化 → diff → 仅重建受影响的段（provider/model 变则重建 host；capabilities 变则重建 tools；prompt/steer 热替换）。这也是上云后"远端改配置、本地执行器跟随"的机制。
 
-**A-KD 5 — `AgentProfileRow.body_json` 的 serde 兼容承诺永久化：旧读新写，一个 release 后删 `tools`/`extensions` 投影**（B-KD 已定 one-release dual shape，本条只是把它绑进 Spec 生命周期）。
+**A-KD 5（revises）— JSON serde 兼容不是永久承诺：旧 `body_json` 只读一个 release，新权威是 proto field number。** `tools` / `extensions` 投影在 JSON 导入时消化，不进入 `agent.proto`。Dart `toJson` / `fromJson` 降为迁移/debug。
 
-### 3.4 上云路径（A-KD 6 / A-KD 7 / A-KD 8）
+### 3.4 序列化分层（A-KD 9 / A-KD 10 / A-KD 11）
 
-**A-KD 6 — 云同步 = `ProfileStore` 的远端实现，复用 `ProtocolClient` 通道与 `bot_config` 投影表，不新建服务。**
+**A-KD 9 — 序列化分三层。** 后台用 protobuf，不等于把聊天正文那种开放 `string body` 套到 Agent 配置上，也不等于 Dart 引入 `package:protobuf`。
+
+```text
+线信封  AgentSpecRecord / SyncReq   pkt.proto     P3 才加命令
+正文    kim.agent.AgentSpec         agent.proto   P1 落地；本地 blob = 云 BYTEA
+运行时  AgentProfile + Dart FRB     不序列化      host 不依赖 kim-protocol
+```
+
+- 拒绝「本地继续 JSON、上云再转 pb」：转两次、漂移两次。
+- 拒绝 RPC 旁路（JSON-RPC / REST）。P3 走 `chat.agent.spec.sync` / `upsert`，与其它 `chat.*` 同构。
+- Dart 不引入 protobuf 包。编解码只在 Rust；FRB 暴露普通 struct。
+
+**A-KD 10 — 开放 JSON 口袋保留为 `bytes`，不引入 `google.protobuf.Struct`。** `CapabilityRef.params`、`ModelSpec.extra_params`、`ReasoningChoice.advanced` 是厂商/block 专属。`CapabilityBlock::check` 已经吃 `serde_json::Value`。封闭字段全部 typed。
+
+**A-KD 11 — Chat 不解析 AgentSpec。** 云端新表 `agent_specs(app, owner, profile_id, nickname, server_account, spec BYTEA, key_ciphertext, updated_at, deleted_at)`。唯一校验：非空、能 decode 出 `id` 与 `schema_version`。Spec 加字段只发客户端。
+
+修订原 A-KD 6「复用 `bot_config` 投影表」：**取消。** `bot_config` 仍是社交投影（model / thinkingEffort / contextTokens / visibility），bot-KD 12 锁死四字段。`_syncBotConfig` 继续只推这四字段。Spec 同步失败不得阻塞 bot 身份。
+
+**A-KD 12 — 本机绑定字段进 `DeviceOverlay`，不进同步 Spec。**
+
+| 同步 | 不同步 |
+|---|---|
+| 人设、capabilities、permission_rules、SkillRef、steer、mode、placement、enabled | `workspace.path`、security-scoped bookmark |
+| `model_ref`、`ProviderAccount`（无 key 值） | `user_agents_skills` 绝对路径 |
+| `server_identity` / `multi_profile` | `active_profile_id`、Keychain 明文 |
+
+Mac B 拉到 `workspace.kind = repo` 且 overlay 空：UI 提示重新授权，不静默用 Mac A 的 `/Users/alice/...`。
+
+**A-KD 13 — ProviderAccount 与 AgentSpec 同一同步通道、同 LWW。** `model_ref.account_id` 悬空则 Mac B 打不开模型。`key_ref` 同步；key 值默认不上云，opt-in 后走 `key_ciphertext`（A-KD 8）。
+
+Sync 路径 **按字节原样存放**（LWW 整包覆盖，A-KD 7）。不在 sync apply 时 decode-encode。本地编辑器保存时从当前 typed struct encode 一整份新 blob——旧客户端保存即整包覆盖，这是 LWW，不是字段级合并。prost 默认丢 unknown fields，因此禁止「为了保留未知字段而在旧端做读改写」；要保留新字段，就不要用旧端去保存那一行。
+
+### 3.5 上云路径（A-KD 6 / A-KD 7 / A-KD 8）
+
+**A-KD 6（revises）— 云同步 = `ProfileStore` 的远端实现，走 `ProtocolClient`；新建 owner-scoped `agent_specs` 表，不复用 `bot_config`，不新建服务进程。**
 
 阶段划分：
 
 | 阶段 | 内容 | 动到哪 |
 |---|---|---|
 | **P0（已达成）** | 正文 `body_json` 本地 SQLite 权威；云身份投影 `BotConfig` 同步 | ✅ #118 / #122 / #124 / #125 |
-| **P1 本地收敛** | `AgentSpec` 定形；provider_accounts / 全局开关入 SQLite；Dart watch 单一来源；删 prefs 三键 + `AgentSettings` 迁移 | `kim-sdk` + Dart store，不动服务端 |
+| **P1 本地收敛** | `agent.proto` + `body_blob`；provider_accounts / overlay / 全局开关入 SQLite；Dart watch 单一来源；JSON 只读迁移 | `kim-protocol` + `kim-sdk` + Dart store，不动服务端 |
 | **P2 装配解耦** | `from_spec` 唯一入口；`SessionOpenOpts` 收窄；修 `AgentRunLoop` wiring；`reconfigure` diff 重建 | `kim-agent-host` + `rust_agent` FFI |
-| **P3 云同步** | chat 服务加 owner-scoped `agent_spec` 存储（正文 + updated_at + 可选 `key_ciphertext`）；SDK `RemoteProfileStore` 经 `ProtocolClient` 拉取/推送；多设备 LWW + tombstone；密钥**默认不上云**，用户显式开启才走 `key_ciphertext`（端侧加密，passphrase 或 device-pair 派生密钥） | `services/chat` 新 RPC + kim-sdk |
+| **P3 云同步** | chat `agent_specs` BYTEA + `chat.agent.spec.sync/upsert/delete`（protobuf 信封，与本地 `body_blob` 同一串）；LWW + tombstone；密钥**默认不上云**，用户显式开启才走 `key_ciphertext`（端侧加密）。P3 **不做**向其它 session 的主动 Push，避免插 gateway 热路径 | `services/chat` 新 RPC + kim-sdk。优先 chat 本表，不绑 Royal HMAC |
 | **P4 云执行** | `placement: cloud` 的 Spec 由服务端 runner（复用 `kim-agent-host`，同一 crate 同一 `from_spec`）执行，经既有 `bot_reply` 通道回消息；本地只做 UI | 新 `services/agentd`（或 chat 内 worker），`kim-agent-host` 保持可脱离 tokio-net 独立装配 |
 
 **A-KD 7 — 同步语义：per-spec `updated_at` LWW + 软删除 tombstone 行（保留 30 天），冲突不做字段级合并。** 依据：Spec 是低频编辑、单 owner；LoweChat/Assistant API 均无字段级合并。首启多设备 adopt：远端为空 → 推本地全量；本地为空 → 拉远端全量。
@@ -205,10 +241,11 @@ pub trait ProfileStore: Send + Sync {
 **为什么这个形状"上云比较方便"**——三条解耦线各自独立演进：
 
 ```text
-数据线:  AgentSpec (body_json) ── 本地SQLite ──► 远端chat表 ──► 多设备
-秘密线:  key_ref ── Keychain ──────────────────► 云vault(可选,E2E)
-执行线:  AgentHost::from_spec ── 本地进程 ─────► 服务端runner(同一crate)
-                ▲ 只依赖 AgentSpec + KeyVault + Workspace 三个 trait
+数据线:  AgentSpec proto bytes ── 本地 body_blob ──► chat.agent_specs BYTEA ──► 多设备
+秘密线:  key_ref ── Keychain ──────────────────────► 云vault(可选,E2E)
+执行线:  AgentHost::from_spec ── 本地进程 ─────────► 服务端runner(同一crate)
+本机线:  DeviceOverlay (path / bookmark) ──────────► 不同步
+                ▲ 装配只依赖 AgentSpec + KeyVault + Overlay
 ```
 
 任何一条线换实现，另两条不动。这就是"配置即数据"的全部含义。
@@ -221,12 +258,12 @@ pub trait ProfileStore: Send + Sync {
 
 | PR | 内容 | 破坏面 | 测试门槛 |
 |---|---|---|---|
-| **PR 1** schema | `agent_profiles` 加 `updated_at` 已有 / 补 `placement`；新表 `provider_accounts`；migrate（prefs → SQLite 一次性导入，幂等）；SDK `WriteOp` + watch 发布 | 无（加列加表） | `store_restart` 增重启用例：迁移幂等、prefs 导入后删除 |
-| **PR 2** Dart 收敛 | `AgentProfileStore` 改 watch 单一来源；删 `_migrateAccounts` / `_migrateAccountModels` / prefs 三键；`AgentSettings` 只读迁移 | Dart 内部 | contacts/chat 测试模式复刻：`fake_kim` 补 profile watch |
-| **PR 3** Spec 定形 | `AgentProfile` 加 `placement` / `updated_at` / `account_id` 引用化；`from_json` 兼容旧 body；Dart `toJson` 停写 `tools` 投影（B-KD one-release 到期） | body_json 读写面 | `profile.rs` 单测：旧 JSON → 新 Spec → 再序列化 → 等价 |
-| **PR 4** 装配解耦 | `from_spec` + `KeyVault` trait；`SessionOpenOpts` 收窄（保留 legacy 构造器一个 release）；**修 `AgentRunLoop` 硬编码 wiring** | `rust_agent` FFI 签名（内部 app，无外部消费者） | 桌面 agent 聊天 e2e：改 profile 模型 → reconfigure 生效 |
-| **PR 5** reconfigure diff | watch Spec 变化 → 分级重建（provider 段 / tools 段 / prompt 热替换） | 无 | 单测：三类变更各只触发对应重建 |
-| **PR 6**（P3，独立排期） | chat `agent_spec` 表 + RPC；`RemoteProfileStore`；LWW + tombstone；可选 E2E `key_ciphertext` | 服务端新 RPC（缺省兼容：旧客户端不拉不推） | 双设备集成测试；冲突用例 |
+| **PR 1** schema + proto | `agent.proto`；`agent_profiles` 加 `body_blob` / `placement`；新表 `provider_accounts` / `agent_device_overlay`；schema v5。**protobuf 在本 PR 落地成本地权威列，P3 只搬同一串 bytes** | 无（加列加表 + 新 proto 文件） | v4 DB 升 v5 列/表存在；`AgentSpec` encode/decode roundtrip |
+| **PR 2** Dart 收敛 | `AgentProfileStore` 改 watch 单一来源；删 `_migrateAccounts` / prefs 三键；`AgentSettings` 只读迁移 | Dart 内部 | contacts/chat 测试模式复刻：`fake_kim` 补 profile watch |
+| **PR 3** Spec 定形 | JSON→proto 回填；DTO `body_json` → `body_blob`；Dart 停写 `toJson` 权威；`from_json` 仅迁移 | FFI DTO | 旧 JSON fixture → proto → 再 decode 等价 |
+| **PR 4** 装配解耦 | `from_spec` + `KeyVault` + Overlay；`SessionOpenOpts` 收窄；**修 `AgentRunLoop` 硬编码 wiring** | `rust_agent` FFI 签名（内部 app） | 桌面 agent 聊天：改模型 → reconfigure 生效 |
+| **PR 5** reconfigure diff | watch Spec 变化 → 分级重建 | 无 | 单测：三类变更各只触发对应重建 |
+| **PR 6**（P3，后台轨） | `chat.agent.spec.*` 信封进 `pkt.proto`；`agent_specs` BYTEA；LWW + tombstone；可选 E2E key。旧客户端不发则服务端零行为 | 新 RPC，缺省兼容 | 双设备：A 写 prompt → B sync 看到 |
 | **PR 7**（P4，独立排期） | `placement: cloud` + 服务端 runner 复用 `kim-agent-host`；`bot_reply` 回投 | 服务端 | scripted provider 跑通云回合 |
 
 P1–P2（PR 1–5）是纯客户端轨，遵守 next-stage.md 分轨原则：不插后台 PR 队列。P3/P4 走后台轨评审。
@@ -237,23 +274,28 @@ P1–P2（PR 1–5）是纯客户端轨，遵守 next-stage.md 分轨原则：�
 
 - 不重做 Capability / Skill / Workspace 模型（B-KD / S-KD 已定，Spec 只是容器）。
 - 不做字段级同步合并、不做协同编辑（LWW 够用）。
-- P3 之前不动 `services/chat` 任何表与 RPC。
-- 不做多租户 Agent 市场分发（S-KD 11 的一等 Skill 包分发是另一条线，交汇点是 cloud catalog，不在本文）。
-- 不把 Goose 会话转录（session 文件）纳入 Spec 或同步范围。
+- P3 之前不动 `services/chat` 任何表与 RPC（`agent.proto` 可以先合，命令仍未进 `pkt.proto`）。
+- 不做多租户 Agent 市场分发（S-KD 11 的一等 Skill 包分发是另一条线）。
+- 不把 Goose 会话转录纳入 Spec 或同步范围。
+- 不给 Dart 加 `package:protobuf`。
+- 不把 `workspace.path` 当权威同步字段。
+- `kim-agent-host` 不依赖 `kim-protocol`。codec 放薄层（host feature / `sdk/mobile/rust` / `kim-agent-codec`），sdk 继续只存不透明 bytes。
 
 ## 6. 风险与开放问题
 
 | 风险 | 缓解 |
 |---|---|
-| Dart `AgentProfile` 手写 `toJson/fromJson` 与 Rust serde 双份漂移（已发生过 `ReasoningChoice.toJson` 的 `value`/`budget` 双写 bug） | PR 3 起 Dart 只透传 `body_json`，UI 需要的字段走 FRB 生成的镜像类型；手写序列化降级为迁移代码 |
-| `updated_at` LWW 依赖时钟 | 单调来源用 SDK 本地 `now()`（写侧）+ 服务端二次盖戳（P3）；不做混合时钟 |
-| E2E 密钥同步丢失 passphrase = 配置永久不可用 | 云端正文永远明文可读（不含密钥）；密钥丢失仅降级为重新输入 key |
-| `placement: cloud` 的权限/审批模型（SmartApprove 在云端怎么问） | P4 前置调研项，本文不锁；先只允许 `mode: chat` 的 Spec 上云 |
-| FFI 收窄 `SessionOpenOpts` 撞上正在跑的 PR | 通知在途分支；保留 legacy 构造器一个 release |
+| Dart `AgentProfile` 手写 `toJson/fromJson` 与 Rust serde 双份漂移（已发生过 `ReasoningChoice.toJson` 的 `value`/`budget` 双写 bug） | PR 3 起 Dart 不序列化；Rust encode proto；UI 走 FRB 镜像 |
+| `updated_at` LWW 依赖时钟 | 单调来源用 SDK 本地 `now()`（写侧）+ 服务端二次盖戳（P3） |
+| E2E 密钥同步丢失 passphrase = 配置永久不可用 | 云端正文永远可读（不含密钥）；密钥丢失仅降级为重新输入 key。默认不上云（A-KD 8） |
+| 旧客户端保存会丢掉它不认识的新 field | 这是整包 LWW 的本意；sync apply 按字节存放。禁止旧端为「保留未知字段」做读改写 |
+| `placement: cloud` 的权限/审批模型 | P4 前置；先只允许 `mode: chat` |
+| FFI 收窄 `SessionOpenOpts` 撞上在途 PR | 通知在途分支；保留 legacy 构造器一个 release |
 
 ## 7. 验收口径（P1+P2 完成时）
 
 1. 全仓库 grep：`agent.profiles` / `agent.provider_accounts` / `agent.multi_profile` / `agent.server_identity` 四个 prefs 键零引用。
 2. `AgentRunLoop._promptGoose` 不再出现字面量 `'gpt-4o'` / `'openai'`；配置一律 `store.get(profile_id)`。
 3. 改任一 profile 字段 → `watchAgentProfiles` 收到快照 → 若会话在线，`reconfigure` 只重建受影响段。
-4. `cargo test -p kim-sdk -p kim-agent-host`、`flutter test` 全绿；迁移用例覆盖 prefs → SQLite 幂等导入。
+4. 新写路径只写 `body_blob`；`body_json` 仅迁移读。`agent.proto` roundtrip 绿。
+5. `cargo test -p kim-protocol -p kim-sdk -p kim-agent-host`、`flutter test` 全绿；v4→v5 列/表存在。
