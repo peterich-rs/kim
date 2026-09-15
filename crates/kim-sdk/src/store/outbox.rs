@@ -147,6 +147,19 @@ pub(crate) async fn get_row(
     row.map(map_row).transpose()
 }
 
+pub(crate) async fn dest_for_client_id(
+    tx: &mut SqliteConnection,
+    account: &str,
+    client_id: &str,
+) -> Result<Option<String>, SdkError> {
+    sqlx::query_scalar("SELECT dest FROM outbox WHERE account = ? AND client_id = ?")
+        .bind(account)
+        .bind(client_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)
+}
+
 pub(crate) async fn alive(
     pool: &sqlx::SqlitePool,
     account: &str,

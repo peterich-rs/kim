@@ -291,38 +291,30 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     }
   }
 
-  Future<KimChatMsg> _enqueueText(
+  Future<KimCommandReceipt> _enqueueText(
     KimClientPort client,
     String dest,
     String text,
-  ) async {
+  ) {
     final body = text.trim();
     if (body.isEmpty) {
       throw StateError(Copy.required);
     }
     final id = const Uuid().v4();
-    await client.enqueueMessage(
+    return client.enqueueMessage(
       dest: dest,
       kind: ThreadKind.user,
       content: KimOutgoingContent.text(body),
       clientId: id,
     );
-    return KimChatMsg(
-      key: id,
-      dest: dest,
-      sender: ref.read(sessionProvider).account,
-      body: body,
-      at: DateTime.now().millisecondsSinceEpoch,
-      status: KimSendStatus.sending,
-    );
   }
 
-  Future<List<KimChatMsg>> _enqueueImages(
+  Future<List<KimCommandReceipt>> _enqueueImages(
     KimClientPort client,
     String dest,
     List<KimMediaAsset> assets,
   ) async {
-    final out = <KimChatMsg>[];
+    final out = <KimCommandReceipt>[];
     for (final asset in assets) {
       if (asset.path.isEmpty) {
         continue;
@@ -335,27 +327,15 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
               width: asset.width,
               height: asset.height,
             );
-      await client.enqueueMessage(
-        dest: dest,
-        kind: ThreadKind.user,
-        content: content,
-        clientId: id,
-        localPath: asset.path,
-        width: asset.width,
-        height: asset.height,
-      );
       out.add(
-        KimChatMsg(
-          key: id,
+        await client.enqueueMessage(
           dest: dest,
-          sender: ref.read(sessionProvider).account,
-          body: asset.path,
-          at: DateTime.now().millisecondsSinceEpoch,
-          kind: asset.isVideo ? KimMsgKind.video : KimMsgKind.image,
+          kind: ThreadKind.user,
+          content: content,
+          clientId: id,
+          localPath: asset.path,
           width: asset.width,
           height: asset.height,
-          status: KimSendStatus.sending,
-          localPath: asset.path,
         ),
       );
     }

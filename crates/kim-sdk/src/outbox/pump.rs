@@ -65,7 +65,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                 if cancel.is_cancelled() {
                     continue;
                 }
-                store
+                let ((), _seq) = store
                     .mark_sent(
                         epoch,
                         session.account.clone(),
@@ -73,7 +73,6 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                         message_id,
                     )
                     .await?;
-                sdk.publish_timeline(&row.dest).await;
                 sent += 1;
                 if row.payload_type == kim_protocol::MESSAGE_TYPE_TEXT
                     && store
@@ -95,7 +94,7 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
             Err(err) if err.retryable_send() => {
                 let attempt = row.attempt.saturating_add(1);
                 let delay = 1000i64.saturating_mul(1i64 << attempt.min(6));
-                store
+                let ((), _seq) = store
                     .mark_retry(
                         epoch,
                         session.account.clone(),
@@ -104,13 +103,11 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                         crate::store::now_ms().saturating_add(delay),
                     )
                     .await?;
-                sdk.publish_timeline(&row.dest).await;
             }
             Err(_) => {
-                store
+                let ((), _seq) = store
                     .mark_failed(epoch, session.account.clone(), row.client_id)
                     .await?;
-                sdk.publish_timeline(&row.dest).await;
             }
         }
     }

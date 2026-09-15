@@ -10,7 +10,8 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_profile`, `from_str`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePageDto`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCardDto {
   final int v;
@@ -240,6 +241,30 @@ class CommandAckDto {
           sendStatus == other.sendStatus;
 }
 
+class ContactsSnapshotDto {
+  final BigInt version;
+  final List<PersonDto> contacts;
+  final String? syncError;
+
+  const ContactsSnapshotDto({
+    required this.version,
+    required this.contacts,
+    this.syncError,
+  });
+
+  @override
+  int get hashCode => version.hashCode ^ contacts.hashCode ^ syncError.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContactsSnapshotDto &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          contacts == other.contacts &&
+          syncError == other.syncError;
+}
+
 @freezed
 sealed class LinkStateDto with _$LinkStateDto {
   const LinkStateDto._();
@@ -277,30 +302,6 @@ class LocalMediaDto {
           byteSize == other.byteSize &&
           width == other.width &&
           height == other.height;
-}
-
-class MessagePageDto {
-  final String dest;
-  final List<MessageViewDto> messages;
-  final bool hasMore;
-
-  const MessagePageDto({
-    required this.dest,
-    required this.messages,
-    required this.hasMore,
-  });
-
-  @override
-  int get hashCode => dest.hashCode ^ messages.hashCode ^ hasMore.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is MessagePageDto &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          messages == other.messages &&
-          hasMore == other.hasMore;
 }
 
 class MessageViewDto {
@@ -753,6 +754,8 @@ class TimelineSnapshotDto {
   final int unread;
   final PlatformInt64 lastReadMessageId;
   final bool hasMore;
+  final bool loadingOlder;
+  final String? historyError;
 
   const TimelineSnapshotDto({
     required this.dest,
@@ -762,6 +765,8 @@ class TimelineSnapshotDto {
     required this.unread,
     required this.lastReadMessageId,
     required this.hasMore,
+    required this.loadingOlder,
+    this.historyError,
   });
 
   @override
@@ -772,7 +777,9 @@ class TimelineSnapshotDto {
       pending.hashCode ^
       unread.hashCode ^
       lastReadMessageId.hashCode ^
-      hasMore.hashCode;
+      hasMore.hashCode ^
+      loadingOlder.hashCode ^
+      historyError.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -785,7 +792,9 @@ class TimelineSnapshotDto {
           pending == other.pending &&
           unread == other.unread &&
           lastReadMessageId == other.lastReadMessageId &&
-          hasMore == other.hasMore;
+          hasMore == other.hasMore &&
+          loadingOlder == other.loadingOlder &&
+          historyError == other.historyError;
 }
 
 @freezed

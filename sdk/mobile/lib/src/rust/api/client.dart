@@ -105,13 +105,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<List<AgentProfileDto>> listAgentProfiles();
 
-  Future<MessagePageDto> loadOlder({
-    required String dest,
-    required PlatformInt64 beforeAt,
-    required String beforeKey,
-    required PlatformInt64 beforeId,
-    required int limit,
-  });
+  Future<void> loadOlder({required String dest});
 
   Future<void> markRead({
     required String dest,
@@ -143,7 +137,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<ProfileDto> profile({required String dest});
 
-  Future<List<PersonDto>> refreshContacts();
+  Future<void> refreshContacts();
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
@@ -197,6 +191,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   Future<void> upsertAgentProfile({required AgentProfileDto row});
 
   Stream<AgentRunRequestDto> watchAgentRun();
+
+  Stream<ContactsSnapshotDto> watchContacts();
 
   /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
   Stream<SessionUpdateDto> watchSession();

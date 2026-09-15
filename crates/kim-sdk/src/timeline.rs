@@ -26,6 +26,8 @@ pub struct TimelineSnapshot {
     pub unread: i32,
     pub last_read_message_id: i64,
     pub has_more: bool,
+    pub loading_older: bool,
+    pub history_error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -160,6 +162,13 @@ pub struct PersonRef {
     pub bio: String,
     pub relation: String,
     pub kind: i32,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContactsSnapshot {
+    pub version: u64,
+    pub contacts: Vec<PersonRef>,
+    pub sync_error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';
 
@@ -19,37 +20,69 @@ Future<void> _online(dynamic env) async {
   }
 }
 
+ContactsSnapshotDto _contacts(List<PersonDto> contacts, {String? syncError}) {
+  return ContactsSnapshotDto(
+    version: BigInt.one,
+    contacts: contacts,
+    syncError: syncError,
+  );
+}
+
+PersonDto _person({
+  required String account,
+  required String nickname,
+  String avatar = '',
+  String relation = 'friend',
+  int kind = ProfileKind.user,
+}) {
+  return PersonDto(
+    account: account,
+    nickname: nickname,
+    avatar: avatar,
+    bio: '',
+    relation: relation,
+    kind: kind,
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('accept push moves an outgoing request into friends', () async {
+  test('contacts list changes only from contacts snapshots', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     await _online(env);
     await env.container.read(contactsProvider.notifier).request('bob');
     expect(env.container.read(contactsProvider).isOutgoing('bob'), isTrue);
-    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    env.container.read(contactsProvider.notifier).onAccepted('bob', 'Bobby');
+
+    env.fake.emitFriend(from: 'bob', nickname: 'Bobby', accepted: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).isFriend('bob'), isFalse);
+
+    env.fake.pushContacts(
+      _contacts([_person(account: 'bob', nickname: 'Bobby')]),
+    );
     await Future<void>.delayed(Duration.zero);
     final social = env.container.read(contactsProvider);
     expect(social.isFriend('bob'), isTrue);
     expect(social.isOutgoing('bob'), isFalse);
   });
 
-  test(
-    'request push against an outgoing dest is treated as accepted',
-    () async {
-      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-      await _online(env);
-      await env.container.read(contactsProvider.notifier).request('bob');
-      env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-      env.container.read(contactsProvider.notifier).onRequest('bob', 'Bobby');
-      await Future<void>.delayed(Duration.zero);
-      final social = env.container.read(contactsProvider);
-      expect(social.isFriend('bob'), isTrue);
-      expect(social.isOutgoing('bob'), isFalse);
-      expect(social.isIncoming('bob'), isFalse);
-    },
-  );
+  test('friend request event does not insert an incoming contact', () async {
+    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await _online(env);
+    env.container.read(contactsProvider);
+    env.fake.emitFriend(from: 'bob', nickname: 'Bobby');
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).isIncoming('bob'), isFalse);
+
+    env.fake.pushContacts(
+      _contacts([
+        _person(account: 'bob', nickname: 'Bobby', relation: 'incoming'),
+      ]),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(env.container.read(contactsProvider).isIncoming('bob'), isTrue);
+  });
 
   test('server bot dest is a friend without a list row', () {
     final social = ContactsState.empty();
@@ -104,54 +137,78 @@ void main() {
     expect(env.container.read(contactsProvider).person('goose'), isNull);
   });
 
-  test('onProfileUpdated patches friend nickname and avatar', () async {
+  test('profile changes arrive through the contacts snapshot', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     await env.container.read(agentProfilesProvider.notifier).ensureLoaded();
     await _online(env);
-    env.fake.friends = const [
-      KimPerson(account: 'bob', nickname: 'Bobby', avatar: 'old.png'),
-    ];
-    await env.container.read(contactsProvider.notifier).refresh();
+    env.container.read(contactsProvider);
+    env.fake.pushContacts(
+      _contacts([
+        _person(account: 'bob', nickname: 'Bobby', avatar: 'old.png'),
+      ]),
+    );
     await Future<void>.delayed(Duration.zero);
-    env.container
-        .read(contactsProvider.notifier)
-        .onProfileUpdated('bob', 'Robert', 'new.png');
+
+    env.fake.pushEvent(
+      SessionUpdateDto.profileUpdated(
+        account: 'bob',
+        nickname: 'Robert',
+        avatar: 'new.png',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      env.container.read(contactsProvider).person('bob')?.nickname,
+      'Bobby',
+    );
+
+    env.fake.pushContacts(
+      _contacts([
+        _person(account: 'bob', nickname: 'Robert', avatar: 'new.png'),
+      ]),
+    );
+    await Future<void>.delayed(Duration.zero);
     final bob = env.container.read(contactsProvider).person('bob');
     expect(bob?.nickname, 'Robert');
     expect(bob?.avatar, 'new.png');
   });
 
-  test('removePeer clears human from friends via friendRemove', () async {
+  test('removePeer waits for a contacts snapshot after friendRemove', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     await _online(env);
-    env.fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await env.container.read(contactsProvider.notifier).refresh();
+    env.container.read(contactsProvider);
+    env.fake.pushContacts(
+      _contacts([_person(account: 'bob', nickname: 'Bobby')]),
+    );
     await Future<void>.delayed(Duration.zero);
     expect(env.container.read(contactsProvider).isFriend('bob'), isTrue);
     await env.container
         .read(contactsProvider.notifier)
         .removePeer('bob', isBot: false);
     expect(env.fake.friendRemoves, 1);
+    expect(env.container.read(contactsProvider).isFriend('bob'), isTrue);
+    env.fake.pushContacts(_contacts(const []));
+    await Future<void>.delayed(Duration.zero);
     expect(env.container.read(contactsProvider).isFriend('bob'), isFalse);
   });
 
-  test('removePeer deletes bot via botDelete', () async {
+  test('removePeer waits for a contacts snapshot after botDelete', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     await _online(env);
-    env.fake.friends = const [
-      KimPerson(
-        account: 'b_bot',
-        nickname: '助手',
-        bio: 'hi',
-        kind: ProfileKind.bot,
-      ),
-    ];
-    await env.container.read(contactsProvider.notifier).refresh();
+    env.container.read(contactsProvider);
+    env.fake.pushContacts(
+      _contacts([
+        _person(account: 'b_bot', nickname: '助手', kind: ProfileKind.bot),
+      ]),
+    );
     await Future<void>.delayed(Duration.zero);
     await env.container
         .read(contactsProvider.notifier)
         .removePeer('b_bot', isBot: true);
     expect(env.fake.botDeletes, 1);
+    expect(env.container.read(contactsProvider).person('b_bot'), isNotNull);
+    env.fake.pushContacts(_contacts(const []));
+    await Future<void>.delayed(Duration.zero);
     expect(env.container.read(contactsProvider).person('b_bot'), isNull);
   });
 }

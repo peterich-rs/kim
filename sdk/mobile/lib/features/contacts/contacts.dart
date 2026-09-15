@@ -26,6 +26,7 @@ class ContactsState {
     this.ready = false,
     this.loading = false,
     this.query = '',
+    this.syncError,
   });
 
   factory ContactsState.empty() =>
@@ -38,6 +39,7 @@ class ContactsState {
   final bool ready;
   final bool loading;
   final String query;
+  final String? syncError;
 
   int get incomingCount => incoming.length;
 
@@ -73,6 +75,8 @@ class ContactsState {
     bool? ready,
     bool? loading,
     String? query,
+    String? syncError,
+    bool syncErrorSet = false,
   }) {
     return ContactsState(
       friends: friends ?? this.friends,
@@ -82,18 +86,19 @@ class ContactsState {
       ready: ready ?? this.ready,
       loading: loading ?? this.loading,
       query: query ?? this.query,
+      syncError: syncErrorSet ? syncError : this.syncError,
     );
   }
 }
 
 class ContactsNotifier extends Notifier<ContactsState> {
-  StreamSubscription<SessionUpdateDto>? _events;
+  StreamSubscription<ContactsSnapshotDto>? _contacts;
 
   @override
   ContactsState build() {
     ref.onDispose(() {
-      unawaited(_events?.cancel());
-      _events = null;
+      unawaited(_contacts?.cancel());
+      _contacts = null;
     });
     ref.listen(authProvider.select((s) => s.signedIn), (prev, next) {
       if (next == false) {
@@ -105,7 +110,15 @@ class ContactsNotifier extends Notifier<ContactsState> {
         unawaited(refresh());
       }
     });
-    _listenEvents();
+    _contacts = ref
+        .read(clientPortProvider)
+        .watchContacts()
+        .listen(
+          _applySnapshot,
+          onError: (Object error, StackTrace stackTrace) {
+            KimLogger.warn('contacts watch', error, stackTrace);
+          },
+        );
     Future.microtask(() {
       if (!ref.mounted) {
         return;
@@ -142,49 +155,16 @@ class ContactsNotifier extends Notifier<ContactsState> {
     );
   }
 
-  void _listenEvents() {
-    if (_events != null) {
-      return;
-    }
-    _events = ref.read(clientPortProvider).watchSessionEvents().listen((event) {
-      if (!ref.mounted) {
-        return;
-      }
-      switch (event) {
-        case SessionUpdateDto_FriendRequest(:final from, :final nickname):
-          onRequest(from, nickname);
-        case SessionUpdateDto_FriendAccepted(:final from, :final nickname):
-          onAccepted(from, nickname);
-        case SessionUpdateDto_ProfileUpdated(
-          :final account,
-          :final nickname,
-          :final avatar,
-        ):
-          onProfileUpdated(account, nickname, avatar);
-        case SessionUpdateDto_ContactsChanged(:final contacts):
-          applyChanged(contacts);
-        default:
-          break;
-      }
-    });
-  }
-
   Future<void> refresh() async {
-    if (ref.read(kimSessionProvider).link is! LinkStateDto_Online) {
-      return;
-    }
     final client = ref.read(clientPortProvider);
     state = state.copyWith(loading: true);
     try {
-      final rows = await client.refreshContacts();
-      if (!ref.mounted) {
-        return;
-      }
-      applyChanged(rows);
+      await client.refreshContacts();
     } catch (e, st) {
       KimLogger.warn('contacts refresh', e, st);
+    } finally {
       if (ref.mounted) {
-        state = state.copyWith(ready: true, loading: false);
+        state = state.copyWith(loading: false);
       }
     }
   }
@@ -227,7 +207,6 @@ class ContactsNotifier extends Notifier<ContactsState> {
       await KimHaptics.success();
       return;
     }
-    state = state.copyWith(outgoing: {...state.outgoing, dest});
     await KimHaptics.light();
   }
 
@@ -260,19 +239,17 @@ class ContactsNotifier extends Notifier<ContactsState> {
     if (!ref.mounted) {
       return;
     }
-    state = state.copyWith(
-      friends: state.friends.where((p) => p.account != dest).toList(),
-      hits: state.hits.where((p) => p.account != dest).toList(),
-      outgoing: {...state.outgoing}..remove(dest),
-    );
     await KimHaptics.success();
   }
 
-  void applyChanged(List<PersonDto> contacts) {
+  void _applySnapshot(ContactsSnapshotDto snapshot) {
+    if (!ref.mounted) {
+      return;
+    }
     final friends = <KimPerson>[];
     final incoming = <KimPerson>[];
     final outgoing = <String>{};
-    for (final p in contacts) {
+    for (final p in snapshot.contacts) {
       final person = KimPerson(
         account: p.account,
         nickname: p.nickname.isEmpty ? p.account : p.nickname,
@@ -298,82 +275,11 @@ class ContactsNotifier extends Notifier<ContactsState> {
               ref.read(agentProfilesProvider.notifier).visibleAgents,
             ),
       incoming: incoming,
-      outgoing: {...state.outgoing, ...outgoing}
-        ..removeWhere(friendIds.contains),
+      outgoing: outgoing..removeWhere(friendIds.contains),
       ready: true,
-      loading: false,
+      syncError: snapshot.syncError,
+      syncErrorSet: true,
     );
-  }
-
-  void onRequest(String from, String nickname) {
-    if (from.isEmpty || state.isFriend(from)) {
-      return;
-    }
-    if (state.isOutgoing(from)) {
-      onAccepted(from, nickname);
-      return;
-    }
-    if (state.isIncoming(from)) {
-      return;
-    }
-    final person = KimPerson(
-      account: from,
-      nickname: nickname.isEmpty ? from : nickname,
-    );
-    state = state.copyWith(incoming: [person, ...state.incoming]);
-  }
-
-  void onAccepted(String from, String nickname) {
-    if (from.isEmpty) {
-      return;
-    }
-    final person = KimPerson(
-      account: from,
-      nickname: nickname.isEmpty ? from : nickname,
-    );
-    final friends = [
-      if (!state.isFriend(from)) person,
-      ...state.friends.where((p) => p.account != from),
-    ];
-    state = state.copyWith(
-      friends: friends,
-      incoming: state.incoming.where((p) => p.account != from).toList(),
-      outgoing: {...state.outgoing}..remove(from),
-    );
-    unawaited(refresh());
-  }
-
-  /// Patch a known contact's nickname/avatar from `chat.user.updated`.
-  void onProfileUpdated(String account, String nickname, String avatar) {
-    if (account.isEmpty) {
-      return;
-    }
-    final title = nickname.isEmpty ? account : nickname;
-    List<KimPerson> patch(List<KimPerson> rows) {
-      return [
-        for (final p in rows)
-          if (p.account == account)
-            KimPerson(
-              account: account,
-              nickname: title,
-              avatar: avatar,
-              bio: p.bio,
-              kind: p.kind,
-            )
-          else
-            p,
-      ];
-    }
-
-    final friends = patch(state.friends);
-    final incoming = patch(state.incoming);
-    final hits = patch(state.hits);
-    if (friends == state.friends &&
-        incoming == state.incoming &&
-        hits == state.hits) {
-      return;
-    }
-    state = state.copyWith(friends: friends, incoming: incoming, hits: hits);
   }
 }
 

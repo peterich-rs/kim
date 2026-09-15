@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use super::schema::MAX_MESSAGES;
@@ -154,8 +156,120 @@ pub(crate) async fn load_page(
     Ok((out, has_more))
 }
 
-pub(crate) async fn load_hot_window(
+/// Rebuilds the SDK-owned timeline window. The hot sent window remains bounded
+/// by `limit`; an expanded older range is included when a subscription has an
+/// `older_bound`.
+pub(crate) async fn load_timeline_window(
     pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    limit: i32,
+    older_bound: Option<&(i64, String)>,
+) -> Result<TimelineSnapshot, SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    sqlx::query("BEGIN")
+        .execute(&mut *conn)
+        .await
+        .map_err(map_sqlx)?;
+    let result = async {
+        let mut snapshot = load_hot_window_on(&mut conn, account, dest, limit).await?;
+        let Some((bound_at, bound_key)) = older_bound else {
+            return Ok(snapshot);
+        };
+
+        let rows = if let Some(hot_start) = snapshot.messages.first() {
+            sqlx::query(
+                r"
+                SELECT key, dest, sender, body, at, sys, kind, width, height,
+                       message_id, batch_id, status, local_path
+                FROM messages
+                WHERE account = ? AND dest = ? AND status = 'sent'
+                  AND (at > ? OR (at = ? AND key >= ?))
+                  AND (at < ? OR (at = ? AND key < ?))
+                ORDER BY at ASC, key ASC
+                ",
+            )
+            .bind(account)
+            .bind(dest)
+            .bind(*bound_at)
+            .bind(*bound_at)
+            .bind(bound_key)
+            .bind(hot_start.at)
+            .bind(hot_start.at)
+            .bind(&hot_start.key)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(map_sqlx)?
+        } else {
+            sqlx::query(
+                r"
+                SELECT key, dest, sender, body, at, sys, kind, width, height,
+                       message_id, batch_id, status, local_path
+                FROM messages
+                WHERE account = ? AND dest = ? AND status = 'sent'
+                  AND (at > ? OR (at = ? AND key >= ?))
+                ORDER BY at ASC, key ASC
+                ",
+            )
+            .bind(account)
+            .bind(dest)
+            .bind(*bound_at)
+            .bind(*bound_at)
+            .bind(bound_key)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(map_sqlx)?
+        };
+
+        let mut messages = Vec::with_capacity(rows.len() + snapshot.messages.len());
+        for row in rows {
+            messages.push(row_to_view(&row)?);
+        }
+        messages.append(&mut snapshot.messages);
+        messages.sort_by(|left, right| {
+            left.at
+                .cmp(&right.at)
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        let mut keys = HashSet::with_capacity(messages.len());
+        messages.retain(|message| keys.insert(message.key.clone()));
+        snapshot.messages = messages;
+        Ok(snapshot)
+    }
+    .await;
+
+    match result {
+        Ok(snapshot) => match sqlx::query("COMMIT").execute(&mut *conn).await {
+            Ok(_) => Ok(snapshot),
+            Err(error) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                Err(map_sqlx(error))
+            }
+        },
+        Err(error) => {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            Err(error)
+        }
+    }
+}
+
+pub(crate) async fn count_sent(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+) -> Result<i64, SdkError> {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM messages WHERE account = ? AND dest = ? AND status = 'sent'",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)
+}
+
+async fn load_hot_window_on(
+    conn: &mut SqliteConnection,
     account: &str,
     dest: &str,
     limit: i32,
@@ -174,7 +288,7 @@ pub(crate) async fn load_hot_window(
     .bind(account)
     .bind(dest)
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let pending_rows = sqlx::query(
@@ -188,7 +302,7 @@ pub(crate) async fn load_hot_window(
     )
     .bind(account)
     .bind(dest)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let extra = sqlx::query_scalar::<_, i64>(
@@ -199,7 +313,7 @@ pub(crate) async fn load_hot_window(
     )
     .bind(account)
     .bind(dest)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let unread = sqlx::query_scalar::<_, i32>(
@@ -207,7 +321,7 @@ pub(crate) async fn load_hot_window(
     )
     .bind(account)
     .bind(dest)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let last_read = sqlx::query_scalar::<_, i64>(
@@ -215,7 +329,7 @@ pub(crate) async fn load_hot_window(
     )
     .bind(account)
     .bind(dest)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let version = sqlx::query_scalar::<_, i64>(
@@ -223,7 +337,7 @@ pub(crate) async fn load_hot_window(
     )
     .bind(account)
     .bind(dest)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_sqlx)?;
     let mut messages = Vec::with_capacity(sent.len());
@@ -242,6 +356,8 @@ pub(crate) async fn load_hot_window(
         unread,
         last_read_message_id: last_read,
         has_more: extra > i64::from(limit),
+        loading_older: false,
+        history_error: None,
     })
 }
 
@@ -287,7 +403,7 @@ fn row_to_view(row: &sqlx::sqlite::SqliteRow) -> Result<MessageView, SdkError> {
     })
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StoredMsg {
     pub key: String,
     pub dest: String,
@@ -307,10 +423,17 @@ pub(crate) struct StoredMsg {
 
 pub(crate) struct ApplyOutcome {
     pub dest: String,
-    #[allow(dead_code)]
     pub inserted: bool,
     pub unread_delta: i32,
     pub msg: StoredMsg,
+    pub fields_changed: bool,
+    pub had_loser: bool,
+}
+
+impl ApplyOutcome {
+    pub fn needs_publish(&self) -> bool {
+        self.inserted || self.unread_delta != 0 || self.fields_changed || self.had_loser
+    }
 }
 
 pub(crate) async fn apply_talk(
@@ -376,21 +499,17 @@ pub(crate) async fn apply_talk(
         (mid, key_row) => (mid.or(key_row), None),
     };
     let inserted = survivor.is_none();
+    let prev = survivor.clone();
     let merged = match survivor {
         None => incoming,
-        Some(prev) => merge_stored(prev, incoming),
+        Some(prev_owned) => merge_stored(prev_owned, incoming),
     };
+    let had_loser = loser.as_ref().is_some_and(|loser| loser.key != merged.key);
     if let Some(loser) = loser {
         if loser.key != merged.key {
             delete_key(tx, account, &dest, &loser.key).await?;
         }
     }
-    if let Some(surv) = find_by_key(tx, account, &dest, &merged.key).await? {
-        if surv.key != merged.key {
-            delete_key(tx, account, &dest, &surv.key).await?;
-        }
-    }
-    put_msg(tx, account, &merged).await?;
     let unread_delta = match policy {
         crate::sync::UnreadPolicy::IfInserted
             if inserted && !merged.sys && merged.sender != account =>
@@ -399,11 +518,28 @@ pub(crate) async fn apply_talk(
         }
         _ => 0,
     };
+    let fields_changed = match &prev {
+        None => true,
+        Some(previous) => merged != *previous,
+    };
+    if !(inserted || unread_delta != 0 || fields_changed || had_loser) {
+        return Ok(Some(ApplyOutcome {
+            dest,
+            inserted,
+            unread_delta,
+            msg: merged,
+            fields_changed: false,
+            had_loser: false,
+        }));
+    }
+    put_msg(tx, account, &merged).await?;
     Ok(Some(ApplyOutcome {
         dest,
         inserted,
         unread_delta,
         msg: merged,
+        fields_changed,
+        had_loser,
     }))
 }
 

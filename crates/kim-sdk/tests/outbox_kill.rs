@@ -2,7 +2,8 @@
 use std::sync::{Arc, Mutex};
 
 use kim_sdk::{
-    KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SendStatus, StartSession,
+    KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SendStatus,
+    StartSession, TimelineQuery, TimelineUpdate,
 };
 
 struct MockProto {
@@ -82,16 +83,25 @@ async fn kill_mid_send_keeps_same_client_id() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let sent = proto.sent.lock().expect("lock").clone();
     assert_eq!(sent, vec![client_id]);
-    let page = sdk
-        .load_older(kim_sdk::PageCursor {
-            dest: "bob".into(),
-            before_at: 0,
-            before_key: String::new(),
-            limit: 10,
-            before_id: 0,
-        })
-        .await
-        .expect("load");
-    assert_eq!(page.messages[0].key, client_id);
-    assert_eq!(page.messages[0].send_status, SendStatus::Sent);
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 10,
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
+                if let Some(message) = snapshot
+                    .messages
+                    .iter()
+                    .find(|message| message.key == client_id)
+                {
+                    assert_eq!(message.send_status, SendStatus::Sent);
+                    return;
+                }
+            }
+            timeline.changed().await.expect("timeline open");
+        }
+    })
+    .await
+    .expect("sent timeline row");
 }

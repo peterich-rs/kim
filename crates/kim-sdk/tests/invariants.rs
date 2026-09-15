@@ -3,12 +3,14 @@ use std::sync::{Arc, Mutex};
 
 use kim_sdk::{
     KimSdk, MediaRef, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SessionUpdate,
-    StartSession,
+    StartSession, TimelineQuery, TimelineUpdate,
 };
 
 struct RecProto {
     sent: Mutex<Vec<(String, String, i32, String)>>,
     fail: Mutex<Option<SdkError>>,
+    mark_read_started: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    mark_read_release: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 impl RecProto {
@@ -16,11 +18,22 @@ impl RecProto {
         Arc::new(Self {
             sent: Mutex::new(Vec::new()),
             fail: Mutex::new(None),
+            mark_read_started: Mutex::new(None),
+            mark_read_release: Mutex::new(None),
         })
     }
 
     fn fail_with(&self, err: SdkError) {
         *self.fail.lock().expect("lock") = Some(err);
+    }
+
+    fn hang_mark_read(
+        &self,
+        started: tokio::sync::oneshot::Sender<()>,
+        release: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        *self.mark_read_started.lock().expect("lock") = Some(started);
+        *self.mark_read_release.lock().expect("lock") = Some(release);
     }
 
     fn sent(&self) -> Vec<(String, String, i32, String)> {
@@ -60,6 +73,13 @@ impl ProtocolClient for RecProto {
         Ok(())
     }
     async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
+        if let Some(started) = self.mark_read_started.lock().expect("lock").take() {
+            let _ = started.send(());
+        }
+        let release = self.mark_read_release.lock().expect("lock").take();
+        if let Some(release) = release {
+            let _ = release.await;
+        }
         Ok(())
     }
 
@@ -333,9 +353,14 @@ async fn upload_ok() -> (axum::http::StatusCode, String) {
 }
 
 #[tokio::test]
-async fn mark_read_zeros_unread_without_protocol() {
+async fn mark_read_returns_without_protocol() {
     let (_dir, sdk) = open_sdk().await;
     sdk.start_session(session("alice")).await.expect("session");
+    let timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let session_snapshot = sdk.subscribe_session_snapshot();
     sdk.persist_talks(
         vec![kim_client::IncomingTalk {
             command: "chat.user.talk".into(),
@@ -352,14 +377,75 @@ async fn mark_read_zeros_unread_without_protocol() {
     .await
     .expect("persist");
     assert_eq!(sdk.load_threads().await.expect("t")[0].unread, 1);
-    sdk.mark_read(kim_sdk::ReadMarker {
-        dest: "bob".into(),
-        kind: 0,
-        visible_message_id: 9,
-    })
+    let started = tokio::time::Instant::now();
+    tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        sdk.mark_read(kim_sdk::ReadMarker {
+            dest: "bob".into(),
+            kind: 0,
+            visible_message_id: 9,
+        }),
+    )
     .await
+    .expect("mark_read should not wait for a protocol")
     .expect("read");
+    assert!(started.elapsed() < std::time::Duration::from_millis(200));
     assert_eq!(sdk.load_threads().await.expect("t")[0].unread, 0);
+    let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() else {
+        panic!("timeline snapshot");
+    };
+    assert_eq!(snapshot.unread, 0);
+    assert_eq!(snapshot.last_read_message_id, 9);
+    let session_snapshot = session_snapshot.borrow();
+    let thread = session_snapshot
+        .threads
+        .iter()
+        .find(|thread| thread.id == "bob")
+        .expect("thread in session snapshot");
+    assert_eq!(thread.unread, 0);
+}
+
+#[tokio::test]
+async fn mark_read_does_not_wait_for_hanging_protocol() {
+    let (_dir, sdk) = open_sdk().await;
+    sdk.start_session(session("alice")).await.expect("session");
+    let proto = RecProto::new();
+    let (protocol_started, protocol_started_rx) = tokio::sync::oneshot::channel();
+    let (release_protocol, release_protocol_rx) = tokio::sync::oneshot::channel();
+    proto.hang_mark_read(protocol_started, release_protocol_rx);
+    sdk.install_protocol(proto);
+    sdk.persist_talks(
+        vec![kim_client::IncomingTalk {
+            command: "chat.user.talk".into(),
+            dest: "bob".into(),
+            message_id: 10,
+            sender: "bob".into(),
+            msg_type: 1,
+            body: "hi".into(),
+            extra: String::new(),
+            send_time: 1_700_000_000_000,
+        }],
+        kim_sdk::UnreadPolicy::IfInserted,
+    )
+    .await
+    .expect("persist");
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        sdk.mark_read(kim_sdk::ReadMarker {
+            dest: "bob".into(),
+            kind: 0,
+            visible_message_id: 10,
+        }),
+    )
+    .await
+    .expect("mark_read should not wait for a hanging protocol")
+    .expect("read");
+    tokio::time::timeout(std::time::Duration::from_secs(1), protocol_started_rx)
+        .await
+        .expect("background protocol call")
+        .expect("protocol started");
+    release_protocol.send(()).expect("release protocol");
 }
 
 struct HoldProto {
@@ -441,28 +527,31 @@ async fn second_enqueue_during_in_flight_send_is_not_dropped() {
         if has_a && has_b {
             assert_eq!(sent.iter().filter(|id| *id == a).count(), 1);
             assert_eq!(sent.iter().filter(|id| *id == b).count(), 1);
-            let page = sdk
-                .load_older(kim_sdk::PageCursor {
-                    dest: "bob".into(),
-                    before_at: 0,
-                    before_key: String::new(),
-                    limit: 10,
-                    before_id: 0,
-                })
-                .await
-                .expect("load");
-            let statuses: Vec<_> = page
-                .messages
-                .iter()
-                .map(|m| (m.key.clone(), m.send_status))
-                .collect();
-            assert_eq!(page.messages.len(), 2);
-            assert!(
-                page.messages
-                    .iter()
-                    .all(|m| m.send_status == kim_sdk::SendStatus::Sent),
-                "statuses {statuses:?}"
-            );
+            let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+                dest: "bob".into(),
+                limit: 10,
+            });
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
+                        let statuses: Vec<_> = snapshot
+                            .messages
+                            .iter()
+                            .map(|message| (message.key.clone(), message.send_status))
+                            .collect();
+                        if statuses.len() == 2
+                            && statuses
+                                .iter()
+                                .all(|(_, status)| *status == kim_sdk::SendStatus::Sent)
+                        {
+                            return;
+                        }
+                    }
+                    timeline.changed().await.expect("timeline open");
+                }
+            })
+            .await
+            .expect("sent timeline messages");
             break;
         }
         if tokio::time::Instant::now() > deadline {

@@ -89,13 +89,7 @@ abstract class KimClientPort {
 
   Future<void> deleteThread(String dest);
 
-  Future<rust_types.MessagePageDto> loadOlder({
-    required String dest,
-    required int beforeAt,
-    required String beforeKey,
-    int beforeId = 0,
-    int limit = 50,
-  });
+  Future<void> loadOlder({required String dest});
 
   Future<void> markRead(String dest, ThreadKind kind, int messageId);
 
@@ -182,7 +176,9 @@ abstract class KimClientPort {
     String locale = '',
   });
 
-  Future<List<rust_types.PersonDto>> refreshContacts();
+  Future<void> refreshContacts();
+
+  Stream<rust_types.ContactsSnapshotDto> watchContacts();
 
   Stream<rust_types.AgentRunRequestDto> watchAgentRun();
 
@@ -421,20 +417,8 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.MessagePageDto> loadOlder({
-    required String dest,
-    required int beforeAt,
-    required String beforeKey,
-    int beforeId = 0,
-    int limit = 50,
-  }) {
-    return _require().loadOlder(
-      dest: dest,
-      beforeAt: beforeAt,
-      beforeKey: beforeKey,
-      beforeId: beforeId,
-      limit: limit,
-    );
+  Future<void> loadOlder({required String dest}) {
+    return _require().loadOlder(dest: dest);
   }
 
   @override
@@ -814,8 +798,13 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<List<rust_types.PersonDto>> refreshContacts() {
+  Future<void> refreshContacts() {
     return _require().refreshContacts();
+  }
+
+  @override
+  Stream<rust_types.ContactsSnapshotDto> watchContacts() {
+    return _require().watchContacts();
   }
 
   @override

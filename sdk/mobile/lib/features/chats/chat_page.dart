@@ -326,8 +326,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<void> _send(String text) async {
     final ok = await _session.sendText(text);
-    if (ok && _list.atBottomEdge) {
-      unawaited(_list.scrollToBottom(animated: true));
+    if (ok) {
+      _composer.currentState?.clear();
+      if (_list.atBottomEdge) {
+        unawaited(_list.scrollToBottom(animated: true));
+      }
     }
   }
 

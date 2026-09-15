@@ -8,14 +8,13 @@ use sqlx::SqlitePool;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::AgentProfileRow;
-use crate::command::{
-    CommandReceipt, MessagePage, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus,
-};
+use crate::command::{CommandReceipt, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus};
 use crate::error::{map_sqlx, SdkError};
 use crate::sync::UnreadPolicy;
 use crate::timeline::{PersonRef, ThreadView, TimelineSnapshot};
 
 pub mod agent;
+pub(crate) mod changes;
 pub mod contacts;
 pub mod cursors;
 pub mod media;
@@ -28,11 +27,14 @@ pub mod settings;
 pub mod threads;
 pub mod watermarks;
 
+use changes::{ChangeLog, CommitEffect};
+
 const WRITE_CAP: usize = 128;
 
 pub(crate) struct Store {
     pub pool: SqlitePool,
     writes: mpsc::Sender<WriteOp>,
+    changes: Arc<ChangeLog>,
 }
 
 enum WriteOp {
@@ -40,45 +42,45 @@ enum WriteOp {
         epoch: u64,
         account: String,
         cmd: SendMessageCommand,
-        reply: oneshot::Sender<Result<CommandReceipt, SdkError>>,
+        reply: oneshot::Sender<Result<(CommandReceipt, u64), SdkError>>,
     },
     PersistTalks {
         epoch: u64,
         account: String,
         talks: Vec<kim_client::IncomingTalk>,
         policy: UnreadPolicy,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     PersistInbox {
         epoch: u64,
         account: String,
         items: Vec<kim_client::InboxItem>,
-        reply: oneshot::Sender<Result<Vec<ThreadView>, SdkError>>,
+        reply: oneshot::Sender<Result<(Vec<ThreadView>, u64), SdkError>>,
     },
     Cancel {
         epoch: u64,
         account: String,
         client_id: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     DeleteThread {
         epoch: u64,
         account: String,
         dest: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     MarkSent {
         epoch: u64,
         account: String,
         client_id: String,
         message_id: i64,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     MarkFailed {
         epoch: u64,
         account: String,
         client_id: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     MarkRetry {
         epoch: u64,
@@ -86,65 +88,83 @@ enum WriteOp {
         client_id: String,
         attempt: i32,
         next_attempt_at: i64,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     Requeue {
         epoch: u64,
         account: String,
         client_id: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     MarkRead {
         epoch: u64,
         account: String,
         dest: String,
         message_id: i64,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     DueNow {
         epoch: u64,
         account: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     ReplaceContacts {
+        epoch: u64,
         account: String,
         rows: Vec<PersonRef>,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    UpsertContact {
+        epoch: u64,
+        account: String,
+        peer: String,
+        relation: Option<String>,
+        nickname: String,
+        avatar: String,
+        bio: Option<String>,
+        kind: Option<i32>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    DeleteContact {
+        epoch: u64,
+        account: String,
+        peer: String,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     UpsertDeviceSettings {
         row: settings::DeviceSettings,
         mark_imported: bool,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     UpsertAgentProfile {
         account: String,
         row: AgentProfileRow,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     DeleteAgentProfile {
         account: String,
         profile_id: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     ImportAgentProfiles {
         account: String,
         rows: Vec<AgentProfileRow>,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     RekeyAgentProfiles {
         from: String,
         to: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     TouchMedia {
         url: String,
-        reply: oneshot::Sender<Result<(), SdkError>>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     UpsertMedia {
         url: String,
         local_path: String,
         byte_size: i64,
-        reply: oneshot::Sender<Result<Vec<String>, SdkError>>,
+        reply: oneshot::Sender<Result<(Vec<String>, u64), SdkError>>,
     },
 }
 
@@ -178,10 +198,20 @@ impl Store {
             .map_err(map_sqlx)?;
         let (tx, rx) = mpsc::channel(WRITE_CAP);
         let worker_pool = pool.clone();
+        let changes = Arc::new(ChangeLog::new());
+        let worker_changes = changes.clone();
         tokio::spawn(async move {
-            write_worker(worker_pool, epoch, rx).await;
+            write_worker(worker_pool, epoch, worker_changes, rx).await;
         });
-        Ok(Arc::new(Self { pool, writes: tx }))
+        Ok(Arc::new(Self {
+            pool,
+            writes: tx,
+            changes,
+        }))
+    }
+
+    pub(crate) fn changes(&self) -> Arc<ChangeLog> {
+        self.changes.clone()
     }
 
     pub(crate) async fn enqueue(
@@ -189,7 +219,7 @@ impl Store {
         epoch: u64,
         account: String,
         cmd: SendMessageCommand,
-    ) -> Result<CommandReceipt, SdkError> {
+    ) -> Result<(CommandReceipt, u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::Enqueue {
@@ -206,27 +236,26 @@ impl Store {
         })?
     }
 
-    pub(crate) async fn load_hot_window(
+    pub(crate) async fn load_timeline_window(
         &self,
         account: &str,
         dest: &str,
         limit: i32,
+        older_bound: Option<&(i64, String)>,
     ) -> Result<TimelineSnapshot, SdkError> {
-        messages::load_hot_window(&self.pool, account, dest, limit).await
+        messages::load_timeline_window(&self.pool, account, dest, limit, older_bound).await
     }
 
-    pub(crate) async fn load_older(
+    pub(crate) async fn load_page(
         &self,
         account: &str,
-        cursor: PageCursor,
-    ) -> Result<MessagePage, SdkError> {
-        let dest = cursor.dest.clone();
-        let (messages, has_more) = messages::load_page(&self.pool, account, &cursor).await?;
-        Ok(MessagePage {
-            dest,
-            messages,
-            has_more,
-        })
+        cursor: &PageCursor,
+    ) -> Result<(Vec<crate::timeline::MessageView>, bool), SdkError> {
+        messages::load_page(&self.pool, account, cursor).await
+    }
+
+    pub(crate) async fn count_sent(&self, account: &str, dest: &str) -> Result<i64, SdkError> {
+        messages::count_sent(&self.pool, account, dest).await
     }
 
     pub(crate) async fn persist_talks(
@@ -235,7 +264,7 @@ impl Store {
         account: String,
         talks: Vec<kim_client::IncomingTalk>,
         policy: UnreadPolicy,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::PersistTalks {
@@ -258,7 +287,7 @@ impl Store {
         epoch: u64,
         account: String,
         items: Vec<kim_client::InboxItem>,
-    ) -> Result<Vec<ThreadView>, SdkError> {
+    ) -> Result<(Vec<ThreadView>, u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::PersistInbox {
@@ -304,7 +333,7 @@ impl Store {
         epoch: u64,
         account: String,
         client_id: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::Cancel {
@@ -326,7 +355,7 @@ impl Store {
         epoch: u64,
         account: String,
         dest: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::DeleteThread {
@@ -349,7 +378,7 @@ impl Store {
         account: String,
         client_id: String,
         message_id: i64,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::MarkSent {
@@ -374,7 +403,7 @@ impl Store {
         client_id: String,
         attempt: i32,
         next_attempt_at: i64,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::MarkRetry {
@@ -398,7 +427,7 @@ impl Store {
         epoch: u64,
         account: String,
         client_id: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::Requeue {
@@ -421,7 +450,7 @@ impl Store {
         account: String,
         dest: String,
         message_id: i64,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::MarkRead {
@@ -439,7 +468,7 @@ impl Store {
         })?
     }
 
-    pub(crate) async fn due_now(&self, epoch: u64, account: String) -> Result<(), SdkError> {
+    pub(crate) async fn due_now(&self, epoch: u64, account: String) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::DueNow {
@@ -457,12 +486,14 @@ impl Store {
 
     pub(crate) async fn replace_contacts(
         &self,
+        epoch: u64,
         account: String,
         rows: Vec<PersonRef>,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::ReplaceContacts {
+                epoch,
                 account,
                 rows,
                 reply,
@@ -477,6 +508,61 @@ impl Store {
 
     pub(crate) async fn load_contacts(&self, account: &str) -> Result<Vec<PersonRef>, SdkError> {
         contacts::load_all(&self.pool, account).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upsert_contact(
+        &self,
+        epoch: u64,
+        account: String,
+        peer: String,
+        relation: Option<String>,
+        nickname: String,
+        avatar: String,
+        bio: Option<String>,
+        kind: Option<i32>,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertContact {
+                epoch,
+                account,
+                peer,
+                relation,
+                nickname,
+                avatar,
+                bio,
+                kind,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn delete_contact(
+        &self,
+        epoch: u64,
+        account: String,
+        peer: String,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::DeleteContact {
+                epoch,
+                account,
+                peer,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
     }
 
     pub(crate) async fn load_device_settings(&self) -> Result<settings::DeviceSettings, SdkError> {
@@ -514,7 +600,7 @@ impl Store {
         &self,
         account: String,
         row: AgentProfileRow,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::UpsertAgentProfile {
@@ -534,7 +620,7 @@ impl Store {
         &self,
         account: String,
         profile_id: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::DeleteAgentProfile {
@@ -557,7 +643,7 @@ impl Store {
         media::lookup(&self.pool, url).await
     }
 
-    pub(crate) async fn touch_media(&self, url: String) -> Result<(), SdkError> {
+    pub(crate) async fn touch_media(&self, url: String) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::TouchMedia { url, reply })
@@ -574,7 +660,7 @@ impl Store {
         url: String,
         local_path: String,
         byte_size: i64,
-    ) -> Result<Vec<String>, SdkError> {
+    ) -> Result<(Vec<String>, u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::UpsertMedia {
@@ -604,9 +690,9 @@ impl Store {
         &self,
         account: String,
         rows: Vec<AgentProfileRow>,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         if self.agent_profiles_imported().await? {
-            return Ok(());
+            return Ok(((), 0));
         }
         let (reply, rx) = oneshot::channel();
         self.writes
@@ -627,9 +713,9 @@ impl Store {
         &self,
         from: String,
         to: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         if from == to {
-            return Ok(());
+            return Ok(((), 0));
         }
         let (reply, rx) = oneshot::channel();
         self.writes
@@ -646,7 +732,7 @@ impl Store {
         &self,
         row: settings::DeviceSettings,
         mark_imported: bool,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::UpsertDeviceSettings {
@@ -667,7 +753,7 @@ impl Store {
         epoch: u64,
         account: String,
         client_id: String,
-    ) -> Result<(), SdkError> {
+    ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
             .try_send(WriteOp::MarkFailed {
@@ -685,7 +771,12 @@ impl Store {
     }
 }
 
-async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Receiver<WriteOp>) {
+async fn write_worker(
+    pool: SqlitePool,
+    epoch: Arc<AtomicU64>,
+    changes: Arc<ChangeLog>,
+    mut rx: mpsc::Receiver<WriteOp>,
+) {
     while let Some(op) = rx.recv().await {
         match op {
             WriteOp::Enqueue {
@@ -703,7 +794,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     persist_enqueue(&pool, &account, cmd).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::PersistTalks {
                 epoch: op_epoch,
@@ -721,7 +812,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     persist_talks_tx(&pool, &account, &talks, policy).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::PersistInbox {
                 epoch: op_epoch,
@@ -738,7 +829,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     persist_inbox_tx(&pool, &account, &items).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::Cancel {
                 epoch: op_epoch,
@@ -755,7 +846,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     cancel_tx(&pool, &account, &client_id).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::DeleteThread {
                 epoch: op_epoch,
@@ -772,7 +863,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     delete_thread_tx(&pool, &account, &dest).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::MarkSent {
                 epoch: op_epoch,
@@ -790,7 +881,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     mark_sent_tx(&pool, &account, &client_id, message_id).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::MarkFailed {
                 epoch: op_epoch,
@@ -807,7 +898,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     mark_failed_tx(&pool, &account, &client_id).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::MarkRetry {
                 epoch: op_epoch,
@@ -826,7 +917,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     mark_retry_tx(&pool, &account, &client_id, attempt, next_attempt_at).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::Requeue {
                 epoch: op_epoch,
@@ -843,7 +934,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     requeue_tx(&pool, &account, &client_id).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::MarkRead {
                 epoch: op_epoch,
@@ -861,7 +952,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     mark_read_tx(&pool, &account, &dest, message_id).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::DueNow {
                 epoch: op_epoch,
@@ -877,15 +968,73 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 } else {
                     due_now_tx(&pool, &account).await
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::ReplaceContacts {
+                epoch: op_epoch,
                 account,
                 rows,
                 reply,
             } => {
-                let result = replace_contacts_tx(&pool, &account, &rows).await;
-                let _ = reply.send(result);
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    replace_contacts_tx(&pool, &account, &rows).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::UpsertContact {
+                epoch: op_epoch,
+                account,
+                peer,
+                relation,
+                nickname,
+                avatar,
+                bio,
+                kind,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    upsert_contact_tx(
+                        &pool,
+                        &account,
+                        &peer,
+                        relation.as_deref(),
+                        &nickname,
+                        &avatar,
+                        bio.as_deref(),
+                        kind,
+                    )
+                    .await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::DeleteContact {
+                epoch: op_epoch,
+                account,
+                peer,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    delete_contact_tx(&pool, &account, &peer).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
             WriteOp::UpsertDeviceSettings {
                 row,
@@ -893,7 +1042,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 reply,
             } => {
                 let result = upsert_settings_tx(&pool, &row, mark_imported).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, "", 0, result));
             }
             WriteOp::UpsertAgentProfile {
                 account,
@@ -901,7 +1050,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 reply,
             } => {
                 let result = upsert_agent_profile_tx(&pool, &account, &row).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, 0, result));
             }
             WriteOp::DeleteAgentProfile {
                 account,
@@ -909,7 +1058,7 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 reply,
             } => {
                 let result = delete_agent_profile_tx(&pool, &account, &profile_id).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, 0, result));
             }
             WriteOp::ImportAgentProfiles {
                 account,
@@ -917,15 +1066,15 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 reply,
             } => {
                 let result = import_agent_profiles_tx(&pool, &account, &rows).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, &account, 0, result));
             }
             WriteOp::RekeyAgentProfiles { from, to, reply } => {
                 let result = rekey_agent_profiles_tx(&pool, &from, &to).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, "", 0, result));
             }
             WriteOp::TouchMedia { url, reply } => {
                 let result = touch_media_tx(&pool, &url).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, "", 0, result));
             }
             WriteOp::UpsertMedia {
                 url,
@@ -934,16 +1083,51 @@ async fn write_worker(pool: SqlitePool, epoch: Arc<AtomicU64>, mut rx: mpsc::Rec
                 reply,
             } => {
                 let result = upsert_media_tx(&pool, &url, &local_path, byte_size).await;
-                let _ = reply.send(result);
+                let _ = reply.send(record_result(&changes, "", 0, result));
             }
         }
     }
 }
 
-async fn cancel_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+fn record_result<T>(
+    changes: &ChangeLog,
+    account: &str,
+    epoch: u64,
+    result: Result<(T, CommitEffect), SdkError>,
+) -> Result<(T, u64), SdkError> {
+    result.map(|(value, effect)| {
+        let sequence = if effect.is_empty() {
+            0
+        } else {
+            changes.record(account.to_owned(), epoch, effect)
+        };
+        (value, sequence)
+    })
+}
+
+fn timeline_and_inbox(dest: impl Into<String>) -> CommitEffect {
+    let mut effect = CommitEffect::timeline(dest);
+    effect.merge(CommitEffect::inbox());
+    effect
+}
+
+async fn cancel_tx(
+    pool: &SqlitePool,
+    account: &str,
+    client_id: &str,
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = outbox::cancel(&mut conn, account, client_id).await;
+    let result = async {
+        let dest = outbox::dest_for_client_id(&mut conn, account, client_id).await?;
+        outbox::cancel(&mut conn, account, client_id).await?;
+        Ok::<_, SdkError>((
+            (),
+            dest.map(timeline_and_inbox)
+                .unwrap_or_else(CommitEffect::empty),
+        ))
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 
@@ -951,40 +1135,105 @@ async fn replace_contacts_tx(
     pool: &SqlitePool,
     account: &str,
     rows: &[PersonRef],
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = contacts::replace_all(&mut conn, account, rows, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::contacts_replaced()))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upsert_contact_tx(
+    pool: &SqlitePool,
+    account: &str,
+    peer: &str,
+    relation: Option<&str>,
+    nickname: &str,
+    avatar: &str,
+    bio: Option<&str>,
+    kind: Option<i32>,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = contacts::upsert_one(
+        &mut conn,
+        account,
+        peer,
+        relation,
+        nickname,
+        avatar,
+        bio,
+        kind,
+        now_ms(),
+    )
+    .await;
+    finish_conn(&mut conn, result).await.map(|changed| {
+        (
+            (),
+            if changed {
+                CommitEffect::contacts()
+            } else {
+                CommitEffect::empty()
+            },
+        )
+    })
+}
+
+async fn delete_contact_tx(
+    pool: &SqlitePool,
+    account: &str,
+    peer: &str,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = contacts::delete_peer(&mut conn, account, peer).await;
+    finish_conn(&mut conn, result).await.map(|changed| {
+        (
+            (),
+            if changed {
+                CommitEffect::contacts()
+            } else {
+                CommitEffect::empty()
+            },
+        )
+    })
 }
 
 async fn upsert_agent_profile_tx(
     pool: &SqlitePool,
     account: &str,
     row: &AgentProfileRow,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = agent::upsert_profile(&mut conn, account, row, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
 async fn delete_agent_profile_tx(
     pool: &SqlitePool,
     account: &str,
     profile_id: &str,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = agent::delete_profile(&mut conn, account, profile_id).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
-async fn touch_media_tx(pool: &SqlitePool, url: &str) -> Result<(), SdkError> {
+async fn touch_media_tx(pool: &SqlitePool, url: &str) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = media::touch(&mut conn, url, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
 async fn upsert_media_tx(
@@ -992,18 +1241,20 @@ async fn upsert_media_tx(
     url: &str,
     local_path: &str,
     byte_size: i64,
-) -> Result<Vec<String>, SdkError> {
+) -> Result<(Vec<String>, CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = media::upsert(&mut conn, url, local_path, byte_size, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|evicted| (evicted, CommitEffect::empty()))
 }
 
 async fn import_agent_profiles_tx(
     pool: &SqlitePool,
     account: &str,
     rows: &[AgentProfileRow],
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -1014,21 +1265,29 @@ async fn import_agent_profiles_tx(
         Ok(())
     }
     .await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
-async fn rekey_agent_profiles_tx(pool: &SqlitePool, from: &str, to: &str) -> Result<(), SdkError> {
+async fn rekey_agent_profiles_tx(
+    pool: &SqlitePool,
+    from: &str,
+    to: &str,
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = agent::rekey(&mut conn, from, to).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
 async fn upsert_settings_tx(
     pool: &SqlitePool,
     row: &settings::DeviceSettings,
     mark_imported: bool,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -1039,14 +1298,22 @@ async fn upsert_settings_tx(
         Ok(())
     }
     .await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
-async fn delete_thread_tx(pool: &SqlitePool, account: &str, dest: &str) -> Result<(), SdkError> {
+async fn delete_thread_tx(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = outbox::delete_thread(&mut conn, account, dest).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), timeline_and_inbox(dest)))
 }
 
 async fn mark_sent_tx(
@@ -1054,17 +1321,39 @@ async fn mark_sent_tx(
     account: &str,
     client_id: &str,
     message_id: i64,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = outbox::mark_sent(&mut conn, account, client_id, message_id, now_ms()).await;
+    let result = async {
+        let dest = outbox::dest_for_client_id(&mut conn, account, client_id).await?;
+        outbox::mark_sent(&mut conn, account, client_id, message_id, now_ms()).await?;
+        Ok::<_, SdkError>((
+            (),
+            dest.map(timeline_and_inbox)
+                .unwrap_or_else(CommitEffect::empty),
+        ))
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 
-async fn mark_failed_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+async fn mark_failed_tx(
+    pool: &SqlitePool,
+    account: &str,
+    client_id: &str,
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = outbox::mark_failed(&mut conn, account, client_id, now_ms()).await;
+    let result = async {
+        let dest = outbox::dest_for_client_id(&mut conn, account, client_id).await?;
+        outbox::mark_failed(&mut conn, account, client_id, now_ms()).await?;
+        Ok::<_, SdkError>((
+            (),
+            dest.map(CommitEffect::timeline)
+                .unwrap_or_else(CommitEffect::empty),
+        ))
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 
@@ -1074,33 +1363,57 @@ async fn mark_retry_tx(
     client_id: &str,
     attempt: i32,
     next_attempt_at: i64,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = outbox::mark_retry(
-        &mut conn,
-        account,
-        client_id,
-        attempt,
-        next_attempt_at,
-        now_ms(),
-    )
+    let result = async {
+        let dest = outbox::dest_for_client_id(&mut conn, account, client_id).await?;
+        outbox::mark_retry(
+            &mut conn,
+            account,
+            client_id,
+            attempt,
+            next_attempt_at,
+            now_ms(),
+        )
+        .await?;
+        Ok::<_, SdkError>((
+            (),
+            dest.map(CommitEffect::timeline)
+                .unwrap_or_else(CommitEffect::empty),
+        ))
+    }
     .await;
     finish_conn(&mut conn, result).await
 }
 
-async fn requeue_tx(pool: &SqlitePool, account: &str, client_id: &str) -> Result<(), SdkError> {
+async fn requeue_tx(
+    pool: &SqlitePool,
+    account: &str,
+    client_id: &str,
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = outbox::requeue(&mut conn, account, client_id, now_ms()).await;
+    let result = async {
+        let dest = outbox::dest_for_client_id(&mut conn, account, client_id).await?;
+        outbox::requeue(&mut conn, account, client_id, now_ms()).await?;
+        Ok::<_, SdkError>((
+            (),
+            dest.map(CommitEffect::timeline)
+                .unwrap_or_else(CommitEffect::empty),
+        ))
+    }
+    .await;
     finish_conn(&mut conn, result).await
 }
 
-async fn due_now_tx(pool: &SqlitePool, account: &str) -> Result<(), SdkError> {
+async fn due_now_tx(pool: &SqlitePool, account: &str) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = outbox::wake_pending(&mut conn, account, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
 }
 
 async fn mark_read_tx(
@@ -1108,11 +1421,21 @@ async fn mark_read_tx(
     account: &str,
     dest: &str,
     message_id: i64,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = watermarks::advance(&mut conn, account, dest, message_id, now_ms()).await;
-    finish_conn(&mut conn, result).await
+    let result = async {
+        let (unread, last_read) = watermarks::peek(&mut conn, account, dest).await?;
+        if unread == 0 && message_id <= last_read {
+            return Ok(CommitEffect::empty());
+        }
+        watermarks::advance(&mut conn, account, dest, message_id, now_ms()).await?;
+        Ok(timeline_and_inbox(dest))
+    }
+    .await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|effect| ((), effect))
 }
 
 async fn begin_immediate(conn: &mut sqlx::SqliteConnection) -> Result<(), SdkError> {
@@ -1146,7 +1469,7 @@ async fn persist_enqueue(
     pool: &SqlitePool,
     account: &str,
     cmd: SendMessageCommand,
-) -> Result<CommandReceipt, SdkError> {
+) -> Result<(CommandReceipt, CommitEffect), SdkError> {
     if cmd.dest.is_empty() {
         return Err(SdkError::InvalidArgument {
             message: "dest is required".into(),
@@ -1243,13 +1566,17 @@ async fn persist_enqueue(
     }
     .await;
     finish_conn(&mut conn, result).await?;
-    Ok(CommandReceipt {
-        request_id,
-        client_id,
-        dest: cmd.dest,
-        accepted_at: now,
-        send_status: SendStatus::Pending,
-    })
+    let dest = cmd.dest;
+    Ok((
+        CommandReceipt {
+            request_id,
+            client_id,
+            dest: dest.clone(),
+            accepted_at: now,
+            send_status: SendStatus::Pending,
+        },
+        timeline_and_inbox(dest),
+    ))
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -1279,9 +1606,9 @@ async fn persist_talks_tx(
     account: &str,
     talks: &[kim_client::IncomingTalk],
     policy: UnreadPolicy,
-) -> Result<(), SdkError> {
+) -> Result<((), CommitEffect), SdkError> {
     if talks.is_empty() {
-        return Ok(());
+        return Ok(((), CommitEffect::empty()));
     }
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
@@ -1289,6 +1616,9 @@ async fn persist_talks_tx(
         let mut dests = Vec::new();
         for talk in talks {
             if let Some(out) = messages::apply_talk(&mut conn, account, talk, policy).await? {
+                if !out.needs_publish() {
+                    continue;
+                }
                 threads::apply_incoming(
                     &mut conn,
                     account,
@@ -1304,11 +1634,16 @@ async fn persist_talks_tx(
         }
         dests.sort();
         dests.dedup();
+        let mut effect = CommitEffect::empty();
         for dest in dests {
             messages::bump_timeline_version(&mut conn, account, &dest).await?;
             messages::prune(&mut conn, account, &dest).await?;
+            effect.merge(CommitEffect::timeline(dest));
         }
-        Ok::<(), SdkError>(())
+        if !effect.is_empty() {
+            effect.merge(CommitEffect::inbox());
+        }
+        Ok::<_, SdkError>(((), effect))
     }
     .await;
     finish_conn(&mut conn, result).await
@@ -1318,7 +1653,7 @@ async fn persist_inbox_tx(
     pool: &SqlitePool,
     account: &str,
     items: &[kim_client::InboxItem],
-) -> Result<Vec<ThreadView>, SdkError> {
+) -> Result<(Vec<ThreadView>, CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -1335,8 +1670,56 @@ async fn persist_inbox_tx(
                 unread: t.unread,
             });
         }
-        Ok::<Vec<ThreadView>, SdkError>(views)
+        Ok::<_, SdkError>((views, CommitEffect::inbox()))
     }
     .await;
     finish_conn(&mut conn, result).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::changes::ChangedQuery;
+    use super::*;
+
+    #[tokio::test]
+    async fn enqueue_records_commit_effect_and_sequence() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("kim-cache.db");
+        migrate_path(path.clone()).await.expect("migrate");
+        let epoch = Arc::new(AtomicU64::new(7));
+        let store = Store::open(path, epoch).await.expect("open");
+        let changes = store.changes();
+        let waiter_changes = changes.clone();
+        let waiter = tokio::spawn(async move { waiter_changes.take().await });
+        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let (_receipt, sequence) = store
+            .enqueue(
+                7,
+                "alice".into(),
+                SendMessageCommand {
+                    dest: "bob".into(),
+                    kind: kim_protocol::INBOX_KIND_USER,
+                    payload: OutgoingPayload::Text {
+                        body: "hello".into(),
+                    },
+                    client_id: Some("11111111-1111-4111-8111-111111111111".into()),
+                    batch_id: None,
+                },
+            )
+            .await
+            .expect("enqueue");
+        let notice = tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("notice")
+            .expect("join");
+
+        assert_eq!(sequence, 1);
+        assert_eq!(notice.sequence, sequence);
+        assert!(notice
+            .queries
+            .contains(&ChangedQuery::Timeline { dest: "bob".into() }));
+        assert!(notice.queries.contains(&ChangedQuery::Inbox));
+    }
 }

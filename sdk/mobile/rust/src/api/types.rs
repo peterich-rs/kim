@@ -1,7 +1,7 @@
 use kim_sdk::{
     AgentCard, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentTurnState, CommandReceipt,
-    LinkStateView, MessagePage, MessageView, SendStatus, SessionSnapshot, SessionUpdate,
-    ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
+    ContactsSnapshot, LinkStateView, MessagePage, MessageView, SendStatus, SessionSnapshot,
+    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
 pub enum SendStatusDto {
@@ -54,6 +54,8 @@ pub struct TimelineSnapshotDto {
     pub unread: i32,
     pub last_read_message_id: i64,
     pub has_more: bool,
+    pub loading_older: bool,
+    pub history_error: Option<String>,
 }
 
 pub struct TimelineDeltaDto {
@@ -79,6 +81,12 @@ pub struct PersonDto {
     pub bio: String,
     pub relation: String,
     pub kind: i32,
+}
+
+pub struct ContactsSnapshotDto {
+    pub version: u64,
+    pub contacts: Vec<PersonDto>,
+    pub sync_error: Option<String>,
 }
 
 pub struct RoomMemberDto {
@@ -431,6 +439,8 @@ impl From<TimelineSnapshot> for TimelineSnapshotDto {
             unread: v.unread,
             last_read_message_id: v.last_read_message_id,
             has_more: v.has_more,
+            loading_older: v.loading_older,
+            history_error: v.history_error,
         }
     }
 }
@@ -676,6 +686,16 @@ impl From<kim_sdk::PersonRef> for PersonDto {
             bio: p.bio,
             relation: p.relation,
             kind: p.kind,
+        }
+    }
+}
+
+impl From<ContactsSnapshot> for ContactsSnapshotDto {
+    fn from(snapshot: ContactsSnapshot) -> Self {
+        Self {
+            version: snapshot.version,
+            contacts: snapshot.contacts.into_iter().map(Into::into).collect(),
+            sync_error: snapshot.sync_error,
         }
     }
 }

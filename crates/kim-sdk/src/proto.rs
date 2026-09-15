@@ -48,6 +48,14 @@ pub trait ProtocolClient: Send + Sync {
             message: "bot_reply not supported".into(),
         })
     }
+
+    async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        Err(kim_client::ClientError::NotConnected)
+    }
+
+    async fn friend_incoming(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        Err(kim_client::ClientError::NotConnected)
+    }
 }
 
 #[async_trait::async_trait]
@@ -130,6 +138,14 @@ impl ProtocolClient for KimClient {
             .map_err(|e| map_client(e, dest))?;
         Ok((result.message_id, result.send_time))
     }
+
+    async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        KimClient::friend_list(self).await
+    }
+
+    async fn friend_incoming(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        KimClient::friend_incoming(self).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -185,5 +201,13 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
         client_id: &str,
     ) -> Result<(i64, i64), SdkError> {
         ProtocolClient::bot_reply(&**self, dest, body, in_reply_to, client_id).await
+    }
+
+    async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        ProtocolClient::friend_list(&**self).await
+    }
+
+    async fn friend_incoming(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        ProtocolClient::friend_incoming(&**self).await
     }
 }

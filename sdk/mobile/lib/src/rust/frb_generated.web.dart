@@ -78,6 +78,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<ContactsSnapshotDto>
+  dco_decode_StreamSink_contacts_snapshot_dto_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw);
 
@@ -159,6 +163,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommandAckDto dco_decode_command_ack_dto(dynamic raw);
 
   @protected
+  ContactsSnapshotDto dco_decode_contacts_snapshot_dto(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -205,9 +212,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LocalMediaDto dco_decode_local_media_dto(dynamic raw);
-
-  @protected
-  MessagePageDto dco_decode_message_page_dto(dynamic raw);
 
   @protected
   MessageViewDto dco_decode_message_view_dto(dynamic raw);
@@ -325,6 +329,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   sse_decode_StreamSink_agent_run_request_dto_Sse(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<ContactsSnapshotDto>
+  sse_decode_StreamSink_contacts_snapshot_dto_Sse(SseDeserializer deserializer);
+
+  @protected
   RustStreamSink<SessionSnapshotDto>
   sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer);
 
@@ -430,6 +438,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CommandAckDto sse_decode_command_ack_dto(SseDeserializer deserializer);
 
   @protected
+  ContactsSnapshotDto sse_decode_contacts_snapshot_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
@@ -492,9 +505,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LocalMediaDto sse_decode_local_media_dto(SseDeserializer deserializer);
-
-  @protected
-  MessagePageDto sse_decode_message_page_dto(SseDeserializer deserializer);
 
   @protected
   MessageViewDto sse_decode_message_view_dto(SseDeserializer deserializer);
@@ -629,6 +639,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_contacts_snapshot_dto_Sse(
+    RustStreamSink<ContactsSnapshotDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_session_snapshot_dto_Sse(
     RustStreamSink<SessionSnapshotDto> self,
     SseSerializer serializer,
@@ -758,6 +774,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_command_ack_dto(CommandAckDto self, SseSerializer serializer);
 
   @protected
+  void sse_encode_contacts_snapshot_dto(
+    ContactsSnapshotDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -834,12 +856,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_local_media_dto(LocalMediaDto self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_message_page_dto(
-    MessagePageDto self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_message_view_dto(

@@ -2,7 +2,8 @@
 use std::sync::{Arc, Mutex};
 
 use kim_sdk::{
-    KimSdk, OutgoingPayload, PageCursor, ProtocolClient, SdkError, SendMessageCommand, StartSession,
+    KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, StartSession,
+    TimelineQuery, TimelineUpdate,
 };
 
 struct CountingProto {
@@ -89,15 +90,20 @@ async fn delete_thread_drops_outbox_so_restart_does_not_send() {
         .expect_err("gone");
     assert!(matches!(err, SdkError::NotFound { .. }));
     assert_eq!(*proto.sent.lock().expect("lock"), 0);
-    let page = sdk
-        .load_older(PageCursor {
-            dest: "bob".into(),
-            before_at: 0,
-            before_key: String::new(),
-            limit: 10,
-            before_id: 0,
-        })
-        .await
-        .expect("load");
-    assert!(page.messages.is_empty());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 10,
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
+                assert!(snapshot.messages.is_empty());
+                assert!(snapshot.pending.is_empty());
+                return;
+            }
+            timeline.changed().await.expect("timeline open");
+        }
+    })
+    .await
+    .expect("empty timeline snapshot");
 }
