@@ -285,7 +285,14 @@ async fn main() -> anyhow::Result<()> {
     let interest: Arc<dyn RoomInterestStore> = open_room_interest(redis_url.as_deref())
         .await
         .context("interest")?;
-    let handler = Arc::new(ChatHandler::with_social_interest(
+    let db_url = database_url_from_env_or_cfg(&cfg.this.database_url);
+    if kim_protocol::strict_runtime() && db_url.as_deref().unwrap_or("").is_empty() {
+        anyhow::bail!("production agent spec store requires DATABASE_URL");
+    }
+    let agent_specs = chat::open_agent_spec_store(db_url.as_deref())
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let handler = Arc::new(ChatHandler::with_agent_specs(
         container.clone(),
         cache,
         store,
@@ -296,6 +303,7 @@ async fn main() -> anyhow::Result<()> {
         social,
         chat::store::pending_receipt_enabled(),
         interest,
+        agent_specs,
     ));
     if let Some(m) = metrics.clone() {
         handler.with_metrics(m);
