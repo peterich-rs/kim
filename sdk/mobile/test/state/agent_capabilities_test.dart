@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
 
 void main() {
   test('CapabilityRef round-trip preserves kind/id/params/enabled', () {

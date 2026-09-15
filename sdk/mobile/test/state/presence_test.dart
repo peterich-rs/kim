@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/presence.dart';
+import 'package:kim_mobile/features/session/presence.dart';
 
 void main() {
   test('presenceProvider applies snapshot and push', () {

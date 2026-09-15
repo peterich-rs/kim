@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/widgets/kim_dock.dart';
+import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 void main() {

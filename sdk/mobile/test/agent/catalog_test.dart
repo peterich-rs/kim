@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/agent/catalog.dart';
-import 'package:kim_mobile/state/agent_profiles.dart';
-import 'package:kim_mobile/state/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/catalog.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

@@ -2,24 +2,19 @@ import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/auth.dart';
-import 'package:kim_mobile/state/link.dart';
-import 'package:kim_mobile/state/mutations.dart';
-import 'package:kim_mobile/state/session.dart';
+import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/session/mutations.dart';
+import 'package:kim_mobile/features/session/session.dart';
 
 import '../support/harness.dart';
-import '../support/jwt.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('expired JWT is signed out and does not open a session', () async {
-    final env = await kimHarness(
-      token: testJwt(acc: 'alice', exp: 1),
-      account: 'alice',
-    );
+  test('empty token is signed out and does not open a session', () async {
+    final env = await kimHarness();
     expect(env.container.read(authProvider).signedIn, isFalse);
-    expect(env.container.read(authProvider).notice, Copy.sessionExpired);
     env.container.read(linkProvider);
     await Future<void>.delayed(Duration.zero);
     expect(env.fake.connects, 0);

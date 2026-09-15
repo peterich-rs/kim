@@ -4,21 +4,35 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import 'app.dart';
-import 'copy.dart';
-import 'core/runtime.dart';
-import 'data/conversation_store.dart';
-import 'kim_bridge.dart';
-import 'state/providers.dart';
-import 'state/retry.dart';
-import 'theme/kim_theme.dart';
+import 'package:kim_mobile/app.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/core/runtime.dart';
+import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/bridge/agent_bridge.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/retry.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    KimLogger.error('flutter', details.exception, details.stack);
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    KimLogger.error('platform', error, stack);
+    return true;
+  };
   await _enableMaxRefreshRate();
-  runApp(const KimBoot());
+  runZonedGuarded(
+    () => runApp(const KimBoot()),
+    (error, stack) => KimLogger.error('zone', error, stack),
+  );
 }
 
 Future<void> _enableMaxRefreshRate() async {
@@ -27,8 +41,8 @@ Future<void> _enableMaxRefreshRate() async {
   }
   try {
     await FlutterDisplayMode.setHighRefreshRate();
-  } catch (_) {
-    // Unsupported devices / emulators: keep OS default.
+  } catch (e, st) {
+    KimLogger.warn('display mode', e, st);
   }
 }
 
@@ -51,16 +65,28 @@ class _KimBootState extends State<KimBoot> {
   Future<void> _start() async {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
-    final prefs = await SharedPreferences.getInstance();
-    final store = await ConversationStore.openForRuntime(
-      support: runtime.paths.support,
-      rustStore: runtime.rustStore,
-      attachStore: bridge.attachStore,
-      prefs: prefs,
+    await bridge.attachStore('${runtime.paths.support.path}/kim-cache.db');
+    final imported = await bridge.importDeviceSettings(
+      wsUrl: runtime.settings.url,
+      httpOrigin: runtime.settings.httpOrigin,
     );
-    final account = runtime.settings.account;
-    if (account.isNotEmpty) {
-      await store.warmThreads(account);
+    runtime.settings.applyRemote(
+      wsUrl: imported.wsUrl,
+      httpOrigin: imported.httpOrigin,
+      account: imported.account,
+      env: imported.env,
+    );
+    await runtime.settings.dropImportedPrefs();
+    bridge.watchTokenPersist().listen((event) {
+      switch (event) {
+        case rust_types.TokenPersistDto_Write(:final token):
+          unawaited(runtime.settings.saveToken(token));
+        case rust_types.TokenPersistDto_Clear():
+          unawaited(runtime.settings.saveToken(''));
+      }
+    });
+    if (agentHostSupported) {
+      unawaited(AgentRunLoop(bridge, AgentBridge()).start());
     }
     if (!mounted) {
       return;
@@ -72,7 +98,7 @@ class _KimBootState extends State<KimBoot> {
           runtime: runtime,
           auth: bridge,
           client: bridge,
-          store: store,
+          media: bridge,
         ),
         child: const KimApp(),
       );

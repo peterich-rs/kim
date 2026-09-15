@@ -2,8 +2,8 @@
 use std::sync::{Arc, Mutex};
 
 use kim_sdk::{
-    AgentPort, KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SessionEpoch,
-    StartSession,
+    AgentPort, AgentProfileRow, KimSdk, MobileAgent, OutgoingPayload, ProtocolClient,
+    ScriptedRuntime, SdkError, SendMessageCommand, SessionEpoch, StartSession, QUEUE_CAP,
 };
 
 struct RecAgent {
@@ -12,13 +12,22 @@ struct RecAgent {
 
 #[async_trait::async_trait]
 impl AgentPort for RecAgent {
-    async fn enqueue_turn(&self, dest: &str, text: &str, in_reply_to: i64, _epoch: SessionEpoch) {
+    async fn enqueue_turn(
+        &self,
+        dest: &str,
+        text: &str,
+        in_reply_to: i64,
+        _epoch: SessionEpoch,
+    ) -> Result<(), SdkError> {
         self.turns
             .lock()
             .expect("lock")
             .push((dest.into(), text.into(), in_reply_to));
+        Ok(())
     }
-    async fn catch_up(&self, _dests: &[String], _epoch: SessionEpoch) {}
+    async fn catch_up(&self, _dests: &[String], _epoch: SessionEpoch) -> Result<(), SdkError> {
+        Ok(())
+    }
 }
 
 struct OkProto;
@@ -44,6 +53,16 @@ impl ProtocolClient for OkProto {
     }
     async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
         Ok(())
+    }
+
+    async fn history(
+        &self,
+        _dest: &str,
+        _kind: i32,
+        _before_id: i64,
+        _limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        Ok(vec![])
     }
 }
 
@@ -71,6 +90,14 @@ async fn sent_text_enqueues_agent_turn() {
     });
     sdk.set_agent(agent.clone());
     sdk.install_protocol(Arc::new(OkProto));
+    sdk.upsert_agent_profile(AgentProfileRow {
+        profile_id: "bot".into(),
+        nickname: "bot".into(),
+        server_account: "b_bot".into(),
+        body_json: "{}".into(),
+    })
+    .await
+    .expect("profile");
     sdk.enqueue_message(SendMessageCommand {
         dest: "b_bot".into(),
         kind: 0,
@@ -83,4 +110,135 @@ async fn sent_text_enqueues_agent_turn() {
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     let turns = agent.turns.lock().expect("lock").clone();
     assert_eq!(turns, vec![("b_bot".into(), "hi".into(), 9)]);
+}
+
+fn start_session() -> StartSession {
+    StartSession {
+        url: "ws://127.0.0.1:1/".into(),
+        token: "t".into(),
+        user_agent: "test".into(),
+        account: "alice".into(),
+    }
+}
+
+async fn open_sdk() -> (Arc<KimSdk>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sdk = KimSdk::open(
+        dir.path()
+            .join("kim-cache.db")
+            .to_string_lossy()
+            .into_owned(),
+    )
+    .await
+    .expect("open");
+    sdk.start_session(start_session()).await.expect("session");
+    (sdk, dir)
+}
+
+async fn put_bot(sdk: &KimSdk, dest: &str, profile_id: &str) {
+    sdk.upsert_agent_profile(AgentProfileRow {
+        profile_id: profile_id.into(),
+        nickname: profile_id.into(),
+        server_account: dest.into(),
+        body_json: "{}".into(),
+    })
+    .await
+    .expect("profile");
+}
+
+#[tokio::test]
+async fn pump_skips_non_bot_dest() {
+    let (sdk, _dir) = open_sdk().await;
+    let agent = Arc::new(RecAgent {
+        turns: Mutex::new(Vec::new()),
+    });
+    sdk.set_agent(agent.clone());
+    sdk.install_protocol(Arc::new(OkProto));
+    sdk.enqueue_message(SendMessageCommand {
+        dest: "bob".into(),
+        kind: 0,
+        payload: OutgoingPayload::Text { body: "hi".into() },
+        client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee1".into()),
+        batch_id: None,
+    })
+    .await
+    .expect("enqueue");
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    assert!(agent.turns.lock().expect("lock").is_empty());
+}
+
+struct HoldRuntime {
+    gate: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+#[async_trait::async_trait]
+impl kim_sdk::AgentRuntime for HoldRuntime {
+    async fn run_turn(
+        &self,
+        dest: &str,
+        profile_id: &str,
+        text: &str,
+        _in_reply_to: i64,
+        epoch: SessionEpoch,
+    ) -> Result<kim_sdk::AgentRunResult, SdkError> {
+        if let Some(rx) = self.gate.lock().await.take() {
+            let _ = rx.await;
+        }
+        Ok(kim_sdk::AgentRunResult {
+            dest: dest.into(),
+            profile_id: profile_id.into(),
+            epoch: epoch.0,
+            output: text.into(),
+            error: None,
+        })
+    }
+}
+
+#[tokio::test]
+async fn queue_busy_when_cap_exceeded() {
+    let (sdk, _dir) = open_sdk().await;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let runtime = Arc::new(HoldRuntime {
+        gate: tokio::sync::Mutex::new(Some(rx)),
+    });
+    let agent = Arc::new(MobileAgent::new((*sdk).clone(), runtime));
+    sdk.set_agent(agent.clone());
+    put_bot(&sdk, "b_bot", "bot").await;
+    let epoch = SessionEpoch(1);
+    // First turn occupies the worker (blocked on gate).
+    agent
+        .enqueue_turn("b_bot", "hold", 1, epoch)
+        .await
+        .expect("hold");
+    tokio::task::yield_now().await;
+    for i in 0..QUEUE_CAP {
+        agent
+            .enqueue_turn("b_bot", &format!("t{i}"), 1, epoch)
+            .await
+            .expect("fill");
+    }
+    let err = agent
+        .enqueue_turn("b_bot", "overflow", 1, epoch)
+        .await
+        .expect_err("busy");
+    assert!(matches!(err, SdkError::Busy { queue } if queue == "agent"));
+    let _ = tx.send(());
+}
+
+#[tokio::test]
+async fn lru_caps_dest_profile_at_four() {
+    let (sdk, _dir) = open_sdk().await;
+    let runtime = ScriptedRuntime::new("ok");
+    let agent = Arc::new(MobileAgent::new((*sdk).clone(), runtime));
+    sdk.set_agent(agent.clone());
+    let epoch = SessionEpoch(1);
+    for i in 0..5 {
+        let dest = format!("b_{i}");
+        put_bot(&sdk, &dest, &format!("p{i}")).await;
+        agent
+            .enqueue_turn(&dest, "hi", 1, epoch)
+            .await
+            .expect("turn");
+    }
+    assert_eq!(agent.lru_len(), 4);
 }

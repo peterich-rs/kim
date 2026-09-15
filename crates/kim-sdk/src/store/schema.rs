@@ -1,5 +1,4 @@
-#[allow(dead_code)]
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 4;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -109,3 +108,64 @@ pub const IDX_MESSAGES_PENDING: &str =
     "CREATE INDEX IF NOT EXISTS messages_pending ON messages (account, status, at, key)";
 pub const IDX_OUTBOX_DUE: &str =
     "CREATE INDEX IF NOT EXISTS outbox_due ON outbox (account, status, next_attempt_at)";
+
+pub const CREATE_CONTACTS: &str = r"
+CREATE TABLE IF NOT EXISTS contacts (
+  account TEXT NOT NULL,
+  peer TEXT NOT NULL,
+  relation TEXT NOT NULL,
+  nickname TEXT NOT NULL DEFAULT '',
+  avatar TEXT NOT NULL DEFAULT '',
+  bio TEXT NOT NULL DEFAULT '',
+  kind INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account, peer)
+)
+";
+
+pub const CREATE_SETTINGS: &str = r"
+CREATE TABLE IF NOT EXISTS settings (
+  account TEXT NOT NULL PRIMARY KEY,
+  ws_url TEXT NOT NULL DEFAULT '',
+  http_origin TEXT NOT NULL DEFAULT '',
+  env TEXT NOT NULL DEFAULT 'prod',
+  locale TEXT NOT NULL DEFAULT '',
+  agent_flags TEXT NOT NULL DEFAULT '{}'
+)
+";
+
+pub const CREATE_AGENT_PROFILES: &str = r"
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  account TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  nickname TEXT NOT NULL,
+  server_account TEXT NOT NULL DEFAULT '',
+  body_json TEXT NOT NULL,
+  key_ciphertext BLOB,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account, profile_id)
+)
+";
+
+pub const CREATE_AGENT_PERMISSIONS: &str = r"
+CREATE TABLE IF NOT EXISTS agent_permissions (
+  account TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account, profile_id, tool)
+)
+";
+
+pub const CREATE_MEDIA_CACHE: &str = r"
+CREATE TABLE IF NOT EXISTS media_cache (
+  url TEXT PRIMARY KEY NOT NULL,
+  local_path TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  last_access INTEGER NOT NULL
+)
+";
+
+pub const MEDIA_CACHE_CAP_BYTES: i64 = 512 * 1024 * 1024;
+pub const SEARCH_CAP: i32 = 50;

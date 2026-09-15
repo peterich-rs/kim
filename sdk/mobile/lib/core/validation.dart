@@ -1,6 +1,6 @@
 library;
 
-import '../copy.dart';
+import 'package:kim_mobile/copy.dart';
 
 final _account = RegExp(r'^[A-Za-z0-9_]{3,32}$');
 

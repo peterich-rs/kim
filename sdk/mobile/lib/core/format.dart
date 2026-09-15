@@ -1,7 +1,7 @@
 /// Display helpers shared by conversation list and chat chrome.
 library;
 
-import '../copy.dart';
+import 'package:kim_mobile/copy.dart';
 
 const _avatarColors = <int>[
   0xFFE17076,

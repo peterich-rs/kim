@@ -7,6 +7,7 @@ pub struct SdkMetrics {
     pub epoch_drop_total: AtomicU64,
     #[allow(dead_code)]
     pub timeline_resync_total: AtomicU64,
+    pub store_wipe_total: AtomicU64,
 }
 
 impl SdkMetrics {
@@ -22,11 +23,20 @@ impl SdkMetrics {
         self.epoch_drop_total.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn snapshot(&self) -> (u64, u64, u64) {
+    pub fn inc_store_wipe(&self) {
+        self.store_wipe_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn store_wipe_total(&self) -> u64 {
+        self.store_wipe_total.load(Ordering::Relaxed)
+    }
+
+    pub fn snapshot(&self) -> (u64, u64, u64, u64) {
         (
             self.enqueue_total.load(Ordering::Relaxed),
             self.persist_talk_total.load(Ordering::Relaxed),
             self.epoch_drop_total.load(Ordering::Relaxed),
+            self.store_wipe_total(),
         )
     }
 }

@@ -1,0 +1,249 @@
+library;
+
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/session/kim_session.dart';
+import 'package:kim_mobile/features/session/providers.dart';
+
+class ThreadMessagesState {
+  const ThreadMessagesState({
+    required this.items,
+    this.loadingOlder = false,
+    this.hasMore = true,
+    this.unreadAnchorId,
+  });
+
+  final List<KimChatMsg> items;
+  final bool loadingOlder;
+  final bool hasMore;
+  final String? unreadAnchorId;
+
+  ThreadMessagesState copyWith({
+    List<KimChatMsg>? items,
+    bool? loadingOlder,
+    bool? hasMore,
+    String? unreadAnchorId,
+  }) {
+    return ThreadMessagesState(
+      items: items ?? this.items,
+      loadingOlder: loadingOlder ?? this.loadingOlder,
+      hasMore: hasMore ?? this.hasMore,
+      unreadAnchorId: unreadAnchorId ?? this.unreadAnchorId,
+    );
+  }
+}
+
+class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
+  ThreadMessagesNotifier(this.dest);
+
+  final String dest;
+  StreamSubscription<TimelineUpdateDto>? _sub;
+  var _older = <KimChatMsg>[];
+  var _awaitingSnapshot = false;
+
+  @override
+  ThreadMessagesState build() {
+    final account = ref.watch(authProvider.select((s) => s.account));
+    if (account.isEmpty) {
+      unawaited(_sub?.cancel());
+      _sub = null;
+      _older = [];
+      return const ThreadMessagesState(items: [], hasMore: false);
+    }
+    _listen();
+    ref.onDispose(() {
+      unawaited(_sub?.cancel());
+      _sub = null;
+    });
+    return const ThreadMessagesState(items: []);
+  }
+
+  void _listen() {
+    unawaited(_sub?.cancel());
+    _awaitingSnapshot = false;
+    try {
+      _sub = ref
+          .read(clientPortProvider)
+          .watchThread(dest)
+          .listen(
+            (update) {
+              if (!ref.mounted) {
+                return;
+              }
+              switch (update) {
+                case TimelineUpdateDto_Snapshot(:final snapshot):
+                  _onSnapshot(snapshot);
+                case TimelineUpdateDto_Delta(:final delta):
+                  if (_awaitingSnapshot) {
+                    return;
+                  }
+                  _onDelta(delta);
+                case TimelineUpdateDto_Resync():
+                  _awaitingSnapshot = true;
+                  _older = [];
+                  state = state.copyWith(items: const []);
+              }
+            },
+            onError: (Object e, StackTrace st) {
+              KimLogger.warn('watchThread', e, st);
+            },
+          );
+    } catch (e, st) {
+      KimLogger.warn('watchThread subscribe', e, st);
+    }
+  }
+
+  void _onSnapshot(TimelineSnapshotDto snapshot) {
+    _awaitingSnapshot = false;
+    final hot = [
+      for (final m in snapshot.messages) kimChatFromDto(m),
+      for (final m in snapshot.pending) kimChatFromDto(m),
+    ];
+    final hotKeys = {for (final m in hot) m.key};
+    final older = [
+      for (final m in _older)
+        if (!hotKeys.contains(m.key)) m,
+    ];
+    _older = older;
+    state = state.copyWith(
+      items: _sorted([...older, ...hot]),
+      hasMore: snapshot.hasMore || older.isNotEmpty,
+    );
+  }
+
+  void _onDelta(TimelineDeltaDto delta) {
+    final byKey = {for (final m in state.items) m.key: m};
+    for (final key in delta.deletedKeys) {
+      byKey.remove(key);
+      _older.removeWhere((m) => m.key == key);
+    }
+    for (final u in delta.upserts) {
+      byKey[u.key] = kimChatFromDto(u);
+    }
+    state = state.copyWith(items: _sorted(byKey.values.toList()));
+  }
+
+  List<KimChatMsg> _sorted(List<KimChatMsg> items) {
+    items.sort((a, b) {
+      final byAt = a.at.compareTo(b.at);
+      if (byAt != 0) {
+        return byAt;
+      }
+      return a.key.compareTo(b.key);
+    });
+    return items;
+  }
+
+  void captureUnreadAnchor({required int unread, required String self}) {
+    if (unread <= 0 || state.items.isEmpty) {
+      return;
+    }
+    var left = unread;
+    String? anchor;
+    for (var i = state.items.length - 1; i >= 0; i--) {
+      final m = state.items[i];
+      if (m.sys || m.sender == self) {
+        continue;
+      }
+      anchor = m.key;
+      left -= 1;
+      if (left <= 0) {
+        break;
+      }
+    }
+    if (anchor != null) {
+      state = state.copyWith(unreadAnchorId: anchor);
+    }
+  }
+
+  void receiveAll(Iterable<KimChatMsg> msgs) {
+    if (msgs.isEmpty) {
+      return;
+    }
+    final byKey = {for (final m in state.items) m.key: m};
+    for (final m in msgs) {
+      if (m.dest == dest) {
+        byKey[m.key] = m;
+      }
+    }
+    state = state.copyWith(items: _sorted(byKey.values.toList()));
+  }
+
+  Future<void> loadOlder() async {
+    if (state.loadingOlder || !state.hasMore || state.items.isEmpty) {
+      return;
+    }
+    state = state.copyWith(loadingOlder: true);
+    final oldest = state.items.first;
+    try {
+      final page = await ref
+          .read(clientPortProvider)
+          .loadOlder(
+            dest: dest,
+            beforeAt: oldest.at,
+            beforeKey: oldest.key,
+            beforeId: _historyBeforeId(state.items),
+            limit: 50,
+          );
+      if (!ref.mounted) {
+        return;
+      }
+      final incoming = [for (final m in page.messages) kimChatFromDto(m)];
+      _older = _sorted([...incoming, ..._older]);
+      final byKey = {for (final m in state.items) m.key: m};
+      for (final m in incoming) {
+        byKey.putIfAbsent(m.key, () => m);
+      }
+      state = state.copyWith(
+        items: _sorted(byKey.values.toList()),
+        loadingOlder: false,
+        hasMore: page.hasMore,
+      );
+    } catch (e, st) {
+      KimLogger.warn('loadOlder', e, st);
+      if (ref.mounted) {
+        state = state.copyWith(loadingOlder: false);
+      }
+    }
+  }
+
+  Future<void> markRead() async {
+    var messageId = 0;
+    for (final m in state.items.reversed) {
+      if (m.messageId != 0) {
+        messageId = m.messageId;
+        break;
+      }
+    }
+    final kind =
+        ref.read(threadsProvider).thread(dest)?.kind ?? ThreadKind.user;
+    try {
+      await ref.read(clientPortProvider).markRead(dest, kind, messageId);
+    } catch (e, st) {
+      KimLogger.warn('markRead', e, st);
+    }
+  }
+
+  int _historyBeforeId(List<KimChatMsg> items) {
+    for (final m in items) {
+      if (m.messageId != 0) {
+        return m.messageId;
+      }
+    }
+    return 0;
+  }
+}
+
+final threadMessagesProvider =
+    NotifierProvider.family<
+      ThreadMessagesNotifier,
+      ThreadMessagesState,
+      String
+    >(ThreadMessagesNotifier.new);

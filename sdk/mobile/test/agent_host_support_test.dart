@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/agent/host_support.dart';
+import 'package:kim_mobile/features/agent/host_support.dart';
 
 void main() {
   tearDown(() {

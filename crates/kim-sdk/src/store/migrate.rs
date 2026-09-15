@@ -41,6 +41,18 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         migrate_v1(tx).await?;
         set_schema_version(tx, 1).await?;
     }
+    if version < 2 {
+        migrate_v2(tx).await?;
+        set_schema_version(tx, 2).await?;
+    }
+    if version < 3 {
+        migrate_v3(tx).await?;
+        set_schema_version(tx, 3).await?;
+    }
+    if version < 4 {
+        migrate_v4(tx).await?;
+        set_schema_version(tx, 4).await?;
+    }
     Ok(())
 }
 
@@ -59,27 +71,6 @@ async fn migrate_v1(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         .map_err(map_sqlx)?;
     tx.execute(
         r"
-        INSERT OR IGNORE INTO outbox (
-          account, client_id, dest, kind, payload_type, body, extra,
-          local_path, mime, width, height, byte_size, batch_id, status,
-          message_id, created_at, updated_at
-        )
-        SELECT m.account, m.key, m.dest,
-               CASE IFNULL(t.kind, 'user') WHEN 'group' THEN 1 ELSE 0 END,
-               CASE m.kind WHEN 'image' THEN 2 WHEN 'video' THEN 4 ELSE 1 END,
-               m.body, '', IFNULL(m.local_path, ''), '', m.width, m.height, 0,
-               IFNULL(m.batch_id, ''),
-               CASE m.status WHEN 'failed' THEN 'failed' ELSE 'pending' END,
-               m.message_id, m.at, m.at
-        FROM messages m
-        LEFT JOIN threads t ON t.account = m.account AND t.id = m.dest
-        WHERE m.status IN ('sending', 'failed')
-        ",
-    )
-    .await
-    .map_err(map_sqlx)?;
-    tx.execute(
-        r"
         UPDATE messages SET thread_kind = (
           SELECT CASE t.kind WHEN 'group' THEN 1 ELSE 0 END
           FROM threads t
@@ -93,6 +84,33 @@ async fn migrate_v1(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     )
     .await
     .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v2(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_CONTACTS)
+        .await
+        .map_err(map_sqlx)?;
+    tx.execute(schema::CREATE_SETTINGS)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v3(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_AGENT_PROFILES)
+        .await
+        .map_err(map_sqlx)?;
+    tx.execute(schema::CREATE_AGENT_PERMISSIONS)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v4(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_MEDIA_CACHE)
+        .await
+        .map_err(map_sqlx)?;
     Ok(())
 }
 

@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
-import 'package:kim_mobile/state/retry.dart';
+import 'package:kim_mobile/features/session/retry.dart';
 
 void main() {
   test('permanent auth errors are not retried', () {

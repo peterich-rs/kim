@@ -2,7 +2,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-import 'runtime.dart';
+import 'package:kim_mobile/core/runtime.dart';
 
 /// HTTP `User-Agent` passed into Rust. Browsers set this automatically; we
 /// cannot rely on reqwest's default `reqwest/0.12`.

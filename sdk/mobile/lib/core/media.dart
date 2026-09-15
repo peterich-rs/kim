@@ -1,9 +1,5 @@
-/// Image upload to kim-media. Bytes never go through WGateway.
+/// Image types + upload port. Bytes go through Rust media_upload.
 library;
-
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 class UploadedObject {
   const UploadedObject({
@@ -25,6 +21,20 @@ abstract class KimMediaPort {
     required List<int> bytes,
     required String contentType,
   });
+}
+
+/// Tests that don't upload can leave [mediaPortProvider] on this no-op.
+class UnsupportedKimMedia implements KimMediaPort {
+  const UnsupportedKimMedia();
+
+  @override
+  Future<UploadedObject> uploadImage({
+    required String token,
+    required List<int> bytes,
+    required String contentType,
+  }) async {
+    throw StateError('media port not attached');
+  }
 }
 
 /// Worker `kim-media` only accepts these Content-Types.
@@ -86,74 +96,5 @@ abstract final class KimImageTypes {
       throw StateError('unsupported media type');
     }
     return ct;
-  }
-}
-
-class KimMediaClient implements KimMediaPort {
-  KimMediaClient({this.origin = defaultOrigin, this._http});
-
-  static const defaultOrigin = 'https://upload.kim.ainexc.com';
-  static const maxBytes = 5 * 1024 * 1024;
-
-  final String origin;
-  final HttpClient? _http;
-
-  @override
-  Future<UploadedObject> uploadImage({
-    required String token,
-    required List<int> bytes,
-    required String contentType,
-  }) async {
-    if (token.trim().isEmpty) {
-      throw StateError('JWT required');
-    }
-    if (bytes.isEmpty) {
-      throw StateError('empty body');
-    }
-    if (bytes.length > maxBytes) {
-      throw StateError('too large');
-    }
-    final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
-    final ct = KimImageTypes.normalize(contentType, payload);
-    final uri = Uri.parse('${origin.replaceAll(RegExp(r'/$'), '')}/v1/objects');
-    final client = _http ?? HttpClient();
-    final owned = _http == null;
-    try {
-      final req = await client.postUrl(uri);
-      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      req.headers.set(
-        HttpHeaders.contentTypeHeader,
-        ct.split(';').first.trim(),
-      );
-      req.contentLength = payload.length;
-      req.add(payload);
-      final resp = await req.close();
-      final body = await utf8.decodeStream(resp);
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        throw StateError('upload ${resp.statusCode}: $body');
-      }
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) {
-        throw StateError('upload: bad response');
-      }
-      final url = decoded['url'];
-      if (url is! String || url.isEmpty) {
-        throw StateError('upload: missing url');
-      }
-      return UploadedObject(
-        key: decoded['key'] is String ? decoded['key'] as String : '',
-        url: url,
-        contentType: decoded['contentType'] is String
-            ? decoded['contentType'] as String
-            : ct,
-        bytes: decoded['bytes'] is num
-            ? (decoded['bytes'] as num).toInt()
-            : bytes.length,
-      );
-    } finally {
-      if (owned) {
-        client.close(force: true);
-      }
-    }
   }
 }

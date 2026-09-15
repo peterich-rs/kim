@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/widgets/kim_composer.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/kim_composer.dart';
 
 void main() {
   testWidgets('plus opens album and camera actions', (tester) async {

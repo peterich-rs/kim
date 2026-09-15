@@ -4,9 +4,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/layout.dart';
-import '../models/models.dart';
-import '../state/inbox.dart';
+import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/features/chats/inbox.dart';
 
 void openKimChat(
   BuildContext context,

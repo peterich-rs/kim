@@ -7,9 +7,8 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/data/conversation_store.dart';
-import 'package:kim_mobile/state/providers.dart';
-import 'package:kim_mobile/state/retry.dart';
+import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/features/session/retry.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_kim.dart';
@@ -19,14 +18,12 @@ class KimHarness {
     required this.container,
     required this.fake,
     required this.runtime,
-    required this.store,
     required this.media,
   });
 
   final ProviderContainer container;
   final FakeKim fake;
   final KimRuntime runtime;
-  final ConversationStore store;
   final FakeKimMedia media;
 }
 
@@ -34,7 +31,6 @@ Future<KimHarness> kimHarness({
   String token = '',
   String account = '',
   bool online = true,
-  bool rustStore = false,
   List<Override> overrides = const [],
   bool identityMigrated = true,
   bool? serverIdentity = false,
@@ -46,7 +42,6 @@ Future<KimHarness> kimHarness({
     'agent.server_identity': ?serverIdentity,
     if (multiProfileMigrated) 'agent.multi_profile_migrated_on': true,
     'agent.multi_profile': ?multiProfile,
-    if (rustStore) KimFlags.rustStorePref: true,
   });
   final tmp = Directory.systemTemp.createTempSync('kim-shell-');
   addTearDown(() {
@@ -68,8 +63,6 @@ Future<KimHarness> kimHarness({
     buildNumber: '1',
   );
   final fake = FakeKim();
-  final store = ConversationStore.memory();
-  addTearDown(store.close);
   final media = FakeKimMedia();
   final container = ProviderContainer.test(
     retry: kimRetry,
@@ -78,7 +71,6 @@ Future<KimHarness> kimHarness({
         runtime: runtime,
         auth: fake,
         client: fake,
-        store: store,
         media: media,
       ),
       ...overrides,
@@ -89,7 +81,6 @@ Future<KimHarness> kimHarness({
     container: container,
     fake: fake,
     runtime: runtime,
-    store: store,
     media: media,
   );
 }

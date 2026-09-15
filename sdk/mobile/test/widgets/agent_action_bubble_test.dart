@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/theme/kim_theme.dart';
-import 'package:kim_mobile/widgets/kim_bubble.dart';
+import 'package:kim_mobile/design/kim_theme.dart';
+import 'package:kim_mobile/design/kim_bubble.dart';
 
 void main() {
   testWidgets('hides tool progress cards but shows permission prompts', (

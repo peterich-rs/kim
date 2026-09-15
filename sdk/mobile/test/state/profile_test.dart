@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/link.dart';
-import 'package:kim_mobile/state/profile.dart';
+import 'package:kim_mobile/features/session/link.dart';
+import 'package:kim_mobile/features/profile/profile.dart';
 
 import '../support/harness.dart';
 

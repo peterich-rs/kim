@@ -9,16 +9,14 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import 'types.dart';
 
-// These functions are ignored because they are not marked as `pub`: `empty`, `map_event`, `map_link`, `supervisor`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `ack_from_receipt`, `empty_ack`, `supervisor`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`
 
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimSdkHandle>>
-abstract class KimSdkHandle implements RustOpaqueInterface {
-  Future<void> ack({required PlatformInt64 messageId});
-
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>>
+abstract class KimUiHandle implements RustOpaqueInterface {
   Future<void> attachStore({required String dbPath});
 
-  Future<String> botCreate({
+  Future<PersonDto> botCreate({
     required String clientProfileId,
     required String nickname,
     required String avatar,
@@ -49,7 +47,7 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  Future<String> botUpdate({
+  Future<PersonDto> botUpdate({
     required String dest,
     required String nickname,
     required String avatar,
@@ -62,9 +60,13 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   Future<void> cancelSend({required String clientId});
 
+  Future<CommandAckDto> command({required UiCommandDto cmd});
+
   /// Always callable. Does not open SQLite.
-  static KimSdkHandle create() =>
-      RustLib.instance.api.crateApiClientKimSdkHandleCreate();
+  static KimUiHandle create() =>
+      RustLib.instance.api.crateApiClientKimUiHandleCreate();
+
+  Future<void> deleteAgentProfile({required String profileId});
 
   Future<void> deleteThread({required String dest});
 
@@ -80,28 +82,36 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
-  Future<String> friendAccept({required String dest});
+  Future<void> friendAccept({required String dest});
 
-  Future<String> friendIncoming();
+  Future<List<PersonDto>> friendIncoming();
 
-  Future<String> friendList();
+  Future<List<PersonDto>> friendList();
 
-  Future<String> friendReject({required String dest});
+  Future<void> friendReject({required String dest});
 
-  Future<String> friendRemove({required String dest});
+  Future<void> friendRemove({required String dest});
 
-  Future<String> friendRequest({required String dest});
+  Future<void> friendRequest({required String dest});
 
-  Future<List<KimHistoryItem>> history({
+  Future<void> importAgentProfiles({required List<AgentProfileDto> rows});
+
+  Future<SettingsDto> importDeviceSettings({
+    required String wsUrl,
+    required String httpOrigin,
+    required String env,
+    required String locale,
+  });
+
+  Future<List<AgentProfileDto>> listAgentProfiles();
+
+  Future<MessagePageDto> loadOlder({
     required String dest,
-    required int kind,
+    required PlatformInt64 beforeAt,
+    required String beforeKey,
     required PlatformInt64 beforeId,
     required int limit,
   });
-
-  Future<List<KimInboxItem>> inbox({required int limit});
-
-  String linkState();
 
   Future<void> markRead({
     required String dest,
@@ -115,34 +125,41 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required PlatformInt64 messageId,
   });
 
+  Future<LocalMediaDto> mediaFetch({required String url});
+
+  Future<LocalMediaDto> mediaUpload({
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  });
+
+  MetricsDto metricsSnapshot();
+
   Future<void> notifyForeground();
 
   Future<void> notifyRadioUp();
 
-  Future<void> persistInbox({required List<KimInboxItem> items});
+  Future<ProfileDto> profile({required String dest});
 
-  Future<void> persistTalks({
-    required List<KimIncomingTalk> talks,
-    required String policy,
-  });
-
-  Future<String> profile({required String dest});
+  Future<List<PersonDto>> refreshContacts();
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
-  /// Returns JSON array of `{account,status,last_seen}`.
-  Future<String> roomEnter({required String dest, required int kind});
+  Future<List<RoomMemberDto>> roomEnter({
+    required String dest,
+    required int kind,
+  });
 
   Future<String> roomLeave({required String dest, required int kind});
 
-  Future<String> searchUsers({required String query});
-
-  Future<KimTalkResult> sendMessage({
-    required String dest,
-    required int kind,
-    required KimOutgoingContent content,
-    required String clientId,
+  Future<List<MessageViewDto>> searchMessages({
+    required String query,
+    String? dest,
   });
+
+  Future<List<PersonDto>> searchUsers({required String query});
 
   Future<void> sendTyping({
     required String dest,
@@ -150,9 +167,13 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  /// Fat supervisor stream — the Dart inbox. Lagged still only logs;
-  /// watch_session is Kickout/token/friend, not a replacement inbox.
-  Stream<KimSessionEvent> sessionEvents();
+  Future<SettingsDto> settingsGet();
+
+  Future<SettingsDto> settingsPatch({
+    String? wsUrl,
+    String? httpOrigin,
+    String? env,
+  });
 
   Future<void> startSession({
     required String url,
@@ -165,22 +186,29 @@ abstract class KimSdkHandle implements RustOpaqueInterface {
 
   bool storeAttached();
 
-  Future<void> syncConfirm({required PlatformInt64 cursor});
+  Future<void> submitAgentRun({required AgentRunResultDto result});
 
-  Future<String> updateProfile({
+  Future<ProfileDto> updateProfile({
     required String nickname,
     required String avatar,
     required String bio,
   });
 
-  /// Typed mpsc for Kickout/token/friend. Not the Dart inbox — fat
-  /// [`session_events`] remains the inbox until watch carries Snapshot/Delta.
+  Future<void> upsertAgentProfile({required AgentProfileDto row});
+
+  Stream<AgentRunRequestDto> watchAgentRun();
+
+  /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
   Stream<SessionUpdateDto> watchSession();
+
+  Stream<SessionSnapshotDto> watchSessionSnapshot();
 
   Stream<TimelineUpdateDto> watchTimeline({
     required String dest,
     required int limit,
   });
+
+  Stream<TokenPersistDto> watchTokenPersist();
 }
 
 class KimBotPendingItem {
@@ -212,7 +240,7 @@ class KimCommandReceipt {
   final String clientId;
   final String dest;
   final PlatformInt64 acceptedAt;
-  final String sendStatus;
+  final SendStatusDto sendStatus;
 
   const KimCommandReceipt({
     required this.requestId,
@@ -242,143 +270,6 @@ class KimCommandReceipt {
           sendStatus == other.sendStatus;
 }
 
-class KimHistoryItem {
-  final PlatformInt64 messageId;
-  final int msgType;
-  final String body;
-  final String extra;
-  final String sender;
-  final PlatformInt64 sendTime;
-  final int direction;
-
-  const KimHistoryItem({
-    required this.messageId,
-    required this.msgType,
-    required this.body,
-    required this.extra,
-    required this.sender,
-    required this.sendTime,
-    required this.direction,
-  });
-
-  @override
-  int get hashCode =>
-      messageId.hashCode ^
-      msgType.hashCode ^
-      body.hashCode ^
-      extra.hashCode ^
-      sender.hashCode ^
-      sendTime.hashCode ^
-      direction.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimHistoryItem &&
-          runtimeType == other.runtimeType &&
-          messageId == other.messageId &&
-          msgType == other.msgType &&
-          body == other.body &&
-          extra == other.extra &&
-          sender == other.sender &&
-          sendTime == other.sendTime &&
-          direction == other.direction;
-}
-
-class KimInboxItem {
-  final String dest;
-  final int kind;
-  final String title;
-  final String avatar;
-  final String lastBody;
-  final String lastSender;
-  final PlatformInt64 lastMessageId;
-  final PlatformInt64 lastSendTime;
-  final int unread;
-
-  const KimInboxItem({
-    required this.dest,
-    required this.kind,
-    required this.title,
-    required this.avatar,
-    required this.lastBody,
-    required this.lastSender,
-    required this.lastMessageId,
-    required this.lastSendTime,
-    required this.unread,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      kind.hashCode ^
-      title.hashCode ^
-      avatar.hashCode ^
-      lastBody.hashCode ^
-      lastSender.hashCode ^
-      lastMessageId.hashCode ^
-      lastSendTime.hashCode ^
-      unread.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimInboxItem &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          kind == other.kind &&
-          title == other.title &&
-          avatar == other.avatar &&
-          lastBody == other.lastBody &&
-          lastSender == other.lastSender &&
-          lastMessageId == other.lastMessageId &&
-          lastSendTime == other.lastSendTime &&
-          unread == other.unread;
-}
-
-class KimIncomingTalk {
-  final String dest;
-  final String sender;
-  final String body;
-  final String extra;
-  final PlatformInt64 messageId;
-  final PlatformInt64 sendTime;
-  final int msgType;
-
-  const KimIncomingTalk({
-    required this.dest,
-    required this.sender,
-    required this.body,
-    required this.extra,
-    required this.messageId,
-    required this.sendTime,
-    required this.msgType,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      sender.hashCode ^
-      body.hashCode ^
-      extra.hashCode ^
-      messageId.hashCode ^
-      sendTime.hashCode ^
-      msgType.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimIncomingTalk &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          sender == other.sender &&
-          body == other.body &&
-          extra == other.extra &&
-          messageId == other.messageId &&
-          sendTime == other.sendTime &&
-          msgType == other.msgType;
-}
-
 /// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
 class KimOutgoingContent {
   final int kind;
@@ -402,102 +293,6 @@ class KimOutgoingContent {
           kind == other.kind &&
           body == other.body &&
           extra == other.extra;
-}
-
-/// Supervisor events. `kind` is link/inbox/talk/sync_progress/sync_done/sync_failed/kick/token/friend/group.
-class KimSessionEvent {
-  final String kind;
-  final String state;
-  final int attempt;
-  final List<KimInboxItem> items;
-  final String dest;
-  final String sender;
-  final String body;
-  final String extra;
-  final PlatformInt64 messageId;
-  final PlatformInt64 sendTime;
-  final String command;
-  final int msgType;
-  final BigInt pulled;
-  final bool pagePending;
-  final String error;
-  final String channelId;
-  final String token;
-  final PlatformInt64 exp;
-  final String nickname;
-  final List<String> members;
-
-  const KimSessionEvent({
-    required this.kind,
-    required this.state,
-    required this.attempt,
-    required this.items,
-    required this.dest,
-    required this.sender,
-    required this.body,
-    required this.extra,
-    required this.messageId,
-    required this.sendTime,
-    required this.command,
-    required this.msgType,
-    required this.pulled,
-    required this.pagePending,
-    required this.error,
-    required this.channelId,
-    required this.token,
-    required this.exp,
-    required this.nickname,
-    required this.members,
-  });
-
-  @override
-  int get hashCode =>
-      kind.hashCode ^
-      state.hashCode ^
-      attempt.hashCode ^
-      items.hashCode ^
-      dest.hashCode ^
-      sender.hashCode ^
-      body.hashCode ^
-      extra.hashCode ^
-      messageId.hashCode ^
-      sendTime.hashCode ^
-      command.hashCode ^
-      msgType.hashCode ^
-      pulled.hashCode ^
-      pagePending.hashCode ^
-      error.hashCode ^
-      channelId.hashCode ^
-      token.hashCode ^
-      exp.hashCode ^
-      nickname.hashCode ^
-      members.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimSessionEvent &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          state == other.state &&
-          attempt == other.attempt &&
-          items == other.items &&
-          dest == other.dest &&
-          sender == other.sender &&
-          body == other.body &&
-          extra == other.extra &&
-          messageId == other.messageId &&
-          sendTime == other.sendTime &&
-          command == other.command &&
-          msgType == other.msgType &&
-          pulled == other.pulled &&
-          pagePending == other.pagePending &&
-          error == other.error &&
-          channelId == other.channelId &&
-          token == other.token &&
-          exp == other.exp &&
-          nickname == other.nickname &&
-          members == other.members;
 }
 
 class KimTalkResult {

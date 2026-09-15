@@ -3,9 +3,9 @@ library;
 
 import 'dart:convert';
 
-import '../copy.dart';
-import '../models/models.dart';
-import 'format.dart';
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/core/format.dart';
 
 const mediaHost = 'media.kim.ainexc.com';
 

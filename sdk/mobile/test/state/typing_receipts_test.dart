@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/state/receipts.dart';
-import 'package:kim_mobile/state/typing.dart';
+import 'package:kim_mobile/features/session/receipts.dart';
+import 'package:kim_mobile/features/session/typing.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {

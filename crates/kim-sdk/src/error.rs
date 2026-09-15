@@ -66,7 +66,7 @@ impl SdkError {
     }
 }
 
-pub(crate) fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
+pub fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
     use kim_client::ClientError;
     match err {
         ClientError::NotConnected
@@ -83,6 +83,7 @@ pub(crate) fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
         ClientError::Status(108) => SdkError::UserNotFound {
             dest: dest.to_string(),
         },
+        ClientError::Status(101) => SdkError::CannotChatSelf,
         ClientError::Status(105) => SdkError::Unauthorized,
         ClientError::Status(status) => SdkError::Protocol { status },
         ClientError::Http { status: 401, .. } => SdkError::Unauthorized,

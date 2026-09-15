@@ -4,25 +4,27 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../agent/mention.dart';
-import '../core/layout.dart';
-import '../screens/auth_page.dart';
-import '../screens/home/chats_split.dart';
-import '../screens/home/contacts_page.dart';
-import '../screens/home/home_shell.dart';
-import '../screens/agent/agent_list_page.dart';
-import '../screens/agent/agent_plaza_page.dart';
-import '../screens/agent/agent_settings_page.dart';
-import '../screens/agent/agent_capabilities_page.dart';
-import '../screens/agent/provider_account_page.dart';
-import '../screens/agent/provider_accounts_page.dart';
-import '../screens/home/me_page.dart';
-import '../screens/peer/peer_profile_page.dart';
-import '../screens/password_page.dart';
-import '../state/auth.dart';
-import '../state/location.dart';
-import '../state/session.dart';
-import 'kim_page.dart';
+import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/features/auth/auth_page.dart';
+import 'package:kim_mobile/features/chats/chats_split.dart';
+import 'package:kim_mobile/features/contacts/contacts_page.dart';
+import 'package:kim_mobile/features/chats/home_shell.dart';
+import 'package:kim_mobile/features/agent/agent_list_page.dart';
+import 'package:kim_mobile/features/agent/agent_plaza_page.dart';
+import 'package:kim_mobile/features/agent/agent_settings_page.dart';
+import 'package:kim_mobile/features/agent/agent_capabilities_page.dart';
+import 'package:kim_mobile/features/agent/provider_account_page.dart';
+import 'package:kim_mobile/features/agent/provider_accounts_page.dart';
+import 'package:kim_mobile/core/env.dart';
+import 'package:kim_mobile/features/profile/me_page.dart';
+import 'package:kim_mobile/features/settings/dev_panel.dart';
+import 'package:kim_mobile/features/contacts/peer_profile_page.dart';
+import 'package:kim_mobile/features/auth/password_page.dart';
+import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/session/location.dart';
+import 'package:kim_mobile/features/session/session.dart';
+import 'package:kim_mobile/router/kim_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
@@ -112,6 +114,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      if (kimDevPanelEnabled)
+        GoRoute(
+          path: '/dev',
+          pageBuilder: (context, state) => kimPushPage(
+            key: state.pageKey,
+            name: state.name,
+            child: const DevPanelPage(),
+          ),
+        ),
       GoRoute(
         path: '/peer/:id',
         name: 'peer',

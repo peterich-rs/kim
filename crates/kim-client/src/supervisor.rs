@@ -230,6 +230,7 @@ impl SessionSupervisor {
     }
 
     pub fn notify_radio_up(&self) {
+        self.ensure_running();
         self.inner.attempt.store(0, Ordering::SeqCst);
         ProbeSource::store(&self.inner.probe_source, ProbeSource::Radio);
         self.inner.hints.notify_waiters();
@@ -237,6 +238,7 @@ impl SessionSupervisor {
     }
 
     pub fn notify_foreground(&self) {
+        self.ensure_running();
         self.inner.attempt.store(0, Ordering::SeqCst);
         ProbeSource::store(&self.inner.probe_source, ProbeSource::Foreground);
         self.inner.hints.notify_waiters();

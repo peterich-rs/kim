@@ -62,6 +62,16 @@ impl ProtocolClient for RecProto {
     async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
         Ok(())
     }
+
+    async fn history(
+        &self,
+        _dest: &str,
+        _kind: i32,
+        _before_id: i64,
+        _limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        Ok(vec![])
+    }
 }
 
 fn session(account: &str) -> StartSession {
@@ -143,6 +153,68 @@ async fn switch_account_drops_inflight_and_does_not_send_old_outbox() {
         .await
         .expect_err("other account");
     assert!(matches!(err, SdkError::NotFound { .. }));
+}
+
+#[tokio::test]
+async fn persist_inbox_updates_session_snapshot_threads() {
+    let (_dir, sdk) = open_sdk().await;
+    sdk.start_session(session("alice")).await.expect("session");
+    let mut snap = sdk.subscribe_session_snapshot();
+    sdk.persist_inbox(vec![kim_client::InboxItem {
+        dest: "bob".into(),
+        kind: 0,
+        title: "Bob".into(),
+        avatar: String::new(),
+        last_body: "hi".into(),
+        last_sender: "bob".into(),
+        last_message_id: 1,
+        last_send_time: 1,
+        unread: 2,
+    }])
+    .await
+    .expect("inbox");
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if snap.borrow().threads.iter().any(|t| t.id == "bob") {
+                return;
+            }
+            snap.changed().await.expect("watch");
+        }
+    })
+    .await
+    .expect("snapshot threads");
+}
+
+#[tokio::test]
+async fn kickout_under_load_still_arrives() {
+    let sdk = KimSdk::protocol_only();
+    sdk.start_session(session("alice")).await.expect("session");
+    let mut rx = sdk.subscribe_session();
+    for i in 0..40 {
+        sdk.emit_session(SessionUpdate::SyncProgress {
+            pulled: i,
+            catching_up: true,
+        });
+    }
+    sdk.supervisor()
+        .expect("sup")
+        .inject_event(kim_client::SessionEvent::Kickout {
+            channel_id: "ch-load".into(),
+        });
+    let found = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            match rx.recv().await {
+                Some(SessionUpdate::Kickout { channel_id }) if channel_id == "ch-load" => {
+                    return true;
+                }
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    })
+    .await
+    .expect("kickout under load");
+    assert!(found);
 }
 
 #[tokio::test]
@@ -326,6 +398,16 @@ impl ProtocolClient for HoldProto {
     }
     async fn mark_read(&self, _dest: &str, _kind: i32, _message_id: i64) -> Result<(), SdkError> {
         Ok(())
+    }
+
+    async fn history(
+        &self,
+        _dest: &str,
+        _kind: i32,
+        _before_id: i64,
+        _limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        Ok(vec![])
     }
 }
 

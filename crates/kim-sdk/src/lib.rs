@@ -22,12 +22,15 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-pub use agent::{AgentPort, NoopAgent};
+pub use agent::{
+    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime,
+    MobileAgent, NoopAgent, ScriptedRuntime, QUEUE_CAP,
+};
 pub use command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
     SendStatus, StartSession, TimelineQuery,
 };
-pub use error::SdkError;
+pub use error::{map_client, SdkError};
 pub use ids::{
     incoming_message_key, is_client_key, prefer_key, AccountId, ClientMessageId, DestId,
     SessionEpoch,
@@ -35,11 +38,19 @@ pub use ids::{
 pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
 pub use metrics::SdkMetrics;
 pub use proto::ProtocolClient;
+pub use store::prepare::{prepare_store_file, PrepareOutcome};
+pub use store::settings::DeviceSettings;
 pub use sync::UnreadPolicy;
 pub use timeline::{
-    LinkStateView, MessageView, SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta,
-    TimelineSnapshot, TimelineUpdate,
+    AgentCard, AgentTurnState, LinkStateView, MessageView, PersonRef, SessionSnapshot,
+    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TokenPersistEvent {
+    Write { token: String },
+    Clear,
+}
 
 use crate::session::lock;
 use crate::store::Store;
@@ -59,6 +70,9 @@ struct Inner {
     metrics: SdkMetrics,
     outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
     outbox_run: Mutex<CancellationToken>,
+    token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
+    ffi_runtime: Arc<FfiAgentRuntime>,
+    media_dir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Clone)]
@@ -86,11 +100,14 @@ impl KimSdk {
                 metrics: SdkMetrics::default(),
                 outbox_kick: Mutex::new(None),
                 outbox_run: Mutex::new(CancellationToken::new()),
+                token_persist: Mutex::new(Vec::new()),
+                ffi_runtime: FfiAgentRuntime::new(),
+                media_dir: Mutex::new(None),
             }),
         })
     }
 
-    /// Flag-on / `cargo test -p kim-sdk` fixture. protocol_only + attach_store.
+    /// Test / CLI fixture: protocol_only + attach_store. Production bootstrap always attach_store.
     pub async fn open(db_path: String) -> Result<Arc<Self>, SdkError> {
         let sdk = Self::protocol_only();
         sdk.attach_store(db_path).await?;
@@ -114,15 +131,25 @@ impl KimSdk {
         }
         let path = PathBuf::from(db_path);
         let migrate_path = path.clone();
-        tokio::task::spawn_blocking(move || migrate_blocking(migrate_path))
+        let wiped = tokio::task::spawn_blocking(move || migrate_blocking(migrate_path))
             .await
             .map_err(|e| SdkError::Internal {
                 message: format!("join: {e}"),
             })??;
+        if wiped {
+            self.inner.metrics.inc_store_wipe();
+        }
         let epoch = self.inner.epoch.clone();
-        let store = Store::open(path, epoch).await?;
+        let store = Store::open(path.clone(), epoch).await?;
         *lock(&self.inner.store) = Some(store);
+        if let Some(parent) = path.parent() {
+            *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
+        }
         Ok(())
+    }
+
+    pub fn store_wipe_total(&self) -> u64 {
+        self.inner.metrics.store_wipe_total()
     }
 
     pub async fn start_session(&self, s: StartSession) -> Result<(), SdkError> {
@@ -148,9 +175,17 @@ impl KimSdk {
             }));
         }
         self.install_protocol(sup.client());
+        // Subscribe before the reconnect loop so the first Link events are not missed.
         self.spawn_session_bridge(&sup);
         self.spawn_outbox_worker();
+        sup.ensure_running();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
+        self.publish_session_snapshot().await;
+        if let Ok(store) = self.store() {
+            store
+                .rekey_agent_profiles(String::new(), s.account.clone())
+                .await?;
+        }
         Ok(())
     }
 
@@ -209,6 +244,8 @@ impl KimSdk {
             client_id = %receipt.client_id,
             "enqueue committed"
         );
+        self.publish_timeline(&receipt.dest).await;
+        self.publish_session_snapshot().await;
         self.kick_outbox();
         Ok(receipt)
     }
@@ -218,7 +255,12 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store.cancel(epoch, session.account, id).await
+        let dest = store.get_row(&session.account, &id).await?.map(|r| r.dest);
+        store.cancel(epoch, session.account, id).await?;
+        if let Some(dest) = dest {
+            self.publish_timeline(&dest).await;
+        }
+        Ok(())
     }
 
     pub async fn retry_send(&self, id: String) -> Result<CommandReceipt, SdkError> {
@@ -235,6 +277,7 @@ impl KimSdk {
                 .ok_or_else(|| SdkError::NotFound {
                     what: "outbox".into(),
                 })?;
+        self.publish_timeline(&row.dest).await;
         self.kick_outbox();
         Ok(CommandReceipt {
             request_id: uuid::Uuid::new_v4().to_string(),
@@ -262,6 +305,8 @@ impl KimSdk {
                 .mark_read(&marker.dest, marker.kind, marker.visible_message_id)
                 .await;
         }
+        self.publish_session_snapshot().await;
+        self.publish_timeline(&marker.dest).await;
         Ok(())
     }
 
@@ -270,7 +315,12 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
-        store.delete_thread(epoch, session.account, dest).await
+        store
+            .delete_thread(epoch, session.account, dest.clone())
+            .await?;
+        self.publish_timeline_resync(&dest, "deleted").await;
+        self.publish_session_snapshot().await;
+        Ok(())
     }
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
@@ -279,6 +329,219 @@ impl KimSdk {
 
     pub fn set_agent(&self, agent: Arc<dyn AgentPort>) {
         *lock(&self.inner.agent) = agent;
+    }
+
+    /// Desktop only. Phone leaves [`NoopAgent`].
+    pub fn install_mobile_agent(&self) {
+        let runtime = self.inner.ffi_runtime.clone();
+        self.set_agent(Arc::new(MobileAgent::new(self.clone(), runtime)));
+    }
+
+    pub fn subscribe_agent_run(&self) -> mpsc::Receiver<AgentRunRequest> {
+        self.inner.ffi_runtime.subscribe()
+    }
+
+    pub fn submit_agent_run(&self, result: AgentRunResult) {
+        self.inner.ffi_runtime.submit(result);
+    }
+
+    fn agent_account_key(&self) -> String {
+        self.session_snapshot()
+            .map(|s| s.account)
+            .unwrap_or_default()
+    }
+
+    pub async fn upsert_agent_profile(&self, row: AgentProfileRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store
+            .upsert_agent_profile(self.agent_account_key(), row)
+            .await
+    }
+
+    pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store
+            .delete_agent_profile(self.agent_account_key(), profile_id)
+            .await
+    }
+
+    pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
+        let store = self.store()?;
+        store.load_agent_profiles(&self.agent_account_key()).await
+    }
+
+    pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store
+            .import_agent_profiles(self.agent_account_key(), rows)
+            .await
+    }
+
+    pub async fn enqueue_agent_turn(
+        &self,
+        dest: String,
+        text: String,
+        in_reply_to: i64,
+    ) -> Result<(), SdkError> {
+        self.agent()
+            .enqueue_turn(&dest, &text, in_reply_to, self.current_epoch())
+            .await
+    }
+
+    pub async fn search_messages(
+        &self,
+        query: String,
+        dest: Option<String>,
+    ) -> Result<Vec<MessageView>, SdkError> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let rows = store
+            .search_messages(&session.account, q, dest.as_deref())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(d, key, sender, body, at, message_id)| MessageView {
+                key,
+                dest: d,
+                sender,
+                body,
+                local_path: None,
+                at,
+                sys: false,
+                kind: 1,
+                width: 0,
+                height: 0,
+                message_id,
+                batch_id: None,
+                send_status: SendStatus::Sent,
+            })
+            .collect())
+    }
+
+    pub fn current_session(&self) -> Result<StartSession, SdkError> {
+        self.session_snapshot()
+    }
+
+    pub async fn upload_media(&self, media: MediaRef) -> Result<String, SdkError> {
+        let session = self.session_snapshot()?;
+        self.uploader()?.upload_image(&session.token, &media).await
+    }
+
+    pub async fn fetch_media(&self, url: String) -> Result<String, SdkError> {
+        if url.trim().is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: "media url is required".into(),
+            });
+        }
+        let store = self.store()?;
+        if let Some(row) = store.lookup_media(&url).await? {
+            if tokio::fs::metadata(&row.local_path).await.is_ok() {
+                store.touch_media(url).await?;
+                return Ok(row.local_path);
+            }
+        }
+        let dir = lock(&self.inner.media_dir)
+            .clone()
+            .ok_or_else(|| SdkError::InvalidArgument {
+                message: "media dir missing".into(),
+            })?;
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| SdkError::Disk {
+                message: e.to_string(),
+            })?;
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .build()
+            .map_err(|e| SdkError::Internal {
+                message: format!("reqwest: {e}"),
+            })?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| SdkError::Internal {
+                message: format!("fetch: {e}"),
+            })?;
+        if !resp.status().is_success() {
+            return Err(SdkError::Protocol {
+                status: i32::from(resp.status().as_u16()),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|e| SdkError::Internal {
+            message: format!("fetch body: {e}"),
+        })?;
+        let name = media_cache_name(&url);
+        let path = dir.join(name);
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| SdkError::Disk {
+                message: e.to_string(),
+            })?;
+        let size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+        let local = path.to_string_lossy().into_owned();
+        let evicted = store.upsert_media(url, local.clone(), size).await?;
+        for old in evicted {
+            let _ = tokio::fs::remove_file(old).await;
+        }
+        Ok(local)
+    }
+
+    fn spawn_agent_catch_up(&self) {
+        let epoch = self.current_epoch();
+        let sdk = self.clone();
+        tokio::spawn(async move {
+            if sdk.current_epoch() != epoch {
+                return;
+            }
+            sdk.maybe_agent_catch_up().await;
+        });
+    }
+
+    async fn maybe_agent_catch_up(&self) {
+        let epoch = self.current_epoch();
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        let dests = match store.agent_owned_dests(&session.account).await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        if dests.is_empty() {
+            return;
+        }
+        if self.current_epoch() != epoch {
+            return;
+        }
+        let _ = self.agent().catch_up(&dests, epoch).await;
+    }
+
+    async fn recover_lagged_fatal(&self) {
+        let Ok(sup) = self.supervisor() else {
+            return;
+        };
+        match sup.last_drop_reason() {
+            Some(kim_client::DropReason::Kickout) => {
+                self.emit_session_wait(SessionUpdate::Kickout {
+                    channel_id: "lagged".into(),
+                })
+                .await;
+            }
+            Some(kim_client::DropReason::AuthFailed) => {
+                self.emit_session_wait(SessionUpdate::AuthExpired {
+                    reason: "lagged".into(),
+                })
+                .await;
+            }
+            _ => {}
+        }
     }
 
     pub(crate) fn agent(&self) -> Arc<dyn AgentPort> {
@@ -310,7 +573,50 @@ impl KimSdk {
     pub async fn load_older(&self, cursor: PageCursor) -> Result<MessagePage, SdkError> {
         let store = self.store()?;
         let session = self.session_snapshot()?;
-        store.load_older(&session.account, cursor).await
+        let dest = cursor.dest.clone();
+        let limit = cursor.limit;
+        let before_id = cursor.before_id;
+        let mut page = store.load_older(&session.account, cursor.clone()).await?;
+        if (page.messages.len() as i32) < limit && before_id != 0 {
+            if let Ok(proto) = self.protocol() {
+                let kind = store
+                    .load_threads(&session.account)
+                    .await
+                    .ok()
+                    .and_then(|ts| ts.into_iter().find(|t| t.id == dest).map(|t| t.kind))
+                    .unwrap_or(0);
+                if let Ok(remote) = proto.history(&dest, kind, before_id, limit).await {
+                    let talks: Vec<kim_client::IncomingTalk> = remote
+                        .into_iter()
+                        .map(|h| kim_client::IncomingTalk {
+                            command: String::new(),
+                            dest: dest.clone(),
+                            message_id: h.message_id,
+                            sender: h.sender,
+                            msg_type: h.msg_type,
+                            body: h.body,
+                            extra: h.extra,
+                            send_time: h.send_time,
+                        })
+                        .collect();
+                    if !talks.is_empty() {
+                        let _ = self
+                            .persist_talks_for(
+                                self.current_epoch().0,
+                                session.account.clone(),
+                                talks,
+                                UnreadPolicy::Keep,
+                            )
+                            .await;
+                        if let Ok(again) = store.load_older(&session.account, cursor).await {
+                            page = again;
+                        }
+                    }
+                }
+            }
+        }
+        self.publish_timeline(&dest).await;
+        Ok(page)
     }
 
     pub async fn persist_talks(
@@ -332,13 +638,39 @@ impl KimSdk {
         policy: UnreadPolicy,
     ) -> Result<(), SdkError> {
         let store = self.store()?;
+        let dests: Vec<String> = {
+            let mut d: Vec<String> = talks.iter().map(|t| t.dest.clone()).collect();
+            d.sort();
+            d.dedup();
+            d
+        };
         store.persist_talks(epoch, account, talks, policy).await?;
         self.inner.metrics.inc_persist_talk();
+        for dest in dests {
+            self.publish_timeline(&dest).await;
+        }
+        self.publish_session_snapshot().await;
         Ok(())
     }
 
-    pub fn metrics(&self) -> (u64, u64, u64) {
+    pub fn metrics(&self) -> (u64, u64, u64, u64) {
         self.inner.metrics.snapshot()
+    }
+
+    pub fn install_panic_hook(&self) {
+        let inner = self.inner.clone();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info.to_string();
+            if let Ok(subs) = inner.session_subs.try_lock() {
+                for tx in subs.iter() {
+                    let _ = tx.try_send(SessionUpdate::RustPanic {
+                        message: message.clone(),
+                    });
+                }
+            }
+            previous(info);
+        }));
     }
 
     pub async fn persist_inbox(
@@ -358,9 +690,11 @@ impl KimSdk {
     ) -> Result<Vec<ThreadView>, SdkError> {
         let store = self.store()?;
         let views = store.persist_inbox(epoch, account, items).await?;
-        self.emit_session(SessionUpdate::Inbox {
+        self.publish_session_snapshot().await;
+        self.emit_session_wait(SessionUpdate::Inbox {
             threads: views.clone(),
-        });
+        })
+        .await;
         Ok(views)
     }
 
@@ -368,6 +702,95 @@ impl KimSdk {
         let store = self.store()?;
         let session = self.session_snapshot()?;
         store.load_threads(&session.account).await
+    }
+
+    pub async fn replace_contacts(&self, rows: Vec<PersonRef>) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store
+            .replace_contacts(session.account, rows.clone())
+            .await?;
+        self.emit_session_wait(SessionUpdate::ContactsChanged { contacts: rows })
+            .await;
+        Ok(())
+    }
+
+    pub async fn load_contacts(&self) -> Result<Vec<PersonRef>, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        store.load_contacts(&session.account).await
+    }
+
+    pub async fn settings_get(&self) -> Result<DeviceSettings, SdkError> {
+        let mut row = match self.store() {
+            Ok(store) => store.load_device_settings().await?,
+            Err(_) => DeviceSettings::default(),
+        };
+        if let Ok(session) = self.session_snapshot() {
+            row.account = session.account;
+        }
+        Ok(row)
+    }
+
+    pub async fn settings_patch(
+        &self,
+        ws_url: Option<String>,
+        http_origin: Option<String>,
+        env: Option<String>,
+        locale: Option<String>,
+    ) -> Result<DeviceSettings, SdkError> {
+        let store = self.store()?;
+        let mut row = store.load_device_settings().await?;
+        if let Some(v) = ws_url {
+            row.ws_url = v;
+        }
+        if let Some(v) = http_origin {
+            row.http_origin = v;
+        }
+        if let Some(v) = env {
+            row.env = v;
+        }
+        if let Some(v) = locale {
+            row.locale = v;
+        }
+        store.upsert_device_settings(row, false).await?;
+        self.settings_get().await
+    }
+
+    pub async fn import_device_settings(
+        &self,
+        ws_url: String,
+        http_origin: String,
+        env: String,
+        locale: String,
+    ) -> Result<DeviceSettings, SdkError> {
+        let store = self.store()?;
+        if store.prefs_imported().await? {
+            return self.settings_get().await;
+        }
+        let row = DeviceSettings {
+            ws_url,
+            http_origin,
+            env: if env.is_empty() { "prod".into() } else { env },
+            locale,
+            account: String::new(),
+        };
+        store.upsert_device_settings(row, true).await?;
+        self.settings_get().await
+    }
+
+    pub fn subscribe_token_persist(&self) -> mpsc::Receiver<TokenPersistEvent> {
+        let (tx, rx) = mpsc::channel(8);
+        lock(&self.inner.token_persist).push(tx);
+        rx
+    }
+
+    async fn publish_token_persist(&self, event: TokenPersistEvent) {
+        let subs = lock(&self.inner.token_persist).clone();
+        for tx in subs {
+            let _ = tx.send(event.clone()).await;
+        }
+        lock(&self.inner.token_persist).retain(|tx| !tx.is_closed());
     }
 
     /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
@@ -386,7 +809,7 @@ impl KimSdk {
         });
     }
 
-    async fn emit_session_wait(&self, update: SessionUpdate) {
+    pub(crate) async fn emit_session_wait(&self, update: SessionUpdate) {
         let subs = lock(&self.inner.session_subs).clone();
         for tx in subs {
             let _ = tx.send(update.clone()).await;
@@ -406,10 +829,39 @@ impl KimSdk {
                         match ev {
                             Ok(ev) => {
                                 if let Some(update) = session_update_from_event(ev) {
+                                    if matches!(update, SessionUpdate::Link { .. }) {
+                                        sdk.publish_session_snapshot().await;
+                                    }
+                                    match &update {
+                                        SessionUpdate::TokenRenew { token, .. } => {
+                                            sdk.publish_token_persist(TokenPersistEvent::Write {
+                                                token: token.clone(),
+                                            })
+                                            .await;
+                                        }
+                                        SessionUpdate::AuthExpired { .. } => {
+                                            sdk.publish_token_persist(TokenPersistEvent::Clear)
+                                                .await;
+                                        }
+                                        SessionUpdate::Link {
+                                            state: LinkStateView::Online,
+                                            ..
+                                        }
+                                        | SessionUpdate::SyncProgress {
+                                            catching_up: false,
+                                            ..
+                                        } => {
+                                            sdk.spawn_agent_catch_up();
+                                        }
+                                        _ => {}
+                                    }
                                     sdk.emit_session_wait(update).await;
                                 }
                             }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                sdk.publish_session_snapshot().await;
+                                sdk.recover_lagged_fatal().await;
+                            }
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
                     }
@@ -491,21 +943,99 @@ impl KimSdk {
     }
 
     pub fn subscribe_timeline(&self, query: TimelineQuery) -> watch::Receiver<TimelineUpdate> {
-        let dest = if query.dest.is_empty() {
-            String::new()
-        } else {
-            query.dest.clone()
-        };
-        let init = TimelineUpdate::Resync {
-            dest: dest.clone(),
-            reason: "subscribe".into(),
+        let dest = query.dest.clone();
+        let limit = if query.limit <= 0 { 50 } else { query.limit };
+        let init = TimelineUpdate::Snapshot {
+            snapshot: TimelineSnapshot {
+                dest: dest.clone(),
+                version: 0,
+                messages: Vec::new(),
+                pending: Vec::new(),
+                unread: 0,
+                last_read_message_id: 0,
+                has_more: false,
+            },
         };
         let mut map = lock(&self.inner.timelines);
         let tx = map
-            .entry(dest)
+            .entry(dest.clone())
             .or_insert_with(|| watch::channel(init).0)
             .clone();
+        drop(map);
+        let sdk = self.clone();
+        // FRB sync watchers are not inside a Tokio context unless the FFI
+        // layer enters one first. Skip the eager load rather than panic.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                sdk.publish_timeline_limit(&dest, limit).await;
+            });
+        }
         tx.subscribe()
+    }
+
+    async fn publish_session_snapshot(&self) {
+        let (link, last_error) = match self.supervisor() {
+            Ok(sup) => {
+                let link = match sup.state() {
+                    kim_client::LinkState::Connecting => LinkStateView::Connecting,
+                    kim_client::LinkState::Online => LinkStateView::Online,
+                    kim_client::LinkState::Reconnecting { attempt } => {
+                        LinkStateView::Reconnecting { attempt }
+                    }
+                    kim_client::LinkState::Offline => LinkStateView::Offline,
+                };
+                let last_error = sup.last_drop_reason().map(|r| r.as_str().to_string());
+                (link, last_error)
+            }
+            Err(_) => (LinkStateView::Offline, None),
+        };
+        let threads = match (self.store(), self.session_snapshot()) {
+            (Ok(store), Ok(session)) => store
+                .load_threads(&session.account)
+                .await
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        let unread_total = threads
+            .iter()
+            .map(|t| i64::from(t.unread.max(0)))
+            .sum::<i64>()
+            .clamp(0, i64::from(i32::MAX)) as i32;
+        let _ = self.inner.session_snapshot.send(SessionSnapshot {
+            link,
+            last_error,
+            threads,
+            unread_total,
+        });
+    }
+
+    pub(crate) async fn publish_timeline(&self, dest: &str) {
+        self.publish_timeline_limit(dest, 50).await;
+    }
+
+    async fn publish_timeline_limit(&self, dest: &str, limit: i32) {
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        let Ok(snapshot) = store.load_hot_window(&session.account, dest, limit).await else {
+            return;
+        };
+        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
+            let _ = tx.send(TimelineUpdate::Snapshot { snapshot });
+        }
+    }
+
+    async fn publish_timeline_resync(&self, dest: &str, reason: &str) {
+        if let Some(tx) = lock(&self.inner.timelines).get(dest) {
+            let _ = tx.send(TimelineUpdate::Resync {
+                dest: dest.into(),
+                reason: reason.into(),
+            });
+        }
+        self.publish_timeline(dest).await;
     }
 
     pub async fn notify_radio_up(&self) -> Result<(), SdkError> {
@@ -619,6 +1149,47 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
             pulled: pulled as u64,
             catching_up: page_pending,
         }),
+        kim_client::SessionEvent::ProfileUpdated { profile } => {
+            Some(SessionUpdate::ProfileUpdated {
+                account: profile.account,
+                nickname: profile.nickname,
+                avatar: profile.avatar,
+            })
+        }
+        kim_client::SessionEvent::PresenceUpdated {
+            account,
+            status,
+            last_seen,
+        } => Some(SessionUpdate::Presence {
+            account,
+            status,
+            last_seen,
+        }),
+        kim_client::SessionEvent::TypingUpdated {
+            typer,
+            dest,
+            kind,
+            active,
+        } => Some(SessionUpdate::Typing {
+            typer,
+            dest,
+            kind,
+            active,
+        }),
+        kim_client::SessionEvent::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        } => Some(SessionUpdate::ReceiptRead {
+            reader,
+            dest,
+            kind,
+            message_id,
+        }),
+        kim_client::SessionEvent::GroupCreate { group_id, members } => {
+            Some(SessionUpdate::GroupCreate { group_id, members })
+        }
         _ => None,
     }
 }
@@ -635,12 +1206,22 @@ fn sdk_to_persist(err: SdkError) -> kim_client::PersistError {
     }
 }
 
-fn migrate_blocking(path: PathBuf) -> Result<(), SdkError> {
+fn migrate_blocking(path: PathBuf) -> Result<bool, SdkError> {
+    let outcome = prepare_store_file(&path)?;
+    let wiped = matches!(outcome, PrepareOutcome::CreateEmpty { wiped: true });
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| SdkError::Internal {
             message: format!("runtime: {e}"),
         })?;
-    rt.block_on(store::migrate_path(path))
+    rt.block_on(store::migrate_path(path))?;
+    Ok(wiped)
+}
+
+fn media_cache_name(url: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("{:016x}.bin", hasher.finish())
 }

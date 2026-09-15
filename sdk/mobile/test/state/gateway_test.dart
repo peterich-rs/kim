@@ -1,137 +1,58 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/state/auth.dart';
-import 'package:kim_mobile/state/link.dart';
-import 'package:kim_mobile/state/session.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/features/session/link.dart';
 
 import '../support/harness.dart';
-
-Future<void> _tick() => Future<void>.delayed(Duration.zero);
-
-Future<void> _waitSignedOut(KimHarness env) async {
-  for (var i = 0; i < 20; i++) {
-    await _tick();
-    if (!env.container.read(authProvider).signedIn) {
-      return;
-    }
-  }
-  fail('session did not sign out');
-}
+import '../support/jwt.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('signed-in session starts the supervisor', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    expect(env.fake.connects, greaterThan(0));
-    expect(env.container.read(sessionProvider).status, ConnStatus.online);
-  });
-
-  test('radio down keeps socket online', () async {
+  test('offline snapshot paints Offline on linkProvider', () async {
     final env = await kimHarness(
-      token: 'tok.jwt',
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
       account: 'alice',
-      online: false,
     );
     env.container.read(linkProvider);
-    await _tick();
-    expect(env.container.read(sessionProvider).status, ConnStatus.online);
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-  });
-
-  test('link event with empty state does not clobber online', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-    env.fake.eventsController.add(
-      const KimEvent(kind: KimEventKind.link, state: '', error: ''),
+    env.fake.pushSnapshot(
+      const SessionSnapshotDto(
+        link: LinkStateDto.offline(),
+        threads: [],
+        unreadTotal: 0,
+      ),
     );
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-    expect(env.container.read(sessionProvider).status, ConnStatus.online);
-  });
-
-  test('explicit Offline link event marks offline', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    env.fake.eventsController.add(
-      const KimEvent(kind: KimEventKind.link, state: 'Offline'),
-    );
-    await _tick();
+    await Future<void>.delayed(Duration.zero);
     expect(env.container.read(linkProvider).status, ConnStatus.offline);
   });
 
-  test('unknown ffi kind does not mark reconnecting', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-    env.fake.eventsController.add(
-      const KimEvent(kind: KimEventKind.closed, error: 'ignored'),
+  test('retry only notifyRadioUp when session already started', () async {
+    final env = await kimHarness(
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
+      account: 'alice',
     );
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-  });
-
-  test('token renew does not restart session', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
     env.container.read(linkProvider);
-    await _tick();
-    final connects = env.fake.connects;
     await env.container.read(linkProvider.notifier).retry();
-    await _tick();
-    expect(env.fake.connects, connects);
     expect(env.fake.radioUps, greaterThan(0));
   });
 
-  test('connect failure surfaces offline', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.fake.connectError = Exception('Connection refused');
+  test('connect failure stays offline via snapshot', () async {
+    final env = await kimHarness(
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
+      account: 'alice',
+    );
+    env.fake.connectError = Exception('boom');
     env.container.read(linkProvider);
-    await _tick();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    env.fake.pushSnapshot(
+      const SessionSnapshotDto(
+        link: LinkStateDto.offline(),
+        lastError: 'boom',
+        threads: [],
+        unreadTotal: 0,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
     expect(env.container.read(linkProvider).status, ConnStatus.offline);
-    expect(env.container.read(sessionProvider).status, ConnStatus.offline);
-
-    env.fake.connectError = null;
-    await env.container.read(linkProvider.notifier).retry();
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.online);
-    expect(env.fake.connects, greaterThan(1));
-  });
-
-  test('authExpired event clears the session', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    expect(env.container.read(authProvider).signedIn, isTrue);
-    env.fake.emitAuthExpired();
-    await _waitSignedOut(env);
-    expect(env.container.read(authProvider).notice, Copy.sessionExpired);
-    expect(env.runtime.settings.token, isEmpty);
-  });
-
-  test('kick signs out with kicked notice', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.container.read(linkProvider);
-    await _tick();
-    env.fake.emitKick();
-    await _waitSignedOut(env);
-    expect(env.container.read(authProvider).notice, Copy.kicked);
-    expect(env.runtime.settings.token, isEmpty);
-  });
-
-  test('401 connect failure stays offline', () async {
-    final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    env.fake.connectError = Exception('http 401: 账号或密码错误');
-    env.container.read(linkProvider);
-    await _tick();
-    expect(env.container.read(linkProvider).status, ConnStatus.offline);
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(env.fake.connects, 1);
   });
 }
