@@ -25,8 +25,8 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 pub use agent::{
-    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime,
-    MobileAgent, NoopAgent, ScriptedRuntime, QUEUE_CAP,
+    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, DeviceOverlayRow,
+    FfiAgentRuntime, MobileAgent, NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
 };
 pub use command::{
     CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
@@ -476,7 +476,8 @@ impl KimSdk {
 
     pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
         let store = self.store()?;
-        store.load_agent_profiles(&self.agent_account_key()).await
+        let rows = store.load_agent_profiles(&self.agent_account_key()).await?;
+        Ok(rows.into_iter().filter(|r| r.deleted_at == 0).collect())
     }
 
     pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
@@ -484,6 +485,173 @@ impl KimSdk {
         let ((), _seq) = store
             .import_agent_profiles(self.agent_account_key(), rows)
             .await?;
+        Ok(())
+    }
+
+    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountRow>, SdkError> {
+        let store = self.store()?;
+        store
+            .load_provider_accounts(&self.agent_account_key())
+            .await
+    }
+
+    pub async fn upsert_provider_account(&self, row: ProviderAccountRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .upsert_provider_account(self.agent_account_key(), row)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_provider_account(&self, id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .delete_provider_account(self.agent_account_key(), id)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_device_overlay(
+        &self,
+        profile_id: String,
+    ) -> Result<Option<DeviceOverlayRow>, SdkError> {
+        let store = self.store()?;
+        store
+            .load_device_overlay(&self.agent_account_key(), &profile_id)
+            .await
+    }
+
+    pub async fn upsert_device_overlay(&self, row: DeviceOverlayRow) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store
+            .upsert_device_overlay(self.agent_account_key(), row)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn agent_flags(&self) -> Result<String, SdkError> {
+        let store = self.store()?;
+        store.load_agent_flags().await
+    }
+
+    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let ((), _seq) = store.upsert_agent_flags(flags_json).await?;
+        Ok(())
+    }
+
+    pub async fn sync_agent_specs(&self) -> Result<(), SdkError> {
+        let proto = match self.protocol() {
+            Ok(p) => p,
+            Err(_) => return Ok(()),
+        };
+        let (remote_specs, remote_accounts) = proto.agent_spec_sync().await?;
+        self.apply_remote_accounts(&remote_accounts).await?;
+        let store = self.store()?;
+        let account = self.agent_account_key();
+        let local_specs = store.load_agent_profiles(&account).await?;
+        let mut local_by_id: HashMap<String, AgentProfileRow> = local_specs
+            .into_iter()
+            .map(|r| (r.profile_id.clone(), r))
+            .collect();
+        for rec in remote_specs {
+            if rec.profile_id.is_empty() || rec.spec.is_empty() {
+                continue;
+            }
+            let local_ts = local_by_id
+                .get(&rec.profile_id)
+                .map(|r| r.updated_at)
+                .unwrap_or(0);
+            if rec.updated_at >= local_ts {
+                self.upsert_agent_profile(AgentProfileRow {
+                    profile_id: rec.profile_id.clone(),
+                    nickname: rec.nickname,
+                    server_account: rec.server_account,
+                    body_json: String::new(),
+                    body_blob: rec.spec,
+                    placement: "local".into(),
+                    updated_at: rec.updated_at,
+                    deleted_at: rec.deleted_at,
+                })
+                .await?;
+                local_by_id.remove(&rec.profile_id);
+            }
+        }
+        let local_accounts = store.load_provider_accounts_all(&account).await?;
+        let mut push_err: Option<SdkError> = None;
+        for row in local_by_id.into_values() {
+            if row.body_blob.is_empty() && row.deleted_at == 0 {
+                continue;
+            }
+            if let Err(err) = proto
+                .agent_spec_upsert(Some(&row_to_spec_record(&row)), None)
+                .await
+            {
+                tracing::warn!(
+                    error = %err,
+                    profile_id = %row.profile_id,
+                    "agent spec upsert failed"
+                );
+                if push_err.is_none() {
+                    push_err = Some(err);
+                }
+            }
+        }
+        for acc in &local_accounts {
+            let remote_ts = remote_accounts
+                .iter()
+                .find(|a| a.id == acc.id)
+                .map(|a| a.updated_at);
+            if remote_ts.is_some_and(|ts| acc.updated_at <= ts) {
+                continue;
+            }
+            if let Err(err) = proto
+                .agent_spec_upsert(None, Some(&row_to_provider_account(acc)))
+                .await
+            {
+                tracing::warn!(error = %err, account_id = %acc.id, "provider account upsert failed");
+                if push_err.is_none() {
+                    push_err = Some(err);
+                }
+            }
+        }
+        match push_err {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
+    async fn apply_remote_accounts(
+        &self,
+        remote: &[kim_client::AgentProviderAccount],
+    ) -> Result<(), SdkError> {
+        let store = self.store()?;
+        let local = store
+            .load_provider_accounts_all(&self.agent_account_key())
+            .await?;
+        let local_ts: HashMap<&str, i64> = local
+            .iter()
+            .map(|a| (a.id.as_str(), a.updated_at))
+            .collect();
+        for acc in remote {
+            if acc.id.is_empty() {
+                continue;
+            }
+            let ts = local_ts.get(acc.id.as_str()).copied().unwrap_or(0);
+            if acc.updated_at >= ts {
+                self.upsert_provider_account(ProviderAccountRow {
+                    id: acc.id.clone(),
+                    vendor_id: acc.vendor_id.clone(),
+                    base_url: acc.base_url.clone(),
+                    key_ref: acc.key_ref.clone(),
+                    display_name: acc.display_name.clone(),
+                    models_json: serde_json::to_string(&acc.models).unwrap_or_else(|_| "[]".into()),
+                    updated_at: acc.updated_at,
+                    deleted_at: acc.deleted_at,
+                })
+                .await?;
+            }
+        }
         Ok(())
     }
 
@@ -1613,6 +1781,32 @@ fn sdk_to_persist(err: SdkError) -> kim_client::PersistError {
         other => kim_client::PersistError::Disk {
             message: other.to_string(),
         },
+    }
+}
+
+fn row_to_spec_record(row: &AgentProfileRow) -> kim_client::AgentSpecRecord {
+    kim_client::AgentSpecRecord {
+        profile_id: row.profile_id.clone(),
+        nickname: row.nickname.clone(),
+        server_account: row.server_account.clone(),
+        spec: row.body_blob.clone(),
+        key_ciphertext: Vec::new(),
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    }
+}
+
+fn row_to_provider_account(row: &ProviderAccountRow) -> kim_client::AgentProviderAccount {
+    let models: Vec<String> = serde_json::from_str(&row.models_json).unwrap_or_default();
+    kim_client::AgentProviderAccount {
+        id: row.id.clone(),
+        vendor_id: row.vendor_id.clone(),
+        base_url: row.base_url.clone(),
+        key_ref: row.key_ref.clone(),
+        display_name: row.display_name.clone(),
+        models,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
     }
 }
 

@@ -53,6 +53,14 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         migrate_v4(tx).await?;
         set_schema_version(tx, 4).await?;
     }
+    if version < 5 {
+        migrate_v5(tx).await?;
+        set_schema_version(tx, 5).await?;
+    }
+    if version < 6 {
+        migrate_v6(tx).await?;
+        set_schema_version(tx, 6).await?;
+    }
     Ok(())
 }
 
@@ -111,6 +119,29 @@ async fn migrate_v4(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     tx.execute(schema::CREATE_MEDIA_CACHE)
         .await
         .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v5(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    ensure_column(tx, "agent_profiles", "body_blob", "BLOB").await?;
+    ensure_column(
+        tx,
+        "agent_profiles",
+        "placement",
+        "TEXT NOT NULL DEFAULT 'local'",
+    )
+    .await?;
+    tx.execute(schema::CREATE_PROVIDER_ACCOUNTS)
+        .await
+        .map_err(map_sqlx)?;
+    tx.execute(schema::CREATE_AGENT_DEVICE_OVERLAY)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v6(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    ensure_column(tx, "agent_profiles", "deleted_at", "INTEGER").await?;
     Ok(())
 }
 

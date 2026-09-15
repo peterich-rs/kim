@@ -18,7 +18,7 @@ use crate::session::lock;
 use crate::timeline::{AgentTurnState, SessionUpdate};
 use crate::KimSdk;
 
-pub use profiles::AgentProfileRow;
+pub use profiles::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
 pub use runtime::{
     AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime, ScriptedRuntime,
 };

@@ -7,7 +7,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::agent::AgentProfileRow;
+use crate::agent::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
 use crate::command::{CommandReceipt, OutgoingPayload, PageCursor, SendMessageCommand, SendStatus};
 use crate::error::{map_sqlx, SdkError};
 use crate::sync::UnreadPolicy;
@@ -154,6 +154,25 @@ enum WriteOp {
     RekeyAgentProfiles {
         from: String,
         to: String,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    UpsertProviderAccount {
+        account: String,
+        row: ProviderAccountRow,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    DeleteProviderAccount {
+        account: String,
+        id: String,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    UpsertDeviceOverlay {
+        account: String,
+        row: DeviceOverlayRow,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    UpsertAgentFlags {
+        flags_json: String,
         reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     TouchMedia {
@@ -709,6 +728,103 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn load_provider_accounts(
+        &self,
+        account: &str,
+    ) -> Result<Vec<ProviderAccountRow>, SdkError> {
+        agent::load_provider_accounts(&self.pool, account).await
+    }
+
+    pub(crate) async fn load_provider_accounts_all(
+        &self,
+        account: &str,
+    ) -> Result<Vec<ProviderAccountRow>, SdkError> {
+        agent::load_provider_accounts_all(&self.pool, account).await
+    }
+
+    pub(crate) async fn upsert_provider_account(
+        &self,
+        account: String,
+        row: ProviderAccountRow,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertProviderAccount {
+                account,
+                row,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn delete_provider_account(
+        &self,
+        account: String,
+        id: String,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::DeleteProviderAccount { account, id, reply })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn load_device_overlay(
+        &self,
+        account: &str,
+        profile_id: &str,
+    ) -> Result<Option<DeviceOverlayRow>, SdkError> {
+        agent::load_overlay(&self.pool, account, profile_id).await
+    }
+
+    pub(crate) async fn upsert_device_overlay(
+        &self,
+        account: String,
+        row: DeviceOverlayRow,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertDeviceOverlay {
+                account,
+                row,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn load_agent_flags(&self) -> Result<String, SdkError> {
+        settings::load_agent_flags(&self.pool).await
+    }
+
+    pub(crate) async fn upsert_agent_flags(
+        &self,
+        flags_json: String,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::UpsertAgentFlags { flags_json, reply })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
     pub(crate) async fn rekey_agent_profiles(
         &self,
         from: String,
@@ -1072,6 +1188,30 @@ async fn write_worker(
                 let result = rekey_agent_profiles_tx(&pool, &from, &to).await;
                 let _ = reply.send(record_result(&changes, "", 0, result));
             }
+            WriteOp::UpsertProviderAccount {
+                account,
+                row,
+                reply,
+            } => {
+                let result = upsert_provider_account_tx(&pool, &account, &row).await;
+                let _ = reply.send(record_result(&changes, &account, 0, result));
+            }
+            WriteOp::DeleteProviderAccount { account, id, reply } => {
+                let result = delete_provider_account_tx(&pool, &account, &id).await;
+                let _ = reply.send(record_result(&changes, &account, 0, result));
+            }
+            WriteOp::UpsertDeviceOverlay {
+                account,
+                row,
+                reply,
+            } => {
+                let result = upsert_overlay_tx(&pool, &account, &row).await;
+                let _ = reply.send(record_result(&changes, &account, 0, result));
+            }
+            WriteOp::UpsertAgentFlags { flags_json, reply } => {
+                let result = upsert_agent_flags_tx(&pool, &flags_json).await;
+                let _ = reply.send(record_result(&changes, "", 0, result));
+            }
             WriteOp::TouchMedia { url, reply } => {
                 let result = touch_media_tx(&pool, &url).await;
                 let _ = reply.send(record_result(&changes, "", 0, result));
@@ -1221,7 +1361,7 @@ async fn delete_agent_profile_tx(
 ) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = agent::delete_profile(&mut conn, account, profile_id).await;
+    let result = agent::delete_profile(&mut conn, account, profile_id, now_ms()).await;
     finish_conn(&mut conn, result)
         .await
         .map(|_| ((), CommitEffect::empty()))
@@ -1265,6 +1405,57 @@ async fn import_agent_profiles_tx(
         Ok(())
     }
     .await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
+}
+
+async fn upsert_provider_account_tx(
+    pool: &SqlitePool,
+    account: &str,
+    row: &ProviderAccountRow,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::upsert_provider_account(&mut conn, account, row, now_ms()).await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
+}
+
+async fn delete_provider_account_tx(
+    pool: &SqlitePool,
+    account: &str,
+    id: &str,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::delete_provider_account(&mut conn, account, id, now_ms()).await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
+}
+
+async fn upsert_overlay_tx(
+    pool: &SqlitePool,
+    account: &str,
+    row: &DeviceOverlayRow,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = agent::upsert_overlay(&mut conn, account, row).await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|_| ((), CommitEffect::empty()))
+}
+
+async fn upsert_agent_flags_tx(
+    pool: &SqlitePool,
+    flags_json: &str,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = settings::upsert_agent_flags(&mut conn, flags_json).await;
     finish_conn(&mut conn, result)
         .await
         .map(|_| ((), CommitEffect::empty()))

@@ -49,6 +49,29 @@ pub trait ProtocolClient: Send + Sync {
         })
     }
 
+    async fn agent_spec_sync(
+        &self,
+    ) -> Result<
+        (
+            Vec<kim_client::AgentSpecRecord>,
+            Vec<kim_client::AgentProviderAccount>,
+        ),
+        SdkError,
+    > {
+        Ok((vec![], vec![]))
+    }
+
+    async fn agent_spec_upsert(
+        &self,
+        record: Option<&kim_client::AgentSpecRecord>,
+        account: Option<&kim_client::AgentProviderAccount>,
+    ) -> Result<kim_client::AgentSpecRecord, SdkError> {
+        let _ = (record, account);
+        Err(SdkError::InvalidArgument {
+            message: "agent_spec_upsert not supported".into(),
+        })
+    }
+
     async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
         Err(kim_client::ClientError::NotConnected)
     }
@@ -139,6 +162,30 @@ impl ProtocolClient for KimClient {
         Ok((result.message_id, result.send_time))
     }
 
+    async fn agent_spec_sync(
+        &self,
+    ) -> Result<
+        (
+            Vec<kim_client::AgentSpecRecord>,
+            Vec<kim_client::AgentProviderAccount>,
+        ),
+        SdkError,
+    > {
+        KimClient::agent_spec_sync(self)
+            .await
+            .map_err(|e| map_client(e, ""))
+    }
+
+    async fn agent_spec_upsert(
+        &self,
+        record: Option<&kim_client::AgentSpecRecord>,
+        account: Option<&kim_client::AgentProviderAccount>,
+    ) -> Result<kim_client::AgentSpecRecord, SdkError> {
+        KimClient::agent_spec_upsert(self, record, account)
+            .await
+            .map_err(|e| map_client(e, ""))
+    }
+
     async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
         KimClient::friend_list(self).await
     }
@@ -201,6 +248,26 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
         client_id: &str,
     ) -> Result<(i64, i64), SdkError> {
         ProtocolClient::bot_reply(&**self, dest, body, in_reply_to, client_id).await
+    }
+
+    async fn agent_spec_sync(
+        &self,
+    ) -> Result<
+        (
+            Vec<kim_client::AgentSpecRecord>,
+            Vec<kim_client::AgentProviderAccount>,
+        ),
+        SdkError,
+    > {
+        ProtocolClient::agent_spec_sync(&**self).await
+    }
+
+    async fn agent_spec_upsert(
+        &self,
+        record: Option<&kim_client::AgentSpecRecord>,
+        account: Option<&kim_client::AgentProviderAccount>,
+    ) -> Result<kim_client::AgentSpecRecord, SdkError> {
+        ProtocolClient::agent_spec_upsert(&**self, record, account).await
     }
 
     async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {

@@ -70,6 +70,40 @@ pub(crate) async fn upsert_device(
     Ok(())
 }
 
+pub(crate) async fn load_agent_flags(pool: &SqlitePool) -> Result<String, SdkError> {
+    let row = sqlx::query("SELECT agent_flags FROM settings WHERE account = ''")
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx)?;
+    match row {
+        Some(r) => Ok(r.try_get("agent_flags").map_err(map_sqlx)?),
+        None => Ok("{}".into()),
+    }
+}
+
+pub(crate) async fn upsert_agent_flags(
+    tx: &mut SqliteConnection,
+    flags_json: &str,
+) -> Result<(), SdkError> {
+    let flags = if flags_json.trim().is_empty() {
+        "{}"
+    } else {
+        flags_json
+    };
+    sqlx::query(
+        r"
+        INSERT INTO settings (account, ws_url, http_origin, env, locale, agent_flags)
+        VALUES ('', '', '', 'prod', '', ?)
+        ON CONFLICT(account) DO UPDATE SET agent_flags = excluded.agent_flags
+        ",
+    )
+    .bind(flags)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
+}
+
 pub(crate) async fn imported_prefs(pool: &SqlitePool) -> Result<bool, SdkError> {
     let row = sqlx::query("SELECT value FROM meta WHERE key = 'imported_prefs'")
         .fetch_optional(pool)

@@ -233,16 +233,12 @@ async fn replace_contacts_keeps_unmatched_outgoing() {
     .await
     .unwrap();
     let contacts = sdk.load_contacts().await.unwrap();
-    assert!(
-        contacts
-            .iter()
-            .any(|person| person.account == "bob" && person.relation == "outgoing")
-    );
-    assert!(
-        contacts
-            .iter()
-            .any(|person| person.account == "erin" && person.relation == "friend")
-    );
+    assert!(contacts
+        .iter()
+        .any(|person| person.account == "bob" && person.relation == "outgoing"));
+    assert!(contacts
+        .iter()
+        .any(|person| person.account == "erin" && person.relation == "friend"));
 }
 
 #[tokio::test]
@@ -347,6 +343,7 @@ async fn agent_profiles_imported_before_login_are_visible_after_start() {
         nickname: "助手".into(),
         server_account: "b_bot".into(),
         body_json: "{}".into(),
+        ..Default::default()
     }])
     .await
     .unwrap();
@@ -357,4 +354,57 @@ async fn agent_profiles_imported_before_login_are_visible_after_start() {
     assert_eq!(after.len(), 1);
     assert_eq!(after[0].profile_id, "goose");
     assert_eq!(after[0].server_account, "b_bot");
+}
+
+#[tokio::test]
+async fn agent_blob_and_provider_account_roundtrip() {
+    use kim_sdk::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = KimSdk::open(path.to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    sdk.start_session(session()).await.unwrap();
+    sdk.upsert_agent_profile(AgentProfileRow {
+        profile_id: "goose".into(),
+        nickname: "助手".into(),
+        server_account: "b_bot".into(),
+        body_json: "".into(),
+        body_blob: vec![1, 2, 3],
+        placement: "cloud".into(),
+        updated_at: 9,
+        deleted_at: 0,
+    })
+    .await
+    .unwrap();
+    let rows = sdk.list_agent_profiles().await.unwrap();
+    assert_eq!(rows[0].body_blob, vec![1, 2, 3]);
+    assert_eq!(rows[0].placement, "cloud");
+    sdk.upsert_provider_account(ProviderAccountRow {
+        id: "acct-goose".into(),
+        vendor_id: "openai".into(),
+        base_url: "https://api.openai.com/v1".into(),
+        key_ref: "agent.api_key.goose".into(),
+        display_name: "openai".into(),
+        models_json: "[\"gpt-4o\"]".into(),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let accts = sdk.list_provider_accounts().await.unwrap();
+    assert_eq!(accts.len(), 1);
+    assert_eq!(accts[0].id, "acct-goose");
+    sdk.upsert_device_overlay(DeviceOverlayRow {
+        profile_id: "goose".into(),
+        workspace_path: "/tmp/ws".into(),
+        workspace_bookmark: "bm".into(),
+        user_agents_skills: "".into(),
+    })
+    .await
+    .unwrap();
+    sdk.delete_agent_profile("goose".into()).await.unwrap();
+    let live = sdk.list_agent_profiles().await.unwrap();
+    assert!(live.is_empty());
+    let overlay = sdk.get_device_overlay("goose".into()).await.unwrap();
+    assert_eq!(overlay.unwrap().workspace_path, "/tmp/ws");
 }
