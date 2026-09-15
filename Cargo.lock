@@ -406,6 +406,7 @@ dependencies = [
  "reqwest 0.12.28",
  "royal",
  "serde",
+ "serde_json",
  "snowflake_me",
  "sqlx",
  "thiserror 2.0.20",
@@ -1700,6 +1701,19 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_asn1",
+]
+
+[[package]]
+name = "kim-agent-codec"
+version = "0.1.0"
+dependencies = [
+ "goose-provider-types",
+ "kim-agent-host",
+ "kim-protocol",
+ "prost",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
