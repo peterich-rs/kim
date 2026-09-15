@@ -456,10 +456,7 @@ impl KimUiHandle {
     }
 
     pub async fn load_older(&self, dest: String) -> Result<(), SdkErrorDto> {
-        self.inner
-            .load_older(dest)
-            .await
-            .map_err(SdkErrorDto::from)
+        self.inner.load_older(dest).await.map_err(SdkErrorDto::from)
     }
 
     pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
