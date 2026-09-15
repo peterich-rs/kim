@@ -16,6 +16,7 @@ goose-providers = { version = "0.1.0-alpha.9", default-features = false, feature
 rmcp = { version = "3.2", default-features = false, features = ["client", "transport-child-process"] }
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["process"] }
 tokio-util.workspace = true
