@@ -1427,6 +1427,28 @@ impl KimSdk {
         self.inner.metrics.inc_query_refresh();
     }
 
+    /// Held stamps (account switch) keep the old account/epoch so a new-account
+    /// Snapshot cannot paint into the still-open dest watch. Skip until Dart
+    /// resubscribes and restamps; otherwise an in-flight refresh for the old
+    /// stamp overwrites the `Resync { reason: "account" }` watch value.
+    fn timeline_notice_applies(
+        &self,
+        sub: &TimelineSub,
+        notice_epoch: u64,
+        notice_account: &str,
+    ) -> bool {
+        if sub.epoch != notice_epoch || sub.account != notice_account {
+            return false;
+        }
+        if sub.epoch != self.current_epoch().0 {
+            return false;
+        }
+        matches!(
+            self.session_snapshot(),
+            Ok(session) if session.account == sub.account
+        )
+    }
+
     pub(crate) async fn refresh_timeline(
         &self,
         dest: &str,
@@ -1436,7 +1458,7 @@ impl KimSdk {
         let Some(sub) = lock(&self.inner.timelines).get(dest).cloned() else {
             return;
         };
-        if sub.epoch != notice_epoch || sub.account != notice_account {
+        if !self.timeline_notice_applies(&sub, notice_epoch, notice_account) {
             self.inner.metrics.inc_query_stale_skip();
             return;
         }
@@ -1472,7 +1494,7 @@ impl KimSdk {
         let Some(still) = lock(&self.inner.timelines).get(dest).cloned() else {
             return;
         };
-        if still.epoch != notice_epoch || still.account != notice_account {
+        if !self.timeline_notice_applies(&still, notice_epoch, notice_account) {
             self.inner.metrics.inc_query_stale_skip();
             return;
         }
