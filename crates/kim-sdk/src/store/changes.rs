@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::Notify;
 
@@ -184,10 +184,9 @@ mod tests {
         let mut g = log.inner.lock().unwrap();
         let n = g.take().expect("notice");
         assert_eq!(n.sequence, 2);
-        assert!(
-            n.queries
-                .contains(&ChangedQuery::Timeline { dest: "bob".into() })
-        );
+        assert!(n
+            .queries
+            .contains(&ChangedQuery::Timeline { dest: "bob".into() }));
         assert!(n.queries.contains(&ChangedQuery::Inbox));
     }
 

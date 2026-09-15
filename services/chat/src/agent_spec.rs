@@ -75,10 +75,13 @@ pub trait AgentSpecStore: Send + Sync {
     ) -> Result<AgentProviderAccount, AgentSpecError>;
 }
 
+type OwnerItemKey = (String, String, String);
+type SharedOwnerMap<T> = Arc<RwLock<HashMap<OwnerItemKey, T>>>;
+
 #[derive(Clone, Default)]
 pub struct MemoryAgentSpecStore {
-    inner: Arc<RwLock<HashMap<(String, String, String), AgentSpecRecord>>>,
-    accounts: Arc<RwLock<HashMap<(String, String, String), AgentProviderAccount>>>,
+    inner: SharedOwnerMap<AgentSpecRecord>,
+    accounts: SharedOwnerMap<AgentProviderAccount>,
 }
 
 impl MemoryAgentSpecStore {

@@ -166,7 +166,8 @@ class AgentRunLoop {
     if (keyed.isNotEmpty) {
       return keyed;
     }
-    if (account.keyRef == 'agent.api_key.goose' || profile.id == kGooseAgentId) {
+    if (account.keyRef == 'agent.api_key.goose' ||
+        profile.id == kGooseAgentId) {
       final goose = await read('agent.api_key.goose');
       if (goose.isNotEmpty) {
         return goose;

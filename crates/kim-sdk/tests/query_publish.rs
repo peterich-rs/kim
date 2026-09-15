@@ -272,13 +272,11 @@ async fn dual_key_merge_collapses_and_publishes() {
             .count(),
         1
     );
-    assert!(
-        after
-            .messages
-            .iter()
-            .chain(after.pending.iter())
-            .any(|message| message.key == client_id)
-    );
+    assert!(after
+        .messages
+        .iter()
+        .chain(after.pending.iter())
+        .any(|message| message.key == client_id));
 }
 
 #[tokio::test]
@@ -323,12 +321,10 @@ async fn pending_merge_to_sent_publishes_timeline() {
                 .any(|message| message.key == client_id && message.send_status == SendStatus::Sent)
     })
     .await;
-    assert!(
-        after
-            .messages
-            .iter()
-            .any(|message| message.key == client_id && message.send_status == SendStatus::Sent)
-    );
+    assert!(after
+        .messages
+        .iter()
+        .any(|message| message.key == client_id && message.send_status == SendStatus::Sent));
 }
 
 #[tokio::test]
@@ -445,12 +441,10 @@ async fn reconnect_same_account_rebuilds() {
             .any(|message| message.body == "survives reconnect")
     })
     .await;
-    assert!(
-        rebuilt
-            .messages
-            .iter()
-            .any(|message| message.body == "survives reconnect")
-    );
+    assert!(rebuilt
+        .messages
+        .iter()
+        .any(|message| message.body == "survives reconnect"));
 }
 
 #[tokio::test]
@@ -479,13 +473,11 @@ async fn switch_via_start_session_holds_stamp() {
     let no_foreign_body = tokio::time::timeout(Duration::from_millis(200), async {
         loop {
             if let TimelineUpdate::Snapshot { snapshot } = timeline.borrow().clone() {
-                assert!(
-                    !snapshot
-                        .messages
-                        .iter()
-                        .chain(snapshot.pending.iter())
-                        .any(|message| message.body == "carol only")
-                );
+                assert!(!snapshot
+                    .messages
+                    .iter()
+                    .chain(snapshot.pending.iter())
+                    .any(|message| message.body == "carol only"));
             }
             timeline.changed().await.unwrap();
         }
@@ -574,12 +566,10 @@ async fn coalesced_refresh() {
             .any(|message| message.body == "coalesced-231")
     })
     .await;
-    assert!(
-        snapshot
-            .messages
-            .iter()
-            .any(|message| message.body == "coalesced-231")
-    );
+    assert!(snapshot
+        .messages
+        .iter()
+        .any(|message| message.body == "coalesced-231"));
     let refreshes = sdk.query_refresh_total().saturating_sub(before);
     // Each persist dirties Timeline + Inbox (2 query refreshes). Without a
     // sleep window, a burst coalesces only while a refresh is in flight, so
@@ -613,12 +603,10 @@ async fn slow_subscriber_converges() {
             .any(|message| message.body == "slow-final")
     })
     .await;
-    assert!(
-        snapshot
-            .messages
-            .iter()
-            .any(|message| message.body == "slow-final")
-    );
+    assert!(snapshot
+        .messages
+        .iter()
+        .any(|message| message.body == "slow-final"));
 }
 
 #[tokio::test]
@@ -639,12 +627,10 @@ async fn first_subscribe_rebuilds() {
             .any(|message| message.body == "before subscribe")
     })
     .await;
-    assert!(
-        snapshot
-            .messages
-            .iter()
-            .any(|message| message.body == "before subscribe")
-    );
+    assert!(snapshot
+        .messages
+        .iter()
+        .any(|message| message.body == "before subscribe"));
 }
 
 #[tokio::test]
@@ -815,12 +801,10 @@ async fn commit_failure_does_not_publish() {
     tokio::time::sleep(Duration::from_millis(25)).await;
     let update = timeline.borrow().clone();
     if let TimelineUpdate::Snapshot { snapshot } = update {
-        assert!(
-            !snapshot
-                .messages
-                .iter()
-                .chain(snapshot.pending.iter())
-                .any(|message| message.body == "must not publish")
-        );
+        assert!(!snapshot
+            .messages
+            .iter()
+            .chain(snapshot.pending.iter())
+            .any(|message| message.body == "must not publish"));
     }
 }

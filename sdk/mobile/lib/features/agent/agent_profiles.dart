@@ -1390,20 +1390,20 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _writeFlags() async {
     try {
-      await ref.read(clientPortProvider).setAgentFlags(
-        jsonEncode({
-          'multi_profile': multiProfile,
-          'server_identity': serverIdentity,
-        }),
-      );
+      await ref
+          .read(clientPortProvider)
+          .setAgentFlags(
+            jsonEncode({
+              'multi_profile': multiProfile,
+              'server_identity': serverIdentity,
+            }),
+          );
     } catch (e, st) {
       KimLogger.warn('agent flags persist', e, st);
     }
   }
 
-  Future<List<AgentProfile>> _importPrefsProfiles(
-    KimClientPort client,
-  ) async {
+  Future<List<AgentProfile>> _importPrefsProfiles(KimClientPort client) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kProfiles);
     if (raw == null || raw.isEmpty) {
@@ -1537,7 +1537,6 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
           goose.reasoning ??
           ReasoningChoice.fromThinkingEffort(goose.thinkingEffort),
     );
-    final next = [persisted, ...state.where((p) => p.id != kGooseAgentId)];
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kActive, persisted.id);
     final settings = AgentSettings(
@@ -1598,7 +1597,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     } catch (e, st) {
       KimLogger.warn('agent profile delete', e, st);
     }
-    state = [for (final p in state) if (p.id != id) p];
+    state = [
+      for (final p in state)
+        if (p.id != id) p,
+    ];
   }
 
   Future<void> setMultiProfile(bool value) async {
