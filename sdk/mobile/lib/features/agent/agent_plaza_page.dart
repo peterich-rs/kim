@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
@@ -217,11 +218,24 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
+    final importAction = kIsWeb
+        ? const <Widget>[]
+        : [
+            IconButton(
+              key: const Key('agent-plaza-import'),
+              tooltip: l10n.agentPlazaImport,
+              onPressed: () => unawaited(_importPortable()),
+              icon: Icon(
+                LucideIcons.folderPlus,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ];
     if (!_loaded) {
       return Scaffold(
         body: CustomScrollView(
           slivers: [
-            KimSliverHeader(title: l10n.agentPlazaTitle),
+            KimSliverHeader(title: l10n.agentPlazaTitle, actions: importAction),
             const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
             ),
@@ -233,7 +247,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          KimSliverHeader(title: l10n.agentPlazaTitle),
+          KimSliverHeader(title: l10n.agentPlazaTitle, actions: importAction),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverList.list(
@@ -320,13 +334,6 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                       ],
                   ],
                 ),
-                const Gap(20),
-                if (!kIsWeb)
-                  OutlinedButton(
-                    key: const Key('agent-plaza-import'),
-                    onPressed: () => unawaited(_importPortable()),
-                    child: Text(l10n.agentPlazaImport),
-                  ),
               ],
             ),
           ),

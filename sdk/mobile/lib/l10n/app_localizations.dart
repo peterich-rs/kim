@@ -1937,7 +1937,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentPlazaEcoEmptyHint.
   ///
   /// In zh, this message translates to:
-  /// **'真实用户家目录 ~/.agents/skills 里尚无 SKILL.md'**
+  /// **'右上角可导入含 SKILL.md 的文件夹。会复制到本机 ~/.agents/skills，Claude、Cursor 等也能读到。'**
   String get agentPlazaEcoEmptyHint;
 
   /// No description provided for @agentPlazaAssign.
@@ -1967,7 +1967,7 @@ abstract class AppLocalizations {
   /// No description provided for @agentPlazaImport.
   ///
   /// In zh, this message translates to:
-  /// **'导入文件夹到 ~/.agents…'**
+  /// **'导入技能文件夹'**
   String get agentPlazaImport;
 
   /// No description provided for @agentPlazaImported.

@@ -15,6 +15,7 @@ import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
+import 'package:kim_mobile/design/kim_pinned_footer.dart';
 
 /// Full-screen create/edit. Prefer this over a sheet on phones.
 Future<String?> openProviderAccountEditor(
@@ -299,6 +300,13 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
         : (_name.text.isEmpty ? l10n.agentAccounts : _name.text);
 
     return Scaffold(
+      bottomNavigationBar: KimPinnedFooter(
+        child: FilledButton(
+          key: const Key('provider-save'),
+          onPressed: _save,
+          child: Text(Copy.save),
+        ),
+      ),
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(title: title),
@@ -464,12 +472,6 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                           : () => unawaited(_refreshModels()),
                     ),
                   ],
-                ),
-                const Gap(20),
-                FilledButton(
-                  key: const Key('provider-save'),
-                  onPressed: _save,
-                  child: Text(Copy.save),
                 ),
               ],
             ),

@@ -352,7 +352,7 @@
   "agentPlazaKimSection": "KIM shelf",
   "agentPlazaEcoSection": "Ecosystem shelf",
   "agentPlazaEcoEmpty": "Ecosystem shelf is empty",
-  "agentPlazaEcoEmptyHint": "No SKILL.md under the real ~/.agents/skills yet",
+  "agentPlazaEcoEmptyHint": "Use the header action to import a folder with SKILL.md. It is copied into ~/.agents/skills so Claude, Cursor, and others can find it.",
   "agentPlazaAssign": "Assign",
   "agentPlazaAssigningTo": "Picking for persona “{name}”",
   "@agentPlazaAssigningTo": {
@@ -367,7 +367,7 @@
       "id": { "type": "String" }
     }
   },
-  "agentPlazaImport": "Import folder into ~/.agents…",
+  "agentPlazaImport": "Import skill folder",
   "agentPlazaImported": "Imported {id}",
   "@agentPlazaImported": {
     "placeholders": {

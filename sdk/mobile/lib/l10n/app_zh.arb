@@ -352,7 +352,7 @@
   "agentPlazaKimSection": "KIM 架",
   "agentPlazaEcoSection": "生态架",
   "agentPlazaEcoEmpty": "生态架为空",
-  "agentPlazaEcoEmptyHint": "真实用户家目录 ~/.agents/skills 里尚无 SKILL.md",
+  "agentPlazaEcoEmptyHint": "右上角可导入含 SKILL.md 的文件夹。会复制到本机 ~/.agents/skills，Claude、Cursor 等也能读到。",
   "agentPlazaAssign": "分配",
   "agentPlazaAssigningTo": "正在为人设「{name}」挑选",
   "@agentPlazaAssigningTo": {
@@ -367,7 +367,7 @@
       "id": { "type": "String" }
     }
   },
-  "agentPlazaImport": "导入文件夹到 ~/.agents…",
+  "agentPlazaImport": "导入技能文件夹",
   "agentPlazaImported": "已导入 {id}",
   "@agentPlazaImported": {
     "placeholders": {
