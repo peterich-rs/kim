@@ -286,17 +286,13 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                         ListTile(
                           key: Key('agent-plaza-kim-${_app[i].id}'),
                           title: Text(_app[i].name),
-                          subtitle: Text(
-                            [
-                              _app[i].id,
-                              if (_app[i].version.isNotEmpty)
-                                'v${_app[i].version}',
-                              if (_app[i].description.isNotEmpty)
-                                _app[i].description,
-                            ].join(' · '),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          subtitle: _app[i].listDescription.isEmpty
+                              ? null
+                              : Text(
+                                  _app[i].listDescription,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                           trailing: _assignProfile == null
                               ? null
                               : TextButton(
@@ -329,7 +325,13 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                         ListTile(
                           key: Key('agent-plaza-eco-${_eco[i].id}'),
                           title: Text(_eco[i].name),
-                          subtitle: Text(_eco[i].id),
+                          subtitle: _eco[i].listDescription.isEmpty
+                              ? null
+                              : Text(
+                                  _eco[i].listDescription,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
                       ],
                   ],

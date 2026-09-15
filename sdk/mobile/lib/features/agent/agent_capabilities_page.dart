@@ -802,15 +802,13 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                         SwitchListTile(
                           key: Key('agent-skills-app-${_appCatalog[i].id}'),
                           title: Text(_appCatalog[i].name),
-                          subtitle: Text(
-                            [
-                              _appCatalog[i].id,
-                              if (_appCatalog[i].description.isNotEmpty)
-                                _appCatalog[i].description,
-                            ].join(' · '),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          subtitle: _appCatalog[i].listDescription.isEmpty
+                              ? null
+                              : Text(
+                                  _appCatalog[i].listDescription,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                           value: _isAssigned(_appCatalog[i].id),
                           onChanged: (v) =>
                               unawaited(_toggleApp(_appCatalog[i], v)),
@@ -838,10 +836,11 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                           key: Key('agent-skills-mute-${_portable[i].id}'),
                           title: Text(_portable[i].name),
                           subtitle: Text(
-                            [
-                              _portable[i].id,
-                              l10n.agentSkillsPortableMuteHint,
-                            ].join(' · '),
+                            _portable[i].listDescription.isEmpty
+                                ? l10n.agentSkillsPortableMuteHint
+                                : _portable[i].listDescription,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           value: _denylist.contains(_portable[i].id),
                           onChanged: (muted) => unawaited(

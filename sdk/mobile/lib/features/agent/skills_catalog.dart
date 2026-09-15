@@ -30,6 +30,9 @@ class CatalogSkill {
   final String dir;
 
   bool get isApp => className == SkillRef.classApp || id.startsWith('kim-');
+
+  /// Second line of plaza / skills rows: frontmatter `description`.
+  String get listDescription => description.trim();
 }
 
 /// Hard-coded S-KD 7 requirements until frontmatter `requires_tools` is parsed.

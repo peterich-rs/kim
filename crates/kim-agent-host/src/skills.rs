@@ -222,10 +222,64 @@ fn unquote(value: &str) -> String {
     }
 }
 
+fn yaml_block_folded(indicator: &str) -> Option<bool> {
+    let v = indicator.trim();
+    if v.starts_with('>') {
+        Some(true)
+    } else if v.starts_with('|') {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn collect_yaml_block(lines: &[&str], mut i: usize, folded: bool) -> (String, usize) {
+    let mut parts = Vec::new();
+    while i < lines.len() {
+        let line = lines[i];
+        if line.is_empty() {
+            if i + 1 < lines.len() && starts_yaml_indent(lines[i + 1]) {
+                parts.push(String::new());
+                i += 1;
+                continue;
+            }
+            break;
+        }
+        if !starts_yaml_indent(line) {
+            break;
+        }
+        parts.push(line.trim().to_string());
+        i += 1;
+    }
+    let text = if folded {
+        let mut out = String::new();
+        for part in parts {
+            if part.is_empty() {
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+            } else {
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push(' ');
+                }
+                out.push_str(&part);
+            }
+        }
+        out
+    } else {
+        parts.join("\n")
+    };
+    (text, i)
+}
+
+fn starts_yaml_indent(line: &str) -> bool {
+    line.starts_with(' ') || line.starts_with('\t')
+}
+
 /// Minimal `---` frontmatter reader: top-level `key: value` lines only.
 ///
-/// A YAML dependency would buy nesting KIM does not read; indented lines,
-/// list items, and comments are skipped so `metadata.kim` blocks are ignored.
+/// Folded (`>`) and literal (`|`) scalars are collected so list rows can show
+/// `description`. Nested maps (`metadata.kim`) stay ignored.
 pub fn parse_skill_md(raw: &str) -> SkillDoc {
     let text = raw.strip_prefix('\u{feff}').unwrap_or(raw);
     let Some((block, body)) = split_frontmatter(text) else {
@@ -234,15 +288,25 @@ pub fn parse_skill_md(raw: &str) -> SkillDoc {
             body: text.trim().to_string(),
         };
     };
+    let lines: Vec<&str> = block.lines().collect();
     let mut meta = SkillMeta::default();
-    for line in block.lines() {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        i += 1;
         if line.starts_with([' ', '\t', '-', '#']) {
             continue;
         }
-        let Some((key, value)) = line.split_once(':') else {
+        let Some((key, raw_value)) = line.split_once(':') else {
             continue;
         };
-        let value = unquote(value.trim());
+        let value = if let Some(folded) = yaml_block_folded(raw_value) {
+            let (block_text, next) = collect_yaml_block(&lines, i, folded);
+            i = next;
+            block_text
+        } else {
+            unquote(raw_value.trim())
+        };
         match key.trim().to_ascii_lowercase().as_str() {
             "name" => meta.name = value,
             "description" => meta.description = value,
@@ -694,6 +758,19 @@ mod tests {
         assert_eq!(doc.meta.description, "Conventional Commits");
         assert_eq!(doc.meta.version, "2.1");
         assert_eq!(doc.body, "# Body\ntext");
+    }
+
+    #[test]
+    fn frontmatter_folded_description_joins_indented_lines() {
+        let doc = parse_skill_md(
+            "---\nname: codegraph\ndescription: >\n  Query this repo's local CodeGraph index\n  instead of grep.\nlicense: MIT\n---\n\n# Body\n",
+        );
+        assert_eq!(doc.meta.name, "codegraph");
+        assert_eq!(
+            doc.meta.description,
+            "Query this repo's local CodeGraph index instead of grep."
+        );
+        assert_eq!(doc.body, "# Body");
     }
 
     #[test]
