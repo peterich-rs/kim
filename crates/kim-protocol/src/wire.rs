@@ -51,6 +51,8 @@ pub const CMD_BOT_UPDATE: &str = "chat.bot.update";
 pub const CMD_BOT_REPLY: &str = "chat.bot.reply";
 pub const CMD_BOT_PENDING: &str = "chat.bot.pending";
 pub const CMD_BOT_TYPING: &str = "chat.bot.typing";
+pub const CMD_AGENT_SPEC_SYNC: &str = "chat.agent.spec.sync";
+pub const CMD_AGENT_SPEC_UPSERT: &str = "chat.agent.spec.upsert";
 
 pub const INBOX_KIND_USER: i32 = 0;
 pub const INBOX_KIND_GROUP: i32 = 1;

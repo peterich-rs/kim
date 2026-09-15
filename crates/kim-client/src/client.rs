@@ -9,18 +9,18 @@ use uuid::Uuid;
 
 use crate::config::ClientConfig;
 use crate::events::{
-    BotConfig, BotPendingItem, Event, HistoryItem, InboxItem, Message, MessageIndex,
-    OutgoingContent, Profile, TalkResult,
+    AgentProviderAccount, AgentSpecRecord, BotConfig, BotPendingItem, Event, HistoryItem,
+    InboxItem, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
 };
 use crate::login::{login_with_device, send_ping};
 use crate::pump::{start_split_pump, Live, PumpOpts, TokenSink};
 use crate::session::MemorySession;
 use crate::wire::{
-    decode_event, encode_ack, encode_ack_batch, encode_bot_create, encode_bot_pending,
-    encode_bot_reply, encode_bot_typing, encode_bot_update, encode_dest_cmd, encode_empty_cmd,
-    encode_history, encode_inbox_list, encode_inbox_read, encode_offline_content,
-    encode_offline_index, encode_outgoing, encode_ping, encode_room_enter, encode_room_leave,
-    encode_typing, encode_user_search, encode_user_update,
+    decode_event, encode_ack, encode_ack_batch, encode_agent_spec_sync, encode_agent_spec_upsert,
+    encode_bot_create, encode_bot_pending, encode_bot_reply, encode_bot_typing, encode_bot_update,
+    encode_dest_cmd, encode_empty_cmd, encode_history, encode_inbox_list, encode_inbox_read,
+    encode_offline_content, encode_offline_index, encode_outgoing, encode_ping, encode_room_enter,
+    encode_room_leave, encode_typing, encode_user_search, encode_user_update,
 };
 use crate::ClientError;
 use kim_protocol::{
@@ -365,6 +365,52 @@ impl KimClient {
 
     pub async fn bot_delete(&self, dest: &str) -> Result<(), ClientError> {
         self.dest_status(CMD_BOT_DELETE, dest).await
+    }
+
+    pub async fn agent_spec_sync(
+        &self,
+    ) -> Result<(Vec<AgentSpecRecord>, Vec<AgentProviderAccount>), ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(encode_agent_spec_sync(seq), seq, |ev| match ev {
+            Event::AgentSpecSync {
+                sequence,
+                records,
+                accounts,
+            } if *sequence == seq => Some(Ok((records.clone(), accounts.clone()))),
+            Event::Status {
+                status, sequence, ..
+            } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+            _ => None,
+        })
+        .await
+    }
+
+    pub async fn agent_spec_upsert(
+        &self,
+        record: Option<&AgentSpecRecord>,
+        account: Option<&AgentProviderAccount>,
+    ) -> Result<AgentSpecRecord, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            encode_agent_spec_upsert(seq, record, account),
+            seq,
+            |ev| match ev {
+                Event::AgentSpecUpsert { sequence, record } if *sequence == seq => {
+                    Some(Ok(record.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
+                _ => None,
+            },
+        )
+        .await
     }
 
     pub async fn bot_update(

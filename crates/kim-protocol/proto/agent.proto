@@ -1,0 +1,123 @@
+syntax = "proto3";
+package kim.agent;
+
+// Canonical AgentSpec body. Local SQLite `body_blob` and cloud BYTEA are the
+// same bytes. Chat never walks fields beyond schema_version + id.
+//
+// Proto3 zeros: treat unset placement as LOCAL, unset mode as SMART_APPROVE,
+// unset schema_version as 1. `optional bool enabled` / SkillRef.enabled: None → true.
+//
+// Open JSON pockets stay `bytes` (A-KD 10). Do not add google.protobuf.Struct.
+// Field numbers in this file freeze at the implementing PR; do not reuse.
+
+enum Placement {
+  PLACEMENT_UNSPECIFIED = 0; // read as LOCAL
+  LOCAL = 1;
+  CLOUD = 2;
+}
+
+enum GooseMode {
+  GOOSE_MODE_UNSPECIFIED = 0; // read as SMART_APPROVE
+  SMART_APPROVE = 1;
+  APPROVE = 2;
+  AUTO = 3;
+  CHAT = 4;
+}
+
+enum WorkspaceKind {
+  WORKSPACE_KIND_UNSPECIFIED = 0; // read as SANDBOX
+  SANDBOX = 1;
+  REPO = 2;
+}
+
+enum PermissionEffect {
+  PERMISSION_EFFECT_UNSPECIFIED = 0;
+  ALWAYS_ALLOW = 1;
+  ASK_BEFORE = 2;
+  NEVER_ALLOW = 3;
+}
+
+message AgentSpec {
+  uint32 schema_version = 1; // current 1; higher than reader max → refuse apply
+  string id = 2;
+  string display_name = 3;
+  repeated string aliases = 4;
+  optional bool enabled = 5; // unset → true
+  Placement placement = 6;
+  int64 updated_at = 7; // writer SDK now_ms; cloud may stamp again
+  string system_prompt = 8;
+  string server_account = 9;
+  ModelRef model_ref = 10;
+  repeated CapabilityRef capabilities = 11;
+  repeated PermissionRule permission_rules = 12;
+  WorkspaceSpec workspace = 13; // kind only; path lives in DeviceOverlay
+  repeated SkillRef skills = 14;
+  repeated string portable_denylist = 15;
+  string steer = 16;
+  uint32 max_turns = 17; // 0 = unset
+  GooseMode mode = 18;
+  bytes extra_json = 99; // escape hatch; stop writing once a field is typed
+}
+
+message ModelRef {
+  string account_id = 1;
+  string model = 2;
+  ReasoningChoice reasoning = 3;
+}
+
+message ReasoningChoice {
+  uint32 v = 1;
+  string kind = 2; // none | effort_enum | toggle | budget | advanced
+  optional bool on = 3;
+  optional string value = 4;
+  optional int32 budget = 5;
+  bytes advanced_json = 6;
+}
+
+message CapabilityRef {
+  string kind = 1;
+  string id = 2;
+  bytes params_json = 3;
+  optional bool enabled = 4; // unset → true
+}
+
+message PermissionRule {
+  oneof match {
+    string tool_name = 1;
+    string fs_path_prefix = 2;
+    string bash_argv_prefix = 3;
+    McpToolMatch mcp_tool = 4;
+  }
+  PermissionEffect effect = 5;
+}
+
+message McpToolMatch {
+  string extension = 1;
+  string name = 2;
+}
+
+message WorkspaceSpec {
+  WorkspaceKind kind = 1;
+}
+
+message SkillRef {
+  string id = 1;
+  string class = 2; // app | portable
+  string origin = 3;
+  string version = 4;
+  optional bool enabled = 5; // unset → true
+}
+
+// Synced with AgentSpec on the same channel. key_ref only; key bytes stay
+// in Keychain unless the user opts into E2E (key_ciphertext).
+message ProviderAccountRecord {
+  string id = 1;
+  string vendor_id = 2;
+  string base_url = 3;
+  string key_ref = 4;
+  string display_name = 5;
+  repeated string models = 6;
+  int64 updated_at = 7;
+  bytes key_ciphertext = 8;
+  bool deleted = 9;
+}

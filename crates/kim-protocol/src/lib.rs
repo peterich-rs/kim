@@ -15,6 +15,10 @@ pub mod pkt {
     include!(concat!(env!("OUT_DIR"), "/kim.pkt.rs"));
 }
 
+pub mod agent {
+    include!(concat!(env!("OUT_DIR"), "/kim.agent.rs"));
+}
+
 pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
 pub use command::Command;
 pub use error::ProtocolError;
@@ -38,18 +42,18 @@ pub use token::{
     parse, token_epoch_key, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,
 };
 pub use wire::{
-    profile_kind, service_name, CMD_BLOCK_ADD, CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_BOT_CREATE,
-    CMD_BOT_DELETE, CMD_BOT_PENDING, CMD_BOT_REPLY, CMD_BOT_TYPING, CMD_BOT_UPDATE,
-    CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT,
-    CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST,
-    CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,
-    CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN,
-    CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ,
-    CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
-    CMD_USER_UPDATED, INBOX_KIND_GROUP, INBOX_KIND_USER, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
-    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE, META_ACCOUNT, META_APP, META_DEST_CHANNELS,
-    META_DEST_SERVER, PROFILE_KIND_BOT, PROFILE_KIND_USER, SN_CHAT, SN_LOGIN, SN_ROYAL,
-    SN_TGATEWAY, SN_WGATEWAY,
+    profile_kind, service_name, CMD_AGENT_SPEC_SYNC, CMD_AGENT_SPEC_UPSERT, CMD_BLOCK_ADD,
+    CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_BOT_CREATE, CMD_BOT_DELETE, CMD_BOT_PENDING,
+    CMD_BOT_REPLY, CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
+    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
+    CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_GROUP_DETAIL,
+    CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY, CMD_INBOX_LIST, CMD_INBOX_READ,
+    CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
+    CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, INBOX_KIND_GROUP, INBOX_KIND_USER,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE, META_ACCOUNT,
+    META_APP, META_DEST_CHANNELS, META_DEST_SERVER, PROFILE_KIND_BOT, PROFILE_KIND_USER, SN_CHAT,
+    SN_LOGIN, SN_ROYAL, SN_TGATEWAY, SN_WGATEWAY,
 };
 
 use std::sync::Arc;
@@ -135,5 +139,86 @@ mod tests {
     #[test]
     fn allowed_app_is_kim() {
         assert_eq!(ALLOWED_APP, "kim");
+    }
+
+    #[test]
+    fn agent_spec_roundtrip_preserves_closed_fields() {
+        use prost::Message;
+
+        let spec = agent::AgentSpec {
+            schema_version: 1,
+            id: "goose".into(),
+            display_name: "助手".into(),
+            aliases: vec!["助手".into()],
+            enabled: Some(true),
+            placement: agent::Placement::Local as i32,
+            updated_at: 1_700_000_000_000,
+            system_prompt: "be concise".into(),
+            server_account: "b_abc".into(),
+            model_ref: Some(agent::ModelRef {
+                account_id: "acct-goose".into(),
+                model: "gpt-4o".into(),
+                reasoning: Some(agent::ReasoningChoice {
+                    v: 1,
+                    kind: "effort_enum".into(),
+                    on: None,
+                    value: Some("medium".into()),
+                    budget: None,
+                    advanced_json: Vec::new(),
+                }),
+            }),
+            capabilities: vec![agent::CapabilityRef {
+                kind: "im.send".into(),
+                id: String::new(),
+                params_json: b"{}".to_vec(),
+                enabled: Some(true),
+            }],
+            permission_rules: vec![agent::PermissionRule {
+                r#match: Some(agent::permission_rule::Match::ToolName(
+                    "send_message".into(),
+                )),
+                effect: agent::PermissionEffect::AskBefore as i32,
+            }],
+            workspace: Some(agent::WorkspaceSpec {
+                kind: agent::WorkspaceKind::Sandbox as i32,
+            }),
+            skills: vec![agent::SkillRef {
+                id: "kim-im".into(),
+                class: "app".into(),
+                origin: "bundled".into(),
+                version: String::new(),
+                enabled: Some(true),
+            }],
+            portable_denylist: vec!["noisy".into()],
+            steer: String::new(),
+            max_turns: 0,
+            mode: agent::GooseMode::SmartApprove as i32,
+            extra_json: Vec::new(),
+        };
+        let bytes = spec.encode_to_vec();
+        let back = match agent::AgentSpec::decode(bytes.as_slice()) {
+            Ok(s) => s,
+            Err(e) => panic!("decode AgentSpec: {e}"),
+        };
+        assert_eq!(back.id, "goose");
+        assert_eq!(back.display_name, "助手");
+        assert_eq!(back.enabled, Some(true));
+        assert_eq!(back.placement, agent::Placement::Local as i32);
+        assert_eq!(
+            back.model_ref.as_ref().map(|m| m.model.as_str()),
+            Some("gpt-4o")
+        );
+        assert_eq!(back.capabilities.len(), 1);
+        assert_eq!(back.skills[0].id, "kim-im");
+        assert_eq!(back.mode, agent::GooseMode::SmartApprove as i32);
+    }
+
+    #[test]
+    fn agent_spec_zeros_are_distinct_from_explicit_local() {
+        assert_eq!(agent::Placement::Unspecified as i32, 0);
+        assert_eq!(agent::Placement::Local as i32, 1);
+        assert_eq!(agent::GooseMode::Unspecified as i32, 0);
+        assert_eq!(agent::GooseMode::SmartApprove as i32, 1);
+        assert_eq!(agent::WorkspaceKind::Sandbox as i32, 1);
     }
 }

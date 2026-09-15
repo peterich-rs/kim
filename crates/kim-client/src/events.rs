@@ -208,7 +208,39 @@ pub enum Event {
         status: i32,
         sequence: u32,
     },
+    AgentSpecSync {
+        sequence: u32,
+        records: Vec<AgentSpecRecord>,
+        accounts: Vec<AgentProviderAccount>,
+    },
+    AgentSpecUpsert {
+        sequence: u32,
+        record: AgentSpecRecord,
+    },
     Closed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct AgentSpecRecord {
+    pub profile_id: String,
+    pub nickname: String,
+    pub server_account: String,
+    pub spec: Vec<u8>,
+    pub key_ciphertext: Vec<u8>,
+    pub updated_at: i64,
+    pub deleted_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct AgentProviderAccount {
+    pub id: String,
+    pub vendor_id: String,
+    pub base_url: String,
+    pub key_ref: String,
+    pub display_name: String,
+    pub models: Vec<String>,
+    pub updated_at: i64,
+    pub deleted_at: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
