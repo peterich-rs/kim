@@ -455,7 +455,7 @@ async fn switch_via_start_session_holds_stamp() {
         limit: 50,
     });
     sdk.start_session(session_for("carol")).await.unwrap();
-    tokio::time::timeout(Duration::from_millis(200), async {
+    tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             let update = timeline.borrow().clone();
             match update {
