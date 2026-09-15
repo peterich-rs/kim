@@ -11,7 +11,7 @@ part 'types.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_profile`, `from_str`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePageDto`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCardDto {
   final int v;
@@ -61,12 +61,18 @@ class AgentProfileDto {
   final String nickname;
   final String serverAccount;
   final String bodyJson;
+  final Uint8List bodyBlob;
+  final String placement;
+  final PlatformInt64 updatedAt;
 
   const AgentProfileDto({
     required this.profileId,
     required this.nickname,
     required this.serverAccount,
     required this.bodyJson,
+    required this.bodyBlob,
+    required this.placement,
+    required this.updatedAt,
   });
 
   @override
@@ -74,7 +80,10 @@ class AgentProfileDto {
       profileId.hashCode ^
       nickname.hashCode ^
       serverAccount.hashCode ^
-      bodyJson.hashCode;
+      bodyJson.hashCode ^
+      bodyBlob.hashCode ^
+      placement.hashCode ^
+      updatedAt.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -84,7 +93,10 @@ class AgentProfileDto {
           profileId == other.profileId &&
           nickname == other.nickname &&
           serverAccount == other.serverAccount &&
-          bodyJson == other.bodyJson;
+          bodyJson == other.bodyJson &&
+          bodyBlob == other.bodyBlob &&
+          placement == other.placement &&
+          updatedAt == other.updatedAt;
 }
 
 class AgentRunRequestDto {
@@ -263,6 +275,37 @@ class ContactsSnapshotDto {
           version == other.version &&
           contacts == other.contacts &&
           syncError == other.syncError;
+}
+
+class DeviceOverlayDto {
+  final String profileId;
+  final String workspacePath;
+  final String workspaceBookmark;
+  final String userAgentsSkills;
+
+  const DeviceOverlayDto({
+    required this.profileId,
+    required this.workspacePath,
+    required this.workspaceBookmark,
+    required this.userAgentsSkills,
+  });
+
+  @override
+  int get hashCode =>
+      profileId.hashCode ^
+      workspacePath.hashCode ^
+      workspaceBookmark.hashCode ^
+      userAgentsSkills.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeviceOverlayDto &&
+          runtimeType == other.runtimeType &&
+          profileId == other.profileId &&
+          workspacePath == other.workspacePath &&
+          workspaceBookmark == other.workspaceBookmark &&
+          userAgentsSkills == other.userAgentsSkills;
 }
 
 @freezed
@@ -474,6 +517,53 @@ class ProfileDto {
           avatar == other.avatar &&
           bio == other.bio &&
           kind == other.kind;
+}
+
+class ProviderAccountDto {
+  final String id;
+  final String vendorId;
+  final String baseUrl;
+  final String keyRef;
+  final String displayName;
+  final String modelsJson;
+  final PlatformInt64 updatedAt;
+  final PlatformInt64 deletedAt;
+
+  const ProviderAccountDto({
+    required this.id,
+    required this.vendorId,
+    required this.baseUrl,
+    required this.keyRef,
+    required this.displayName,
+    required this.modelsJson,
+    required this.updatedAt,
+    required this.deletedAt,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      vendorId.hashCode ^
+      baseUrl.hashCode ^
+      keyRef.hashCode ^
+      displayName.hashCode ^
+      modelsJson.hashCode ^
+      updatedAt.hashCode ^
+      deletedAt.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProviderAccountDto &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          vendorId == other.vendorId &&
+          baseUrl == other.baseUrl &&
+          keyRef == other.keyRef &&
+          displayName == other.displayName &&
+          modelsJson == other.modelsJson &&
+          updatedAt == other.updatedAt &&
+          deletedAt == other.deletedAt;
 }
 
 class RoomMemberDto {

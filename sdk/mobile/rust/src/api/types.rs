@@ -256,6 +256,29 @@ pub struct AgentProfileDto {
     pub nickname: String,
     pub server_account: String,
     pub body_json: String,
+    pub body_blob: Vec<u8>,
+    pub placement: String,
+    pub updated_at: i64,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct ProviderAccountDto {
+    pub id: String,
+    pub vendor_id: String,
+    pub base_url: String,
+    pub key_ref: String,
+    pub display_name: String,
+    pub models_json: String,
+    pub updated_at: i64,
+    pub deleted_at: i64,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct DeviceOverlayDto {
+    pub profile_id: String,
+    pub workspace_path: String,
+    pub workspace_bookmark: String,
+    pub user_agents_skills: String,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -662,6 +685,9 @@ impl From<AgentProfileRow> for AgentProfileDto {
             nickname: r.nickname,
             server_account: r.server_account,
             body_json: r.body_json,
+            body_blob: r.body_blob,
+            placement: r.placement,
+            updated_at: r.updated_at,
         }
     }
 }
@@ -673,6 +699,66 @@ impl From<AgentProfileDto> for AgentProfileRow {
             nickname: r.nickname,
             server_account: r.server_account,
             body_json: r.body_json,
+            body_blob: r.body_blob,
+            placement: if r.placement.trim().is_empty() {
+                "local".into()
+            } else {
+                r.placement
+            },
+            updated_at: r.updated_at,
+            deleted_at: 0,
+        }
+    }
+}
+
+impl From<kim_sdk::ProviderAccountRow> for ProviderAccountDto {
+    fn from(r: kim_sdk::ProviderAccountRow) -> Self {
+        Self {
+            id: r.id,
+            vendor_id: r.vendor_id,
+            base_url: r.base_url,
+            key_ref: r.key_ref,
+            display_name: r.display_name,
+            models_json: r.models_json,
+            updated_at: r.updated_at,
+            deleted_at: r.deleted_at,
+        }
+    }
+}
+
+impl From<ProviderAccountDto> for kim_sdk::ProviderAccountRow {
+    fn from(r: ProviderAccountDto) -> Self {
+        Self {
+            id: r.id,
+            vendor_id: r.vendor_id,
+            base_url: r.base_url,
+            key_ref: r.key_ref,
+            display_name: r.display_name,
+            models_json: r.models_json,
+            updated_at: r.updated_at,
+            deleted_at: r.deleted_at,
+        }
+    }
+}
+
+impl From<kim_sdk::DeviceOverlayRow> for DeviceOverlayDto {
+    fn from(r: kim_sdk::DeviceOverlayRow) -> Self {
+        Self {
+            profile_id: r.profile_id,
+            workspace_path: r.workspace_path,
+            workspace_bookmark: r.workspace_bookmark,
+            user_agents_skills: r.user_agents_skills,
+        }
+    }
+}
+
+impl From<DeviceOverlayDto> for kim_sdk::DeviceOverlayRow {
+    fn from(r: DeviceOverlayDto) -> Self {
+        Self {
+            profile_id: r.profile_id,
+            workspace_path: r.workspace_path,
+            workspace_bookmark: r.workspace_bookmark,
+            user_agents_skills: r.user_agents_skills,
         }
     }
 }

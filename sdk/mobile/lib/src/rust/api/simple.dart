@@ -9,3 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
+
+Future<Uint8List> specJsonToBlob({required String bodyJson}) =>
+    RustLib.instance.api.crateApiSimpleSpecJsonToBlob(bodyJson: bodyJson);
+
+Future<String> specBlobToJson({required List<int> blob}) =>
+    RustLib.instance.api.crateApiSimpleSpecBlobToJson(blob: blob);

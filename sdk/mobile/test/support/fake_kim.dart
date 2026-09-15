@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
@@ -802,6 +804,61 @@ class FakeKim implements KimAuthPort, KimClientPort {
     if (agentProfiles.isEmpty) {
       agentProfiles = rows;
     }
+  }
+
+  List<ProviderAccountDto> providerAccounts = const [];
+  final overlays = <String, DeviceOverlayDto>{};
+  String flagsJson = '{}';
+
+  @override
+  Future<List<ProviderAccountDto>> listProviderAccounts() async =>
+      providerAccounts;
+
+  @override
+  Future<void> upsertProviderAccount(ProviderAccountDto row) async {
+    providerAccounts = [
+      for (final a in providerAccounts)
+        if (a.id != row.id) a,
+      row,
+    ];
+  }
+
+  @override
+  Future<void> deleteProviderAccount(String id) async {
+    providerAccounts = [
+      for (final a in providerAccounts)
+        if (a.id != id) a,
+    ];
+  }
+
+  @override
+  Future<DeviceOverlayDto?> getDeviceOverlay(String profileId) async =>
+      overlays[profileId];
+
+  @override
+  Future<void> upsertDeviceOverlay(DeviceOverlayDto row) async {
+    overlays[row.profileId] = row;
+  }
+
+  @override
+  Future<String> agentFlags() async => flagsJson;
+
+  @override
+  Future<void> setAgentFlags(String flagsJson) async {
+    this.flagsJson = flagsJson;
+  }
+
+  @override
+  Future<void> syncAgentSpecs() async {}
+
+  @override
+  Future<Uint8List> specJsonToBlob(String bodyJson) async {
+    return Uint8List.fromList(utf8.encode(bodyJson));
+  }
+
+  @override
+  Future<String> specBlobToJson(List<int> blob) async {
+    return utf8.decode(blob);
   }
 
   @override

@@ -5,10 +5,10 @@ use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand,
 
 use super::rt;
 use super::types::{
-    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, LocalMediaDto,
-    ContactsSnapshotDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto,
-    RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto, SessionUpdateDto, SettingsDto,
-    TimelineUpdateDto, TokenPersistDto, UiCommandDto,
+    AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, ContactsSnapshotDto,
+    DeviceOverlayDto, LocalMediaDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto,
+    ProviderAccountDto, RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto,
+    SessionUpdateDto, SettingsDto, TimelineUpdateDto, TokenPersistDto, UiCommandDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -604,6 +604,69 @@ impl KimUiHandle {
     ) -> Result<(), SdkErrorDto> {
         self.inner
             .import_agent_profiles(rows.into_iter().map(Into::into).collect())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountDto>, SdkErrorDto> {
+        let rows = self
+            .inner
+            .list_provider_accounts()
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(rows.into_iter().map(ProviderAccountDto::from).collect())
+    }
+
+    pub async fn upsert_provider_account(
+        &self,
+        row: ProviderAccountDto,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .upsert_provider_account(row.into())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn delete_provider_account(&self, id: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .delete_provider_account(id)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn get_device_overlay(
+        &self,
+        profile_id: String,
+    ) -> Result<Option<DeviceOverlayDto>, SdkErrorDto> {
+        let row = self
+            .inner
+            .get_device_overlay(profile_id)
+            .await
+            .map_err(SdkErrorDto::from)?;
+        Ok(row.map(DeviceOverlayDto::from))
+    }
+
+    pub async fn upsert_device_overlay(&self, row: DeviceOverlayDto) -> Result<(), SdkErrorDto> {
+        self.inner
+            .upsert_device_overlay(row.into())
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn agent_flags(&self) -> Result<String, SdkErrorDto> {
+        self.inner.agent_flags().await.map_err(SdkErrorDto::from)
+    }
+
+    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkErrorDto> {
+        self.inner
+            .set_agent_flags(flags_json)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn sync_agent_specs(&self) -> Result<(), SdkErrorDto> {
+        self.inner
+            .sync_agent_specs()
             .await
             .map_err(SdkErrorDto::from)
     }

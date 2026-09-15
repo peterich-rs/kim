@@ -6,9 +6,9 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:kim_mobile/features/agent/catalog.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/settings.dart';
@@ -904,6 +904,7 @@ class AgentProfile {
     bool? enabled,
     String? steer,
     String? serverAccount,
+    String? keyRef,
   }) {
     return AgentProfile(
       id: id,
@@ -912,7 +913,7 @@ class AgentProfile {
       providerKind: providerKind ?? this.providerKind,
       baseUrl: baseUrl ?? this.baseUrl,
       model: model ?? this.model,
-      keyRef: keyRef,
+      keyRef: keyRef ?? this.keyRef,
       systemPrompt: systemPrompt ?? this.systemPrompt,
       mode: mode ?? this.mode,
       maxTurns: maxTurns ?? this.maxTurns,
@@ -1047,10 +1048,10 @@ class AgentProfile {
       aliases: aliasesRaw is List
           ? [for (final a in aliasesRaw) '$a']
           : const [],
-      providerKind: kind.isEmpty ? 'openai' : kind,
+      providerKind: kind,
       baseUrl: providerMap['base_url'] as String? ?? '',
-      model: modelMap['name'] as String? ?? 'gpt-4o',
-      keyRef: providerMap['key_ref'] as String? ?? 'agent.api_key.goose',
+      model: modelMap['name'] as String? ?? '',
+      keyRef: providerMap['key_ref'] as String? ?? '',
       systemPrompt: migrateIdentityPrompt(
         json['system_prompt'] as String? ?? '',
       ),
@@ -1133,6 +1134,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   /// False until the first `_reload` finishes. Empty `[]` before this is
   /// "not loaded yet", not "no agents".
   var profilesReady = false;
+  final _opaqueUnsupported = <String>{};
 
   @override
   List<AgentProfile> build() {
@@ -1223,13 +1225,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     final isNew = !state.any((p) => p.id == next.id);
     if (isNew) {
       _assertCanInsert();
-      await _persist([...state, next]);
+      await _upsertOne(next);
       await ensureBotIdentity(next);
     } else {
-      await _persist([
-        for (final p in state)
-          if (p.id == next.id) next else p,
-      ]);
+      await _upsertOne(next);
       // Local prefs already updated; server nickname/model sync can lag.
       unawaited(_syncBotConfig(next));
     }
@@ -1265,10 +1264,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       throw StateError(Copy.agentRegisterFailed);
     }
     final next = profile.copyWith(serverAccount: person.account);
-    await _persist([
-      for (final p in state)
-        if (p.id == profile.id) next else p,
-    ]);
+    await _upsertOne(next);
     return next;
   }
 
@@ -1324,8 +1320,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> setServerIdentity(bool value) async {
     serverIdentity = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kServerIdentity, value);
+    await _writeFlags();
     state = [...state];
     if (value) {
       try {
@@ -1337,191 +1332,177 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
   }
 
   Future<void> _reload() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (agentHostSupported && prefs.getBool(_kMultiMigrated) != true) {
-      if (prefs.getBool(_kMulti) == false) {
-        await prefs.setBool(_kMulti, true);
-      }
-      await prefs.setBool(_kMultiMigrated, true);
-    }
-    if (agentHostSupported && prefs.getBool(_kIdentityMigrated) != true) {
-      if (prefs.getBool(_kServerIdentity) == false) {
-        await prefs.setBool(_kServerIdentity, true);
-      }
-      await prefs.setBool(_kIdentityMigrated, true);
-    }
-    multiProfile = prefs.getBool(_kMulti) ?? agentHostSupported;
-    serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
-    final raw = prefs.getString(_kProfiles);
+    await _loadFlags();
     var profiles = <AgentProfile>[];
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is List) {
-          for (final item in decoded) {
-            if (item is Map) {
-              profiles.add(
-                AgentProfile.fromJson(Map<String, Object?>.from(item)),
-              );
-            }
-          }
-        }
-      } catch (_) {
-        profiles = [];
-      }
-    }
-    if (!ref.mounted) {
-      return;
-    }
-    profiles = await _migrateAccounts(profiles);
-    if (!ref.mounted) {
-      return;
-    }
     try {
       final client = ref.read(clientPortProvider);
-      final rows = await client.listAgentProfiles();
-      if (rows.isNotEmpty) {
-        profiles = [for (final row in rows) _fromDto(row)];
-      } else if (profiles.isNotEmpty) {
-        await client.importAgentProfiles([for (final p in profiles) _toDto(p)]);
-        await prefs.remove(_kProfiles);
+      var rows = await client.listAgentProfiles();
+      if (rows.isEmpty) {
+        final imported = await _importPrefsProfiles(client);
+        if (imported.isNotEmpty) {
+          rows = await client.listAgentProfiles();
+        }
+      }
+      for (final row in rows) {
+        final profile = await _fromDto(row);
+        if (profile != null) {
+          profiles.add(profile);
+        }
       }
     } catch (e, st) {
       KimLogger.warn('agent profile rust load', e, st);
     }
+    if (!ref.mounted) {
+      return;
+    }
     profilesReady = true;
     state = List<AgentProfile>.from(profiles);
-    await _migrateAccountModels();
   }
 
-  AgentProfileDto _toDto(AgentProfile p) {
+  Future<void> _loadFlags() async {
+    var flags = <String, Object?>{};
+    try {
+      final raw = await ref.read(clientPortProvider).agentFlags();
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        flags = Map<String, Object?>.from(decoded);
+      }
+    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    if (flags.isEmpty) {
+      if (agentHostSupported && prefs.getBool(_kMultiMigrated) != true) {
+        await prefs.setBool(_kMultiMigrated, true);
+      }
+      if (agentHostSupported && prefs.getBool(_kIdentityMigrated) != true) {
+        await prefs.setBool(_kIdentityMigrated, true);
+      }
+      multiProfile = prefs.getBool(_kMulti) ?? agentHostSupported;
+      serverIdentity = prefs.getBool(_kServerIdentity) ?? agentHostSupported;
+      await _writeFlags();
+      await prefs.remove(_kMulti);
+      await prefs.remove(_kServerIdentity);
+    } else {
+      multiProfile = flags['multi_profile'] == true;
+      serverIdentity = flags['server_identity'] == true;
+    }
+    await prefs.remove(_kProfiles);
+  }
+
+  Future<void> _writeFlags() async {
+    try {
+      await ref.read(clientPortProvider).setAgentFlags(
+        jsonEncode({
+          'multi_profile': multiProfile,
+          'server_identity': serverIdentity,
+        }),
+      );
+    } catch (e, st) {
+      KimLogger.warn('agent flags persist', e, st);
+    }
+  }
+
+  Future<List<AgentProfile>> _importPrefsProfiles(
+    KimClientPort client,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kProfiles);
+    if (raw == null || raw.isEmpty) {
+      return const [];
+    }
+    final profiles = <AgentProfile>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final item in decoded) {
+          if (item is Map) {
+            profiles.add(
+              AgentProfile.fromJson(Map<String, Object?>.from(item)),
+            );
+          }
+        }
+      }
+    } catch (_) {
+      return const [];
+    }
+    if (profiles.isEmpty) {
+      return const [];
+    }
+    await client.importAgentProfiles([
+      for (final p in profiles) await _toDto(p),
+    ]);
+    await prefs.remove(_kProfiles);
+    return profiles;
+  }
+
+  Future<AgentProfileDto> _toDto(AgentProfile p) async {
+    final client = ref.read(clientPortProvider);
+    final blob = await client.specJsonToBlob(jsonEncode(p.toJson()));
     return AgentProfileDto(
       profileId: p.id,
       nickname: p.displayName,
       serverAccount: p.serverAccount,
-      bodyJson: jsonEncode(p.toJson()),
+      bodyJson: '',
+      bodyBlob: blob,
+      placement: 'local',
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
   }
 
-  AgentProfile _fromDto(AgentProfileDto row) {
+  Future<AgentProfile?> _fromDto(AgentProfileDto row) async {
     try {
-      final raw = jsonDecode(row.bodyJson);
+      final client = ref.read(clientPortProvider);
+      var rawJson = row.bodyJson;
+      if (row.bodyBlob.isNotEmpty) {
+        rawJson = await client.specBlobToJson(row.bodyBlob);
+      }
+      final raw = jsonDecode(rawJson);
       if (raw is Map) {
-        return AgentProfile.fromJson(Map<String, Object?>.from(raw))
+        var profile = AgentProfile.fromJson(Map<String, Object?>.from(raw))
             .copyWith(serverAccount: row.serverAccount);
+        final accounts = ref.read(providerAccountsProvider.notifier);
+        await accounts.ensureLoaded();
+        final account = accounts.byId(profile.accountId);
+        if (account != null) {
+          profile = profile.copyWith(
+            providerKind: canonicalizeVendorId(account.vendorId),
+            baseUrl: account.baseUrl,
+            keyRef: account.keyRef,
+          );
+        }
+        try {
+          final overlay = await client.getDeviceOverlay(row.profileId);
+          if (overlay != null && overlay.workspacePath.isNotEmpty) {
+            profile = profile.copyWith(
+              workspace: profile.workspace.copyWith(
+                path: overlay.workspacePath,
+                bookmarkRef: overlay.workspaceBookmark,
+              ),
+            );
+          }
+        } catch (_) {}
+        _opaqueUnsupported.remove(row.profileId);
+        return profile;
       }
     } catch (e, st) {
+      final msg = e.toString();
+      if (msg.contains('schema_version') || msg.contains('UnsupportedSchema')) {
+        _opaqueUnsupported.add(row.profileId);
+        identityError = 'Agent config requires an app upgrade';
+        KimLogger.warn('agent profile schema', e, st);
+        return null;
+      }
       KimLogger.warn('agent profile decode', e, st);
     }
     return AgentProfile(
       id: row.profileId,
       displayName: row.nickname,
-      providerKind: 'openai',
+      providerKind: '',
       baseUrl: '',
       model: '',
       keyRef: '',
       systemPrompt: '',
       serverAccount: row.serverAccount,
     );
-  }
-
-  Future<List<AgentProfile>> _migrateAccounts(
-    List<AgentProfile> profiles,
-  ) async {
-    if (!ref.mounted) {
-      return profiles;
-    }
-    final accounts = ref.read(providerAccountsProvider.notifier);
-    await accounts.ensureLoaded();
-    if (!ref.mounted) {
-      return profiles;
-    }
-    var changed = false;
-    final next = <AgentProfile>[];
-    for (var p in profiles) {
-      if (p.accountId.isNotEmpty) {
-        final account = accounts.byId(p.accountId);
-        if (account == null) {
-          // Keep the dangling account_id so readApiKey / open throw.
-          next.add(p);
-          continue;
-        }
-        p = p.copyWith(
-          providerKind: canonicalizeVendorId(account.vendorId),
-          baseUrl: account.baseUrl,
-        );
-        next.add(p);
-        continue;
-      }
-      final account = ProviderAccount.fromLegacyProfile(
-        profileId: p.id,
-        providerKind: p.providerKind,
-        baseUrl: p.baseUrl,
-        keyRef: p.keyRef,
-      );
-      await accounts.upsert(account);
-      if (!ref.mounted) {
-        return next;
-      }
-      p = p.copyWith(
-        accountId: account.id,
-        providerKind: canonicalizeVendorId(account.vendorId),
-        baseUrl: account.baseUrl,
-      );
-      changed = true;
-      next.add(p);
-    }
-    if (changed) {
-      await _persist(next);
-    }
-    return next;
-  }
-
-  Future<void> _migrateAccountModels() async {
-    if (!ref.mounted) {
-      return;
-    }
-    final accounts = ref.read(providerAccountsProvider.notifier);
-    await accounts.ensureLoaded();
-    if (!ref.mounted) {
-      return;
-    }
-    final pending = [
-      for (final a in ref.read(providerAccountsProvider))
-        if (a.models.isEmpty) a,
-    ];
-    if (pending.isEmpty) {
-      return;
-    }
-    var vendors = const <VendorSummaryDto>[];
-    try {
-      vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
-    } catch (_) {}
-    if (!ref.mounted) {
-      return;
-    }
-    for (final account in pending) {
-      VendorSummaryDto? vendor;
-      for (final v in vendors) {
-        if (v.id == account.vendorId) {
-          vendor = v;
-          break;
-        }
-      }
-      final models = await migrateAccountModelIds(
-        vendorId: account.vendorId,
-        existing: account.models,
-        catalogModels: vendor?.models ?? const [],
-        defaultModel: vendor?.defaultModel ?? '',
-      );
-      if (!ref.mounted) {
-        return;
-      }
-      if (models.isEmpty) {
-        continue;
-      }
-      await accounts.upsert(account.copyWith(models: models));
-    }
   }
 
   Future<void> saveGoose(AgentProfile goose, {required String apiKey}) async {
@@ -1531,16 +1512,15 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     final accountId = goose.accountId.isNotEmpty
         ? goose.accountId
         : kGooseAccountId;
-    final vendorId = canonicalizeVendorId(goose.providerKind);
     var account = accounts.byId(accountId);
     account ??= ProviderAccount(
       id: accountId,
-      vendorId: vendorId,
+      vendorId: canonicalizeVendorId(goose.providerKind),
       baseUrl: goose.baseUrl,
       keyRef: _kGooseKey,
-      displayName: vendorId,
+      displayName: canonicalizeVendorId(goose.providerKind),
     );
-    account = account.copyWith(vendorId: vendorId, baseUrl: goose.baseUrl);
+    final vendorId = canonicalizeVendorId(account.vendorId);
     await accounts.upsert(account);
     try {
       if (apiKey.isEmpty) {
@@ -1552,7 +1532,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     final persisted = goose.copyWith(
       accountId: account.id,
       providerKind: vendorId,
-      baseUrl: goose.baseUrl,
+      baseUrl: account.baseUrl,
       reasoning:
           goose.reasoning ??
           ReasoningChoice.fromThinkingEffort(goose.thinkingEffort),
@@ -1572,7 +1552,8 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await ref
         .read(agentSettingsProvider.notifier)
         .save(settings, persistKey: false);
-    await _persist(next);
+    await _upsertOne(persisted);
+    state = [persisted, ...state.where((p) => p.id != kGooseAgentId)];
   }
 
   Future<void> saveEditor(AgentProfile profile) async {
@@ -1585,39 +1566,59 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     await saveProfile(profile);
   }
 
-  Future<void> _persist(List<AgentProfile> next) async {
+  Future<void> _upsertOne(AgentProfile p) async {
+    if (_opaqueUnsupported.contains(p.id)) {
+      return;
+    }
     try {
       final client = ref.read(clientPortProvider);
-      final keep = {for (final p in next) p.id};
-      for (final p in next) {
-        await client.upsertAgentProfile(_toDto(p));
-      }
-      for (final old in state) {
-        if (!keep.contains(old.id)) {
-          await client.deleteAgentProfile(old.id);
-        }
-      }
+      await client.upsertAgentProfile(await _toDto(p));
+      await client.upsertDeviceOverlay(
+        DeviceOverlayDto(
+          profileId: p.id,
+          workspacePath: p.workspace.path,
+          workspaceBookmark: p.workspace.bookmarkRef,
+          userAgentsSkills: '',
+        ),
+      );
     } catch (e, st) {
       KimLogger.warn('agent profile persist', e, st);
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kProfiles);
-    state = next;
+    final exists = state.any((e) => e.id == p.id);
+    state = [
+      for (final e in state)
+        if (e.id == p.id) p else e,
+      if (!exists) p,
+    ];
+  }
+
+  Future<void> _removeOne(String id) async {
+    try {
+      await ref.read(clientPortProvider).deleteAgentProfile(id);
+    } catch (e, st) {
+      KimLogger.warn('agent profile delete', e, st);
+    }
+    state = [for (final p in state) if (p.id != id) p];
   }
 
   Future<void> setMultiProfile(bool value) async {
     multiProfile = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kMulti, value);
+    await _writeFlags();
     state = [...state];
   }
 
   Future<void> setEnabled(String id, bool enabled) async {
     await ensureLoaded();
-    await _persist([
-      for (final p in state)
-        if (p.id == id) p.copyWith(enabled: enabled) else p,
-    ]);
+    AgentProfile? target;
+    for (final p in state) {
+      if (p.id == id) {
+        target = p.copyWith(enabled: enabled);
+        break;
+      }
+    }
+    if (target != null) {
+      await _upsertOne(target);
+    }
   }
 
   Future<void> duplicate(AgentProfile source) async {
@@ -1661,7 +1662,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       enabled: true,
       steer: source.steer,
     );
-    await _persist([...state, copy]);
+    await _upsertOne(copy);
     await ensureBotIdentity(copy);
   }
 
@@ -1706,10 +1707,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         }
       }
     }
-    await _persist([
-      for (final p in state)
-        if (p.id != id) p,
-    ]);
+    await _removeOne(id);
   }
 }
 
