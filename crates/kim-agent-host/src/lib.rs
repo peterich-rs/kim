@@ -16,7 +16,8 @@ mod skills;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -35,16 +36,16 @@ pub use capability::{
 };
 pub use catalog::{
     catalog_surface_json, catalog_validate, catalog_vendors_json, normalize_vendor_id,
-    ReasoningChoice, ReasoningSurface, VendorSummary,
+    ReasoningChoice, ReasoningChoiceBody, ReasoningSurface, VendorSummary,
 };
 pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
 pub use machine::MachineFactory;
 pub use ops::permission::parse_permission;
 pub use ops::skill::{activate_skill_tool, ACTIVATE_SKILL};
 pub use profile::{
-    builtin_templates, AgentProfile, ExtensionSpec, LegacyOpenOpts, ModelSpec, PermissionConfig,
-    PermissionDefault, ProviderSpec, ResolvedProfile, SandboxMode, SandboxPolicy, ToolSet,
-    WorkspaceKind, WorkspaceSpec,
+    builtin_templates, parse_goose_mode, parse_thinking_effort, AgentProfile, ExtensionSpec,
+    LegacyOpenOpts, ModelSpec, PermissionConfig, PermissionDefault, ProviderSpec, ResolvedProfile,
+    SandboxMode, SandboxPolicy, ToolSet, WorkspaceKind, WorkspaceSpec,
 };
 pub use provider::{
     bundled_declarative_json, bundled_provider_summaries, fetch_models, BundledProviderSummary,
@@ -92,13 +93,20 @@ struct Store {
     resume_on_open: bool,
 }
 
+pub struct HostRuntimeState {
+    pub conversations: HashMap<String, Conversation>,
+    pub session_path: Option<PathBuf>,
+    pub resume_on_open: bool,
+}
+
 struct Inner {
-    profile: AgentProfile,
+    profile: RwLock<AgentProfile>,
     provider: Arc<dyn Provider>,
     model: ModelConfig,
     project_root: PathBuf,
     store: Mutex<Store>,
     mcp: Arc<ops::mcp::McpHub>,
+    provider_generation: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -120,7 +128,7 @@ impl AgentHost {
         let model = machine::model_config(&profile.model)?;
         Ok(Self {
             inner: Arc::new(Inner {
-                profile,
+                profile: RwLock::new(profile),
                 provider,
                 model,
                 project_root,
@@ -130,7 +138,20 @@ impl AgentHost {
                     resume_on_open: true,
                 }),
                 mcp: Arc::new(ops::mcp::McpHub::new()),
+                provider_generation: AtomicU64::new(1),
             }),
+        })
+    }
+
+    pub fn from_spec(
+        profile: &AgentProfile,
+        api_key: &str,
+        project_root: PathBuf,
+    ) -> Result<Self, HostError> {
+        Self::from_resolved(ResolvedProfile {
+            profile: profile.clone(),
+            api_key: api_key.to_string(),
+            project_root,
         })
     }
 
@@ -152,7 +173,7 @@ impl AgentHost {
         );
         Ok(Self {
             inner: Arc::new(Inner {
-                profile: resolved.profile,
+                profile: RwLock::new(resolved.profile),
                 provider,
                 model,
                 project_root: resolved.project_root,
@@ -162,8 +183,47 @@ impl AgentHost {
                     resume_on_open: true,
                 }),
                 mcp: Arc::new(ops::mcp::McpHub::new()),
+                provider_generation: AtomicU64::new(1),
             }),
         })
+    }
+
+    pub fn profile_snapshot(&self) -> AgentProfile {
+        self.inner
+            .profile
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn provider_generation(&self) -> u64 {
+        self.inner.provider_generation.load(Ordering::Relaxed)
+    }
+
+    pub fn replace_prompt_steer(&self, system_prompt: String, steer: String) {
+        let mut profile = self
+            .inner
+            .profile
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        profile.system_prompt = system_prompt;
+        profile.steer = steer;
+    }
+
+    pub async fn runtime_state(&self) -> HostRuntimeState {
+        let store = self.inner.store.lock().await;
+        HostRuntimeState {
+            conversations: store.conversations.clone(),
+            session_path: store.session_path.clone(),
+            resume_on_open: store.resume_on_open,
+        }
+    }
+
+    pub async fn restore_runtime_state(&self, state: HostRuntimeState) {
+        let mut store = self.inner.store.lock().await;
+        store.conversations = state.conversations;
+        store.session_path = state.session_path;
+        store.resume_on_open = state.resume_on_open;
     }
 
     pub async fn configure_persist(&self, path: Option<PathBuf>, resume_on_open: bool) {
@@ -173,7 +233,7 @@ impl AgentHost {
     }
 
     pub async fn connect_extensions(&self) -> Result<(), HostError> {
-        let extensions = self.inner.profile.project_extensions();
+        let extensions = self.profile_snapshot().project_extensions();
         self.inner
             .mcp
             .connect(&extensions, &self.inner.project_root)
@@ -244,7 +304,8 @@ impl AgentHost {
             if !ops::permission::unanswered_confirmations(conversation).is_empty() {
                 return Err(HostError::UnknownToolCall(call_id.to_string()));
             }
-            let pending = kim_pending(conversation, &self.inner.profile.project_toolset());
+            let tools = self.profile_snapshot().project_toolset();
+            let pending = kim_pending(conversation, &tools);
             if !pending.iter().any(|p| p.call_id == call_id) {
                 return Err(HostError::UnknownToolCall(call_id.to_string()));
             }
@@ -307,7 +368,7 @@ impl AgentHost {
         store
             .conversations
             .get(session_id)
-            .map(|c| session_pending(c, &self.inner.profile.project_toolset()))
+            .map(|c| session_pending(c, &self.profile_snapshot().project_toolset()))
             .unwrap_or_default()
     }
 
@@ -317,7 +378,8 @@ impl AgentHost {
             return;
         };
         let confirmations = ops::permission::unanswered_confirmations(conversation);
-        let pending = kim_pending(conversation, &self.inner.profile.project_toolset());
+        let tools = self.profile_snapshot().project_toolset();
+        let pending = kim_pending(conversation, &tools);
         if confirmations.is_empty() && pending.is_empty() {
             return;
         }
@@ -347,7 +409,7 @@ impl AgentHost {
     }
 
     pub fn kim_tool_names(&self) -> Vec<&'static str> {
-        self.inner.profile.project_toolset().kim_world_names()
+        self.profile_snapshot().project_toolset().kim_world_names()
     }
 
     #[cfg(test)]
@@ -379,8 +441,9 @@ impl AgentHost {
             }
         });
 
+        let profile = self.profile_snapshot();
         let steps = MachineFactory::assemble(
-            &self.inner.profile,
+            &profile,
             Arc::clone(&self.inner.provider),
             self.inner.model.clone(),
             &self.inner.project_root,
@@ -394,8 +457,7 @@ impl AgentHost {
 
         match outcome {
             Ok(session) => {
-                let pending =
-                    session_pending(&session.conversation, &self.inner.profile.project_toolset());
+                let pending = session_pending(&session.conversation, &profile.project_toolset());
                 if let Some(first) = pending.first() {
                     tracing::info!(
                         session_id,
@@ -763,6 +825,38 @@ mod tests {
     fn missing_key_is_explicit() {
         let result = AgentHost::new(ProviderConfig::openai("", "gpt-4o"));
         assert!(matches!(result, Err(HostError::MissingApiKey)));
+    }
+
+    #[test]
+    fn from_spec_delegates_to_from_resolved() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let err = AgentHost::from_spec(&profile, "", PathBuf::from("/tmp"));
+        assert!(matches!(err, Err(HostError::MissingApiKey)));
+    }
+
+    #[test]
+    fn replace_prompt_steer_does_not_rebuild_provider() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::new(vec![])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let gen = host.provider_generation();
+        host.replace_prompt_steer("new identity".into(), "be brief".into());
+        assert_eq!(host.provider_generation(), gen);
+        let snap = host.profile_snapshot();
+        assert_eq!(snap.system_prompt, "new identity");
+        assert_eq!(snap.steer, "be brief");
     }
 
     #[tokio::test]
