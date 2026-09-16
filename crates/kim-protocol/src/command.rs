@@ -111,6 +111,7 @@ mod tests {
         CMD_GROUP_CREATE,
         CMD_GROUP_JOIN,
         CMD_GROUP_QUIT,
+        CMD_GROUP_INVITE,
         CMD_GROUP_DETAIL,
         CMD_GROUP_MEMBERS,
         CMD_CHAT_TALK_ACK,
@@ -150,7 +151,7 @@ mod tests {
     #[test]
     fn covers_every_cmd_constant() {
         assert_eq!(Command::ALL.len(), CONSTANTS.len());
-        assert_eq!(Command::ALL.len(), 43);
+        assert_eq!(Command::ALL.len(), 44);
         for s in CONSTANTS {
             assert!(Command::parse(s).is_some(), "missing {s}");
         }
