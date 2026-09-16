@@ -12,6 +12,7 @@ export const Command = {
   GroupQuit: "chat.group.quit",
   GroupDetail: "chat.group.detail",
   GroupMembers: "chat.group.members",
+  GroupInvite: "chat.group.invite",
   UserProfile: "chat.user.profile",
   UserUpdate: "chat.user.update",
   UserUpdated: "chat.user.updated",

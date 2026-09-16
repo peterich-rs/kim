@@ -157,6 +157,33 @@ fn merged_unread(prev: Option<&StoredThread>, incoming_unread: i32, incoming_at:
     incoming_unread
 }
 
+pub(crate) async fn ensure(
+    tx: &mut SqliteConnection,
+    account: &str,
+    id: &str,
+    kind: i32,
+) -> Result<StoredThread, SdkError> {
+    sqlx::query(
+        r"
+        INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar)
+        VALUES (?, ?, ?, ?, '', 0, 0, '')
+        ON CONFLICT(account, id) DO NOTHING
+        ",
+    )
+    .bind(account)
+    .bind(id)
+    .bind(thread_kind_name(kind))
+    .bind(id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    find(tx, account, id)
+        .await?
+        .ok_or_else(|| SdkError::Internal {
+            message: "ensure thread missing after insert".into(),
+        })
+}
+
 pub(crate) async fn find(
     tx: &mut SqliteConnection,
     account: &str,

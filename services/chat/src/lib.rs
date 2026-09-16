@@ -72,7 +72,10 @@ pub use friends::{
     do_block_add, do_block_list, do_block_remove, do_friend_accept, do_friend_incoming,
     do_friend_list, do_friend_reject, do_friend_remove, do_friend_request,
 };
-pub use group::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
+pub use group::{
+    do_group_create, do_group_detail, do_group_invite, do_group_join, do_group_members,
+    do_group_quit,
+};
 #[cfg(feature = "redis")]
 pub use hmac_nonce::RedisHmacNonceGuard;
 pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
@@ -443,7 +446,7 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(Command::GroupCreate, move |ctx| {
                 let svc = svc.clone();
-                async move { do_group_create(ctx, svc.groups.as_ref()).await }
+                async move { do_group_create(ctx, svc.groups.as_ref(), svc.users.as_ref()).await }
             });
         }
         {
@@ -451,6 +454,13 @@ impl ChatHandler {
             router.handle(Command::GroupJoin, move |ctx| {
                 let svc = svc.clone();
                 async move { do_group_join(ctx, svc.groups.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(Command::GroupInvite, move |ctx| {
+                let svc = svc.clone();
+                async move { do_group_invite(ctx, svc.groups.as_ref(), svc.users.as_ref()).await }
             });
         }
         {

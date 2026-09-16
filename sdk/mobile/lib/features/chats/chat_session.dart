@@ -306,7 +306,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     final id = const Uuid().v4();
     return client.enqueueMessage(
       dest: dest,
-      kind: ThreadKind.user,
+      kind: kind,
       content: KimOutgoingContent.text(body),
       clientId: id,
     );
@@ -333,7 +333,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       out.add(
         await client.enqueueMessage(
           dest: dest,
-          kind: ThreadKind.user,
+          kind: kind,
           content: content,
           clientId: id,
           localPath: asset.path,

@@ -82,7 +82,7 @@ ACK 是 fire-and-forget 的 `chat.talk.ack`，不进 sendq。在线循环大约�
 
 ## 离线
 
-登录成功后循环 `chat.offline.index`：`encodeIndexReq({ resume: true })`，直到 `page.length===0 || !hasMore`。页 200。每页写入本地 Store 后再 batch ACK。索引分组进 `OfflineMessages`（用户 / 群），`loadUser` / `loadGroup` 再按页拉 `chat.offline.content`（最多 200 id）。
+登录成功后循环 `chat.offline.index`（`resume: true`），直到空页或 `!hasMore`。对每页先 `chat.offline.content` 拉正文、合并 index 路由字段后 `insert`，再 ACK。Chat=0 高水位下只 ACK **按 send_time 连续且正文齐全的前缀**，避免 ACK 较新 id 把更早的洞藏掉。正文失败或缺失的 id 本轮不 ACK，下次登录重投。已有 `contentLoaded===false` 占位行会回填覆盖。`OfflineMessages.loadUser` / `loadGroup` 对已加载正文跳过网络。
 
 遗留 `encodeIndexReq(lastId)`（无 `resume`）依赖服务端回路终止，不会热循环；有本地 lastId 的旧 H5 可能这次登录不拉离线。生产 H5 必须先升级。
 

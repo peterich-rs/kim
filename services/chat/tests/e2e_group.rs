@@ -6,11 +6,12 @@ mod harness;
 use bytes::Bytes;
 use harness::*;
 use kim_protocol::pkt::{
-    GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq, GroupQuitReq, Status,
+    Flag, GroupCreateReq, GroupCreateResp, GroupDetail, GroupInviteReq, GroupJoinReq, GroupQuitReq,
+    Status,
 };
 use kim_protocol::{
-    marshal, read, LogicPkt, Packet, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN,
-    CMD_GROUP_MEMBERS, CMD_GROUP_QUIT,
+    marshal, read, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_GROUP_CREATE, CMD_GROUP_DETAIL,
+    CMD_GROUP_INVITE, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, MESSAGE_TYPE_TEXT,
 };
 
 #[tokio::test]
@@ -25,7 +26,7 @@ async fn create_is_private_join_disabled_quit_membership() {
     create.write_body(&GroupCreateReq {
         name: "group1".into(),
         owner: "eve".into(),
-        members: vec!["alice".into(), "bob".into()],
+        members: vec!["alice".into()],
         avatar: String::new(),
         introduction: "hi".into(),
     });
@@ -177,6 +178,128 @@ async fn create_is_private_join_disabled_quit_membership() {
     match read(&after_frame.payload).expect("after detail") {
         Packet::Logic(p) => assert_eq!(p.header.status, Status::NotGroupMember as i32),
         _ => panic!("expected after detail"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn invite_adds_member_full_flow() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (carol, _) = login("carol", &url).await;
+    let (bob, _) = login("bob", &url).await;
+
+    let mut create = LogicPkt::new(CMD_GROUP_CREATE, 2, Bytes::new());
+    create.write_body(&GroupCreateReq {
+        name: "group1".into(),
+        owner: "alice".into(),
+        members: vec!["alice".into()],
+        avatar: String::new(),
+        introduction: "hi".into(),
+    });
+    alice
+        .send(marshal(&Packet::Logic(create)))
+        .await
+        .expect("create");
+    let create_frame = timeout_read(&alice).await;
+    let group_id = match read(&create_frame.payload).expect("create resp") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::Success as i32);
+            p.read_body::<GroupCreateResp>()
+                .expect("GroupCreateResp")
+                .group_id
+        }
+        _ => panic!("expected create resp"),
+    };
+
+    let mut invite = LogicPkt::new(CMD_GROUP_INVITE, 3, Bytes::new());
+    invite.set_dest(&group_id);
+    invite.write_body(&GroupInviteReq {
+        group_id: group_id.clone(),
+        accounts: vec!["carol".into()],
+    });
+    alice
+        .send(marshal(&Packet::Logic(invite)))
+        .await
+        .expect("invite");
+    let invite_frame = timeout_read(&alice).await;
+    match read(&invite_frame.payload).expect("invite resp") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::Success as i32),
+        _ => panic!("expected invite resp"),
+    }
+    let notify = timeout_read(&carol).await;
+    match read(&notify.payload).expect("notify") {
+        Packet::Logic(p) => assert_eq!(p.header.flag, Flag::Push as i32),
+        _ => panic!("expected notify"),
+    }
+
+    let mut detail = LogicPkt::new(CMD_GROUP_DETAIL, 4, Bytes::new());
+    detail.set_dest(&group_id);
+    carol
+        .send(marshal(&Packet::Logic(detail)))
+        .await
+        .expect("carol detail");
+    let detail_frame = timeout_read(&carol).await;
+    match read(&detail_frame.payload).expect("carol detail") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::Success as i32);
+            let d: GroupDetail = p.read_body().expect("GroupDetail");
+            assert!(d.members.contains(&"carol".to_string()));
+        }
+        _ => panic!("expected carol detail"),
+    }
+
+    let mut talk = LogicPkt::new(CMD_CHAT_GROUP_TALK, 5, Bytes::new());
+    talk.set_dest(&group_id);
+    talk.write_body(&kim_protocol::pkt::MessageReq {
+        r#type: MESSAGE_TYPE_TEXT,
+        body: "from carol".into(),
+        extra: String::new(),
+        client_id: String::new(),
+    });
+    carol
+        .send(marshal(&Packet::Logic(talk)))
+        .await
+        .expect("talk");
+    let _ = timeout_read(&carol).await;
+    let push = timeout_read(&alice).await;
+    match read(&push.payload).expect("alice push") {
+        Packet::Logic(p) => assert_eq!(p.header.flag, Flag::Push as i32),
+        _ => panic!("expected alice push"),
+    }
+
+    let mut steal = LogicPkt::new(CMD_GROUP_INVITE, 6, Bytes::new());
+    steal.set_dest(&group_id);
+    steal.write_body(&GroupInviteReq {
+        group_id: group_id.clone(),
+        accounts: vec!["bob".into()],
+    });
+    bob.send(marshal(&Packet::Logic(steal)))
+        .await
+        .expect("bob invite");
+    let steal_frame = timeout_read(&bob).await;
+    match read(&steal_frame.payload).expect("bob invite") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::NotGroupMember as i32),
+        _ => panic!("expected bob invite"),
+    }
+
+    let mut ghost = LogicPkt::new(CMD_GROUP_INVITE, 7, Bytes::new());
+    ghost.set_dest(&group_id);
+    ghost.write_body(&GroupInviteReq {
+        group_id,
+        accounts: vec!["dave".into()],
+    });
+    alice
+        .send(marshal(&Packet::Logic(ghost)))
+        .await
+        .expect("ghost");
+    let ghost_frame = timeout_read(&alice).await;
+    match read(&ghost_frame.payload).expect("ghost") {
+        Packet::Logic(p) => assert_eq!(p.header.status, Status::UserNotFound as i32),
+        _ => panic!("expected ghost"),
     }
 
     let _ = stack.gw.shutdown().await;

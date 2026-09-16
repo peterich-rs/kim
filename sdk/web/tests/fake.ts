@@ -4,8 +4,10 @@ import {
   encodeIndexResp,
   encodeLoginResp,
   encodeMessageResp,
+  encodeContentResp,
   decodeIndexReq,
   decodeAckReq,
+  decodeContentReq,
   type WireIndex,
 } from "../src/proto.ts";
 import { Flag, Status } from "../src/status.ts";
@@ -64,6 +66,7 @@ export class LoopbackGw {
   statusFor: Record<string, number> = {};
   pending: WireIndex[] = [];
   acked: bigint[] = [];
+  contents = new Map<string, { messageId: bigint; type: number; body: string; extra: string }>();
 
   factory = (_url: string): FakeSocket => {
     const s = new FakeSocket(this);
@@ -112,6 +115,12 @@ export class LoopbackGw {
       } else {
         resp.payload = encodeIndexResp([], false);
       }
+    } else if (pkt.command === Command.OfflineContent) {
+      const req = decodeContentReq(pkt.payload);
+      const messages = req.messageIds
+        .map((id) => this.contents.get(id.toString()))
+        .filter((m): m is NonNullable<typeof m> => m != null);
+      resp.payload = encodeContentResp(messages);
     } else if (pkt.command === Command.ChatTalkAck) {
       const ack = decodeAckReq(pkt.payload);
       const ids = ack.messageIds.length > 0 ? ack.messageIds : [ack.messageId];

@@ -1,17 +1,30 @@
+use std::collections::HashSet;
+use std::time::Duration;
+
 use kim_protocol::pkt::{
-    GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq,
+    GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupInviteReq, GroupJoinReq,
     GroupMembersResp, GroupQuitReq, Status,
 };
-use kim_protocol::AccountId;
+use kim_protocol::{AccountId, PROFILE_KIND_BOT};
 use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
-use crate::directory::{CreateGroup, GroupDirectory, GroupError, GroupInfo};
+use crate::directory::{normalize_members, CreateGroup, GroupDirectory, GroupError, GroupInfo};
+use crate::users::UserDirectory;
+
+const MAX_GROUP_MEMBERS: usize = 500;
+const MEMBER_LOOKUP_BUDGET: Duration = Duration::from_secs(3);
 
 #[derive(Debug, thiserror::Error)]
 enum GroupCmdError {
     #[error("no destination")]
     NoDestination,
+    #[error("too many members")]
+    TooManyMembers,
+    #[error("unknown member {0}")]
+    UnknownMember(String),
+    #[error("member lookup timed out")]
+    LookupTimeout,
 }
 
 fn dest_or_body_group<'a>(header_dest: &'a str, body_group: &'a str) -> &'a str {
@@ -41,7 +54,59 @@ async fn load_group(
     groups.detail(app, group_id).await
 }
 
-pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) -> Result<(), RouterError> {
+async fn ensure_human_accounts(
+    ctx: &Context,
+    users: &dyn UserDirectory,
+    accounts: &[String],
+) -> Result<Result<(), ()>, RouterError> {
+    let deadline = crate::royal::with_rpc_deadline(MEMBER_LOOKUP_BUDGET, async {
+        for account in accounts {
+            match users.lookup(&ctx.session().app, account).await {
+                Ok(Some(p)) if p.exists && p.kind != PROFILE_KIND_BOT => {}
+                Ok(Some(p)) if p.exists => {
+                    ctx.resp_with_error(
+                        Status::UserNotFound,
+                        &GroupCmdError::UnknownMember(account.clone()),
+                    )
+                    .await?;
+                    return Ok(Err(()));
+                }
+                Ok(_) => {
+                    ctx.resp_with_error(
+                        Status::UserNotFound,
+                        &GroupCmdError::UnknownMember(account.clone()),
+                    )
+                    .await?;
+                    return Ok(Err(()));
+                }
+                Err(err) => {
+                    warn!(%err, account, "member lookup failed");
+                    ctx.resp_with_error(Status::SystemException, &err).await?;
+                    return Ok(Err(()));
+                }
+            }
+        }
+        Ok(Ok(()))
+    })
+    .await;
+    match deadline {
+        Ok(Ok(Ok(()))) => Ok(Ok(())),
+        Ok(Ok(Err(()))) => Ok(Err(())),
+        Ok(Err(err)) => Err(err),
+        Err(()) => {
+            warn!("member lookup timed out");
+            ctx.resp_with_error(Status::SystemException, &GroupCmdError::LookupTimeout)
+                .await?;
+            Ok(Err(()))
+        }
+    }
+}
+
+pub async fn do_group_create(
+    ctx: Context,
+    groups: &dyn GroupDirectory,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
     let req = match ctx.read_body::<GroupCreateReq>() {
         Ok(r) => r,
         Err(err) => {
@@ -53,10 +118,17 @@ pub async fn do_group_create(ctx: Context, groups: &dyn GroupDirectory) -> Resul
     if !req.owner.is_empty() && req.owner != owner {
         warn!(requested = %req.owner, session = %owner, "ignoring create owner");
     }
-    if req.members.iter().any(|m| m != &owner) {
-        warn!(session = %owner, "ignoring create members");
+    let members = normalize_members(&owner, &req.members);
+    if members.len() > MAX_GROUP_MEMBERS {
+        ctx.resp_with_error(Status::InvalidPacketBody, &GroupCmdError::TooManyMembers)
+            .await?;
+        return Ok(());
     }
-    let members = vec![owner.clone()];
+    let others: Vec<String> = members.iter().filter(|m| *m != &owner).cloned().collect();
+    match ensure_human_accounts(&ctx, users, &others).await? {
+        Ok(()) => {}
+        Err(()) => return Ok(()),
+    }
     let group_id = match groups
         .create(
             &ctx.session().app,
@@ -136,6 +208,99 @@ pub async fn do_group_join(ctx: Context, groups: &dyn GroupDirectory) -> Result<
             ctx.resp_with_error(group_lookup_status(&err), &err).await?;
         }
     }
+    Ok(())
+}
+
+pub async fn do_group_invite(
+    ctx: Context,
+    groups: &dyn GroupDirectory,
+    users: &dyn UserDirectory,
+) -> Result<(), RouterError> {
+    let req = match ctx.read_body::<GroupInviteReq>() {
+        Ok(r) => r,
+        Err(err) => {
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
+        }
+    };
+    let group_id = dest_or_body_group(&ctx.header().dest, &req.group_id);
+    if group_id.is_empty() {
+        ctx.resp_with_error(Status::NoDestination, &GroupCmdError::NoDestination)
+            .await?;
+        return Ok(());
+    }
+    if req.accounts.is_empty() {
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let info = match load_group(groups, &ctx.session().app, group_id).await {
+        Ok(info) if is_member(&info, &ctx.session().account) => info,
+        Ok(_) => {
+            ctx.resp_bytes(Status::NotGroupMember, bytes::Bytes::new())
+                .await?;
+            return Ok(());
+        }
+        Err(err) => {
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
+            return Ok(());
+        }
+    };
+    let existing: HashSet<&str> = info.members.iter().map(String::as_str).collect();
+    let mut seen = HashSet::new();
+    let mut added = Vec::new();
+    for account in &req.accounts {
+        let account = account.trim();
+        if account.is_empty() || !seen.insert(account) || existing.contains(account) {
+            continue;
+        }
+        added.push(account.to_string());
+    }
+    if info.members.len().saturating_add(added.len()) > MAX_GROUP_MEMBERS {
+        ctx.resp_with_error(Status::InvalidPacketBody, &GroupCmdError::TooManyMembers)
+            .await?;
+        return Ok(());
+    }
+    match ensure_human_accounts(&ctx, users, &added).await? {
+        Ok(()) => {}
+        Err(()) => return Ok(()),
+    }
+    for account in &added {
+        if let Err(err) = groups.join(&ctx.session().app, group_id, account).await {
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
+            return Ok(());
+        }
+    }
+    if added.is_empty() {
+        ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
+        return Ok(());
+    }
+    let members = match groups.members(&ctx.session().app, group_id).await {
+        Ok(m) => m,
+        Err(err) => {
+            ctx.resp_with_error(group_lookup_status(&err), &err).await?;
+            return Ok(());
+        }
+    };
+    let added_ids: Vec<AccountId> = added.iter().map(|s| AccountId::from_trusted(s)).collect();
+    let locs = match ctx.get_locations(&added_ids).await {
+        Ok(v) => v,
+        Err(SessionError::NotFound) => Vec::new(),
+        Err(err) => {
+            warn!(%err, "invite get_locations failed");
+            Vec::new()
+        }
+    };
+    if !locs.is_empty() {
+        let notify = GroupCreateNotify {
+            group_id: group_id.to_string(),
+            members,
+        };
+        if let Err(err) = ctx.dispatch(&notify, &locs).await {
+            warn!(%err, "dispatch GroupCreateNotify failed");
+        }
+    }
+    ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
     Ok(())
 }
 
@@ -247,21 +412,26 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use kim_protocol::pkt::{
-        Flag, GroupCreateReq, GroupCreateResp, GroupJoinReq, GroupQuitReq, Session, Status,
+        Flag, GroupCreateReq, GroupCreateResp, GroupInviteReq, GroupJoinReq, GroupQuitReq, Session,
+        Status,
     };
     use kim_protocol::{
-        Command, LogicPkt, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS,
-        CMD_GROUP_QUIT, META_DEST_SERVER,
+        Command, LogicPkt, CMD_GROUP_CREATE, CMD_GROUP_DETAIL, CMD_GROUP_INVITE, CMD_GROUP_JOIN,
+        CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, META_DEST_SERVER,
     };
     use kim_router::test_support::RecordingDispatcher;
     use kim_router::{Router, SessionStorage};
     use kim_session::MemorySessionStore;
 
-    use super::{do_group_create, do_group_detail, do_group_join, do_group_members, do_group_quit};
+    use super::{
+        do_group_create, do_group_detail, do_group_invite, do_group_join, do_group_members,
+        do_group_quit,
+    };
     use crate::directory::{
         CreateGroup, GroupDirectory, GroupError, GroupInfo, MemoryGroupDirectory,
     };
     use crate::idgen::{IdGenerator, SequenceIdGen};
+    use crate::users::{MemoryUserDirectory, UserDirectory};
 
     fn alice() -> Session {
         Session {
@@ -304,9 +474,18 @@ mod tests {
         Arc::new(MemoryGroupDirectory::new(idgen))
     }
 
+    async fn memory_users(accounts: &[&str]) -> Arc<MemoryUserDirectory> {
+        let users = MemoryUserDirectory::new();
+        for account in accounts {
+            users.upsert("kim", account).await.unwrap();
+        }
+        Arc::new(users)
+    }
+
     async fn serve(
         cmd: Command,
         groups: Arc<dyn GroupDirectory>,
+        users: Arc<dyn UserDirectory>,
         dispatcher: Arc<RecordingDispatcher>,
         logic: LogicPkt,
         session: Session,
@@ -314,9 +493,15 @@ mod tests {
         let mut router = Router::new();
         router.handle(cmd, move |ctx| {
             let groups = groups.clone();
+            let users = users.clone();
             async move {
                 match cmd {
-                    Command::GroupCreate => do_group_create(ctx, groups.as_ref()).await,
+                    Command::GroupCreate => {
+                        do_group_create(ctx, groups.as_ref(), users.as_ref()).await
+                    }
+                    Command::GroupInvite => {
+                        do_group_invite(ctx, groups.as_ref(), users.as_ref()).await
+                    }
                     Command::GroupJoin => do_group_join(ctx, groups.as_ref()).await,
                     Command::GroupQuit => do_group_quit(ctx, groups.as_ref()).await,
                     Command::GroupDetail => do_group_detail(ctx, groups.as_ref()).await,
@@ -348,16 +533,18 @@ mod tests {
 
     async fn create_alice_group(groups: Arc<MemoryGroupDirectory>) -> String {
         let dispatcher = Arc::new(RecordingDispatcher::default());
+        let users = memory_users(&["alice"]).await;
         serve(
             Command::GroupCreate,
             groups.clone(),
+            users,
             dispatcher.clone(),
             create_req_pkt(&GroupCreateReq {
                 name: "g".into(),
                 avatar: String::new(),
                 introduction: String::new(),
                 owner: "eve".into(),
-                members: vec!["eve".into(), "bob".into()],
+                members: vec!["alice".into()],
             }),
             alice(),
         )
@@ -374,19 +561,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_forces_session_owner_and_drops_extra_members() {
+    async fn create_keeps_validated_members_and_forces_owner() {
         let groups = memory_groups();
+        let users = memory_users(&["alice", "bob"]).await;
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
             Command::GroupCreate,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             create_req_pkt(&GroupCreateReq {
                 name: "group1".into(),
                 avatar: "av".into(),
                 introduction: "intro".into(),
                 owner: "eve".into(),
-                members: vec!["eve".into(), "bob".into()],
+                members: vec!["alice".into(), "bob".into()],
             }),
             alice(),
         )
@@ -394,9 +583,28 @@ mod tests {
         assert_eq!(status_of(&dispatcher), Status::Success as i32);
         let resp: GroupCreateResp = dispatcher.recorded()[0].pkt.read_body().unwrap();
         let members = groups.members("kim", &resp.group_id).await.unwrap();
-        assert_eq!(members, vec!["alice".to_string()]);
+        assert!(members.contains(&"alice".to_string()));
+        assert!(members.contains(&"bob".to_string()));
         let detail = groups.detail("kim", &resp.group_id).await.unwrap();
         assert_eq!(detail.owner, "alice");
+
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve(
+            Command::GroupCreate,
+            groups,
+            users,
+            dispatcher.clone(),
+            create_req_pkt(&GroupCreateReq {
+                name: "g2".into(),
+                avatar: String::new(),
+                introduction: String::new(),
+                owner: "alice".into(),
+                members: vec!["alice".into(), "ghost".into()],
+            }),
+            alice(),
+        )
+        .await;
+        assert_eq!(status_of(&dispatcher), Status::UserNotFound as i32);
     }
 
     #[tokio::test]
@@ -406,6 +614,7 @@ mod tests {
         serve(
             Command::GroupCreate,
             groups,
+            memory_users(&["alice"]).await,
             dispatcher.clone(),
             pkt(
                 CMD_GROUP_CREATE,
@@ -443,13 +652,16 @@ mod tests {
             })
             .await
             .unwrap();
+        let users = memory_users(&["alice", "bob"]).await;
         let dispatcher = Arc::new(RecordingDispatcher::default());
         let mut router = Router::new();
         router.handle(Command::GroupCreate, {
             let groups = groups.clone();
+            let users = users.clone();
             move |ctx| {
                 let groups = groups.clone();
-                async move { do_group_create(ctx, groups.as_ref()).await }
+                let users = users.clone();
+                async move { do_group_create(ctx, groups.as_ref(), users.as_ref()).await }
             }
         });
         router
@@ -473,14 +685,21 @@ mod tests {
             .filter(|p| p.pkt.header.flag == Flag::Push as i32)
             .collect();
         assert_eq!(pushes.len(), 1);
-        assert_eq!(pushes[0].channels, vec!["ch-alice-web".to_string()]);
+        let mut channels = pushes[0].channels.clone();
+        channels.sort();
+        assert_eq!(
+            channels,
+            vec!["ch-alice-web".to_string(), "ch-bob".to_string()]
+        );
         let n: kim_protocol::pkt::GroupCreateNotify = pushes[0].pkt.read_body().unwrap();
-        assert_eq!(n.members, vec!["alice".to_string()]);
+        assert!(n.members.contains(&"alice".to_string()));
+        assert!(n.members.contains(&"bob".to_string()));
     }
 
     #[tokio::test]
     async fn join_rejects_self_serve_and_proxy() {
         let groups = memory_groups();
+        let users = memory_users(&["alice", "bob"]).await;
         let gid = create_alice_group(groups.clone()).await;
         let join = |account: &str| {
             let mut p = pkt(CMD_GROUP_JOIN, &gid, Bytes::new(), "ch-bob");
@@ -495,6 +714,7 @@ mod tests {
         serve(
             Command::GroupJoin,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             join(""),
             session("bob", "kim"),
@@ -506,6 +726,7 @@ mod tests {
         serve(
             Command::GroupJoin,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             join("bob"),
             alice(),
@@ -517,6 +738,7 @@ mod tests {
         serve(
             Command::GroupJoin,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             join(""),
             alice(),
@@ -532,6 +754,7 @@ mod tests {
     #[tokio::test]
     async fn quit_unknown_or_non_member_is_not_group_member() {
         let groups = memory_groups();
+        let users = memory_users(&["alice", "bob"]).await;
         let gid = create_alice_group(groups.clone()).await;
         let quit = |account: &str, dest: &str, channel: &str| {
             let mut p = pkt(CMD_GROUP_QUIT, dest, Bytes::new(), channel);
@@ -546,6 +769,7 @@ mod tests {
         serve(
             Command::GroupQuit,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             quit("", "nope", "ch-alice"),
             alice(),
@@ -557,6 +781,7 @@ mod tests {
         serve(
             Command::GroupQuit,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             quit("", &gid, "ch-bob"),
             session("bob", "kim"),
@@ -568,6 +793,7 @@ mod tests {
         serve(
             Command::GroupQuit,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             quit("bob", &gid, "ch-alice"),
             alice(),
@@ -579,6 +805,7 @@ mod tests {
         serve(
             Command::GroupQuit,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             quit("", &gid, "ch-alice"),
             alice(),
@@ -595,11 +822,13 @@ mod tests {
     #[tokio::test]
     async fn detail_non_member_is_not_group_member() {
         let groups = memory_groups();
+        let users = memory_users(&["alice", "bob"]).await;
         let gid = create_alice_group(groups.clone()).await;
         let dispatcher = Arc::new(RecordingDispatcher::default());
         serve(
             Command::GroupDetail,
             groups.clone(),
+            users.clone(),
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gid, Bytes::new(), "ch-bob"),
             session("bob", "kim"),
@@ -611,6 +840,7 @@ mod tests {
         serve(
             Command::GroupDetail,
             groups,
+            users,
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gid, Bytes::new(), "ch-alice"),
             alice(),
@@ -659,6 +889,7 @@ mod tests {
         serve(
             Command::GroupDetail,
             Arc::new(FailDetail),
+            memory_users(&["alice"]).await,
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, "g1", Bytes::new(), "ch-alice"),
             alice(),
@@ -687,6 +918,7 @@ mod tests {
         serve(
             Command::GroupDetail,
             groups,
+            memory_users(&["alice"]).await,
             dispatcher.clone(),
             pkt(CMD_GROUP_DETAIL, &gray, Bytes::new(), "ch-alice"),
             alice(),
@@ -703,6 +935,7 @@ mod tests {
         serve(
             Command::GroupMembers,
             groups,
+            memory_users(&["alice", "bob"]).await,
             dispatcher.clone(),
             pkt(CMD_GROUP_MEMBERS, &gid, Bytes::new(), "ch-bob"),
             session("bob", "kim"),
@@ -710,5 +943,126 @@ mod tests {
         .await;
         assert_eq!(status_of(&dispatcher), Status::NotGroupMember as i32);
         assert!(dispatcher.recorded()[0].pkt.body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn invite_by_member_adds_and_notifies() {
+        let groups = memory_groups();
+        let users = memory_users(&["alice", "bob", "carol"]).await;
+        let gid = create_alice_group(groups.clone()).await;
+        let cache = Arc::new(MemorySessionStore::new());
+        cache
+            .add(&Session {
+                channel_id: "ch-carol".into(),
+                gate_id: "wg-1".into(),
+                account: "carol".into(),
+                app: "kim".into(),
+                ..Session::default()
+            })
+            .await
+            .unwrap();
+        let mut invite = pkt(CMD_GROUP_INVITE, &gid, Bytes::new(), "ch-alice");
+        invite.write_body(&GroupInviteReq {
+            group_id: gid.clone(),
+            accounts: vec!["carol".into(), "alice".into()],
+        });
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        let mut router = Router::new();
+        router.handle(Command::GroupInvite, {
+            let groups = groups.clone();
+            let users = users.clone();
+            move |ctx| {
+                let groups = groups.clone();
+                let users = users.clone();
+                async move { do_group_invite(ctx, groups.as_ref(), users.as_ref()).await }
+            }
+        });
+        router
+            .serve(invite, dispatcher.clone(), cache, alice())
+            .await
+            .unwrap();
+        assert_eq!(status_of(&dispatcher), Status::Success as i32);
+        let members = groups.members("kim", &gid).await.unwrap();
+        assert!(members.contains(&"carol".to_string()));
+        let pushes: Vec<_> = dispatcher
+            .recorded()
+            .into_iter()
+            .filter(|p| p.pkt.header.flag == Flag::Push as i32)
+            .collect();
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].channels, vec!["ch-carol".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn invite_by_non_member_is_not_group_member() {
+        let groups = memory_groups();
+        let users = memory_users(&["alice", "bob", "carol"]).await;
+        let gid = create_alice_group(groups.clone()).await;
+        let mut invite = pkt(CMD_GROUP_INVITE, &gid, Bytes::new(), "ch-bob");
+        invite.write_body(&GroupInviteReq {
+            group_id: gid,
+            accounts: vec!["carol".into()],
+        });
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve(
+            Command::GroupInvite,
+            groups,
+            users,
+            dispatcher.clone(),
+            invite,
+            session("bob", "kim"),
+        )
+        .await;
+        assert_eq!(status_of(&dispatcher), Status::NotGroupMember as i32);
+    }
+
+    #[tokio::test]
+    async fn invite_unknown_account_is_user_not_found() {
+        let groups = memory_groups();
+        let users = memory_users(&["alice"]).await;
+        let gid = create_alice_group(groups.clone()).await;
+        let mut invite = pkt(CMD_GROUP_INVITE, &gid, Bytes::new(), "ch-alice");
+        invite.write_body(&GroupInviteReq {
+            group_id: gid,
+            accounts: vec!["ghost".into()],
+        });
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve(
+            Command::GroupInvite,
+            groups,
+            users,
+            dispatcher.clone(),
+            invite,
+            alice(),
+        )
+        .await;
+        assert_eq!(status_of(&dispatcher), Status::UserNotFound as i32);
+    }
+
+    #[tokio::test]
+    async fn invite_existing_member_is_noop_success() {
+        let groups = memory_groups();
+        let users = memory_users(&["alice"]).await;
+        let gid = create_alice_group(groups.clone()).await;
+        let mut invite = pkt(CMD_GROUP_INVITE, &gid, Bytes::new(), "ch-alice");
+        invite.write_body(&GroupInviteReq {
+            group_id: gid.clone(),
+            accounts: vec!["alice".into()],
+        });
+        let dispatcher = Arc::new(RecordingDispatcher::default());
+        serve(
+            Command::GroupInvite,
+            groups.clone(),
+            users,
+            dispatcher.clone(),
+            invite,
+            alice(),
+        )
+        .await;
+        assert_eq!(status_of(&dispatcher), Status::Success as i32);
+        assert_eq!(
+            groups.members("kim", &gid).await.unwrap(),
+            vec!["alice".to_string()]
+        );
     }
 }

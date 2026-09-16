@@ -35,6 +35,7 @@ const GroupCreateReqType = lookup("GroupCreateReq");
 const GroupCreateRespType = lookup("GroupCreateResp");
 const GroupCreateNotifyType = lookup("GroupCreateNotify");
 const GroupJoinReqType = lookup("GroupJoinReq");
+const GroupInviteReqType = lookup("GroupInviteReq");
 const GroupQuitReqType = lookup("GroupQuitReq");
 const GroupDetailType = lookup("GroupDetail");
 const GroupMembersRespType = lookup("GroupMembersResp");
@@ -317,6 +318,11 @@ export function encodeContentReq(ids: bigint[]): Uint8Array {
   });
 }
 
+export function decodeContentReq(buf: Uint8Array): { messageIds: bigint[] } {
+  const o = decode<{ messageIds?: unknown[] }>(MessageContentReqType, buf);
+  return { messageIds: (o.messageIds ?? []).map((id) => asBigInt(id)) };
+}
+
 export interface WireContent {
   messageId: bigint;
   type: number;
@@ -384,6 +390,13 @@ export function decodeGroupCreateNotify(buf: Uint8Array): {
 
 export function encodeGroupJoinReq(account: string, groupId: string): Uint8Array {
   return encode(GroupJoinReqType, { account, groupId });
+}
+
+export function encodeGroupInviteReq(
+  groupId: string,
+  accounts: string[],
+): Uint8Array {
+  return encode(GroupInviteReqType, { groupId, accounts });
 }
 
 export function encodeGroupQuitReq(account: string, groupId: string): Uint8Array {

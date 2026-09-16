@@ -136,6 +136,12 @@ enum WriteOp {
         mark_imported: bool,
         reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
+    EnsureThread {
+        account: String,
+        dest: String,
+        kind: i32,
+        reply: oneshot::Sender<Result<(ThreadView, u64), SdkError>>,
+    },
     UpsertAgentProfile {
         account: String,
         row: AgentProfileRow,
@@ -291,6 +297,28 @@ impl Store {
                 account,
                 talks,
                 policy,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn ensure_thread(
+        &self,
+        account: String,
+        dest: String,
+        kind: i32,
+    ) -> Result<(ThreadView, u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::EnsureThread {
+                account,
+                dest,
+                kind,
                 reply,
             })
             .map_err(|_| SdkError::Busy {
@@ -1160,6 +1188,15 @@ async fn write_worker(
                 let result = upsert_settings_tx(&pool, &row, mark_imported).await;
                 let _ = reply.send(record_result(&changes, "", 0, result));
             }
+            WriteOp::EnsureThread {
+                account,
+                dest,
+                kind,
+                reply,
+            } => {
+                let result = ensure_thread_tx(&pool, &account, &dest, kind).await;
+                let _ = reply.send(record_result(&changes, &account, 0, result));
+            }
             WriteOp::UpsertAgentProfile {
                 account,
                 row,
@@ -1318,6 +1355,35 @@ async fn upsert_contact_tx(
                 CommitEffect::empty()
             },
         )
+    })
+}
+
+async fn ensure_thread_tx(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    kind: i32,
+) -> Result<(ThreadView, CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let existed = threads::find(&mut conn, account, dest).await?.is_some();
+    let stored = threads::ensure(&mut conn, account, dest, kind).await;
+    finish_conn(&mut conn, stored).await.map(|stored| {
+        let view = ThreadView {
+            id: stored.id,
+            kind: stored.kind,
+            title: stored.title,
+            avatar: stored.avatar,
+            last_body: stored.last_body,
+            last_at: stored.last_at,
+            unread: stored.unread,
+        };
+        let effect = if existed {
+            CommitEffect::empty()
+        } else {
+            CommitEffect::inbox()
+        };
+        (view, effect)
     })
 }
 
