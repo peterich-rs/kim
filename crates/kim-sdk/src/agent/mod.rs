@@ -7,7 +7,7 @@ mod queue;
 mod runtime;
 mod sessions;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
@@ -65,10 +65,18 @@ struct Turn {
     epoch: SessionEpoch,
 }
 
+struct TurnQueue {
+    tx: mpsc::Sender<Turn>,
+    // Bound replay protection per destination; include epoch for account changes.
+    admitted: VecDeque<(SessionEpoch, i64)>,
+}
+
+const RECENT_TURN_CAP: usize = 1024;
+
 pub struct MobileAgent {
     sdk: KimSdk,
     runtime: Arc<dyn AgentRuntime>,
-    queues: Mutex<HashMap<String, mpsc::Sender<Turn>>>,
+    queues: Mutex<HashMap<String, TurnQueue>>,
     lru: Arc<Mutex<SessionLru>>,
 }
 
@@ -261,31 +269,49 @@ impl AgentPort for MobileAgent {
         let Some(profile_id) = profiles::profile_id_for_dest(&store, &account, dest).await? else {
             return Ok(());
         };
+        if self.sdk.current_epoch() != epoch {
+            return Err(SdkError::StaleEpoch {
+                expected: epoch.0,
+                actual: self.sdk.current_epoch().0,
+            });
+        }
         {
             let mut lru = lock(&self.lru);
             lru.touch(dest, &profile_id);
         }
-        let tx = {
+        {
             let mut queues = lock(&self.queues);
-            if let Some(tx) = queues.get(dest) {
-                tx.clone()
-            } else {
+            let queue = queues.entry(dest.to_string()).or_insert_with(|| {
                 let (tx, rx) = mpsc::channel(QUEUE_CAP);
-                queues.insert(dest.to_string(), tx.clone());
-                drop(queues);
                 self.spawn_worker(rx);
-                tx
+                TurnQueue {
+                    tx,
+                    admitted: VecDeque::new(),
+                }
+            });
+            let key = (epoch, in_reply_to);
+            if in_reply_to > 0 && queue.admitted.contains(&key) {
+                return Ok(());
             }
-        };
-        tx.try_send(Turn {
-            dest: dest.to_string(),
-            text: text.to_string(),
-            in_reply_to,
-            epoch,
-        })
-        .map_err(|_| SdkError::Busy {
-            queue: "agent".into(),
-        })?;
+            queue
+                .tx
+                .try_send(Turn {
+                    dest: dest.to_string(),
+                    text: text.to_string(),
+                    in_reply_to,
+                    epoch,
+                })
+                .map_err(|_| SdkError::Busy {
+                    queue: "agent".into(),
+                })?;
+            // Record only successful admissions; a full queue remains retryable.
+            if in_reply_to > 0 {
+                if queue.admitted.len() == RECENT_TURN_CAP {
+                    queue.admitted.pop_front();
+                }
+                queue.admitted.push_back(key);
+            }
+        }
         self.sdk
             .emit_session_wait(SessionUpdate::AgentTurn {
                 dest: dest.to_string(),
