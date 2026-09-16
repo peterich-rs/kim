@@ -36,6 +36,7 @@ async fn create_and_detail_via_royal_http() {
     let stack = spawn_stack_seams(store, groups).await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
+    let (_bob, _) = login("bob", &url).await;
 
     let mut create = LogicPkt::new(CMD_GROUP_CREATE, 2, Bytes::new());
     create.write_body(&GroupCreateReq {
@@ -74,6 +75,7 @@ async fn create_and_detail_via_royal_http() {
             let d: GroupDetail = p.read_body().expect("GroupDetail");
             assert_eq!(d.name, "royal-g");
             assert!(d.members.contains(&"alice".to_string()));
+            assert!(d.members.contains(&"bob".to_string()));
         }
         _ => panic!("expected detail"),
     }
