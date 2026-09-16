@@ -148,7 +148,7 @@ async fn two_chats_see_the_same_group_via_royal() {
     create.write_body(&GroupCreateReq {
         name: "shared".into(),
         owner: "alice".into(),
-        members: vec!["alice".into(), "bob".into()],
+        members: vec!["alice".into()],
         avatar: String::new(),
         introduction: String::new(),
     });
