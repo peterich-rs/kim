@@ -19,7 +19,6 @@ import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
-import 'package:kim_mobile/features/session/session.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 
 final linkProvider = NotifierProvider<LinkNotifier, KimLinkState>(
@@ -221,7 +220,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 typer: typer,
                 dest: dest,
                 active: active,
-                me: ref.read(sessionProvider).account,
+                me: ref.read(authProvider).account,
               );
         case SessionUpdateDto_AgentTurn(:final dest, :final state):
           final busy = switch (state) {
@@ -236,7 +235,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 typer: dest,
                 dest: dest,
                 active: busy,
-                me: ref.read(sessionProvider).account,
+                me: ref.read(authProvider).account,
               );
         case SessionUpdateDto_ReceiptRead(
           :final reader,
