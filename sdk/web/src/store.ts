@@ -1,10 +1,11 @@
-import type { Message } from "./message";
+import { Message } from "./message";
 
 export interface MsgStore {
   exist(id: bigint): Promise<boolean>;
   insert(msg: Message): Promise<void>;
   setAck(id: bigint): Promise<void>;
   lastId(): Promise<bigint>;
+  get?(id: bigint): Promise<Message | undefined>;
 }
 
 export class MemoryStore implements MsgStore {
@@ -17,6 +18,10 @@ export class MemoryStore implements MsgStore {
 
   async insert(msg: Message): Promise<void> {
     this.msgs.set(msg.messageId.toString(), msg);
+  }
+
+  async get(id: bigint): Promise<Message | undefined> {
+    return this.msgs.get(id.toString());
   }
 
   async setAck(id: bigint): Promise<void> {
@@ -77,6 +82,23 @@ export class KeyValueStore implements MsgStore {
       contentLoaded: msg.contentLoaded,
     };
     this.kv.setItem(this.keyMsg(msg.messageId), JSON.stringify(row));
+  }
+
+  async get(id: bigint): Promise<Message | undefined> {
+    const raw = this.kv.getItem(this.keyMsg(id));
+    if (!raw) {
+      return undefined;
+    }
+    const row = JSON.parse(raw) as StoredMessage;
+    const msg = new Message(BigInt(row.messageId), BigInt(row.sendTime));
+    msg.sender = row.sender;
+    msg.receiver = row.receiver;
+    msg.group = row.group;
+    msg.type = row.type;
+    msg.body = row.body;
+    msg.extra = row.extra;
+    msg.contentLoaded = row.contentLoaded;
+    return msg;
   }
 
   async setAck(id: bigint): Promise<void> {

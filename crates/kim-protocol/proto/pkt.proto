@@ -160,6 +160,11 @@ message GroupQuitReq {
   string groupId = 2;
 }
 
+message GroupInviteReq {
+  string groupId = 1;
+  repeated string accounts = 2;
+}
+
 message GroupQueryReq {
   string groupId = 1;
 }

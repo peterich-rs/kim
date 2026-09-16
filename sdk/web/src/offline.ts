@@ -8,6 +8,67 @@ export interface ContentLoader {
 
 const PAGE_COUNT = 20;
 
+export function messageFromIndex(
+  idx: WireIndex,
+  account: string,
+): Message {
+  const message = new Message(idx.messageId, idx.sendTime);
+  if (idx.direction === 1) {
+    message.sender = account;
+    message.receiver = idx.accountB;
+  } else {
+    message.sender = idx.accountB;
+    message.receiver = account;
+  }
+  message.group = idx.group;
+  return message;
+}
+
+export function mergeIndexContent(
+  indexes: WireIndex[],
+  contents: Message[],
+  account: string,
+): Message[] {
+  const byId = new Map(
+    contents.map((c) => [c.messageId.toString(), c] as const),
+  );
+  const out: Message[] = [];
+  for (const idx of indexes) {
+    const content = byId.get(idx.messageId.toString());
+    if (!content) {
+      continue;
+    }
+    const message = messageFromIndex(idx, account);
+    message.type = content.type;
+    message.body = content.body;
+    message.extra = content.extra;
+    message.contentLoaded = true;
+    out.push(message);
+  }
+  return out;
+}
+
+/** Chat=0 ACK is a send_time watermark on the first id in the packet. Only a contiguous loaded prefix is safe. */
+export function ackPrefixIds(
+  indexes: WireIndex[],
+  loadedIds: Set<string>,
+): bigint[] {
+  const sorted = [...indexes].sort((a, b) => {
+    if (a.sendTime === b.sendTime) {
+      return a.messageId < b.messageId ? -1 : a.messageId > b.messageId ? 1 : 0;
+    }
+    return a.sendTime < b.sendTime ? -1 : 1;
+  });
+  const out: bigint[] = [];
+  for (const idx of sorted) {
+    if (!loadedIds.has(idx.messageId.toString())) {
+      break;
+    }
+    out.push(idx.messageId);
+  }
+  return out;
+}
+
 export class OfflineMessages {
   private readonly groupmessages = new Map<string, Message[]>();
   private readonly usermessages = new Map<string, Message[]>();
@@ -15,17 +76,13 @@ export class OfflineMessages {
   constructor(
     private readonly cli: ContentLoader,
     indexes: WireIndex[],
+    merged?: Map<string, Message>,
   ) {
     for (let i = indexes.length - 1; i >= 0; i--) {
       const idx = indexes[i]!;
-      const message = new Message(idx.messageId, idx.sendTime);
-      if (idx.direction === 1) {
-        message.sender = cli.account;
-        message.receiver = idx.accountB;
-      } else {
-        message.sender = idx.accountB;
-        message.receiver = cli.account;
-      }
+      const message =
+        merged?.get(idx.messageId.toString()) ??
+        messageFromIndex(idx, cli.account);
       if (idx.group) {
         let list = this.groupmessages.get(idx.group);
         if (!list) {

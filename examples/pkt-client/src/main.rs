@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use kim_protocol::pkt::{
-    Flag, GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupJoinReq,
-    GroupQuitReq, MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq,
-    MessageIndexResp, MessagePush, MessageReq, MessageResp, Status,
+    Flag, GroupCreateNotify, GroupCreateReq, GroupCreateResp, GroupDetail, GroupInviteReq,
+    GroupJoinReq, GroupQuitReq, MessageAckReq, MessageContentReq, MessageContentResp,
+    MessageIndexReq, MessageIndexResp, MessagePush, MessageReq, MessageResp, Status,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
     CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE,
-    CMD_GROUP_DETAIL, CMD_GROUP_JOIN, CMD_GROUP_QUIT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX,
-    CODE_PONG, MESSAGE_TYPE_TEXT,
+    CMD_GROUP_DETAIL, CMD_GROUP_INVITE, CMD_GROUP_JOIN, CMD_GROUP_QUIT, CMD_OFFLINE_CONTENT,
+    CMD_OFFLINE_INDEX, CODE_PONG, MESSAGE_TYPE_TEXT,
 };
 use kim_ws::{ClientOptions, WsClient};
 use pkt_client::{is_kickout, resolve_jwt_secret, LoginDialer};
@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let group_join = env_nonempty("KIM_GROUP_JOIN");
     let group_quit = env_nonempty("KIM_GROUP_QUIT");
     let group_detail = env_nonempty("KIM_GROUP_DETAIL");
+    let group_invite = env_nonempty("KIM_GROUP_INVITE");
     let ack_from = env_nonempty("KIM_ACK_FROM")
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0);
@@ -98,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         && group_join.is_none()
         && group_quit.is_none()
         && group_detail.is_none()
+        && group_invite.is_none()
     {
         return hold_read_loop(&mut client, &channel_id, skip_ack, ack_delay, seen, seq).await;
     }
@@ -160,6 +162,33 @@ async fn main() -> anyhow::Result<()> {
             }
             Packet::Logic(p) => return Err(anyhow::anyhow!("detail status {}", p.header.status)),
             _ => return Err(anyhow::anyhow!("expected detail resp")),
+        }
+        client.close().await?;
+        return Ok(());
+    }
+
+    if let Some(spec) = group_invite {
+        ping_pong(&client).await?;
+        let (gid, accounts) = spec.split_once(',').unwrap_or((spec.as_str(), ""));
+        let accounts: Vec<String> = accounts
+            .split(';')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let mut pkt = LogicPkt::new(CMD_GROUP_INVITE, seq, Bytes::new());
+        pkt.set_dest(gid);
+        pkt.write_body(&GroupInviteReq {
+            group_id: gid.to_string(),
+            accounts,
+        });
+        client.send(marshal(&Packet::Logic(pkt))).await?;
+        let frame = timeout_read(&client).await?;
+        match read(&frame.payload)? {
+            Packet::Logic(p) if p.header.status == Status::Success as i32 => {
+                info!("group invited");
+            }
+            Packet::Logic(p) => return Err(anyhow::anyhow!("invite status {}", p.header.status)),
+            _ => return Err(anyhow::anyhow!("expected invite resp")),
         }
         client.close().await?;
         return Ok(());

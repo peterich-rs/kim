@@ -200,11 +200,11 @@ pub struct Activation {
 #[derive(Debug, Deserialize)]
 struct SkillFrontmatter {
     #[serde(default)]
-    name: Option<serde_yaml::Value>,
+    name: Option<serde_norway::Value>,
     #[serde(default)]
-    description: Option<serde_yaml::Value>,
+    description: Option<serde_norway::Value>,
     #[serde(default)]
-    version: Option<serde_yaml::Value>,
+    version: Option<serde_norway::Value>,
 }
 
 fn split_frontmatter(text: &str) -> Option<(String, String)> {
@@ -230,20 +230,20 @@ fn split_frontmatter(text: &str) -> Option<(String, String)> {
     ))
 }
 
-fn yaml_scalar_line(value: Option<serde_yaml::Value>) -> String {
+fn yaml_scalar_line(value: Option<serde_norway::Value>) -> String {
     let Some(value) = value else {
         return String::new();
     };
     let raw = match value {
-        serde_yaml::Value::String(s) => s,
-        serde_yaml::Value::Number(n) => n.to_string(),
-        serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Null
-        | serde_yaml::Value::Sequence(_)
-        | serde_yaml::Value::Mapping(_) => {
+        serde_norway::Value::String(s) => s,
+        serde_norway::Value::Number(n) => n.to_string(),
+        serde_norway::Value::Bool(b) => b.to_string(),
+        serde_norway::Value::Null
+        | serde_norway::Value::Sequence(_)
+        | serde_norway::Value::Mapping(_) => {
             return String::new();
         }
-        serde_yaml::Value::Tagged(tagged) => return yaml_scalar_line(Some(tagged.value)),
+        serde_norway::Value::Tagged(tagged) => return yaml_scalar_line(Some(tagged.value)),
     };
     sanitize_single_line(&raw)
 }
@@ -324,7 +324,7 @@ fn repair_frontmatter_scalar_fields(frontmatter: &str) -> Option<String> {
             }
         }
         let invalid_flow_like_scalar = matches!(first_char, '[' | '{' | '@' | '`')
-            && serde_yaml::from_str::<serde_yaml::Value>(scalar).is_err();
+            && serde_norway::from_str::<serde_norway::Value>(scalar).is_err();
         if !has_colon_separator && !invalid_flow_like_scalar {
             repaired_lines.push(line.to_string());
             continue;
@@ -340,18 +340,18 @@ fn repair_frontmatter_scalar_fields(frontmatter: &str) -> Option<String> {
 }
 
 fn parse_frontmatter_yaml(block: &str) -> Option<SkillFrontmatter> {
-    match serde_yaml::from_str(block) {
+    match serde_norway::from_str(block) {
         Ok(parsed) => Some(parsed),
         Err(_) => {
             let repaired = repair_frontmatter_scalar_fields(block)?;
-            serde_yaml::from_str(&repaired).ok()
+            serde_norway::from_str(&repaired).ok()
         }
     }
 }
 
 /// YAML frontmatter + markdown body.
 ///
-/// Folded/literal scalars and nested maps come from `serde_yaml`. Unquoted
+/// Folded/literal scalars and nested maps come from `serde_norway`. Unquoted
 /// colons are repaired so wild `~/.agents` skills still parse. Name and
 /// description are collapsed to one line for list rows. Invalid YAML keeps
 /// the body and empty meta so a scan never dies on one bad skill.

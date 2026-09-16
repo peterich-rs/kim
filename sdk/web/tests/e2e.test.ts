@@ -249,7 +249,7 @@ public_port = ${chatPort}
     expect((await alice.login()).success).toBe(true);
     const created = await alice.createGroup({
       name: "sdk",
-      members: ["alice", "bob"],
+      members: ["alice"],
     });
     expect(created.status).toBe(0);
     expect(created.groupId).toBeTruthy();

@@ -19,6 +19,7 @@ pub const CMD_CHAT_GROUP_TALK: &str = "chat.group.talk";
 pub const CMD_GROUP_CREATE: &str = "chat.group.create";
 pub const CMD_GROUP_JOIN: &str = "chat.group.join";
 pub const CMD_GROUP_QUIT: &str = "chat.group.quit";
+pub const CMD_GROUP_INVITE: &str = "chat.group.invite";
 pub const CMD_GROUP_DETAIL: &str = "chat.group.detail";
 pub const CMD_GROUP_MEMBERS: &str = "chat.group.members";
 pub const CMD_CHAT_TALK_ACK: &str = "chat.talk.ack";

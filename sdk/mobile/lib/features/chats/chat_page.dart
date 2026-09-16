@@ -86,10 +86,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final orphan =
         profileStore.profilesReady &&
         profileForChatDest(widget.id, profiles) == null;
-    final readOnly =
-        agentHostSupported &&
-        orphan &&
-        (agentChat || isServerBotAccount(widget.id));
+    final knownBot = agentChat || isServerBotAccount(widget.id);
+    final desktopOrphan = agentHostSupported && orphan && knownBot;
+    final phoneOrphan =
+        !agentHostSupported &&
+        social.ready &&
+        isServerBotAccount(widget.id) &&
+        !social.friends.any((p) => p.account == widget.id);
+    final readOnly = desktopOrphan || phoneOrphan;
     final userThread = kind == ThreadKind.user && !agentChat;
     final showTyping =
         kind == ThreadKind.user || agentChat || isServerBotAccount(widget.id);

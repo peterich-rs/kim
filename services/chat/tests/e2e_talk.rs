@@ -243,18 +243,48 @@ async fn unknown_dest_is_user_not_found() {
 }
 
 #[tokio::test]
-async fn create_drops_extra_members_so_others_do_not_get_group_push() {
+async fn create_unknown_member_is_user_not_found() {
     let stack = spawn_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
-    let (bob, _) = login("bob", &url).await;
-    let (carol, _) = login("carol", &url).await;
+    let (_bob, _) = login("bob", &url).await;
 
     let mut create = LogicPkt::new(CMD_GROUP_CREATE, 2, Bytes::new());
     create.write_body(&GroupCreateReq {
         name: "group1".into(),
         owner: "alice".into(),
-        members: vec!["alice".into(), "bob".into(), "carol".into(), "dave".into()],
+        members: vec!["alice".into(), "bob".into(), "dave".into()],
+        avatar: String::new(),
+        introduction: String::new(),
+    });
+    alice
+        .send(marshal(&Packet::Logic(create)))
+        .await
+        .expect("create send");
+    let create_frame = timeout_read(&alice).await;
+    match read(&create_frame.payload).expect("create decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.status, Status::UserNotFound as i32);
+        }
+        _ => panic!("expected GroupCreateResp"),
+    }
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
+async fn create_keeps_members_and_fans_out_group_talk() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+
+    let mut create = LogicPkt::new(CMD_GROUP_CREATE, 2, Bytes::new());
+    create.write_body(&GroupCreateReq {
+        name: "group1".into(),
+        owner: "alice".into(),
+        members: vec!["alice".into(), "bob".into()],
         avatar: String::new(),
         introduction: String::new(),
     });
@@ -272,6 +302,7 @@ async fn create_drops_extra_members_so_others_do_not_get_group_push() {
         }
         _ => panic!("expected GroupCreateResp"),
     };
+    let _ = timeout_read(&bob).await;
 
     let talk = talk_pkt(CMD_CHAT_GROUP_TALK, 3, &group_id, "hellogroup");
     alice
@@ -289,9 +320,15 @@ async fn create_drops_extra_members_so_others_do_not_get_group_push() {
         }
         _ => panic!("expected MessageResp"),
     }
-    timeout_no_packet(&alice, Duration::from_millis(500)).await;
-    timeout_no_packet(&bob, Duration::from_millis(400)).await;
-    timeout_no_packet(&carol, Duration::from_millis(400)).await;
+    let push_frame = timeout_read(&bob).await;
+    match read(&push_frame.payload).expect("push decode") {
+        Packet::Logic(p) => {
+            assert_eq!(p.header.flag, Flag::Push as i32);
+            let push: MessagePush = p.read_body().expect("MessagePush");
+            assert_eq!(push.body, "hellogroup");
+        }
+        _ => panic!("expected group talk push"),
+    }
 
     let _ = stack.gw.shutdown().await;
     let _ = stack.chat.shutdown().await;

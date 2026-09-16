@@ -10,8 +10,9 @@
 
 | command | dest | 行为 |
 |---|---|---|
-| `chat.group.create` | 空 | 建群。`owner` 强制 session；初始成员只有创建者。请求里其它 `members` 丢掉。Notify 只打创建者其它设备 |
-| `chat.group.join` | group id | 默认私有群，禁用自助加入。已是成员 → Success；否则 `Unauthorized`。代他人操作 → `Unauthorized`。邀请协议落地前，入群只有 create |
+| `chat.group.create` | 空 | 建群。`owner` 强制 session；`members` 须为已注册人类账号（缺失或 bot → 108），上限 500。Notify 打全量成员所有在线设备（跳过发送端本连接） |
+| `chat.group.invite` | group id | 成员制邀请。session 须已是成员，否则 107。账号去重、剔除已有成员；缺失/bot → 108。Notify 只打**新增成员**在线设备（不是全员成员变更广播） |
+| `chat.group.join` | group id | 默认私有群，禁用自助加入。已是成员 → Success；否则 `Unauthorized`。代他人操作 → `Unauthorized`。入群走 create 或 invite |
 | `chat.group.quit` | group id | 只能退自己。未知群或非成员 → `NotGroupMember` |
 | `chat.group.detail` | group id | 须是成员。非成员或未知群 → `NotGroupMember`（无 body） |
 | `chat.group.members` | group id | 须是成员。非成员或未知群 → `NotGroupMember`（无 body） |

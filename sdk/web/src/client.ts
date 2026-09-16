@@ -2,7 +2,12 @@ import { toUint8 } from "./bytes";
 import { Command } from "./command";
 import { doLogin } from "./login";
 import { Content, Message, Response, type LoginBody, type TalkResult } from "./message";
-import { OfflineMessages, type ContentLoader } from "./offline";
+import {
+  ackPrefixIds,
+  mergeIndexContent,
+  OfflineMessages,
+  type ContentLoader,
+} from "./offline";
 import { BasicPkt, LogicPkt, readPacket } from "./packet";
 import {
   decodeAuthResp,
@@ -29,6 +34,7 @@ import {
   encodeContentReq,
   encodeConversationReadReq,
   encodeGroupCreateReq,
+  encodeGroupInviteReq,
   encodeGroupJoinReq,
   encodeGroupQuitReq,
   encodeHistoryReq,
@@ -358,6 +364,17 @@ export class KIMClient implements ContentLoader {
     }
     const body = decodeGroupCreateResp(resp.payload);
     return { status: resp.status, groupId: body.groupId };
+  }
+
+  async inviteGroup(
+    groupId: string,
+    accounts: string[],
+  ): Promise<{ status: number; err?: Error }> {
+    return this.groupDest(
+      Command.GroupInvite,
+      groupId,
+      encodeGroupInviteReq(groupId, accounts),
+    );
   }
 
   async joinGroup(
@@ -872,7 +889,8 @@ export class KIMClient implements ContentLoader {
 
   private async loadOfflineMessage(): Promise<void> {
     const indexes: WireIndex[] = [];
-    for (;;) {
+    const merged = new Map<string, Message>();
+    pageLoop: for (;;) {
       const pkt = LogicPkt.build(
         Command.OfflineIndex,
         "",
@@ -887,30 +905,54 @@ export class KIMClient implements ContentLoader {
       if (page.length === 0) {
         break;
       }
+      const fresh: WireIndex[] = [];
       for (const idx of page) {
         if (await this.opts.store.exist(idx.messageId)) {
-          continue;
+          const row = await this.opts.store.get?.(idx.messageId);
+          if (row?.contentLoaded !== false) {
+            if (row) {
+              merged.set(idx.messageId.toString(), row);
+            }
+            continue;
+          }
         }
-        await this.opts.store.insert(new Message(idx.messageId, idx.sendTime));
+        fresh.push(idx);
       }
-      const ids = page.map((idx) => idx.messageId);
-      for (let i = 0; i < ids.length; i += 200) {
-        const batch = ids.slice(i, i + 200);
-        const ack = LogicPkt.build(
-          Command.ChatTalkAck,
-          "",
-          encodeAckReq(batch),
-          this.allocSeq(),
+      let stalled = false;
+      for (let i = 0; i < fresh.length; i += 200) {
+        const batch = fresh.slice(i, i + 200);
+        const { status, contents } = await this.loadContent(
+          batch.map((idx) => idx.messageId),
         );
-        this.send(ack.bytes());
-        await this.opts.store.setAck(batch[batch.length - 1]!);
+        if (status !== Status.Success) {
+          break pageLoop;
+        }
+        const loaded = mergeIndexContent(batch, contents, this.account);
+        if (loaded.length === 0) {
+          stalled = true;
+          break;
+        }
+        stalled = loaded.length < batch.length;
+        for (const msg of loaded) {
+          await this.opts.store.insert(msg);
+          merged.set(msg.messageId.toString(), msg);
+        }
+        const ackable = ackPrefixIds(
+          page,
+          new Set(merged.keys()),
+        );
+        if (ackable.length === 0) {
+          stalled = true;
+          break;
+        }
+        this.flushAckIds(ackable);
       }
       indexes.push(...page);
-      if (!hasMore) {
+      if (stalled || !hasMore) {
         break;
       }
     }
-    const om = new OfflineMessages(this, indexes);
+    const om = new OfflineMessages(this, indexes, merged);
     try {
       this.offmessageCallback(om);
     } catch (err) {

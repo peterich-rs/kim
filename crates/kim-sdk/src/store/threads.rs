@@ -11,6 +11,7 @@ pub(crate) struct StoredThread {
     pub last_body: String,
     pub last_at: i64,
     pub unread: i32,
+    pub last_message_id: i64,
 }
 
 pub(crate) async fn upsert_on_send(
@@ -87,6 +88,7 @@ pub(crate) async fn apply_incoming(
             last_body: last_body.clone(),
             last_at,
             unread,
+            last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
         },
     )
     .await?;
@@ -98,6 +100,7 @@ pub(crate) async fn apply_incoming(
         last_body,
         last_at,
         unread,
+        last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
     })
 }
 
@@ -134,6 +137,9 @@ pub(crate) async fn persist_inbox_item(
     } else {
         item.avatar.clone()
     };
+    let last_message_id = item
+        .last_message_id
+        .max(prev.as_ref().map(|t| t.last_message_id).unwrap_or(0));
     let thread = StoredThread {
         id: item.dest.clone(),
         kind: item.kind,
@@ -142,6 +148,7 @@ pub(crate) async fn persist_inbox_item(
         last_body,
         last_at,
         unread,
+        last_message_id,
     };
     upsert_full(tx, account, &thread).await?;
     Ok(thread)
@@ -157,13 +164,40 @@ fn merged_unread(prev: Option<&StoredThread>, incoming_unread: i32, incoming_at:
     incoming_unread
 }
 
+pub(crate) async fn ensure(
+    tx: &mut SqliteConnection,
+    account: &str,
+    id: &str,
+    kind: i32,
+) -> Result<StoredThread, SdkError> {
+    sqlx::query(
+        r"
+        INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar)
+        VALUES (?, ?, ?, ?, '', 0, 0, '')
+        ON CONFLICT(account, id) DO NOTHING
+        ",
+    )
+    .bind(account)
+    .bind(id)
+    .bind(thread_kind_name(kind))
+    .bind(id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+    find(tx, account, id)
+        .await?
+        .ok_or_else(|| SdkError::Internal {
+            message: "ensure thread missing after insert".into(),
+        })
+}
+
 pub(crate) async fn find(
     tx: &mut SqliteConnection,
     account: &str,
     id: &str,
 ) -> Result<Option<StoredThread>, SdkError> {
     let row = sqlx::query(
-        "SELECT id, kind, title, avatar, last_body, last_at, unread FROM threads WHERE account = ? AND id = ?",
+        "SELECT id, kind, title, avatar, last_body, last_at, unread, last_message_id FROM threads WHERE account = ? AND id = ?",
     )
     .bind(account)
     .bind(id)
@@ -178,7 +212,7 @@ pub(crate) async fn load_all(
     account: &str,
 ) -> Result<Vec<ThreadView>, SdkError> {
     let rows = sqlx::query(
-        "SELECT id, kind, title, avatar, last_body, last_at, unread FROM threads WHERE account = ? ORDER BY last_at DESC",
+        "SELECT id, kind, title, avatar, last_body, last_at, unread, last_message_id FROM threads WHERE account = ? ORDER BY last_at DESC",
     )
     .bind(account)
     .fetch_all(pool)
@@ -207,15 +241,19 @@ async fn upsert_full(
 ) -> Result<(), SdkError> {
     sqlx::query(
         r"
-        INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO threads (account, id, kind, title, last_body, last_at, unread, avatar, last_message_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account, id) DO UPDATE SET
           kind = excluded.kind,
           title = excluded.title,
           last_body = excluded.last_body,
           last_at = excluded.last_at,
           unread = excluded.unread,
-          avatar = CASE WHEN excluded.avatar != '' THEN excluded.avatar ELSE threads.avatar END
+          avatar = CASE WHEN excluded.avatar != '' THEN excluded.avatar ELSE threads.avatar END,
+          last_message_id = CASE
+            WHEN excluded.last_message_id >= threads.last_message_id THEN excluded.last_message_id
+            ELSE threads.last_message_id
+          END
         ",
     )
     .bind(account)
@@ -226,6 +264,7 @@ async fn upsert_full(
     .bind(t.last_at)
     .bind(t.unread)
     .bind(&t.avatar)
+    .bind(t.last_message_id)
     .execute(&mut *tx)
     .await
     .map_err(map_sqlx)?;
@@ -242,5 +281,26 @@ fn thread_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<StoredThread, SdkErr
         last_body: row.try_get("last_body").map_err(map_sqlx)?,
         last_at: row.try_get("last_at").map_err(map_sqlx)?,
         unread: row.try_get("unread").map_err(map_sqlx)?,
+        last_message_id: row.try_get("last_message_id").map_err(map_sqlx)?,
     })
+}
+
+/// Inbox tip for `dest`, if the thread row exists.
+pub(crate) async fn server_tip(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+) -> Result<Option<(i32, i64)>, SdkError> {
+    let row = sqlx::query("SELECT kind, last_message_id FROM threads WHERE account = ? AND id = ?")
+        .bind(account)
+        .bind(dest)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let kind_raw: String = row.try_get("kind").map_err(map_sqlx)?;
+    let last_message_id: i64 = row.try_get("last_message_id").map_err(map_sqlx)?;
+    Ok(Some((thread_kind_from_name(&kind_raw), last_message_id)))
 }

@@ -63,5 +63,6 @@ Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 +
 | — | 客户端 | 链接控制域（keepalive / CODE_PING / 看门狗 / 退避复位） | 不改 gateway ACK | [07-mobile-link-control.md](./07-mobile-link-control.md) |
 | — | 客户端 | kim-sdk 所有权下沉：store / outbox / persist-then-ack | 不改服务端 ACK；先 PR 1 保护 pending；推翻 06 Decision 2/4 | [08-kim-sdk-ownership.md](./08-kim-sdk-ownership.md) |
 | — | 客户端 | Agent 生产力：工作区 / 能力 / Skill / 本机广场 | 不改 gateway；桌面 Goose；零后台 | [agent-productivity.md](./agent-productivity.md) |
+| — | 客户端 | Agent pet presence：Codex 图集播在 1:1 顶栏 / typing 位 | 不改协议 / FFI / AgentSpec；不上 `flutter_scene` | [agent-pet-presence.md](./agent-pet-presence.md) |
 
 G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。

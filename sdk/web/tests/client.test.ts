@@ -402,6 +402,14 @@ describe("KIMClient", () => {
       accountB: "bob",
       group: "",
     }));
+    for (const idx of gw.pending) {
+      gw.contents.set(idx.messageId.toString(), {
+        messageId: idx.messageId,
+        type: 1,
+        body: "x",
+        extra: "",
+      });
+    }
     const cli = client(gw);
     let groups = 0;
     cli.onofflinemessage((om) => {
@@ -411,6 +419,51 @@ describe("KIMClient", () => {
     expect(groups).toBe(201);
     expect(gw.acked).toHaveLength(201);
     expect(gw.pending).toHaveLength(0);
+    await cli.logout();
+  });
+
+  it("offline persist-then-ack skips missing content", async () => {
+    const gw = new LoopbackGw();
+    const store = new MemoryStore();
+    gw.pending = [
+      {
+        messageId: 1n,
+        direction: 0,
+        sendTime: 1n,
+        accountB: "bob",
+        group: "",
+      },
+      {
+        messageId: 2n,
+        direction: 0,
+        sendTime: 2n,
+        accountB: "bob",
+        group: "",
+      },
+    ];
+    gw.contents.set("1", { messageId: 1n, type: 1, body: "hi", extra: "" });
+    const cli = new KIMClient(
+      "ws://127.0.0.1:1/",
+      { token: mintToken("alice") },
+      {
+        websocket: gw.factory,
+        reconnect: false,
+        heartbeatMs: 0,
+        sendTimeoutMs: 500,
+        loginTimeoutMs: 500,
+        retrySleepMs: 1,
+        ackForceAfterMs: 20,
+        ackDelayMs: 0,
+        ackPollMs: 10,
+        store,
+      },
+    );
+    await cli.login();
+    expect(gw.acked).toEqual([1n]);
+    const row = await store.get(1n);
+    expect(row?.body).toBe("hi");
+    expect(row?.contentLoaded).toBe(true);
+    expect(await store.exist(2n)).toBe(false);
     await cli.logout();
   });
 });

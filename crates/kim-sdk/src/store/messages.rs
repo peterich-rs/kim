@@ -268,6 +268,21 @@ pub(crate) async fn count_sent(
     .map_err(map_sqlx)
 }
 
+pub(crate) async fn max_message_id(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+) -> Result<i64, SdkError> {
+    sqlx::query_scalar(
+        "SELECT IFNULL(MAX(message_id), 0) FROM messages WHERE account = ? AND dest = ?",
+    )
+    .bind(account)
+    .bind(dest)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx)
+}
+
 async fn load_hot_window_on(
     conn: &mut SqliteConnection,
     account: &str,

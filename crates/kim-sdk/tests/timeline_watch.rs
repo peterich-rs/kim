@@ -12,6 +12,7 @@ use sqlx::Connection;
 
 struct HistoryProto {
     calls: AtomicUsize,
+    dests: Mutex<Vec<String>>,
     rows: Mutex<Vec<kim_client::HistoryItem>>,
 }
 
@@ -19,6 +20,7 @@ impl HistoryProto {
     fn new(rows: Vec<kim_client::HistoryItem>) -> Arc<Self> {
         Arc::new(Self {
             calls: AtomicUsize::new(0),
+            dests: Mutex::new(Vec::new()),
             rows: Mutex::new(rows),
         })
     }
@@ -52,13 +54,24 @@ impl ProtocolClient for HistoryProto {
 
     async fn history(
         &self,
-        _dest: &str,
+        dest: &str,
         _kind: i32,
-        _before_id: i64,
-        _limit: i32,
+        before_id: i64,
+        limit: i32,
     ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(self.rows.lock().expect("history rows").clone())
+        self.dests
+            .lock()
+            .expect("history dests")
+            .push(dest.to_string());
+        let mut rows = self.rows.lock().expect("history rows").clone();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.message_id));
+        if before_id > 0 {
+            rows.retain(|row| row.message_id < before_id);
+        }
+        let take = if limit <= 0 { 50 } else { limit as usize };
+        rows.truncate(take);
+        Ok(rows)
     }
 }
 
@@ -323,7 +336,7 @@ async fn load_older_under_cap_fetches_history() {
             .unwrap();
     }
     let proto = HistoryProto::new(vec![kim_client::HistoryItem {
-        message_id: 1_001,
+        message_id: 1,
         msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
         body: "remote-history".into(),
         extra: String::new(),
@@ -399,4 +412,248 @@ async fn history_error_not_end() {
     })
     .await;
     assert!(snapshot.has_more, "load error must not signal history end");
+}
+
+fn inbox_item(dest: &str, last_message_id: i64, last_body: &str) -> kim_client::InboxItem {
+    kim_client::InboxItem {
+        dest: dest.into(),
+        kind: 0,
+        title: dest.into(),
+        avatar: String::new(),
+        last_body: last_body.into(),
+        last_sender: dest.into(),
+        last_message_id,
+        last_send_time: 1_700_000_000_000_000_000,
+        unread: 0,
+    }
+}
+
+async fn open_alice(path: &std::path::Path) -> Arc<KimSdk> {
+    let sdk = KimSdk::open(path.to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    sdk.start_session(StartSession {
+        url: "ws://127.0.0.1:1/".into(),
+        token: "t".into(),
+        user_agent: "test".into(),
+        account: "alice".into(),
+    })
+    .await
+    .unwrap();
+    sdk
+}
+
+#[tokio::test]
+async fn empty_local_hydrates_latest_history_on_subscribe() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    sdk.persist_inbox(vec![inbox_item("bob", 1_001, "from-cloud")])
+        .await
+        .unwrap();
+    let proto = HistoryProto::new(vec![kim_client::HistoryItem {
+        message_id: 1_001,
+        msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+        body: "from-cloud".into(),
+        extra: String::new(),
+        sender: "bob".into(),
+        send_time: 1_700_000_000,
+        direction: 0,
+    }]);
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let snapshot = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older
+            && snapshot
+                .messages
+                .iter()
+                .any(|message| message.body == "from-cloud")
+    })
+    .await;
+    assert_eq!(proto.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        proto.dests.lock().expect("dests").as_slice(),
+        ["bob".to_string()]
+    );
+    assert!(!snapshot.loading_older);
+}
+
+fn history_item(id: i64, body: impl Into<String>) -> kim_client::HistoryItem {
+    kim_client::HistoryItem {
+        message_id: id,
+        msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+        body: body.into(),
+        extra: String::new(),
+        sender: "bob".into(),
+        send_time: 1_700_000_000 + id,
+        direction: 0,
+    }
+}
+
+#[tokio::test]
+async fn caught_up_tip_still_hydrates_older_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    for id in 21..=40 {
+        sdk.persist_talks(vec![talk_at(id, format!("local-{id}"))], UnreadPolicy::Keep)
+            .await
+            .unwrap();
+    }
+    sdk.persist_inbox(vec![inbox_item("bob", 40, "local-40")])
+        .await
+        .unwrap();
+    let proto = HistoryProto::new(
+        (1..=40)
+            .map(|id| history_item(id, format!("cloud-{id}")))
+            .collect(),
+    );
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let snapshot = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older
+            && snapshot
+                .messages
+                .iter()
+                .any(|message| message.message_id == 1)
+    })
+    .await;
+    assert!(
+        proto.calls.load(Ordering::SeqCst) >= 1,
+        "open-thread must fetch history even when the local tip matches the inbox"
+    );
+    assert_eq!(snapshot.messages.len(), 40);
+    assert!(!snapshot.has_more);
+}
+
+#[tokio::test]
+async fn caught_up_local_at_cap_skips_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    for id in 1..=400 {
+        sdk.persist_talks(vec![talk_at(id, format!("cap-{id}"))], UnreadPolicy::Keep)
+            .await
+            .unwrap();
+    }
+    sdk.persist_inbox(vec![inbox_item("bob", 400, "cap-400")])
+        .await
+        .unwrap();
+    let proto = HistoryProto::new(vec![history_item(1, "should-not-fetch")]);
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    wait_for_snapshot(&mut timeline, |snapshot| {
+        snapshot
+            .messages
+            .iter()
+            .any(|message| message.body == "cap-400")
+    })
+    .await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(proto.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn inbox_persist_does_not_hydrate_unopened_threads() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    let proto = HistoryProto::new(vec![kim_client::HistoryItem {
+        message_id: 1_001,
+        msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+        body: "should-not-fetch".into(),
+        extra: String::new(),
+        sender: "bob".into(),
+        send_time: 1_700_000_000,
+        direction: 0,
+    }]);
+    sdk.install_protocol(proto.clone());
+    sdk.persist_inbox(vec![
+        inbox_item("bob", 1_001, "preview"),
+        inbox_item("carol", 2_002, "other"),
+    ])
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(proto.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn empty_thread_without_inbox_tip_skips_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    let proto = HistoryProto::new(vec![]);
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    wait_for_snapshot(&mut timeline, |snapshot| snapshot.messages.is_empty()).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(proto.calls.load(Ordering::SeqCst), 0);
+    sdk.load_older("bob".into()).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(proto.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn open_thread_pages_history_until_local_window_filled() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    let rows: Vec<kim_client::HistoryItem> = (1..=120)
+        .map(|id| kim_client::HistoryItem {
+            message_id: id,
+            msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+            body: format!("cloud-{id}"),
+            extra: String::new(),
+            sender: if id % 2 == 0 { "alice" } else { "bob" }.into(),
+            send_time: 1_700_000_000 + id,
+            direction: i32::from(id % 2 == 0),
+        })
+        .collect();
+    sdk.persist_inbox(vec![inbox_item("bob", 120, "cloud-120")])
+        .await
+        .unwrap();
+    let proto = HistoryProto::new(rows);
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let snapshot = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older
+            && snapshot
+                .messages
+                .iter()
+                .any(|message| message.body == "cloud-120")
+    })
+    .await;
+    assert!(proto.calls.load(Ordering::SeqCst) >= 3);
+    assert!(
+        snapshot.has_more,
+        "visible window is 50 of 120 persisted rows"
+    );
+    sdk.load_older("bob".into()).await.unwrap();
+    let older = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older && snapshot.messages.len() > 50
+    })
+    .await;
+    assert!(
+        older
+            .messages
+            .iter()
+            .any(|message| message.body == "cloud-1")
+            || older.messages.len() == 100
+    );
 }

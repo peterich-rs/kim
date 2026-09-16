@@ -396,6 +396,19 @@
                 }
               }
             },
+            "GroupInviteReq": {
+              "fields": {
+                "groupId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "accounts": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 2
+                }
+              }
+            },
             "GroupQueryReq": {
               "fields": {
                 "groupId": {
@@ -1653,6 +1666,136 @@
                 },
                 "account": {
                   "type": "string",
+                  "id": 3
+                }
+              }
+            },
+            "AgentSpecRecord": {
+              "fields": {
+                "profileId": {
+                  "type": "string",
+                  "id": 1
+                },
+                "nickname": {
+                  "type": "string",
+                  "id": 2
+                },
+                "serverAccount": {
+                  "type": "string",
+                  "id": 3
+                },
+                "spec": {
+                  "type": "bytes",
+                  "id": 5
+                },
+                "keyCiphertext": {
+                  "type": "bytes",
+                  "id": 6
+                },
+                "updatedAt": {
+                  "type": "int64",
+                  "id": 7
+                },
+                "deletedAt": {
+                  "type": "int64",
+                  "id": 8
+                }
+              }
+            },
+            "AgentProviderAccount": {
+              "fields": {
+                "id": {
+                  "type": "string",
+                  "id": 1
+                },
+                "vendorId": {
+                  "type": "string",
+                  "id": 2
+                },
+                "baseUrl": {
+                  "type": "string",
+                  "id": 3
+                },
+                "keyRef": {
+                  "type": "string",
+                  "id": 4
+                },
+                "displayName": {
+                  "type": "string",
+                  "id": 5
+                },
+                "models": {
+                  "rule": "repeated",
+                  "type": "string",
+                  "id": 6
+                },
+                "updatedAt": {
+                  "type": "int64",
+                  "id": 7
+                },
+                "deletedAt": {
+                  "type": "int64",
+                  "id": 8
+                }
+              }
+            },
+            "AgentSpecSyncReq": {
+              "fields": {}
+            },
+            "AgentSpecSyncResp": {
+              "fields": {
+                "records": {
+                  "rule": "repeated",
+                  "type": "AgentSpecRecord",
+                  "id": 1
+                },
+                "accounts": {
+                  "rule": "repeated",
+                  "type": "AgentProviderAccount",
+                  "id": 2
+                }
+              }
+            },
+            "AgentSpecUpsertReq": {
+              "fields": {
+                "record": {
+                  "type": "AgentSpecRecord",
+                  "id": 1
+                },
+                "account": {
+                  "type": "AgentProviderAccount",
+                  "id": 2
+                }
+              }
+            },
+            "AgentSpecUpsertResp": {
+              "fields": {
+                "record": {
+                  "type": "AgentSpecRecord",
+                  "id": 1
+                }
+              }
+            },
+            "InternalAgentSpecQuery": {
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                }
+              }
+            },
+            "InternalAgentSpecUpsert": {
+              "fields": {
+                "owner": {
+                  "type": "string",
+                  "id": 1
+                },
+                "record": {
+                  "type": "AgentSpecRecord",
+                  "id": 2
+                },
+                "account": {
+                  "type": "AgentProviderAccount",
                   "id": 3
                 }
               }

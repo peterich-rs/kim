@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { Message } from "../src/message.ts";
-import { OfflineMessages, type ContentLoader } from "../src/offline.ts";
+import {
+  ackPrefixIds,
+  mergeIndexContent,
+  OfflineMessages,
+  type ContentLoader,
+} from "../src/offline.ts";
 import {
   decodeIndexReq,
   decodeIndexResp,
@@ -12,6 +17,47 @@ import {
 } from "../src/proto.ts";
 import { Status } from "../src/status.ts";
 import { MemoryStore } from "../src/store.ts";
+
+describe("mergeIndexContent", () => {
+  it("keeps index routing and content body", () => {
+    const indexes: WireIndex[] = [
+      {
+        messageId: 1n,
+        direction: 0,
+        sendTime: 10n,
+        accountB: "bob",
+        group: "",
+      },
+      {
+        messageId: 2n,
+        direction: 1,
+        sendTime: 11n,
+        accountB: "bob",
+        group: "",
+      },
+      {
+        messageId: 3n,
+        direction: 0,
+        sendTime: 12n,
+        accountB: "g",
+        group: "G1",
+      },
+    ];
+    const contents = [
+      Object.assign(new Message(1n, 0n), { type: 1, body: "hi", extra: "" }),
+      Object.assign(new Message(3n, 0n), { type: 1, body: "g", extra: "x" }),
+    ];
+    const merged = mergeIndexContent(indexes, contents, "alice");
+    expect(merged).toHaveLength(2);
+    expect(merged[0]?.sender).toBe("bob");
+    expect(merged[0]?.receiver).toBe("alice");
+    expect(merged[0]?.body).toBe("hi");
+    expect(merged[1]?.group).toBe("G1");
+    expect(merged[1]?.body).toBe("g");
+    const loaded = new Set(merged.map((m) => m.messageId.toString()));
+    expect(ackPrefixIds(indexes, loaded)).toEqual([1n]);
+  });
+});
 
 describe("MemoryStore", () => {
   it("tracks ack and existence", async () => {

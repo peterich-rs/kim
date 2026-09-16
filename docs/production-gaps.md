@@ -64,7 +64,7 @@
 | ACK + 离线 Pull | `chat.talk.ack`、`chat.offline.index/content` | 默认高水位；`KIM_PENDING_RECEIPT=1` 后是 per-jti receipt |
 | 会话列表 / 历史 / 会话级已读 | `chat.inbox.*`、`chat.history`、`conversation_reads` | inbox 每次全量聚合 |
 | 好友全流程 + 黑名单 | `chat.friend.*`、`chat.block.*` | 申请 Push 失败无离线补偿 |
-| 群 CRUD | create/join/quit/detail/members | create 强制 owner=session；join 禁用自助；quit/detail/members 须是自己/成员。无角色/邀请 |
+| 群 CRUD | create/join/invite/quit/detail/members | create 校验成员存在且非 bot，上限 500；invite 成员制；join 仍禁自助。无角色分级、无邀请确认流 |
 | R2 图片 | `sdk/media` Worker | 永久公开 URL |
 | Consul + 灰度 zone + 智能路由 | naming、gateway `RouteSelector`、router lookup | account 白名单；zone 空不回退正式池 |
 | Prometheus | `kim-metrics` | 有 `kim_dispatch_fail_total`、`kim_heartbeat_revoke_error_total`、`kim_mailbox_full_total`、`kim_send_to_ack_seconds`、`kim_royal_rpc_seconds` / `kim_royal_rpc_errors_total`、pending backlog/oldest-age；handler 白名单 29 条。告警在 `deploy/prometheus/rules/kim.yml`，部署 `--profile metrics` |

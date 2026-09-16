@@ -13,6 +13,23 @@ pub(crate) enum ContactsErrorOp {
 }
 
 impl KimSdk {
+    pub(crate) async fn persist_group_create(
+        &self,
+        group_id: &str,
+    ) -> Result<crate::ThreadView, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let (view, sequence) = store
+            .ensure_thread(
+                session.account,
+                group_id.to_string(),
+                kim_protocol::INBOX_KIND_GROUP,
+            )
+            .await?;
+        self.after_command(sequence).await;
+        Ok(view)
+    }
+
     /// Refreshes the locally cached contacts. UI consumers must read the
     /// resulting [`ContactsSnapshot`] from [`Self::subscribe_contacts`].
     pub async fn refresh_contacts(&self) -> Result<(), SdkError> {
@@ -154,6 +171,9 @@ impl KimSdk {
                     None,
                 )
                 .await
+            }
+            kim_client::SessionEvent::GroupCreate { group_id, .. } => {
+                self.persist_group_create(group_id).await.map(|_| ())
             }
             _ => Ok(()),
         }

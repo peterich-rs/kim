@@ -19,6 +19,8 @@ pub(crate) struct TimelineSub {
     pub has_more: bool,
     pub loading_older: bool,
     pub history_error: Option<String>,
+    /// Latest-page hydrate in flight (open-thread catch-up, not load_older).
+    pub hydrating: bool,
 }
 
 /// Refreshes subscribed query snapshots after committed store writes.

@@ -61,6 +61,10 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         migrate_v6(tx).await?;
         set_schema_version(tx, 6).await?;
     }
+    if version < 7 {
+        migrate_v7(tx).await?;
+        set_schema_version(tx, 7).await?;
+    }
     Ok(())
 }
 
@@ -142,6 +146,17 @@ async fn migrate_v5(tx: &mut SqliteConnection) -> Result<(), SdkError> {
 
 async fn migrate_v6(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     ensure_column(tx, "agent_profiles", "deleted_at", "INTEGER").await?;
+    Ok(())
+}
+
+async fn migrate_v7(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    ensure_column(
+        tx,
+        "threads",
+        "last_message_id",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
     Ok(())
 }
 
