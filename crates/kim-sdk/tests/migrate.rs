@@ -60,7 +60,13 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
         .unwrap()
         .try_get("value")
         .unwrap();
-    assert_eq!(version, "6");
+    assert_eq!(version, "7");
+
+    let thread_cols = column_names(&pool, "threads").await;
+    assert!(
+        thread_cols.iter().any(|c| c == "last_message_id"),
+        "{thread_cols:?}"
+    );
 
     let cols = column_names(&pool, "agent_profiles").await;
     assert!(cols.iter().any(|c| c == "body_blob"), "{cols:?}");

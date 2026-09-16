@@ -48,6 +48,13 @@ pub use timeline::{
     SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HydrateOutcome {
+    Skipped,
+    InFlight,
+    Applied,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenPersistEvent {
     Write { token: String },
@@ -864,7 +871,8 @@ impl KimSdk {
         };
         self.record_timeline_and_wait(&account, epoch, &dest).await;
 
-        let result: Result<(Option<(i64, String)>, bool), SdkError> = async {
+        type OlderPage = (Option<(i64, String)>, bool);
+        let result: Result<Option<OlderPage>, SdkError> = async {
             let window = self.timeline_window_snapshot(&dest, &account, epoch)?;
             let mut rows: Vec<&MessageView> = window
                 .messages
@@ -877,7 +885,12 @@ impl KimSdk {
                     .then_with(|| left.key.cmp(&right.key))
             });
             let Some(oldest) = rows.first() else {
-                return Ok((None, false));
+                match self.hydrate_latest_if_needed(&dest).await? {
+                    HydrateOutcome::Skipped => return Ok(Some((None, false))),
+                    HydrateOutcome::InFlight | HydrateOutcome::Applied => {
+                        return Ok(None);
+                    }
+                }
             };
             let before_id = rows
                 .iter()
@@ -953,12 +966,13 @@ impl KimSdk {
                 .chain(page.iter())
                 .map(|message| (message.at, message.key.clone()))
                 .min();
-            Ok((older_bound, has_more))
+            Ok(Some((older_bound, has_more)))
         }
         .await;
 
         match result {
-            Ok((older_bound, has_more)) => {
+            Ok(None) => Ok(()),
+            Ok(Some((older_bound, has_more))) => {
                 self.finish_timeline_load(&dest, &account, epoch, older_bound, has_more, None)
                     .await;
                 Ok(())
@@ -1056,7 +1070,135 @@ impl KimSdk {
             threads: views.clone(),
         })
         .await;
+        self.hydrate_watched(&views).await;
         Ok(views)
+    }
+
+    async fn hydrate_watched(&self, views: &[ThreadView]) {
+        let watched: Vec<String> = lock(&self.inner.timelines).keys().cloned().collect();
+        for dest in watched {
+            if views.iter().any(|thread| thread.id == dest) {
+                let _ = self.hydrate_latest_if_needed(&dest).await;
+            }
+        }
+    }
+
+    /// Open-thread catch-up: one latest `chat.history` page when local tip
+    /// is behind the inbox `last_message_id`. Does not run on login for every
+    /// thread, and does not replace `load_older` pagination.
+    async fn hydrate_latest_if_needed(&self, dest: &str) -> Result<HydrateOutcome, SdkError> {
+        let Ok(session) = self.session_snapshot() else {
+            return Ok(HydrateOutcome::Skipped);
+        };
+        let account = session.account;
+        let epoch = self.current_epoch().0;
+        let Ok(store) = self.store() else {
+            return Ok(HydrateOutcome::Skipped);
+        };
+        let Some((kind, server_tip)) = store.thread_server_tip(&account, dest).await? else {
+            return Ok(HydrateOutcome::Skipped);
+        };
+        if server_tip <= 0 {
+            return Ok(HydrateOutcome::Skipped);
+        }
+        let local_tip = store.local_message_tip(&account, dest).await?;
+        if local_tip >= server_tip {
+            return Ok(HydrateOutcome::Skipped);
+        }
+        if !self.begin_hydrate(dest, epoch, &account) {
+            return Ok(HydrateOutcome::InFlight);
+        }
+        self.record_timeline_and_wait(&account, epoch, dest).await;
+        let proto = match self.protocol() {
+            Ok(proto) => proto,
+            Err(_) => {
+                self.finish_timeline_load(dest, &account, epoch, None, true, None)
+                    .await;
+                return Ok(HydrateOutcome::Skipped);
+            }
+        };
+        let limit = lock(&self.inner.timelines)
+            .get(dest)
+            .map(|sub| sub.limit)
+            .unwrap_or(50);
+        let remote = match proto.history(dest, kind, 0, limit).await {
+            Ok(rows) => rows,
+            Err(error) => {
+                self.finish_timeline_load(
+                    dest,
+                    &account,
+                    epoch,
+                    None,
+                    true,
+                    Some(error.to_string()),
+                )
+                .await;
+                return Err(error);
+            }
+        };
+        let full = remote.len() as i32 >= limit;
+        let command = if kind == kim_protocol::INBOX_KIND_GROUP {
+            kim_protocol::CMD_CHAT_GROUP_TALK
+        } else {
+            kim_protocol::CMD_CHAT_USER_TALK
+        };
+        let talks: Vec<kim_client::IncomingTalk> = remote
+            .into_iter()
+            .map(|history| kim_client::IncomingTalk {
+                command: command.to_string(),
+                dest: dest.to_string(),
+                message_id: history.message_id,
+                sender: history.sender,
+                msg_type: history.msg_type,
+                body: history.body,
+                extra: history.extra,
+                send_time: history.send_time,
+            })
+            .collect();
+        if !talks.is_empty() {
+            if let Err(error) = self
+                .persist_talks_for(epoch, account.clone(), talks, UnreadPolicy::Keep)
+                .await
+            {
+                self.finish_timeline_load(
+                    dest,
+                    &account,
+                    epoch,
+                    None,
+                    true,
+                    Some(error.to_string()),
+                )
+                .await;
+                return Err(error);
+            }
+        }
+        let snapshot = store
+            .load_timeline_window(&account, dest, limit, None)
+            .await
+            .ok();
+        let older_bound = snapshot.as_ref().and_then(|snap| {
+            snap.messages
+                .first()
+                .map(|message| (message.at, message.key.clone()))
+        });
+        let has_more = full || snapshot.as_ref().is_some_and(|snap| snap.has_more);
+        self.finish_timeline_load(dest, &account, epoch, older_bound, has_more, None)
+            .await;
+        Ok(HydrateOutcome::Applied)
+    }
+
+    fn begin_hydrate(&self, dest: &str, epoch: u64, account: &str) -> bool {
+        let mut timelines = lock(&self.inner.timelines);
+        let Some(sub) = timelines.get_mut(dest) else {
+            return false;
+        };
+        if sub.account != account || sub.epoch != epoch || sub.hydrating {
+            return false;
+        }
+        sub.hydrating = true;
+        sub.loading_older = true;
+        sub.history_error = None;
+        true
     }
 
     pub async fn load_threads(&self) -> Result<Vec<ThreadView>, SdkError> {
@@ -1350,6 +1492,7 @@ impl KimSdk {
                     has_more: false,
                     loading_older: false,
                     history_error: None,
+                    hydrating: false,
                 };
                 rx
             } else {
@@ -1372,6 +1515,7 @@ impl KimSdk {
                     has_more: false,
                     loading_older: false,
                     history_error: None,
+                    hydrating: false,
                 },
             );
             rx
@@ -1383,8 +1527,11 @@ impl KimSdk {
             tokio::runtime::Handle::try_current(),
             lock(&self.inner.changes).clone(),
         ) {
+            let sdk = self.clone();
+            let dest_h = dest.clone();
             handle.spawn(async move {
-                changes.record(account, epoch, CommitEffect::timeline(dest));
+                changes.record(account, epoch, CommitEffect::timeline(dest_h.clone()));
+                let _ = sdk.hydrate_latest_if_needed(&dest_h).await;
             });
         }
         rx
@@ -1553,6 +1700,7 @@ impl KimSdk {
             }
             sub.has_more = has_more;
             sub.loading_older = false;
+            sub.hydrating = false;
             sub.history_error = history_error;
         }
         self.record_timeline_and_wait(account, epoch, dest).await;

@@ -283,6 +283,22 @@ impl Store {
         messages::count_sent(&self.pool, account, dest).await
     }
 
+    pub(crate) async fn local_message_tip(
+        &self,
+        account: &str,
+        dest: &str,
+    ) -> Result<i64, SdkError> {
+        messages::max_message_id(&self.pool, account, dest).await
+    }
+
+    pub(crate) async fn thread_server_tip(
+        &self,
+        account: &str,
+        dest: &str,
+    ) -> Result<Option<(i32, i64)>, SdkError> {
+        threads::server_tip(&self.pool, account, dest).await
+    }
+
     pub(crate) async fn persist_talks(
         &self,
         epoch: u64,
