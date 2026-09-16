@@ -538,7 +538,13 @@ impl ChatHandler {
             router.handle(Command::Typing, move |ctx| {
                 let svc = svc.clone();
                 async move {
-                    do_typing(ctx, svc.social.as_ref(), svc.presence.interest().as_ref()).await
+                    do_typing(
+                        ctx,
+                        svc.social.as_ref(),
+                        svc.presence.interest().as_ref(),
+                        svc.users.as_ref(),
+                    )
+                    .await
                 }
             });
         }

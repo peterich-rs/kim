@@ -64,6 +64,16 @@ impl ProtocolClient for OkProto {
     ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
         Ok(vec![])
     }
+
+    async fn bot_reply(
+        &self,
+        _dest: &str,
+        _body: &str,
+        _in_reply_to: i64,
+        _client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        Ok((42, 1))
+    }
 }
 
 #[tokio::test]
@@ -243,4 +253,25 @@ async fn lru_caps_dest_profile_at_four() {
             .expect("turn");
     }
     assert_eq!(agent.lru_len(), 4);
+}
+
+#[tokio::test]
+async fn bot_reply_persists_assistant_line() {
+    let (sdk, _dir) = open_sdk().await;
+    let runtime = ScriptedRuntime::new("pong");
+    let agent = Arc::new(MobileAgent::new((*sdk).clone(), runtime));
+    sdk.set_agent(agent.clone());
+    sdk.install_protocol(Arc::new(OkProto));
+    put_bot(&sdk, "b_bot", "bot").await;
+    agent
+        .enqueue_turn("b_bot", "hi", 1, SessionEpoch(1))
+        .await
+        .expect("turn");
+    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    let threads = sdk.load_threads().await.expect("threads");
+    let bot = threads
+        .iter()
+        .find(|t| t.id == "b_bot")
+        .expect("bot thread");
+    assert_eq!(bot.last_body, "pong");
 }

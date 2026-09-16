@@ -378,6 +378,8 @@ message TypingReq {
   string dest = 1; // peer account
   int32 kind = 2;  // 0 = user only for v1
   bool active = 3; // true while composing; false = stop
+  // 0=composing (default), 1=queued, 2=running, 3=tool, 4=wait_permission
+  int32 phase = 4;
 }
 
 message TypingPush {
@@ -385,6 +387,7 @@ message TypingPush {
   string dest = 2;
   int32 kind = 3;
   bool active = 4;
+  int32 phase = 5;
 }
 
 // DM read receipt push body (reuse ConversationRead shape on wire via fields).

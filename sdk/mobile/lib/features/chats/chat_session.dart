@@ -20,6 +20,7 @@ import 'package:kim_mobile/features/chats/messages.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';
+import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/features/session/session.dart';
 
 class ChatSessionState {
@@ -139,7 +140,9 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       }
       ref.read(presenceProvider.notifier).applySnapshot(rows);
       _leaveRoom = leave;
-    } catch (_) {}
+    } catch (err, stack) {
+      KimLogger.warn('room enter failed dest=$id', err, stack);
+    }
   }
 
   void _disposeSession() {

@@ -15,6 +15,15 @@ void main() {
     expect(container.read(peerTypingProvider('alice')), isFalse);
   });
 
+  test('own typing on another device keys the peer dest', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final n = container.read(typingProvider.notifier);
+    n.applyPush(typer: 'alice', dest: 'b_bot', active: true, me: 'alice');
+    expect(container.read(peerTypingProvider('b_bot')), isTrue);
+    expect(container.read(peerTypingProvider('alice')), isFalse);
+  });
+
   test('receipts track peer watermark for DM only', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

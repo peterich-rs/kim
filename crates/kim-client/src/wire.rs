@@ -386,6 +386,7 @@ pub fn encode_typing(seq: u32, dest: &str, kind: i32, active: bool) -> Bytes {
         dest: dest.to_string(),
         kind,
         active,
+        phase: 0,
     });
     marshal(&Packet::Logic(pkt))
 }
@@ -397,6 +398,7 @@ pub fn encode_bot_typing(seq: u32, dest: &str, kind: i32, active: bool) -> Bytes
         dest: dest.to_string(),
         kind,
         active,
+        phase: 0,
     });
     marshal(&Packet::Logic(pkt))
 }
@@ -484,6 +486,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
             dest: push.dest,
             kind: push.kind,
             active: push.active,
+            phase: push.phase,
         });
     }
     if p.header.flag == Flag::Push as i32 && p.header.command == CMD_RECEIPT_READ {

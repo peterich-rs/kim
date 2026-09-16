@@ -49,6 +49,11 @@ pub trait ProtocolClient: Send + Sync {
         })
     }
 
+    async fn bot_typing(&self, dest: &str, kind: i32, active: bool) -> Result<(), SdkError> {
+        let _ = (dest, kind, active);
+        Ok(())
+    }
+
     async fn agent_spec_sync(
         &self,
     ) -> Result<
@@ -162,6 +167,12 @@ impl ProtocolClient for KimClient {
         Ok((result.message_id, result.send_time))
     }
 
+    async fn bot_typing(&self, dest: &str, kind: i32, active: bool) -> Result<(), SdkError> {
+        KimClient::bot_typing(self, dest, kind, active)
+            .await
+            .map_err(|e| map_client(e, dest))
+    }
+
     async fn agent_spec_sync(
         &self,
     ) -> Result<
@@ -248,6 +259,10 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
         client_id: &str,
     ) -> Result<(i64, i64), SdkError> {
         ProtocolClient::bot_reply(&**self, dest, body, in_reply_to, client_id).await
+    }
+
+    async fn bot_typing(&self, dest: &str, kind: i32, active: bool) -> Result<(), SdkError> {
+        ProtocolClient::bot_typing(&**self, dest, kind, active).await
     }
 
     async fn agent_spec_sync(

@@ -79,27 +79,28 @@ pub async fn do_user_talk(
     let receiver = ctx.header().dest.as_str();
     const DIRECTORY_BUDGET: Duration = Duration::from_millis(800);
     let directory = crate::royal::with_rpc_deadline(DIRECTORY_BUDGET, async {
-        match users.lookup(&ctx.session().app, receiver).await {
+        let owned_bot = match users.lookup(&ctx.session().app, receiver).await {
             Ok(Some(p)) if p.exists => {
                 if p.kind == kim_protocol::PROFILE_KIND_BOT
                     && p.owner_account != ctx.session().account
                 {
                     ctx.resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
                         .await?;
-                    return Ok(false);
+                    return Ok(None);
                 }
+                p.kind == kim_protocol::PROFILE_KIND_BOT && p.owner_account == ctx.session().account
             }
             Ok(_) => {
                 ctx.resp_with_error(Status::UserNotFound, &TalkError::UserNotFound)
                     .await?;
-                return Ok(false);
+                return Ok(None);
             }
             Err(err) => {
                 warn!(%err, account = %receiver, "user lookup failed");
                 ctx.resp_with_error(Status::SystemException, &err).await?;
-                return Ok(false);
+                return Ok(None);
             }
-        }
+        };
         if receiver != ctx.session().account {
             match social
                 .is_blocked_either(&ctx.session().app, &ctx.session().account, receiver)
@@ -108,13 +109,13 @@ pub async fn do_user_talk(
                 Ok(true) => {
                     ctx.resp_with_error(Status::Blocked, &TalkError::Blocked)
                         .await?;
-                    return Ok(false);
+                    return Ok(None);
                 }
                 Ok(false) => {}
                 Err(err) => {
                     warn!(%err, "block check failed");
                     ctx.resp_with_error(Status::SystemException, &err).await?;
-                    return Ok(false);
+                    return Ok(None);
                 }
             }
             match social
@@ -125,21 +126,21 @@ pub async fn do_user_talk(
                 Ok(false) => {
                     ctx.resp_with_error(Status::NotFriends, &TalkError::NotFriends)
                         .await?;
-                    return Ok(false);
+                    return Ok(None);
                 }
                 Err(err) => {
                     warn!(%err, "friend check failed");
                     ctx.resp_with_error(Status::SystemException, &err).await?;
-                    return Ok(false);
+                    return Ok(None);
                 }
             }
         }
-        Ok(true)
+        Ok(Some(owned_bot))
     })
     .await;
-    match directory {
-        Ok(Ok(true)) => {}
-        Ok(Ok(false)) => return Ok(()),
+    let owned_bot = match directory {
+        Ok(Ok(Some(owned))) => owned,
+        Ok(Ok(None)) => return Ok(()),
         Ok(Err(err)) => return Err(err),
         Err(()) => {
             warn!("directory check timed out");
@@ -147,10 +148,15 @@ pub async fn do_user_talk(
                 .await?;
             return Ok(());
         }
-    }
+    };
 
     let send_time = unix_nano();
-    let online_targets = fallback_targets(&ctx, &[receiver.to_string()]).await;
+    let target_account = if owned_bot {
+        ctx.session().account.clone()
+    } else {
+        receiver.to_string()
+    };
+    let online_targets = fallback_targets(&ctx, &[target_account]).await;
     let inserted = match store
         .insert_user(
             &ctx.session().app,

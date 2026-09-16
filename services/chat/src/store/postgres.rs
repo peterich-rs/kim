@@ -855,14 +855,13 @@ impl MessageStore for PostgresMessageStore {
             let rows: Vec<(i64, i16, i64, String, String)> = sqlx::query_as(
                 "SELECT message_id, direction, send_time, account_b, group_id
                  FROM message_index
-                 WHERE app = $1 AND account_a = $2 AND send_time > $3 AND direction = $4
+                 WHERE app = $1 AND account_a = $2 AND send_time > $3
                  ORDER BY send_time ASC
-                 LIMIT $5",
+                 LIMIT $4",
             )
             .bind(app)
             .bind(account)
             .bind(start)
-            .bind(DIRECTION_RECV as i16)
             .bind(limit)
             .fetch_all(&self.pool)
             .await
@@ -902,14 +901,12 @@ impl MessageStore for PostgresMessageStore {
                  ON i.app = pd.app AND i.account_a = pd.account AND i.message_id = pd.message_id
               WHERE pd.app = $1 AND pd.account = $2 AND pd.target_id = $3
                 AND pd.acked_at IS NULL AND pd.expires_at > now()
-                AND i.direction = $4
               ORDER BY pd.created_at ASC, pd.message_id ASC
-              LIMIT $5",
+              LIMIT $4",
         )
         .bind(app)
         .bind(account)
         .bind(target_id)
-        .bind(DIRECTION_RECV as i16)
         .bind(fetch)
         .fetch_all(&self.pool)
         .await

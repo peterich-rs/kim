@@ -1770,11 +1770,13 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
             dest,
             kind,
             active,
+            phase,
         } => Some(SessionUpdate::Typing {
             typer,
             dest,
             kind,
             active,
+            phase,
         }),
         kim_client::SessionEvent::ReceiptRead {
             reader,

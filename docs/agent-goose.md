@@ -42,7 +42,7 @@ Each persona has a **Workspace** (`sandbox` | `repo`) that becomes Goose `projec
 
 Global plaza: `/agent/plaza` (ecosystem shelf + KIM shelf). Import writes into real `~/.agents/skills`, not Application Support.
 
-Registered 1:1 busy state reuses `typingProvider` / `KimTypingRow`. Desktop lights bars locally; owner also sends `chat.bot.typing` so phones see `TypingPush.typer=bot`.
+Registered 1:1 busy state reuses `typingProvider` / `KimTypingRow`. kim-sdk persists `chat.bot.reply` into the local timeline (same `message_id` as the server) so the posting desktop does not depend on Push echo. It also sends `chat.bot.typing` (heartbeat while Running) so other owner devices see `TypingPush.typer=bot`. Owner typing in a `b_…` thread uses `chat.typing` and fans out to the owner's other devices (bot has no Location).
 
 ## Layout
 
@@ -53,8 +53,8 @@ Flutter composer  --talk-->  kim_client_ffi (IM / WGateway)
                            AgentProfile → MachineFactory → Goose
                            (+ AGENTS.md + skill catalog + SkillOp)
                  --registered 1:1 TalkResp-->  kim_agent_ffi
-                      --> assistant_finished → chat.bot.reply
-                      --> Running → chat.bot.typing (heartbeat)
+                      --> assistant_finished → chat.bot.reply → persist timeline
+                      --> Running → chat.bot.typing (heartbeat) + local Typing footer
 ```
 
 Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients. `kim_agent_ffi` must not depend on `kim-client`.

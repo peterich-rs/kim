@@ -30,9 +30,11 @@ class TypingNotifier extends Notifier<TypingState> {
     required String typer,
     required String dest,
     required bool active,
+    String me = '',
   }) {
-    // For viewer, the thread id is the typer (DM peer).
-    final thread = typer;
+    // Peer typing: thread is the typer. Own typing on another device of a
+    // bot 1:1: thread is dest (the bot).
+    final thread = (me.isNotEmpty && typer == me) ? dest : typer;
     if (thread.isEmpty) {
       return;
     }

@@ -369,6 +369,7 @@ sequenceDiagram
 - **协议**：`chat.typing` Request（`TypingReq{dest,kind,active}`）→ Push 同 command（`TypingPush{typer,dest,kind,active}`）。
 - **范围**：v1 仅私聊 `kind=user`；须好友；不落库。
 - **Fanout**：查 `room interest` 中 **enter 了 dest=typer** 的观看者，且 **viewer.account == TypingReq.dest（peer）**。这样 A 在 A↔B 输入不会泄漏到 A↔C 或 C↔B。
+- **人↔Agent 例外**：`dest` 为 owner 自己的 bot 时，bot 无 Location。fanout = owner 的其它 location（与 `chat.bot.typing` 相同），不要求 bot 进房。客户端：`typer == me` 时用 `dest` 作为会话 key，否则用 `typer`。
 - **客户端**：进入房间后，composer 防抖发送；空闲 ~2.5s / 发消息 / 离开会话发 `active=false`。UI 在消息列表视觉底部（reverse list footer）用 `KimTypingBars` 等化器竖条，靠 peer 头像一侧。
 
 ## 8.2 私聊已读回执（DM read receipts）

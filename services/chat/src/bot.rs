@@ -3,8 +3,8 @@ use kim_protocol::pkt::{
     BotConfig as PbBotConfig, BotCreateReq, BotCreateResp, BotPendingItem as PbPending,
     BotPendingResp, BotReplyReq, BotUpdateReq, InboxReq, Status, TypingPush, TypingReq,
 };
-use kim_protocol::{AccountId, CMD_CHAT_USER_TALK, CMD_TYPING, INBOX_KIND_USER, PROFILE_KIND_BOT};
-use kim_router::{Context, RouterError, SessionError};
+use kim_protocol::{CMD_CHAT_USER_TALK, INBOX_KIND_USER, PROFILE_KIND_BOT};
+use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::filter::ContentFilter;
@@ -393,26 +393,9 @@ pub async fn do_bot_typing(ctx: Context, users: &dyn UserDirectory) -> Result<()
         dest: owner.clone(),
         kind: INBOX_KIND_USER,
         active: req.active,
+        phase: req.phase,
     };
 
-    let owner_id = match AccountId::parse(&owner) {
-        Ok(id) => id,
-        Err(_) => return Ok(()),
-    };
-    let locs = match ctx.list_locations(&owner_id).await {
-        Ok(v) => v,
-        Err(SessionError::NotFound) => return Ok(()),
-        Err(err) => {
-            warn!(%err, owner = %owner, "bot typing owner locations");
-            return Ok(());
-        }
-    };
-    if locs.is_empty() {
-        return Ok(());
-    }
-    // Fanout reuses CMD_TYPING so clients keep one decoder; body.typer is the bot.
-    if let Err(err) = ctx.dispatch_cmd(CMD_TYPING, &body, &locs).await {
-        warn!(%err, bot = %bot, "bot typing fanout failed");
-    }
+    crate::typing::fanout_typing_to_account(&ctx, &owner, &body).await;
     Ok(())
 }
