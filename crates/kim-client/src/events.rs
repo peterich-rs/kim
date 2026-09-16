@@ -163,6 +163,7 @@ pub enum Event {
         dest: String,
         kind: i32,
         active: bool,
+        phase: i32,
     },
     /// Push `chat.receipt.read` — DM peer read watermark.
     ReceiptRead {

@@ -384,7 +384,7 @@ Royal SQL 大意：owner 对该 bot 的 `direction=1` index，LEFT JOIN `bot_tur
 
 v1 **接受**两桌面同时 prompt 造成双倍 LLM；落库仍一条。不做 `chat.bot.claim`。
 
-`offline.index` 只拉 `direction=0`，自己从手机发出的在 owner 侧是 `direction=1`，**不能**当补跑源。这一点仍然成立，只是补跑 API 换成 pending。
+`offline.index` 现在含该账号的收+发；补跑 Agent 仍走 `chat.bot.pending`，不以离线 index 当 Goose 输入。
 
 #### 完整 sequence（桌面在线，本机发送）
 

@@ -32,6 +32,7 @@ fn typing_pkt(seq: u32, dest: &str, active: bool) -> LogicPkt {
         dest: dest.into(),
         kind: INBOX_KIND_USER,
         active,
+        phase: 0,
     });
     pkt
 }

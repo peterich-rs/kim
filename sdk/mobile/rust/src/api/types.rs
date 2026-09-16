@@ -581,6 +581,7 @@ impl From<SessionUpdate> for SessionUpdateDto {
                 dest,
                 kind,
                 active,
+                ..
             } => Self::Typing {
                 typer,
                 dest,

@@ -35,7 +35,7 @@
 
 落库是真相，在线 Push 是尽力。`insert_*` 成功后立刻尝试 `MessageResp` Success，再在 `TALK_PUSH_BUDGET`（3s）内 `get_locations` + `dispatch`。通过当前 filter / 用户存在 / 好友 / 黑名单（群聊：当前成员关系）之后，identical `clientId` 才从 `message_content` + `message_index` 重建 Push 与收件人，不信本次请求的 body / dest。删好友、拉黑或退群后的完全相同重试在 insert 前返回 109 / 107，不会重放。dispatch 失败或超时只打 `kim_dispatch_fail_total`，不再回 99。Royal writer=1 时同一事务写 `pending_delivery` receipt（`target_id` = JWT `jti`）；ACK 确认的是 message id 集合，不是 Snowflake 高水位。
 
-离线拉取只读 `direction=0`。
+离线拉取返回该账号 `message_index` 上的收件（`direction=0`）**和**自己发出的（`direction=1`），以便第二台设备补齐本机发出的 1:1。pending receipt 同样按 `message_id` 对齐该账号自己的 index 行，不再要求 `direction=0`。
 
 ---
 

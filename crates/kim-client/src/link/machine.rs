@@ -354,12 +354,14 @@ fn dispatch_event(inner: &Inner, seen: &Arc<std::sync::Mutex<SeenSet>>, event: E
             dest,
             kind,
             active,
+            phase,
         } => {
             let _ = inner.events.send(SessionEvent::TypingUpdated {
                 typer,
                 dest,
                 kind,
                 active,
+                phase,
             });
         }
         Event::ReceiptRead {

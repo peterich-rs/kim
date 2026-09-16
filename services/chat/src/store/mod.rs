@@ -882,7 +882,7 @@ impl MessageStore for MemoryMessageStore {
                 inner
                     .account_rows(app, account)
                     .iter()
-                    .filter(|r| r.direction == DIRECTION_RECV && r.send_time > start)
+                    .filter(|r| r.send_time > start)
                     .map(|r| MessageIndexRow {
                         message_id: r.message_id,
                         direction: r.direction,
@@ -936,7 +936,7 @@ impl MessageStore for MemoryMessageStore {
                 inner
                     .account_rows(app, account)
                     .iter()
-                    .find(|r| r.message_id == id && r.direction == DIRECTION_RECV)
+                    .find(|r| r.message_id == id)
                     .map(|r| MessageIndexRow {
                         message_id: r.message_id,
                         direction: r.direction,
@@ -965,7 +965,7 @@ impl MessageStore for MemoryMessageStore {
         let ids: Vec<i64> = inner
             .account_rows(app, account)
             .iter()
-            .filter(|r| r.direction == DIRECTION_RECV && r.send_time >= cutoff)
+            .filter(|r| r.send_time >= cutoff)
             .map(|r| r.message_id)
             .collect();
         if ids.len() > 10_000 {
@@ -1750,6 +1750,36 @@ mod tests {
         assert_eq!(recv.account_a, "bob");
         assert_eq!(recv.account_b, "alice");
         assert!(send.group_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn offline_index_includes_own_sends() {
+        let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::default());
+        let store = MemoryMessageStore::new(idgen);
+        let got = store
+            .insert_user("kim", &sample("alice", "bob", now_unix_nano(), "hi"))
+            .await
+            .unwrap();
+        let (alice_rows, _) = store
+            .offline_index("kim", "alice", "", 0, false)
+            .await
+            .unwrap();
+        assert!(
+            alice_rows
+                .iter()
+                .any(|r| r.message_id == got.message_id && r.direction == DIRECTION_SEND),
+            "{alice_rows:?}"
+        );
+        let (bob_rows, _) = store
+            .offline_index("kim", "bob", "", 0, false)
+            .await
+            .unwrap();
+        assert!(
+            bob_rows
+                .iter()
+                .any(|r| r.message_id == got.message_id && r.direction == DIRECTION_RECV),
+            "{bob_rows:?}"
+        );
     }
 
     #[tokio::test]

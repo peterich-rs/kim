@@ -177,6 +177,48 @@ async fn no_ack_then_reconnect_pulls_content() {
 }
 
 #[tokio::test]
+async fn sender_reconnect_pulls_own_send() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (mut alice, _) = login("alice", &url).await;
+    let (bob, _) = login("bob", &url).await;
+    become_friends(&alice, &bob, "bob", "alice").await;
+
+    alice
+        .send(marshal(&Packet::Logic(talk_pkt(
+            CMD_CHAT_USER_TALK,
+            2,
+            "bob",
+            "from mac",
+        ))))
+        .await
+        .expect("talk");
+    let resp_frame = timeout_read(&alice).await;
+    let message_id = match read(&resp_frame.payload).expect("resp") {
+        Packet::Logic(p) => {
+            p.read_body::<MessageResp>()
+                .expect("MessageResp")
+                .message_id
+        }
+        _ => panic!("expected MessageResp"),
+    };
+    let _ = timeout_read(&bob).await;
+    alice.close().await.expect("alice close");
+
+    let (alice2, _) = login("alice", &url).await;
+    let ids = pull_index(&alice2, 2, 0).await;
+    assert!(
+        ids.contains(&message_id),
+        "sender missing own send {message_id} in {ids:?}"
+    );
+    let bodies = pull_content(&alice2, 3, &[message_id]).await;
+    assert_eq!(bodies, vec!["from mac".to_string()]);
+
+    let _ = stack.gw.shutdown().await;
+    let _ = stack.chat.shutdown().await;
+}
+
+#[tokio::test]
 async fn carol_cannot_pull_alice_bob_content() {
     let stack = spawn_stack().await;
     let url = ws_url(stack.gw_addr);

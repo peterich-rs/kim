@@ -362,6 +362,7 @@ async fn bot_typing_owner_only_and_typer_is_bot() {
         dest: bot_acc.clone(),
         kind: INBOX_KIND_USER,
         active: true,
+        phase: 0,
     });
     alice
         .send(marshal(&Packet::Logic(typing)))
@@ -383,6 +384,7 @@ async fn bot_typing_owner_only_and_typer_is_bot() {
         dest: bot_acc.clone(),
         kind: INBOX_KIND_USER,
         active: true,
+        phase: 0,
     });
     bob.send(marshal(&Packet::Logic(steal)))
         .await
@@ -391,4 +393,55 @@ async fn bot_typing_owner_only_and_typer_is_bot() {
         status_of(&timeout_read(&bob).await),
         Status::NotBotOwner as i32
     );
+}
+
+#[tokio::test]
+async fn owner_typing_to_bot_reaches_other_devices() {
+    let stack = spawn_stack().await;
+    let url = ws_url(stack.gw_addr);
+    let (alice, _) = login_with_device("alice", &url, "web").await;
+    let (alice_phone, _) = login_with_device("alice", &url, "phone").await;
+
+    let mut create = LogicPkt::new(CMD_BOT_CREATE, 2, Bytes::new());
+    create.write_body(&BotCreateReq {
+        client_profile_id: "goose".into(),
+        nickname: "助手".into(),
+        avatar: String::new(),
+        bio: String::new(),
+        ..Default::default()
+    });
+    alice
+        .send(marshal(&Packet::Logic(create)))
+        .await
+        .expect("create");
+    let p = wait_resp(&alice, CMD_BOT_CREATE).await;
+    assert_eq!(p.header.status, Status::Success as i32);
+    let bot_acc = p
+        .read_body::<BotCreateResp>()
+        .expect("create")
+        .profile
+        .expect("profile")
+        .account;
+
+    let mut typing = LogicPkt::new(CMD_TYPING, 4, Bytes::new());
+    typing.write_body(&TypingReq {
+        dest: bot_acc.clone(),
+        kind: INBOX_KIND_USER,
+        active: true,
+        phase: 0,
+    });
+    alice_phone
+        .send(marshal(&Packet::Logic(typing)))
+        .await
+        .expect("typing");
+    assert_eq!(
+        status_of(&timeout_read(&alice_phone).await),
+        Status::Success as i32
+    );
+
+    let push = wait_push(&alice, CMD_TYPING).await;
+    let body: TypingPush = push.read_body().expect("TypingPush");
+    assert_eq!(body.typer, "alice");
+    assert_eq!(body.dest, bot_acc);
+    assert!(body.active);
 }

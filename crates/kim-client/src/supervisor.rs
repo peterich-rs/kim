@@ -68,6 +68,7 @@ pub enum SessionEvent {
         dest: String,
         kind: i32,
         active: bool,
+        phase: i32,
     },
     ReceiptRead {
         reader: String,
