@@ -1025,8 +1025,43 @@ impl KimSdk {
         policy: UnreadPolicy,
     ) -> Result<u64, SdkError> {
         let store = self.store()?;
-        let ((), sequence) = store.persist_talks(epoch, account, talks, policy).await?;
+        // Live IfInserted owner 1:1 text may enqueue after it is durable.
+        // History and offline hydration use Keep and must not run the Agent.
+        let agent_talks: Vec<_> = talks
+            .iter()
+            .filter(|talk| {
+                policy == UnreadPolicy::IfInserted
+                    && talk.command == kim_protocol::CMD_CHAT_USER_TALK
+                    && talk.sender == account
+                    && talk.message_id > 0
+                    && talk.msg_type == kim_protocol::MESSAGE_TYPE_TEXT
+                    && !talk.body.trim().is_empty()
+            })
+            .cloned()
+            .collect();
+        let ((), sequence) = store
+            .persist_talks(epoch, account.clone(), talks, policy)
+            .await?;
         self.inner.metrics.inc_persist_talk();
+        for talk in agent_talks {
+            if self.current_epoch().0 != epoch {
+                return Err(SdkError::StaleEpoch {
+                    expected: epoch,
+                    actual: self.current_epoch().0,
+                });
+            }
+            if store
+                .agent_profile_id_for_dest(&account, &talk.dest)
+                .await?
+                .is_some()
+            {
+                // A full queue leaves the push unacknowledged. Replayed pushes
+                // must retry admission even when the message is already stored.
+                self.agent()
+                    .enqueue_turn(&talk.dest, &talk.body, talk.message_id, SessionEpoch(epoch))
+                    .await?;
+            }
+        }
         Ok(sequence)
     }
 
