@@ -481,18 +481,71 @@ async fn empty_local_hydrates_latest_history_on_subscribe() {
     assert!(!snapshot.loading_older);
 }
 
+fn history_item(id: i64, body: impl Into<String>) -> kim_client::HistoryItem {
+    kim_client::HistoryItem {
+        message_id: id,
+        msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+        body: body.into(),
+        extra: String::new(),
+        sender: "bob".into(),
+        send_time: 1_700_000_000 + id,
+        direction: 0,
+    }
+}
+
 #[tokio::test]
-async fn caught_up_local_tip_skips_history() {
+async fn caught_up_tip_still_hydrates_older_history() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("kim-cache.db");
     let sdk = open_alice(&path).await;
-    sdk.persist_talks(vec![talk_at(1_001, "already-local")], UnreadPolicy::Keep)
+    for id in 21..=40 {
+        sdk.persist_talks(vec![talk_at(id, format!("local-{id}"))], UnreadPolicy::Keep)
+            .await
+            .unwrap();
+    }
+    sdk.persist_inbox(vec![inbox_item("bob", 40, "local-40")])
         .await
         .unwrap();
-    sdk.persist_inbox(vec![inbox_item("bob", 1_001, "already-local")])
+    let proto = HistoryProto::new(
+        (1..=40)
+            .map(|id| history_item(id, format!("cloud-{id}")))
+            .collect(),
+    );
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let snapshot = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older
+            && snapshot
+                .messages
+                .iter()
+                .any(|message| message.message_id == 1)
+    })
+    .await;
+    assert!(
+        proto.calls.load(Ordering::SeqCst) >= 1,
+        "open-thread must fetch history even when the local tip matches the inbox"
+    );
+    assert_eq!(snapshot.messages.len(), 40);
+    assert!(!snapshot.has_more);
+}
+
+#[tokio::test]
+async fn caught_up_local_at_cap_skips_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    for id in 1..=400 {
+        sdk.persist_talks(vec![talk_at(id, format!("cap-{id}"))], UnreadPolicy::Keep)
+            .await
+            .unwrap();
+    }
+    sdk.persist_inbox(vec![inbox_item("bob", 400, "cap-400")])
         .await
         .unwrap();
-    let proto = HistoryProto::new(vec![]);
+    let proto = HistoryProto::new(vec![history_item(1, "should-not-fetch")]);
     sdk.install_protocol(proto.clone());
     let mut timeline = sdk.subscribe_timeline(TimelineQuery {
         dest: "bob".into(),
@@ -502,7 +555,7 @@ async fn caught_up_local_tip_skips_history() {
         snapshot
             .messages
             .iter()
-            .any(|message| message.body == "already-local")
+            .any(|message| message.body == "cap-400")
     })
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;

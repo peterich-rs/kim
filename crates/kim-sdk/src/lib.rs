@@ -1096,9 +1096,11 @@ impl KimSdk {
         }
     }
 
-    /// Open-thread catch-up: one latest `chat.history` page when local tip
-    /// is behind the inbox `last_message_id`. Does not run on login for every
-    /// thread, and does not replace `load_older` pagination.
+    /// Open-thread catch-up: page `chat.history` until the local cap or a
+    /// short remote page. Having the inbox tip locally does not mean older
+    /// history is complete — skip only when the tip matches *and* the local
+    /// store is already at cap. Does not run on login for every thread, and
+    /// does not replace `load_older` pagination.
     async fn hydrate_latest_if_needed(&self, dest: &str) -> Result<HydrateOutcome, SdkError> {
         let Ok(session) = self.session_snapshot() else {
             return Ok(HydrateOutcome::Skipped);
@@ -1115,8 +1117,12 @@ impl KimSdk {
             return Ok(HydrateOutcome::Skipped);
         }
         let local_tip = store.local_message_tip(&account, dest).await?;
+        let cap = i64::from(store::schema::MAX_MESSAGES);
         if local_tip >= server_tip {
-            return Ok(HydrateOutcome::Skipped);
+            let sent = store.count_sent(&account, dest).await?;
+            if sent >= cap {
+                return Ok(HydrateOutcome::Skipped);
+            }
         }
         if !self.begin_hydrate(dest, epoch, &account) {
             return Ok(HydrateOutcome::InFlight);
@@ -1139,7 +1145,6 @@ impl KimSdk {
         } else {
             kim_protocol::CMD_CHAT_USER_TALK
         };
-        let cap = i64::from(store::schema::MAX_MESSAGES);
         let mut before_id = 0i64;
         let mut last_full;
         loop {
