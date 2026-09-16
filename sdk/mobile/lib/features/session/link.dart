@@ -223,6 +223,21 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 active: active,
                 me: ref.read(sessionProvider).account,
               );
+        case SessionUpdateDto_AgentTurn(:final dest, :final state):
+          final busy = switch (state) {
+            AgentTurnStateDto.queued ||
+            AgentTurnStateDto.running ||
+            AgentTurnStateDto.waitingPermission => true,
+            AgentTurnStateDto.done || AgentTurnStateDto.error => false,
+          };
+          ref
+              .read(typingProvider.notifier)
+              .applyPush(
+                typer: dest,
+                dest: dest,
+                active: busy,
+                me: ref.read(sessionProvider).account,
+              );
         case SessionUpdateDto_ReceiptRead(
           :final reader,
           :final dest,

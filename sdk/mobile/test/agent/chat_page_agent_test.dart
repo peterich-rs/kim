@@ -7,6 +7,8 @@ import 'package:kim_mobile/l10n/app_localizations.dart';
 import 'package:kim_mobile/features/chats/chat_page.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
+import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/models/models.dart';
 
 import '../support/harness.dart';
 
@@ -95,9 +97,31 @@ void main() {
     try {
       final env = await kimHarness(token: 'tok.jwt', account: 'alice');
       addTearDown(env.container.dispose);
+      env.fake.friends = [
+        const KimPerson(
+          account: 'b_live',
+          nickname: '助手',
+          kind: ProfileKind.bot,
+        ),
+      ];
+      await env.container.read(contactsProvider.notifier).refresh();
       await _pumpChat(tester, env.container, 'b_live');
       expect(find.byKey(const Key('chat-composer')), findsOneWidget);
       expect(find.byKey(const Key('agent-deleted-readonly')), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('phone deleted b_* thread is read-only', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+      addTearDown(env.container.dispose);
+      await env.container.read(contactsProvider.notifier).refresh();
+      await _pumpChat(tester, env.container, 'b_orphan');
+      expect(find.byKey(const Key('chat-composer')), findsNothing);
+      expect(find.byKey(const Key('agent-deleted-readonly')), findsOneWidget);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

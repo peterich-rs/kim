@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:kim_mobile/features/agent/mention.dart';
+
 /// Per-thread peer typing (ephemeral). Key = peer account / thread dest.
 class TypingState {
   const TypingState({this.activeByDest = const {}});
@@ -32,17 +34,30 @@ class TypingNotifier extends Notifier<TypingState> {
     required bool active,
     String me = '',
   }) {
-    // Peer typing: thread is the typer. Own typing on another device of a
-    // bot 1:1: thread is dest (the bot).
-    final thread = (me.isNotEmpty && typer == me) ? dest : typer;
-    if (thread.isEmpty) {
+    // Own composer typing on another device must not look like the peer
+    // (or the agent) is typing. Agent busy uses typer = bot account.
+    if (me.isNotEmpty && typer == me) {
+      return;
+    }
+    if (typer.isEmpty) {
       return;
     }
     final next = Map<String, bool>.from(state.activeByDest);
-    if (active) {
-      next[thread] = true;
-    } else {
-      next.remove(thread);
+    void write(String key, bool on) {
+      if (key.isEmpty) {
+        return;
+      }
+      if (on) {
+        next[key] = true;
+      } else {
+        next.remove(key);
+      }
+    }
+
+    write(typer, active);
+    // Goose dest and registered `b_*` are the same 1:1; key both.
+    if (dest != typer && (isAgentDest(dest) || isServerBotAccount(dest))) {
+      write(dest, active);
     }
     state = state.copyWith(activeByDest: next);
     _armTtl();

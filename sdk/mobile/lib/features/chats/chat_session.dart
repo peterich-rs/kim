@@ -51,7 +51,8 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
 
   bool get isAgent => isAgentDest(dest);
 
-  bool get isUserThread => kind == ThreadKind.user && !isAgent;
+  bool get isUserThread =>
+      kind == ThreadKind.user && !isAgent && !isServerBotAccount(dest);
 
   @override
   ChatSessionState build() {
