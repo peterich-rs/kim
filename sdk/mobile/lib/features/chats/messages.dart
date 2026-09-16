@@ -164,7 +164,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   }
 
   Future<void> loadOlder() async {
-    if (state.loadingOlder || !state.hasMore || state.items.isEmpty) {
+    if (state.loadingOlder || !state.hasMore) {
       return;
     }
     state = state.copyWith(loadingOlder: true);

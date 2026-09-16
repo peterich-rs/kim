@@ -56,15 +56,22 @@ impl ProtocolClient for HistoryProto {
         &self,
         dest: &str,
         _kind: i32,
-        _before_id: i64,
-        _limit: i32,
+        before_id: i64,
+        limit: i32,
     ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.dests
             .lock()
             .expect("history dests")
             .push(dest.to_string());
-        Ok(self.rows.lock().expect("history rows").clone())
+        let mut rows = self.rows.lock().expect("history rows").clone();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.message_id));
+        if before_id > 0 {
+            rows.retain(|row| row.message_id < before_id);
+        }
+        let take = if limit <= 0 { 50 } else { limit as usize };
+        rows.truncate(take);
+        Ok(rows)
     }
 }
 
@@ -329,7 +336,7 @@ async fn load_older_under_cap_fetches_history() {
             .unwrap();
     }
     let proto = HistoryProto::new(vec![kim_client::HistoryItem {
-        message_id: 1_001,
+        message_id: 1,
         msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
         body: "remote-history".into(),
         extra: String::new(),
@@ -544,4 +551,56 @@ async fn empty_thread_without_inbox_tip_skips_history() {
     sdk.load_older("bob".into()).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(proto.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn open_thread_pages_history_until_local_window_filled() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("kim-cache.db");
+    let sdk = open_alice(&path).await;
+    let rows: Vec<kim_client::HistoryItem> = (1..=120)
+        .map(|id| kim_client::HistoryItem {
+            message_id: id,
+            msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
+            body: format!("cloud-{id}"),
+            extra: String::new(),
+            sender: if id % 2 == 0 { "alice" } else { "bob" }.into(),
+            send_time: 1_700_000_000 + id,
+            direction: i32::from(id % 2 == 0),
+        })
+        .collect();
+    sdk.persist_inbox(vec![inbox_item("bob", 120, "cloud-120")])
+        .await
+        .unwrap();
+    let proto = HistoryProto::new(rows);
+    sdk.install_protocol(proto.clone());
+    let mut timeline = sdk.subscribe_timeline(TimelineQuery {
+        dest: "bob".into(),
+        limit: 50,
+    });
+    let snapshot = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older
+            && snapshot
+                .messages
+                .iter()
+                .any(|message| message.body == "cloud-120")
+    })
+    .await;
+    assert!(proto.calls.load(Ordering::SeqCst) >= 3);
+    assert!(
+        snapshot.has_more,
+        "visible window is 50 of 120 persisted rows"
+    );
+    sdk.load_older("bob".into()).await.unwrap();
+    let older = wait_for_snapshot(&mut timeline, |snapshot| {
+        !snapshot.loading_older && snapshot.messages.len() > 50
+    })
+    .await;
+    assert!(
+        older
+            .messages
+            .iter()
+            .any(|message| message.body == "cloud-1")
+            || older.messages.len() == 100
+    );
 }

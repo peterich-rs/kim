@@ -430,6 +430,7 @@ impl KimSdk {
             sub.older_bound = None;
             sub.has_more = false;
             sub.loading_older = false;
+            sub.hydrating = false;
             sub.history_error = None;
         }
         self.publish_timeline_resync(&dest, "deleted").await;
@@ -439,6 +440,18 @@ impl KimSdk {
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
         *lock(&self.inner.protocol) = Some(protocol);
+        let dests: Vec<String> = lock(&self.inner.timelines).keys().cloned().collect();
+        if dests.is_empty() {
+            return;
+        }
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let sdk = self.clone();
+            handle.spawn(async move {
+                for dest in dests {
+                    let _ = sdk.hydrate_latest_if_needed(&dest).await;
+                }
+            });
+        }
     }
 
     pub fn set_agent(&self, agent: Arc<dyn AgentPort>) {
@@ -1121,55 +1134,74 @@ impl KimSdk {
             .get(dest)
             .map(|sub| sub.limit)
             .unwrap_or(50);
-        let remote = match proto.history(dest, kind, 0, limit).await {
-            Ok(rows) => rows,
-            Err(error) => {
-                self.finish_timeline_load(
-                    dest,
-                    &account,
-                    epoch,
-                    None,
-                    true,
-                    Some(error.to_string()),
-                )
-                .await;
-                return Err(error);
-            }
-        };
-        let full = remote.len() as i32 >= limit;
         let command = if kind == kim_protocol::INBOX_KIND_GROUP {
             kim_protocol::CMD_CHAT_GROUP_TALK
         } else {
             kim_protocol::CMD_CHAT_USER_TALK
         };
-        let talks: Vec<kim_client::IncomingTalk> = remote
-            .into_iter()
-            .map(|history| kim_client::IncomingTalk {
-                command: command.to_string(),
-                dest: dest.to_string(),
-                message_id: history.message_id,
-                sender: history.sender,
-                msg_type: history.msg_type,
-                body: history.body,
-                extra: history.extra,
-                send_time: history.send_time,
-            })
-            .collect();
-        if !talks.is_empty() {
-            if let Err(error) = self
-                .persist_talks_for(epoch, account.clone(), talks, UnreadPolicy::Keep)
-                .await
-            {
-                self.finish_timeline_load(
-                    dest,
-                    &account,
-                    epoch,
-                    None,
-                    true,
-                    Some(error.to_string()),
-                )
-                .await;
-                return Err(error);
+        let cap = i64::from(store::schema::MAX_MESSAGES);
+        let mut before_id = 0i64;
+        let mut last_full;
+        loop {
+            let remote = match proto.history(dest, kind, before_id, limit).await {
+                Ok(rows) => rows,
+                Err(error) => {
+                    self.finish_timeline_load(
+                        dest,
+                        &account,
+                        epoch,
+                        None,
+                        true,
+                        Some(error.to_string()),
+                    )
+                    .await;
+                    return Err(error);
+                }
+            };
+            let n = remote.len() as i32;
+            last_full = n >= limit;
+            let oldest_id = remote
+                .iter()
+                .map(|row| row.message_id)
+                .filter(|id| *id > 0)
+                .min()
+                .unwrap_or(0);
+            let talks: Vec<kim_client::IncomingTalk> = remote
+                .into_iter()
+                .map(|history| kim_client::IncomingTalk {
+                    command: command.to_string(),
+                    dest: dest.to_string(),
+                    message_id: history.message_id,
+                    sender: history.sender,
+                    msg_type: history.msg_type,
+                    body: history.body,
+                    extra: history.extra,
+                    send_time: history.send_time,
+                })
+                .collect();
+            if !talks.is_empty() {
+                if let Err(error) = self
+                    .persist_talks_for(epoch, account.clone(), talks, UnreadPolicy::Keep)
+                    .await
+                {
+                    self.finish_timeline_load(
+                        dest,
+                        &account,
+                        epoch,
+                        None,
+                        true,
+                        Some(error.to_string()),
+                    )
+                    .await;
+                    return Err(error);
+                }
+            }
+            if n == 0 || !last_full || oldest_id <= 0 || oldest_id == before_id {
+                break;
+            }
+            match store.count_sent(&account, dest).await {
+                Ok(sent) if sent < cap => before_id = oldest_id,
+                _ => break,
             }
         }
         let snapshot = store
@@ -1181,7 +1213,7 @@ impl KimSdk {
                 .first()
                 .map(|message| (message.at, message.key.clone()))
         });
-        let has_more = full || snapshot.as_ref().is_some_and(|snap| snap.has_more);
+        let has_more = last_full || snapshot.as_ref().is_some_and(|snap| snap.has_more);
         self.finish_timeline_load(dest, &account, epoch, older_bound, has_more, None)
             .await;
         Ok(HydrateOutcome::Applied)
