@@ -78,42 +78,49 @@ pub fn all() -> Vec<Arc<dyn CapabilityBlock>> {
             tool: "send_message",
             risk: RiskTier::Write,
             ask: true,
-            fragment: "You have send_message (requires user confirmation).",
+            fragment: "## send_message\n\
+Send an IM to one of the user's contacts. Gated: the user confirms the recipient \
+and text before it goes out. Draft the message for them rather than asking them to type it.",
         }),
         Arc::new(ImBlock {
             kind: "im.search_contacts",
             tool: "search_contacts",
             risk: RiskTier::Read,
             ask: false,
-            fragment: "You have search_contacts.",
+            fragment: "## search_contacts\n\
+Look up people before acting on names the user mentions.",
         }),
         Arc::new(ImBlock {
             kind: "im.search_messages",
             tool: "search_messages",
             risk: RiskTier::Read,
             ask: false,
-            fragment: "You have search_messages.",
+            fragment: "## search_messages\n\
+Look up prior conversations before relying on memory of a chat.",
         }),
         Arc::new(ImBlock {
             kind: "im.get_conversation_context",
             tool: "get_conversation_context",
             risk: RiskTier::Read,
             ask: false,
-            fragment: "You have get_conversation_context.",
+            fragment: "## get_conversation_context\n\
+Load the current or named conversation before answering about it.",
         }),
         Arc::new(ImBlock {
             kind: "im.read_clipboard",
             tool: "read_clipboard",
             risk: RiskTier::External,
             ask: true,
-            fragment: "You have read_clipboard (requires user confirmation).",
+            fragment: "## read_clipboard\n\
+Read the system clipboard. Gated: the user confirms before the contents are returned.",
         }),
         Arc::new(ImBlock {
             kind: "im.list_profiles",
             tool: "list_profiles",
             risk: RiskTier::Read,
             ask: false,
-            fragment: "You have list_profiles.",
+            fragment: "## list_profiles\n\
+List the user's agent profiles.",
         }),
     ]
 }

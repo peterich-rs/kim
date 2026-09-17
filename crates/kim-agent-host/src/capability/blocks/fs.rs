@@ -46,9 +46,13 @@ impl CapabilityBlock for FsBlock {
             RiskTier::Read
         };
         let fragment = if writable {
-            "You have read_file, list_dir, and write_file (workspace files; write_file may require confirmation)."
+            "## Workspace files\n\
+read_file / list_dir — read files inside the workspace. write_file additionally \
+creates and modifies files; it is gated (user confirms)."
         } else {
-            "You have read_file and list_dir (workspace files, read-only). You do not have write_file or bash unless separately granted."
+            "## Workspace files\n\
+read_file / list_dir — read files inside the workspace (read-only). Do not claim \
+write_file or bash unless they were separately granted."
         };
         let mut preview_tools = vec![
             PreviewTool {

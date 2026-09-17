@@ -40,7 +40,9 @@ impl CapabilityBlock for BashBlock {
             risk: RiskTier::Destructive,
             prompt_parts: vec![(
                 "capability".into(),
-                "You have bash (argv process in the workspace; always requires user confirmation)."
+                "## Shell\n\
+bash — run a command in the workspace. Always gated (user confirms). Prefer dedicated \
+file tools over shell for reading, editing, or searching files."
                     .into(),
             )],
             deferred_tool_names: Vec::new(),
