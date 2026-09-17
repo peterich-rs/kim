@@ -519,7 +519,14 @@ fn translator_template() -> AgentProfile {
             ..Default::default()
         },
         reasoning: None,
-        system_prompt: "You are 译者. Translate between the user's languages. Do not chat. Do not claim you can send messages.".into(),
+        system_prompt: "\
+You are 译者, a translation specialist in the KIM messenger.
+Translate the user's text between the languages they are using. Do not add commentary, opinions, or small talk.
+Preserve meaning, tone, and formatting. Leave names, code, and URLs unchanged unless asked to localize them.
+Output only the translation unless the user asks for notes (register, alternatives).
+If they ask for something outside translation — coding, sending messages, browsing files — say that is out of scope and suggest another agent or capability they could enable.
+Reply in the target language of the request."
+            .into(),
         mode: GooseMode::Chat,
         max_turns: Some(16),
         tools: ToolSet::default(),
@@ -552,9 +559,14 @@ fn coder_template() -> AgentProfile {
             ..Default::default()
         },
         reasoning: None,
-        system_prompt:
-            "You are a software assistant. The workspace is project_root. Do not send messages."
-                .into(),
+        system_prompt: "\
+You are coder, a software assistant in the KIM messenger.
+The workspace is this session's project root. Read existing code before changing it.
+Make focused, reviewable edits. Fix root causes, not symptoms. Do not drive-by refactor unrelated code.
+Match the project's language, style, and tests. Prefer evidence from the workspace over guessing.
+When you finish, lead with what changed, then a short list of files touched.
+If the user asks you to send messages or act outside this workspace, say that is out of scope and point them to an agent with that capability."
+            .into(),
         mode: GooseMode::Approve,
         max_turns: Some(32),
         tools: ToolSet {
@@ -748,6 +760,30 @@ mod tests {
     fn identity_prompt_never_lists_tools() {
         assert!(!DEFAULT_IDENTITY_PROMPT.contains("send_message"));
         assert!(!DEFAULT_IDENTITY_PROMPT.contains("search_contacts"));
+        assert!(!DEFAULT_IDENTITY_PROMPT.contains("bash"));
+        assert!(!DEFAULT_IDENTITY_PROMPT.contains("read_file"));
+        assert!(!DEFAULT_IDENTITY_PROMPT.contains("write_file"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("# How you work"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("## Confirmations"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("## Communication"));
+        assert!(!is_legacy_tool_laundry_identity(DEFAULT_IDENTITY_PROMPT));
+    }
+
+    #[test]
+    fn translator_and_coder_templates_stay_single_persona() {
+        let templates = builtin_templates();
+        let translator = templates.iter().find(|p| p.id == "translator").unwrap();
+        assert!(translator.system_prompt.contains("译者"));
+        assert!(translator.system_prompt.contains("out of scope"));
+        assert!(!translator.system_prompt.contains("send_message"));
+        assert!(!translator.system_prompt.contains("search_contacts"));
+        let coder = templates.iter().find(|p| p.id == "coder").unwrap();
+        assert!(coder.system_prompt.contains("coder"));
+        assert!(coder.system_prompt.contains("out of scope"));
+        assert!(!coder.system_prompt.contains("send_message"));
+        assert!(!coder.system_prompt.contains("read_file"));
+        let goose = templates.iter().find(|p| p.id == "goose").unwrap();
+        assert_eq!(goose.system_prompt, DEFAULT_IDENTITY_PROMPT);
     }
 
     #[test]

@@ -269,7 +269,16 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(parts[0].1, DEFAULT_IDENTITY_PROMPT);
+        assert!(parts[0].1.contains("助手"), "{}", parts[0].1);
+        assert!(parts[0].1.contains("# How you work"), "{}", parts[0].1);
+        assert!(parts[0].1.contains("## Confirmations"), "{}", parts[0].1);
+        assert!(!parts[0].1.contains("send_message"));
+        assert!(
+            parts.iter().any(|(_, t)| t.contains("<env>")
+                && t.contains("Date:")
+                && t.contains("Platform:")),
+            "{parts:?}"
+        );
         assert!(!parts.iter().any(|(_, t)| t.contains("send_message")));
     }
 
@@ -304,7 +313,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(parts[0].1, DEFAULT_IDENTITY_PROMPT);
+        assert!(parts[0].1.contains("助手"), "{}", parts[0].1);
+        assert!(parts[0].1.contains("# How you work"), "{}", parts[0].1);
+        assert!(!parts[0].1.contains("send_message"));
     }
 
     #[tokio::test]

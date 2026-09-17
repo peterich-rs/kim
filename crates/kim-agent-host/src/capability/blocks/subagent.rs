@@ -40,7 +40,9 @@ impl CapabilityBlock for SubagentBlock {
             risk: RiskTier::Write,
             prompt_parts: vec![(
                 "capability".into(),
-                "You have delegate (run a smaller child agent; requires confirmation).".into(),
+                "## Subagent\n\
+delegate — run a smaller child agent on a focused task. Gated (user confirms)."
+                    .into(),
             )],
             deferred_tool_names: Vec::new(),
             in_process: Some(Arc::new(SubagentOp {

@@ -199,10 +199,67 @@ mod tests {
         profile.capabilities = crate::capability::CapabilityRef::from_legacy(&profile.tools, &[]);
         let preview = preview_assembled(&profile, Path::new("/tmp")).unwrap();
         assert!(preview.tools.iter().any(|t| t.name == "send_message"));
-        assert!(preview
+        let digest = preview
             .prompt_layers
             .iter()
-            .any(|(l, t)| l == "capability_digest" && t.contains("send_message")));
+            .find(|(l, _)| l == "capability_digest")
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("");
+        assert!(digest.starts_with("# Tools"), "{digest}");
+        assert!(digest.contains("send_message"), "{digest}");
+        assert!(digest.to_ascii_lowercase().contains("gated"), "{digest}");
+        assert_eq!(preview.prompt_layers[0].0, "identity");
+        assert_eq!(preview.prompt_layers[1].0, "environment");
+    }
+
+    #[test]
+    fn preview_empty_caps_keep_identity_and_env() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let preview = preview_assembled(&profile, Path::new("/tmp")).unwrap();
+        let labels: Vec<&str> = preview
+            .prompt_layers
+            .iter()
+            .map(|(l, _)| l.as_str())
+            .collect();
+        assert_eq!(labels, vec!["identity", "environment"]);
+        assert!(preview.prompt_layers[0].1.contains("# How you work"));
+        assert!(preview.prompt_layers[1].1.contains("Date:"));
+        assert!(preview.prompt_layers[1].1.contains("Platform:"));
+        assert!(!preview.full_system_prompt.contains("send_message"));
+    }
+
+    #[test]
+    fn preview_agents_md_has_scope_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("AGENTS.md"), "project notes").unwrap();
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_fs_tools: true,
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let preview = preview_assembled(&profile, dir.path()).unwrap();
+        let md = preview
+            .prompt_layers
+            .iter()
+            .find(|(l, _)| l == "workspace_agents_md")
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("");
+        assert!(md.contains("nested files closer to a path win"), "{md}");
+        assert!(md.contains("current turn override"), "{md}");
+        assert!(md.contains("project notes"), "{md}");
+        let digest = preview
+            .prompt_layers
+            .iter()
+            .find(|(l, _)| l == "capability_digest")
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("");
+        assert!(digest.starts_with("# Tools"), "{digest}");
+        assert!(digest.contains("read_file"), "{digest}");
     }
 
     #[test]

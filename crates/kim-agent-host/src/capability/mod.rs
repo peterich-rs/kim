@@ -7,6 +7,7 @@ pub mod preview;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use goose_agent::tool::ToolProvider;
 use goose_provider_types::base::Provider;
@@ -22,7 +23,7 @@ use crate::skills::{
     build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry,
     SkillResolver,
 };
-use crate::{HostError, HostSession};
+use crate::{HostError, HostSession, DEFAULT_AGENT_NAME};
 
 pub use legacy::from_legacy;
 pub use preview::{preview_assembled, AssembledPreview, PreviewTool};
@@ -221,7 +222,13 @@ pub(crate) fn resolve_parts(
     }
 }
 
-/// L1 identity + L2 digest + L3 AGENTS.md + L4 skill catalog + L5 steer.
+const TOOLS_POLICY_PREAMBLE: &str = "\
+# Tools
+
+Your tool list for this session is assembled from the blocks below. Tool
+parameters are documented in the tool schemas; the notes here are usage policy.";
+
+/// L1 identity → L2 environment → L3 digest → L4 AGENTS.md → L5 skills → L6 steer.
 pub(crate) fn build_prompt_layers(
     profile: &AgentProfile,
     project_root: &Path,
@@ -230,9 +237,14 @@ pub(crate) fn build_prompt_layers(
 ) -> Vec<(String, String)> {
     let mut layers = Vec::new();
 
-    let identity = profile.effective_identity_prompt().to_string();
+    let identity = interpolate_identity(profile.effective_identity_prompt(), profile);
     if !identity.trim().is_empty() {
         layers.push(("identity".into(), identity));
+    }
+
+    let env = environment_block(profile, project_root);
+    if !env.trim().is_empty() {
+        layers.push(("environment".into(), env));
     }
 
     let mut digest_bits: Vec<String> = Vec::new();
@@ -244,7 +256,10 @@ pub(crate) fn build_prompt_layers(
         }
     }
     if !digest_bits.is_empty() {
-        layers.push(("capability_digest".into(), digest_bits.join(" ")));
+        layers.push((
+            "capability_digest".into(),
+            format!("{TOOLS_POLICY_PREAMBLE}\n\n{}", digest_bits.join("\n\n")),
+        ));
     }
 
     let projected = profile.project_toolset();
@@ -254,7 +269,10 @@ pub(crate) fn build_prompt_layers(
         if let Some(agents_md) = read_agents_md(project_root) {
             layers.push((
                 "workspace_agents_md".into(),
-                format!("Workspace AGENTS.md:\n{agents_md}"),
+                format!(
+                    "AGENTS.md applies to this workspace tree; nested files closer to a path win.\n\
+                     User instructions in the current turn override it.\n\n{agents_md}"
+                ),
             ));
         }
     }
@@ -270,6 +288,135 @@ pub(crate) fn build_prompt_layers(
     }
 
     layers
+}
+
+pub(crate) fn interpolate_identity(text: &str, profile: &AgentProfile) -> String {
+    let mut out = text.to_string();
+    if out.contains("{display_name}") {
+        let name = profile.display_name.trim();
+        let name = if name.is_empty() {
+            DEFAULT_AGENT_NAME
+        } else {
+            name
+        };
+        out = out.replace("{display_name}", name);
+    }
+    if out.contains("{model_name}") {
+        out = out.replace("{model_name}", &model_label(profile));
+    }
+    out
+}
+
+fn model_label(profile: &AgentProfile) -> String {
+    let kind = profile.provider.kind.trim();
+    let name = profile.model.name.trim();
+    match (kind.is_empty(), name.is_empty()) {
+        (false, false) => format!("{kind}/{name}"),
+        (true, false) => name.to_string(),
+        (false, true) => kind.to_string(),
+        (true, true) => "unknown".into(),
+    }
+}
+
+fn platform_name() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS",
+        "linux" => "Linux",
+        "windows" => "Windows",
+        other => other,
+    }
+}
+
+fn environment_block(profile: &AgentProfile, project_root: &Path) -> String {
+    let path = project_root.display();
+    let workspace = match profile.workspace.kind {
+        WorkspaceKind::Sandbox => {
+            format!("{path} (sandbox) — private directory, free to read/write")
+        }
+        WorkspaceKind::Repo => {
+            format!("{path} (repo) — user's project directory, change carefully")
+        }
+    };
+    let date = format_civil_date(SystemTime::now());
+    format!(
+        "<env>\nWorkspace: {workspace}\nPlatform: {}\nDate: {date}\nModel: {}\n</env>",
+        platform_name(),
+        model_label(profile)
+    )
+}
+
+fn format_civil_date(now: SystemTime) -> String {
+    let (y, m, d) = ymd_with_offset(now, local_utc_offset_secs());
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn ymd_with_offset(now: SystemTime, offset_secs: i64) -> (i32, u32, u32) {
+    let secs = match now.duration_since(UNIX_EPOCH) {
+        Ok(d) => d.as_secs() as i64,
+        Err(e) => -(e.duration().as_secs() as i64),
+    };
+    civil_from_days(secs.saturating_add(offset_secs).div_euclid(86_400))
+}
+
+fn local_utc_offset_secs() -> i64 {
+    static OFFSET: OnceLock<i64> = OnceLock::new();
+    *OFFSET.get_or_init(detect_local_utc_offset_secs)
+}
+
+fn detect_local_utc_offset_secs() -> i64 {
+    #[cfg(unix)]
+    {
+        if let Some(z) = offset_from_date_z() {
+            return z;
+        }
+    }
+    0
+}
+
+#[cfg(unix)]
+fn offset_from_date_z() -> Option<i64> {
+    let output = std::process::Command::new("date")
+        .arg("+%z")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_iso_tz_offset(std::str::from_utf8(&output.stdout).ok()?.trim())
+}
+
+fn parse_iso_tz_offset(raw: &str) -> Option<i64> {
+    let s = raw.trim();
+    if s.len() < 5 {
+        return None;
+    }
+    let bytes = s.as_bytes();
+    let sign = match bytes[0] {
+        b'+' => 1i64,
+        b'-' => -1,
+        _ => return None,
+    };
+    let hours: i64 = std::str::from_utf8(&bytes[1..3]).ok()?.parse().ok()?;
+    let mins: i64 = std::str::from_utf8(&bytes[3..5]).ok()?.parse().ok()?;
+    if !(0..=14).contains(&hours) || mins > 59 {
+        return None;
+    }
+    Some(sign * (hours * 3600 + mins * 60))
+}
+
+/// Civil YYYY-MM-DD from Unix days (Howard Hinnant).
+fn civil_from_days(days: i64) -> (i32, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_097) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = y + if m <= 2 { 1 } else { 0 };
+    (y as i32, m, d)
 }
 
 pub(crate) fn merge_permission_config(
@@ -314,6 +461,8 @@ pub(crate) fn flatten_providers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
     use crate::profile::LegacyOpenOpts;
     use crate::DEFAULT_IDENTITY_PROMPT;
 
@@ -353,6 +502,188 @@ mod tests {
         let identity = profile.effective_identity_prompt();
         assert_eq!(identity, DEFAULT_IDENTITY_PROMPT);
         assert!(!identity.contains("send_message"));
+    }
+
+    fn layer_named<'a>(layers: &'a [(String, String)], name: &str) -> &'a str {
+        layers
+            .iter()
+            .find(|(label, _)| label == name)
+            .map(|(_, text)| text.as_str())
+            .unwrap_or("")
+    }
+
+    #[test]
+    fn default_identity_has_chapters_and_zero_tool_names() {
+        for name in [
+            "send_message",
+            "search_contacts",
+            "bash",
+            "read_file",
+            "write_file",
+        ] {
+            assert!(
+                !DEFAULT_IDENTITY_PROMPT.contains(name),
+                "default identity lists {name}"
+            );
+        }
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("# How you work"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("## Confirmations"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("## Communication"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("{display_name}"));
+        assert!(DEFAULT_IDENTITY_PROMPT.contains("{model_name}"));
+    }
+
+    #[test]
+    fn empty_caps_omit_digest_but_keep_identity_and_env() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let layers = build_prompt_layers(
+            &profile,
+            Path::new("/tmp/agent/workspaces/goose"),
+            &[],
+            &SkillRegistry::default(),
+        );
+        let labels: Vec<&str> = layers.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(labels, vec!["identity", "environment"]);
+        let identity = layer_named(&layers, "identity");
+        assert!(identity.contains("助手"), "{identity}");
+        assert!(identity.contains("# How you work"), "{identity}");
+        assert!(identity.contains("openai/gpt-4o"), "{identity}");
+        assert!(!identity.contains("send_message"), "{identity}");
+        assert!(!identity.contains("{display_name}"), "{identity}");
+        let env = layer_named(&layers, "environment");
+        assert!(env.contains("<env>"), "{env}");
+        assert!(env.contains("Date:"), "{env}");
+        assert!(env.contains("Platform:"), "{env}");
+        assert!(env.contains("(sandbox)"), "{env}");
+        assert!(env.contains("private directory"), "{env}");
+        assert!(env.contains("Model: openai/gpt-4o"), "{env}");
+    }
+
+    #[test]
+    fn sandbox_vs_repo_env_wording_differs() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let sandbox = build_prompt_layers(
+            &profile,
+            Path::new("/tmp/ws"),
+            &[],
+            &SkillRegistry::default(),
+        );
+        let sandbox_env = layer_named(&sandbox, "environment");
+        assert!(sandbox_env.contains("(sandbox)"), "{sandbox_env}");
+        assert!(sandbox_env.contains("free to read/write"), "{sandbox_env}");
+        assert!(!sandbox_env.contains("(repo)"), "{sandbox_env}");
+
+        profile.workspace.kind = WorkspaceKind::Repo;
+        let repo = build_prompt_layers(
+            &profile,
+            Path::new("/Users/me/proj"),
+            &[],
+            &SkillRegistry::default(),
+        );
+        let repo_env = layer_named(&repo, "environment");
+        assert!(repo_env.contains("(repo)"), "{repo_env}");
+        assert!(repo_env.contains("change carefully"), "{repo_env}");
+        assert!(!repo_env.contains("free to read/write"), "{repo_env}");
+        assert!(!repo_env.contains("(sandbox)"), "{repo_env}");
+    }
+
+    #[test]
+    fn capability_digest_starts_with_tools_policy_and_uses_gated() {
+        let part = CapabilityPart {
+            kind: "im.send_message".into(),
+            instance_id: "im.send_message".into(),
+            risk: RiskTier::Write,
+            prompt_parts: vec![(
+                "capability".into(),
+                "## send_message\nSend an IM. Gated: user confirms.".into(),
+            )],
+            deferred_tool_names: Vec::new(),
+            in_process: None,
+            permission_defaults: Vec::new(),
+            preview_tools: Vec::new(),
+        };
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        profile.steer = "Be extra brief.".into();
+        let layers = build_prompt_layers(
+            &profile,
+            Path::new("/tmp"),
+            &[part],
+            &SkillRegistry::default(),
+        );
+        let labels: Vec<&str> = layers.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec!["identity", "environment", "capability_digest", "steer"]
+        );
+        let digest = layer_named(&layers, "capability_digest");
+        assert!(digest.starts_with("# Tools"), "{digest}");
+        assert!(digest.to_ascii_lowercase().contains("gated"), "{digest}");
+        assert!(digest.contains("send_message"), "{digest}");
+        assert!(!digest.contains("requires user confirmation"), "{digest}");
+        assert_eq!(
+            layers.last().map(|(l, t)| (l.as_str(), t.as_str())),
+            Some(("steer", "Be extra brief."))
+        );
+    }
+
+    #[test]
+    fn custom_identity_without_placeholders_is_verbatim() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        profile.system_prompt = "Stay terse.".into();
+        let layers =
+            build_prompt_layers(&profile, Path::new("/tmp"), &[], &SkillRegistry::default());
+        assert_eq!(layer_named(&layers, "identity"), "Stay terse.");
+    }
+
+    #[test]
+    fn custom_identity_interpolates_placeholders() {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        profile.display_name = "Kim".into();
+        profile.system_prompt = "Hello {display_name} using {model_name}.".into();
+        let layers =
+            build_prompt_layers(&profile, Path::new("/tmp"), &[], &SkillRegistry::default());
+        assert_eq!(
+            layer_named(&layers, "identity"),
+            "Hello Kim using openai/gpt-4o."
+        );
+    }
+
+    #[test]
+    fn civil_from_days_known_unix_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(1), (1970, 1, 2));
+        assert_eq!(civil_from_days(365), (1971, 1, 1));
+        assert_eq!(civil_from_days(11_017), (2000, 3, 1));
+        assert_eq!(civil_from_days(20_713), (2026, 9, 17));
+        assert_eq!(ymd_with_offset(UNIX_EPOCH, 0), (1970, 1, 1));
+        let billion = UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        assert_eq!(ymd_with_offset(billion, 0), (2001, 9, 9));
+        let twenty_hours = UNIX_EPOCH + std::time::Duration::from_secs(20 * 3600);
+        assert_eq!(ymd_with_offset(twenty_hours, 0), (1970, 1, 1));
+        assert_eq!(ymd_with_offset(twenty_hours, 8 * 3600), (1970, 1, 2));
+        assert_eq!(parse_iso_tz_offset("+0800"), Some(8 * 3600));
+        assert_eq!(parse_iso_tz_offset("-0530"), Some(-(5 * 3600 + 30 * 60)));
+        assert_eq!(parse_iso_tz_offset("0800"), None);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Layered system prompt parts (identity, digest, workspace, skills, steer).
+//! Layered system prompt parts (identity, environment, digest, workspace, skills, steer).
 
 use anyhow::Result;
 use async_trait::async_trait;

@@ -18,12 +18,41 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+use crate::capability::interpolate_identity;
 use crate::events::HostEffect;
 use crate::ops::chat_guard::ChatGuardOp;
 use crate::ops::max_turns::MaxTurnsOp;
 use crate::ops::system_prompt::SystemPromptOp;
 use crate::profile::builtin_templates;
 use crate::HostSession;
+
+/// Fallback when `profile_id` matches no builtin template.
+pub(crate) const SUBAGENT_FALLBACK_PROMPT: &str = "\
+You are an independent helper subagent. You run a focused, bounded task on behalf of a parent agent.
+
+# Role
+- Work independently on the assigned task only. Do not expand scope or start unrelated work.
+- You are not the parent: do not send IM messages, do not talk to the user's contacts, and do not claim to be the parent agent.
+- You have a limited turn budget (max 8 turns). Finish within that budget.
+
+# How to work
+- Prefer evidence from tools over guessing. Use only tools that appear in your tool list.
+- Use tools efficiently: make the fewest calls that answer the task, and stop as soon as you have enough.
+- If a tool call fails, change the approach. Do not retry the exact same call.
+- Stay inside the task bounds. If something is blocked or missing, report that instead of improvising a larger plan.
+
+# Report
+- Lead with the conclusion.
+- Follow with brief supporting detail (paths, quotes, or numbers) — no long narrative.
+- When the task is done, say so explicitly. If you could not finish, say what is left and why.";
+
+fn child_system_prompt(profile_id: &str) -> String {
+    builtin_templates()
+        .into_iter()
+        .find(|p| p.id == profile_id)
+        .map(|p| interpolate_identity(&p.system_prompt, &p))
+        .unwrap_or_else(|| SUBAGENT_FALLBACK_PROMPT.to_string())
+}
 
 pub struct SubagentOp {
     pub provider: Arc<dyn Provider>,
@@ -130,13 +159,7 @@ impl ToolProvider<HostSession> for SubagentOp {
             .get("profile_id")
             .and_then(Value::as_str)
             .unwrap_or("translator");
-        let child_prompt = builtin_templates()
-            .into_iter()
-            .find(|p| p.id == profile_id)
-            .map(|p| p.system_prompt)
-            .unwrap_or_else(|| {
-                "You are a helper subagent. Do not send messages. Answer the task.".into()
-            });
+        let child_prompt = child_system_prompt(profile_id);
         let runtime = ChildRuntime {
             store: Mutex::new(HashMap::new()),
         };
@@ -175,5 +198,38 @@ impl ToolProvider<HostSession> for SubagentOp {
             }
             Err(err) => Ok(error_result(err.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fallback_is_bounded_helper_without_send_message_tool() {
+        let prompt = child_system_prompt("no-such-profile");
+        assert_eq!(prompt, SUBAGENT_FALLBACK_PROMPT);
+        assert!(prompt.contains("independent helper subagent"));
+        assert!(prompt.contains("max 8 turns"));
+        assert!(prompt.contains("Lead with the conclusion"));
+        assert!(!prompt.contains("send_message"));
+    }
+
+    #[test]
+    fn matching_template_uses_persona_prompt() {
+        let prompt = child_system_prompt("translator");
+        assert!(prompt.contains("译者"));
+        assert_ne!(prompt, SUBAGENT_FALLBACK_PROMPT);
+        assert!(!prompt.contains("send_message"));
+    }
+
+    #[test]
+    fn goose_template_interpolates_identity_placeholders() {
+        let prompt = child_system_prompt("goose");
+        assert!(!prompt.contains("{display_name}"), "{prompt}");
+        assert!(!prompt.contains("{model_name}"), "{prompt}");
+        assert!(prompt.contains("助手"), "{prompt}");
+        assert!(prompt.contains("# How you work"), "{prompt}");
+        assert!(!prompt.contains("send_message"), "{prompt}");
     }
 }
