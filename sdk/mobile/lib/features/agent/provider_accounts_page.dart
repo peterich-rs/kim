@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
@@ -78,8 +79,7 @@ class _ProviderAccountsPageState extends ConsumerState<ProviderAccountsPage> {
               ),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 if (accounts.isEmpty)

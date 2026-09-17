@@ -12,6 +12,7 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/haptics.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
@@ -52,6 +53,11 @@ class AgentListPage extends ConsumerWidget {
                 icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
               ),
               IconButton(
+                tooltip: l10n.agentAccounts,
+                onPressed: () => context.push('/agent/accounts'),
+                icon: Icon(LucideIcons.key, color: scheme.onSurfaceVariant),
+              ),
+              IconButton(
                 key: const Key('agent-new'),
                 tooltip: l10n.agentCreate,
                 onPressed: () {
@@ -60,15 +66,9 @@ class AgentListPage extends ConsumerWidget {
                 },
                 icon: const Icon(Icons.add),
               ),
-              IconButton(
-                tooltip: l10n.agentAccounts,
-                onPressed: () => context.push('/agent/accounts'),
-                icon: const Icon(Icons.key_outlined),
-              ),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 if (profiles.isEmpty)
@@ -88,35 +88,65 @@ class AgentListPage extends ConsumerWidget {
                       for (final profile in profiles) ...[
                         if (profile != profiles.first) const Divider(height: 1),
                         ListTile(
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            6,
+                            8,
+                            6,
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: scheme.primary.withValues(
+                              alpha: 0.12,
+                            ),
+                            foregroundColor: scheme.primary,
+                            child: const Icon(LucideIcons.bot, size: 18),
+                          ),
                           title: Text(profile.displayName),
-                          subtitle: Text(_profileSubtitle(profile, accounts)),
+                          subtitle: Text(
+                            _profileSubtitle(profile, accounts),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           onTap: () => context.push('/agent/${profile.id}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Switch(
+                              Switch.adaptive(
                                 value: profile.enabled,
                                 onChanged: (next) => unawaited(
                                   store.setEnabled(profile.id, next),
                                 ),
                               ),
-                              IconButton(
-                                tooltip: l10n.agentDuplicate,
-                                onPressed: () => unawaited(
-                                  _duplicate(context, store, profile),
-                                ),
-                                icon: const Icon(Icons.copy, size: 18),
-                              ),
-                              IconButton(
-                                key: Key('agent-delete-${profile.id}'),
-                                tooltip: l10n.agentDelete,
-                                onPressed: () => unawaited(
-                                  _delete(context, store, profile.id),
-                                ),
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
-                                ),
+                              PopupMenuButton<String>(
+                                key: Key('agent-row-menu-${profile.id}'),
+                                tooltip: MaterialLocalizations.of(context)
+                                    .moreButtonTooltip,
+                                onSelected: (value) {
+                                  switch (value) {
+                                    case 'duplicate':
+                                      unawaited(
+                                        _duplicate(context, store, profile),
+                                      );
+                                    case 'delete':
+                                      unawaited(
+                                        _delete(context, store, profile.id),
+                                      );
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  PopupMenuItem(
+                                    value: 'duplicate',
+                                    child: Text(l10n.agentDuplicate),
+                                  ),
+                                  PopupMenuItem(
+                                    key: Key('agent-delete-${profile.id}'),
+                                    value: 'delete',
+                                    child: Text(
+                                      l10n.agentDelete,
+                                      style: TextStyle(color: scheme.error),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

@@ -2053,6 +2053,78 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已删除'**
   String get peerDeleted;
+
+  /// No description provided for @agentCreateNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get agentCreateNext;
+
+  /// No description provided for @agentCreateFinish.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建'**
+  String get agentCreateFinish;
+
+  /// No description provided for @agentCreateProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'{current} / {total}'**
+  String agentCreateProgress(int current, int total);
+
+  /// No description provided for @agentCreateStepBasics.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称与模型'**
+  String get agentCreateStepBasics;
+
+  /// No description provided for @agentCreateStepTools.
+  ///
+  /// In zh, this message translates to:
+  /// **'工具与工作区'**
+  String get agentCreateStepTools;
+
+  /// No description provided for @agentCreateStepSkills.
+  ///
+  /// In zh, this message translates to:
+  /// **'技能'**
+  String get agentCreateStepSkills;
+
+  /// No description provided for @agentCreateStepPrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统提示'**
+  String get agentCreateStepPrompt;
+
+  /// No description provided for @agentSkillTagInternal.
+  ///
+  /// In zh, this message translates to:
+  /// **'内置'**
+  String get agentSkillTagInternal;
+
+  /// No description provided for @agentSkillTagDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载'**
+  String get agentSkillTagDownload;
+
+  /// No description provided for @agentSkillTagGlobal.
+  ///
+  /// In zh, this message translates to:
+  /// **'全局'**
+  String get agentSkillTagGlobal;
+
+  /// No description provided for @agentSkillTagProject.
+  ///
+  /// In zh, this message translates to:
+  /// **'项目'**
+  String get agentSkillTagProject;
+
+  /// No description provided for @agentSkillsPickerEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可分配的技能'**
+  String get agentSkillsPickerEmpty;
 }
 
 class _AppLocalizationsDelegate

@@ -15,6 +15,7 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/env.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/ota_info.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
@@ -47,60 +48,56 @@ class MePage extends ConsumerWidget {
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(title: Copy.me),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: KimTheme.raisedOf(context),
-                  borderRadius: BorderRadius.circular(KimTheme.radiusCard),
-                  border: Border.all(color: KimTheme.hairlineOf(context)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-                  child: Row(
-                    children: [
-                      _AvatarButton(
-                        name: session.account.isEmpty ? '?' : session.account,
-                        url: me.avatar,
-                      ),
-                      const Gap(16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              session.account,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const Gap(6),
-                            Row(
-                              children: [
-                                StatusDot(status: session.status),
-                                const Gap(6),
-                                Text(
-                                  session.statusLabel,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+          KimBodySliver(
+            bottom: KimDock.overlapOf(context) + 16,
             sliver: SliverList.list(
               children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: KimTheme.raisedOf(context),
+                    borderRadius: BorderRadius.circular(KimTheme.radiusCard),
+                    border: Border.all(color: KimTheme.hairlineOf(context)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+                    child: Row(
+                      children: [
+                        _AvatarButton(
+                          name: session.account.isEmpty ? '?' : session.account,
+                          url: me.avatar,
+                        ),
+                        const Gap(16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                session.account,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Gap(6),
+                              Row(
+                                children: [
+                                  StatusDot(status: session.status),
+                                  const Gap(6),
+                                  Text(
+                                    session.statusLabel,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Gap(18),
                 _SectionLabel(Copy.accountSection),
                 KimGroupCard(
                   children: [
@@ -184,7 +181,6 @@ class MePage extends ConsumerWidget {
                       ),
                   ],
                 ),
-                Gap(KimDock.overlapOf(context) + 16),
               ],
             ),
           ),

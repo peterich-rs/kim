@@ -12,6 +12,7 @@ import 'package:kim_mobile/features/contacts/contacts_page.dart';
 import 'package:kim_mobile/features/chats/home_shell.dart';
 import 'package:kim_mobile/features/agent/agent_list_page.dart';
 import 'package:kim_mobile/features/agent/agent_plaza_page.dart';
+import 'package:kim_mobile/features/agent/agent_create_page.dart';
 import 'package:kim_mobile/features/agent/agent_settings_page.dart';
 import 'package:kim_mobile/features/agent/agent_capabilities_page.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
@@ -195,7 +196,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => kimPushPage(
               key: state.pageKey,
               name: state.name,
-              child: const AgentEditorPage(),
+              child: const AgentCreatePage(),
             ),
           ),
           GoRoute(

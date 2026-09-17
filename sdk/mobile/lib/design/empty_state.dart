@@ -58,7 +58,10 @@ class EmptyState extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            if (action != null) ...[Gap(KimTheme.spaceUnit * 5), action!],
+            if (action != null) ...[
+              Gap(KimTheme.spaceUnit * 5),
+              Align(child: action!),
+            ],
           ],
         ),
       ),

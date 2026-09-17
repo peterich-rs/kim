@@ -2,6 +2,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 
 /// Always-visible primary action under a scrolling list.
@@ -21,9 +22,17 @@ class KimPinnedFooter extends StatelessWidget {
           Divider(height: 1, color: KimTheme.hairlineOf(context)),
           SafeArea(
             top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: SizedBox(width: double.infinity, child: child),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final inset = kimBodyInset(
+                  constraints.maxWidth,
+                  maxWidth: kKimFormMaxWidth,
+                );
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(inset, 10, inset, 12),
+                  child: SizedBox(width: double.infinity, child: child),
+                );
+              },
             ),
           ),
         ],

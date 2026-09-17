@@ -50,6 +50,82 @@ void main() {
     expect(next.tools.sendMessage, isTrue);
   });
 
+  test('skillShelfOf maps origin to chips', () {
+    expect(
+      const CatalogSkill(
+        id: 'kim-im',
+        name: 'IM',
+        description: '',
+        origin: 'bundled',
+        className: 'app',
+      ).shelf,
+      SkillShelf.internal,
+    );
+    expect(
+      const CatalogSkill(
+        id: 'kim-im',
+        name: 'IM',
+        description: '',
+        origin: 'cache',
+        className: 'app',
+      ).shelf,
+      SkillShelf.download,
+    );
+    expect(
+      const CatalogSkill(
+        id: 'git-commit',
+        name: 'git',
+        description: '',
+        origin: 'global',
+        className: 'portable',
+      ).shelf,
+      SkillShelf.global,
+    );
+    expect(
+      const CatalogSkill(
+        id: 'git-commit',
+        name: 'git',
+        description: '',
+        origin: 'project',
+        className: 'portable',
+      ).shelf,
+      SkillShelf.project,
+    );
+  });
+
+  test('mergeSkillCatalogs prefers app over portable id', () {
+    const app = CatalogSkill(
+      id: 'kim-im',
+      name: 'IM',
+      description: 'app',
+      className: 'app',
+      origin: 'bundled',
+    );
+    const portable = CatalogSkill(
+      id: 'git-commit',
+      name: 'git',
+      description: 'proj',
+      className: 'portable',
+      origin: 'project',
+    );
+    const clash = CatalogSkill(
+      id: 'kim-im',
+      name: 'IM portable',
+      description: 'no',
+      className: 'portable',
+      origin: 'global',
+    );
+    final merged = mergeSkillCatalogs(
+      app: const [app],
+      portable: const [portable, clash],
+    );
+    expect(merged.map((s) => s.id).toSet(), {'git-commit', 'kim-im'});
+    expect(
+      merged.firstWhere((s) => s.id == 'kim-im').shelf,
+      SkillShelf.internal,
+    );
+  });
+
   test('parseSkillsJson reads app catalog payload', () {
     final skills = parseSkillsJson(
       '{"skills":[{"id":"kim-im","name":"IM","description":"send","class":"app","version":"1"}]}',

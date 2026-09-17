@@ -16,8 +16,10 @@ import 'package:kim_mobile/features/agent/workspace.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 
@@ -431,8 +433,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     await _persist();
   }
 
-  bool _isAssigned(String id) => _assigned.any((s) => s.id == id && s.enabled);
-
   Future<void> _toggleApp(CatalogSkill skill, bool enable) async {
     final profile = _profile;
     if (profile == null) {
@@ -546,8 +546,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       );
     }
 
-    final scanOff = !_kindRepo && !_fsOn && !_fsWriteOn;
-
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -555,8 +553,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
             title: l10n.agentCapabilitiesTitle,
             actions: [plazaAction],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 if (_previewSummary.isNotEmpty || !_previewFromHost) ...[
@@ -789,66 +786,24 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                   ),
                 ),
                 const Gap(8),
-                KimGroupCard(
-                  children: [
-                    if (_appCatalog.isEmpty)
-                      ListTile(
-                        title: Text(l10n.agentSkillsAppEmpty),
-                        subtitle: Text(l10n.agentSkillsAppEmptyHint),
-                      )
-                    else
-                      for (var i = 0; i < _appCatalog.length; i++) ...[
-                        if (i > 0) const Divider(height: 1),
-                        SwitchListTile(
-                          key: Key('agent-skills-app-${_appCatalog[i].id}'),
-                          title: Text(_appCatalog[i].name),
-                          subtitle: _appCatalog[i].listDescription.isEmpty
-                              ? null
-                              : Text(
-                                  _appCatalog[i].listDescription,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                          value: _isAssigned(_appCatalog[i].id),
-                          onChanged: (v) =>
-                              unawaited(_toggleApp(_appCatalog[i], v)),
-                        ),
-                      ],
-                  ],
-                ),
-                const Gap(8),
-                KimGroupCard(
-                  children: [
-                    if (scanOff)
-                      ListTile(
-                        title: Text(l10n.agentSkillsPortableScanOff),
-                        subtitle: Text(l10n.agentSkillsPortableScanOffHint),
-                      )
-                    else if (_portable.isEmpty)
-                      ListTile(
-                        title: Text(l10n.agentSkillsPortableEmpty),
-                        subtitle: Text(l10n.agentSkillsPortableEmptyHint),
-                      )
-                    else
-                      for (var i = 0; i < _portable.length; i++) ...[
-                        if (i > 0) const Divider(height: 1),
-                        SwitchListTile(
-                          key: Key('agent-skills-mute-${_portable[i].id}'),
-                          title: Text(_portable[i].name),
-                          subtitle: Text(
-                            _portable[i].listDescription.isEmpty
-                                ? l10n.agentSkillsPortableMuteHint
-                                : _portable[i].listDescription,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          value: _denylist.contains(_portable[i].id),
-                          onChanged: (muted) => unawaited(
-                            _toggleDenylist(_portable[i].id, muted),
-                          ),
-                        ),
-                      ],
-                  ],
+                SkillPickerList(
+                  skills: mergeSkillCatalogs(
+                    app: _appCatalog,
+                    portable: _portable,
+                  ),
+                  selectedIds: {
+                    for (final s in _assigned)
+                      if (s.enabled) s.id,
+                    for (final s in _portable)
+                      if (!_denylist.contains(s.id)) s.id,
+                  },
+                  onChanged: (skill, selected) {
+                    if (skill.isApp) {
+                      unawaited(_toggleApp(skill, selected));
+                      return;
+                    }
+                    unawaited(_toggleDenylist(skill.id, !selected));
+                  },
                 ),
               ],
             ),

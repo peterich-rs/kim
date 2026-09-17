@@ -12,6 +12,26 @@ void main() {
     expect(kimLayoutSizeForWidth(390), KimLayoutSize.narrow);
   });
 
+  test('body inset keeps a max width on wide panes', () {
+    expect(kimBodyInset(390), 16);
+    expect(kimBodyInset(640), 16);
+    expect(kimBodyInset(672), 16);
+    expect(kimBodyInset(1280, maxWidth: 640), 320);
+    expect(kimBodyInset(800, maxWidth: 420), (800 - 420) / 2);
+  });
+
+  test('overlay paths are agent, password, dev, peer', () {
+    expect(kimIsOverlayPath('/agent'), isTrue);
+    expect(kimIsOverlayPath('/agent/new'), isTrue);
+    expect(kimIsOverlayPath('/password'), isTrue);
+    expect(kimIsOverlayPath('/dev'), isTrue);
+    expect(kimIsOverlayPath('/peer/bob'), isTrue);
+    expect(kimIsOverlayPath('/'), isFalse);
+    expect(kimIsOverlayPath('/me'), isFalse);
+    expect(kimIsOverlayPath('/contacts'), isFalse);
+    expect(kimIsOverlayPath('/chat/bob'), isFalse);
+  });
+
   testWidgets('kimIsWide covers compact and wide', (tester) async {
     Future<void> expectAt(double width, {required bool wide}) async {
       late bool actual;

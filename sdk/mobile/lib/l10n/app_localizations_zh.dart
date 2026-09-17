@@ -1015,4 +1015,42 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get peerDeleted => '已删除';
+
+  @override
+  String get agentCreateNext => '下一步';
+
+  @override
+  String get agentCreateFinish => '创建';
+
+  @override
+  String agentCreateProgress(int current, int total) {
+    return '$current / $total';
+  }
+
+  @override
+  String get agentCreateStepBasics => '名称与模型';
+
+  @override
+  String get agentCreateStepTools => '工具与工作区';
+
+  @override
+  String get agentCreateStepSkills => '技能';
+
+  @override
+  String get agentCreateStepPrompt => '系统提示';
+
+  @override
+  String get agentSkillTagInternal => '内置';
+
+  @override
+  String get agentSkillTagDownload => '下载';
+
+  @override
+  String get agentSkillTagGlobal => '全局';
+
+  @override
+  String get agentSkillTagProject => '项目';
+
+  @override
+  String get agentSkillsPickerEmpty => '还没有可分配的技能';
 }

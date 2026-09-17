@@ -9,6 +9,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/env.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
+import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/providers.dart';
@@ -105,7 +106,11 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
     final showWipe = wipe > _wipeSeen;
     final panic = ref.watch(rustPanicProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('DevPanel')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: kimHeaderLeading(context),
+        title: const Text('DevPanel'),
+      ),
       body: ListView(
         children: [
           if (showWipe)

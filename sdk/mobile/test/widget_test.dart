@@ -99,6 +99,11 @@ void main() {
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.byKey(const Key('auth-submit')), findsOneWidget);
     expect(find.text(Copy.conversations), findsNothing);
+    expect(find.text(Copy.localServer), findsNothing);
+    expect(find.text(Copy.prodServer), findsNothing);
+    expect(find.text(Copy.brandPitch), findsNothing);
+    expect(find.text(Copy.brandSub), findsNothing);
+    expect(find.byType(AppBar), findsNothing);
   });
 
   testWidgets('login account field keeps IME-friendly settings on desktop', (

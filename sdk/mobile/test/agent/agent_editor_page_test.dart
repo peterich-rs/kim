@@ -7,6 +7,7 @@ import 'package:kim_mobile/l10n/app_localizations.dart';
 import 'package:kim_mobile/features/agent/agent_settings_page.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/skill_picker.dart';
 
 import '../support/harness.dart';
 
@@ -79,6 +80,19 @@ Future<void> _pumpEditor(
   await tester.pump(const Duration(milliseconds: 50));
 }
 
+Future<void> _advanceWizard(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('agent-next')));
+  await tester.tap(find.byKey(const Key('agent-next')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
+}
+
+Future<void> _walkToPrompt(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    await _advanceWizard(tester);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -104,17 +118,28 @@ void main() {
       ),
     );
     await _pumpEditor(tester, env.container);
+    expect(find.byKey(const Key('agent-name')), findsOneWidget);
+    expect(find.byKey(const Key('agent-prompt')), findsNothing);
+    expect(find.byKey(const Key('agent-next')), findsOneWidget);
+    expect(find.byKey(const Key('agent-save')), findsNothing);
+    expect(find.byKey(const Key('agent-workspace-fs')), findsNothing);
+    expect(find.byKey(const Key('agent-entry-capabilities')), findsNothing);
+    expect(find.byKey(const Key('agent-inline-key')), findsNothing);
+    expect(find.byKey(const Key('agent-add-provider')), findsNothing);
+    await tester.enterText(find.byKey(const Key('agent-name')), 'Work');
+    await _advanceWizard(tester);
+    expect(find.byKey(const Key('agent-workspace-fs')), findsOneWidget);
+    expect(find.byKey(const Key('agent-cap-im.send_message')), findsOneWidget);
+    await _advanceWizard(tester);
+    expect(find.byType(SkillPickerList), findsOneWidget);
+    await _advanceWizard(tester);
     var prompt = tester.widget<TextField>(
       find.byKey(const Key('agent-prompt')),
     );
     expect(prompt.decoration?.hintText, kDefaultSystemPrompt);
     expect(find.text('留空则使用该默认'), findsOneWidget);
+    expect(find.byKey(const Key('agent-save')), findsOneWidget);
     expect(find.text('高级'), findsNothing);
-    expect(find.byKey(const Key('agent-entry-workspace')), findsNothing);
-    expect(find.byKey(const Key('agent-entry-capabilities')), findsNothing);
-    expect(find.byKey(const Key('agent-workspace-fs')), findsNothing);
-    expect(find.byKey(const Key('agent-inline-key')), findsNothing);
-    expect(find.byKey(const Key('agent-add-provider')), findsNothing);
 
     final store = env.container.read(agentProfilesProvider.notifier);
     await store.ensureLoaded();
@@ -196,6 +221,7 @@ void main() {
     );
     await _pumpEditor(tester, env.container);
     await tester.enterText(find.byKey(const Key('agent-name')), 'Work');
+    await _walkToPrompt(tester);
     await tester.ensureVisible(find.byKey(const Key('agent-save')));
     await tester.tap(find.byKey(const Key('agent-save')));
     await tester.pump();
@@ -222,10 +248,79 @@ void main() {
     expect(find.byKey(const Key('agent-add-provider')), findsOneWidget);
     expect(find.text('还没有厂商账号'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('agent-name')), 'Work');
+    await tester.ensureVisible(find.byKey(const Key('agent-next')));
+    await tester.tap(find.byKey(const Key('agent-next')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(const Key('agent-add-provider')), findsOneWidget);
+    expect(find.byKey(const Key('agent-save')), findsNothing);
+    expect(env.container.read(agentProfilesProvider), isEmpty);
+  });
+
+  testWidgets('create save pops back instead of replacing the stack', (
+    tester,
+  ) async {
+    final env = await kimHarness(
+      token: 'tok.jwt',
+      account: 'alice',
+      overrides: [catalogRepositoryProvider.overrideWithValue(_FakeCatalog())],
+    );
+    addTearDown(env.container.dispose);
+    final accounts = env.container.read(providerAccountsProvider.notifier);
+    await accounts.ensureLoaded();
+    await accounts.upsert(
+      const ProviderAccount(
+        id: 'acct-1',
+        vendorId: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        keyRef: 'agent.api_key.acct.acct-1',
+        displayName: 'OpenAI',
+        models: ['gpt-4o'],
+      ),
+    );
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: env.container,
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) {
+              return TextButton(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AgentEditorPage(),
+                    ),
+                  );
+                },
+                child: const Text('open-create'),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open-create'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.enterText(find.byKey(const Key('agent-name')), 'Work');
+    await _walkToPrompt(tester);
     await tester.ensureVisible(find.byKey(const Key('agent-save')));
     await tester.tap(find.byKey(const Key('agent-save')));
     await tester.pump();
-    await tester.pump(const Duration(seconds: 5));
-    expect(env.container.read(agentProfilesProvider), isEmpty);
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('open-create'), findsOneWidget);
+    expect(find.byKey(const Key('agent-save')), findsNothing);
+    expect(
+      env.container
+          .read(agentProfilesProvider)
+          .any((p) => p.displayName == 'Work'),
+      isTrue,
+    );
   });
 }

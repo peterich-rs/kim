@@ -62,8 +62,10 @@ void main() {
       ),
     );
     await _pumpList(tester, env.container);
-    expect(find.byKey(const Key('agent-delete-goose')), findsOneWidget);
     expect(find.byType(SwitchListTile), findsNothing);
+    await tester.tap(find.byKey(const Key('agent-row-menu-goose')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('agent-delete-goose')), findsOneWidget);
     await tester.tap(find.byKey(const Key('agent-delete-goose')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));

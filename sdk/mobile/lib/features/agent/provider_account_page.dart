@@ -11,6 +11,7 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/catalog.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/kim_group.dart';
@@ -310,8 +311,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(title: title),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 Text(

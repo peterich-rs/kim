@@ -33,6 +33,26 @@ class CatalogSkill {
 
   /// Second line of plaza / skills rows: frontmatter `description`.
   String get listDescription => description.trim();
+
+  /// Where this package was found. UI chips: internal / download / global / project.
+  SkillShelf get shelf => skillShelfOf(this);
+}
+
+/// Skill package source shown as a chip in pickers.
+enum SkillShelf { internal, download, global, project }
+
+SkillShelf skillShelfOf(CatalogSkill skill) {
+  final origin = skill.origin.trim().toLowerCase();
+  if (skill.isApp) {
+    if (origin == 'cache' || origin == 'cloud' || origin == 'download') {
+      return SkillShelf.download;
+    }
+    return SkillShelf.internal;
+  }
+  if (origin == 'project') {
+    return SkillShelf.project;
+  }
+  return SkillShelf.global;
 }
 
 /// Hard-coded S-KD 7 requirements until frontmatter `requires_tools` is parsed.
@@ -160,31 +180,64 @@ Future<List<CatalogSkill>> loadAppSkillCatalog({
   return parseSkillsJson(raw);
 }
 
+Future<List<CatalogSkill>> loadPortableSkills({
+  required AgentBridge bridge,
+  String userRoot = '',
+  String projectRoot = '',
+}) async {
+  if (userRoot.trim().isEmpty && projectRoot.trim().isEmpty) {
+    return const [];
+  }
+  await bridge.ensure();
+  final raw = await bridge.skillPortableListJson(
+    userRoot: userRoot,
+    projectRoot: projectRoot,
+  );
+  return parseSkillsJson(raw);
+}
+
 Future<List<CatalogSkill>> loadPortableSkillCatalog({
   required AgentBridge bridge,
   required AgentProfile profile,
   KimPaths? paths,
   WorkspaceAccess? access,
 }) async {
-  final scan =
-      profile.workspace.isRepo || profile.tools.fs || profile.tools.fsWrite;
-  if (!scan) {
-    return const [];
-  }
-  await bridge.ensure();
   final p = paths ?? KimPaths.instance;
   final acc = access ?? workspaceAccess;
   final userRoot = await acc.realUserAgentsSkills() ?? '';
-  final resolved = await resolveAgentProjectRoot(
-    profile: profile,
-    paths: p,
-    access: acc,
-  );
-  final raw = await bridge.skillPortableListJson(
+  var projectRoot = '';
+  if (profile.workspace.isRepo) {
+    final resolved = await resolveAgentProjectRoot(
+      profile: profile,
+      paths: p,
+      access: acc,
+    );
+    if (!resolved.invalidRepo) {
+      projectRoot = resolved.path;
+    }
+  }
+  return loadPortableSkills(
+    bridge: bridge,
     userRoot: userRoot,
-    projectRoot: resolved.path,
+    projectRoot: projectRoot,
   );
-  return parseSkillsJson(raw);
+}
+
+/// App catalog first; portable fills remaining ids. Sorted by name.
+List<CatalogSkill> mergeSkillCatalogs({
+  required List<CatalogSkill> app,
+  required List<CatalogSkill> portable,
+}) {
+  final byId = <String, CatalogSkill>{};
+  for (final skill in portable) {
+    byId[skill.id] = skill;
+  }
+  for (final skill in app) {
+    byId[skill.id] = skill;
+  }
+  final out = byId.values.toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return out;
 }
 
 /// Import a portable skill directory into the real `~/.agents/skills/<id>`.
