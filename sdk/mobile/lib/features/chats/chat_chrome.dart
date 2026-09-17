@@ -145,12 +145,14 @@ class ChatTitleChrome extends StatelessWidget {
     required this.title,
     required this.avatarUrl,
     required this.presence,
+    this.avatar,
     this.onTap,
   });
 
   final String title;
   final String avatarUrl;
   final PeerPresenceStatus presence;
+  final Widget? avatar;
   final VoidCallback? onTap;
 
   @override
@@ -169,12 +171,13 @@ class ChatTitleChrome extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  KimAvatar(
-                    name: title,
-                    url: avatarUrl,
-                    size: KimAvatarSize.sm,
-                    shape: KimAvatarShape.squircle,
-                  ),
+                  avatar ??
+                      KimAvatar(
+                        name: title,
+                        url: avatarUrl,
+                        size: KimAvatarSize.sm,
+                        shape: KimAvatarShape.squircle,
+                      ),
                   if (presence != PeerPresenceStatus.unknown)
                     Positioned(
                       right: -1,

@@ -1,8 +1,10 @@
 /// Forwards MobileAgent run requests to desktop `rust_agent`. No queue/LRU here.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
@@ -16,43 +18,94 @@ import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 class AgentRunLoop {
-  AgentRunLoop(this.client, this.goose);
+  AgentRunLoop(this.client, this.goose, {this.sink});
 
   final KimClientPort client;
   final AgentBridge goose;
+  final AgentRunSink? sink;
 
   /// Tests inject a prompt stub. Production uses [rust_agent] `prompt`.
   Future<String> Function(AgentRunRequestDto req)? promptOverride;
+
+  StreamSubscription<AgentRunRequestDto>? _sub;
+  StreamController<AgentRunRequestDto>? _incoming;
+  var _stopped = false;
 
   Future<void> start() async {
     if (!agentHostSupported && promptOverride == null) {
       return;
     }
-    await for (final req in client.watchAgentRun()) {
-      try {
-        final output = promptOverride != null
-            ? await promptOverride!(req)
-            : await _promptGoose(req);
-        await client.submitAgentRun(
-          AgentRunResultDto(
-            dest: req.dest,
-            profileId: req.profileId,
-            epoch: req.epoch,
-            output: output,
-          ),
-        );
-      } catch (e, st) {
-        KimLogger.warn('agent run', e, st);
-        await client.submitAgentRun(
-          AgentRunResultDto(
-            dest: req.dest,
-            profileId: req.profileId,
-            epoch: req.epoch,
-            output: '',
-            error: e.toString(),
-          ),
-        );
+    final incoming = StreamController<AgentRunRequestDto>();
+    _incoming = incoming;
+    _sub = client.watchAgentRun().listen(
+      (req) {
+        if (_stopped || incoming.isClosed) {
+          return;
+        }
+        incoming.add(req);
+      },
+      onError: (Object error, StackTrace st) {
+        if (!_stopped && !incoming.isClosed) {
+          incoming.addError(error, st);
+        }
+      },
+      onDone: () {
+        if (!incoming.isClosed) {
+          incoming.close();
+        }
+      },
+    );
+    try {
+      await for (final req in incoming.stream) {
+        if (_stopped) {
+          break;
+        }
+        try {
+          final output = promptOverride != null
+              ? await promptOverride!(req)
+              : await _promptGoose(req);
+          await client.submitAgentRun(
+            AgentRunResultDto(
+              dest: req.dest,
+              profileId: req.profileId,
+              epoch: req.epoch,
+              output: output,
+            ),
+          );
+        } catch (e, st) {
+          KimLogger.warn('agent run', e, st);
+          sink?.finish(req.dest, failed: true);
+          await client.submitAgentRun(
+            AgentRunResultDto(
+              dest: req.dest,
+              profileId: req.profileId,
+              epoch: req.epoch,
+              output: '',
+              error: e.toString(),
+            ),
+          );
+        }
       }
+    } finally {
+      await _sub?.cancel();
+      _sub = null;
+      if (!incoming.isClosed) {
+        await incoming.close();
+      }
+      if (identical(_incoming, incoming)) {
+        _incoming = null;
+      }
+    }
+  }
+
+  Future<void> stop() async {
+    _stopped = true;
+    await _sub?.cancel();
+    _sub = null;
+    final incoming = _incoming;
+    _incoming = null;
+    if (incoming != null && !incoming.isClosed) {
+      await incoming.close();
     }
   }
 
@@ -140,9 +193,15 @@ class AgentRunLoop {
         sessionId: '${req.dest}:${req.profileId}',
       ),
     );
+    sink?.begin(req.dest);
     await session.prompt(text: req.text);
     await for (final ev in session.listen()) {
-      if (ev.kind == 'assistant_finished' || ev.kind == 'failed') {
+      if (ev.kind == 'assistant_finished') {
+        sink?.finish(req.dest, failed: false);
+        return ev.message;
+      }
+      if (ev.kind == 'failed') {
+        sink?.finish(req.dest, failed: true);
         return ev.message;
       }
     }

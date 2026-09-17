@@ -1,0 +1,13 @@
+{
+  "id": "default",
+  "displayName": "KIM",
+  "spritesheetPath": "spritesheet.png",
+  "frame": { "width": 192, "height": 208 },
+  "animations": {
+    "idle": { "row": 0, "frames": 6, "fps": 8 },
+    "waving": { "row": 3, "frames": 4, "fps": 8 },
+    "failed": { "row": 5, "frames": 8, "fps": 8 },
+    "running": { "row": 7, "frames": 6, "fps": 8 },
+    "review": { "row": 8, "frames": 6, "fps": 8 }
+  }
+}

@@ -9,8 +9,10 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/design/pet_view.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/router/open_peer.dart';
@@ -51,6 +53,58 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   ChatSessionNotifier get _session =>
       ref.read(chatSessionProvider(widget.id).notifier);
 
+  bool get _agentThread =>
+      isAgentDest(widget.id) || isServerBotAccount(widget.id);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _markOpenedIfAgent();
+    });
+  }
+
+  @override
+  void didUpdateWidget(ChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _markOpenedIfAgent();
+      });
+    }
+  }
+
+  void _markOpenedIfAgent() {
+    if (!_agentThread) {
+      return;
+    }
+    ref.read(agentRunStatusProvider.notifier).markOpened(widget.id);
+  }
+
+  Widget _agentAvatar(String liveTitle, String url) {
+    if (_agentThread) {
+      return PetView(
+        dest: widget.id,
+        size: KimAvatarSize.sm,
+        shape: KimAvatarShape.squircle,
+        fallbackName: liveTitle,
+        fallbackUrl: url,
+      );
+    }
+    return KimAvatar(
+      name: liveTitle,
+      url: url,
+      size: KimAvatarSize.sm,
+      shape: KimAvatarShape.squircle,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -73,6 +127,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
       _showToast(toast, error: next.toastError);
       _session.consumeToast();
+    });
+    ref.listen(threadMessagesProvider(widget.id), (prev, next) {
+      if (!_agentThread) {
+        return;
+      }
+      if (prev == null || prev.items.isEmpty) {
+        return;
+      }
+      final prevKeys = {for (final m in prev.items) m.key};
+      final added = next.items.where((m) => !prevKeys.contains(m.key)).toList();
+      if (added.length != 1) {
+        return;
+      }
+      final msg = added.single;
+      if (msg.sys) {
+        return;
+      }
+      final me = ref.read(sessionProvider).account;
+      if (me.isNotEmpty && msg.sender == me) {
+        return;
+      }
+      ref.read(agentRunStatusProvider.notifier).reviewPulse(widget.id);
     });
 
     final account = ref.watch(sessionProvider).account;
@@ -106,6 +182,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final liveTitle = kind == ThreadKind.user
         ? (social.person(widget.id)?.title ?? widget.id)
         : widget.id;
+    final avatarUrl = avatarFor(me, social, widget.id);
     final gated =
         !agentChat &&
         !isServerBotAccount(widget.id) &&
@@ -154,12 +231,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ? KimTypingRow(
                         key: const Key('typing-row'),
                         name: liveTitle,
-                        avatar: KimAvatar(
-                          name: liveTitle,
-                          url: avatarFor(me, social, widget.id),
-                          size: KimAvatarSize.sm,
-                          shape: KimAvatarShape.squircle,
-                        ),
+                        avatar: _agentAvatar(liveTitle, avatarUrl),
                       )
                     : null,
                 itemBuilder: (context, msg, index) {
@@ -245,7 +317,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             if (!wide) const Gap(8),
                             ChatTitleChrome(
                               title: liveTitle,
-                              avatarUrl: avatarFor(me, social, widget.id),
+                              avatarUrl: avatarUrl,
+                              avatar: _agentAvatar(liveTitle, avatarUrl),
                               presence: ref.watch(
                                 peerPresenceProvider(widget.id),
                               ),
