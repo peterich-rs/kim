@@ -1,5 +1,7 @@
 # Add Agent Pet Presence to Flutter IM
 
+Status: implemented
+
 ## Feasibility Assessment
 
 Fully feasible as a Dart-only UI slice. Agent busy state already reaches the chat thread: registered 1:1 via `chat.bot.typing` → `SessionUpdateDto.typing` → `typingProvider` → `KimTypingRow`; desktop Goose events already distinguish `assistant_finished` / `failed` in `AgentRunLoop._promptGoose`. Avatars are a single widget (`KimAvatar`) used in `ChatTitleChrome` and the typing row — both are Agent-session-only hang points, not list cells. Codex pet playback is `drawImageRect` over an 8×9 atlas; no protocol, store, or FFI change is required for P0. Caveat: desktop owner currently does **not** light `typingProvider` locally (docs claim it, `AgentRunLoop` does not) — this slice adds an `AgentRunSink` so the pet has a local running/failed/review signal even before typing is mirrored.

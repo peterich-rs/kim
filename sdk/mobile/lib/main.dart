@@ -9,6 +9,7 @@ import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/runtime.dart';
+import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/bridge/agent_bridge.dart';
@@ -55,11 +56,22 @@ class KimBoot extends StatefulWidget {
 
 class _KimBootState extends State<KimBoot> {
   Widget? _app;
+  ProviderContainer? _container;
+  DetachableAgentRunSink? _sink;
+  AgentRunLoop? _loop;
 
   @override
   void initState() {
     super.initState();
     unawaited(_start());
+  }
+
+  @override
+  void dispose() {
+    _sink?.detach();
+    unawaited(_loop?.stop());
+    _container?.dispose();
+    super.dispose();
   }
 
   Future<void> _start() async {
@@ -85,21 +97,31 @@ class _KimBootState extends State<KimBoot> {
           unawaited(runtime.settings.saveToken(''));
       }
     });
-    if (agentHostSupported) {
-      unawaited(AgentRunLoop(bridge, AgentBridge()).start());
-    }
     if (!mounted) {
       return;
     }
+    final container = ProviderContainer(
+      retry: kimRetry,
+      overrides: kimProviderOverrides(
+        runtime: runtime,
+        auth: bridge,
+        client: bridge,
+        media: bridge,
+      ),
+    );
+    _container = container;
+    if (agentHostSupported) {
+      final sink = DetachableAgentRunSink(
+        container.read(agentRunStatusProvider.notifier),
+      );
+      _sink = sink;
+      final loop = AgentRunLoop(bridge, AgentBridge(), sink: sink);
+      _loop = loop;
+      unawaited(loop.start());
+    }
     setState(() {
-      _app = ProviderScope(
-        retry: kimRetry,
-        overrides: kimProviderOverrides(
-          runtime: runtime,
-          auth: bridge,
-          client: bridge,
-          media: bridge,
-        ),
+      _app = UncontrolledProviderScope(
+        container: container,
         child: const KimApp(),
       );
     });
