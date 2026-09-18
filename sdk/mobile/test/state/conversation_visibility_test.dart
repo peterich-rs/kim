@@ -14,10 +14,7 @@ void main() {
       token: testJwt(acc: 'alice', exp: 4_000_000_000),
       account: 'alice',
     );
-    final sub = env.container.listen(
-      conversationVisibilityProvider,
-      (_, _) {},
-    );
+    final sub = env.container.listen(conversationVisibilityProvider, (_, _) {});
     addTearDown(sub.close);
     env.container.read(locationProvider.notifier).setPath('/chat/bob');
     await Future<void>.delayed(Duration.zero);

@@ -15,14 +15,8 @@ void main() {
       account: 'alice',
     );
     env.fake.autoPushEnqueueTimeline = false;
-    final msgs = env.container.listen(
-      threadMessagesProvider('bob'),
-      (_, _) {},
-    );
-    final session = env.container.listen(
-      chatSessionProvider('bob'),
-      (_, _) {},
-    );
+    final msgs = env.container.listen(threadMessagesProvider('bob'), (_, _) {});
+    final session = env.container.listen(chatSessionProvider('bob'), (_, _) {});
     addTearDown(msgs.close);
     addTearDown(session.close);
     final accepted = await env.container

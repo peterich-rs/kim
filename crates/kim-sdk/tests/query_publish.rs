@@ -595,9 +595,10 @@ async fn coalesced_refresh() {
     let refreshes = settle_query_refreshes(&sdk).await.saturating_sub(before);
     // Timeline + Inbox per persist (2N). The write worker is serial, so a
     // burst may hit the ceiling when each refresh finishes before the next
-    // COMMIT. Slot merge is covered by `changes.rs`.
+    // COMMIT. Active-conversation read-sync can add one extra tick; slot merge
+    // itself is covered by `changes.rs`.
     assert!(
-        (2..=32 * 2).contains(&refreshes),
+        (2..=32 * 2 + 1).contains(&refreshes),
         "unexpected refresh count: {refreshes} for 32 commits"
     );
 }
