@@ -480,6 +480,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentSaveFailed => '无法保存 Agent 设置';
 
   @override
+  String get agentHostNotReady => '本机助手还没准备好';
+
+  @override
+  String get agentRunFailed => '助手这次没有给出回复';
+
+  @override
   String get agentKeyMissing => '需要 API Key';
 
   @override

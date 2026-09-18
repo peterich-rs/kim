@@ -16,6 +16,7 @@ import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
 const _kProfiles = 'agent.profiles';
@@ -1572,12 +1573,22 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     try {
       final client = ref.read(clientPortProvider);
       await client.upsertAgentProfile(await _toDto(p));
+      String? live;
+      try {
+        live = await ref.read(workspaceAccessProvider).realUserAgentsSkills();
+      } catch (_) {
+        live = null;
+      }
+      final previous = await client.getDeviceOverlay(p.id);
       await client.upsertDeviceOverlay(
         DeviceOverlayDto(
           profileId: p.id,
           workspacePath: p.workspace.path,
           workspaceBookmark: p.workspace.bookmarkRef,
-          userAgentsSkills: '',
+          userAgentsSkills: resolveUserAgentsSkills(
+            live: live,
+            overlay: previous?.userAgentsSkills ?? '',
+          ),
         ),
       );
     } catch (e, st) {

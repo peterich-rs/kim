@@ -489,6 +489,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentSaveFailed => 'Could not save agent settings';
 
   @override
+  String get agentHostNotReady => 'On-device assistant is not ready';
+
+  @override
+  String get agentRunFailed => 'The assistant did not finish this turn';
+
+  @override
   String get agentKeyMissing => 'API key required';
 
   @override

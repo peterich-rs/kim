@@ -1,11 +1,13 @@
 /// Directory picker + macOS security-scoped bookmarks for agent repo workspaces.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:kim_mobile/core/settings.dart';
@@ -142,9 +144,9 @@ class WorkspaceAccess {
   Future<String?> realUserAgentsSkills() async {
     if (!kIsWeb && Platform.isMacOS) {
       try {
-        final path = await _channel.invokeMethod<String>(
-          'realHomeAgentsSkills',
-        );
+        final path = await _channel
+            .invokeMethod<String>('realHomeAgentsSkills')
+            .timeout(const Duration(milliseconds: 400));
         if (path != null && path.isNotEmpty) {
           return path;
         }
@@ -152,6 +154,8 @@ class WorkspaceAccess {
         // fall through
       } on PlatformException {
         // fall through
+      } on TimeoutException {
+        // Tests / missing plugin must not block save or session_open.
       }
     }
     final home = Platform.environment['HOME'];
@@ -163,3 +167,38 @@ class WorkspaceAccess {
 }
 
 final workspaceAccess = WorkspaceAccess();
+
+final workspaceAccessProvider = Provider<WorkspaceAccess>(
+  (ref) => workspaceAccess,
+);
+
+/// Live plugin path wins; empty/whitespace live falls back to overlay.
+String resolveUserAgentsSkills({String? live, String overlay = ''}) {
+  final trimmedLive = live?.trim() ?? '';
+  if (trimmedLive.isNotEmpty) {
+    return trimmedLive;
+  }
+  return overlay.trim();
+}
+
+class SkillHostPaths {
+  const SkillHostPaths({this.userAgentsSkills = ''});
+
+  final String userAgentsSkills;
+}
+
+/// Session-only paths injected into host JSON. Never written into AgentSpec.
+Future<SkillHostPaths> skillHostPaths({
+  required WorkspaceAccess access,
+  String overlay = '',
+}) async {
+  String? live;
+  try {
+    live = await access.realUserAgentsSkills();
+  } catch (_) {
+    live = null;
+  }
+  return SkillHostPaths(
+    userAgentsSkills: resolveUserAgentsSkills(live: live, overlay: overlay),
+  );
+}

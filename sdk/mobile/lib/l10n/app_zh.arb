@@ -161,6 +161,8 @@
   "agentApiKeyHint": "保存在系统安全存储，不会写入普通偏好",
   "agentSaved": "Agent 设置已保存",
   "agentSaveFailed": "无法保存 Agent 设置",
+  "agentHostNotReady": "本机助手还没准备好",
+  "agentRunFailed": "助手这次没有给出回复",
   "agentKeyMissing": "需要 API Key",
   "agentGooseHint": "通讯录和会话列表里的「助手」是本机 Goose。点开即可对话。其它会话里也可以 @助手。",
   "agentProviderCompatible": "OpenAI 兼容",
