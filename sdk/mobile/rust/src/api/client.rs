@@ -492,11 +492,7 @@ impl KimUiHandle {
             .map_err(SdkErrorDto::from)
     }
 
-    pub async fn mark_conversation_read(
-        &self,
-        dest: String,
-        kind: i32,
-    ) -> Result<(), SdkErrorDto> {
+    pub async fn mark_conversation_read(&self, dest: String, kind: i32) -> Result<(), SdkErrorDto> {
         self.inner
             .mark_thread_read(dest, kind)
             .await
