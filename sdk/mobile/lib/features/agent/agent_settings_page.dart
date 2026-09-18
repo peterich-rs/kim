@@ -12,6 +12,7 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/catalog.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_chat.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
@@ -21,6 +22,7 @@ import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/design/kim_pinned_footer.dart';
 import 'package:kim_mobile/features/agent/agent_overview_status.dart';
+import 'package:kim_mobile/features/agent/agent_create_page.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
 import 'package:kim_mobile/features/agent/reasoning_controls.dart';
 
@@ -127,6 +129,9 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   Future<void> _bootstrap() async {
+    if (widget.isCreate) {
+      return;
+    }
     await ref.read(agentProfilesProvider.notifier).ensureLoaded();
     await ref.read(providerAccountsProvider.notifier).ensureLoaded();
     if (!mounted) {
@@ -456,8 +461,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       title: Text(Copy.agentSaved),
       autoCloseDuration: const Duration(seconds: 2),
     );
-    if (creating && GoRouter.maybeOf(context) != null) {
-      context.go('/agent/${next.id}');
+    if (creating) {
+      await Navigator.of(context).maybePop();
     }
   }
 
@@ -494,6 +499,9 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isCreate) {
+      return const AgentCreatePage();
+    }
     ref.watch(providerAccountsProvider);
     ref.watch(agentProfilesProvider);
     final theme = Theme.of(context);
@@ -532,8 +540,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                 ),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 KimGroupCard(
@@ -645,20 +652,22 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                       ),
                     ],
                   ),
-                  const Gap(18),
-                  Text(
-                    l10n.agentReasoning,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                  if (!widget.isCreate) ...[
+                    const Gap(18),
+                    Text(
+                      l10n.agentReasoning,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const Gap(8),
-                  ReasoningControls(
-                    surface: _surface,
-                    choice: _choice,
-                    onChanged: (next) => setState(() => _choice = next),
-                    advancedController: widget.isCreate ? null : _advanced,
-                  ),
+                    const Gap(8),
+                    ReasoningControls(
+                      surface: _surface,
+                      choice: _choice,
+                      onChanged: (next) => setState(() => _choice = next),
+                      advancedController: _advanced,
+                    ),
+                  ],
                   const Gap(18),
                 ] else
                   const Gap(18),
@@ -676,7 +685,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                       child: TextField(
                         key: const Key('agent-prompt'),
                         controller: _prompt,
-                        maxLines: 8,
+                        maxLines: widget.isCreate ? 4 : 8,
                         decoration: InputDecoration(
                           border: InputBorder.none,
                           hintText: kDefaultSystemPrompt,

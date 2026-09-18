@@ -1050,4 +1050,42 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get peerDeleted => 'Deleted';
+
+  @override
+  String get agentCreateNext => 'Next';
+
+  @override
+  String get agentCreateFinish => 'Create';
+
+  @override
+  String agentCreateProgress(int current, int total) {
+    return '$current / $total';
+  }
+
+  @override
+  String get agentCreateStepBasics => 'Name & model';
+
+  @override
+  String get agentCreateStepTools => 'Tools & workspace';
+
+  @override
+  String get agentCreateStepSkills => 'Skills';
+
+  @override
+  String get agentCreateStepPrompt => 'System prompt';
+
+  @override
+  String get agentSkillTagInternal => 'internal';
+
+  @override
+  String get agentSkillTagDownload => 'download';
+
+  @override
+  String get agentSkillTagGlobal => 'global';
+
+  @override
+  String get agentSkillTagProject => 'project';
+
+  @override
+  String get agentSkillsPickerEmpty => 'No skills to assign yet';
 }

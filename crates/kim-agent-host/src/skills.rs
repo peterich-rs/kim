@@ -671,26 +671,33 @@ fn finish(id: &str, version: &str, path: &str, body: String) -> Activation {
 }
 
 /// JSON list for the plaza / skills page: discovered portable packages only.
+///
+/// `origin` is `global` (`user_root` / `~/.agents/skills`) or `project`
+/// (`{project}/.agents/skills`). Same id on both shelves keeps the project copy.
 pub fn skill_portable_list_json(user_root: &str, project_root: &str) -> String {
-    let mut found: BTreeMap<String, PortableSkill> = BTreeMap::new();
+    let mut found: BTreeMap<String, (PortableSkill, &'static str)> = BTreeMap::new();
     let user = user_root.trim();
     if !user.is_empty() {
         for skill in scan_portable(Path::new(user)) {
-            found.insert(skill.id.clone(), skill);
+            found.insert(skill.id.clone(), (skill, "global"));
         }
     }
-    let project = Path::new(project_root).join(".agents").join("skills");
-    for skill in scan_portable(&project) {
-        found.insert(skill.id.clone(), skill);
+    let project = project_root.trim();
+    if !project.is_empty() {
+        let dir = Path::new(project).join(".agents").join("skills");
+        for skill in scan_portable(&dir) {
+            found.insert(skill.id.clone(), (skill, "project"));
+        }
     }
     let items: Vec<Value> = found
         .into_values()
-        .map(|skill| {
+        .map(|(skill, origin)| {
             json!({
                 "id": skill.id,
                 "name": skill.meta.name,
                 "description": skill.meta.description,
                 "version": skill.meta.version,
+                "origin": origin,
                 "class": "portable",
                 "dir": skill.dir.to_string_lossy(),
             })
@@ -1120,11 +1127,23 @@ mod tests {
             "git-commit",
             &portable_doc("p", "project copy", "b"),
         );
+        write_skill(&user, "only-user", &portable_doc("g", "machine copy", "b"));
         let raw = skill_portable_list_json(&user.to_string_lossy(), &project.to_string_lossy());
         let value: Value = serde_json::from_str(&raw).expect("json");
         let skills = value["skills"].as_array().expect("skills");
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0]["description"], "project copy");
+        assert_eq!(skills.len(), 2);
+        let git = skills
+            .iter()
+            .find(|s| s["id"] == "git-commit")
+            .expect("git-commit");
+        assert_eq!(git["description"], "project copy");
+        assert_eq!(git["origin"], "project");
+        let user_only = skills
+            .iter()
+            .find(|s| s["id"] == "only-user")
+            .expect("only-user");
+        assert_eq!(user_only["origin"], "global");
+        assert_eq!(user_only["description"], "machine copy");
     }
 
     #[test]

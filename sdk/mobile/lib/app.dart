@@ -73,6 +73,13 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
       ref.read(chatsSearchTickProvider.notifier).request();
     },
     const SingleActivator(LogicalKeyboardKey.escape): () {
+      final primary = FocusManager.instance.primaryFocus;
+      final focusContext = primary?.context;
+      if (focusContext != null &&
+          focusContext.findAncestorWidgetOfExactType<EditableText>() != null) {
+        primary!.unfocus();
+        return;
+      }
       final path = GoRouterState.of(context).uri.path;
       if (path.startsWith('/chat/')) {
         if (kimIsWide(context) || !context.canPop()) {
@@ -80,6 +87,14 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
         } else {
           context.pop();
         }
+        return;
+      }
+      if (context.canPop()) {
+        context.pop();
+        return;
+      }
+      if (kimIsOverlayPath(path)) {
+        context.go('/');
       }
     },
   };

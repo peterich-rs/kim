@@ -17,7 +17,9 @@ import 'package:kim_mobile/features/agent/skills_catalog.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 
@@ -248,8 +250,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(title: l10n.agentPlazaTitle, actions: importAction),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          KimBodySliver(
             sliver: SliverList.list(
               children: [
                 if (_assignProfile != null) ...[
@@ -285,7 +286,18 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                         if (i > 0) const Divider(height: 1),
                         ListTile(
                           key: Key('agent-plaza-kim-${_app[i].id}'),
-                          title: Text(_app[i].name),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _app[i].name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SkillOriginChip(shelf: _app[i].shelf),
+                            ],
+                          ),
                           subtitle: _app[i].listDescription.isEmpty
                               ? null
                               : Text(
@@ -324,7 +336,18 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                         if (i > 0) const Divider(height: 1),
                         ListTile(
                           key: Key('agent-plaza-eco-${_eco[i].id}'),
-                          title: Text(_eco[i].name),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _eco[i].name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SkillOriginChip(shelf: _eco[i].shelf),
+                            ],
+                          ),
                           subtitle: _eco[i].listDescription.isEmpty
                               ? null
                               : Text(

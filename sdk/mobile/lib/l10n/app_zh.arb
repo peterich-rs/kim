@@ -386,5 +386,23 @@
   "deletePeer": "删除",
   "deletePeerTitle": "删除联系人？",
   "deletePeerBody": "将解除关系，并清除本机会话。人类好友的服务端历史会保留。",
-  "peerDeleted": "已删除"
+  "peerDeleted": "已删除",
+  "agentCreateNext": "下一步",
+  "agentCreateFinish": "创建",
+  "agentCreateProgress": "{current} / {total}",
+  "@agentCreateProgress": {
+    "placeholders": {
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "agentCreateStepBasics": "名称与模型",
+  "agentCreateStepTools": "工具与工作区",
+  "agentCreateStepSkills": "技能",
+  "agentCreateStepPrompt": "系统提示",
+  "agentSkillTagInternal": "内置",
+  "agentSkillTagDownload": "下载",
+  "agentSkillTagGlobal": "全局",
+  "agentSkillTagProject": "项目",
+  "agentSkillsPickerEmpty": "还没有可分配的技能"
 }

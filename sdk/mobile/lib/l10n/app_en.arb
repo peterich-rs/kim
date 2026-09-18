@@ -386,5 +386,23 @@
   "deletePeer": "Delete",
   "deletePeerTitle": "Delete contact?",
   "deletePeerBody": "Removes the relationship. Chat history on this device will be cleared. Server history for people is kept.",
-  "peerDeleted": "Deleted"
+  "peerDeleted": "Deleted",
+  "agentCreateNext": "Next",
+  "agentCreateFinish": "Create",
+  "agentCreateProgress": "{current} / {total}",
+  "@agentCreateProgress": {
+    "placeholders": {
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "agentCreateStepBasics": "Name & model",
+  "agentCreateStepTools": "Tools & workspace",
+  "agentCreateStepSkills": "Skills",
+  "agentCreateStepPrompt": "System prompt",
+  "agentSkillTagInternal": "internal",
+  "agentSkillTagDownload": "download",
+  "agentSkillTagGlobal": "global",
+  "agentSkillTagProject": "project",
+  "agentSkillsPickerEmpty": "No skills to assign yet"
 }
