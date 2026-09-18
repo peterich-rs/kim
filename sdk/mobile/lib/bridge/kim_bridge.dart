@@ -95,6 +95,15 @@ abstract class KimClientPort {
 
   Future<void> markRead(String dest, ThreadKind kind, int messageId);
 
+  Future<void> markConversationRead(String dest, ThreadKind kind);
+
+  Future<void> setConversationVisibility({
+    required int generation,
+    required bool foreground,
+    required String dest,
+    required ThreadKind kind,
+  });
+
   Future<List<KimPerson>> friendList();
 
   Future<List<KimPerson>> friendIncoming();
@@ -490,10 +499,37 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
 
   @override
   Future<void> markRead(String dest, ThreadKind kind, int messageId) async {
+    if (messageId <= 0) {
+      await markConversationRead(dest, kind);
+      return;
+    }
     await _require().markThreadRead(
       dest: dest,
       kind: kind == ThreadKind.group ? 1 : 0,
       messageId: messageId,
+    );
+  }
+
+  @override
+  Future<void> markConversationRead(String dest, ThreadKind kind) async {
+    await _require().markConversationRead(
+      dest: dest,
+      kind: kind == ThreadKind.group ? 1 : 0,
+    );
+  }
+
+  @override
+  Future<void> setConversationVisibility({
+    required int generation,
+    required bool foreground,
+    required String dest,
+    required ThreadKind kind,
+  }) async {
+    await _require().setConversationVisibility(
+      generation: BigInt.from(generation),
+      foreground: foreground,
+      dest: dest,
+      kind: kind == ThreadKind.group ? 1 : 0,
     );
   }
 

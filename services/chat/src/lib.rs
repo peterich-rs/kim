@@ -79,7 +79,7 @@ pub use group::{
 #[cfg(feature = "redis")]
 pub use hmac_nonce::RedisHmacNonceGuard;
 pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
-pub use inbox::{do_history, do_inbox_list, do_inbox_read, parse_kind};
+pub use inbox::{do_history, do_inbox_list, do_inbox_read, do_inbox_states, parse_kind};
 #[cfg(feature = "redis")]
 pub use interest::RedisRoomInterest;
 pub use interest::{open_room_interest, MemoryRoomInterest, RoomInterestStore};
@@ -641,6 +641,13 @@ impl ChatHandler {
             router.handle(Command::InboxRead, move |ctx| {
                 let svc = svc.clone();
                 async move { do_inbox_read(ctx, svc.store.as_ref()).await }
+            });
+        }
+        {
+            let svc = svc.clone();
+            router.handle(Command::InboxStates, move |ctx| {
+                let svc = svc.clone();
+                async move { do_inbox_states(ctx, svc.store.as_ref()).await }
             });
         }
         {

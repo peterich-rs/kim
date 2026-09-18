@@ -189,7 +189,9 @@ function reducer(state: ChatState, action: Action): ChatState {
         return state;
       }
       const clipped = [...prev, action.msg].slice(-MAX_MESSAGES);
-      const active = state.activeId === action.dest;
+      const pageVisible =
+        typeof document === "undefined" || document.visibilityState === "visible";
+      const active = state.activeId === action.dest && pageVisible;
       const unreadDelta = !action.fromSelf && !action.msg.sys && !active ? 1 : 0;
       const existing = state.threads.find((t) => t.id === action.dest);
       return {
@@ -556,6 +558,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             const cur = prev[receipt.reader] ?? 0n;
             if (receipt.messageId < cur) return prev;
             return { ...prev, [receipt.reader]: receipt.messageId };
+          });
+        },
+        onReadSync: (state) => {
+          if (!state.dest) {
+            return;
+          }
+          dispatch({
+            type: "upsertThread",
+            thread: {
+              id: state.dest,
+              kind: state.kind === InboxKind.Group ? "group" : "user",
+              unread: state.unread,
+            },
           });
         },
         onPresence: (entries) => {

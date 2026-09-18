@@ -60,7 +60,7 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
         .unwrap()
         .try_get("value")
         .unwrap();
-    assert_eq!(version, "7");
+    assert_eq!(version, "8");
 
     let thread_cols = column_names(&pool, "threads").await;
     assert!(

@@ -990,7 +990,7 @@ HEAD `_mergedUnread` 三条：
 
 Live +1 与 inbox 快照的关系：inbox.list 是会话列表的权威未读；live IfInserted 在两次 inbox 之间累加。重放同一 `message_id` 不 +1。
 
-**产品变更（changelog，不是「对齐今日」）：** HEAD `_onSyncPage` 在 `viewing == dest` 时 `unawaited(markRead())`（`link.dart:354–357`），`_touchThread` `viewing ? 0`（`conversation_store.dart:836`），`_mergedUnread` 规则 1 同样 viewing→0。迁 Rust 后 **任何 catch-up / inbox.list 都不得因 ChatPage 打开而清未读**。只在 Flutter 提交 `ReadMarker` 时前进水位。测试：ChatPage 打开时 foreground catch-up，inbox unread 必须还在，直到可见区 `markRead`。
+**产品变更（changelog，不是「对齐今日」）：** HEAD `_onSyncPage` 在 `viewing == dest` 时 `unawaited(markRead())`（`link.dart:354–357`），`_touchThread` `viewing ? 0`（`conversation_store.dart:836`），`_mergedUnread` 规则 1 同样 viewing→0。迁 Rust 后 **任何 catch-up / inbox.list 都不得仅因 timeline 订阅而清未读**。前台有效聊天页由 `ConversationVisibility` 写入 Store，在同一事务内推进水位。详见 `docs/impl/conversation-unread-consistency.md`。
 
 **第二写入者：** flag 开时 Dart 不得再从 `mergeInbox` / `ingestAll` / `applyLive` / `applySync` persist（HEAD `mergeInbox` 仍 `_persist()` 写 threads，`inbox.dart:141`）。这些变成对 `SessionUpdate` / timeline 的 UI 适配，或直到 PR 11 的 no-op。PR 7 Description 写死这一句。
 

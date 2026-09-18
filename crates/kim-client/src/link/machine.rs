@@ -377,6 +377,11 @@ fn dispatch_event(inner: &Inner, seen: &Arc<std::sync::Mutex<SeenSet>>, event: E
                 message_id,
             });
         }
+        Event::ConversationReadSync { account, state } => {
+            let _ = inner
+                .events
+                .send(SessionEvent::ConversationReadSync { account, state });
+        }
         Event::GroupCreate { group_id, members } => {
             let _ = inner
                 .events

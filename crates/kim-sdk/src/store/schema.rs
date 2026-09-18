@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -86,6 +86,27 @@ CREATE TABLE IF NOT EXISTS read_watermarks (
   dest TEXT NOT NULL,
   last_read_message_id INTEGER NOT NULL DEFAULT 0,
   last_read_at INTEGER NOT NULL DEFAULT 0,
+  kind INTEGER NOT NULL DEFAULT 0,
+  confirmed_message_id INTEGER NOT NULL DEFAULT 0,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (account, dest)
+)
+";
+
+pub const CREATE_CONVERSATION_READ_STATE: &str = r"
+CREATE TABLE IF NOT EXISTS conversation_read_state (
+  account TEXT NOT NULL,
+  dest TEXT NOT NULL,
+  kind INTEGER NOT NULL DEFAULT 0,
+  server_version INTEGER NOT NULL DEFAULT 0,
+  server_read_id INTEGER NOT NULL DEFAULT 0,
+  server_max_message_id INTEGER NOT NULL DEFAULT 0,
+  server_unread INTEGER NOT NULL DEFAULT 0,
+  local_generation INTEGER NOT NULL DEFAULT 0,
+  needs_refresh INTEGER NOT NULL DEFAULT 0,
+  known_max_message_id INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (account, dest)
 )
 ";

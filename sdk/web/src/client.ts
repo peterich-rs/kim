@@ -17,6 +17,9 @@ import {
   decodeGroupCreateResp,
   decodeGroupDetail,
   decodeGroupMembers,
+  decodeConversationReadState,
+  decodeConversationReadSyncPush,
+  decodeConversationStatesResp,
   decodeHistoryResp,
   decodeInboxResp,
   decodeIndexResp,
@@ -33,6 +36,7 @@ import {
   encodeAckReq,
   encodeContentReq,
   encodeConversationReadReq,
+  encodeConversationStatesReq,
   encodeGroupCreateReq,
   encodeGroupInviteReq,
   encodeGroupJoinReq,
@@ -50,6 +54,7 @@ import {
   type WirePresence,
   type WireReadReceipt,
   type WireTyping,
+  type WireConversationReadState,
   type WireInboxItem,
   type WireIndex,
   type WireProfile,
@@ -177,6 +182,7 @@ export class KIMClient implements ContentLoader {
   private presenceCallback: ((entries: WirePresence[]) => void) | undefined;
   private typingCallback: ((t: WireTyping) => void) | undefined;
   private receiptCallback: ((r: WireReadReceipt) => void) | undefined;
+  private readSyncCallback: ((s: WireConversationReadState) => void) | undefined;
   private tokenCallback: ((token: string, exp: number) => void) | undefined;
   private pendingAckIds: bigint[] = [];
   private lastAckArrival = 0;
@@ -248,6 +254,10 @@ export class KIMClient implements ContentLoader {
 
   onreceiptread(cb: (r: WireReadReceipt) => void): void {
     this.receiptCallback = cb;
+  }
+
+  onreadsync(cb: (s: WireConversationReadState) => void): void {
+    this.readSyncCallback = cb;
   }
 
   ontoken(cb: (token: string, exp: number) => void): void {
@@ -591,7 +601,7 @@ export class KIMClient implements ContentLoader {
     dest: string,
     kind: number,
     messageId: bigint,
-  ): Promise<{ status: number; err?: Error }> {
+  ): Promise<{ status: number; state?: WireConversationReadState; err?: Error }> {
     const pkt = LogicPkt.build(
       Command.InboxRead,
       dest,
@@ -602,7 +612,24 @@ export class KIMClient implements ContentLoader {
     if (resp.status !== Status.Success) {
       return { status: resp.status, err: new Error(`status ${resp.status}`) };
     }
-    return { status: resp.status };
+    const state = decodeConversationReadState(resp.payload) ?? undefined;
+    return { status: resp.status, state };
+  }
+
+  async conversationStates(
+    conversations: Array<{ dest: string; kind: number }>,
+  ): Promise<{ status: number; states: WireConversationReadState[]; err?: Error }> {
+    const pkt = LogicPkt.build(
+      Command.InboxStates,
+      "",
+      encodeConversationStatesReq(conversations),
+      this.allocSeq(),
+    );
+    const resp = await this.request(pkt);
+    if (resp.status !== Status.Success) {
+      return { status: resp.status, states: [], err: new Error(`status ${resp.status}`) };
+    }
+    return { status: resp.status, states: decodeConversationStatesResp(resp.payload) };
   }
 
   private async destCmd(command: string, dest: string): Promise<{ status: number; err?: Error }> {
@@ -880,6 +907,13 @@ export class KIMClient implements ContentLoader {
       case Command.ReceiptRead: {
         const receipt = decodeReadReceiptPush(pkt.payload);
         this.receiptCallback?.(receipt);
+        break;
+      }
+      case Command.InboxReadSync: {
+        const push = decodeConversationReadSyncPush(pkt.payload);
+        if (push.state) {
+          this.readSyncCallback?.(push.state);
+        }
         break;
       }
       default:

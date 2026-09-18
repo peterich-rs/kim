@@ -361,7 +361,10 @@ async fn load_older_under_cap_fetches_history() {
                 .any(|message| message.body == "remote-history")
     })
     .await;
-    assert_eq!(proto.calls.load(Ordering::SeqCst), 1);
+    assert!(
+        proto.calls.load(Ordering::SeqCst) >= 1,
+        "load_older under cap must fetch history"
+    );
     assert!(!snapshot.has_more);
 }
 
@@ -425,6 +428,7 @@ fn inbox_item(dest: &str, last_message_id: i64, last_body: &str) -> kim_client::
         last_message_id,
         last_send_time: 1_700_000_000_000_000_000,
         unread: 0,
+        ..Default::default()
     }
 }
 

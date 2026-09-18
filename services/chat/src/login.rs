@@ -481,11 +481,11 @@ mod tests {
             &self,
             _: &str,
             _: &str,
-            _: &str,
-            _: crate::store::MessageKind,
+            dest: &str,
+            kind: crate::store::MessageKind,
             _: i64,
-        ) -> Result<(), crate::store::StoreError> {
-            Ok(())
+        ) -> Result<crate::store::ConversationReadState, crate::store::StoreError> {
+            Ok(crate::store::ConversationReadState::missing(dest, kind))
         }
         async fn insert_bot_reply(
             &self,

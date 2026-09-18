@@ -511,6 +511,7 @@ message InboxItem {
   int64 lastMessageId = 7;
   int64 lastSendTime = 8;
   int32 unread = 9;
+  ConversationReadState readState = 10;
 }
 
 message InboxResp {
@@ -540,6 +541,39 @@ message HistoryResp {
 message ConversationReadReq {
   int64 messageId = 1;
   int32 kind = 2; // 0 user, 1 group
+}
+
+message ConversationReadState {
+  string dest = 1;
+  int32 kind = 2;
+  int64 lastReadMessageId = 3;
+  int64 maxMessageId = 4;
+  int32 unread = 5;
+  uint64 version = 6;
+  bool exists = 7;
+}
+
+message ConversationStateKey {
+  string dest = 1;
+  int32 kind = 2;
+}
+
+message ConversationStatesReq {
+  repeated ConversationStateKey conversations = 1;
+}
+
+message ConversationStatesQuery {
+  string account = 1;
+  repeated ConversationStateKey conversations = 2;
+}
+
+message ConversationStatesResp {
+  repeated ConversationReadState states = 1;
+}
+
+message ConversationReadSyncPush {
+  string account = 1;
+  ConversationReadState state = 2;
 }
 
 // Royal HTTP bodies. Long-connection dest still carries account / group id.

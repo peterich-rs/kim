@@ -47,6 +47,8 @@ void main() {
       account: 'alice',
     );
     env.fake.watchThreadError = StateError('no reactor running');
+    final sub = env.container.listen(threadMessagesProvider('bob'), (_, __) {});
+    addTearDown(sub.close);
     final state = env.container.read(threadMessagesProvider('bob'));
     expect(state.items, isEmpty);
   });
@@ -57,7 +59,8 @@ void main() {
       account: 'alice',
     );
     env.container.read(threadsProvider);
-    env.container.read(threadMessagesProvider('bob'));
+    final sub = env.container.listen(threadMessagesProvider('bob'), (_, __) {});
+    addTearDown(sub.close);
     env.fake.fakeIncomingText(dest: 'bob', body: 'hello');
     await Future<void>.delayed(Duration.zero);
     expect(
@@ -73,7 +76,8 @@ void main() {
       token: testJwt(acc: 'alice', exp: 4_000_000_000),
       account: 'alice',
     );
-    env.container.read(threadMessagesProvider('bob'));
+    final sub = env.container.listen(threadMessagesProvider('bob'), (_, __) {});
+    addTearDown(sub.close);
     await env.fake.enqueueMessage(
       dest: 'bob',
       kind: ThreadKind.user,
@@ -90,6 +94,8 @@ void main() {
       token: testJwt(acc: 'alice', exp: 4_000_000_000),
       account: 'alice',
     );
+    final sub = env.container.listen(threadMessagesProvider('bob'), (_, __) {});
+    addTearDown(sub.close);
     final notifier = env.container.read(threadMessagesProvider('bob').notifier);
     env.fake.pushTimeline(
       'bob',

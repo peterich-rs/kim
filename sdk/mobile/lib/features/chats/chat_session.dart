@@ -72,7 +72,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       unread: unread,
       self: ref.read(sessionProvider).account,
     );
-    unawaited(messages.markRead());
+    unawaited(messages.markConversationRead());
     await _maybeRegisterLocalAgent();
     if (!ref.mounted) {
       return;
@@ -361,7 +361,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   }
 }
 
-final chatSessionProvider =
-    NotifierProvider.family<ChatSessionNotifier, ChatSessionState, String>(
+final chatSessionProvider = NotifierProvider.autoDispose
+    .family<ChatSessionNotifier, ChatSessionState, String>(
       ChatSessionNotifier.new,
     );

@@ -52,6 +52,7 @@ pub(crate) async fn apply_incoming(
     last_at: i64,
     unread_delta: i32,
     thread_kind: i32,
+    last_message_id: i64,
 ) -> Result<StoredThread, SdkError> {
     let existing = find(tx, account, dest).await?;
     let msg_at = last_at;
@@ -88,7 +89,11 @@ pub(crate) async fn apply_incoming(
             last_body: last_body.clone(),
             last_at,
             unread,
-            last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
+            last_message_id: existing
+                .as_ref()
+                .map(|t| t.last_message_id)
+                .unwrap_or(0)
+                .max(last_message_id),
         },
     )
     .await?;
@@ -100,7 +105,11 @@ pub(crate) async fn apply_incoming(
         last_body,
         last_at,
         unread,
-        last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
+        last_message_id: existing
+            .as_ref()
+            .map(|t| t.last_message_id)
+            .unwrap_or(0)
+            .max(last_message_id),
     })
 }
 
@@ -111,7 +120,8 @@ pub(crate) async fn persist_inbox_item(
 ) -> Result<StoredThread, SdkError> {
     let prev = find(tx, account, &item.dest).await?;
     let incoming_at = super::send_time_ms(item.last_send_time);
-    let unread = merged_unread(prev.as_ref(), item.unread, incoming_at);
+    let local_read = super::watermarks::effective_read(tx, account, &item.dest).await?;
+    let unread = merged_unread(prev.as_ref(), item, incoming_at, local_read);
     let title = if item.title.is_empty() {
         prev.as_ref()
             .map(|t| t.title.clone())
@@ -154,14 +164,29 @@ pub(crate) async fn persist_inbox_item(
     Ok(thread)
 }
 
-/// Rules 2–3 only: local read wins, else server unread. No viewing→0.
-fn merged_unread(prev: Option<&StoredThread>, incoming_unread: i32, incoming_at: i64) -> i32 {
-    if let Some(prev) = prev {
-        if prev.unread == 0 && prev.last_at >= incoming_at {
-            return 0;
+fn merged_unread(
+    prev: Option<&StoredThread>,
+    item: &kim_client::InboxItem,
+    incoming_at: i64,
+    local_read: i64,
+) -> i32 {
+    let effective_read = local_read.max(item.last_read_message_id);
+    let known_tip = item
+        .max_message_id
+        .max(item.last_message_id)
+        .max(prev.map(|t| t.last_message_id).unwrap_or(0));
+    if effective_read > 0 && known_tip > 0 && effective_read >= known_tip {
+        return 0;
+    }
+    if local_read > item.last_read_message_id {
+        if let Some(prev) = prev {
+            if prev.unread == 0 {
+                return 0;
+            }
         }
     }
-    incoming_unread
+    let _ = incoming_at;
+    item.unread
 }
 
 pub(crate) async fn ensure(

@@ -356,6 +356,7 @@ async fn replace_contacts_stale_epoch_keeps_existing_contacts() {
                 last_message_id: 0,
                 last_send_time: 0,
                 unread: 0,
+                ..Default::default()
             }])
             .await
     });

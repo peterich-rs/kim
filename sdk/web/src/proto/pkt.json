@@ -973,6 +973,10 @@
                 "active": {
                   "type": "bool",
                   "id": 3
+                },
+                "phase": {
+                  "type": "int32",
+                  "id": 4
                 }
               }
             },
@@ -993,6 +997,10 @@
                 "active": {
                   "type": "bool",
                   "id": 4
+                },
+                "phase": {
+                  "type": "int32",
+                  "id": 5
                 }
               }
             },
@@ -1392,6 +1400,10 @@
                 "unread": {
                   "type": "int32",
                   "id": 9
+                },
+                "readState": {
+                  "type": "ConversationReadState",
+                  "id": 10
                 }
               }
             },
@@ -1469,6 +1481,93 @@
                 },
                 "kind": {
                   "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "ConversationReadState": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                },
+                "lastReadMessageId": {
+                  "type": "int64",
+                  "id": 3
+                },
+                "maxMessageId": {
+                  "type": "int64",
+                  "id": 4
+                },
+                "unread": {
+                  "type": "int32",
+                  "id": 5
+                },
+                "version": {
+                  "type": "uint64",
+                  "id": 6
+                },
+                "exists": {
+                  "type": "bool",
+                  "id": 7
+                }
+              }
+            },
+            "ConversationStateKey": {
+              "fields": {
+                "dest": {
+                  "type": "string",
+                  "id": 1
+                },
+                "kind": {
+                  "type": "int32",
+                  "id": 2
+                }
+              }
+            },
+            "ConversationStatesReq": {
+              "fields": {
+                "conversations": {
+                  "rule": "repeated",
+                  "type": "ConversationStateKey",
+                  "id": 1
+                }
+              }
+            },
+            "ConversationStatesQuery": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "conversations": {
+                  "rule": "repeated",
+                  "type": "ConversationStateKey",
+                  "id": 2
+                }
+              }
+            },
+            "ConversationStatesResp": {
+              "fields": {
+                "states": {
+                  "rule": "repeated",
+                  "type": "ConversationReadState",
+                  "id": 1
+                }
+              }
+            },
+            "ConversationReadSyncPush": {
+              "fields": {
+                "account": {
+                  "type": "string",
+                  "id": 1
+                },
+                "state": {
+                  "type": "ConversationReadState",
                   "id": 2
                 }
               }

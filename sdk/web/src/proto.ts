@@ -52,6 +52,10 @@ const InboxRespType = lookup("InboxResp");
 const HistoryReqType = lookup("HistoryReq");
 const HistoryRespType = lookup("HistoryResp");
 const ConversationReadReqType = lookup("ConversationReadReq");
+const ConversationReadStateType = lookup("ConversationReadState");
+const ConversationReadSyncPushType = lookup("ConversationReadSyncPush");
+const ConversationStatesReqType = lookup("ConversationStatesReq");
+const ConversationStatesRespType = lookup("ConversationStatesResp");
 const PasswordChangeReqType = lookup("PasswordChangeReq");
 const PasswordKeyRespType = lookup("PasswordKeyResp");
 const RoomEnterReqType = lookup("RoomEnterReq");
@@ -578,6 +582,16 @@ export function encodeInboxReq(limit: number): Uint8Array {
   return encode(InboxReqType, { limit });
 }
 
+export interface WireConversationReadState {
+  dest: string;
+  kind: number;
+  lastReadMessageId: bigint;
+  maxMessageId: bigint;
+  unread: number;
+  version: bigint;
+  exists: boolean;
+}
+
 export interface WireInboxItem {
   dest: string;
   kind: number;
@@ -588,6 +602,9 @@ export interface WireInboxItem {
   lastMessageId: bigint;
   lastSendTime: bigint;
   unread: number;
+  lastReadMessageId: bigint;
+  maxMessageId: bigint;
+  stateVersion: bigint;
 }
 
 export function decodeInboxResp(buf: Uint8Array): WireInboxItem[] {
@@ -602,6 +619,11 @@ export function decodeInboxResp(buf: Uint8Array): WireInboxItem[] {
       lastMessageId?: unknown;
       lastSendTime?: unknown;
       unread?: number;
+      readState?: {
+        lastReadMessageId?: unknown;
+        maxMessageId?: unknown;
+        version?: unknown;
+      };
     }>;
   }>(InboxRespType, buf);
   return (o.items ?? []).map((i) => ({
@@ -614,6 +636,9 @@ export function decodeInboxResp(buf: Uint8Array): WireInboxItem[] {
     lastMessageId: asBigInt(i.lastMessageId),
     lastSendTime: asBigInt(i.lastSendTime),
     unread: i.unread ?? 0,
+    lastReadMessageId: asBigInt(i.readState?.lastReadMessageId),
+    maxMessageId: asBigInt(i.readState?.maxMessageId) || asBigInt(i.lastMessageId),
+    stateVersion: asBigInt(i.readState?.version),
   }));
 }
 
@@ -663,6 +688,87 @@ export function encodeConversationReadReq(messageId: bigint, kind: number): Uint
     messageId: messageId.toString(),
     kind,
   });
+}
+
+export function decodeConversationReadState(buf: Uint8Array): WireConversationReadState | null {
+  if (buf.byteLength === 0) {
+    return null;
+  }
+  const o = decode<{
+    dest?: string;
+    kind?: number;
+    lastReadMessageId?: unknown;
+    maxMessageId?: unknown;
+    unread?: number;
+    version?: unknown;
+    exists?: boolean;
+  }>(ConversationReadStateType, buf);
+  return {
+    dest: o.dest ?? "",
+    kind: o.kind ?? 0,
+    lastReadMessageId: asBigInt(o.lastReadMessageId),
+    maxMessageId: asBigInt(o.maxMessageId),
+    unread: o.unread ?? 0,
+    version: asBigInt(o.version),
+    exists: o.exists ?? false,
+  };
+}
+
+export function encodeConversationStatesReq(conversations: Array<{ dest: string; kind: number }>): Uint8Array {
+  return encode(ConversationStatesReqType, { conversations });
+}
+
+export function decodeConversationStatesResp(buf: Uint8Array): WireConversationReadState[] {
+  const o = decode<{
+    states?: Array<{
+      dest?: string;
+      kind?: number;
+      lastReadMessageId?: unknown;
+      maxMessageId?: unknown;
+      unread?: number;
+      version?: unknown;
+      exists?: boolean;
+    }>;
+  }>(ConversationStatesRespType, buf);
+  return (o.states ?? []).map((s) => ({
+    dest: s.dest ?? "",
+    kind: s.kind ?? 0,
+    lastReadMessageId: asBigInt(s.lastReadMessageId),
+    maxMessageId: asBigInt(s.maxMessageId),
+    unread: s.unread ?? 0,
+    version: asBigInt(s.version),
+    exists: s.exists ?? false,
+  }));
+}
+
+export function decodeConversationReadSyncPush(buf: Uint8Array): {
+  account: string;
+  state: WireConversationReadState | null;
+} {
+  const o = decode<{
+    account?: string;
+    state?: {
+      dest?: string;
+      kind?: number;
+      lastReadMessageId?: unknown;
+      maxMessageId?: unknown;
+      unread?: number;
+      version?: unknown;
+      exists?: boolean;
+    };
+  }>(ConversationReadSyncPushType, buf);
+  const state = o.state
+    ? {
+        dest: o.state.dest ?? "",
+        kind: o.state.kind ?? 0,
+        lastReadMessageId: asBigInt(o.state.lastReadMessageId),
+        maxMessageId: asBigInt(o.state.maxMessageId),
+        unread: o.state.unread ?? 0,
+        version: asBigInt(o.state.version),
+        exists: o.state.exists ?? false,
+      }
+    : null;
+  return { account: o.account ?? "", state };
 }
 
 export function encodePasswordChangeReq(

@@ -190,6 +190,7 @@ async fn persist_inbox_updates_session_snapshot_threads() {
         last_message_id: 1,
         last_send_time: 1,
         unread: 2,
+        ..Default::default()
     }])
     .await
     .expect("inbox");

@@ -86,6 +86,19 @@ pub struct ReadMarker {
     pub visible_message_id: i64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConversationKey {
+    pub dest: String,
+    pub kind: i32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ConversationVisibility {
+    pub generation: u64,
+    pub foreground: bool,
+    pub conversation: Option<ConversationKey>,
+}
+
 #[derive(Clone, Debug)]
 pub struct TimelineQuery {
     pub dest: String,

@@ -18,6 +18,8 @@ pub enum PersistError {
     StaleEpoch,
 }
 
+pub type InboxSyncToken = u64;
+
 #[async_trait::async_trait]
 pub trait PersistHook: Send + Sync {
     async fn persist_talks(
@@ -27,4 +29,21 @@ pub trait PersistHook: Send + Sync {
     ) -> Result<(), PersistError>;
 
     async fn persist_inbox(&self, items: &[InboxItem]) -> Result<(), PersistError>;
+
+    async fn begin_inbox_sync(&self) -> Result<InboxSyncToken, PersistError> {
+        Ok(0)
+    }
+
+    async fn persist_inbox_with_token(
+        &self,
+        items: &[InboxItem],
+        token: InboxSyncToken,
+    ) -> Result<(), PersistError> {
+        let _ = token;
+        self.persist_inbox(items).await
+    }
+
+    async fn finish_inbox_sync(&self, token: InboxSyncToken) {
+        let _ = token;
+    }
 }

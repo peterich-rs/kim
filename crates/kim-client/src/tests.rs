@@ -927,6 +927,7 @@ async fn inbox_history_offline_round_trip() {
                 last_message_id: 9,
                 last_send_time: 1,
                 unread: 2,
+                read_state: None,
             }],
         });
     });

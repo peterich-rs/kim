@@ -28,6 +28,8 @@ export const Command = {
   BlockList: "chat.block.list",
   InboxList: "chat.inbox.list",
   InboxRead: "chat.inbox.read",
+  InboxStates: "chat.inbox.states",
+  InboxReadSync: "chat.inbox.read.sync",
   History: "chat.history",
   RoomEnter: "chat.room.enter",
   RoomLeave: "chat.room.leave",

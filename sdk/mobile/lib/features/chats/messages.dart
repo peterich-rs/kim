@@ -179,26 +179,21 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   }
 
   Future<void> markRead() async {
-    var messageId = 0;
-    for (final m in state.items.reversed) {
-      if (m.messageId != 0) {
-        messageId = m.messageId;
-        break;
-      }
-    }
+    await markConversationRead();
+  }
+
+  Future<void> markConversationRead() async {
     final kind =
         ref.read(threadsProvider).thread(dest)?.kind ?? ThreadKind.user;
     try {
-      await ref.read(clientPortProvider).markRead(dest, kind, messageId);
+      await ref.read(clientPortProvider).markConversationRead(dest, kind);
     } catch (e, st) {
-      KimLogger.warn('markRead', e, st);
+      KimLogger.warn('markConversationRead', e, st);
     }
   }
 }
 
-final threadMessagesProvider =
-    NotifierProvider.family<
-      ThreadMessagesNotifier,
-      ThreadMessagesState,
-      String
-    >(ThreadMessagesNotifier.new);
+final threadMessagesProvider = NotifierProvider.autoDispose
+    .family<ThreadMessagesNotifier, ThreadMessagesState, String>(
+      ThreadMessagesNotifier.new,
+    );

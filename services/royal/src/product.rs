@@ -8,9 +8,10 @@ use chat::social::{FriendRequestOutcome, SocialError};
 use chat::store::InboxEntry;
 use chat::users::{ProfilePatch, UserError, UserProfile};
 use kim_protocol::pkt::{
-    AccountExists, AccountList, AccountPair, AccountQuery, ConversationRead, HistoryItem,
-    HistoryQuery, HistoryResp, InboxItem, InboxQuery, InboxResp, ProfileUpdateReq, UserListResp,
-    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
+    AccountExists, AccountList, AccountPair, AccountQuery, ConversationRead,
+    ConversationStatesQuery, ConversationStatesResp, HistoryItem, HistoryQuery, HistoryResp,
+    InboxItem, InboxQuery, InboxResp, ProfileUpdateReq, UserListResp, UserProfile as PbProfile,
+    UserSearchQuery, UserSearchResp,
 };
 use kim_protocol::PROFILE_KIND_BOT;
 use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};
@@ -291,6 +292,7 @@ fn inbox_kind(kind: chat::store::MessageKind) -> i32 {
 }
 
 fn to_inbox_item(row: InboxEntry) -> InboxItem {
+    let read_state = row.read_state().to_proto();
     InboxItem {
         dest: row.dest,
         kind: inbox_kind(row.kind),
@@ -301,6 +303,7 @@ fn to_inbox_item(row: InboxEntry) -> InboxItem {
         last_message_id: row.last_message_id,
         last_send_time: row.last_send_time,
         unread: row.unread,
+        read_state: Some(read_state),
     }
 }
 
@@ -359,9 +362,45 @@ pub async fn inbox_read(
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<ConversationRead>(&body)?;
     let kind = parse_kind(req.kind).ok_or((StatusCode::BAD_REQUEST, "kind".into()))?;
-    st.store
+    let state = st
+        .store
         .mark_read(&st.app, &req.account, &req.dest, kind, req.message_id)
         .await
         .map_err(backend)?;
-    Ok(Bytes::new())
+    Ok(encode(&state.to_proto()))
+}
+
+pub async fn inbox_states(
+    State(st): State<RoyalState>,
+    body: Bytes,
+) -> Result<Bytes, (StatusCode, String)> {
+    let req = decode::<ConversationStatesQuery>(&body)?;
+    if req.account.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "account".into()));
+    }
+    if req.conversations.len() > 100 {
+        return Err((StatusCode::BAD_REQUEST, "too many keys".into()));
+    }
+    let mut keys = Vec::with_capacity(req.conversations.len());
+    for key in req.conversations {
+        let kind = parse_kind(key.kind).ok_or((StatusCode::BAD_REQUEST, "kind".into()))?;
+        if key.dest.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "dest".into()));
+        }
+        keys.push(chat::store::ConversationStateKey {
+            dest: key.dest,
+            kind,
+        });
+    }
+    let states = st
+        .store
+        .conversation_states(&st.app, &req.account, &keys)
+        .await
+        .map_err(backend)?;
+    Ok(encode(&ConversationStatesResp {
+        states: states
+            .iter()
+            .map(chat::store::ConversationReadState::to_proto)
+            .collect(),
+    }))
 }

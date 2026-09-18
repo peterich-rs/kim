@@ -28,6 +28,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
   bool lastTypingActive = false;
   String lastReadDest = '';
   int lastReadMessageId = 0;
+  int visibilityGeneration = 0;
+  bool visibilityForeground = false;
+  String visibilityDest = '';
+  ThreadKind visibilityKind = ThreadKind.user;
   int radioUps = 0;
   int foregrounds = 0;
   int friendRequests = 0;
@@ -343,6 +347,24 @@ class FakeKim implements KimAuthPort, KimClientPort {
     reads += 1;
     lastReadDest = dest;
     lastReadMessageId = messageId;
+  }
+
+  @override
+  Future<void> markConversationRead(String dest, ThreadKind kind) async {
+    await markRead(dest, kind, 0);
+  }
+
+  @override
+  Future<void> setConversationVisibility({
+    required int generation,
+    required bool foreground,
+    required String dest,
+    required ThreadKind kind,
+  }) async {
+    visibilityGeneration = generation;
+    visibilityForeground = foreground;
+    visibilityDest = dest;
+    visibilityKind = kind;
   }
 
   void emitKick({String channelId = 'ch-1'}) {
