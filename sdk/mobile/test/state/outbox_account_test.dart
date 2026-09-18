@@ -15,7 +15,10 @@ void main() {
       account: 'alice',
     );
     env.fake.autoPushEnqueueTimeline = false;
-    env.container.read(threadMessagesProvider('bob'));
+    final msgs = env.container.listen(threadMessagesProvider('bob'), (_, _) {});
+    final session = env.container.listen(chatSessionProvider('bob'), (_, _) {});
+    addTearDown(msgs.close);
+    addTearDown(session.close);
     final accepted = await env.container
         .read(chatSessionProvider('bob').notifier)
         .sendText('queued');

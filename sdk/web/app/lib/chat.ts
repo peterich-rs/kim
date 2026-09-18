@@ -24,6 +24,7 @@ export interface ChatHandlers {
   onPresence?: (entries: import("../../src/proto.ts").WirePresence[]) => void;
   onTyping?: (t: import("../../src/proto.ts").WireTyping) => void;
   onReceiptRead?: (r: import("../../src/proto.ts").WireReadReceipt) => void;
+  onReadSync?: (s: import("../../src/proto.ts").WireConversationReadState) => void;
   onToken?: (token: string, exp: number) => void;
 }
 
@@ -170,6 +171,12 @@ export class ChatSession {
         return;
       }
       this.handlers.onReceiptRead?.(receipt);
+    });
+    cli.onreadsync((state) => {
+      if (this.disposed) {
+        return;
+      }
+      this.handlers.onReadSync?.(state);
     });
   }
 

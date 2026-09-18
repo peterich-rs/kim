@@ -748,11 +748,11 @@ mod tests {
             &self,
             _app: &str,
             _account: &str,
-            _dest: &str,
-            _kind: MessageKind,
+            dest: &str,
+            kind: MessageKind,
             _message_id: i64,
-        ) -> Result<(), StoreError> {
-            Ok(())
+        ) -> Result<crate::store::ConversationReadState, StoreError> {
+            Ok(crate::store::ConversationReadState::missing(dest, kind))
         }
         async fn insert_bot_reply(
             &self,

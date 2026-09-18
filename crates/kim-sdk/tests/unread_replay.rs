@@ -35,6 +35,7 @@ fn inbox(dest: &str, unread: i32, last_at: i64) -> InboxItem {
         last_message_id: 1,
         last_send_time: last_at,
         unread,
+        ..Default::default()
     }
 }
 
@@ -80,9 +81,16 @@ async fn sync_duplicate_id_does_not_bump_unread() {
 #[tokio::test]
 async fn inbox_local_read_wins() {
     let (_dir, sdk) = open_alice().await;
-    sdk.persist_inbox(vec![inbox("bob", 0, 2_000)])
+    sdk.persist_talks(vec![talk("bob", "bob", "hi", 9)], UnreadPolicy::IfInserted)
         .await
-        .expect("local read");
+        .expect("talk");
+    sdk.mark_read(kim_sdk::ReadMarker {
+        dest: "bob".into(),
+        kind: 0,
+        visible_message_id: 9,
+    })
+    .await
+    .expect("read");
     sdk.persist_inbox(vec![inbox("bob", 5, 1_000)])
         .await
         .expect("server stale");

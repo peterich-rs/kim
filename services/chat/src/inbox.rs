@@ -1,8 +1,8 @@
 use kim_protocol::pkt::{
-    ConversationReadReq, HistoryItem, HistoryReq, HistoryResp, InboxItem, InboxReq, InboxResp,
-    ReadReceiptPush, Status,
+    ConversationReadReq, ConversationReadSyncPush, ConversationStatesReq, ConversationStatesResp,
+    HistoryItem, HistoryReq, HistoryResp, InboxItem, InboxReq, InboxResp, ReadReceiptPush, Status,
 };
-use kim_protocol::{CMD_RECEIPT_READ, INBOX_KIND_GROUP, INBOX_KIND_USER};
+use kim_protocol::{CMD_INBOX_READ_SYNC, CMD_RECEIPT_READ, INBOX_KIND_GROUP, INBOX_KIND_USER};
 use kim_router::{Context, RouterError};
 use tracing::warn;
 
@@ -96,6 +96,7 @@ pub async fn do_inbox_list(
                 None => (row.dest.clone(), String::new()),
             },
         };
+        let read_state = row.read_state().to_proto();
         items.push(InboxItem {
             dest: row.dest,
             kind: match row.kind {
@@ -109,6 +110,7 @@ pub async fn do_inbox_list(
             last_message_id: row.last_message_id,
             last_send_time: row.last_send_time,
             unread: row.unread,
+            read_state: Some(read_state),
         });
     }
     ctx.resp(Status::Success, Some(&InboxResp { items }))
@@ -193,21 +195,79 @@ pub async fn do_inbox_read(ctx: Context, store: &dyn MessageStore) -> Result<(),
         .mark_read(&ctx.session().app, &reader, &dest, kind, req.message_id)
         .await
     {
-        Ok(()) => {
-            ctx.resp_bytes(Status::Success, bytes::Bytes::new()).await?;
-            // DM only: notify peer that messages up to message_id were read.
-            if kind == MessageKind::User {
+        Ok(state) => {
+            let proto = state.to_proto();
+            ctx.resp(Status::Success, Some(&proto)).await?;
+            if kind == MessageKind::User && state.last_read_message_id > 0 {
                 let body = ReadReceiptPush {
                     reader: reader.clone(),
                     dest: dest.clone(),
                     kind: INBOX_KIND_USER,
-                    message_id: req.message_id,
+                    message_id: state.last_read_message_id,
                 };
                 notify_account(&ctx, &dest, CMD_RECEIPT_READ, &body).await;
+            }
+            if state.exists {
+                let body = ConversationReadSyncPush {
+                    account: reader.clone(),
+                    state: Some(proto),
+                };
+                notify_account(&ctx, &reader, CMD_INBOX_READ_SYNC, &body).await;
             }
         }
         Err(err) => {
             warn!(%err, "mark read failed");
+            ctx.resp_with_error(Status::SystemException, &err).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn do_inbox_states(ctx: Context, store: &dyn MessageStore) -> Result<(), RouterError> {
+    let req = match ctx.read_body::<ConversationStatesReq>() {
+        Ok(r) => r,
+        Err(err) => {
+            ctx.resp_with_error(Status::InvalidPacketBody, &err).await?;
+            return Ok(());
+        }
+    };
+    if req.conversations.len() > 100 {
+        ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+            .await?;
+        return Ok(());
+    }
+    let mut keys = Vec::with_capacity(req.conversations.len());
+    for key in req.conversations {
+        let Some(kind) = parse_kind(key.kind) else {
+            ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+                .await?;
+            return Ok(());
+        };
+        if key.dest.is_empty() {
+            ctx.resp_bytes(Status::InvalidPacketBody, bytes::Bytes::new())
+                .await?;
+            return Ok(());
+        }
+        keys.push(crate::store::ConversationStateKey {
+            dest: key.dest,
+            kind,
+        });
+    }
+    match store
+        .conversation_states(&ctx.session().app, &ctx.session().account, &keys)
+        .await
+    {
+        Ok(states) => {
+            let resp = ConversationStatesResp {
+                states: states
+                    .iter()
+                    .map(crate::store::ConversationReadState::to_proto)
+                    .collect(),
+            };
+            ctx.resp(Status::Success, Some(&resp)).await?;
+        }
+        Err(err) => {
+            warn!(%err, "inbox states failed");
             ctx.resp_with_error(Status::SystemException, &err).await?;
         }
     }

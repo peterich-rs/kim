@@ -76,6 +76,10 @@ pub enum SessionEvent {
         kind: i32,
         message_id: i64,
     },
+    ConversationReadSync {
+        account: String,
+        state: crate::events::ConversationReadState,
+    },
     GroupCreate {
         group_id: String,
         members: Vec<String>,

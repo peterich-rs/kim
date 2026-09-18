@@ -44,31 +44,40 @@ pub(crate) async fn upsert_on_send(
     Ok(())
 }
 
+pub(crate) struct IncomingApply<'a> {
+    pub dest: &'a str,
+    pub last_body: &'a str,
+    pub last_at: i64,
+    pub unread_delta: i32,
+    pub thread_kind: i32,
+    pub last_message_id: i64,
+}
+
 pub(crate) async fn apply_incoming(
     tx: &mut SqliteConnection,
     account: &str,
-    dest: &str,
-    last_body: &str,
-    last_at: i64,
-    unread_delta: i32,
-    thread_kind: i32,
+    incoming: IncomingApply<'_>,
 ) -> Result<StoredThread, SdkError> {
+    let dest = incoming.dest;
     let existing = find(tx, account, dest).await?;
-    let msg_at = last_at;
+    let msg_at = incoming.last_at;
     let last_at = existing
         .as_ref()
         .map(|t| t.last_at.max(msg_at))
         .unwrap_or(msg_at);
     let last_body = if existing.as_ref().is_none_or(|t| msg_at >= t.last_at) {
-        last_body.to_string()
+        incoming.last_body.to_string()
     } else {
         existing
             .as_ref()
             .map(|t| t.last_body.clone())
             .unwrap_or_default()
     };
-    let unread = (existing.as_ref().map(|t| t.unread).unwrap_or(0) + unread_delta).max(0);
-    let kind = existing.as_ref().map(|t| t.kind).unwrap_or(thread_kind);
+    let unread = (existing.as_ref().map(|t| t.unread).unwrap_or(0) + incoming.unread_delta).max(0);
+    let kind = existing
+        .as_ref()
+        .map(|t| t.kind)
+        .unwrap_or(incoming.thread_kind);
     let title = existing
         .as_ref()
         .map(|t| t.title.clone())
@@ -77,6 +86,11 @@ pub(crate) async fn apply_incoming(
         .as_ref()
         .map(|t| t.avatar.clone())
         .unwrap_or_default();
+    let last_message_id = existing
+        .as_ref()
+        .map(|t| t.last_message_id)
+        .unwrap_or(0)
+        .max(incoming.last_message_id);
     upsert_full(
         tx,
         account,
@@ -88,7 +102,7 @@ pub(crate) async fn apply_incoming(
             last_body: last_body.clone(),
             last_at,
             unread,
-            last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
+            last_message_id,
         },
     )
     .await?;
@@ -100,7 +114,7 @@ pub(crate) async fn apply_incoming(
         last_body,
         last_at,
         unread,
-        last_message_id: existing.as_ref().map(|t| t.last_message_id).unwrap_or(0),
+        last_message_id,
     })
 }
 
@@ -111,7 +125,8 @@ pub(crate) async fn persist_inbox_item(
 ) -> Result<StoredThread, SdkError> {
     let prev = find(tx, account, &item.dest).await?;
     let incoming_at = super::send_time_ms(item.last_send_time);
-    let unread = merged_unread(prev.as_ref(), item.unread, incoming_at);
+    let local_read = super::watermarks::effective_read(tx, account, &item.dest).await?;
+    let unread = merged_unread(prev.as_ref(), item, incoming_at, local_read);
     let title = if item.title.is_empty() {
         prev.as_ref()
             .map(|t| t.title.clone())
@@ -154,14 +169,29 @@ pub(crate) async fn persist_inbox_item(
     Ok(thread)
 }
 
-/// Rules 2–3 only: local read wins, else server unread. No viewing→0.
-fn merged_unread(prev: Option<&StoredThread>, incoming_unread: i32, incoming_at: i64) -> i32 {
-    if let Some(prev) = prev {
-        if prev.unread == 0 && prev.last_at >= incoming_at {
-            return 0;
+fn merged_unread(
+    prev: Option<&StoredThread>,
+    item: &kim_client::InboxItem,
+    incoming_at: i64,
+    local_read: i64,
+) -> i32 {
+    let effective_read = local_read.max(item.last_read_message_id);
+    let known_tip = item
+        .max_message_id
+        .max(item.last_message_id)
+        .max(prev.map(|t| t.last_message_id).unwrap_or(0));
+    if effective_read > 0 && known_tip > 0 && effective_read >= known_tip {
+        return 0;
+    }
+    if local_read > item.last_read_message_id {
+        if let Some(prev) = prev {
+            if prev.unread == 0 {
+                return 0;
+            }
         }
     }
-    incoming_unread
+    let _ = incoming_at;
+    item.unread
 }
 
 pub(crate) async fn ensure(

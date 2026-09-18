@@ -9,6 +9,7 @@ mod media;
 mod metrics;
 mod proto;
 mod query;
+mod read_sync;
 mod session;
 mod store;
 mod timeline;
@@ -29,8 +30,8 @@ pub use agent::{
     FfiAgentRuntime, MobileAgent, NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
 };
 pub use command::{
-    CommandReceipt, MessagePage, OutgoingPayload, PageCursor, ReadMarker, SendMessageCommand,
-    SendStatus, StartSession, TimelineQuery,
+    CommandReceipt, ConversationKey, ConversationVisibility, MessagePage, OutgoingPayload,
+    PageCursor, ReadMarker, SendMessageCommand, SendStatus, StartSession, TimelineQuery,
 };
 pub use error::{map_client, SdkError};
 pub use ids::{
@@ -96,6 +97,7 @@ pub(crate) struct Inner {
     metrics: SdkMetrics,
     outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
     outbox_run: Mutex<CancellationToken>,
+    read_sync_kick: Mutex<Option<mpsc::Sender<()>>>,
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
     ffi_runtime: Arc<FfiAgentRuntime>,
     media_dir: Mutex<Option<PathBuf>>,
@@ -144,6 +146,7 @@ impl KimSdk {
                 metrics: SdkMetrics::default(),
                 outbox_kick: Mutex::new(None),
                 outbox_run: Mutex::new(CancellationToken::new()),
+                read_sync_kick: Mutex::new(None),
                 token_persist: Mutex::new(Vec::new()),
                 ffi_runtime: FfiAgentRuntime::new(),
                 media_dir: Mutex::new(None),
@@ -284,6 +287,7 @@ impl KimSdk {
         // Subscribe before the reconnect loop so the first Link events are not missed.
         self.spawn_session_bridge(&sup);
         self.spawn_outbox_worker();
+        self.spawn_read_sync_worker();
         sup.ensure_running();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
         self.refresh_session_snapshot().await;
@@ -403,18 +407,63 @@ impl KimSdk {
             )
             .await?;
         self.after_command(sequence).await;
-        if let Ok(proto) = self.protocol() {
-            let sdk = self.clone();
-            let dest = marker.dest;
-            let kind = marker.kind;
-            let visible_message_id = marker.visible_message_id;
-            tokio::spawn(async move {
-                if sdk.current_epoch().0 != epoch {
-                    return;
-                }
-                let _ = proto.mark_read(&dest, kind, visible_message_id).await;
-            });
+        self.kick_read_sync();
+        Ok(())
+    }
+
+    pub async fn mark_thread_read(&self, dest: String, kind: i32) -> Result<(), SdkError> {
+        if dest.is_empty() {
+            return Ok(());
         }
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        let ((), sequence) = store
+            .mark_thread_read_local(epoch, session.account, dest, kind)
+            .await?;
+        self.after_command(sequence).await;
+        self.kick_read_sync();
+        Ok(())
+    }
+
+    pub async fn set_conversation_visibility(
+        &self,
+        visibility: ConversationVisibility,
+    ) -> Result<(), SdkError> {
+        let store = match self.store() {
+            Ok(s) => s,
+            Err(_) => return Ok(()),
+        };
+        let session = match self.session_snapshot() {
+            Ok(s) => s,
+            Err(_) => return Ok(()),
+        };
+        if session.account.is_empty() {
+            return Ok(());
+        }
+        let epoch = self.current_epoch().0;
+        let dest = visibility
+            .conversation
+            .as_ref()
+            .map(|c| c.dest.clone())
+            .filter(|d| !d.is_empty());
+        let kind = visibility
+            .conversation
+            .as_ref()
+            .map(|c| c.kind)
+            .unwrap_or(0);
+        let ((), sequence) = store
+            .set_visibility(
+                epoch,
+                session.account,
+                visibility.generation,
+                visibility.foreground && dest.is_some(),
+                dest,
+                kind,
+            )
+            .await?;
+        self.after_command(sequence).await;
+        self.kick_read_sync();
         Ok(())
     }
 
@@ -448,7 +497,7 @@ impl KimSdk {
             let sdk = self.clone();
             handle.spawn(async move {
                 for dest in dests {
-                    let _ = sdk.hydrate_latest_if_needed(&dest).await;
+                    let _ = sdk.hydrate_latest_if_needed(&dest, false).await;
                 }
             });
         }
@@ -898,7 +947,7 @@ impl KimSdk {
                     .then_with(|| left.key.cmp(&right.key))
             });
             let Some(oldest) = rows.first() else {
-                match self.hydrate_latest_if_needed(&dest).await? {
+                match self.hydrate_latest_if_needed(&dest, true).await? {
                     HydrateOutcome::Skipped => return Ok(Some((None, false))),
                     HydrateOutcome::InFlight | HydrateOutcome::Applied => {
                         return Ok(None);
@@ -1043,6 +1092,7 @@ impl KimSdk {
             .persist_talks(epoch, account.clone(), talks, policy)
             .await?;
         self.inner.metrics.inc_persist_talk();
+        self.kick_read_sync();
         for talk in agent_talks {
             if self.current_epoch().0 != epoch {
                 return Err(SdkError::StaleEpoch {
@@ -1126,17 +1176,19 @@ impl KimSdk {
         let watched: Vec<String> = lock(&self.inner.timelines).keys().cloned().collect();
         for dest in watched {
             if views.iter().any(|thread| thread.id == dest) {
-                let _ = self.hydrate_latest_if_needed(&dest).await;
+                let _ = self.hydrate_latest_if_needed(&dest, false).await;
             }
         }
     }
 
-    /// Open-thread catch-up: page `chat.history` until the local cap or a
-    /// short remote page. Having the inbox tip locally does not mean older
-    /// history is complete — skip only when the tip matches *and* the local
-    /// store is already at cap. Does not run on login for every thread, and
-    /// does not replace `load_older` pagination.
-    async fn hydrate_latest_if_needed(&self, dest: &str) -> Result<HydrateOutcome, SdkError> {
+    /// Open-thread catch-up. `prefetch_older` is subscribe-only: protocol
+    /// install and inbox apply only fill a tip gap so they cannot steal
+    /// `load_older`'s history request.
+    async fn hydrate_latest_if_needed(
+        &self,
+        dest: &str,
+        prefetch_older: bool,
+    ) -> Result<HydrateOutcome, SdkError> {
         let Ok(session) = self.session_snapshot() else {
             return Ok(HydrateOutcome::Skipped);
         };
@@ -1154,6 +1206,9 @@ impl KimSdk {
         let local_tip = store.local_message_tip(&account, dest).await?;
         let cap = i64::from(store::schema::MAX_MESSAGES);
         if local_tip >= server_tip {
+            if !prefetch_older {
+                return Ok(HydrateOutcome::Skipped);
+            }
             let sent = store.count_sent(&account, dest).await?;
             if sent >= cap {
                 return Ok(HydrateOutcome::Skipped);
@@ -1162,7 +1217,6 @@ impl KimSdk {
         if !self.begin_hydrate(dest, epoch, &account) {
             return Ok(HydrateOutcome::InFlight);
         }
-        self.record_timeline_and_wait(&account, epoch, dest).await;
         let proto = match self.protocol() {
             Ok(proto) => proto,
             Err(_) => {
@@ -1171,6 +1225,7 @@ impl KimSdk {
                 return Ok(HydrateOutcome::Skipped);
             }
         };
+        self.record_timeline_and_wait(&account, epoch, dest).await;
         let limit = lock(&self.inner.timelines)
             .get(dest)
             .map(|sub| sub.limit)
@@ -1405,6 +1460,9 @@ impl KimSdk {
                     ev = rx.recv() => {
                         match ev {
                             Ok(ev) => {
+                                if let kim_client::SessionEvent::ConversationReadSync { account, state } = &ev {
+                                    sdk.apply_remote_read(account, state.clone()).await;
+                                }
                                 if let Err(error) = sdk.persist_contact_event(&ev).await {
                                     tracing::warn!(
                                         error = %error,
@@ -1435,6 +1493,7 @@ impl KimSdk {
                                             ..
                                         } => {
                                             sdk.spawn_agent_catch_up();
+                                            sdk.kick_read_sync();
                                         }
                                         _ => {}
                                     }
@@ -1507,9 +1566,42 @@ impl KimSdk {
         self.kick_outbox();
     }
 
+    fn spawn_read_sync_worker(&self) {
+        if !self.store_attached() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel::<()>(8);
+        *lock(&self.inner.read_sync_kick) = Some(tx);
+        read_sync::spawn(self.clone(), rx);
+        self.kick_read_sync();
+    }
+
     fn kick_outbox(&self) {
         if let Some(tx) = lock(&self.inner.outbox_kick).as_ref() {
             let _ = tx.try_send(());
+        }
+    }
+
+    pub(crate) fn kick_read_sync(&self) {
+        if let Some(tx) = lock(&self.inner.read_sync_kick).as_ref() {
+            let _ = tx.try_send(());
+        }
+    }
+
+    async fn apply_remote_read(&self, account: &str, state: kim_client::ConversationReadState) {
+        let Ok(store) = self.store() else {
+            return;
+        };
+        let Ok(session) = self.session_snapshot() else {
+            return;
+        };
+        if session.account != account && !account.is_empty() {
+            return;
+        }
+        let epoch = self.current_epoch().0;
+        match store.apply_read_state(epoch, session.account, state).await {
+            Ok(((), sequence)) => self.after_command(sequence).await,
+            Err(err) => tracing::warn!(error = %err, "apply remote read failed"),
         }
     }
 
@@ -1603,7 +1695,7 @@ impl KimSdk {
             let dest_h = dest.clone();
             handle.spawn(async move {
                 changes.record(account, epoch, CommitEffect::timeline(dest_h.clone()));
-                let _ = sdk.hydrate_latest_if_needed(&dest_h).await;
+                let _ = sdk.hydrate_latest_if_needed(&dest_h, true).await;
             });
         }
         rx

@@ -160,7 +160,16 @@ impl SyncEngine {
         let account = client.session().account;
         let items = client.inbox_list(INBOX_LIMIT).await?;
         if let Some(hook) = persist.as_ref() {
-            if let Err(err) = hook.persist_inbox(&items).await {
+            let token = match hook.begin_inbox_sync().await {
+                Ok(t) => t,
+                Err(err) => {
+                    let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
+                    return Ok(0);
+                }
+            };
+            let persist_result = hook.persist_inbox_with_token(&items, token).await;
+            hook.finish_inbox_sync(token).await;
+            if let Err(err) = persist_result {
                 let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
                 return Ok(0);
             }

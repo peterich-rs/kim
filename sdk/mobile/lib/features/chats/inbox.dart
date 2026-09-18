@@ -93,7 +93,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   Future<void> markRead(String dest) async {
     final t = state.thread(dest);
     final kind = t?.kind ?? ThreadKind.user;
-    await ref.read(clientPortProvider).markRead(dest, kind, 0);
+    await ref.read(clientPortProvider).markConversationRead(dest, kind);
   }
 
   Future<void> deleteThread(String id) async {

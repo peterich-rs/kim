@@ -248,26 +248,67 @@ impl KimClient {
         kind: i32,
         message_id: i64,
     ) -> Result<(), ClientError> {
+        self.mark_read_state(dest, kind, message_id)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn mark_read_state(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<Option<crate::events::ConversationReadState>, ClientError> {
         if !self.logged_in() {
             return Err(ClientError::NotLoggedIn);
         }
         if dest.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
         self.write_wait(
             encode_inbox_read(seq, dest, kind, message_id),
             seq,
             |ev| match ev {
+                Event::ConversationRead { sequence, state } if *sequence == seq => {
+                    Some(Ok(Some(state.clone())))
+                }
                 Event::Status {
                     status, sequence, ..
                 } if *sequence == seq => {
                     if *status == 0 {
-                        Some(Ok(()))
+                        Some(Ok(None))
                     } else {
                         Some(Err(ClientError::Status(*status)))
                     }
                 }
+                _ => None,
+            },
+        )
+        .await
+    }
+
+    pub async fn conversation_states(
+        &self,
+        conversations: &[(String, i32)],
+    ) -> Result<Vec<crate::events::ConversationReadState>, ClientError> {
+        if !self.logged_in() {
+            return Err(ClientError::NotLoggedIn);
+        }
+        if conversations.is_empty() {
+            return Ok(Vec::new());
+        }
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        self.write_wait(
+            crate::wire::encode_inbox_states(seq, conversations),
+            seq,
+            |ev| match ev {
+                Event::ConversationStates { sequence, states } if *sequence == seq => {
+                    Some(Ok(states.clone()))
+                }
+                Event::Status {
+                    status, sequence, ..
+                } if *sequence == seq => Some(Err(ClientError::Status(*status))),
                 _ => None,
             },
         )
@@ -842,6 +883,7 @@ fn is_unsolicited(event: &Event) -> bool {
             | Event::PresenceUpdated { .. }
             | Event::TypingUpdated { .. }
             | Event::ReceiptRead { .. }
+            | Event::ConversationReadSync { .. }
             | Event::Closed
     )
 }

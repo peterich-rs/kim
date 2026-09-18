@@ -3,29 +3,32 @@ use kim_core::Frame;
 use kim_protocol::pkt::{
     AgentProviderAccount as PbAgentProviderAccount, AgentSpecRecord as PbAgentSpecRecord,
     AgentSpecSyncResp, AgentSpecUpsertReq, AgentSpecUpsertResp, AuthResp, BotCreateReq,
-    BotCreateResp, BotPendingResp, BotReplyReq, ConversationReadReq, Flag, FriendRequestNotify,
-    GroupCreateNotify, HistoryReq, HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq,
-    MessageAckReq, MessageContentReq, MessageContentResp, MessageIndexReq, MessageIndexResp,
-    MessagePush, MessageReq, MessageResp, PresencePush, ReadReceiptPush, RoomEnterReq,
-    RoomEnterResp, RoomLeaveReq, Status, TypingPush, TypingReq, UserListResp, UserProfile,
-    UserProfileUpdate, UserSearchReq, UserSearchResp,
+    BotCreateResp, BotPendingResp, BotReplyReq, ConversationReadReq,
+    ConversationReadState as PbConversationReadState, ConversationReadSyncPush,
+    ConversationStatesReq, ConversationStatesResp, Flag, FriendRequestNotify, GroupCreateNotify,
+    HistoryReq, HistoryResp, InboxReq, InboxResp, KickoutNotify, LoginReq, MessageAckReq,
+    MessageContentReq, MessageContentResp, MessageIndexReq, MessageIndexResp, MessagePush,
+    MessageReq, MessageResp, PresencePush, ReadReceiptPush, RoomEnterReq, RoomEnterResp,
+    RoomLeaveReq, Status, TypingPush, TypingReq, UserListResp, UserProfile, UserProfileUpdate,
+    UserSearchReq, UserSearchResp,
 };
 use kim_protocol::{
     marshal, read, BasicPkt, LogicPkt, Packet, CMD_AGENT_SPEC_SYNC, CMD_AGENT_SPEC_UPSERT,
     CMD_BOT_CREATE, CMD_BOT_PENDING, CMD_BOT_REPLY, CMD_BOT_TYPING, CMD_BOT_UPDATE,
     CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK, CMD_CHAT_USER_TALK, CMD_FRIEND_ACCEPT,
     CMD_FRIEND_INCOMING, CMD_FRIEND_LIST, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_HISTORY,
-    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_LOGIN_RENEW, CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT,
-    CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING,
-    CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, CODE_PONG,
-    INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO,
-    MESSAGE_TYPE_VOICE,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_INBOX_READ_SYNC, CMD_INBOX_STATES, CMD_LOGIN_RENEW,
+    CMD_LOGIN_SIGN_IN, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE, CMD_RECEIPT_READ,
+    CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE, CMD_USER_SEARCH, CMD_USER_UPDATE,
+    CMD_USER_UPDATED, CODE_PONG, INBOX_KIND_GROUP, MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT,
+    MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE,
 };
 
 use crate::config::DEFAULT_DEVICE;
 use crate::events::{
-    AgentProviderAccount, AgentSpecRecord, BotPendingItem, Event, HistoryItem, InboxItem,
-    IncomingTalk, Message, MessageIndex, OutgoingContent, Profile, TalkResult,
+    AgentProviderAccount, AgentSpecRecord, BotPendingItem, ConversationReadState, Event,
+    HistoryItem, InboxItem, IncomingTalk, Message, MessageIndex, OutgoingContent, Profile,
+    TalkResult,
 };
 use crate::ClientError;
 
@@ -161,6 +164,42 @@ pub fn encode_inbox_read(seq: u32, dest: &str, kind: i32, message_id: i64) -> By
     pkt.set_dest(dest);
     pkt.write_body(&ConversationReadReq { message_id, kind });
     marshal(&Packet::Logic(pkt))
+}
+
+pub fn encode_inbox_states(seq: u32, conversations: &[(String, i32)]) -> Bytes {
+    let mut pkt = LogicPkt::new(CMD_INBOX_STATES, seq, Bytes::new());
+    pkt.write_body(&ConversationStatesReq {
+        conversations: conversations
+            .iter()
+            .map(|(dest, kind)| kim_protocol::pkt::ConversationStateKey {
+                dest: dest.clone(),
+                kind: *kind,
+            })
+            .collect(),
+    });
+    marshal(&Packet::Logic(pkt))
+}
+
+fn inbox_item_from_proto(i: kim_protocol::pkt::InboxItem) -> InboxItem {
+    let read = i.read_state.clone().unwrap_or_default();
+    InboxItem {
+        dest: i.dest,
+        kind: i.kind,
+        title: i.title,
+        avatar: i.avatar,
+        last_body: i.last_body,
+        last_sender: i.last_sender,
+        last_message_id: i.last_message_id,
+        last_send_time: i.last_send_time,
+        unread: i.unread,
+        last_read_message_id: read.last_read_message_id,
+        max_message_id: if read.max_message_id > 0 {
+            read.max_message_id
+        } else {
+            i.last_message_id
+        },
+        state_version: read.version,
+    }
 }
 
 pub fn encode_history(seq: u32, dest: &str, kind: i32, before_id: i64, limit: i32) -> Bytes {
@@ -498,6 +537,56 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
             message_id: push.message_id,
         });
     }
+    if p.header.flag == Flag::Push as i32 && p.header.command == CMD_INBOX_READ_SYNC {
+        let push: ConversationReadSyncPush = p.read_body()?;
+        let state = push
+            .state
+            .map(ConversationReadState::from_proto)
+            .unwrap_or_default();
+        return Ok(Event::ConversationReadSync {
+            account: push.account,
+            state,
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_INBOX_READ {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        if p.body.is_empty() {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let proto: PbConversationReadState = p.read_body()?;
+        return Ok(Event::ConversationRead {
+            sequence: p.header.sequence,
+            state: ConversationReadState::from_proto(proto),
+        });
+    }
+    if p.header.flag == Flag::Response as i32 && p.header.command == CMD_INBOX_STATES {
+        if p.header.status != Status::Success as i32 {
+            return Ok(Event::Status {
+                command: p.header.command,
+                status: p.header.status,
+                sequence: p.header.sequence,
+            });
+        }
+        let resp: ConversationStatesResp = p.read_body()?;
+        return Ok(Event::ConversationStates {
+            sequence: p.header.sequence,
+            states: resp
+                .states
+                .into_iter()
+                .map(ConversationReadState::from_proto)
+                .collect(),
+        });
+    }
     if p.header.flag == Flag::Response as i32 && p.header.command == CMD_ROOM_ENTER {
         if p.header.status != Status::Success as i32 {
             return Ok(Event::Status {
@@ -675,21 +764,7 @@ fn decode_logic(p: LogicPkt, me: &str) -> Result<Event, ClientError> {
         let resp: InboxResp = p.read_body()?;
         return Ok(Event::Inbox {
             sequence: p.header.sequence,
-            items: resp
-                .items
-                .into_iter()
-                .map(|i| InboxItem {
-                    dest: i.dest,
-                    kind: i.kind,
-                    title: i.title,
-                    avatar: i.avatar,
-                    last_body: i.last_body,
-                    last_sender: i.last_sender,
-                    last_message_id: i.last_message_id,
-                    last_send_time: i.last_send_time,
-                    unread: i.unread,
-                })
-                .collect(),
+            items: resp.items.into_iter().map(inbox_item_from_proto).collect(),
         });
     }
     if p.header.flag == Flag::Response as i32 && p.header.command == CMD_HISTORY {

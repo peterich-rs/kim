@@ -584,6 +584,7 @@ mod tests {
             "/api/v1/inbox",
             "/api/v1/history",
             "/api/v1/inbox/read",
+            "/api/v1/inbox/states",
             "/api/v1/agent/spec/sync",
             "/api/v1/agent/spec/upsert",
         ];

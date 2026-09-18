@@ -34,6 +34,8 @@ void main() {
       ),
     );
     await Future<void>.delayed(Duration.zero);
+    final sub = env.container.listen(chatSessionProvider('G1'), (_, _) {});
+    addTearDown(sub.close);
     final ok = await env.container
         .read(chatSessionProvider('G1').notifier)
         .sendText('hi');
@@ -67,6 +69,8 @@ void main() {
       ),
     );
     await Future<void>.delayed(Duration.zero);
+    final sub = env.container.listen(chatSessionProvider('bob'), (_, _) {});
+    addTearDown(sub.close);
     final ok = await env.container
         .read(chatSessionProvider('bob').notifier)
         .sendText('hi');

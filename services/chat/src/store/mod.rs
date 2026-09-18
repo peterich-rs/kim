@@ -274,6 +274,69 @@ pub struct InboxEntry {
     pub last_sender: String,
     pub last_msg_type: i32,
     pub unread: i32,
+    pub last_read_message_id: i64,
+    pub max_message_id: i64,
+    pub state_version: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConversationStateKey {
+    pub dest: String,
+    pub kind: MessageKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConversationReadState {
+    pub dest: String,
+    pub kind: MessageKind,
+    pub last_read_message_id: i64,
+    pub max_message_id: i64,
+    pub unread: i32,
+    pub version: u64,
+    pub exists: bool,
+}
+
+impl ConversationReadState {
+    pub fn missing(dest: &str, kind: MessageKind) -> Self {
+        Self {
+            dest: dest.to_string(),
+            kind,
+            last_read_message_id: 0,
+            max_message_id: 0,
+            unread: 0,
+            version: 0,
+            exists: false,
+        }
+    }
+
+    pub fn to_proto(&self) -> kim_protocol::pkt::ConversationReadState {
+        kim_protocol::pkt::ConversationReadState {
+            dest: self.dest.clone(),
+            kind: match self.kind {
+                MessageKind::User => kim_protocol::INBOX_KIND_USER,
+                MessageKind::Group => kim_protocol::INBOX_KIND_GROUP,
+            },
+            last_read_message_id: self.last_read_message_id,
+            max_message_id: self.max_message_id,
+            unread: self.unread,
+            version: self.version,
+            exists: self.exists,
+        }
+    }
+}
+
+impl InboxEntry {
+    pub fn read_state(&self) -> ConversationReadState {
+        ConversationReadState {
+            dest: self.dest.clone(),
+            kind: self.kind,
+            last_read_message_id: self.last_read_message_id,
+            max_message_id: self.max_message_id.max(self.last_message_id),
+            unread: self.unread,
+            version: self.state_version,
+            exists: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -371,7 +434,16 @@ pub trait MessageStore: Send + Sync {
         dest: &str,
         kind: MessageKind,
         message_id: i64,
-    ) -> Result<(), StoreError>;
+    ) -> Result<ConversationReadState, StoreError>;
+    async fn conversation_states(
+        &self,
+        app: &str,
+        account: &str,
+        keys: &[ConversationStateKey],
+    ) -> Result<Vec<ConversationReadState>, StoreError> {
+        let _ = (app, account, keys);
+        Ok(Vec::new())
+    }
     async fn insert_bot_reply(
         &self,
         app: &str,
@@ -483,6 +555,9 @@ struct Inner {
     idempotency: HashMap<(String, String, String), (i64, i64)>,
     /// (app, account, peer, group_id) -> last_read_id
     reads: HashMap<(String, String, String, String), i64>,
+    /// (app, account, dest, kind) -> state_version
+    state_versions: HashMap<(String, String, String, i16), u64>,
+    next_version: u64,
     pending: HashMap<(String, String, String, i64), PendingEntry>,
     /// (app, bot_account, in_reply_to) -> reply_message_id
     bot_turns: HashMap<(String, String, i64), i64>,
@@ -499,7 +574,99 @@ impl Inner {
             .or_default()
             .entry(row.account_a.clone())
             .or_default()
-            .push(row);
+            .push(row.clone());
+        let (dest, kind) = if row.group_id.is_empty() {
+            (row.account_b.as_str(), 0i16)
+        } else {
+            (row.group_id.as_str(), 1i16)
+        };
+        self.bump_version(&row.app, &row.account_a, dest, kind);
+    }
+
+    fn bump_version(&mut self, app: &str, account: &str, dest: &str, kind: i16) -> u64 {
+        self.next_version = self.next_version.saturating_add(1);
+        let version = self.next_version;
+        self.state_versions.insert(
+            (app.to_string(), account.to_string(), dest.to_string(), kind),
+            version,
+        );
+        version
+    }
+
+    fn read_key(
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+    ) -> (String, String, String, String) {
+        match kind {
+            MessageKind::User => (
+                app.to_string(),
+                account.to_string(),
+                dest.to_string(),
+                String::new(),
+            ),
+            MessageKind::Group => (
+                app.to_string(),
+                account.to_string(),
+                String::new(),
+                dest.to_string(),
+            ),
+        }
+    }
+
+    fn conversation_state(
+        &self,
+        app: &str,
+        account: &str,
+        dest: &str,
+        kind: MessageKind,
+    ) -> ConversationReadState {
+        let last_read = self
+            .reads
+            .get(&Self::read_key(app, account, dest, kind))
+            .copied()
+            .unwrap_or(0);
+        let mut max_message_id = 0i64;
+        let mut unread = 0i32;
+        let mut exists = false;
+        for row in self.account_rows(app, account) {
+            let dest_ok = match kind {
+                MessageKind::User => row.group_id.is_empty() && row.account_b == dest,
+                MessageKind::Group => row.group_id == dest,
+            };
+            if !dest_ok {
+                continue;
+            }
+            exists = true;
+            max_message_id = max_message_id.max(row.message_id);
+            if row.direction == DIRECTION_RECV && row.message_id > last_read {
+                unread = unread.saturating_add(1);
+            }
+        }
+        let kind_i = match kind {
+            MessageKind::User => 0i16,
+            MessageKind::Group => 1i16,
+        };
+        let version = self
+            .state_versions
+            .get(&(
+                app.to_string(),
+                account.to_string(),
+                dest.to_string(),
+                kind_i,
+            ))
+            .copied()
+            .unwrap_or(0);
+        ConversationReadState {
+            dest: dest.to_string(),
+            kind,
+            last_read_message_id: last_read,
+            max_message_id,
+            unread,
+            version,
+            exists,
+        }
     }
 
     fn account_rows(&self, app: &str, account: &str) -> &[InboxRow] {
@@ -1095,6 +1262,15 @@ impl MessageStore for MemoryMessageStore {
             let unread_inc =
                 i32::from(row.direction == DIRECTION_RECV && row.message_id > last_read);
             let content = inner.contents.get(&row.message_id);
+            let kind_i = match kind {
+                MessageKind::User => 0i16,
+                MessageKind::Group => 1i16,
+            };
+            let version = inner
+                .state_versions
+                .get(&(app.to_string(), account.to_string(), dest.clone(), kind_i))
+                .copied()
+                .unwrap_or(0);
             let entry = latest
                 .entry((kind, dest.clone()))
                 .or_insert_with(|| InboxEntry {
@@ -1106,8 +1282,14 @@ impl MessageStore for MemoryMessageStore {
                     last_sender: String::new(),
                     last_msg_type: 0,
                     unread: 0,
+                    last_read_message_id: last_read,
+                    max_message_id: 0,
+                    state_version: version,
                 });
             entry.unread = entry.unread.saturating_add(unread_inc);
+            entry.max_message_id = entry.max_message_id.max(row.message_id);
+            entry.last_read_message_id = last_read;
+            entry.state_version = version;
             let newer = row.send_time > entry.last_send_time
                 || (row.send_time == entry.last_send_time
                     && row.message_id > entry.last_message_id);
@@ -1180,26 +1362,37 @@ impl MessageStore for MemoryMessageStore {
         dest: &str,
         kind: MessageKind,
         message_id: i64,
-    ) -> Result<(), StoreError> {
-        if dest.is_empty() || message_id <= 0 {
-            return Ok(());
+    ) -> Result<ConversationReadState, StoreError> {
+        if dest.is_empty() {
+            return Ok(ConversationReadState::missing(dest, kind));
         }
-        let (peer, group_id) = match kind {
-            MessageKind::User => (dest, ""),
-            MessageKind::Group => ("", dest),
-        };
-        let key = (
-            app.to_string(),
-            account.to_string(),
-            peer.to_string(),
-            group_id.to_string(),
-        );
         let mut inner = self.write();
-        let slot = inner.reads.entry(key).or_insert(0);
-        if message_id > *slot {
-            *slot = message_id;
+        if message_id > 0 {
+            let key = Inner::read_key(app, account, dest, kind);
+            let slot = inner.reads.entry(key).or_insert(0);
+            if message_id > *slot {
+                *slot = message_id;
+            }
+            let kind_i = match kind {
+                MessageKind::User => 0i16,
+                MessageKind::Group => 1i16,
+            };
+            inner.bump_version(app, account, dest, kind_i);
         }
-        Ok(())
+        Ok(inner.conversation_state(app, account, dest, kind))
+    }
+
+    async fn conversation_states(
+        &self,
+        app: &str,
+        account: &str,
+        keys: &[ConversationStateKey],
+    ) -> Result<Vec<ConversationReadState>, StoreError> {
+        let inner = self.read();
+        Ok(keys
+            .iter()
+            .map(|k| inner.conversation_state(app, account, &k.dest, k.kind))
+            .collect())
     }
 
     async fn insert_bot_reply(
@@ -1415,6 +1608,11 @@ impl MessageStore for MemoryMessageStore {
             !(a == app
                 && gid.is_empty()
                 && ((acct == account && p == peer) || (acct == peer && p == account)))
+        });
+        inner.state_versions.retain(|(a, acct, dest, kind), _| {
+            !(a == app
+                && *kind == 0
+                && ((acct == account && dest == peer) || (acct == peer && dest == account)))
         });
         inner
             .bot_turns

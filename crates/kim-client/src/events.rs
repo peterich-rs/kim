@@ -65,7 +65,7 @@ impl Profile {
 }
 
 /// Inbox row from `chat.inbox.list` (`InboxItem` proto fields).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct InboxItem {
     pub dest: String,
     pub kind: i32,
@@ -76,6 +76,46 @@ pub struct InboxItem {
     pub last_message_id: i64,
     pub last_send_time: i64,
     pub unread: i32,
+    pub last_read_message_id: i64,
+    pub max_message_id: i64,
+    pub state_version: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ConversationReadState {
+    pub dest: String,
+    pub kind: i32,
+    pub last_read_message_id: i64,
+    pub max_message_id: i64,
+    pub unread: i32,
+    pub version: u64,
+    pub exists: bool,
+}
+
+impl ConversationReadState {
+    pub fn from_proto(p: kim_protocol::pkt::ConversationReadState) -> Self {
+        Self {
+            dest: p.dest,
+            kind: p.kind,
+            last_read_message_id: p.last_read_message_id,
+            max_message_id: p.max_message_id,
+            unread: p.unread,
+            version: p.version,
+            exists: p.exists,
+        }
+    }
+
+    pub fn from_inbox_item(item: &InboxItem) -> Self {
+        Self {
+            dest: item.dest.clone(),
+            kind: item.kind,
+            last_read_message_id: item.last_read_message_id,
+            max_message_id: item.max_message_id.max(item.last_message_id),
+            unread: item.unread,
+            version: item.state_version,
+            exists: true,
+        }
+    }
 }
 
 /// History row from `chat.history`.
@@ -171,6 +211,21 @@ pub enum Event {
         dest: String,
         kind: i32,
         message_id: i64,
+    },
+    /// Response `chat.inbox.read` with authoritative state (empty on old servers).
+    ConversationRead {
+        sequence: u32,
+        state: ConversationReadState,
+    },
+    /// Response `chat.inbox.states`.
+    ConversationStates {
+        sequence: u32,
+        states: Vec<ConversationReadState>,
+    },
+    /// Push `chat.inbox.read.sync` — self-account read watermark.
+    ConversationReadSync {
+        account: String,
+        state: ConversationReadState,
     },
     /// Response `chat.room.enter` snapshot.
     RoomEnter {

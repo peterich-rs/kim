@@ -20,6 +20,7 @@ import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
 import 'package:kim_mobile/features/session/typing.dart';
+import 'package:kim_mobile/features/chats/conversation_visibility.dart';
 
 final linkProvider = NotifierProvider<LinkNotifier, KimLinkState>(
   LinkNotifier.new,
@@ -67,6 +68,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     }
     _radioWasUp = radio;
     _listenEvents();
+    ref.watch(conversationVisibilityProvider);
     final mapped = kimLinkFromDto(snap.link, snap.lastError);
     if (mapped.status == ConnStatus.online) {
       _askNotifications();

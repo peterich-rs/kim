@@ -115,6 +115,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> loadOlder({required String dest});
 
+  Future<void> markConversationRead({required String dest, required int kind});
+
   Future<void> markRead({
     required String dest,
     required int kind,
@@ -170,6 +172,13 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   });
 
   Future<void> setAgentFlags({required String flagsJson});
+
+  Future<void> setConversationVisibility({
+    required BigInt generation,
+    required bool foreground,
+    required String dest,
+    required int kind,
+  });
 
   Future<SettingsDto> settingsGet();
 

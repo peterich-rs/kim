@@ -35,6 +35,9 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     tx.execute(schema::IDX_MESSAGES_PENDING)
         .await
         .map_err(map_sqlx)?;
+    tx.execute(schema::CREATE_CONVERSATION_READ_STATE)
+        .await
+        .map_err(map_sqlx)?;
 
     let version = schema_version(tx).await?;
     if version < 1 {
@@ -64,6 +67,10 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     if version < 7 {
         migrate_v7(tx).await?;
         set_schema_version(tx, 7).await?;
+    }
+    if version < 8 {
+        migrate_v8(tx).await?;
+        set_schema_version(tx, 8).await?;
     }
     Ok(())
 }
@@ -157,6 +164,45 @@ async fn migrate_v7(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         "INTEGER NOT NULL DEFAULT 0",
     )
     .await?;
+    Ok(())
+}
+
+async fn migrate_v8(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_READ_WATERMARKS)
+        .await
+        .map_err(map_sqlx)?;
+    ensure_column(tx, "read_watermarks", "kind", "INTEGER NOT NULL DEFAULT 0").await?;
+    ensure_column(
+        tx,
+        "read_watermarks",
+        "confirmed_message_id",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        tx,
+        "read_watermarks",
+        "retry_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        tx,
+        "read_watermarks",
+        "next_retry_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        tx,
+        "read_watermarks",
+        "last_error",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    .await?;
+    tx.execute(schema::CREATE_CONVERSATION_READ_STATE)
+        .await
+        .map_err(map_sqlx)?;
     Ok(())
 }
 

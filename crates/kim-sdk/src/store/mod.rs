@@ -103,6 +103,36 @@ enum WriteOp {
         message_id: i64,
         reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
+    MarkThreadRead {
+        epoch: u64,
+        account: String,
+        dest: String,
+        kind: i32,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    SetVisibility {
+        epoch: u64,
+        generation: u64,
+        foreground: bool,
+        dest: Option<String>,
+        kind: i32,
+        account: String,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    ConfirmRead {
+        epoch: u64,
+        account: String,
+        dest: String,
+        confirmed_id: i64,
+        server: Option<kim_client::ConversationReadState>,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
+    ApplyReadState {
+        epoch: u64,
+        account: String,
+        state: kim_client::ConversationReadState,
+        reply: oneshot::Sender<Result<((), u64), SdkError>>,
+    },
     DueNow {
         epoch: u64,
         account: String,
@@ -531,6 +561,113 @@ impl Store {
         })?
     }
 
+    pub(crate) async fn mark_thread_read_local(
+        &self,
+        epoch: u64,
+        account: String,
+        dest: String,
+        kind: i32,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::MarkThreadRead {
+                epoch,
+                account,
+                dest,
+                kind,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn set_visibility(
+        &self,
+        epoch: u64,
+        account: String,
+        generation: u64,
+        foreground: bool,
+        dest: Option<String>,
+        kind: i32,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::SetVisibility {
+                epoch,
+                generation,
+                foreground,
+                dest,
+                kind,
+                account,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn confirm_read(
+        &self,
+        epoch: u64,
+        account: String,
+        dest: String,
+        confirmed_id: i64,
+        server: Option<kim_client::ConversationReadState>,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::ConfirmRead {
+                epoch,
+                account,
+                dest,
+                confirmed_id,
+                server,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn apply_read_state(
+        &self,
+        epoch: u64,
+        account: String,
+        state: kim_client::ConversationReadState,
+    ) -> Result<((), u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::ApplyReadState {
+                epoch,
+                account,
+                state,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn due_reads(
+        &self,
+        account: &str,
+    ) -> Result<Vec<watermarks::DueRead>, SdkError> {
+        watermarks::due(&self.pool, account, now_ms()).await
+    }
+
     pub(crate) async fn due_now(&self, epoch: u64, account: String) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
@@ -931,12 +1068,32 @@ impl Store {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct ActiveVisibility {
+    epoch: u64,
+    generation: u64,
+    foreground: bool,
+    dest: Option<String>,
+    kind: i32,
+}
+
+impl ActiveVisibility {
+    fn active_dest(&self, current_epoch: u64) -> Option<String> {
+        if self.epoch == current_epoch && self.foreground {
+            self.dest.clone()
+        } else {
+            None
+        }
+    }
+}
+
 async fn write_worker(
     pool: SqlitePool,
     epoch: Arc<AtomicU64>,
     changes: Arc<ChangeLog>,
     mut rx: mpsc::Receiver<WriteOp>,
 ) {
+    let mut visibility = ActiveVisibility::default();
     while let Some(op) = rx.recv().await {
         match op {
             WriteOp::Enqueue {
@@ -964,13 +1121,14 @@ async fn write_worker(
                 reply,
             } => {
                 let current = epoch.load(Ordering::SeqCst);
+                let active = visibility.active_dest(current);
                 let result = if op_epoch != current {
                     Err(SdkError::StaleEpoch {
                         expected: op_epoch,
                         actual: current,
                     })
                 } else {
-                    persist_talks_tx(&pool, &account, &talks, policy).await
+                    persist_talks_tx(&pool, &account, &talks, policy, active.as_deref()).await
                 };
                 let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
@@ -1111,6 +1269,91 @@ async fn write_worker(
                     })
                 } else {
                     mark_read_tx(&pool, &account, &dest, message_id).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::MarkThreadRead {
+                epoch: op_epoch,
+                account,
+                dest,
+                kind,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    mark_thread_read_tx(&pool, &account, &dest, kind).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::SetVisibility {
+                epoch: op_epoch,
+                generation,
+                foreground,
+                dest,
+                kind,
+                account,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else if generation < visibility.generation && visibility.epoch == op_epoch {
+                    Ok(((), CommitEffect::empty()))
+                } else {
+                    visibility.epoch = op_epoch;
+                    visibility.generation = generation;
+                    visibility.foreground = foreground;
+                    visibility.dest = dest.clone();
+                    visibility.kind = kind;
+                    if let Some(active) = visibility.active_dest(current) {
+                        mark_thread_read_tx(&pool, &account, &active, kind).await
+                    } else {
+                        Ok(((), CommitEffect::empty()))
+                    }
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::ConfirmRead {
+                epoch: op_epoch,
+                account,
+                dest,
+                confirmed_id,
+                server,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    confirm_read_tx(&pool, &account, &dest, confirmed_id, server.as_ref()).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::ApplyReadState {
+                epoch: op_epoch,
+                account,
+                state,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    apply_read_state_tx(&pool, &account, &state).await
                 };
                 let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
@@ -1695,6 +1938,9 @@ async fn mark_read_tx(
     dest: &str,
     message_id: i64,
 ) -> Result<((), CommitEffect), SdkError> {
+    if message_id <= 0 {
+        return Ok(((), CommitEffect::empty()));
+    }
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -1704,6 +1950,71 @@ async fn mark_read_tx(
         }
         watermarks::advance(&mut conn, account, dest, message_id, now_ms()).await?;
         Ok(timeline_and_inbox(dest))
+    }
+    .await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|effect| ((), effect))
+}
+
+async fn mark_thread_read_tx(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    kind: i32,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        let tip = watermarks::known_tip(&mut conn, account, dest).await?;
+        if tip <= 0 {
+            return Ok(CommitEffect::empty());
+        }
+        let now = now_ms();
+        let watermark = watermarks::advance_id(&mut conn, account, dest, kind, tip, now).await?;
+        watermarks::queue_sync(&mut conn, account, dest, kind, watermark, now).await?;
+        watermarks::set_unread(&mut conn, account, dest, 0).await?;
+        Ok(timeline_and_inbox(dest))
+    }
+    .await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|effect| ((), effect))
+}
+
+async fn confirm_read_tx(
+    pool: &SqlitePool,
+    account: &str,
+    dest: &str,
+    confirmed_id: i64,
+    server: Option<&kim_client::ConversationReadState>,
+) -> Result<((), CommitEffect), SdkError> {
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        watermarks::confirm(&mut conn, account, dest, confirmed_id, server).await?;
+        Ok(timeline_and_inbox(dest))
+    }
+    .await;
+    finish_conn(&mut conn, result)
+        .await
+        .map(|effect| ((), effect))
+}
+
+async fn apply_read_state_tx(
+    pool: &SqlitePool,
+    account: &str,
+    state: &kim_client::ConversationReadState,
+) -> Result<((), CommitEffect), SdkError> {
+    let dest = state.dest.clone();
+    if dest.is_empty() {
+        return Ok(((), CommitEffect::empty()));
+    }
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        watermarks::apply_server_state(&mut conn, account, &dest, state, false).await?;
+        Ok(timeline_and_inbox(&dest))
     }
     .await;
     finish_conn(&mut conn, result)
@@ -1879,6 +2190,7 @@ async fn persist_talks_tx(
     account: &str,
     talks: &[kim_client::IncomingTalk],
     policy: UnreadPolicy,
+    active_dest: Option<&str>,
 ) -> Result<((), CommitEffect), SdkError> {
     if talks.is_empty() {
         return Ok(((), CommitEffect::empty()));
@@ -1888,18 +2200,62 @@ async fn persist_talks_tx(
     let result = async {
         let mut dests = Vec::new();
         for talk in talks {
-            if let Some(out) = messages::apply_talk(&mut conn, account, talk, policy).await? {
-                if !out.needs_publish() {
+            if let Some(mut out) = messages::apply_talk(&mut conn, account, talk, policy).await? {
+                let last_read = watermarks::effective_read(&mut conn, account, &out.dest).await?;
+                let active = active_dest == Some(out.dest.as_str());
+                if active
+                    || (out.unread_delta == 1
+                        && out.msg.message_id > 0
+                        && out.msg.message_id <= last_read)
+                {
+                    out.unread_delta = 0;
+                }
+                if out.msg.message_id > 0 {
+                    watermarks::bump_known_max(
+                        &mut conn,
+                        account,
+                        &out.dest,
+                        out.msg.thread_kind,
+                        out.msg.message_id,
+                    )
+                    .await?;
+                }
+                if active && out.msg.message_id > 0 {
+                    let now = now_ms();
+                    let watermark = watermarks::advance_id(
+                        &mut conn,
+                        account,
+                        &out.dest,
+                        out.msg.thread_kind,
+                        out.msg.message_id,
+                        now,
+                    )
+                    .await?;
+                    watermarks::queue_sync(
+                        &mut conn,
+                        account,
+                        &out.dest,
+                        out.msg.thread_kind,
+                        watermark,
+                        now,
+                    )
+                    .await?;
+                    watermarks::set_unread(&mut conn, account, &out.dest, 0).await?;
+                }
+                if !out.needs_publish() && !active {
                     continue;
                 }
                 threads::apply_incoming(
                     &mut conn,
                     account,
-                    &out.dest,
-                    &out.msg.body,
-                    out.msg.at,
-                    out.unread_delta,
-                    out.msg.thread_kind,
+                    threads::IncomingApply {
+                        dest: &out.dest,
+                        last_body: &out.msg.body,
+                        last_at: out.msg.at,
+                        unread_delta: out.unread_delta,
+                        thread_kind: out.msg.thread_kind,
+                        last_message_id: out.msg.message_id,
+                    },
                 )
                 .await?;
                 dests.push(out.dest);
@@ -1932,6 +2288,11 @@ async fn persist_inbox_tx(
     let result = async {
         let mut views = Vec::with_capacity(items.len());
         for item in items {
+            if item.last_read_message_id > 0 || item.state_version > 0 {
+                let state = kim_client::ConversationReadState::from_inbox_item(item);
+                watermarks::apply_server_state(&mut conn, account, &item.dest, &state, false)
+                    .await?;
+            }
             let t = threads::persist_inbox_item(&mut conn, account, item).await?;
             views.push(ThreadView {
                 id: t.id,

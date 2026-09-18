@@ -344,12 +344,16 @@ pub(crate) async fn delete_thread(
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
-    sqlx::query("DELETE FROM read_watermarks WHERE account = ? AND dest = ?")
-        .bind(account)
-        .bind(dest)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
+    sqlx::query(
+        "DELETE FROM read_watermarks
+          WHERE account = ? AND dest = ?
+            AND last_read_message_id <= confirmed_message_id",
+    )
+    .bind(account)
+    .bind(dest)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
     sqlx::query("DELETE FROM timeline_meta WHERE account = ? AND dest = ?")
         .bind(account)
         .bind(dest)

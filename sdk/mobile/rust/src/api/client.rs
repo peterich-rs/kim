@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use kim_client::{BotPendingItem, SessionSupervisor, TalkResult};
-use kim_sdk::{KimSdk, MediaRef, OutgoingPayload, ReadMarker, SendMessageCommand, StartSession};
+use kim_sdk::{
+    ConversationKey, ConversationVisibility, KimSdk, MediaRef, OutgoingPayload, ReadMarker,
+    SendMessageCommand, StartSession,
+};
 
 use super::rt;
 use super::types::{
@@ -472,11 +475,46 @@ impl KimUiHandle {
         kind: i32,
         message_id: i64,
     ) -> Result<(), SdkErrorDto> {
+        if message_id <= 0 {
+            return self
+                .inner
+                .mark_thread_read(dest, kind)
+                .await
+                .map_err(SdkErrorDto::from);
+        }
         self.inner
             .mark_read(ReadMarker {
                 dest,
                 kind,
                 visible_message_id: message_id,
+            })
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn mark_conversation_read(&self, dest: String, kind: i32) -> Result<(), SdkErrorDto> {
+        self.inner
+            .mark_thread_read(dest, kind)
+            .await
+            .map_err(SdkErrorDto::from)
+    }
+
+    pub async fn set_conversation_visibility(
+        &self,
+        generation: u64,
+        foreground: bool,
+        dest: String,
+        kind: i32,
+    ) -> Result<(), SdkErrorDto> {
+        self.inner
+            .set_conversation_visibility(ConversationVisibility {
+                generation,
+                foreground,
+                conversation: if dest.is_empty() {
+                    None
+                } else {
+                    Some(ConversationKey { dest, kind })
+                },
             })
             .await
             .map_err(SdkErrorDto::from)

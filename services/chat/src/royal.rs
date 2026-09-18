@@ -8,9 +8,10 @@ use async_trait::async_trait;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, AgentSpecSyncResp,
     AgentSpecUpsertResp, BotCreateResp, BotPendingQuery, BotPendingResp, BotReplyStoreReq,
-    ConversationRead, DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget, GroupCreateResp,
-    GroupDetail, GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery, HistoryResp,
-    InboxQuery, InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp,
+    ConversationRead, ConversationStateKey as PbConversationStateKey, ConversationStatesQuery,
+    ConversationStatesResp, DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget,
+    GroupCreateResp, GroupDetail, GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery,
+    HistoryResp, InboxQuery, InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp,
     InternalAgentSpecQuery, InternalAgentSpecUpsert, InternalBotConfig, InternalBotCreate,
     InternalBotUpdate, InternalGroupCreate, InternalGroupMember, InternalGroupQuery,
     MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq,
@@ -29,8 +30,9 @@ use crate::inbox::parse_kind;
 use crate::royal_pool::RoyalPool;
 use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
 use crate::store::{
-    BotPendingItem, Fanout, HistoryEntry, InboxEntry, InsertMessage, InsertResult,
-    MessageContentRow, MessageIndexRow, MessageKind, MessageStore, StoreError,
+    BotPendingItem, ConversationReadState, ConversationStateKey, Fanout, HistoryEntry, InboxEntry,
+    InsertMessage, InsertResult, MessageContentRow, MessageIndexRow, MessageKind, MessageStore,
+    StoreError,
 };
 use crate::users::{
     BotConfig, BotPatch, BotRecord, CreateBot, ProfilePatch, UserDirectory, UserError,
@@ -474,6 +476,17 @@ impl MessageStore for HttpMessageStore {
                     last_sender: i.last_sender,
                     last_msg_type: 0,
                     unread: i.unread,
+                    last_read_message_id: i
+                        .read_state
+                        .as_ref()
+                        .map(|s| s.last_read_message_id)
+                        .unwrap_or(0),
+                    max_message_id: i
+                        .read_state
+                        .as_ref()
+                        .map(|s| s.max_message_id)
+                        .unwrap_or(i.last_message_id),
+                    state_version: i.read_state.as_ref().map(|s| s.version).unwrap_or(0),
                 })
             })
             .collect())
@@ -524,7 +537,7 @@ impl MessageStore for HttpMessageStore {
         dest: &str,
         kind: MessageKind,
         message_id: i64,
-    ) -> Result<(), StoreError> {
+    ) -> Result<ConversationReadState, StoreError> {
         let body = ConversationRead {
             account: account.to_string(),
             dest: dest.to_string(),
@@ -534,9 +547,61 @@ impl MessageStore for HttpMessageStore {
             },
             message_id,
         };
-        self.pool
-            .post_maybe_empty("/api/v1/inbox/read", &body)
-            .await
+        let proto: kim_protocol::pkt::ConversationReadState = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/inbox/read", Some(&body))
+            .await?;
+        Ok(ConversationReadState {
+            dest: if proto.dest.is_empty() {
+                dest.to_string()
+            } else {
+                proto.dest
+            },
+            kind: parse_kind(proto.kind).unwrap_or(kind),
+            last_read_message_id: proto.last_read_message_id,
+            max_message_id: proto.max_message_id,
+            unread: proto.unread,
+            version: proto.version,
+            exists: proto.exists,
+        })
+    }
+
+    async fn conversation_states(
+        &self,
+        _app: &str,
+        account: &str,
+        keys: &[ConversationStateKey],
+    ) -> Result<Vec<ConversationReadState>, StoreError> {
+        let body = ConversationStatesQuery {
+            account: account.to_string(),
+            conversations: keys
+                .iter()
+                .map(|k| PbConversationStateKey {
+                    dest: k.dest.clone(),
+                    kind: match k.kind {
+                        MessageKind::User => 0,
+                        MessageKind::Group => 1,
+                    },
+                })
+                .collect(),
+        };
+        let resp: ConversationStatesResp = self
+            .pool
+            .send_pb(reqwest::Method::POST, "/api/v1/inbox/states", Some(&body))
+            .await?;
+        Ok(resp
+            .states
+            .into_iter()
+            .map(|proto| ConversationReadState {
+                dest: proto.dest,
+                kind: parse_kind(proto.kind).unwrap_or(MessageKind::User),
+                last_read_message_id: proto.last_read_message_id,
+                max_message_id: proto.max_message_id,
+                unread: proto.unread,
+                version: proto.version,
+                exists: proto.exists,
+            })
+            .collect())
     }
 
     async fn insert_bot_reply(

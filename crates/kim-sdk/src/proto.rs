@@ -19,6 +19,22 @@ pub trait ProtocolClient: Send + Sync {
     async fn ack(&self, message_id: i64) -> Result<(), SdkError>;
     async fn ack_batch(&self, ids: &[i64]) -> Result<(), SdkError>;
     async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError>;
+    async fn mark_read_state(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<Option<kim_client::ConversationReadState>, SdkError> {
+        self.mark_read(dest, kind, message_id).await?;
+        Ok(None)
+    }
+    async fn conversation_states(
+        &self,
+        conversations: &[(String, i32)],
+    ) -> Result<Vec<kim_client::ConversationReadState>, SdkError> {
+        let _ = conversations;
+        Ok(Vec::new())
+    }
     async fn history(
         &self,
         dest: &str,
@@ -132,6 +148,26 @@ impl ProtocolClient for KimClient {
             .map_err(|e| map_client(e, dest))
     }
 
+    async fn mark_read_state(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<Option<kim_client::ConversationReadState>, SdkError> {
+        KimClient::mark_read_state(self, dest, kind, message_id)
+            .await
+            .map_err(|e| map_client(e, dest))
+    }
+
+    async fn conversation_states(
+        &self,
+        conversations: &[(String, i32)],
+    ) -> Result<Vec<kim_client::ConversationReadState>, SdkError> {
+        KimClient::conversation_states(self, conversations)
+            .await
+            .map_err(|e| map_client(e, ""))
+    }
+
     async fn history(
         &self,
         dest: &str,
@@ -231,6 +267,22 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
 
     async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError> {
         ProtocolClient::mark_read(&**self, dest, kind, message_id).await
+    }
+
+    async fn mark_read_state(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<Option<kim_client::ConversationReadState>, SdkError> {
+        ProtocolClient::mark_read_state(&**self, dest, kind, message_id).await
+    }
+
+    async fn conversation_states(
+        &self,
+        conversations: &[(String, i32)],
+    ) -> Result<Vec<kim_client::ConversationReadState>, SdkError> {
+        ProtocolClient::conversation_states(&**self, conversations).await
     }
 
     async fn history(
