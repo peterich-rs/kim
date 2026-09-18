@@ -11,7 +11,6 @@ import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshotDto;
-import 'package:kim_mobile/src/rust_agent/api/session.dart';
 
 import '../support/harness.dart';
 
