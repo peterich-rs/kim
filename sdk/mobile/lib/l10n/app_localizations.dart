@@ -1034,6 +1034,18 @@ abstract class AppLocalizations {
   /// **'无法保存 Agent 设置'**
   String get agentSaveFailed;
 
+  /// No description provided for @agentHostNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机助手还没准备好'**
+  String get agentHostNotReady;
+
+  /// No description provided for @agentRunFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'助手这次没有给出回复'**
+  String get agentRunFailed;
+
   /// No description provided for @agentKeyMissing.
   ///
   /// In zh, this message translates to:

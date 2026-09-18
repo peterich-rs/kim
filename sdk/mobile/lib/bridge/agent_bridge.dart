@@ -10,7 +10,9 @@ import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace.dart';
+import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/settings.dart';
@@ -18,11 +20,13 @@ import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 class AgentRunLoop {
-  AgentRunLoop(this.client, this.goose, {this.sink});
+  AgentRunLoop(this.client, this.goose, {this.sink, WorkspaceAccess? access})
+    : access = access ?? workspaceAccess;
 
   final KimClientPort client;
   final AgentBridge goose;
   final AgentRunSink? sink;
+  final WorkspaceAccess access;
 
   /// Tests inject a prompt stub. Production uses [rust_agent] `prompt`.
   Future<String> Function(AgentRunRequestDto req)? promptOverride;
@@ -61,9 +65,11 @@ class AgentRunLoop {
           break;
         }
         try {
+          sink?.begin(req.dest);
           final output = promptOverride != null
               ? await promptOverride!(req)
               : await _promptGoose(req);
+          sink?.finish(req.dest, failed: false);
           await client.submitAgentRun(
             AgentRunResultDto(
               dest: req.dest,
@@ -81,7 +87,7 @@ class AgentRunLoop {
               profileId: req.profileId,
               epoch: req.epoch,
               output: '',
-              error: e.toString(),
+              error: _runErrorText(e),
             ),
           );
         }
@@ -112,7 +118,7 @@ class AgentRunLoop {
   Future<String> _promptGoose(AgentRunRequestDto req) async {
     await goose.ensure();
     if (!goose.isReady) {
-      return '';
+      throw StateError(Copy.agentHostNotReady);
     }
     final rows = await client.listAgentProfiles();
     AgentProfileDto? row;
@@ -147,6 +153,10 @@ class AgentRunLoop {
         ),
       );
     }
+    final skillPaths = await skillHostPaths(
+      access: access,
+      overlay: overlay?.userAgentsSkills ?? '',
+    );
     final accounts = await client.listProviderAccounts();
     ProviderAccountDto? accountRow;
     for (final a in accounts) {
@@ -185,7 +195,12 @@ class AgentRunLoop {
         enableFsTools: profile.tools.fs,
         bashEnabled: profile.tools.bash,
         profileId: profile.id,
-        profileJson: jsonEncode(profile.toHostJson(account)),
+        profileJson: jsonEncode(
+          profile.toHostJson(
+            account,
+            userAgentsSkills: skillPaths.userAgentsSkills,
+          ),
+        ),
         thinkingEffort: profile.thinkingEffort,
         gooseMode: profile.mode,
         enableKimTools: false,
@@ -193,19 +208,17 @@ class AgentRunLoop {
         sessionId: '${req.dest}:${req.profileId}',
       ),
     );
-    sink?.begin(req.dest);
     await session.prompt(text: req.text);
     await for (final ev in session.listen()) {
       if (ev.kind == 'assistant_finished') {
-        sink?.finish(req.dest, failed: false);
         return ev.message;
       }
       if (ev.kind == 'failed') {
-        sink?.finish(req.dest, failed: true);
-        return ev.message;
+        final detail = ev.message.trim();
+        throw StateError(detail.isEmpty ? Copy.agentRunFailed : detail);
       }
     }
-    return '';
+    throw StateError(Copy.agentRunFailed);
   }
 
   Future<String> _readApiKey(
@@ -235,4 +248,11 @@ class AgentRunLoop {
     }
     return '';
   }
+}
+
+String _runErrorText(Object error) {
+  return switch (error) {
+    StateError(:final message) => message,
+    _ => error.toString(),
+  };
 }
