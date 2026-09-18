@@ -2203,11 +2203,10 @@ async fn persist_talks_tx(
             if let Some(mut out) = messages::apply_talk(&mut conn, account, talk, policy).await? {
                 let last_read = watermarks::effective_read(&mut conn, account, &out.dest).await?;
                 let active = active_dest == Some(out.dest.as_str());
-                if active {
-                    out.unread_delta = 0;
-                } else if out.unread_delta == 1
-                    && out.msg.message_id > 0
-                    && out.msg.message_id <= last_read
+                if active
+                    || (out.unread_delta == 1
+                        && out.msg.message_id > 0
+                        && out.msg.message_id <= last_read)
                 {
                     out.unread_delta = 0;
                 }
@@ -2249,12 +2248,14 @@ async fn persist_talks_tx(
                 threads::apply_incoming(
                     &mut conn,
                     account,
-                    &out.dest,
-                    &out.msg.body,
-                    out.msg.at,
-                    out.unread_delta,
-                    out.msg.thread_kind,
-                    out.msg.message_id,
+                    threads::IncomingApply {
+                        dest: &out.dest,
+                        last_body: &out.msg.body,
+                        last_at: out.msg.at,
+                        unread_delta: out.unread_delta,
+                        thread_kind: out.msg.thread_kind,
+                        last_message_id: out.msg.message_id,
+                    },
                 )
                 .await?;
                 dests.push(out.dest);

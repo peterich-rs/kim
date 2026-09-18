@@ -44,32 +44,40 @@ pub(crate) async fn upsert_on_send(
     Ok(())
 }
 
+pub(crate) struct IncomingApply<'a> {
+    pub dest: &'a str,
+    pub last_body: &'a str,
+    pub last_at: i64,
+    pub unread_delta: i32,
+    pub thread_kind: i32,
+    pub last_message_id: i64,
+}
+
 pub(crate) async fn apply_incoming(
     tx: &mut SqliteConnection,
     account: &str,
-    dest: &str,
-    last_body: &str,
-    last_at: i64,
-    unread_delta: i32,
-    thread_kind: i32,
-    last_message_id: i64,
+    incoming: IncomingApply<'_>,
 ) -> Result<StoredThread, SdkError> {
+    let dest = incoming.dest;
     let existing = find(tx, account, dest).await?;
-    let msg_at = last_at;
+    let msg_at = incoming.last_at;
     let last_at = existing
         .as_ref()
         .map(|t| t.last_at.max(msg_at))
         .unwrap_or(msg_at);
     let last_body = if existing.as_ref().is_none_or(|t| msg_at >= t.last_at) {
-        last_body.to_string()
+        incoming.last_body.to_string()
     } else {
         existing
             .as_ref()
             .map(|t| t.last_body.clone())
             .unwrap_or_default()
     };
-    let unread = (existing.as_ref().map(|t| t.unread).unwrap_or(0) + unread_delta).max(0);
-    let kind = existing.as_ref().map(|t| t.kind).unwrap_or(thread_kind);
+    let unread = (existing.as_ref().map(|t| t.unread).unwrap_or(0) + incoming.unread_delta).max(0);
+    let kind = existing
+        .as_ref()
+        .map(|t| t.kind)
+        .unwrap_or(incoming.thread_kind);
     let title = existing
         .as_ref()
         .map(|t| t.title.clone())
@@ -78,6 +86,11 @@ pub(crate) async fn apply_incoming(
         .as_ref()
         .map(|t| t.avatar.clone())
         .unwrap_or_default();
+    let last_message_id = existing
+        .as_ref()
+        .map(|t| t.last_message_id)
+        .unwrap_or(0)
+        .max(incoming.last_message_id);
     upsert_full(
         tx,
         account,
@@ -89,11 +102,7 @@ pub(crate) async fn apply_incoming(
             last_body: last_body.clone(),
             last_at,
             unread,
-            last_message_id: existing
-                .as_ref()
-                .map(|t| t.last_message_id)
-                .unwrap_or(0)
-                .max(last_message_id),
+            last_message_id,
         },
     )
     .await?;
@@ -105,11 +114,7 @@ pub(crate) async fn apply_incoming(
         last_body,
         last_at,
         unread,
-        last_message_id: existing
-            .as_ref()
-            .map(|t| t.last_message_id)
-            .unwrap_or(0)
-            .max(last_message_id),
+        last_message_id,
     })
 }
 

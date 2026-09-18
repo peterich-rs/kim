@@ -17,11 +17,11 @@ void main() {
     env.fake.autoPushEnqueueTimeline = false;
     final msgs = env.container.listen(
       threadMessagesProvider('bob'),
-      (_, __) {},
+      (_, _) {},
     );
     final session = env.container.listen(
       chatSessionProvider('bob'),
-      (_, __) {},
+      (_, _) {},
     );
     addTearDown(msgs.close);
     addTearDown(session.close);

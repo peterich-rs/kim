@@ -16,7 +16,7 @@ void main() {
     );
     final sub = env.container.listen(
       conversationVisibilityProvider,
-      (_, __) {},
+      (_, _) {},
     );
     addTearDown(sub.close);
     env.container.read(locationProvider.notifier).setPath('/chat/bob');
