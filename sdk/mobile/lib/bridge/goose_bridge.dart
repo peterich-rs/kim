@@ -37,6 +37,7 @@ abstract class AgentSessionPort {
   });
   Future<void> close();
   Future<void> abort();
+  Future<void> steer({required String text});
   Future<void> reconfigure({required SessionOpenOpts opts});
   Future<ResumeReportDto> resume();
   SessionSnapshotDto snapshot();
@@ -76,6 +77,9 @@ class NativeAgentSession implements AgentSessionPort {
 
   @override
   Future<void> abort() => _inner.abort();
+
+  @override
+  Future<void> steer({required String text}) => _inner.steer(text: text);
 
   @override
   Future<void> reconfigure({required SessionOpenOpts opts}) =>

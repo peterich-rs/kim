@@ -14,6 +14,7 @@ import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
+import 'package:kim_mobile/features/agent/context_window.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
@@ -1115,6 +1116,7 @@ class AgentProfile {
       mode: 'smart_approve',
       maxTurns: 16,
       thinkingEffort: s.thinkingEffort,
+      contextTokens: defaultContextTokens(s.model),
       reasoning: ReasoningChoice.fromThinkingEffort(s.thinkingEffort),
       capabilities: caps,
       tools: projectToolSet(caps),
@@ -1692,6 +1694,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       keyRef: '',
       accountId: accountId,
       systemPrompt: '',
+      contextTokens: defaultContextTokens(model),
       capabilities: kCreateDefaultCapabilities,
       tools: kCreateDefaultTools,
     );

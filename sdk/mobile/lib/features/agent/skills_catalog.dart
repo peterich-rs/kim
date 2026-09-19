@@ -111,16 +111,10 @@ AgentProfile assignAppSkillToProfile({
   required bool enableMissingTools,
 }) {
   var caps = List<CapabilityRef>.from(profile.resolveCapabilities());
-  var perms = Map<String, String>.from(profile.permissionOverrides);
   if (enableMissingTools) {
     final missing = missingToolsForAppSkill(profile, skill.id);
     if (missing.isNotEmpty) {
       caps = enableRequiredCapabilities(caps, missing);
-      if (missing.contains('bash')) {
-        perms['bash'] = perms['bash'] == 'never_allow'
-            ? 'never_allow'
-            : 'ask_before';
-      }
     }
   }
   final skills = [
@@ -128,9 +122,7 @@ AgentProfile assignAppSkillToProfile({
       if (s.id != skill.id) s,
     appSkillRef(skill),
   ];
-  return profile
-      .withCapabilities(caps)
-      .copyWith(skills: skills, permissionOverrides: perms);
+  return profile.withCapabilities(caps).copyWith(skills: skills);
 }
 
 List<CatalogSkill> parseSkillsJson(String raw) {

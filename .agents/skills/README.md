@@ -4,7 +4,7 @@ Grok loads these from `.agents/skills/` (repo scope). Slash: `/<name>`.
 
 | Skill | Use when |
 |-------|----------|
-| `rust-quality-coding` | Idiomatic Rust design from booklet《Rust 语言从入门到实战》(ownership/traits/errors/async); default judgment when writing Rust |
+| `rust-quality-coding` | 写 Rust 前的设计判断：所有权、类型建模、trait 拆分、std trait、错误/async 边界 |
 | `rust-skills` | Writing or reviewing Rust (265 rules; open `rules/` as needed) |
 | `rust-strict` | Unwrap/unsafe/secret/lock-across-await audit |
 | `rust-async-patterns` | Tokio tasks, channels, `select!`, cancellation |
@@ -61,7 +61,7 @@ Official Dart (`dart-*`) and Flutter (`flutter-*`) skills: slash `/<name>`, e.g.
 
 | Skill | Upstream |
 |-------|----------|
-| `rust-quality-coding` | Local; distilled from Nuggets booklet《Rust 语言从入门到实战》 |
+| `rust-quality-coding` | Local |
 | `rust-skills` | [leonardomso/rust-skills](https://github.com/leonardomso/rust-skills) |
 | `rust-strict`, `postgres-strict`, `github-standards`, `code-review` | [0xMassi/claude-skills](https://github.com/0xMassi/claude-skills) |
 | `rust-async-patterns`, `postgresql-table-design`, `sql-optimization-patterns`, `git-advanced-workflows` | [wshobson/agents](https://github.com/wshobson/agents) |

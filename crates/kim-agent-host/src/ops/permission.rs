@@ -22,7 +22,7 @@ pub struct PermissionOp {
 }
 
 fn force_ask(name: &str) -> bool {
-    name == "bash" || name.contains("__")
+    name.contains("__")
 }
 
 impl PermissionConfig {
@@ -33,15 +33,8 @@ impl PermissionConfig {
             return PermissionDefault::AlwaysAllow;
         }
         match mode {
-            GooseMode::Auto => PermissionDefault::AlwaysAllow,
+            GooseMode::Auto | GooseMode::SmartApprove => PermissionDefault::AlwaysAllow,
             GooseMode::Approve | GooseMode::Chat => PermissionDefault::AskBefore,
-            GooseMode::SmartApprove => match name {
-                "send_message" | "read_clipboard" | "write_file" | "bash" | "delegate" => {
-                    PermissionDefault::AskBefore
-                }
-                n if n.contains("__") => PermissionDefault::AskBefore,
-                _ => PermissionDefault::AlwaysAllow,
-            },
         }
     }
 
@@ -50,7 +43,11 @@ impl PermissionConfig {
             if self.tools.get(name) == Some(&PermissionDefault::NeverAllow) {
                 return PermissionDefault::NeverAllow;
             }
-            return PermissionDefault::AskBefore;
+            return self
+                .tools
+                .get(name)
+                .copied()
+                .unwrap_or(PermissionDefault::AskBefore);
         }
         self.tools
             .get(name)
@@ -273,22 +270,32 @@ mod tests {
     use goose_provider_types::goose_mode::GooseMode;
 
     #[test]
-    fn smart_approve_write_tools_ask() {
+    fn smart_approve_write_tools_auto_allow() {
+        for name in [
+            "send_message",
+            "read_clipboard",
+            "write_file",
+            "bash",
+            "delegate",
+            "search_contacts",
+            "read_file",
+        ] {
+            assert_eq!(
+                PermissionConfig::default_for(name, GooseMode::SmartApprove),
+                PermissionDefault::AlwaysAllow,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn override_ask_before_wins() {
+        let mut cfg = PermissionConfig::default();
+        cfg.tools
+            .insert("bash".into(), PermissionDefault::AskBefore);
         assert_eq!(
-            PermissionConfig::default_for("send_message", GooseMode::SmartApprove),
+            cfg.resolve("bash", GooseMode::SmartApprove),
             PermissionDefault::AskBefore
-        );
-        assert_eq!(
-            PermissionConfig::default_for("read_clipboard", GooseMode::SmartApprove),
-            PermissionDefault::AskBefore
-        );
-        assert_eq!(
-            PermissionConfig::default_for("search_contacts", GooseMode::SmartApprove),
-            PermissionDefault::AlwaysAllow
-        );
-        assert_eq!(
-            PermissionConfig::default_for("read_file", GooseMode::SmartApprove),
-            PermissionDefault::AlwaysAllow
         );
     }
 
@@ -310,15 +317,15 @@ mod tests {
     }
 
     #[test]
-    fn bash_and_mcp_never_auto() {
+    fn mcp_defaults_to_ask() {
         let cfg = PermissionConfig::default();
-        assert_eq!(
-            cfg.resolve("bash", GooseMode::Auto),
-            PermissionDefault::AskBefore
-        );
         assert_eq!(
             cfg.resolve("ext__tool", GooseMode::Auto),
             PermissionDefault::AskBefore
+        );
+        assert_eq!(
+            cfg.resolve("bash", GooseMode::Auto),
+            PermissionDefault::AlwaysAllow
         );
     }
 }

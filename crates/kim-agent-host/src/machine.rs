@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use goose_agent::inference::InferenceRunner;
@@ -32,6 +33,24 @@ impl MachineFactory {
         model: ModelConfig,
         project_root: &Path,
         mcp: Arc<McpHub>,
+    ) -> Vec<Step<'static, HostSession, HostEffect>> {
+        Self::assemble_tracked(
+            profile,
+            provider,
+            model,
+            project_root,
+            mcp,
+            Arc::new(AtomicU64::new(0)),
+        )
+    }
+
+    pub(crate) fn assemble_tracked(
+        profile: &AgentProfile,
+        provider: Arc<dyn Provider>,
+        model: ModelConfig,
+        project_root: &Path,
+        mcp: Arc<McpHub>,
+        input_tokens: Arc<AtomicU64>,
     ) -> Vec<Step<'static, HostSession, HostEffect>> {
         if profile.system_prompt.trim().is_empty() {
             tracing::debug!(profile_id = %profile.id, "system_prompt_fallback");
@@ -67,7 +86,9 @@ impl MachineFactory {
         }
         steps.push(Step::Operation(Arc::new(CompactionOp {
             provider: Arc::clone(&provider),
-            model: model.model_name.clone(),
+            model: model.clone(),
+            tool_result_bytes: 50 * 1024,
+            input_tokens,
         })));
 
         let projected = profile.project_toolset();
@@ -138,6 +159,11 @@ pub fn model_config(spec: &ModelSpec) -> Result<ModelConfig, HostError> {
     if let Some(max) = spec.max_tokens {
         cfg = cfg.with_max_tokens(Some(max));
     }
+    let context = spec
+        .context_tokens
+        .filter(|n| *n > 0)
+        .unwrap_or_else(|| crate::catalog::default_context_tokens(name));
+    cfg = cfg.with_context_limit(Some(context as usize));
     if let Some(raw) = spec.temperature.as_deref() {
         let t: f32 = raw
             .parse()
@@ -207,6 +233,7 @@ mod tests {
             skills: Vec::new(),
             portable_denylist: Vec::new(),
             user_agents_skills: String::new(),
+            harness: None,
         }
     }
 
@@ -507,5 +534,22 @@ mod tests {
         let prompt = assembled_prompt(&steps).await;
         assert!(prompt.contains("search_contacts"), "{prompt}");
         assert!(!prompt.contains("send_message"), "{prompt}");
+    }
+
+    #[test]
+    fn model_config_applies_context_tokens_or_published_default() {
+        let mut spec = ModelSpec {
+            name: "gpt-4o".into(),
+            ..Default::default()
+        };
+        let cfg = model_config(&spec).unwrap();
+        assert_eq!(cfg.context_limit, Some(128_000));
+        spec.context_tokens = Some(64_000);
+        let cfg = model_config(&spec).unwrap();
+        assert_eq!(cfg.context_limit, Some(64_000));
+        spec.name = "local-mystery".into();
+        spec.context_tokens = None;
+        let cfg = model_config(&spec).unwrap();
+        assert_eq!(cfg.context_limit, Some(256_000));
     }
 }

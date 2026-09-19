@@ -22,10 +22,30 @@ class TypingState {
 class TypingNotifier extends Notifier<TypingState> {
   Timer? _ttl;
 
+  /// Destinations whose busy bit is driven by local [applyAgentTurn].
+  /// Heartbeat `chat.bot.typing` is for other devices; it must not fight
+  /// this machine on the owner desktop.
+  final _localAgentTurn = <String, bool>{};
+
   @override
   TypingState build() {
     ref.onDispose(() => _ttl?.cancel());
     return const TypingState();
+  }
+
+  /// Owner-desktop Goose turn. Local source of truth: only `running` is
+  /// busy. queued / waitingPermission / done / error are not "typing".
+  /// The next turn lights again by calling this with [busy] true.
+  void applyAgentTurn({
+    required String dest,
+    required bool busy,
+    String me = '',
+  }) {
+    if (dest.isEmpty) {
+      return;
+    }
+    _localAgentTurn[dest] = busy;
+    _write(typer: dest, dest: dest, active: busy, me: me);
   }
 
   void applyPush({
@@ -33,6 +53,20 @@ class TypingNotifier extends Notifier<TypingState> {
     required String dest,
     required bool active,
     String me = '',
+  }) {
+    // Local AgentTurn already owns this dest. Ignore heartbeat / server echo.
+    if (_localAgentTurn.containsKey(typer) ||
+        _localAgentTurn.containsKey(dest)) {
+      return;
+    }
+    _write(typer: typer, dest: dest, active: active, me: me);
+  }
+
+  void _write({
+    required String typer,
+    required String dest,
+    required bool active,
+    required String me,
   }) {
     // Own composer typing on another device must not look like the peer
     // (or the agent) is typing. Agent busy uses typer = bot account.
@@ -75,21 +109,25 @@ class TypingNotifier extends Notifier<TypingState> {
   void clear() {
     _ttl?.cancel();
     _ttl = null;
+    _localAgentTurn.clear();
     state = const TypingState();
   }
 
-  /// Drop stale typing if a peer crashes mid-indicator (humans + bots).
+  /// Drop stale human / remote-bot typing if the peer crashes mid-indicator.
+  /// Local AgentTurn busy is not TTL'd — [applyAgentTurn] off is the stop.
   void _armTtl() {
     _ttl?.cancel();
-    if (state.activeByDest.isEmpty) {
+    final hasEphemeral = state.activeByDest.keys.any(
+      (key) => _localAgentTurn[key] != true,
+    );
+    if (!hasEphemeral) {
       _ttl = null;
       return;
     }
     _ttl = Timer(const Duration(seconds: 20), () {
-      if (state.activeByDest.isEmpty) {
-        return;
-      }
-      state = const TypingState();
+      final next = Map<String, bool>.from(state.activeByDest)
+        ..removeWhere((key, _) => _localAgentTurn[key] != true);
+      state = TypingState(activeByDest: next);
       _ttl = null;
     });
   }

@@ -7,6 +7,7 @@
 pub mod capability;
 mod catalog;
 mod events;
+mod harness;
 mod machine;
 mod ops;
 mod profile;
@@ -14,10 +15,11 @@ mod provider;
 mod scripted;
 mod skills;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -25,6 +27,7 @@ use goose_agent::machine::{EffectHandler, MachineSession, SessionLoader, StateMa
 use goose_agent::operation::{ConversationEffect, Emitter};
 use goose_provider_types::base::Provider;
 use goose_provider_types::conversation::message::{Message, MessageContent};
+use goose_provider_types::conversation::token_usage::ProviderUsage;
 use goose_provider_types::conversation::Conversation;
 use goose_provider_types::model::ModelConfig;
 use tokio::sync::{mpsc, Mutex};
@@ -35,17 +38,22 @@ pub use capability::{
     PreviewTool, RiskTier,
 };
 pub use catalog::{
-    catalog_surface_json, catalog_validate, catalog_vendors_json, normalize_vendor_id,
-    ReasoningChoice, ReasoningChoiceBody, ReasoningSurface, VendorSummary,
+    catalog_surface_json, catalog_validate, catalog_vendors_json, default_context_tokens,
+    normalize_vendor_id, ReasoningChoice, ReasoningChoiceBody, ReasoningSurface, VendorSummary,
+    DEFAULT_CONTEXT_TOKENS,
 };
-pub use events::{HostError, HostEvent, PendingYield, TurnOutcome, YieldKind};
+pub use events::{
+    CancelReason, HostError, HostEvent, PendingYield, ProviderFail, TimeoutKind, TurnOutcome,
+    YieldKind,
+};
+pub use harness::{resolve_limits, HarnessLimits};
 pub use machine::MachineFactory;
 pub use ops::permission::parse_permission;
 pub use ops::skill::{activate_skill_tool, ACTIVATE_SKILL};
 pub use profile::{
     builtin_templates, parse_goose_mode, parse_thinking_effort, AgentProfile, ExtensionSpec,
-    LegacyOpenOpts, ModelSpec, PermissionConfig, PermissionDefault, ProviderSpec, ResolvedProfile,
-    SandboxMode, SandboxPolicy, ToolSet, WorkspaceKind, WorkspaceSpec,
+    HarnessSpec, LegacyOpenOpts, ModelSpec, PermissionConfig, PermissionDefault, ProviderSpec,
+    ResolvedProfile, SandboxMode, SandboxPolicy, ToolSet, WorkspaceKind, WorkspaceSpec,
 };
 pub use provider::{
     bundled_declarative_json, bundled_provider_summaries, fetch_models, BundledProviderSummary,
@@ -150,6 +158,46 @@ struct Inner {
     store: Mutex<Store>,
     mcp: Arc<ops::mcp::McpHub>,
     provider_generation: AtomicU64,
+    limits: std::sync::RwLock<HarnessLimits>,
+    busy: std::sync::Mutex<HashSet<String>>,
+    hard_remaining: std::sync::Mutex<HashMap<String, Duration>>,
+    last_usage: std::sync::Mutex<HashMap<String, ProviderUsage>>,
+    steer: std::sync::Mutex<harness::SteerInbox>,
+    turn_tx: std::sync::Mutex<Option<mpsc::Sender<HostEvent>>>,
+    idle: std::sync::Mutex<Option<Arc<harness::IdleClock>>>,
+    active_cancel: std::sync::Mutex<Option<CancellationToken>>,
+    input_tokens: Arc<AtomicU64>,
+}
+
+fn blank_inner(
+    profile: AgentProfile,
+    provider: Arc<dyn Provider>,
+    model: ModelConfig,
+    project_root: PathBuf,
+) -> Inner {
+    harness::install_panic_hook();
+    Inner {
+        profile: RwLock::new(profile),
+        provider,
+        model,
+        project_root,
+        store: Mutex::new(Store {
+            conversations: HashMap::new(),
+            session_path: None,
+            resume_on_open: true,
+        }),
+        mcp: Arc::new(ops::mcp::McpHub::new()),
+        provider_generation: AtomicU64::new(1),
+        limits: std::sync::RwLock::new(HarnessLimits::default()),
+        busy: std::sync::Mutex::new(HashSet::new()),
+        hard_remaining: std::sync::Mutex::new(HashMap::new()),
+        last_usage: std::sync::Mutex::new(HashMap::new()),
+        steer: std::sync::Mutex::new(harness::SteerInbox::default()),
+        turn_tx: std::sync::Mutex::new(None),
+        idle: std::sync::Mutex::new(None),
+        active_cancel: std::sync::Mutex::new(None),
+        input_tokens: Arc::new(AtomicU64::new(0)),
+    }
 }
 
 #[derive(Clone)]
@@ -170,19 +218,7 @@ impl AgentHost {
         profile.apply_reasoning()?;
         let model = machine::model_config(&profile.model)?;
         Ok(Self {
-            inner: Arc::new(Inner {
-                profile: RwLock::new(profile),
-                provider,
-                model,
-                project_root,
-                store: Mutex::new(Store {
-                    conversations: HashMap::new(),
-                    session_path: None,
-                    resume_on_open: true,
-                }),
-                mcp: Arc::new(ops::mcp::McpHub::new()),
-                provider_generation: AtomicU64::new(1),
-            }),
+            inner: Arc::new(blank_inner(profile, provider, model, project_root)),
         })
     }
 
@@ -215,19 +251,12 @@ impl AgentHost {
             "agent host assembled"
         );
         Ok(Self {
-            inner: Arc::new(Inner {
-                profile: RwLock::new(resolved.profile),
+            inner: Arc::new(blank_inner(
+                resolved.profile,
                 provider,
                 model,
-                project_root: resolved.project_root,
-                store: Mutex::new(Store {
-                    conversations: HashMap::new(),
-                    session_path: None,
-                    resume_on_open: true,
-                }),
-                mcp: Arc::new(ops::mcp::McpHub::new()),
-                provider_generation: AtomicU64::new(1),
-            }),
+                resolved.project_root,
+            )),
         })
     }
 
@@ -310,6 +339,11 @@ impl AgentHost {
         if text.is_empty() {
             return Err(HostError::Failed("empty prompt".into()));
         }
+        if text.len() > self.limits().prompt_bytes {
+            return Err(HostError::Failed("prompt exceeds byte cap".into()));
+        }
+        let _busy = self.acquire_session(session_id)?;
+        self.reset_hard_budget(session_id);
 
         {
             let mut store = self.inner.store.lock().await;
@@ -338,6 +372,7 @@ impl AgentHost {
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
     ) -> Result<TurnOutcome, HostError> {
+        let _busy = self.acquire_session(session_id)?;
         {
             let mut store = self.inner.store.lock().await;
             let conversation = store
@@ -377,6 +412,7 @@ impl AgentHost {
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
     ) -> Result<TurnOutcome, HostError> {
+        let _busy = self.acquire_session(session_id)?;
         {
             let mut store = self.inner.store.lock().await;
             let conversation = store
@@ -416,39 +452,7 @@ impl AgentHost {
     }
 
     pub async fn cancel_pending_tools(&self, session_id: &str) {
-        let mut store = self.inner.store.lock().await;
-        let Some(conversation) = store.conversations.get_mut(session_id) else {
-            return;
-        };
-        let confirmations = ops::permission::unanswered_confirmations(conversation);
-        let tools = self.profile_snapshot().project_toolset();
-        let pending = kim_pending(conversation, &tools);
-        if confirmations.is_empty() && pending.is_empty() {
-            return;
-        }
-        let mut message = Message::user();
-        for p in &confirmations {
-            message =
-                message.with_content(MessageContent::action_required_tool_confirmation_response(
-                    p.call_id.clone(),
-                    goose_provider_types::permission::Permission::Cancel,
-                ));
-        }
-        let mut seen = std::collections::HashSet::new();
-        for p in confirmations.into_iter().chain(pending) {
-            if !seen.insert(p.call_id.clone()) {
-                continue;
-            }
-            message.add_tool_response_with_metadata(
-                p.call_id,
-                Ok(rmcp::model::CallToolResult::error(vec![
-                    rmcp::model::ContentBlock::text("cancelled"),
-                ])),
-                None,
-            );
-        }
-        conversation.push(message);
-        let _ = persist_session(&store, session_id);
+        self.repair_pairing(session_id).await;
     }
 
     pub fn kim_tool_names(&self) -> Vec<&'static str> {
@@ -463,70 +467,6 @@ impl AgentHost {
             .get(session_id)
             .cloned()
             .unwrap_or_else(Conversation::empty)
-    }
-}
-
-impl AgentHost {
-    async fn run_loop(
-        &self,
-        session_id: &str,
-        events: mpsc::Sender<HostEvent>,
-        cancel: CancellationToken,
-    ) -> Result<TurnOutcome, HostError> {
-        let (tx, mut rx) = mpsc::channel(64);
-        let emit = Emitter::new(tx, cancel.clone());
-        let events_for_pump = events.clone();
-        let pump = tokio::spawn(async move {
-            while let Some(ev) = rx.recv().await {
-                if let goose_agent::events::AgentEvent::Message(message) = ev {
-                    pump_message(&events_for_pump, &message).await;
-                }
-            }
-        });
-
-        let profile = self.profile_snapshot();
-        let steps = MachineFactory::assemble(
-            &profile,
-            Arc::clone(&self.inner.provider),
-            self.inner.model.clone(),
-            &self.inner.project_root,
-            Arc::clone(&self.inner.mcp),
-        );
-        let machine = StateMachine::new(steps, cancel);
-
-        let outcome = machine.run(self, session_id, &emit).await;
-        drop(emit);
-        let _ = pump.await;
-
-        match outcome {
-            Ok(session) => {
-                let pending = session_pending(&session.conversation, &profile.project_toolset());
-                if let Some(first) = pending.first() {
-                    tracing::info!(
-                        session_id,
-                        outcome = "yielded",
-                        tool_name = %first.name,
-                        "agent turn end"
-                    );
-                    Ok(TurnOutcome::Yielded {
-                        kind: first.kind,
-                        call_id: first.call_id.clone(),
-                        name: first.name.clone(),
-                    })
-                } else {
-                    let text = last_assistant_text(&session.conversation);
-                    let _ = events
-                        .send(HostEvent::Finished { text: text.clone() })
-                        .await;
-                    tracing::info!(session_id, outcome = "finished", "agent turn end");
-                    Ok(TurnOutcome::Finished { text })
-                }
-            }
-            Err(err) => {
-                tracing::info!(session_id, outcome = "failed", "agent turn end");
-                Err(HostError::Failed(err.to_string()))
-            }
-        }
     }
 }
 
@@ -555,9 +495,21 @@ impl EffectHandler<HostSession, HostEffect> for AgentHost {
             .conversations
             .entry(session.id.clone())
             .or_insert_with(Conversation::empty);
+        let mut usage_event = None;
         for effect in effects.iter_mut() {
             match effect {
-                HostEffect::Usage(_) => {}
+                HostEffect::Usage(usage) => {
+                    let input = usage.usage.input_tokens.unwrap_or(0).max(0) as u64;
+                    let output = usage.usage.output_tokens.unwrap_or(0).max(0) as u64;
+                    self.inner.input_tokens.store(input, Ordering::Relaxed);
+                    if let Ok(mut slot) = self.inner.last_usage.lock() {
+                        slot.insert(session.id.clone(), usage.clone());
+                    }
+                    usage_event = Some(HostEvent::Usage {
+                        input_tokens: input,
+                        output_tokens: output,
+                    });
+                }
                 HostEffect::Conversation(ConversationEffect::AppendMessage(m)) => {
                     conversation.push(m.clone());
                 }
@@ -580,6 +532,29 @@ impl EffectHandler<HostSession, HostEffect> for AgentHost {
             }
         }
         persist_session(&store, &session.id)?;
+        drop(store);
+        if let Some(event) = usage_event {
+            if events::is_idle_activity(&event) {
+                let idle = self
+                    .inner
+                    .idle
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .clone();
+                if let Some(idle) = idle {
+                    idle.reset();
+                }
+            }
+            let tx = self
+                .inner
+                .turn_tx
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .clone();
+            if let Some(tx) = tx {
+                let _ = tx.try_send(event);
+            }
+        }
         Ok(())
     }
 }
@@ -632,10 +607,16 @@ fn set_visibility(
     anyhow::bail!("message {message_id} not found")
 }
 
-async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
+pub(crate) async fn pump_message(
+    events: &mpsc::Sender<HostEvent>,
+    message: &Message,
+    idle: Option<&harness::IdleClock>,
+) {
     let delta = message_text(message);
     if !delta.is_empty() {
-        let _ = events.send(HostEvent::TextDelta { delta }).await;
+        let event = HostEvent::TextDelta { delta };
+        note_activity(idle, &event);
+        let _ = events.try_send(event);
     }
     for block in &message.content {
         match block {
@@ -659,13 +640,13 @@ async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
                     ),
                     Err(_) => (String::new(), String::new()),
                 };
-                let _ = events
-                    .send(HostEvent::ToolRequest {
-                        call_id: req.id.clone(),
-                        name,
-                        arguments_json,
-                    })
-                    .await;
+                let event = HostEvent::ToolRequest {
+                    call_id: req.id.clone(),
+                    name,
+                    arguments_json,
+                };
+                note_activity(idle, &event);
+                let _ = events.try_send(event);
             }
             MessageContent::ToolResponse(res) => {
                 let preview = block
@@ -678,16 +659,24 @@ async fn pump_message(events: &mpsc::Sender<HostEvent>, message: &Message) {
                     Ok(result) => result.is_error != Some(true),
                     Err(_) => false,
                 };
-                let _ = events
-                    .send(HostEvent::ToolResult {
-                        call_id: res.id.clone(),
-                        name: String::new(),
-                        output_preview: preview,
-                        ok,
-                    })
-                    .await;
+                let event = HostEvent::ToolResult {
+                    call_id: res.id.clone(),
+                    name: String::new(),
+                    output_preview: preview,
+                    ok,
+                };
+                note_activity(idle, &event);
+                let _ = events.try_send(event);
             }
             _ => {}
+        }
+    }
+}
+
+fn note_activity(idle: Option<&harness::IdleClock>, event: &HostEvent) {
+    if events::is_idle_activity(event) {
+        if let Some(idle) = idle {
+            idle.reset();
         }
     }
 }
@@ -710,7 +699,10 @@ struct SessionDisk {
     messages: Vec<Message>,
 }
 
-fn ensure_conversation<'a>(store: &'a mut Store, session_id: &str) -> &'a mut Conversation {
+pub(crate) fn ensure_conversation<'a>(
+    store: &'a mut Store,
+    session_id: &str,
+) -> &'a mut Conversation {
     let path = store.session_path.clone();
     let resume = store.resume_on_open;
     store
@@ -722,7 +714,7 @@ fn ensure_conversation<'a>(store: &'a mut Store, session_id: &str) -> &'a mut Co
         })
 }
 
-fn persist_session(store: &Store, session_id: &str) -> Result<(), HostError> {
+pub(crate) fn persist_session(store: &Store, session_id: &str) -> Result<(), HostError> {
     let Some(path) = store.session_path.as_ref() else {
         return Ok(());
     };
@@ -757,7 +749,7 @@ fn read_session(path: &Path) -> Conversation {
     Conversation::new_unvalidated(disk.messages)
 }
 
-fn session_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
+pub(crate) fn session_pending(conversation: &Conversation, tools: &ToolSet) -> Vec<PendingYield> {
     let confirmations = ops::permission::unanswered_confirmations(conversation);
     if !confirmations.is_empty() {
         return confirmations;
@@ -814,6 +806,9 @@ fn truncate_chars(s: &str, max_bytes: usize) -> String {
 }
 
 fn last_assistant_text(conversation: &Conversation) -> String {
+    if !goose_agent::operation::ends_turn(conversation.messages()) {
+        return String::new();
+    }
     conversation
         .messages()
         .last()
@@ -862,6 +857,33 @@ mod tests {
         assert!(mentions_default_agent("@goose please"));
         assert!(!mentions_default_agent("hello goose"));
         assert!(!mentions_default_agent("email goose@x.com"));
+    }
+
+    #[test]
+    fn last_assistant_text_ignores_earlier_progress() {
+        let conv = Conversation::new_unvalidated(vec![
+            Message::user().with_text("移除登录页顶部按钮"),
+            Message::assistant().with_text("接着查登录页历史。"),
+            Message::assistant(),
+        ]);
+        assert_eq!(last_assistant_text(&conv), "");
+    }
+
+    #[test]
+    fn last_assistant_text_is_ends_turn_message_only() {
+        let conv = Conversation::new_unvalidated(vec![
+            Message::user().with_text("移除登录页顶部按钮"),
+            Message::assistant().with_text("接着查登录页历史。"),
+            Message::user().with_text("tool result"),
+        ]);
+        assert_eq!(last_assistant_text(&conv), "");
+        let done = Conversation::new_unvalidated(vec![
+            Message::user().with_text("移除登录页顶部按钮"),
+            Message::assistant().with_text("接着查登录页历史。"),
+            Message::user().with_text("tool result"),
+            Message::assistant().with_text("按钮已经从登录页拿掉了。"),
+        ]);
+        assert_eq!(last_assistant_text(&done), "按钮已经从登录页拿掉了。");
     }
 
     #[test]
@@ -1044,13 +1066,17 @@ mod tests {
     }
 
     fn send_host(messages: Vec<Message>) -> AgentHost {
-        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
             enable_kim_tools: true,
             enable_approvals: true,
             model: "scripted".into(),
             llm_backend: "scripted".into(),
             ..LegacyOpenOpts::default()
         });
+        profile
+            .permissions
+            .tools
+            .insert("send_message".into(), PermissionDefault::AskBefore);
         AgentHost::from_provider_for_test(
             profile,
             Arc::new(ScriptedProvider::new(messages)),
@@ -1218,7 +1244,7 @@ mod tests {
         .unwrap();
         let conv = host.conversation_for_test("s").await;
         let blob: String = conv.messages().iter().map(|m| m.as_concat_text()).collect();
-        assert!(blob.contains("conversation summary"), "{blob}");
+        assert!(blob.contains("kim.compaction.v1"), "{blob}");
         assert!(blob.contains("q"), "{blob}");
         assert!(
             blob.matches('x').count() < 400,

@@ -181,6 +181,15 @@
   },
   "agentPickModel": "从列表选择",
   "agentModelHint": "保存以输入框为准。可手填，或拉取后从列表选入。",
+  "agentContextWindow": "上下文窗口",
+  "agentContextWindowHint": "用于会话压缩。默认取该模型公开窗口，未知模型为 256K。",
+  "agentContextWindowCustom": "自定义…",
+  "agentContextWindowDefault": "{size}（模型默认）",
+  "@agentContextWindowDefault": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
   "agentReasoning": "推理强度",
   "agentReasoningOff": "关",
   "agentReasoningLow": "低",
@@ -202,7 +211,10 @@
   "agentBashLater": "命令行（后续版本）",
   "agentBashDanger": "命令行（危险，默认关闭）",
   "agentMcp": "MCP 扩展",
-  "agentMcpHint": "高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。",
+  "agentMcpHint": "高级。每行：名称 命令 参数… 默认空。",
+  "agentAskBefore": "先问再跑",
+  "agentAskBeforeHint": "聊天里确认后再执行",
+  "agentToolDelegate": "委派子 Agent",
   "agentAllow": "允许",
   "agentAlwaysAllow": "总是允许",
   "agentDeny": "拒绝",

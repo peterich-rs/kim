@@ -9,6 +9,7 @@ import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/runtime.dart';
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
@@ -30,10 +31,7 @@ Future<void> main() async {
     return true;
   };
   await _enableMaxRefreshRate();
-  runZonedGuarded(
-    () => runApp(const KimBoot()),
-    (error, stack) => KimLogger.error('zone', error, stack),
-  );
+  runApp(const KimBoot());
 }
 
 Future<void> _enableMaxRefreshRate() async {
@@ -115,7 +113,12 @@ class _KimBootState extends State<KimBoot> {
         container.read(agentRunStatusProvider.notifier),
       );
       _sink = sink;
-      final loop = AgentRunLoop(bridge, AgentBridge(), sink: sink);
+      final loop = AgentRunLoop(
+        bridge,
+        AgentBridge(),
+        sink: sink,
+        permissions: container.read(agentPermissionHubProvider.notifier),
+      );
       _loop = loop;
       unawaited(loop.start());
     }

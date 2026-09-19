@@ -4,8 +4,10 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/kim_im_tools.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
@@ -18,14 +20,83 @@ import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// One turn's outcome. Control flow uses [stopReason], not thrown strings.
+class DriveResult {
+  const DriveResult({
+    required this.text,
+    required this.stopReason,
+    required this.replied,
+    required this.visible,
+    required this.recentlyActive,
+  });
+
+  final String text;
+  final String stopReason;
+  final bool replied;
+  final bool visible;
+  final bool recentlyActive;
+
+  static const quiet = <String>{
+    'completed',
+    'side_effect',
+    'empty',
+    'idle_timeout',
+    'hard_timeout',
+    'poisoned',
+  };
+
+  factory DriveResult.fromText(String text) {
+    final replied = text.trim().isNotEmpty;
+    return DriveResult(
+      text: text,
+      stopReason: replied ? 'completed' : 'empty',
+      replied: replied,
+      visible: replied,
+      recentlyActive: false,
+    );
+  }
+
+  factory DriveResult.fromEvent(AgentUiEvent ev) {
+    final reason = ev.stopReason.isEmpty ? 'completed' : ev.stopReason;
+    final replied =
+        reason == 'completed' && (ev.ok || ev.message.trim().isNotEmpty);
+    return DriveResult(
+      text: ev.message.trim(),
+      stopReason: reason,
+      replied: replied,
+      visible: replied || reason == 'side_effect',
+      recentlyActive: ev.recentlyActive,
+    );
+  }
+}
+
+/// Thrown from [AgentRunLoop.driveSession] for typed non-quiet stop reasons.
+/// [AgentRunLoop.start] submits [result.stopReason] instead of hard-coding `failed`.
+class DriveStop implements Exception {
+  const DriveStop(this.result);
+
+  final DriveResult result;
+
+  @override
+  String toString() =>
+      result.text.trim().isEmpty ? result.stopReason : result.text;
+}
 
 class AgentRunLoop {
-  AgentRunLoop(this.client, this.goose, {this.sink, WorkspaceAccess? access})
-    : access = access ?? workspaceAccess;
+  AgentRunLoop(
+    this.client,
+    this.goose, {
+    this.sink,
+    this.permissions,
+    WorkspaceAccess? access,
+  }) : access = access ?? workspaceAccess;
 
   final KimClientPort client;
   final AgentBridge goose;
   final AgentRunSink? sink;
+  final AgentPermissionHub? permissions;
   final WorkspaceAccess access;
 
   /// Tests inject a prompt stub. Production uses [rust_agent] `prompt`.
@@ -66,8 +137,8 @@ class AgentRunLoop {
         }
         try {
           sink?.begin(req.dest);
-          final output = promptOverride != null
-              ? await promptOverride!(req)
+          final result = promptOverride != null
+              ? DriveResult.fromText(await promptOverride!(req))
               : await _promptGoose(req);
           sink?.finish(req.dest, failed: false);
           await client.submitAgentRun(
@@ -75,19 +146,28 @@ class AgentRunLoop {
               dest: req.dest,
               profileId: req.profileId,
               epoch: req.epoch,
-              output: output,
+              output: result.text,
+              stopReason: result.stopReason,
+              replied: result.replied,
+              visible: result.visible,
+              recentlyActive: result.recentlyActive,
             ),
           );
         } catch (e, st) {
           KimLogger.warn('agent run', e, st);
           sink?.finish(req.dest, failed: true);
+          final typed = e is DriveStop ? e.result : null;
           await client.submitAgentRun(
             AgentRunResultDto(
               dest: req.dest,
               profileId: req.profileId,
               epoch: req.epoch,
-              output: '',
+              output: typed?.text ?? '',
               error: _runErrorText(e),
+              stopReason: typed?.stopReason ?? 'failed',
+              replied: typed?.replied ?? false,
+              visible: typed?.visible ?? false,
+              recentlyActive: typed?.recentlyActive ?? false,
             ),
           );
         }
@@ -115,7 +195,7 @@ class AgentRunLoop {
     }
   }
 
-  Future<String> _promptGoose(AgentRunRequestDto req) async {
+  Future<DriveResult> _promptGoose(AgentRunRequestDto req) async {
     await goose.ensure();
     if (!goose.isReady) {
       throw StateError(Copy.agentHostNotReady);
@@ -179,17 +259,22 @@ class AgentRunLoop {
     if (apiKey.trim().isEmpty) {
       throw StateError('api key missing for ${profile.id}');
     }
-    final ws = await resolveAgentProjectRoot(
-      profile: profile,
-      paths: KimPaths.instance,
+    final paths = KimPaths.instance;
+    await paths.ensureAgentDirs();
+    final ws = await resolveAgentProjectRoot(profile: profile, paths: paths);
+    final sessionFile = paths.agentSessionFile(
+      dest: req.dest,
+      profileId: profile.id,
     );
+    final prefs = await SharedPreferences.getInstance();
+    final harnessOn = prefs.getBool('agent.harness_v1') ?? false;
     final session = await goose.open(
-      sqlitePath: '',
+      sqlitePath: sessionFile.path,
       projectRoot: ws.path,
       opts: SessionOpenOpts(
         model: profile.model,
         llmBackend: account.vendorId,
-        resumeOnOpen: false,
+        resumeOnOpen: true,
         baseUrl: account.baseUrl,
         apiKey: apiKey,
         enableFsTools: profile.tools.fs,
@@ -206,19 +291,88 @@ class AgentRunLoop {
         enableKimTools: false,
         enableApprovals: false,
         sessionId: '${req.dest}:${req.profileId}',
+        harnessJson: harnessOn ? '{"enabled":true}' : '{"enabled":false}',
       ),
     );
-    await session.prompt(text: req.text);
-    await for (final ev in session.listen()) {
-      if (ev.kind == 'assistant_finished') {
-        return ev.message;
+    return driveSession(session, dest: req.dest, text: req.text);
+  }
+
+  /// Visible for tests. Host yields deferred IM tools to Dart; ignoring
+  /// `tool_request` leaves the Goose turn running forever.
+  Future<DriveResult> driveSession(
+    AgentSessionPort session, {
+    required String dest,
+    required String text,
+    KimImTools? tools,
+  }) async {
+    final im = tools ?? KimImTools(client);
+    permissions?.attach(dest, session);
+    final inbox = StreamController<AgentUiEvent>();
+    final sub = session.listen().listen(
+      inbox.add,
+      onError: inbox.addError,
+      onDone: inbox.close,
+    );
+    try {
+      final pending = await session.resume();
+      var prompted = pending.resumedOps.isEmpty;
+      if (prompted) {
+        await session.prompt(text: text);
       }
-      if (ev.kind == 'failed') {
-        final detail = ev.message.trim();
-        throw StateError(detail.isEmpty ? Copy.agentRunFailed : detail);
+      await for (final ev in inbox.stream) {
+        if (ev.kind == 'action_required') {
+          permissions?.prompt(
+            dest,
+            AgentPermissionPrompt(
+              callId: ev.callId,
+              name: ev.name,
+              preview: ev.message.isNotEmpty ? ev.message : ev.outputPreview,
+            ),
+          );
+          continue;
+        }
+        if (ev.kind == 'tool_request') {
+          final output = await im.execute(
+            name: ev.name,
+            argumentsJson: ev.argumentsJson,
+            currentDest: dest,
+          );
+          await session.completeTool(callId: ev.callId, outputJson: output);
+          continue;
+        }
+        final quiet =
+            DriveResult.quiet.contains(ev.stopReason) ||
+            (ev.kind == 'assistant_finished' && ev.stopReason.isEmpty);
+        if (quiet) {
+          if (!prompted) {
+            prompted = true;
+            await session.prompt(text: text);
+            continue;
+          }
+          return DriveResult.fromEvent(ev);
+        }
+        if (ev.kind == 'failed' || ev.kind == 'aborted') {
+          if (!prompted && ev.stopReason == 'yield_abandoned') {
+            prompted = true;
+            await session.prompt(text: text);
+            continue;
+          }
+          throw DriveStop(DriveResult.fromEvent(ev));
+        }
+      }
+      throw StateError(Copy.agentRunFailed);
+    } finally {
+      await sub.cancel();
+      if (!inbox.isClosed) {
+        await inbox.close();
+      }
+      permissions?.detach(dest);
+      try {
+        await session.close();
+      } catch (e, st) {
+        KimLogger.warn('agent session close', e, st);
       }
     }
-    throw StateError(Copy.agentRunFailed);
   }
 
   Future<String> _readApiKey(
@@ -252,6 +406,7 @@ class AgentRunLoop {
 
 String _runErrorText(Object error) {
   return switch (error) {
+    DriveStop() => error.toString(),
     StateError(:final message) => message,
     _ => error.toString(),
   };

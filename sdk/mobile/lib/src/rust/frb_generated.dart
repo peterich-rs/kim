@@ -3438,14 +3438,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   AgentRunResultDto dco_decode_agent_run_result_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return AgentRunResultDto(
       dest: dco_decode_String(arr[0]),
       profileId: dco_decode_String(arr[1]),
       epoch: dco_decode_u_64(arr[2]),
       output: dco_decode_String(arr[3]),
       error: dco_decode_opt_String(arr[4]),
+      stopReason: dco_decode_String(arr[5]),
+      replied: dco_decode_bool(arr[6]),
+      visible: dco_decode_bool(arr[7]),
+      recentlyActive: dco_decode_bool(arr[8]),
     );
   }
 
@@ -4430,12 +4434,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_epoch = sse_decode_u_64(deserializer);
     var var_output = sse_decode_String(deserializer);
     var var_error = sse_decode_opt_String(deserializer);
+    var var_stopReason = sse_decode_String(deserializer);
+    var var_replied = sse_decode_bool(deserializer);
+    var var_visible = sse_decode_bool(deserializer);
+    var var_recentlyActive = sse_decode_bool(deserializer);
     return AgentRunResultDto(
       dest: var_dest,
       profileId: var_profileId,
       epoch: var_epoch,
       output: var_output,
       error: var_error,
+      stopReason: var_stopReason,
+      replied: var_replied,
+      visible: var_visible,
+      recentlyActive: var_recentlyActive,
     );
   }
 
@@ -5688,6 +5700,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.epoch, serializer);
     sse_encode_String(self.output, serializer);
     sse_encode_opt_String(self.error, serializer);
+    sse_encode_String(self.stopReason, serializer);
+    sse_encode_bool(self.replied, serializer);
+    sse_encode_bool(self.visible, serializer);
+    sse_encode_bool(self.recentlyActive, serializer);
   }
 
   @protected

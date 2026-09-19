@@ -130,6 +130,7 @@ pub(crate) fn extensions_from_capabilities(caps: &[CapabilityRef]) -> Vec<Extens
             },
             command,
             url,
+            env: Default::default(),
         });
     }
     out
@@ -204,6 +205,7 @@ mod tests {
             transport: "stdio".into(),
             command: vec!["uvx".into(), "mcp".into()],
             url: String::new(),
+            env: Default::default(),
         };
         let caps = from_legacy(&ToolSet::default(), std::slice::from_ref(&ext));
         assert_eq!(extensions_from_capabilities(&caps), vec![ext]);

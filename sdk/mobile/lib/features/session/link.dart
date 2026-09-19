@@ -21,6 +21,8 @@ import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 import 'package:kim_mobile/features/chats/conversation_visibility.dart';
+import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/features/agent/mention.dart';
 
 final linkProvider = NotifierProvider<LinkNotifier, KimLinkState>(
   LinkNotifier.new,
@@ -113,7 +115,11 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         _specSynced = true;
       }
     } catch (e, st) {
-      KimLogger.warn('agent spec sync', e, st);
+      if (e is SdkErrorDto) {
+        KimLogger.warn('agent spec sync ${e.kind}: ${e.message}', e, st);
+      } else {
+        KimLogger.warn('agent spec sync', e, st);
+      }
     } finally {
       _specSyncing = false;
     }
@@ -179,6 +185,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (!ref.mounted || gen != _sessionGen) {
       return;
     }
+    ref.read(typingProvider.notifier).clear();
     _listenEvents();
   }
 
@@ -216,6 +223,15 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 lastSeen: lastSeen.toInt(),
               );
         case SessionUpdateDto_Typing(:final typer, :final dest, :final active):
+          final agentWire =
+              isAgentDest(typer) ||
+              isServerBotAccount(typer) ||
+              isAgentDest(dest) ||
+              isServerBotAccount(dest);
+          // Owner desktop: Goose AgentTurn is the only typing source.
+          if (agentHostSupported && agentWire) {
+            break;
+          }
           ref
               .read(typingProvider.notifier)
               .applyPush(
@@ -226,17 +242,18 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
               );
         case SessionUpdateDto_AgentTurn(:final dest, :final state):
           final busy = switch (state) {
+            AgentTurnStateDto.running => true,
             AgentTurnStateDto.queued ||
-            AgentTurnStateDto.running ||
-            AgentTurnStateDto.waitingPermission => true,
-            AgentTurnStateDto.done || AgentTurnStateDto.error => false,
+            AgentTurnStateDto.waitingPermission ||
+            AgentTurnStateDto.done ||
+            AgentTurnStateDto.error ||
+            AgentTurnStateDto.empty => false,
           };
           ref
               .read(typingProvider.notifier)
-              .applyPush(
-                typer: dest,
+              .applyAgentTurn(
                 dest: dest,
-                active: busy,
+                busy: busy,
                 me: ref.read(authProvider).account,
               );
         case SessionUpdateDto_ReceiptRead(
