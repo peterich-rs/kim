@@ -18,7 +18,9 @@ import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/paths.dart';
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/agent/skill_picker.dart';
@@ -371,7 +373,27 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
 
   Future<void> _toggleIm(String kind, bool on) async {
     final next = upsertCapability(_caps, kind: kind, enabled: on);
-    await _persist(caps: next);
+    var perms = Map<String, String>.from(_profile?.permissionOverrides ?? {});
+    if (!on) {
+      final tool = switch (kind) {
+        CapabilityKinds.imSendMessage => kAskBeforeSendMessage,
+        CapabilityKinds.imReadClipboard => kAskBeforeReadClipboard,
+        _ => '',
+      };
+      if (tool.isNotEmpty) {
+        perms = setPermissionAskBefore(perms, tool, ask: false);
+      }
+    }
+    await _persist(caps: next, permissionOverrides: perms);
+  }
+
+  Future<void> _setAsk(String tool, bool ask) async {
+    final perms = setPermissionAskBefore(
+      _profile?.permissionOverrides ?? const {},
+      tool,
+      ask: ask,
+    );
+    await _persist(permissionOverrides: perms);
   }
 
   Future<void> _setFs({required bool read, required bool write}) async {
@@ -386,7 +408,11 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
         params: {'writable': write},
       );
     }
-    await _persist(caps: next);
+    var perms = Map<String, String>.from(_profile?.permissionOverrides ?? {});
+    if (!write) {
+      perms = setPermissionAskBefore(perms, kAskBeforeWriteFile, ask: false);
+    }
+    await _persist(caps: next, permissionOverrides: perms);
   }
 
   Future<void> _setBash(bool on) async {
@@ -395,11 +421,22 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       kind: CapabilityKinds.bash,
       enabled: on,
     );
-    final perms = Map<String, String>.from(_profile?.permissionOverrides ?? {});
-    if (on) {
-      perms['bash'] = perms['bash'] == 'never_allow'
-          ? 'never_allow'
-          : 'ask_before';
+    var perms = Map<String, String>.from(_profile?.permissionOverrides ?? {});
+    if (!on) {
+      perms = setPermissionAskBefore(perms, kAskBeforeBash, ask: false);
+    }
+    await _persist(caps: next, permissionOverrides: perms);
+  }
+
+  Future<void> _setSubagent(bool on) async {
+    final next = upsertCapability(
+      _caps,
+      kind: CapabilityKinds.subagent,
+      enabled: on,
+    );
+    var perms = Map<String, String>.from(_profile?.permissionOverrides ?? {});
+    if (!on) {
+      perms = setPermissionAskBefore(perms, kAskBeforeDelegate, ask: false);
     }
     await _persist(caps: next, permissionOverrides: perms);
   }
@@ -502,11 +539,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
         }
         final caps = enableRequiredCapabilities(_caps, missing);
         var perms = Map<String, String>.from(profile.permissionOverrides);
-        if (missing.contains('bash')) {
-          perms['bash'] = perms['bash'] == 'never_allow'
-              ? 'never_allow'
-              : 'ask_before';
-        }
         final skills = [
           for (final s in _assigned)
             if (s.id != skill.id) s,
@@ -644,6 +676,32 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                         value: _capOn(entry.$1),
                         onChanged: (v) => unawaited(_toggleIm(entry.$1, v)),
                       ),
+                      if (entry.$1 == CapabilityKinds.imSendMessage &&
+                          _capOn(CapabilityKinds.imSendMessage)) ...[
+                        const Divider(height: 1),
+                        AskBeforeSwitch(
+                          tool: kAskBeforeSendMessage,
+                          value: permissionAsksBefore(
+                            _profile?.permissionOverrides ?? const {},
+                            kAskBeforeSendMessage,
+                          ),
+                          onChanged: (v) =>
+                              unawaited(_setAsk(kAskBeforeSendMessage, v)),
+                        ),
+                      ],
+                      if (entry.$1 == CapabilityKinds.imReadClipboard &&
+                          _capOn(CapabilityKinds.imReadClipboard)) ...[
+                        const Divider(height: 1),
+                        AskBeforeSwitch(
+                          tool: kAskBeforeReadClipboard,
+                          value: permissionAsksBefore(
+                            _profile?.permissionOverrides ?? const {},
+                            kAskBeforeReadClipboard,
+                          ),
+                          onChanged: (v) =>
+                              unawaited(_setAsk(kAskBeforeReadClipboard, v)),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -759,6 +817,18 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                       onChanged: (next) =>
                           unawaited(_setFs(read: next || _fsOn, write: next)),
                     ),
+                    if (_fsWriteOn) ...[
+                      const Divider(height: 1),
+                      AskBeforeSwitch(
+                        tool: kAskBeforeWriteFile,
+                        value: permissionAsksBefore(
+                          _profile?.permissionOverrides ?? const {},
+                          kAskBeforeWriteFile,
+                        ),
+                        onChanged: (v) =>
+                            unawaited(_setAsk(kAskBeforeWriteFile, v)),
+                      ),
+                    ],
                     const Divider(height: 1),
                     SwitchListTile(
                       key: const Key('agent-workspace-bash'),
@@ -767,6 +837,36 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                       value: _bashOn,
                       onChanged: (next) => unawaited(_setBash(next)),
                     ),
+                    if (_bashOn) ...[
+                      const Divider(height: 1),
+                      AskBeforeSwitch(
+                        tool: kAskBeforeBash,
+                        value: permissionAsksBefore(
+                          _profile?.permissionOverrides ?? const {},
+                          kAskBeforeBash,
+                        ),
+                        onChanged: (v) => unawaited(_setAsk(kAskBeforeBash, v)),
+                      ),
+                    ],
+                    const Divider(height: 1),
+                    SwitchListTile(
+                      key: const Key('agent-cap-subagent'),
+                      title: Text(l10n.agentToolDelegate),
+                      value: _capOn(CapabilityKinds.subagent),
+                      onChanged: (v) => unawaited(_setSubagent(v)),
+                    ),
+                    if (_capOn(CapabilityKinds.subagent)) ...[
+                      const Divider(height: 1),
+                      AskBeforeSwitch(
+                        tool: kAskBeforeDelegate,
+                        value: permissionAsksBefore(
+                          _profile?.permissionOverrides ?? const {},
+                          kAskBeforeDelegate,
+                        ),
+                        onChanged: (v) =>
+                            unawaited(_setAsk(kAskBeforeDelegate, v)),
+                      ),
+                    ],
                   ],
                 ),
                 const Gap(18),

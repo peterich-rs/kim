@@ -1,27 +1,50 @@
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
-import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 
 class AgentActionBubble extends ConsumerWidget {
-  const AgentActionBubble({super.key, required this.message});
+  const AgentActionBubble({
+    super.key,
+    required this.dest,
+    required this.callId,
+    required this.name,
+    required this.preview,
+    this.pending = true,
+    this.confirmation = true,
+  });
 
-  final KimChatMsg message;
+  factory AgentActionBubble.fromMessage(KimChatMsg message) {
+    final card = AgentToolCard.parse(message.body);
+    return AgentActionBubble(
+      dest: message.dest,
+      callId: card.callId,
+      name: card.name,
+      preview: card.preview,
+      pending: card.state == 'pending' || card.state == 'running',
+      confirmation: card.isConfirmation,
+    );
+  }
+
+  final String dest;
+  final String callId;
+  final String name;
+  final String preview;
+  final bool pending;
+  final bool confirmation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final card = AgentToolCard.parse(message.body);
-    final pending = card.state == 'pending' || card.state == 'running';
-    final confirmation = card.isConfirmation;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: DecoratedBox(
@@ -49,27 +72,23 @@ class AgentActionBubble extends ConsumerWidget {
                     Icon(
                       confirmation
                           ? Icons.shield_outlined
-                          : (card.ok
-                                ? Icons.check_circle_outline
-                                : Icons.error_outline),
+                          : Icons.check_circle_outline,
                       size: 16,
-                      color: confirmation
-                          ? scheme.primary
-                          : (card.ok ? scheme.primary : scheme.error),
+                      color: scheme.primary,
                     ),
                   const Gap(8),
                   Expanded(
                     child: Text(
-                      card.name.isEmpty ? 'tool' : card.name,
+                      name.isEmpty ? 'tool' : name,
                       style: Theme.of(context).textTheme.labelLarge,
                     ),
                   ),
                 ],
               ),
-              if (card.preview.isNotEmpty) ...[
+              if (preview.isNotEmpty) ...[
                 const Gap(6),
                 Text(
-                  card.preview,
+                  preview,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall
@@ -82,34 +101,43 @@ class AgentActionBubble extends ConsumerWidget {
                   children: [
                     TextButton(
                       onPressed: pending
-                          ? () => ref
-                                .read(agentBridgeProvider)
-                                .respondPermission(
-                                  callId: card.callId,
-                                  permission: 'allow_once',
-                                )
+                          ? () => unawaited(
+                              ref
+                                  .read(agentPermissionHubProvider.notifier)
+                                  .respond(
+                                    dest: dest,
+                                    callId: callId,
+                                    permission: 'allow_once',
+                                  ),
+                            )
                           : null,
                       child: Text(Copy.agentAllow),
                     ),
                     TextButton(
                       onPressed: pending
-                          ? () => ref
-                                .read(agentBridgeProvider)
-                                .respondPermission(
-                                  callId: card.callId,
-                                  permission: 'always_allow',
-                                )
+                          ? () => unawaited(
+                              ref
+                                  .read(agentPermissionHubProvider.notifier)
+                                  .respond(
+                                    dest: dest,
+                                    callId: callId,
+                                    permission: 'always_allow',
+                                  ),
+                            )
                           : null,
                       child: Text(Copy.agentAlwaysAllow),
                     ),
                     TextButton(
                       onPressed: pending
-                          ? () => ref
-                                .read(agentBridgeProvider)
-                                .respondPermission(
-                                  callId: card.callId,
-                                  permission: 'deny_once',
-                                )
+                          ? () => unawaited(
+                              ref
+                                  .read(agentPermissionHubProvider.notifier)
+                                  .respond(
+                                    dest: dest,
+                                    callId: callId,
+                                    permission: 'deny_once',
+                                  ),
+                            )
                           : null,
                       child: Text(Copy.agentDeny),
                     ),

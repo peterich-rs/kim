@@ -24,6 +24,8 @@ import 'package:kim_mobile/design/kim_pinned_footer.dart';
 import 'package:kim_mobile/features/agent/agent_overview_status.dart';
 import 'package:kim_mobile/features/agent/agent_create_page.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
+import 'package:kim_mobile/features/agent/context_window.dart';
+import 'package:kim_mobile/features/agent/context_window_controls.dart';
 import 'package:kim_mobile/features/agent/reasoning_controls.dart';
 
 const _kNewProvider = '__new__';
@@ -51,6 +53,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   late final TextEditingController _advanced;
   ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
   ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
+  var _contextTokens = kDefaultContextTokens;
   var _loaded = false;
   String _accountId = '';
   List<VendorSummaryDto> _vendors = const [];
@@ -158,10 +161,12 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     if (widget.isCreate) {
       if (accounts.isNotEmpty) {
         _accountId = accounts.first.id;
-        _model.text = defaultModelForAccount(
+        final model = defaultModelForAccount(
           accounts.first,
           _vendorById(accounts.first.vendorId),
         );
+        _model.text = model;
+        _contextTokens = defaultContextTokens(model);
       }
       if (mounted) {
         setState(() {});
@@ -178,6 +183,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     _prompt.text = profile.systemPrompt;
     _accountId = profile.accountId;
     _model.text = profile.model;
+    _contextTokens =
+        profile.contextTokens ?? defaultContextTokens(profile.model);
     _choice =
         profile.reasoning ??
         ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
@@ -265,6 +272,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       _accountId = id;
       _pendingModels = const [];
       _model.text = model;
+      _contextTokens = defaultContextTokens(model);
     });
     if (fell && mounted) {
       _toastInfo(AppLocalizations.of(context).agentModelFallback(model));
@@ -327,7 +335,10 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       await _otherModel();
       return;
     }
-    setState(() => _model.text = picked);
+    setState(() {
+      _model.text = picked;
+      _contextTokens = defaultContextTokens(picked);
+    });
     unawaited(_reloadSurface(toastDropped: true));
   }
 
@@ -370,7 +381,10 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     } else {
       _pendingModels = selectableModelIds([..._pendingModels, raw]);
     }
-    setState(() => _model.text = raw);
+    setState(() {
+      _model.text = raw;
+      _contextTokens = defaultContextTokens(raw);
+    });
     unawaited(_reloadSurface(toastDropped: true));
   }
 
@@ -427,6 +441,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         systemPrompt: _prompt.text,
         reasoning: choice,
         thinkingEffort: choice.value ?? '',
+        contextTokens: _contextTokens,
       );
       _draft = next;
     } else {
@@ -447,6 +462,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         model: model,
         thinkingEffort: choice.value ?? '',
         reasoning: choice,
+        contextTokens: _contextTokens,
         systemPrompt: _prompt.text,
       );
     }
@@ -651,6 +667,19 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                         ),
                       ),
                     ],
+                  ),
+                  const Gap(18),
+                  Text(
+                    l10n.agentContextWindow,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Gap(8),
+                  ContextWindowControls(
+                    tokens: _contextTokens,
+                    model: _model.text.trim(),
+                    onChanged: (next) => setState(() => _contextTokens = next),
                   ),
                   if (!widget.isCreate) ...[
                     const Gap(18),

@@ -1094,6 +1094,30 @@ abstract class AppLocalizations {
   /// **'保存以输入框为准。可手填，或拉取后从列表选入。'**
   String get agentModelHint;
 
+  /// No description provided for @agentContextWindow.
+  ///
+  /// In zh, this message translates to:
+  /// **'上下文窗口'**
+  String get agentContextWindow;
+
+  /// No description provided for @agentContextWindowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'用于会话压缩。默认取该模型公开窗口，未知模型为 256K。'**
+  String get agentContextWindowHint;
+
+  /// No description provided for @agentContextWindowCustom.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义…'**
+  String get agentContextWindowCustom;
+
+  /// No description provided for @agentContextWindowDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'{size}（模型默认）'**
+  String agentContextWindowDefault(String size);
+
   /// No description provided for @agentReasoning.
   ///
   /// In zh, this message translates to:
@@ -1223,8 +1247,26 @@ abstract class AppLocalizations {
   /// No description provided for @agentMcpHint.
   ///
   /// In zh, this message translates to:
-  /// **'高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。'**
+  /// **'高级。每行：名称 命令 参数… 默认空。'**
   String get agentMcpHint;
+
+  /// No description provided for @agentAskBefore.
+  ///
+  /// In zh, this message translates to:
+  /// **'先问再跑'**
+  String get agentAskBefore;
+
+  /// No description provided for @agentAskBeforeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'聊天里确认后再执行'**
+  String get agentAskBeforeHint;
+
+  /// No description provided for @agentToolDelegate.
+  ///
+  /// In zh, this message translates to:
+  /// **'委派子 Agent'**
+  String get agentToolDelegate;
 
   /// No description provided for @agentAllow.
   ///

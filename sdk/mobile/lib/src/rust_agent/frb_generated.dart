@@ -71,7 +71,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1637966598;
+  int get rustContentHash => 33649355;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -125,6 +125,11 @@ abstract class AgentRustLibApi extends BaseApi {
 
   SessionSnapshotDto crateApiSessionAgentSessionSnapshot({
     required AgentSession that,
+  });
+
+  Future<void> crateApiSessionAgentSessionSteer({
+    required AgentSession that,
+    required String text,
   });
 
   Future<String> crateApiSessionCapabilityCatalogJson();
@@ -547,6 +552,44 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       );
 
   @override
+  Future<void> crateApiSessionAgentSessionSteer({
+    required AgentSession that,
+    required String text,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(text, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSessionAgentSessionSteerConstMeta,
+        argValues: [that, text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAgentSessionSteerConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentSession_steer",
+        argNames: ["that", "text"],
+      );
+
+  @override
   Future<String> crateApiSessionCapabilityCatalogJson() {
     return handler.executeNormal(
       NormalTask(
@@ -555,7 +598,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -587,7 +630,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -624,7 +667,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -654,7 +697,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -684,7 +727,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -714,7 +757,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 17,
             port: port_,
           );
         },
@@ -741,7 +784,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -768,7 +811,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -800,7 +843,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -837,7 +880,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -867,7 +910,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -895,7 +938,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 23,
             port: port_,
           );
         },
@@ -930,7 +973,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1010,8 +1053,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   AgentUiEvent dco_decode_agent_ui_event(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 13)
-      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    if (arr.length != 14)
+      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
     return AgentUiEvent(
       kind: dco_decode_String(arr[0]),
       operationId: dco_decode_String(arr[1]),
@@ -1026,6 +1069,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       inputTokens: dco_decode_u_64(arr[10]),
       outputTokens: dco_decode_u_64(arr[11]),
       resumedOps: dco_decode_list_String(arr[12]),
+      recentlyActive: dco_decode_bool(arr[13]),
     );
   }
 
@@ -1069,8 +1113,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   SessionOpenOpts dco_decode_session_open_opts(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 14)
-      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
     return SessionOpenOpts(
       model: dco_decode_String(arr[0]),
       llmBackend: dco_decode_String(arr[1]),
@@ -1086,6 +1130,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       enableKimTools: dco_decode_bool(arr[11]),
       enableApprovals: dco_decode_bool(arr[12]),
       sessionId: dco_decode_String(arr[13]),
+      harnessJson: dco_decode_String(arr[14]),
     );
   }
 
@@ -1201,6 +1246,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     var var_inputTokens = sse_decode_u_64(deserializer);
     var var_outputTokens = sse_decode_u_64(deserializer);
     var var_resumedOps = sse_decode_list_String(deserializer);
+    var var_recentlyActive = sse_decode_bool(deserializer);
     return AgentUiEvent(
       kind: var_kind,
       operationId: var_operationId,
@@ -1215,6 +1261,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       inputTokens: var_inputTokens,
       outputTokens: var_outputTokens,
       resumedOps: var_resumedOps,
+      recentlyActive: var_recentlyActive,
     );
   }
 
@@ -1276,6 +1323,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     var var_enableKimTools = sse_decode_bool(deserializer);
     var var_enableApprovals = sse_decode_bool(deserializer);
     var var_sessionId = sse_decode_String(deserializer);
+    var var_harnessJson = sse_decode_String(deserializer);
     return SessionOpenOpts(
       model: var_model,
       llmBackend: var_llmBackend,
@@ -1291,6 +1339,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       enableKimTools: var_enableKimTools,
       enableApprovals: var_enableApprovals,
       sessionId: var_sessionId,
+      harnessJson: var_harnessJson,
     );
   }
 
@@ -1427,6 +1476,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_u_64(self.inputTokens, serializer);
     sse_encode_u_64(self.outputTokens, serializer);
     sse_encode_list_String(self.resumedOps, serializer);
+    sse_encode_bool(self.recentlyActive, serializer);
   }
 
   @protected
@@ -1493,6 +1543,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_bool(self.enableKimTools, serializer);
     sse_encode_bool(self.enableApprovals, serializer);
     sse_encode_String(self.sessionId, serializer);
+    sse_encode_String(self.harnessJson, serializer);
   }
 
   @protected
@@ -1607,4 +1658,7 @@ class AgentSessionImpl extends RustOpaque implements AgentSession {
 
   SessionSnapshotDto snapshot() =>
       AgentRustLib.instance.api.crateApiSessionAgentSessionSnapshot(that: this);
+
+  Future<void> steer({required String text}) => AgentRustLib.instance.api
+      .crateApiSessionAgentSessionSteer(that: this, text: text);
 }

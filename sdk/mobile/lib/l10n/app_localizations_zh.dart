@@ -514,6 +514,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentModelHint => '保存以输入框为准。可手填，或拉取后从列表选入。';
 
   @override
+  String get agentContextWindow => '上下文窗口';
+
+  @override
+  String get agentContextWindowHint => '用于会话压缩。默认取该模型公开窗口，未知模型为 256K。';
+
+  @override
+  String get agentContextWindowCustom => '自定义…';
+
+  @override
+  String agentContextWindowDefault(String size) {
+    return '$size（模型默认）';
+  }
+
+  @override
   String get agentReasoning => '推理强度';
 
   @override
@@ -577,7 +591,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get agentMcp => 'MCP 扩展';
 
   @override
-  String get agentMcpHint => '高级。每行：名称 命令 参数… 默认空。工具必须确认后才执行。';
+  String get agentMcpHint => '高级。每行：名称 命令 参数… 默认空。';
+
+  @override
+  String get agentAskBefore => '先问再跑';
+
+  @override
+  String get agentAskBeforeHint => '聊天里确认后再执行';
+
+  @override
+  String get agentToolDelegate => '委派子 Agent';
 
   @override
   String get agentAllow => '允许';

@@ -41,7 +41,7 @@ impl CapabilityBlock for SubagentBlock {
             prompt_parts: vec![(
                 "capability".into(),
                 "## Subagent\n\
-delegate — run a smaller child agent on a focused task. Gated (user confirms)."
+delegate — run a smaller child agent on a focused task."
                     .into(),
             )],
             deferred_tool_names: Vec::new(),
@@ -53,7 +53,7 @@ delegate — run a smaller child agent on a focused task. Gated (user confirms).
                 r#match: PermissionMatch::Tool {
                     name: "delegate".into(),
                 },
-                effect: PermissionDefault::AskBefore,
+                effect: PermissionDefault::AlwaysAllow,
             }],
             preview_tools: vec![PreviewTool {
                 name: "delegate".into(),

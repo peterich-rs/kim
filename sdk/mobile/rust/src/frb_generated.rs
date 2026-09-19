@@ -4236,12 +4236,20 @@ impl SseDecode for crate::api::types::AgentRunResultDto {
         let mut var_epoch = <u64>::sse_decode(deserializer);
         let mut var_output = <String>::sse_decode(deserializer);
         let mut var_error = <Option<String>>::sse_decode(deserializer);
+        let mut var_stopReason = <String>::sse_decode(deserializer);
+        let mut var_replied = <bool>::sse_decode(deserializer);
+        let mut var_visible = <bool>::sse_decode(deserializer);
+        let mut var_recentlyActive = <bool>::sse_decode(deserializer);
         return crate::api::types::AgentRunResultDto {
             dest: var_dest,
             profile_id: var_profileId,
             epoch: var_epoch,
             output: var_output,
             error: var_error,
+            stop_reason: var_stopReason,
+            replied: var_replied,
+            visible: var_visible,
+            recently_active: var_recentlyActive,
         };
     }
 }
@@ -4256,6 +4264,7 @@ impl SseDecode for crate::api::types::AgentTurnStateDto {
             2 => crate::api::types::AgentTurnStateDto::WaitingPermission,
             3 => crate::api::types::AgentTurnStateDto::Done,
             4 => crate::api::types::AgentTurnStateDto::Error,
+            5 => crate::api::types::AgentTurnStateDto::Empty,
             _ => unreachable!("Invalid variant for AgentTurnStateDto: {}", inner),
         };
     }
@@ -5713,6 +5722,10 @@ impl flutter_rust_bridge::IntoDart for crate::api::types::AgentRunResultDto {
             self.epoch.into_into_dart().into_dart(),
             self.output.into_into_dart().into_dart(),
             self.error.into_into_dart().into_dart(),
+            self.stop_reason.into_into_dart().into_dart(),
+            self.replied.into_into_dart().into_dart(),
+            self.visible.into_into_dart().into_dart(),
+            self.recently_active.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5737,6 +5750,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::types::AgentTurnStateDto {
             Self::WaitingPermission => 2.into_dart(),
             Self::Done => 3.into_dart(),
             Self::Error => 4.into_dart(),
+            Self::Empty => 5.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -6808,6 +6822,10 @@ impl SseEncode for crate::api::types::AgentRunResultDto {
         <u64>::sse_encode(self.epoch, serializer);
         <String>::sse_encode(self.output, serializer);
         <Option<String>>::sse_encode(self.error, serializer);
+        <String>::sse_encode(self.stop_reason, serializer);
+        <bool>::sse_encode(self.replied, serializer);
+        <bool>::sse_encode(self.visible, serializer);
+        <bool>::sse_encode(self.recently_active, serializer);
     }
 }
 
@@ -6821,6 +6839,7 @@ impl SseEncode for crate::api::types::AgentTurnStateDto {
                 crate::api::types::AgentTurnStateDto::WaitingPermission => 2,
                 crate::api::types::AgentTurnStateDto::Done => 3,
                 crate::api::types::AgentTurnStateDto::Error => 4,
+                crate::api::types::AgentTurnStateDto::Empty => 5,
                 _ => {
                     unimplemented!("");
                 }

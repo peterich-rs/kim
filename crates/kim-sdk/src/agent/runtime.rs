@@ -23,6 +23,34 @@ pub struct AgentRunResult {
     pub epoch: u64,
     pub output: String,
     pub error: Option<String>,
+    pub stop_reason: String,
+    pub replied: bool,
+    pub visible: bool,
+    pub recently_active: bool,
+}
+
+impl AgentRunResult {
+    #[must_use]
+    pub fn ok(
+        dest: impl Into<String>,
+        profile_id: impl Into<String>,
+        epoch: u64,
+        output: impl Into<String>,
+    ) -> Self {
+        let output = output.into();
+        let replied = !output.trim().is_empty();
+        Self {
+            dest: dest.into(),
+            profile_id: profile_id.into(),
+            epoch,
+            output,
+            error: None,
+            stop_reason: if replied { "completed" } else { "empty" }.into(),
+            replied,
+            visible: replied,
+            recently_active: false,
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -157,12 +185,11 @@ impl AgentRuntime for ScriptedRuntime {
         epoch: SessionEpoch,
     ) -> Result<AgentRunResult, SdkError> {
         lock(&self.turns).push((dest.to_string(), text.to_string(), in_reply_to));
-        Ok(AgentRunResult {
-            dest: dest.to_string(),
-            profile_id: profile_id.to_string(),
-            epoch: epoch.0,
-            output: self.output.clone(),
-            error: None,
-        })
+        Ok(AgentRunResult::ok(
+            dest.to_string(),
+            profile_id.to_string(),
+            epoch.0,
+            self.output.clone(),
+        ))
     }
 }

@@ -50,6 +50,52 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
         if cancel.is_cancelled() || !store.outbox_alive(&session.account, &row.client_id).await? {
             continue;
         }
+        if let Some(in_reply_to) = crate::store::outbox::bot_reply_in_reply_to(&row.extra) {
+            match proto
+                .bot_reply(&row.dest, &row.body, in_reply_to, &row.client_id)
+                .await
+            {
+                Ok((message_id, _)) if message_id != 0 => {
+                    if cancel.is_cancelled() {
+                        continue;
+                    }
+                    let ((), _seq) = store
+                        .mark_sent(
+                            epoch,
+                            session.account.clone(),
+                            row.client_id.clone(),
+                            message_id,
+                        )
+                        .await?;
+                    sent += 1;
+                }
+                Ok(_) => {
+                    let ((), _seq) = store
+                        .mark_failed(epoch, session.account.clone(), row.client_id)
+                        .await?;
+                }
+                Err(err) if err.retryable_send() => {
+                    let attempt = row.attempt.saturating_add(1);
+                    let delay = 1000i64.saturating_mul(1i64 << attempt.min(6));
+                    let ((), _seq) = store
+                        .mark_retry(
+                            epoch,
+                            session.account.clone(),
+                            row.client_id,
+                            attempt,
+                            crate::store::now_ms().saturating_add(delay),
+                        )
+                        .await?;
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, dest = %row.dest, "bot reply send failed");
+                    let ((), _seq) = store
+                        .mark_failed(epoch, session.account.clone(), row.client_id)
+                        .await?;
+                }
+            }
+            continue;
+        }
         match proto
             .send_message(
                 &row.dest,

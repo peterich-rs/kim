@@ -41,19 +41,20 @@ impl CapabilityBlock for BashBlock {
             prompt_parts: vec![(
                 "capability".into(),
                 "## Shell\n\
-bash — run a command in the workspace. Always gated (user confirms). Prefer dedicated \
+bash — run a command in the workspace. Prefer dedicated \
 file tools over shell for reading, editing, or searching files."
                     .into(),
             )],
             deferred_tool_names: Vec::new(),
             in_process: Some(Arc::new(BashToolProvider {
                 root: ctx.project_root.to_path_buf(),
+                timeout: crate::harness::bash_timeout(ctx.profile),
             })),
             permission_defaults: vec![PermissionRule {
                 r#match: PermissionMatch::Tool {
                     name: "bash".into(),
                 },
-                effect: PermissionDefault::AskBefore,
+                effect: PermissionDefault::AlwaysAllow,
             }],
             preview_tools: vec![PreviewTool {
                 name: "bash".into(),

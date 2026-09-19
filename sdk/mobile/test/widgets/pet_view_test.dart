@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/pet_atlas_painter.dart';
 import 'package:kim_mobile/design/pet_view.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
@@ -158,6 +159,30 @@ void main() {
       'columns': 8,
       'rows': 9,
     }, Uint8List.fromList(_kAtlasPng));
+  });
+
+  testWidgets('no injected pack falls back to KimAvatar', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(
+            body: PetView(dest: 'goose', fallbackName: 'Goose'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(KimAvatar), findsOneWidget);
+    expect(
+      tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .where((w) => w.painter is PetAtlasPainter),
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('injected tiny atlas pumps one frame without exception', (

@@ -44,6 +44,15 @@ enum WriteOp {
         cmd: SendMessageCommand,
         reply: oneshot::Sender<Result<(CommandReceipt, u64), SdkError>>,
     },
+    EnqueueBotReply {
+        epoch: u64,
+        account: String,
+        dest: String,
+        body: String,
+        in_reply_to: i64,
+        client_id: String,
+        reply: oneshot::Sender<Result<(CommandReceipt, u64), SdkError>>,
+    },
     PersistTalks {
         epoch: u64,
         account: String,
@@ -281,6 +290,34 @@ impl Store {
                 epoch,
                 account,
                 cmd,
+                reply,
+            })
+            .map_err(|_| SdkError::Busy {
+                queue: "store".into(),
+            })?;
+        rx.await.map_err(|_| SdkError::Internal {
+            message: "store worker dropped".into(),
+        })?
+    }
+
+    pub(crate) async fn enqueue_bot_reply(
+        &self,
+        epoch: u64,
+        account: String,
+        dest: String,
+        body: String,
+        in_reply_to: i64,
+        client_id: String,
+    ) -> Result<(CommandReceipt, u64), SdkError> {
+        let (reply, rx) = oneshot::channel();
+        self.writes
+            .try_send(WriteOp::EnqueueBotReply {
+                epoch,
+                account,
+                dest,
+                body,
+                in_reply_to,
+                client_id,
                 reply,
             })
             .map_err(|_| SdkError::Busy {
@@ -1110,6 +1147,27 @@ async fn write_worker(
                     })
                 } else {
                     persist_enqueue(&pool, &account, cmd).await
+                };
+                let _ = reply.send(record_result(&changes, &account, op_epoch, result));
+            }
+            WriteOp::EnqueueBotReply {
+                epoch: op_epoch,
+                account,
+                dest,
+                body,
+                in_reply_to,
+                client_id,
+                reply,
+            } => {
+                let current = epoch.load(Ordering::SeqCst);
+                let result = if op_epoch != current {
+                    Err(SdkError::StaleEpoch {
+                        expected: op_epoch,
+                        actual: current,
+                    })
+                } else {
+                    persist_enqueue_bot_reply(&pool, &account, dest, body, in_reply_to, client_id)
+                        .await
                 };
                 let _ = reply.send(record_result(&changes, &account, op_epoch, result));
             }
@@ -2151,6 +2209,99 @@ async fn persist_enqueue(
     .await;
     finish_conn(&mut conn, result).await?;
     let dest = cmd.dest;
+    Ok((
+        CommandReceipt {
+            request_id,
+            client_id,
+            dest: dest.clone(),
+            accepted_at: now,
+            send_status: SendStatus::Pending,
+        },
+        timeline_and_inbox(dest),
+    ))
+}
+
+async fn persist_enqueue_bot_reply(
+    pool: &SqlitePool,
+    account: &str,
+    dest: String,
+    body: String,
+    in_reply_to: i64,
+    client_id: String,
+) -> Result<(CommandReceipt, CommitEffect), SdkError> {
+    if dest.is_empty() {
+        return Err(SdkError::InvalidArgument {
+            message: "dest is required".into(),
+        });
+    }
+    if dest == account {
+        return Err(SdkError::CannotChatSelf);
+    }
+    let body = body.trim().to_string();
+    if body.is_empty() {
+        return Err(SdkError::InvalidArgument {
+            message: "body is required".into(),
+        });
+    }
+    let client_id = if client_id.is_empty() {
+        uuid::Uuid::new_v4().to_string()
+    } else {
+        client_id
+    };
+    let extra = outbox::encode_bot_reply_extra(in_reply_to);
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    let kind = kim_protocol::INBOX_KIND_USER;
+    let mut conn = pool.acquire().await.map_err(map_sqlx)?;
+    begin_immediate(&mut conn).await?;
+    let result = async {
+        messages::insert_own(
+            &mut conn,
+            messages::OwnInsert {
+                account,
+                dest: &dest,
+                key: &client_id,
+                sender: &dest,
+                body: &body,
+                at: now,
+                kind: kim_protocol::MESSAGE_TYPE_TEXT,
+                width: 0,
+                height: 0,
+                batch_id: "",
+                status: SendStatus::Pending,
+                local_path: "",
+                thread_kind: kind,
+            },
+        )
+        .await?;
+        outbox::insert(
+            &mut conn,
+            outbox::OutboxInsert {
+                account,
+                client_id: &client_id,
+                dest: &dest,
+                kind,
+                payload_type: kim_protocol::MESSAGE_TYPE_TEXT,
+                body: &body,
+                extra: &extra,
+                local_path: "",
+                mime: "",
+                width: 0,
+                height: 0,
+                byte_size: 0,
+                batch_id: "",
+                status: SendStatus::Pending,
+                now,
+            },
+        )
+        .await?;
+        threads::upsert_on_send(&mut conn, account, &dest, kind, &body, now).await?;
+        messages::bump_timeline_version(&mut conn, account, &dest).await?;
+        messages::prune(&mut conn, account, &dest).await?;
+        Ok::<(), SdkError>(())
+    }
+    .await;
+    finish_conn(&mut conn, result).await?;
     Ok((
         CommandReceipt {
             request_id,

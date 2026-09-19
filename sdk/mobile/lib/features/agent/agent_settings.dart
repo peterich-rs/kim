@@ -79,6 +79,7 @@ class AgentSettings {
       enableKimTools: false,
       enableApprovals: false,
       sessionId: '',
+      harnessJson: '',
     );
   }
 

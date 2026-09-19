@@ -1,5 +1,6 @@
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -37,6 +38,18 @@ KimLayoutSize kimLayoutSize(BuildContext context) =>
 /// True when the shell keeps a side pane (full list or avatar rail) beside chat.
 bool kimIsWide(BuildContext context) =>
     kimLayoutSize(context) != KimLayoutSize.narrow;
+
+/// Desktop pointer can drag-select message text. Phones keep long-press copy.
+bool kimSelectsMessageText([TargetPlatform? platform]) {
+  return switch (platform ?? defaultTargetPlatform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => true,
+    TargetPlatform.iOS ||
+    TargetPlatform.android ||
+    TargetPlatform.fuchsia => false,
+  };
+}
 
 /// Horizontal inset that keeps [maxWidth] content centered in [width].
 double kimBodyInset(

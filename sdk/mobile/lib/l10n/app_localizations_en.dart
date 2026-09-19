@@ -525,6 +525,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'The text field is what gets saved. Type an id, or fetch and pick one.';
 
   @override
+  String get agentContextWindow => 'Context window';
+
+  @override
+  String get agentContextWindowHint =>
+      'Used for compaction. Defaults to the model\'s published window; unknown models use 256K.';
+
+  @override
+  String get agentContextWindowCustom => 'Custom…';
+
+  @override
+  String agentContextWindowDefault(String size) {
+    return '$size (model default)';
+  }
+
+  @override
   String get agentReasoning => 'Reasoning';
 
   @override
@@ -590,7 +605,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentMcpHint =>
-      'Advanced. One per line: name command arg… Default empty. Tools require confirmation.';
+      'Advanced. One per line: name command arg… Default empty.';
+
+  @override
+  String get agentAskBefore => 'Ask before running';
+
+  @override
+  String get agentAskBeforeHint => 'Confirm in chat before this tool runs';
+
+  @override
+  String get agentToolDelegate => 'Delegate to a subagent';
 
   @override
   String get agentAllow => 'Allow';

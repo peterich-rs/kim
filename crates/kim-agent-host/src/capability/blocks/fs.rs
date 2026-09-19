@@ -77,7 +77,7 @@ write_file or bash unless they were separately granted."
                 r#match: PermissionMatch::Tool {
                     name: "write_file".into(),
                 },
-                effect: PermissionDefault::AskBefore,
+                effect: PermissionDefault::AlwaysAllow,
             });
         }
         Ok(CapabilityPart {

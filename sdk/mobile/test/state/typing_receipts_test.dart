@@ -24,6 +24,16 @@ void main() {
     expect(container.read(peerTypingProvider('alice')), isFalse);
   });
 
+  test('clear drops leftover agent typing', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final n = container.read(typingProvider.notifier);
+    n.applyAgentTurn(dest: 'b_bot', busy: true);
+    expect(container.read(peerTypingProvider('b_bot')), isTrue);
+    n.clear();
+    expect(container.read(peerTypingProvider('b_bot')), isFalse);
+  });
+
   test('agent busy keys the bot dest not the owner', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

@@ -17,6 +17,20 @@ fn enabled_true() -> bool {
     true
 }
 
+/// Optional supervision overrides. `enabled` defaults to false so a missing
+/// field does not turn the clocks on (`enabled_true` is the profile switch).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HarnessSpec {
+    pub idle_timeout_secs: Option<u64>,
+    pub hard_timeout_secs: Option<u64>,
+    pub bash_timeout_secs: Option<u64>,
+    pub mcp_tool_timeout_secs: Option<u64>,
+    pub yield_wait_secs: Option<u64>,
+    pub require_reply: Option<bool>,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 /// Pre-B-KD 4 identity that enumerated every IM tool. Treat as empty.
 const LEGACY_TOOL_LAUNDRY_IDENTITY: &str = concat!(
     "You are 助手, a local desktop agent inside the KIM messenger. ",
@@ -95,6 +109,10 @@ pub struct AgentProfile {
     /// `$HOME` is not the ecosystem directory (S-KD 23).
     #[serde(default)]
     pub user_agents_skills: String,
+    /// Optional harness overrides. Missing → timers stay at MAX until a session
+    /// explicitly enables them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<HarnessSpec>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -135,6 +153,9 @@ pub struct ModelSpec {
     pub temperature: Option<String>,
     #[serde(default)]
     pub max_tokens: Option<i32>,
+    /// Input+output envelope. Missing → catalog default for `name`, else 256k.
+    #[serde(default)]
+    pub context_tokens: Option<i32>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra_params: HashMap<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -233,13 +254,34 @@ pub struct ExtensionSpec {
     pub command: Vec<String>,
     #[serde(default)]
     pub url: String,
+    /// Optional process env. v1 ignores caller-supplied values and uses the
+    /// shared allowlist instead.
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
 }
 
 /// Secrets travel beside the profile, never inside it.
+#[derive(Clone)]
 pub struct ResolvedProfile {
     pub profile: AgentProfile,
     pub api_key: String,
     pub project_root: PathBuf,
+}
+
+impl std::fmt::Debug for ResolvedProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedProfile")
+            .field("profile_id", &self.profile.id)
+            .field("api_key", &"<redacted>")
+            .field("project_root", &"<redacted>")
+            .finish()
+    }
+}
+
+impl std::fmt::Display for ResolvedProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "profile {}", self.profile.id)
+    }
 }
 
 /// Fields `session_open` maps when `profile_json` is empty.
@@ -318,6 +360,7 @@ impl AgentProfile {
             skills: Vec::new(),
             portable_denylist: Vec::new(),
             user_agents_skills: String::new(),
+            harness: None,
         }
     }
 
@@ -436,6 +479,7 @@ impl ResolvedProfile {
                 skills: Vec::new(),
                 portable_denylist: Vec::new(),
                 user_agents_skills: String::new(),
+                harness: None,
             },
             api_key: config.api_key,
             project_root: PathBuf::new(),
@@ -501,6 +545,7 @@ fn goose_template() -> AgentProfile {
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+        harness: None,
     }
 }
 
@@ -541,6 +586,7 @@ Reply in the target language of the request."
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+            harness: None,
     }
 }
 
@@ -587,6 +633,7 @@ If the user asks you to send messages or act outside this workspace, say that is
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+            harness: None,
     }
 }
 
@@ -787,6 +834,19 @@ mod tests {
     }
 
     #[test]
+    fn model_context_tokens_round_trip() {
+        let json = r#"{
+            "id": "goose",
+            "display_name": "助手",
+            "model": {"name": "gpt-4o", "context_tokens": 128000}
+        }"#;
+        let profile: AgentProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.model.context_tokens, Some(128000));
+        let out = serde_json::to_value(&profile).unwrap();
+        assert_eq!(out["model"]["context_tokens"], 128000);
+    }
+
+    #[test]
     fn leftover_extensions_do_not_project_when_caps_omit_mcp() {
         let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
             enable_kim_tools: true,
@@ -799,6 +859,7 @@ mod tests {
             transport: "stdio".into(),
             command: vec!["npx".into()],
             url: String::new(),
+            env: Default::default(),
         }];
         assert!(profile.project_extensions().is_empty());
     }

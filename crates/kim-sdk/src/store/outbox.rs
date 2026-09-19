@@ -3,6 +3,21 @@ use sqlx::SqliteConnection;
 use crate::command::SendStatus;
 use crate::error::{map_sqlx, SdkError};
 
+/// Outbox `extra` marker so the pump calls `chat.bot.reply` instead of talk.
+pub(crate) fn encode_bot_reply_extra(in_reply_to: i64) -> String {
+    format!(r#"{{"bot_reply":1,"in_reply_to":{in_reply_to}}}"#)
+}
+
+pub(crate) fn bot_reply_in_reply_to(extra: &str) -> Option<i64> {
+    let v: serde_json::Value = serde_json::from_str(extra).ok()?;
+    let marker = v.get("bot_reply")?;
+    let is_bot = marker.as_i64() == Some(1) || marker.as_bool() == Some(true);
+    if !is_bot {
+        return None;
+    }
+    v.get("in_reply_to")?.as_i64()
+}
+
 pub(crate) struct OutboxInsert<'a> {
     pub account: &'a str,
     pub client_id: &'a str,
@@ -361,4 +376,17 @@ pub(crate) async fn delete_thread(
         .await
         .map_err(map_sqlx)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bot_reply_in_reply_to, encode_bot_reply_extra};
+
+    #[test]
+    fn bot_reply_extra_roundtrip() {
+        let extra = encode_bot_reply_extra(624083888934789120);
+        assert_eq!(bot_reply_in_reply_to(&extra), Some(624083888934789120));
+        assert_eq!(bot_reply_in_reply_to(""), None);
+        assert_eq!(bot_reply_in_reply_to(r#"{"w":1,"h":2}"#), None);
+    }
 }

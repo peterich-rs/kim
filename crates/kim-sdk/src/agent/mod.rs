@@ -15,7 +15,6 @@ use tokio::sync::mpsc;
 use crate::error::SdkError;
 use crate::ids::SessionEpoch;
 use crate::session::lock;
-use crate::sync::UnreadPolicy;
 use crate::timeline::{AgentTurnState, SessionUpdate};
 use crate::KimSdk;
 
@@ -63,6 +62,7 @@ struct Turn {
     text: String,
     in_reply_to: i64,
     epoch: SessionEpoch,
+    retried: bool,
 }
 
 struct TurnQueue {
@@ -96,7 +96,7 @@ impl MobileAgent {
         lock(&self.lru).len()
     }
 
-    fn spawn_worker(&self, mut rx: mpsc::Receiver<Turn>) {
+    fn spawn_worker(&self, tx: mpsc::Sender<Turn>, mut rx: mpsc::Receiver<Turn>) {
         let sdk = self.sdk.clone();
         let runtime = self.runtime.clone();
         let lru = self.lru.clone();
@@ -107,32 +107,43 @@ impl MobileAgent {
                 }
                 let store = match sdk.store() {
                     Ok(s) => s,
-                    Err(_) => continue,
+                    Err(err) => {
+                        emit_turn(&sdk, &turn.dest, AgentTurnState::Error, err.to_string()).await;
+                        continue;
+                    }
                 };
                 let account = match sdk.session_snapshot() {
                     Ok(s) => s.account,
-                    Err(_) => continue,
+                    Err(err) => {
+                        emit_turn(&sdk, &turn.dest, AgentTurnState::Error, err.to_string()).await;
+                        continue;
+                    }
                 };
                 let profile_id =
                     match profiles::profile_id_for_dest(&store, &account, &turn.dest).await {
                         Ok(Some(id)) => id,
-                        _ => continue,
+                        Ok(None) => continue,
+                        Err(err) => {
+                            emit_turn(&sdk, &turn.dest, AgentTurnState::Error, err.to_string())
+                                .await;
+                            continue;
+                        }
                     };
                 {
                     let mut lru = lock(&lru);
                     lru.touch(&turn.dest, &profile_id);
                 }
-                let _ = sdk
-                    .emit_session_wait(SessionUpdate::AgentTurn {
-                        dest: turn.dest.clone(),
-                        state: AgentTurnState::Running,
-                        text: turn.text.clone(),
-                    })
-                    .await;
+                emit_turn(
+                    &sdk,
+                    &turn.dest,
+                    AgentTurnState::Running,
+                    turn.text.clone(),
+                )
+                .await;
                 let dest = turn.dest.clone();
                 set_bot_busy(&sdk, &dest, true).await;
                 let (stop_hb, stop_rx) = tokio::sync::oneshot::channel();
-                {
+                let hb_task = {
                     let sdk = sdk.clone();
                     let dest = dest.clone();
                     tokio::spawn(async move {
@@ -145,62 +156,63 @@ impl MobileAgent {
                                 _ = hb.tick() => set_bot_busy(&sdk, &dest, true).await,
                             }
                         }
-                    });
-                }
+                    })
+                };
                 let result = runtime
                     .run_turn(&dest, &profile_id, &turn.text, turn.in_reply_to, turn.epoch)
                     .await;
                 let _ = stop_hb.send(());
-                match result {
-                    Ok(run) if run.error.is_none() && !run.output.is_empty() => {
-                        if let Ok(proto) = sdk.protocol() {
-                            let client_id = uuid::Uuid::new_v4().to_string();
-                            match proto
-                                .bot_reply(&dest, &run.output, turn.in_reply_to, &client_id)
-                                .await
-                            {
-                                Ok((message_id, send_time)) if message_id != 0 => {
-                                    persist_bot_reply(
-                                        &sdk,
-                                        &account,
-                                        &dest,
-                                        &run.output,
-                                        message_id,
-                                        send_time,
-                                    )
-                                    .await;
-                                }
-                                _ => {}
-                            }
-                        }
-                        set_bot_busy(&sdk, &dest, false).await;
-                        let _ = sdk
-                            .emit_session_wait(SessionUpdate::AgentTurn {
-                                dest,
-                                state: AgentTurnState::Done,
-                                text: run.output,
-                            })
-                            .await;
-                    }
-                    Ok(run) => {
-                        set_bot_busy(&sdk, &dest, false).await;
-                        let _ = sdk
-                            .emit_session_wait(SessionUpdate::AgentTurn {
-                                dest,
-                                state: AgentTurnState::Error,
-                                text: run.error.unwrap_or_default(),
-                            })
-                            .await;
-                    }
+                // In-flight heartbeat `true` must finish before `false`, or the
+                // indicator lights again after the reply is already on screen.
+                let _ = hb_task.await;
+                let run = match result {
+                    Ok(run) => run,
                     Err(err) => {
                         set_bot_busy(&sdk, &dest, false).await;
-                        let _ = sdk
-                            .emit_session_wait(SessionUpdate::AgentTurn {
-                                dest,
-                                state: AgentTurnState::Error,
-                                text: err.to_string(),
-                            })
-                            .await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Error, err.to_string()).await;
+                        continue;
+                    }
+                };
+                if should_requeue(&run, turn.retried) {
+                    let queued = tx.try_send(Turn {
+                        dest: turn.dest.clone(),
+                        text: turn.text.clone(),
+                        in_reply_to: turn.in_reply_to,
+                        epoch: turn.epoch,
+                        retried: true,
+                    });
+                    if queued.is_err() {
+                        set_bot_busy(&sdk, &dest, false).await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Error, "agent busy".into()).await;
+                    }
+                    continue;
+                }
+                match classify_turn(&run) {
+                    TurnClass::Reply => {
+                        let client_id = uuid::Uuid::new_v4().to_string();
+                        if let Err(err) = sdk
+                            .enqueue_bot_reply(&dest, &run.output, turn.in_reply_to, &client_id)
+                            .await
+                        {
+                            tracing::warn!(error = %err, dest = %dest, "enqueue bot reply");
+                            set_bot_busy(&sdk, &dest, false).await;
+                            emit_turn(&sdk, &dest, AgentTurnState::Error, err.to_string()).await;
+                            continue;
+                        }
+                        set_bot_busy(&sdk, &dest, false).await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Done, run.output).await;
+                    }
+                    TurnClass::Done => {
+                        set_bot_busy(&sdk, &dest, false).await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Done, String::new()).await;
+                    }
+                    TurnClass::Empty => {
+                        set_bot_busy(&sdk, &dest, false).await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Empty, String::new()).await;
+                    }
+                    TurnClass::Error(text) => {
+                        set_bot_busy(&sdk, &dest, false).await;
+                        emit_turn(&sdk, &dest, AgentTurnState::Error, text).await;
                     }
                 }
             }
@@ -208,51 +220,66 @@ impl MobileAgent {
     }
 }
 
-async fn set_bot_busy(sdk: &KimSdk, dest: &str, active: bool) {
+async fn emit_turn(sdk: &KimSdk, dest: &str, state: AgentTurnState, text: String) {
     let _ = sdk
-        .emit_session_wait(SessionUpdate::Typing {
-            typer: dest.to_string(),
+        .emit_session_wait(SessionUpdate::AgentTurn {
             dest: dest.to_string(),
-            kind: 0,
-            active,
-            phase: if active {
-                kim_protocol::TYPING_PHASE_RUNNING
-            } else {
-                kim_protocol::TYPING_PHASE_COMPOSING
-            },
+            state,
+            text,
         })
         .await;
+}
+
+fn should_requeue(run: &AgentRunResult, retried: bool) -> bool {
+    if retried || !run.recently_active {
+        return false;
+    }
+    matches!(run.stop_reason.as_str(), "hard_timeout" | "poisoned")
+}
+
+enum TurnClass {
+    Reply,
+    Done,
+    Empty,
+    Error(String),
+}
+
+fn classify_turn(run: &AgentRunResult) -> TurnClass {
+    let reason = run.stop_reason.as_str();
+    if run.error.is_some()
+        || matches!(
+            reason,
+            "cancelled"
+                | "yield_abandoned"
+                | "idle_timeout"
+                | "hard_timeout"
+                | "poisoned"
+                | "provider"
+                | "failed"
+        )
+    {
+        let text = run
+            .error
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| reason.to_string());
+        return TurnClass::Error(text);
+    }
+    if run.replied {
+        return TurnClass::Reply;
+    }
+    if run.visible {
+        return TurnClass::Done;
+    }
+    TurnClass::Empty
+}
+
+async fn set_bot_busy(sdk: &KimSdk, dest: &str, active: bool) {
+    // Wire only. Local UI follows AgentTurn; `dispatch_cmd` already skips this
+    // channel, so a local Typing emit would be a second source on the owner.
     if let Ok(proto) = sdk.protocol() {
         let _ = proto.bot_typing(dest, 0, active).await;
     }
-}
-
-async fn persist_bot_reply(
-    sdk: &KimSdk,
-    account: &str,
-    dest: &str,
-    body: &str,
-    message_id: i64,
-    send_time: i64,
-) {
-    let talk = kim_client::IncomingTalk {
-        command: kim_protocol::CMD_CHAT_USER_TALK.to_string(),
-        dest: dest.to_string(),
-        message_id,
-        sender: dest.to_string(),
-        msg_type: kim_protocol::MESSAGE_TYPE_TEXT,
-        body: body.to_string(),
-        extra: String::new(),
-        send_time,
-    };
-    let _ = sdk
-        .persist_talks_for(
-            sdk.current_epoch().0,
-            account.to_string(),
-            vec![talk],
-            UnreadPolicy::Keep,
-        )
-        .await;
 }
 
 #[async_trait::async_trait]
@@ -283,7 +310,7 @@ impl AgentPort for MobileAgent {
             let mut queues = lock(&self.queues);
             let queue = queues.entry(dest.to_string()).or_insert_with(|| {
                 let (tx, rx) = mpsc::channel(QUEUE_CAP);
-                self.spawn_worker(rx);
+                self.spawn_worker(tx.clone(), rx);
                 TurnQueue {
                     tx,
                     admitted: VecDeque::new(),
@@ -300,6 +327,7 @@ impl AgentPort for MobileAgent {
                     text: text.to_string(),
                     in_reply_to,
                     epoch,
+                    retried: false,
                 })
                 .map_err(|_| SdkError::Busy {
                     queue: "agent".into(),

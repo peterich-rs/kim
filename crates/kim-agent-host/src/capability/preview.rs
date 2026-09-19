@@ -207,7 +207,7 @@ mod tests {
             .unwrap_or("");
         assert!(digest.starts_with("# Tools"), "{digest}");
         assert!(digest.contains("send_message"), "{digest}");
-        assert!(digest.to_ascii_lowercase().contains("gated"), "{digest}");
+        assert!(!digest.to_ascii_lowercase().contains("gated"), "{digest}");
         assert_eq!(preview.prompt_layers[0].0, "identity");
         assert_eq!(preview.prompt_layers[1].0, "environment");
     }
@@ -287,6 +287,7 @@ mod tests {
             transport: "stdio".into(),
             command: vec!["npx".into(), "mcp".into()],
             url: String::new(),
+            env: Default::default(),
         }];
         assert!(profile.project_extensions().is_empty());
         let preview = preview_assembled(&profile, Path::new("/tmp")).unwrap();
