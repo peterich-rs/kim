@@ -119,27 +119,21 @@ impl MobileAgent {
                         continue;
                     }
                 };
-                let profile_id =
-                    match profiles::profile_id_for_dest(&store, &account, &turn.dest).await {
-                        Ok(Some(id)) => id,
-                        Ok(None) => continue,
-                        Err(err) => {
-                            emit_turn(&sdk, &turn.dest, AgentTurnState::Error, err.to_string())
-                                .await;
-                            continue;
-                        }
-                    };
+                let profile_id = match profiles::profile_id_for_dest(&store, &account, &turn.dest)
+                    .await
+                {
+                    Ok(Some(id)) => id,
+                    Ok(None) => continue,
+                    Err(err) => {
+                        emit_turn(&sdk, &turn.dest, AgentTurnState::Error, err.to_string()).await;
+                        continue;
+                    }
+                };
                 {
                     let mut lru = lock(&lru);
                     lru.touch(&turn.dest, &profile_id);
                 }
-                emit_turn(
-                    &sdk,
-                    &turn.dest,
-                    AgentTurnState::Running,
-                    turn.text.clone(),
-                )
-                .await;
+                emit_turn(&sdk, &turn.dest, AgentTurnState::Running, turn.text.clone()).await;
                 let dest = turn.dest.clone();
                 set_bot_busy(&sdk, &dest, true).await;
                 let (stop_hb, stop_rx) = tokio::sync::oneshot::channel();

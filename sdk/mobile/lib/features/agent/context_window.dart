@@ -148,11 +148,7 @@ int defaultContextTokens(String model) {
 List<int> contextTokenOptions({required int modelDefault, int? current}) {
   final seen = <int>{};
   final out = <int>[];
-  for (final n in [
-    ...kContextTokenPresets,
-    modelDefault,
-    ?current,
-  ]) {
+  for (final n in [...kContextTokenPresets, modelDefault, ?current]) {
     if (n <= 0 || !seen.add(n)) {
       continue;
     }

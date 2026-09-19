@@ -204,12 +204,7 @@ class _DeltaSession implements AgentSessionPort {
   @override
   Future<String> prompt({required String text}) async {
     _ctrl
-      ..add(
-        _ev(
-          kind: 'assistant_text_delta',
-          delta: '接着查登录页历史和可能叠在上面的控件。',
-        ),
-      )
+      ..add(_ev(kind: 'assistant_text_delta', delta: '接着查登录页历史和可能叠在上面的控件。'))
       ..add(_ev(kind: 'assistant_finished', message: finish));
     return '';
   }

@@ -60,7 +60,8 @@ class DriveResult {
 
   factory DriveResult.fromEvent(AgentUiEvent ev) {
     final reason = ev.stopReason.isEmpty ? 'completed' : ev.stopReason;
-    final replied = reason == 'completed' && (ev.ok || ev.message.trim().isNotEmpty);
+    final replied =
+        reason == 'completed' && (ev.ok || ev.message.trim().isNotEmpty);
     return DriveResult(
       text: ev.message.trim(),
       stopReason: reason,
@@ -293,11 +294,7 @@ class AgentRunLoop {
         harnessJson: harnessOn ? '{"enabled":true}' : '{"enabled":false}',
       ),
     );
-    return driveSession(
-      session,
-      dest: req.dest,
-      text: req.text,
-    );
+    return driveSession(session, dest: req.dest, text: req.text);
   }
 
   /// Visible for tests. Host yields deferred IM tools to Dart; ignoring

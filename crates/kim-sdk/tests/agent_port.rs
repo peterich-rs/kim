@@ -303,7 +303,9 @@ async fn bot_reply_persists_assistant_line() {
     assert_eq!(bot.last_body, "pong");
     let snap = wait_timeline(&sdk, "b_bot").await;
     assert!(
-        snap.messages.iter().any(|m| m.body == "pong" && m.sender == "b_bot")
+        snap.messages
+            .iter()
+            .any(|m| m.body == "pong" && m.sender == "b_bot")
             || snap
                 .pending
                 .iter()
@@ -858,10 +860,7 @@ async fn empty_visible_false_does_not_enqueue_bot_reply() {
     let proto = Arc::new(CountBotReply {
         n: AtomicUsize::new(0),
     });
-    let agent = Arc::new(MobileAgent::new(
-        (*sdk).clone(),
-        ScriptedRuntime::new(""),
-    ));
+    let agent = Arc::new(MobileAgent::new((*sdk).clone(), ScriptedRuntime::new("")));
     sdk.set_agent(agent.clone());
     sdk.install_protocol(proto.clone());
     put_bot(&sdk, "b_bot", "bot").await;

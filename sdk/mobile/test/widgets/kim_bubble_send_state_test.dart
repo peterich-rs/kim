@@ -5,7 +5,11 @@ import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_bubble.dart';
 
-KimChatMsg _bot(String body, {required KimSendStatus status, String key = 'bot-1'}) {
+KimChatMsg _bot(
+  String body, {
+  required KimSendStatus status,
+  String key = 'bot-1',
+}) {
   return KimChatMsg(
     key: key,
     dest: 'b_bot',

@@ -96,17 +96,9 @@ void main() {
     final cases = [
       _ev(kind: 'assistant_finished', stopReason: 'empty', message: ''),
       _ev(kind: 'failed', stopReason: 'idle_timeout'),
-      _ev(
-        kind: 'failed',
-        stopReason: 'hard_timeout',
-        recentlyActive: true,
-      ),
+      _ev(kind: 'failed', stopReason: 'hard_timeout', recentlyActive: true),
       _ev(kind: 'failed', stopReason: 'poisoned', message: 'host poisoned'),
-      _ev(
-        kind: 'assistant_finished',
-        stopReason: 'side_effect',
-        message: '',
-      ),
+      _ev(kind: 'assistant_finished', stopReason: 'side_effect', message: ''),
       _ev(
         kind: 'assistant_finished',
         stopReason: 'completed',
@@ -135,11 +127,7 @@ void main() {
     for (final ev in cases) {
       final loop = AgentRunLoop(FakeKim(), AgentBridge());
       try {
-        await loop.driveSession(
-          _StopSession(ev),
-          dest: 'b_bot',
-          text: 'hi',
-        );
+        await loop.driveSession(_StopSession(ev), dest: 'b_bot', text: 'hi');
         fail('expected DriveStop for ${ev.stopReason}');
       } on DriveStop catch (stop) {
         expect(stop.result.stopReason, ev.stopReason);

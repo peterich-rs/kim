@@ -38,35 +38,38 @@ void main() {
     }
   });
 
-  test('owner-desktop ignores bot Typing push; AgentTurn running lights it', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final env = await kimHarness(
-      token: testJwt(acc: 'alice', exp: 4_000_000_000),
-      account: 'alice',
-    );
-    env.container.listen(linkProvider, (_, _) {});
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    env.fake.pushEvent(
-      const SessionUpdateDto.typing(
-        typer: 'b_bot',
-        dest: 'alice',
-        kind: 0,
-        active: true,
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(env.container.read(peerTypingProvider('b_bot')), isFalse);
-    env.fake.pushEvent(
-      SessionUpdateDto.agentTurn(
-        dest: 'b_bot',
-        state: AgentTurnStateDto.running,
-        text: '',
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(env.container.read(peerTypingProvider('b_bot')), isTrue);
-  });
+  test(
+    'owner-desktop ignores bot Typing push; AgentTurn running lights it',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final env = await kimHarness(
+        token: testJwt(acc: 'alice', exp: 4_000_000_000),
+        account: 'alice',
+      );
+      env.container.listen(linkProvider, (_, _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      env.fake.pushEvent(
+        const SessionUpdateDto.typing(
+          typer: 'b_bot',
+          dest: 'alice',
+          kind: 0,
+          active: true,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(env.container.read(peerTypingProvider('b_bot')), isFalse);
+      env.fake.pushEvent(
+        SessionUpdateDto.agentTurn(
+          dest: 'b_bot',
+          state: AgentTurnStateDto.running,
+          text: '',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(env.container.read(peerTypingProvider('b_bot')), isTrue);
+    },
+  );
 
   test(
     'heartbeat Typing is ignored once a local AgentTurn owns the dest',

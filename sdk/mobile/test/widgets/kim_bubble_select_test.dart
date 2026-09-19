@@ -6,13 +6,7 @@ import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_bubble.dart';
 
 KimChatMsg _msg(String body) {
-  return KimChatMsg(
-    key: '1',
-    dest: 'bob',
-    sender: 'bob',
-    body: body,
-    at: 1,
-  );
+  return KimChatMsg(key: '1', dest: 'bob', sender: 'bob', body: body, at: 1);
 }
 
 void main() {
