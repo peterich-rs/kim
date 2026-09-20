@@ -10,15 +10,15 @@ use rmcp::model::{
     CallToolRequestParams, CallToolResult, ContentBlock, ErrorData, JsonObject, Tool,
 };
 use serde_json::{json, Value};
-use tokio::process::Command;
 
+use crate::harness::{kill_group, prepare};
 use crate::HostSession;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
-const PREVIEW_BYTES: usize = 8 * 1024;
+const PREVIEW_BYTES: usize = 50 * 1024;
 
 pub struct BashToolProvider {
     pub root: PathBuf,
+    pub timeout: Duration,
 }
 
 fn schema(value: Value) -> Arc<JsonObject> {
@@ -36,11 +36,17 @@ fn truncate(s: &str) -> String {
     if s.len() <= PREVIEW_BYTES {
         return s.to_string();
     }
-    let mut end = PREVIEW_BYTES;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
+    let marker = " … ";
+    let keep = PREVIEW_BYTES.saturating_sub(marker.len()) / 2;
+    let mut head = keep;
+    while head > 0 && !s.is_char_boundary(head) {
+        head -= 1;
     }
-    s[..end].to_string()
+    let mut tail = s.len().saturating_sub(keep);
+    while tail < s.len() && !s.is_char_boundary(tail) {
+        tail += 1;
+    }
+    format!("{}{marker}{}", &s[..head], &s[tail..])
 }
 
 fn parse_argv(call: &CallToolRequestParams) -> Result<Vec<String>, ErrorData> {
@@ -99,43 +105,95 @@ impl ToolProvider<HostSession> for BashToolProvider {
             return Ok(error_result(format!("unknown tool {}", call.name)));
         }
         let argv = parse_argv(&call)?;
-        Ok(self.run_argv(argv).await)
+        Ok(self.run_argv(argv, _emit).await)
     }
 }
 
 impl BashToolProvider {
-    async fn run_argv(&self, argv: Vec<String>) -> CallToolResult {
+    async fn run_argv(&self, argv: Vec<String>, emit: &Emitter) -> CallToolResult {
         let prog = &argv[0];
         if prog.contains("..") {
             return error_result("argv[0] must not contain ..");
         }
-        // Do not spawn through a shell; argv values are literals, not interpolated.
-        let mut cmd = Command::new(prog);
+        let mut cmd = prepare(prog);
         cmd.args(&argv[1..])
             .current_dir(&self.root)
-            .kill_on_drop(true)
-            .env_remove("BASH_ENV")
-            .env_remove("ENV");
-        let output = match tokio::time::timeout(TIMEOUT, cmd.output()).await {
-            Ok(Ok(out)) => out,
-            Ok(Err(e)) => return error_result(e.to_string()),
-            Err(_) => return error_result("bash timed out after 30s"),
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(err) => return error_result(err.to_string()),
         };
-        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
-        if !output.stderr.is_empty() {
+        let pid = child.id();
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let read_out = tokio::spawn(read_capped(stdout));
+        let read_err = tokio::spawn(read_capped(stderr));
+        let status = tokio::select! {
+            biased;
+            _ = emit.cancelled() => {
+                if let Some(pid) = pid {
+                    kill_group(pid);
+                }
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                let _ = read_out.await;
+                let _ = read_err.await;
+                return error_result("cancelled");
+            }
+            _ = tokio::time::sleep(self.timeout) => {
+                if let Some(pid) = pid {
+                    kill_group(pid);
+                }
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                let _ = read_out.await;
+                let _ = read_err.await;
+                return error_result("bash timed out");
+            }
+            status = child.wait() => status,
+        };
+        let stdout = read_out.await.unwrap_or_default();
+        let stderr = read_err.await.unwrap_or_default();
+        let output = match status {
+            Ok(status) => status,
+            Err(err) => return error_result(err.to_string()),
+        };
+        let mut combined = String::from_utf8_lossy(&stdout).into_owned();
+        if !stderr.is_empty() {
             if !combined.is_empty() {
                 combined.push('\n');
             }
-            combined.push_str(&String::from_utf8_lossy(&output.stderr));
+            combined.push_str(&String::from_utf8_lossy(&stderr));
         }
         let preview = truncate(&combined);
-        let ok = output.status.success();
-        if ok {
+        if output.success() {
             CallToolResult::structured(json!({"ok": true, "output": preview}))
         } else {
             error_result(preview)
         }
     }
+}
+
+async fn read_capped(pipe: Option<impl tokio::io::AsyncRead + Unpin>) -> Vec<u8> {
+    let Some(mut pipe) = pipe else {
+        return Vec::new();
+    };
+    use tokio::io::AsyncReadExt;
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 4096];
+    loop {
+        match pipe.read(&mut tmp).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                if buf.len() < PREVIEW_BYTES {
+                    let room = PREVIEW_BYTES - buf.len();
+                    buf.extend_from_slice(&tmp[..n.min(room)]);
+                }
+            }
+        }
+    }
+    buf
 }
 
 #[cfg(test)]
@@ -163,6 +221,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let provider = BashToolProvider {
             root: dir.path().to_path_buf(),
+            timeout: Duration::from_secs(30),
         };
         let mut call = CallToolRequestParams::new("bash");
         let mut args = JsonObject::new();
@@ -177,6 +236,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let provider = BashToolProvider {
             root: dir.path().to_path_buf(),
+            timeout: Duration::from_secs(30),
         };
         let mut call = CallToolRequestParams::new("bash");
         let mut args = JsonObject::new();

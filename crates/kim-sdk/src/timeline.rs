@@ -141,6 +141,8 @@ pub enum AgentTurnState {
     WaitingPermission,
     Done,
     Error,
+    /// No user-visible reply and no successful side effect.
+    Empty,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

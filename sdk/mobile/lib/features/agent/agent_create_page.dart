@@ -11,10 +11,14 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/catalog.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/provider_account_page.dart';
+import 'package:kim_mobile/features/agent/context_window.dart';
+import 'package:kim_mobile/features/agent/context_window_controls.dart';
 import 'package:kim_mobile/features/agent/reasoning_controls.dart';
 import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/features/agent/skills_catalog.dart';
@@ -42,6 +46,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
   late final TextEditingController _mcp;
   ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
   ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
+  var _contextTokens = kDefaultContextTokens;
   var _step = 0;
   var _saving = false;
   String _accountId = '';
@@ -50,6 +55,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
   List<CapabilityRef> _caps = List<CapabilityRef>.from(
     kCreateDefaultCapabilities,
   );
+  var _perms = <String, String>{};
   var _kindRepo = false;
   String _repoPath = '';
   String _bookmark = '';
@@ -139,10 +145,12 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
     final accounts = ref.read(providerAccountsProvider);
     if (accounts.isNotEmpty) {
       _accountId = accounts.first.id;
-      _model.text = defaultModelForAccount(
+      final model = defaultModelForAccount(
         accounts.first,
         _vendorById(accounts.first.vendorId),
       );
+      _model.text = model;
+      _contextTokens = defaultContextTokens(model);
     }
     if (mounted) {
       setState(() {});
@@ -259,6 +267,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
       _accountId = id;
       _pendingModels = const [];
       _model.text = model;
+      _contextTokens = defaultContextTokens(model);
     });
     if (fell && mounted) {
       _toastInfo(AppLocalizations.of(context).agentModelFallback(model));
@@ -321,7 +330,10 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
       await _otherModel();
       return;
     }
-    setState(() => _model.text = picked);
+    setState(() {
+      _model.text = picked;
+      _contextTokens = defaultContextTokens(picked);
+    });
     unawaited(_reloadSurface());
   }
 
@@ -364,22 +376,61 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
     } else {
       _pendingModels = selectableModelIds([..._pendingModels, raw]);
     }
-    setState(() => _model.text = raw);
+    setState(() {
+      _model.text = raw;
+      _contextTokens = defaultContextTokens(raw);
+    });
     unawaited(_reloadSurface());
+  }
+
+  void _setAsk(String tool, bool ask) {
+    setState(() {
+      _perms = setPermissionAskBefore(_perms, tool, ask: ask);
+    });
+  }
+
+  void _clearAsk(String tool) {
+    if (!permissionAsksBefore(_perms, tool)) {
+      return;
+    }
+    _setAsk(tool, false);
   }
 
   void _setCap(String kind, bool on, {Map<String, Object?> params = const {}}) {
     setState(() {
       _caps = upsertCapability(_caps, kind: kind, enabled: on, params: params);
+      if (!on) {
+        final tool = switch (kind) {
+          CapabilityKinds.imSendMessage => kAskBeforeSendMessage,
+          CapabilityKinds.imReadClipboard => kAskBeforeReadClipboard,
+          CapabilityKinds.bash => kAskBeforeBash,
+          CapabilityKinds.subagent => kAskBeforeDelegate,
+          _ => '',
+        };
+        if (tool.isNotEmpty) {
+          _perms = setPermissionAskBefore(_perms, tool, ask: false);
+        }
+      }
+      if (kind == CapabilityKinds.fs && params['writable'] != true) {
+        _perms = setPermissionAskBefore(
+          _perms,
+          kAskBeforeWriteFile,
+          ask: false,
+        );
+      }
     });
   }
 
   void _setFs({required bool read, required bool write}) {
     if (!read && !write) {
       _setCap(CapabilityKinds.fs, false);
+      _clearAsk(kAskBeforeWriteFile);
       return;
     }
     _setCap(CapabilityKinds.fs, true, params: {'writable': write});
+    if (!write) {
+      _clearAsk(kAskBeforeWriteFile);
+    }
   }
 
   Future<void> _pickRepo() async {
@@ -579,9 +630,11 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
           systemPrompt: _prompt.text,
           reasoning: choice,
           thinkingEffort: choice.value ?? '',
+          contextTokens: _contextTokens,
           workspace: workspace,
           skills: skills,
           portableDenylist: denylist,
+          permissionOverrides: Map<String, String>.from(_perms),
         )
         .withCapabilities(caps);
     try {
@@ -797,6 +850,19 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
         ),
         const Gap(18),
         Text(
+          l10n.agentContextWindow,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const Gap(8),
+        ContextWindowControls(
+          tokens: _contextTokens,
+          model: _model.text.trim(),
+          onChanged: (next) => setState(() => _contextTokens = next),
+        ),
+        const Gap(18),
+        Text(
           l10n.agentReasoning,
           style: theme.textTheme.labelLarge?.copyWith(
             color: scheme.onSurfaceVariant,
@@ -846,6 +912,24 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
               value: _capOn(entry.$1),
               onChanged: (v) => _setCap(entry.$1, v),
             ),
+            if (entry.$1 == CapabilityKinds.imSendMessage &&
+                _capOn(CapabilityKinds.imSendMessage)) ...[
+              const Divider(height: 1),
+              AskBeforeSwitch(
+                tool: kAskBeforeSendMessage,
+                value: permissionAsksBefore(_perms, kAskBeforeSendMessage),
+                onChanged: (v) => _setAsk(kAskBeforeSendMessage, v),
+              ),
+            ],
+            if (entry.$1 == CapabilityKinds.imReadClipboard &&
+                _capOn(CapabilityKinds.imReadClipboard)) ...[
+              const Divider(height: 1),
+              AskBeforeSwitch(
+                tool: kAskBeforeReadClipboard,
+                value: permissionAsksBefore(_perms, kAskBeforeReadClipboard),
+                onChanged: (v) => _setAsk(kAskBeforeReadClipboard, v),
+              ),
+            ],
           ],
         ],
       ),
@@ -933,6 +1017,14 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
             value: _fsWriteOn,
             onChanged: (next) => _setFs(read: next || _fsOn, write: next),
           ),
+          if (_fsWriteOn) ...[
+            const Divider(height: 1),
+            AskBeforeSwitch(
+              tool: kAskBeforeWriteFile,
+              value: permissionAsksBefore(_perms, kAskBeforeWriteFile),
+              onChanged: (v) => _setAsk(kAskBeforeWriteFile, v),
+            ),
+          ],
           const Divider(height: 1),
           SwitchListTile(
             key: const Key('agent-workspace-bash'),
@@ -941,6 +1033,29 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
             value: _bashOn,
             onChanged: (next) => _setCap(CapabilityKinds.bash, next),
           ),
+          if (_bashOn) ...[
+            const Divider(height: 1),
+            AskBeforeSwitch(
+              tool: kAskBeforeBash,
+              value: permissionAsksBefore(_perms, kAskBeforeBash),
+              onChanged: (v) => _setAsk(kAskBeforeBash, v),
+            ),
+          ],
+          const Divider(height: 1),
+          SwitchListTile(
+            key: const Key('agent-cap-subagent'),
+            title: Text(l10n.agentToolDelegate),
+            value: _capOn(CapabilityKinds.subagent),
+            onChanged: (v) => _setCap(CapabilityKinds.subagent, v),
+          ),
+          if (_capOn(CapabilityKinds.subagent)) ...[
+            const Divider(height: 1),
+            AskBeforeSwitch(
+              tool: kAskBeforeDelegate,
+              value: permissionAsksBefore(_perms, kAskBeforeDelegate),
+              onChanged: (v) => _setAsk(kAskBeforeDelegate, v),
+            ),
+          ],
         ],
       ),
       const Gap(18),

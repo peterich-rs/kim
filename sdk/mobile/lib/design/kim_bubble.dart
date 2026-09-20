@@ -1,12 +1,15 @@
 /// v2 message row: Discord grouping, Telegram own-bubble, send-state icons.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/format.dart';
+import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/agent_action_bubble.dart';
@@ -16,6 +19,9 @@ import 'package:kim_mobile/design/kim_image_viewer.dart';
 import 'package:kim_mobile/design/kim_network_image.dart';
 
 const _groupWindow = Duration(minutes: 5);
+
+/// Peer/bot sending spinner waits this long so fast sends stay clean.
+const kPeerSendBusyDelay = Duration(milliseconds: 700);
 
 bool kimIsGroupStart(KimChatMsg msg, KimChatMsg? previous) {
   return !_sameGroup(previous, msg);
@@ -90,13 +96,13 @@ class KimMessageRow extends StatelessWidget {
       if (!card.isConfirmation) {
         return const SizedBox.shrink();
       }
-      return AgentActionBubble(message: message);
+      return AgentActionBubble.fromMessage(message);
     }
     if (message.sys) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
         child: Center(
-          child: Text(
+          child: _MessageText(
             message.body,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -117,36 +123,44 @@ class KimMessageRow extends StatelessWidget {
         : first
         ? KimTheme.spaceUnit * 2.5
         : 2.0;
+    final selectable = kimSelectsMessageText(Theme.of(context).platform);
+
+    Widget body = Padding(
+      padding: EdgeInsets.fromLTRB(12, topGap, 12, last ? 4 : 0),
+      child: isSentByMe
+          ? _OwnBlock(
+              message: message,
+              first: first,
+              last: last,
+              showRead: showRead,
+              onRetry: onRetry,
+            )
+          : _PeerBlock(
+              message: message,
+              first: first,
+              last: last,
+              displayName: displayName ?? message.sender,
+              avatarUrl: avatarUrl,
+              onRetry: onRetry,
+              onAvatarTap: onAvatarTap,
+            ),
+    );
+    // Phone: opaque long-press opens copy/quote. Desktop: that recognizer
+    // eats mouse drags, so selection lives on the text instead.
+    if (onLongPress != null && !selectable) {
+      body = GestureDetector(
+        onLongPressStart: onLongPress,
+        behavior: HitTestBehavior.opaque,
+        child: body,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (divider != null) _DateRule(label: divider),
         if (unreadAnchor) const _UnreadRule(),
-        GestureDetector(
-          onLongPressStart: onLongPress,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(12, topGap, 12, last ? 4 : 0),
-            child: isSentByMe
-                ? _OwnBlock(
-                    message: message,
-                    first: first,
-                    last: last,
-                    showRead: showRead,
-                    onRetry: onRetry,
-                  )
-                : _PeerBlock(
-                    message: message,
-                    first: first,
-                    last: last,
-                    displayName: displayName ?? message.sender,
-                    avatarUrl: avatarUrl,
-                    onRetry: onRetry,
-                    onAvatarTap: onAvatarTap,
-                  ),
-          ),
-        ),
+        body,
       ],
     );
   }
@@ -238,7 +252,18 @@ class _PeerBlock extends StatelessWidget {
                     ],
                   ),
                 ),
-              _Bubble(message: message, own: false, last: last),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: _Bubble(message: message, own: false, last: last),
+                  ),
+                  if (message.isSending || message.isFailed) ...[
+                    const Gap(6),
+                    _PeerSendState(message: message, onRetry: onRetry),
+                  ],
+                ],
+              ),
               if (message.isFailed)
                 _Retry(messageKey: message.key, onRetry: onRetry),
             ],
@@ -334,13 +359,14 @@ class _Bubble extends StatelessWidget {
         ? _MediaBody(message: message)
         : Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Text(
+            child: _MessageText(
               message.body,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontSize: KimTheme.fontBody,
                 height: 1.35,
                 color: own ? Colors.white : scheme.onSurface,
               ),
+              selectionColor: own ? Colors.white.withValues(alpha: 0.35) : null,
             ),
           );
     final bubble = DecoratedBox(
@@ -375,6 +401,33 @@ class _Bubble extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MessageText extends StatelessWidget {
+  const _MessageText(
+    this.text, {
+    this.style,
+    this.textAlign,
+    this.selectionColor,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final Color? selectionColor;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kimSelectsMessageText(Theme.of(context).platform)) {
+      return Text(text, textAlign: textAlign, style: style);
+    }
+    return SelectableText(
+      text,
+      textAlign: textAlign,
+      style: style,
+      selectionColor: selectionColor,
     );
   }
 }
@@ -490,6 +543,76 @@ class _SendState extends StatelessWidget {
       return Icon(LucideIcons.clock, size: 14, color: scheme.onSurfaceVariant);
     }
     return Icon(LucideIcons.check, size: 14, color: scheme.primary);
+  }
+}
+
+class _PeerSendState extends StatelessWidget {
+  const _PeerSendState({required this.message, this.onRetry});
+
+  final KimChatMsg message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (message.isFailed) {
+      return IconButton(
+        key: Key('retry-${message.key}'),
+        tooltip: Copy.retry,
+        onPressed: onRetry,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        icon: Icon(LucideIcons.circleAlert, size: 16, color: scheme.error),
+      );
+    }
+    if (message.isSending) {
+      return _DelayedBusy(key: Key('send-busy-${message.key}'));
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+class _DelayedBusy extends StatefulWidget {
+  const _DelayedBusy({super.key});
+
+  @override
+  State<_DelayedBusy> createState() => _DelayedBusyState();
+}
+
+class _DelayedBusyState extends State<_DelayedBusy> {
+  Timer? _timer;
+  var _show = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(kPeerSendBusyDelay, () {
+      if (mounted) {
+        setState(() => _show = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) {
+      return const SizedBox(width: 14, height: 14);
+    }
+    return SizedBox(
+      width: 14,
+      height: 14,
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }
 

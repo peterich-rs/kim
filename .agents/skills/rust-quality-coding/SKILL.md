@@ -1,199 +1,111 @@
 ---
 name: rust-quality-coding
-description: >
-  High-quality idiomatic Rust coding and design rules distilled from the booklet
-  《Rust 语言从入门到实战》(ownership, types, traits/std traits, smart pointers,
-  error handling, async/Tokio, Axum, unsafe, macros, lifetimes). Use when writing,
-  reviewing, refactoring, or designing Rust code in this repo — especially APIs,
-  trait design, error layers, async boundaries, and type-driven modeling. Complements
-  rust-skills (broad rules) and rust-strict (security lints); prefer this skill for
-  design judgment taught by the booklet. Invoke with /rust-quality-coding.
+description: Design and review idiomatic Rust around ownership, domain types, API and trait boundaries, errors, and concurrency. Use when a Rust change needs a design decision or a compiler error suggests the model is wrong; not for a lint-only or security-only review.
 ---
 
-# Rust Quality Coding（小册提炼）
+# Rust Quality Coding
 
-基于掘金小册《Rust 语言从入门到实战》全书提炼的**可执行编码与设计规范**。目标是约束 Agent：先写对 Rust 心智模型，再写功能。
+写 Rust 时，先让数据的流向和约束变得清楚，再让代码通过编译。这个 skill 提供的是设计顺序和取舍标准，不是一份把所有代码压成同一形状的禁令表。
 
-与现有 skill 分工：
+Rust 的难处通常不在语法。一个 `borrow of moved value`、难以写出的 trait bound，或必须处处加 `Arc<Mutex<_>>`，往往说明数据的所有者、状态的边界或扩展点还没有决定好。把这些决定补上，编译器的限制会成为设计的校验，而不是需要绕过的障碍。
 
-| Skill | 职责 |
-|-------|------|
-| **rust-quality-coding**（本 skill） | 小册设计哲学 + 决策树 + 硬约束清单 |
-| `rust-skills` | 细粒度规则库（按需打开 `rules/`） |
-| `rust-strict` | unwrap/unsafe/密钥等安全审计 |
-| `rust-async-patterns` | Tokio 进阶模式细节 |
+## 适用范围
 
-冲突时：**安全规则以 `rust-strict` 为准**；设计取舍以本 skill 为准。
+在新增或改动类型、公共 API、trait、错误路径、并发代码、模块边界时使用。普通的局部表达式、命名或 clippy 风格问题不需要把本 skill 当成流程。
 
-## When to Apply
+| 需要解决的问题 | 使用的资料 |
+| --- | --- |
+| 所有权、借用、领域类型、错误或生命周期 | [core.md](references/core.md) |
+| trait、泛型、`impl Trait`、`dyn Trait`、标准 trait | [traits.md](references/traits.md) |
+| async、任务、共享状态、channel、Axum 或协议解析 | [async-design.md](references/async-design.md) |
 
-编写 / 审查 / 重构任何 `.rs` 时默认启用。尤其：
+`rust-strict` 负责安全审计；`rust-skills` 负责细粒度的惯例和工具使用。本 skill 负责在写之前和审查时做架构判断。涉及 unsafe、密钥、权限或并发安全时，同时遵从更严格的安全要求。
 
-- 新类型、公共 API、trait 抽象
-- 错误分层、`Result` / `Option` 处理
-- async 边界、共享状态、channel 选型
-- 字符串 / 切片 / 智能指针选择
-- 是否引入生命周期、`dyn`、宏、`unsafe`
+## 从问题到代码
 
-## 设计哲学（全书主线）
+先用几句话写出下面五件事。它们可以是注释、草稿或直接体现在类型和签名中；不用为此创建额外文档。
 
-1. **所有权三态贯穿一切**：拥有 / 不可变借 / 可变借。先问「谁拥有？谁可变？」，再写代码。
-2. **显式优于隐式**：`mut`、`clone`、`unsafe`、`as`、失败路径都要留足迹。
-3. **实用三阶段**：先跑通 → 再追求架构美感 → 真正遇到瓶颈再抠生命周期/零拷贝。**不要怕 `.clone()`**。
-4. **trait 做能力配置，不做深 OOP 继承树**。
-5. **类型驱动设计**：用 `enum`/newtype/洋葱类型把非法状态排除在编译期外。
-6. **库 API 不向外暴露生命周期参数**，避免 `'a` 传染上层。
-7. **Unsafe 极小化封装层**：Safe 自证安全；Unsafe 由人审计且尽量薄。
+1. **值从哪里来，到哪里去。** 谁创建、谁最终释放？调用者只是在看、要修改，还是要接管它？
+2. **哪些状态真的存在。** 哪些组合应当根本无法构造，哪些失败需要留给调用者处理？
+3. **哪些边界需要稳定。** 是本模块内部的具体实现，还是跨 crate、替换实现、测试替身或运行时异质集合？
+4. **哪里会等待或并发。** I/O、CPU 工作、共享状态和取消分别在哪里发生？
+5. **错误在哪里转换成面向人的结果。** 底层需要保留什么信息，入口又需要怎样记录和呈现？
 
-## Agent 工作流
+按这个顺序落地，而不是先挑 `Arc`、泛型或 trait。
 
-写 Rust 前按序自检：
+### 1. 先让类型排除错误状态
 
-```
-- [ ] 所有权：参数该吃 T / 借 &T / 可变 &mut T？业务 struct 是否优先自持有字段？
-- [ ] 字符串/切片：入参用 &str / &[T]，不要 &String / &Vec<T>
-- [ ] 错误：可恢复用 Result；库用 thiserror；应用边界用 anyhow；禁止无脑 unwrap
-- [ ] Trait：约束 vs 能力配置；关联类型 vs 类型参数；dyn 是否对象安全
-- [ ] Std traits：需要 Debug/Clone/Default/PartialEq 时 derive；Display 手写；Copy 慎用
-- [ ] 异步：Tokio；不在 async 里阻塞；重 CPU 用 spawn_blocking；共享用 Arc+Mutex 或 channel
-- [ ] 生命周期：业务优先 owned；库 API 尽量不暴露 'a
-- [ ] Unsafe/宏：能不用就不用；必须用则最小边界 + 文档化不变量
-```
+- 同一时刻只会是其中一种状态时，用带数据的 `enum`；让 `match` 覆盖所有业务分支。
+- 聚合一个实体或一组彼此同时存在的数据时，用 `struct`。
+- 两个值底层表示相同、却不能混用时，用 newtype，例如 `UserId` 和 `ProjectId`。
+- `Option<T>` 表示缺失，`Result<T, E>` 表示可以恢复的失败。不要把空字符串、零值或某个特殊整数同时当作正常值和“没有”。
 
-## 硬约束速查
+不要为了“类型化”制造没有业务含义的包装。类型应该消除实际会发生的误用，或者把读者需要知道的单位、状态和权限放在签名里。
 
-### 所有权与借用
+### 2. 再定所有权
 
-- 默认 **move**；仅小固定尺寸类型依赖 **Copy**。需要多份所有权 → 显式 `.clone()` 或 `Arc`。
-- 默认不可变；需要改才加 `mut`。
-- **别名 XOR 可变**：同时多个 `&` **或** 一个 `&mut`，不可交叠。
-- 函数：只读 → `&T`/`&str`；要改 → `&mut T`；转移所有权才吃 `T`。
-- 业务模型字段优先 **拥有型**（`String`/`Vec`/`PathBuf`）；含引用的 struct 需生命周期，初学/业务层少用。
+函数签名先表达权限，再考虑少一次分配：
 
-### 字符串与切片
+| 调用者与函数的关系 | 常见签名 |
+| --- | --- |
+| 函数只读取 | `&T`、`&str`、`&[T]` |
+| 函数原地修改 | `&mut T` |
+| 函数接管、存储或异步转交 | `T` |
+| 返回调用者独立持有的结果 | `T` |
 
-| 需要 | 用 |
-|------|----|
-| 拥有可改文本 | `String` |
-| 只读视图 / API 入参 | `&str` |
-| 协议字节 | `&[u8]` / `Bytes` |
-| 路径 | `Path` / `PathBuf` |
-| OS 原生串 | `OsStr` / `OsString` |
-| C 边界 | `CStr` / `CString` |
+业务对象通常应拥有它的字段。这样对象能独立移动、放进集合和交给 task；只有确实需要借用输入、并且生命周期是 API 本身的一部分时，才让结构体携带引用。`String`/`Vec<T>` 的只读参数写成 `&str`/`&[T]`，而不是 `&String`/`&Vec<T>`。
 
-禁止把字节下标当「字符」；UTF-8 转换用 `from_utf8`（Result），默认禁止 `*_unchecked`。
+当编译器拒绝借用时，先检查借用是否跨越了真正需要的范围、函数是否错误地接管了值、或状态是否该由一个任务独占。`.clone()` 是合理的所有权决策，但应能说清楚新副本由谁使用、为何不能借用。不要用随意的 `'static`、泄漏内存或散落的 `unsafe` 来让模型闭嘴。
 
-### 类型与枚举
+### 3. 抽象只服务于一个边界
 
-- **配置/状态变体** → `enum`（可带 payload）；**数据模型** → `struct`。
-- `match` 穷尽；只读字段用 `ref`/`&` 模式，避免无意义 partial move。
-- 封闭集合用 enum；开放扩展用 trait（+ 必要时 `dyn`）。
-- newtype 区分语义相同但域不同的 ID/单位；`type` 别名做洋葱简化。
+模块内部先用具体类型和普通函数。出现以下真实需求后，再引入 trait：调用方需要替换实现、核心逻辑需要测试替身、库要允许外部实现，或运行时确实要装下不同实现。
 
-### Trait 设计
+- 已知且封闭的变体，用 `enum`。它把每个分支交给穷尽匹配检查。
+- 调用方选择实现、每次调用只有一种具体类型，用泛型或参数位置的 `impl Trait`。
+- 实现方隐藏一种固定的具体返回类型，用返回位置的 `impl Trait`。
+- 需要运行时选择或异质集合，才用 `dyn Trait`；先验证对象安全和所有权（借用用 `&dyn Trait`，需要持有才用 `Box<dyn Trait>` 或 `Arc<dyn Trait>`）。
 
-- Trait = **协议约束** + **能力配置**，不是 Java 式继承。
-- **孤儿规则**：`impl Trait for Type` 时 Trait 或 Type 至少一方在当前 crate。
-- 无多态需求 → **关联类型**；一对多多态 → **trait 类型参数**（`Add<Rhs>`）。
-- 返回「同一 trait、编译期一种具体类型」→ `impl Trait`；运行时多种类型/异质集合 → `Box<dyn Trait>` / `&dyn Trait`。
-- **对象安全**：勿在要 dyn 的 trait 里放构造函数/`Self` 返回值/无 receiver 的泛型方法；方法优先 `&self`/`&mut self`。
-- 使用 trait 方法前 **import trait**；同名冲突用 UFCS：`<T as Trait>::method`。
+trait 描述一项可替换的能力，不是带字段的父类。把构造、存储、网络和业务操作塞进同一个 trait，会让实现者被迫依赖无关能力，也使替换变难。关联类型适合“一个实现对应一个输出类型”；trait 类型参数适合“同一实现需要与多种右侧类型交互”。细节和例子见 [traits.md](references/traits.md)。
 
-### 标准库常见 Trait
+### 4. 让错误沿着架构边界流动
 
-| Trait | 做法 |
-|-------|------|
-| `Debug` | 几乎总是 `#[derive(Debug)]` |
-| `Default` | 可 derive；配合 `..Default::default()` |
-| `Clone` | 需要多所有权时 derive；**鼓励显式 clone** |
-| `Copy` | 仅全字段 Copy 的小类型；必须同时 Clone；语言故意抬高成本 |
-| `Display` | **手写**；实现后自动有 `ToString` |
-| `PartialEq`/`Eq` | 需要相等比较时 derive；浮点谨慎 |
-| `PartialOrd`/`Ord` | 需要排序时四件套一起考虑 |
-| `From`/`Into` | 实现 `From`，免费得 `Into`；可失败用 `TryFrom` |
-| `AsRef`/`AsMut` | 廉价借用转换（如 `String`→`str`） |
-| `Deref` | 智能指针语义；**禁止当继承用** |
-| `Drop` | 仅外部资源清理；简单类型靠 RAII 即可 |
+在失败发生处保留足够的信息，并用 `?` 交给能做出决定的上一层。库和可复用模块通常需要让调用者区分错误；应用入口、HTTP handler 或命令行入口则可以补充上下文、记录日志并映射成退出码或响应。
 
-### 智能指针
+是否采用 `thiserror`、`anyhow` 或项目现有错误类型取决于边界和仓库约定。不要为了统一而把所有错误提前转成 `String`，也不要把用户输入、网络、文件和数据库失败当作不变量而 `unwrap()`。
 
-- `Box<T>`：堆上独占、递归类型、`Box<dyn Trait>`。
-- `Arc<T>`：跨 task/线程共享所有权；**不能直接可变** → `Arc<Mutex<T>>` / `Arc<RwLock<T>>`。
-- `Arc::clone` 只加引用计数，不要求 `T: Clone`。
-- API 入参：能接受 `&T` 就不要强制 `&Box<T>` / `&Arc<T>`（除非语义需要）。
+### 5. 把并发放在资源边界
 
-### 错误处理
+只有等待 I/O、协调多个独立任务或同时服务多个请求时，才让调用链进入 async。纯计算保持同步；重计算或不可避免的同步库在 async 运行时中应移到专门的阻塞执行路径。
 
-- 不可恢复 → `panic!`/`unwrap`/`expect`（仅不变量/测试）。
-- 可恢复 → `Result`；必须处理（`?` / `match`），禁止忽略。
-- **库 crate**：`thiserror` 定义错误枚举 + `#[from]`。
-- **应用/二进制边界**：`anyhow::Result` + `context`。
-- 错误要冒泡到架构选定的边界再处理；用 `From`/`map_err`/`#[from]` 对齐类型。
+跨 task 传递一个值，优先转移所有权；多个 task 共享只读数据用 `Arc<T>`；共享可变状态时，先问能否让一个 task 独占状态并通过 channel 接收命令。确实需要共享时，再选择合适的锁或原子类型。锁的临界区应短，并且不能不经思考地跨 `.await` 保存 guard。
 
-### 异步 / Tokio
+不要因为文件里出现 `async` 就引入 Tokio，也不要因为项目使用 Tokio 就把纯函数改成 `async fn`。沿用仓库已有的运行时和框架；新增运行时是架构选择，需要明确理由。详见 [async-design.md](references/async-design.md)。
 
-- 默认 Tokio；Future 必须被 `.await` / `block_on` 驱动。
-- async 有**传染性**：在模块边界划定 async 岛，纯计算保持同步。
-- async 内禁止阻塞 std I/O；重 CPU / 同步库 → `spawn_blocking`。
-- sync 调少量 async → 局部 `current_thread` Runtime + `block_on`。
-- 连接级 `spawn`；业务消息用 **Framed + Codec**，勿手搓粘包。
-- 共享可变：默认 `Arc<tokio::sync::Mutex<T>>`；读多写少 `RwLock`；能消息传递则优于共享可变。
-- Channel：mpsc（多生产者单消费者）、oneshot（一次应答）、broadcast、watch（最新值）按拓扑选；优先有界 channel 背压。
-- 锁守卫**不要跨 `.await`**（若必须，用 tokio Mutex 并清楚代价）。
+## 编译器报错时如何回到设计
 
-### Web（Axum）
+先读完整错误和涉及的签名，不要立即加 bound 或 clone。常见症状对应的检查方向：
 
-- 留在 Tokio/Tower/Axum 技术栈；Router 按模块 nest。
-- Handler：extractor 抽取；**body extractor 放最后**；DTO 用 serde 类型。
-- 返回统一 `impl IntoResponse` / `Result<..., StatusCode>`；404 设 fallback。
-- 状态：`State<AppState>` + 连接池；领域模型与 DTO 分离。
-- 日志用 `tracing`，不用 `println!`。
+| 症状 | 先检查 |
+| --- | --- |
+| moved value | 哪一层本应拥有值？该参数是否本该借用，或是否需要一个有明确用途的副本？ |
+| borrow 冲突 | 两次访问是否真的需要重叠？能否缩短借用、拆字段、先收集信息再修改？ |
+| lifetime 迅速传播 | 数据是否应在边界转为拥有型？引用是否确实要成为返回值或结构体字段？ |
+| trait bound 变得很长 | 抽象是否放得太早？能力是否被混在一个 trait 中？是否应改为具体类型、关联类型或 `where` 子句？ |
+| `Send` / `Sync` 或 spawn 失败 | task 是否持有了借用、非线程安全类型或锁 guard？数据的所有权该如何跨 task 转移？ |
+| `dyn Trait` 不可用 | 是否真的需要动态分发？若需要，能否把构造/泛型/`Self` 相关方法移到 `Self: Sized` 的扩展 trait 或独立构造器？ |
 
-### 生命周期
+在修复前先选择一条能解释业务关系的路径；能编译但把资源生命周期、错误或可变性藏起来的补丁不算完成。
 
-- 结构体借引用才标 `'a`；函数返回引用须绑定到某个输入生命周期。
-- **库公共 API 尽量不暴露生命周期**；上层用 owned / `Arc`。
-- 业务代码优先 clone/owned；性能优化放到第三阶段。
+## 提交前的设计复核
 
-### 宏与 Unsafe
+只检查本次改动触及的部分：
 
-- 宏：优先函数；声明宏只消除真实重复；写完 `cargo expand` 验证；**禁止滥用**。
-- Unsafe：仅五类超能力场景；封装成最小 safe 门面；FFI 用 `repr(C)` / bindgen / 边界转换；默认禁止 `get_unchecked` / `from_utf8_unchecked`。
-- 避免 `static mut`；跨任务状态用 `Arc`/`Atomic`/channel。
+- 类型是否表达了真实的状态、单位和失败，而不是依赖哨兵值或注释？
+- 每个跨函数或跨 task 的值，是否有清晰的所有者和可变性？
+- 公共 API 是否只暴露调用者确实需要的类型、trait 和生命周期？
+- trait 是否来自实际替换需求，且每个方法都属于同一项能力？
+- 错误是否能到达处理边界，保留排查所需的来源和上下文？
+- async 代码是否避免阻塞运行时，并有明确的状态共享、背压和退出方式？
 
-## 场景 → 首选模式
-
-| 场景 | 首选 |
-|------|------|
-| API 字符串入参 | `&str` |
-| 业务配置对象 | owned `struct` + `Default` |
-| 多状态协议/状态机 | `enum` + 穷尽 `match` |
-| 开放插件能力 | trait；异质集合 `Box<dyn Trait>` |
-| 库错误 | `thiserror` |
-| 应用错误边界 | `anyhow` |
-| 异步服务 | Tokio multi-thread |
-| 多 task 改同一数据 | `Arc<Mutex<_>>` 或 mpsc 单写者 |
-| 请求-应答 | mpsc + oneshot |
-| TCP 消息 | Framed + LengthDelimited（或合适 Codec） |
-| 解析协议文本/二进制 | 小 parser 组合（Nom 风格） |
-| 必须 unsafe | 极薄封装层 + 安全对外 API |
-
-## 反模式（直接拒绝）
-
-- 为通过编译乱加 `'static` / 无意义 `clone` 掩耳盗铃（必要 clone 可以，但要懂为何）
-- 公共 API 泄漏生命周期导致上层全员标 `'a`
-- `&String` / `&Vec<T>` 作函数参数
-- 业务层到处 `unwrap`
-- async 里同步阻塞 I/O 或长时间占着 worker 算 CPU
-- 用 `Deref` 模拟继承；用宏生成本可用函数表达的逻辑
-- 把 `unsafe` 散落在业务代码而非隔离层
-- 可变全局 `static mut` 当共享数据库
-
-## 详细规则
-
-需要展开某条规则的正反例与出处时再读：
-
-- [references/core.md](references/core.md) — 所有权、字符串、类型、trait、std trait、智能指针、错误、宏、生命周期、unsafe
-- [references/async-design.md](references/async-design.md) — Tokio、共享状态、channel、Axum、parser、工程架构
-
-源材料：本地小册 `NuggetsBooklet/Rust 语言从入门到实战/`（01–30 + 开篇/结束语/答疑）。
+高质量 Rust 的标志不是零个 `clone`、零个 trait 或所有类型都泛型化，而是读者能沿签名看出值如何流动、哪些状态可能发生，以及失败在哪里被处理。

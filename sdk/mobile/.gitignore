@@ -48,11 +48,9 @@ app.*.map.json
 .widget_preview/
 
 # FVM SDK is local; .fvmrc and .fvm/fvm_config.json are versioned.
-.fvm/flutter_sdk
-.fvm/versions/
-.fvm/release
-.fvm/version
 
 # Machine-local Xcode env (PATH overrides). ios/.xcode.env is versioned.
 ios/.xcode.env.local
 
+# FVM Version Cache
+.fvm/

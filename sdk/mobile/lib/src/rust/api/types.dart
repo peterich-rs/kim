@@ -140,6 +140,10 @@ class AgentRunResultDto {
   final BigInt epoch;
   final String output;
   final String? error;
+  final String stopReason;
+  final bool replied;
+  final bool visible;
+  final bool recentlyActive;
 
   const AgentRunResultDto({
     required this.dest,
@@ -147,6 +151,10 @@ class AgentRunResultDto {
     required this.epoch,
     required this.output,
     this.error,
+    required this.stopReason,
+    required this.replied,
+    required this.visible,
+    required this.recentlyActive,
   });
 
   @override
@@ -155,7 +163,11 @@ class AgentRunResultDto {
       profileId.hashCode ^
       epoch.hashCode ^
       output.hashCode ^
-      error.hashCode;
+      error.hashCode ^
+      stopReason.hashCode ^
+      replied.hashCode ^
+      visible.hashCode ^
+      recentlyActive.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -166,10 +178,21 @@ class AgentRunResultDto {
           profileId == other.profileId &&
           epoch == other.epoch &&
           output == other.output &&
-          error == other.error;
+          error == other.error &&
+          stopReason == other.stopReason &&
+          replied == other.replied &&
+          visible == other.visible &&
+          recentlyActive == other.recentlyActive;
 }
 
-enum AgentTurnStateDto { queued, running, waitingPermission, done, error }
+enum AgentTurnStateDto {
+  queued,
+  running,
+  waitingPermission,
+  done,
+  error,
+  empty,
+}
 
 class BotDto {
   final String dest;

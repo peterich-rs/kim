@@ -120,10 +120,15 @@ class PetPack {
     );
   }
 
+  /// Loads a pack from the asset bundle. No pack ships in the app; call this
+  /// only for a pack the user imported or downloaded.
   static Future<PetPack> loadAsset(
     AssetBundle bundle, {
-    String id = 'default',
+    required String id,
   }) async {
+    if (id.isEmpty) {
+      throw ArgumentError.value(id, 'id', 'pet pack id is required');
+    }
     final raw = await bundle.loadString('assets/pets/$id/pet.json');
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {

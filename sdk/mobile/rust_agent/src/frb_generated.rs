@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1637966598;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 33649355;
 
 // Section: executor
 
@@ -559,6 +559,57 @@ fn wire__crate__api__session__AgentSession_snapshot_impl(
         },
     )
 }
+fn wire__crate__api__session__AgentSession_steer_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "AgentSession_steer",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>,
+            >>::sse_decode(&mut deserializer);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok =
+                        crate::api::session::AgentSession::steer(&*api_that_guard, api_text)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__session__capability_catalog_json_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1072,6 +1123,7 @@ impl SseDecode for crate::api::session::AgentUiEvent {
         let mut var_inputTokens = <u64>::sse_decode(deserializer);
         let mut var_outputTokens = <u64>::sse_decode(deserializer);
         let mut var_resumedOps = <Vec<String>>::sse_decode(deserializer);
+        let mut var_recentlyActive = <bool>::sse_decode(deserializer);
         return crate::api::session::AgentUiEvent {
             kind: var_kind,
             operation_id: var_operationId,
@@ -1086,6 +1138,7 @@ impl SseDecode for crate::api::session::AgentUiEvent {
             input_tokens: var_inputTokens,
             output_tokens: var_outputTokens,
             resumed_ops: var_resumedOps,
+            recently_active: var_recentlyActive,
         };
     }
 }
@@ -1150,6 +1203,7 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
         let mut var_enableKimTools = <bool>::sse_decode(deserializer);
         let mut var_enableApprovals = <bool>::sse_decode(deserializer);
         let mut var_sessionId = <String>::sse_decode(deserializer);
+        let mut var_harnessJson = <String>::sse_decode(deserializer);
         return crate::api::session::SessionOpenOpts {
             model: var_model,
             llm_backend: var_llmBackend,
@@ -1165,6 +1219,7 @@ impl SseDecode for crate::api::session::SessionOpenOpts {
             enable_kim_tools: var_enableKimTools,
             enable_approvals: var_enableApprovals,
             session_id: var_sessionId,
+            harness_json: var_harnessJson,
         };
     }
 }
@@ -1255,41 +1310,42 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         9 => wire__crate__api__session__AgentSession_resume_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__session__capability_catalog_json_impl(
+        11 => wire__crate__api__session__AgentSession_steer_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__session__capability_catalog_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__session__catalog_surface_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__session__catalog_validate_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__session__catalog_vendors_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__session__fetch_supported_models_impl(
+        13 => wire__crate__api__session__catalog_surface_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__session__catalog_validate_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__session__catalog_vendors_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__session__fetch_supported_models_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        17 => {
+        17 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        18 => {
             wire__crate__api__session__list_builtin_profiles_impl(port, ptr, rust_vec_len, data_len)
         }
-        18 => wire__crate__api__session__list_bundled_providers_impl(
+        19 => wire__crate__api__session__list_bundled_providers_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__session__preview_assembled_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__session__session_open_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__session__session_open_opts_default_impl(
+        20 => wire__crate__api__session__preview_assembled_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__session__session_open_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__session__session_open_opts_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__session__skill_app_catalog_impl(port, ptr, rust_vec_len, data_len),
-        23 => {
+        23 => wire__crate__api__session__skill_app_catalog_impl(port, ptr, rust_vec_len, data_len),
+        24 => {
             wire__crate__api__session__skill_portable_list_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1344,6 +1400,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::session::AgentUiEvent {
             self.input_tokens.into_into_dart().into_dart(),
             self.output_tokens.into_into_dart().into_dart(),
             self.resumed_ops.into_into_dart().into_dart(),
+            self.recently_active.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1398,6 +1455,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::session::SessionOpenOpts {
             self.enable_kim_tools.into_into_dart().into_dart(),
             self.enable_approvals.into_into_dart().into_dart(),
             self.session_id.into_into_dart().into_dart(),
+            self.harness_json.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1494,6 +1552,7 @@ impl SseEncode for crate::api::session::AgentUiEvent {
         <u64>::sse_encode(self.input_tokens, serializer);
         <u64>::sse_encode(self.output_tokens, serializer);
         <Vec<String>>::sse_encode(self.resumed_ops, serializer);
+        <bool>::sse_encode(self.recently_active, serializer);
     }
 }
 
@@ -1549,6 +1608,7 @@ impl SseEncode for crate::api::session::SessionOpenOpts {
         <bool>::sse_encode(self.enable_kim_tools, serializer);
         <bool>::sse_encode(self.enable_approvals, serializer);
         <String>::sse_encode(self.session_id, serializer);
+        <String>::sse_encode(self.harness_json, serializer);
     }
 }
 

@@ -77,10 +77,10 @@ pub fn all() -> Vec<Arc<dyn CapabilityBlock>> {
             kind: "im.send_message",
             tool: "send_message",
             risk: RiskTier::Write,
-            ask: true,
+            ask: false,
             fragment: "## send_message\n\
-Send an IM to one of the user's contacts. Gated: the user confirms the recipient \
-and text before it goes out. Draft the message for them rather than asking them to type it.",
+Send an IM to one of the user's contacts. Draft the message for them rather than \
+asking them to type it.",
         }),
         Arc::new(ImBlock {
             kind: "im.search_contacts",
@@ -110,9 +110,9 @@ Load the current or named conversation before answering about it.",
             kind: "im.read_clipboard",
             tool: "read_clipboard",
             risk: RiskTier::External,
-            ask: true,
+            ask: false,
             fragment: "## read_clipboard\n\
-Read the system clipboard. Gated: the user confirms before the contents are returned.",
+Read the system clipboard.",
         }),
         Arc::new(ImBlock {
             kind: "im.list_profiles",

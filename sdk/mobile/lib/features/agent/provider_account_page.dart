@@ -187,6 +187,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
           enableKimTools: false,
           enableApprovals: false,
           sessionId: '',
+          harnessJson: '',
         ),
       );
       if (!mounted) {

@@ -126,6 +126,8 @@ void main() {
     expect(find.byKey(const Key('agent-entry-capabilities')), findsNothing);
     expect(find.byKey(const Key('agent-inline-key')), findsNothing);
     expect(find.byKey(const Key('agent-add-provider')), findsNothing);
+    expect(find.byKey(const Key('agent-context')), findsOneWidget);
+    expect(find.text('128K（模型默认）'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('agent-name')), 'Work');
     await _advanceWizard(tester);
     expect(find.byKey(const Key('agent-workspace-fs')), findsOneWidget);
@@ -231,6 +233,13 @@ void main() {
           .read(agentProfilesProvider)
           .any((p) => p.displayName == 'Work'),
       isTrue,
+    );
+    expect(
+      env.container
+          .read(agentProfilesProvider)
+          .singleWhere((p) => p.displayName == 'Work')
+          .contextTokens,
+      128000,
     );
   });
 

@@ -74,6 +74,14 @@ class KimPaths {
   Directory get agentRoot => Directory('${support.path}/agent');
   Directory get agentSessions => Directory('${support.path}/agent/sessions');
 
+  /// Goose conversation JSON for one dest×profile. Host persist is a JSON
+  /// file (not SQLite); `sqlitePath` on session open is this filesystem path.
+  File agentSessionFile({required String dest, required String profileId}) {
+    return File(
+      '${agentSessions.path}/${_sessionSegment(dest)}__${_sessionSegment(profileId)}.json',
+    );
+  }
+
   /// Legacy shared root. Unused as `projectRoot` after per-agent sandboxes.
   Directory get agentWorkspace => Directory('${support.path}/agent/workspace');
 
@@ -86,6 +94,14 @@ class KimPaths {
   Directory sandboxFor(String profileId) {
     final safe = _sandboxSegment(profileId);
     return Directory('${agentWorkspaces.path}/$safe');
+  }
+
+  static String _sessionSegment(String raw) {
+    final cleaned = raw.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    if (cleaned.isEmpty) {
+      return 'unknown';
+    }
+    return cleaned.length > 80 ? cleaned.substring(0, 80) : cleaned;
   }
 
   static String _sandboxSegment(String profileId) {

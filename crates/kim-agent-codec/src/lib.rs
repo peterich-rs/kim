@@ -90,6 +90,8 @@ struct ExtraPocket {
     model_temperature: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model_max_tokens: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_context_tokens: Option<i32>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     model_extra_params: HashMap<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -198,6 +200,7 @@ fn encode_spec_parts(
             .and_then(|e| serde_json::to_value(e).ok()),
         model_temperature: profile.model.temperature.clone(),
         model_max_tokens: profile.model.max_tokens,
+        model_context_tokens: profile.model.context_tokens,
         model_extra_params: profile.model.extra_params.clone(),
         model_reasoning: profile.model.reasoning,
         tools: profile.tools.clone(),
@@ -273,6 +276,7 @@ fn profile_from_proto(
             thinking_effort,
             temperature: extra.model_temperature,
             max_tokens: extra.model_max_tokens,
+            context_tokens: extra.model_context_tokens,
             extra_params: extra.model_extra_params,
             reasoning: extra.model_reasoning,
         },
@@ -303,6 +307,7 @@ fn profile_from_proto(
         skills: spec.skills.iter().map(decode_skill).collect(),
         portable_denylist: spec.portable_denylist,
         user_agents_skills: String::new(),
+        harness: None,
     };
     Ok(DecodedSpec {
         profile,

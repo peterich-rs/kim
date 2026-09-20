@@ -359,6 +359,33 @@ impl KimSdk {
         Ok(receipt)
     }
 
+    /// Local-first bot reply: show the line immediately, then `chat.bot.reply`.
+    pub async fn enqueue_bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<CommandReceipt, SdkError> {
+        let store = self.store()?;
+        let session = self.session_snapshot()?;
+        let epoch = self.current_epoch().0;
+        let (receipt, sequence) = store
+            .enqueue_bot_reply(
+                epoch,
+                session.account,
+                dest.to_string(),
+                body.to_string(),
+                in_reply_to,
+                client_id.to_string(),
+            )
+            .await?;
+        self.inner.metrics.inc_enqueue();
+        self.after_command(sequence).await;
+        self.kick_outbox();
+        Ok(receipt)
+    }
+
     pub async fn cancel_send(&self, id: String) -> Result<(), SdkError> {
         self.cancel_outbox_run();
         let store = self.store()?;
@@ -1974,6 +2001,12 @@ impl KimSdk {
             .ok_or(SdkError::InvalidArgument {
                 message: "store not attached".into(),
             })
+    }
+
+    /// Test hook: drop the attached store so a queued turn surfaces `Error`.
+    #[doc(hidden)]
+    pub fn detach_store_for_test(&self) {
+        *lock(&self.inner.store) = None;
     }
 }
 

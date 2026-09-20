@@ -45,6 +45,14 @@ void main() {
     final paths = KimPaths.forTest(root);
     await paths.ensureAgentDirs();
     expect(paths.agentSessions.existsSync(), isTrue);
+    expect(
+      paths.agentSessionFile(dest: 'b_bot', profileId: 'p-1').path,
+      '${paths.agentSessions.path}/b_bot__p-1.json',
+    );
+    expect(
+      paths.agentSessionFile(dest: 'agent:p-1', profileId: 'p-1').path,
+      '${paths.agentSessions.path}/agent_p-1__p-1.json',
+    );
     expect(paths.agentWorkspaces.existsSync(), isTrue);
     expect(
       Directory('${paths.agentWorkspace.path}/.agents/skills').existsSync(),

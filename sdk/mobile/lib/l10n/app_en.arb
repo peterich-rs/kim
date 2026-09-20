@@ -181,6 +181,15 @@
   },
   "agentPickModel": "Choose from list",
   "agentModelHint": "The text field is what gets saved. Type an id, or fetch and pick one.",
+  "agentContextWindow": "Context window",
+  "agentContextWindowHint": "Used for compaction. Defaults to the model's published window; unknown models use 256K.",
+  "agentContextWindowCustom": "Custom…",
+  "agentContextWindowDefault": "{size} (model default)",
+  "@agentContextWindowDefault": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
   "agentReasoning": "Reasoning",
   "agentReasoningOff": "Off",
   "agentReasoningLow": "Low",
@@ -202,7 +211,10 @@
   "agentBashLater": "Shell (later)",
   "agentBashDanger": "Shell commands (dangerous, default off)",
   "agentMcp": "MCP extensions",
-  "agentMcpHint": "Advanced. One per line: name command arg… Default empty. Tools require confirmation.",
+  "agentMcpHint": "Advanced. One per line: name command arg… Default empty.",
+  "agentAskBefore": "Ask before running",
+  "agentAskBeforeHint": "Confirm in chat before this tool runs",
+  "agentToolDelegate": "Delegate to a subagent",
   "agentAllow": "Allow",
   "agentAlwaysAllow": "Always",
   "agentDeny": "Deny",

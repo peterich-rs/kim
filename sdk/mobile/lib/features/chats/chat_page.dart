@@ -8,10 +8,10 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
 
+import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/design/pet_view.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/router/open_peer.dart';
@@ -29,6 +29,7 @@ import 'package:kim_mobile/features/session/typing.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/chat/chat_list.dart';
 import 'package:kim_mobile/design/empty_state.dart';
+import 'package:kim_mobile/design/agent_action_bubble.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/kim_bubble.dart';
 import 'package:kim_mobile/design/kim_composer.dart';
@@ -86,16 +87,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     ref.read(agentRunStatusProvider.notifier).markOpened(widget.id);
   }
 
+  /// Hang-point avatar. Pets stay off until a pack is imported and assigned.
   Widget _agentAvatar(String liveTitle, String url) {
-    if (_agentThread) {
-      return PetView(
-        dest: widget.id,
-        size: KimAvatarSize.sm,
-        shape: KimAvatarShape.squircle,
-        fallbackName: liveTitle,
-        fallbackUrl: url,
-      );
-    }
     return KimAvatar(
       name: liveTitle,
       url: url,
@@ -172,9 +165,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final userThread = kind == ThreadKind.user && !agentChat;
     final showTyping =
         kind == ThreadKind.user || agentChat || isServerBotAccount(widget.id);
-    final peerTyping = showTyping
-        ? ref.watch(peerTypingProvider(widget.id))
-        : false;
+    // Agent threads: AgentTurn `running` only. Permission cards replace
+    // the typing row while Goose is yielded.
+    final peerTyping = !showTyping
+        ? false
+        : ref.watch(peerTypingProvider(widget.id));
+    final permissionPrompts = _agentThread
+        ? ref.watch(agentPermissionHubProvider).of(widget.id)
+        : const <AgentPermissionPrompt>[];
     final readUpTo = userThread
         ? ref.watch(peerReadUpToProvider(widget.id))
         : null;
@@ -217,7 +215,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       .read(threadMessagesProvider(widget.id).notifier)
                       .loadOlder(),
                 ),
-                empty: peerTyping
+                empty: peerTyping || permissionPrompts.isNotEmpty
                     ? null
                     : EmptyState(
                         icon: LucideIcons.messageCircle,
@@ -226,13 +224,27 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                             : l10n.noMessages,
                         subtitle: readOnly ? '' : l10n.noMessagesHint,
                       ),
-                footer: peerTyping
-                    ? KimTypingRow(
-                        key: const Key('typing-row'),
-                        name: liveTitle,
-                        avatar: _agentAvatar(liveTitle, avatarUrl),
-                      )
-                    : null,
+                footer: permissionPrompts.isEmpty && !peerTyping
+                    ? null
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final prompt in permissionPrompts)
+                            AgentActionBubble(
+                              key: Key('agent-ask-${prompt.callId}'),
+                              dest: widget.id,
+                              callId: prompt.callId,
+                              name: prompt.name,
+                              preview: prompt.preview,
+                            ),
+                          if (peerTyping && permissionPrompts.isEmpty)
+                            KimTypingRow(
+                              key: const Key('typing-row'),
+                              name: liveTitle,
+                              avatar: _agentAvatar(liveTitle, avatarUrl),
+                            ),
+                        ],
+                      ),
                 itemBuilder: (context, msg, index) {
                   final prev = index > 0 ? thread.items[index - 1] : null;
                   final next = index + 1 < thread.items.length

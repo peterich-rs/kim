@@ -7,9 +7,9 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `aborted`, `action_required`, `as_str`, `base`, `begin_run`, `completed`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `SessionPhase`, `Shared`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`
+// These functions are ignored because they are not marked as `pub`: `abandon_yield`, `aborted`, `action_required`, `arm_yield_watch`, `base`, `begin_run`, `completed`, `disarm_yield_watch`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `recreate_host`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `shared_new`, `sleep_bounded`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Shared`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 Future<AgentSession> sessionOpen({
   required String sqlitePath,
@@ -109,6 +109,8 @@ abstract class AgentSession implements RustOpaqueInterface {
   Future<ResumeReportDto> resume();
 
   SessionSnapshotDto snapshot();
+
+  Future<void> steer({required String text});
 }
 
 class AgentUiEvent {
@@ -125,6 +127,7 @@ class AgentUiEvent {
   final BigInt inputTokens;
   final BigInt outputTokens;
   final List<String> resumedOps;
+  final bool recentlyActive;
 
   const AgentUiEvent({
     required this.kind,
@@ -140,6 +143,7 @@ class AgentUiEvent {
     required this.inputTokens,
     required this.outputTokens,
     required this.resumedOps,
+    required this.recentlyActive,
   });
 
   @override
@@ -156,7 +160,8 @@ class AgentUiEvent {
       message.hashCode ^
       inputTokens.hashCode ^
       outputTokens.hashCode ^
-      resumedOps.hashCode;
+      resumedOps.hashCode ^
+      recentlyActive.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -175,7 +180,8 @@ class AgentUiEvent {
           message == other.message &&
           inputTokens == other.inputTokens &&
           outputTokens == other.outputTokens &&
-          resumedOps == other.resumedOps;
+          resumedOps == other.resumedOps &&
+          recentlyActive == other.recentlyActive;
 }
 
 class ResumeReportDto {
@@ -211,6 +217,7 @@ class SessionOpenOpts {
   final bool enableKimTools;
   final bool enableApprovals;
   final String sessionId;
+  final String harnessJson;
 
   const SessionOpenOpts({
     required this.model,
@@ -227,6 +234,7 @@ class SessionOpenOpts {
     required this.enableKimTools,
     required this.enableApprovals,
     required this.sessionId,
+    required this.harnessJson,
   });
 
   static Future<SessionOpenOpts> default_() =>
@@ -247,7 +255,8 @@ class SessionOpenOpts {
       gooseMode.hashCode ^
       enableKimTools.hashCode ^
       enableApprovals.hashCode ^
-      sessionId.hashCode;
+      sessionId.hashCode ^
+      harnessJson.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -267,7 +276,8 @@ class SessionOpenOpts {
           gooseMode == other.gooseMode &&
           enableKimTools == other.enableKimTools &&
           enableApprovals == other.enableApprovals &&
-          sessionId == other.sessionId;
+          sessionId == other.sessionId &&
+          harnessJson == other.harnessJson;
 }
 
 class SessionSnapshotDto {

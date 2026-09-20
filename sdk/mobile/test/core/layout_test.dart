@@ -32,6 +32,14 @@ void main() {
     expect(kimIsOverlayPath('/chat/bob'), isFalse);
   });
 
+  test('desktop selects message text; phones keep long-press copy', () {
+    expect(kimSelectsMessageText(TargetPlatform.macOS), isTrue);
+    expect(kimSelectsMessageText(TargetPlatform.windows), isTrue);
+    expect(kimSelectsMessageText(TargetPlatform.linux), isTrue);
+    expect(kimSelectsMessageText(TargetPlatform.iOS), isFalse);
+    expect(kimSelectsMessageText(TargetPlatform.android), isFalse);
+  });
+
   testWidgets('kimIsWide covers compact and wide', (tester) async {
     Future<void> expectAt(double width, {required bool wide}) async {
       late bool actual;

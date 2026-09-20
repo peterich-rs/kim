@@ -11,6 +11,7 @@ import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshotDto;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
 
@@ -40,6 +41,7 @@ class _ImmediateSession implements AgentSessionPort {
       inputTokens: BigInt.zero,
       outputTokens: BigInt.zero,
       resumedOps: const [],
+      recentlyActive: false,
     );
   }
 
@@ -71,6 +73,9 @@ class _ImmediateSession implements AgentSessionPort {
   Future<void> abort() async {}
 
   @override
+  Future<void> steer({required String text}) async {}
+
+  @override
   Future<void> reconfigure({required SessionOpenOpts opts}) async {}
 
   @override
@@ -88,6 +93,9 @@ class _ImmediateSession implements AgentSessionPort {
 
 class _RecordingBridge extends AgentBridge {
   String? lastProfileJson;
+  String? lastSqlitePath;
+  bool? lastResumeOnOpen;
+  String? lastHarnessJson;
 
   @override
   Future<void> ensure() async {}
@@ -102,6 +110,9 @@ class _RecordingBridge extends AgentBridge {
     required SessionOpenOpts opts,
   }) async {
     lastProfileJson = opts.profileJson;
+    lastSqlitePath = sqlitePath;
+    lastResumeOnOpen = opts.resumeOnOpen;
+    lastHarnessJson = opts.harnessJson;
     return _ImmediateSession();
   }
 }
@@ -235,6 +246,9 @@ void main() {
       expect(raw, isNotNull);
       final json = jsonDecode(raw!) as Map<String, Object?>;
       expect(json['user_agents_skills'], '/Users/me/.agents/skills');
+      expect(bridge.lastResumeOnOpen, isTrue);
+      expect(bridge.lastSqlitePath, endsWith('.json'));
+      expect(bridge.lastSqlitePath, contains('agent/sessions'));
     });
   });
 
@@ -282,6 +296,49 @@ void main() {
       expect(raw, isNotNull);
       final json = jsonDecode(raw!) as Map<String, Object?>;
       expect(json['user_agents_skills'], '/cached/skills');
+    });
+  });
+
+  test('_promptGoose kill-switch sends enabled false not empty json', () async {
+    await _withDesktopHost(() async {
+      final previous = FlutterSecureStoragePlatform.instance;
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        _account.keyRef: 'sk-test',
+      });
+      addTearDown(() {
+        FlutterSecureStoragePlatform.instance = previous;
+      });
+      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+      addTearDown(env.container.dispose);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('agent.harness_v1', false);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      final accounts = env.container.read(providerAccountsProvider.notifier);
+      await accounts.ensureLoaded();
+      await accounts.upsert(_account);
+      await store.ensureLoaded();
+      await store.saveEditor(_profile());
+
+      final bridge = _RecordingBridge();
+      final loop = AgentRunLoop(
+        env.fake,
+        bridge,
+        access: _FakeAccess('/Users/me/.agents/skills'),
+      );
+      final done = loop.start();
+      env.fake.agentRunCtrl.add(
+        AgentRunRequestDto(
+          dest: 'agent:p-1',
+          profileId: 'p-1',
+          text: 'hi',
+          inReplyTo: 1,
+          epoch: BigInt.one,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await env.fake.agentRunCtrl.close();
+      await done;
+      expect(bridge.lastHarnessJson, '{"enabled":false}');
     });
   });
 }

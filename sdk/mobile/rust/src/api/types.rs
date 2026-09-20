@@ -219,6 +219,7 @@ pub enum AgentTurnStateDto {
     WaitingPermission,
     Done,
     Error,
+    Empty,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -248,6 +249,10 @@ pub struct AgentRunResultDto {
     pub epoch: u64,
     pub output: String,
     pub error: Option<String>,
+    pub stop_reason: String,
+    pub replied: bool,
+    pub visible: bool,
+    pub recently_active: bool,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -637,6 +642,7 @@ impl From<AgentTurnState> for AgentTurnStateDto {
             AgentTurnState::WaitingPermission => Self::WaitingPermission,
             AgentTurnState::Done => Self::Done,
             AgentTurnState::Error => Self::Error,
+            AgentTurnState::Empty => Self::Empty,
         }
     }
 }
@@ -669,12 +675,28 @@ impl From<AgentRunRequest> for AgentRunRequestDto {
 
 impl From<AgentRunResultDto> for AgentRunResult {
     fn from(r: AgentRunResultDto) -> Self {
+        let replied = r.replied;
+        let stop_reason = if r.stop_reason.is_empty() {
+            if r.error.is_some() {
+                "failed".into()
+            } else if replied {
+                "completed".into()
+            } else {
+                "empty".into()
+            }
+        } else {
+            r.stop_reason
+        };
         Self {
             dest: r.dest,
             profile_id: r.profile_id,
             epoch: r.epoch,
             output: r.output,
             error: r.error,
+            stop_reason,
+            replied,
+            visible: r.visible,
+            recently_active: r.recently_active,
         }
     }
 }

@@ -109,7 +109,6 @@ pub struct ModelEntry {
     #[allow(dead_code)]
     pub display_name: String,
     #[serde(default)]
-    #[allow(dead_code)]
     pub context: Option<u32>,
     #[serde(default)]
     #[allow(dead_code)]
@@ -284,6 +283,126 @@ pub fn vendor_summaries() -> Result<Vec<VendorSummary>, HostError> {
 
 pub fn catalog_vendors_json() -> Result<String, HostError> {
     serde_json::to_string(&vendor_summaries()?).map_err(|e| HostError::Failed(e.to_string()))
+}
+
+/// Used when the model id is not in the published table.
+pub const DEFAULT_CONTEXT_TOKENS: i32 = 256_000;
+
+/// Longest prefix first via sort. Keep in sync with Dart `context_window.dart`.
+fn family_context_rules() -> Vec<(&'static str, i32)> {
+    vec![
+        ("claude-sonnet-4-5", 200_000),
+        ("claude-opus-4-5", 200_000),
+        ("claude-haiku-4-5", 200_000),
+        ("claude-sonnet-4-6", 1_000_000),
+        ("claude-opus-4-6", 1_000_000),
+        ("claude-opus-4-7", 1_000_000),
+        ("claude-opus-4-8", 1_000_000),
+        ("claude-sonnet-5", 1_000_000),
+        ("claude-opus-5", 1_000_000),
+        ("claude-haiku-5", 1_000_000),
+        ("claude-fable", 1_000_000),
+        ("claude-mythos", 1_000_000),
+        ("claude-sonnet-4", 200_000),
+        ("claude-opus-4", 200_000),
+        ("claude-haiku-4", 200_000),
+        ("claude-", 200_000),
+        ("gpt-4.1", 1_047_576),
+        ("gpt-4o", 128_000),
+        ("gpt-4-turbo", 128_000),
+        ("gpt-4-32k", 32_768),
+        ("gpt-4", 8_192),
+        ("gpt-5.4", 1_050_000),
+        ("gpt-5.5", 1_050_000),
+        ("gpt-5.6", 1_050_000),
+        ("gpt-6", 1_050_000),
+        ("gpt-5", 400_000),
+        ("o1", 200_000),
+        ("o3", 200_000),
+        ("o4", 200_000),
+        ("grok-4.20", 500_000),
+        ("grok-4.6", 500_000),
+        ("grok-4.5", 500_000),
+        ("grok-4.3", 1_000_000),
+        ("grok-4", 256_000),
+        ("grok-3", 131_072),
+        ("grok", 256_000),
+        ("deepseek-v4", 1_000_000),
+        ("deepseek-flash", 1_000_000),
+        ("deepseek-chat", 128_000),
+        ("deepseek-reasoner", 128_000),
+        ("kimi-k2.7", 262_144),
+        ("kimi-k2.6", 262_144),
+        ("kimi-k2.5", 262_144),
+        ("kimi-k3", 1_048_576),
+        ("kimi-k2", 262_144),
+        ("qwen3.8", 1_000_000),
+        ("qwen3.7", 1_000_000),
+        ("qwen3.6", 1_000_000),
+        ("qwen3", 1_000_000),
+        ("qwen-plus", 1_000_000),
+        ("qwen-max", 1_000_000),
+        ("qwen-long", 10_000_000),
+        ("qwen-turbo", 128_000),
+        ("qwen-flash", 128_000),
+        ("glm-5", 1_000_000),
+        ("glm-4.7", 200_000),
+        ("glm-4.6", 200_000),
+        ("glm-4.5", 128_000),
+        ("minimax-m3", 1_000_000),
+        ("minimax-m2", 1_000_000),
+        ("gemini-3", 1_048_576),
+        ("gemini-2.5", 1_048_576),
+        ("gemini-2.0", 1_048_576),
+        ("gemini-1.5", 1_048_576),
+    ]
+}
+
+fn catalog_model_context(model: &str) -> Option<i32> {
+    let want = model.trim();
+    if want.is_empty() {
+        return None;
+    }
+    let cat = catalog().ok()?;
+    for vendor in &cat.vendors {
+        if let Some(found) = vendor
+            .models
+            .iter()
+            .find(|m| m.id.eq_ignore_ascii_case(want))
+        {
+            if let Some(n) = found.context.filter(|n| *n > 0) {
+                return Some(n as i32);
+            }
+        }
+    }
+    None
+}
+
+/// Published window for [model], or [DEFAULT_CONTEXT_TOKENS].
+pub fn default_context_tokens(model: &str) -> i32 {
+    let full = model.trim();
+    if full.is_empty() {
+        return DEFAULT_CONTEXT_TOKENS;
+    }
+    if let Some(n) = catalog_model_context(full) {
+        return n;
+    }
+    let base = model_basename(full);
+    if base != full {
+        if let Some(n) = catalog_model_context(base) {
+            return n;
+        }
+    }
+    let mut rules = family_context_rules();
+    rules.sort_by_key(|(p, _)| std::cmp::Reverse(p.len()));
+    for id in [full, base] {
+        for (prefix, tokens) in &rules {
+            if prefix_matches(id, prefix) {
+                return *tokens;
+            }
+        }
+    }
+    DEFAULT_CONTEXT_TOKENS
 }
 
 pub fn surface_for(vendor: &str, model: &str) -> Result<ReasoningSurface, HostError> {
@@ -932,6 +1051,31 @@ mod tests {
         assert!(cat.vendors.iter().any(|v| v.id == "deepseek"));
         assert!(cat.vendors.iter().any(|v| v.id == "minimax"));
         assert!(cat.vendors.iter().any(|v| v.id == "xai"));
+    }
+
+    #[test]
+    fn default_context_tokens_uses_published_windows() {
+        assert_eq!(default_context_tokens("gpt-4o"), 128_000);
+        assert_eq!(default_context_tokens("openai/gpt-4o-mini"), 128_000);
+        assert_eq!(default_context_tokens("gpt-4.1"), 1_047_576);
+        assert_eq!(default_context_tokens("gpt-5"), 400_000);
+        assert_eq!(default_context_tokens("gpt-5.6-sol"), 1_050_000);
+        assert_eq!(default_context_tokens("claude-sonnet-4-5"), 200_000);
+        assert_eq!(default_context_tokens("claude-sonnet-4-6"), 1_000_000);
+        assert_eq!(default_context_tokens("claude-opus-5"), 1_000_000);
+        assert_eq!(default_context_tokens("grok-4.6"), 500_000);
+        assert_eq!(default_context_tokens("deepseek-flash"), 1_000_000);
+        assert_eq!(default_context_tokens("deepseek-v4-pro"), 1_000_000);
+        assert_eq!(default_context_tokens("kimi-k2.6"), 262_144);
+        assert_eq!(default_context_tokens("moonshotai/kimi-k3"), 1_048_576);
+        assert_eq!(default_context_tokens("qwen3.8-max"), 1_000_000);
+        assert_eq!(default_context_tokens("glm-5.2"), 1_000_000);
+        assert_eq!(default_context_tokens("MiniMax-M3"), 1_000_000);
+        assert_eq!(
+            default_context_tokens("local-mystery"),
+            DEFAULT_CONTEXT_TOKENS
+        );
+        assert_eq!(default_context_tokens(""), DEFAULT_CONTEXT_TOKENS);
     }
 
     #[test]

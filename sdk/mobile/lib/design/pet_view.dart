@@ -109,9 +109,13 @@ class _PetViewState extends ConsumerState<PetView>
 
   Future<void> _load() async {
     try {
-      final injected = widget.debugPack ?? PetPackScope.maybeOf(context);
-      final pack =
-          injected ?? await PetPack.loadAsset(DefaultAssetBundle.of(context));
+      final pack = widget.debugPack ?? PetPackScope.maybeOf(context);
+      if (pack == null) {
+        if (mounted) {
+          setState(() => _failed = true);
+        }
+        return;
+      }
       final codec = await ui.instantiateImageCodec(pack.imageBytes);
       final frame = await codec.getNextFrame();
       if (!mounted) {

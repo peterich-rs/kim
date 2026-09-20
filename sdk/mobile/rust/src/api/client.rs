@@ -180,12 +180,24 @@ impl KimUiHandle {
                 output,
                 error,
             } => {
+                let failed = error.is_some();
+                let replied = !failed && !output.trim().is_empty();
                 self.submit_agent_run(AgentRunResultDto {
                     dest,
                     profile_id,
                     epoch,
                     output,
                     error,
+                    stop_reason: if failed {
+                        "failed".into()
+                    } else if replied {
+                        "completed".into()
+                    } else {
+                        "empty".into()
+                    },
+                    replied,
+                    visible: replied,
+                    recently_active: false,
                 })
                 .await?;
                 Ok(empty_ack())

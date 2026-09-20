@@ -6,9 +6,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kim_agent_host::{
-    parse_permission, AgentHost, AgentProfile, HostError, HostEvent, LegacyOpenOpts, ProviderSpec,
-    ResolvedProfile, TurnOutcome, YieldKind,
+    parse_permission, resolve_limits, AgentHost, AgentProfile, CancelReason, HostError, HostEvent,
+    LegacyOpenOpts, ProviderSpec, ResolvedProfile, TimeoutKind, TurnOutcome, YieldKind,
 };
+
+use super::phase::{self, PhaseInput, SessionPhase};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -30,6 +32,7 @@ pub struct SessionOpenOpts {
     pub enable_kim_tools: bool,
     pub enable_approvals: bool,
     pub session_id: String,
+    pub harness_json: String,
 }
 
 impl Default for SessionOpenOpts {
@@ -49,6 +52,7 @@ impl Default for SessionOpenOpts {
             enable_kim_tools: false,
             enable_approvals: false,
             session_id: String::new(),
+            harness_json: String::new(),
         }
     }
 }
@@ -68,6 +72,7 @@ pub struct AgentUiEvent {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub resumed_ops: Vec<String>,
+    pub recently_active: bool,
 }
 
 impl AgentUiEvent {
@@ -86,6 +91,7 @@ impl AgentUiEvent {
             input_tokens: 0,
             output_tokens: 0,
             resumed_ops: Vec::new(),
+            recently_active: false,
         }
     }
 
@@ -196,23 +202,6 @@ pub struct SessionSnapshotDto {
     pub pending_call_ids: Vec<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SessionPhase {
-    Idle,
-    Running,
-    Yielded,
-}
-
-impl SessionPhase {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Running => "running",
-            Self::Yielded => "yielded",
-        }
-    }
-}
-
 struct Shared {
     host: RwLock<AgentHost>,
     session_id: String,
@@ -222,6 +211,10 @@ struct Shared {
     complete_gate: tokio::sync::Mutex<()>,
     cancel: Mutex<Option<CancellationToken>>,
     generation: AtomicU64,
+    limits: kim_agent_host::HarnessLimits,
+    yield_cancel: Mutex<Option<CancellationToken>>,
+    resolved: Mutex<Option<ResolvedProfile>>,
+    recreate_attempts: AtomicU64,
 }
 
 pub struct AgentSession {
@@ -289,26 +282,21 @@ pub fn session_open(
     } else {
         sqlite_path
     };
-    let host =
-        AgentHost::from_resolved(resolved_from_opts(&opts, project_root)?).map_err(map_host_err)?;
+    let resolved = resolved_from_opts(&opts, project_root)?;
+    let limits = resolve_limits(&opts.harness_json, resolved.profile.harness.as_ref())
+        .map_err(map_host_err)?;
+    let host = AgentHost::from_resolved(resolved.clone())
+        .map_err(map_host_err)?
+        .with_limits(limits);
     rt().block_on(async {
         host.configure_persist(disk, opts.resume_on_open).await;
         host.connect_extensions().await
     })
     .map_err(map_host_err)?;
-    let (tx, _) = broadcast::channel(256);
-    let _ = tx.send(AgentUiEvent::session_ready());
+    let shared = shared_new(host, session_id, Some(resolved));
+    let _ = shared.events.send(AgentUiEvent::session_ready());
     Ok(AgentSession {
-        inner: Arc::new(Shared {
-            host: RwLock::new(host),
-            session_id,
-            events: tx,
-            phase: Mutex::new(SessionPhase::Idle),
-            replay: Mutex::new(Vec::new()),
-            complete_gate: tokio::sync::Mutex::new(()),
-            cancel: Mutex::new(None),
-            generation: AtomicU64::new(0),
-        }),
+        inner: Arc::new(shared),
     })
 }
 
@@ -323,6 +311,9 @@ impl AgentSession {
             SessionPhase::Running => return Err("agent busy".into()),
             SessionPhase::Yielded => return Err("agent waiting for tool".into()),
             SessionPhase::Idle => {}
+        }
+        if phase::transition(*phase, PhaseInput::Prompt).is_none() {
+            return Err("agent busy".into());
         }
         *phase = SessionPhase::Running;
         let gen = self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -354,6 +345,11 @@ impl AgentSession {
         let inner = self.inner.clone();
         let (op_tx, op_rx) = std::sync::mpsc::channel();
         rt().spawn(async move {
+            let _gate = inner.complete_gate.lock().await;
+            if inner.generation.load(Ordering::SeqCst) != gen {
+                let _ = op_tx.send(Err("aborted".into()));
+                return;
+            }
             let op = uuid::Uuid::new_v4().to_string();
             let _ = inner
                 .events
@@ -361,11 +357,13 @@ impl AgentSession {
             let _ = op_tx.send(Ok(op.clone()));
             let (tx, rx) = mpsc::channel(64);
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
-            let host = inner.host.read().await;
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
             let result = host
                 .prompt_with_context(&inner.session_id, &text, context.as_deref(), tx, cancel)
                 .await;
-            drop(host);
             let _ = pump.await;
             finish_turn(&inner, op, result, gen).await;
         });
@@ -412,11 +410,15 @@ impl AgentSession {
             let _ = op_tx.send(Ok(op.clone()));
             let (tx, rx) = mpsc::channel(64);
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
-            let host = inner.host.read().await;
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
             let pending = host.pending_yields(&inner.session_id).await;
             if pending.len() == 1 && pending[0].call_id == call_id {
+                disarm_yield_watch(&inner);
                 if let Ok(mut g) = inner.phase.lock() {
-                    if *g == SessionPhase::Yielded {
+                    if phase::transition(*g, PhaseInput::Continue).is_some() {
                         *g = SessionPhase::Running;
                     }
                 }
@@ -424,7 +426,6 @@ impl AgentSession {
             let result = host
                 .complete_tool(&inner.session_id, &call_id, &output_json, tx, cancel)
                 .await;
-            drop(host);
             let _ = pump.await;
             finish_turn(&inner, op, result, gen).await;
         });
@@ -476,11 +477,15 @@ impl AgentSession {
             let _ = op_tx.send(Ok(op.clone()));
             let (tx, rx) = mpsc::channel(64);
             let pump = spawn_host_pump(inner.events.clone(), op.clone(), rx);
-            let host = inner.host.read().await;
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
             let pending = host.pending_yields(&inner.session_id).await;
             if pending.len() == 1 && pending[0].call_id == call_id {
+                disarm_yield_watch(&inner);
                 if let Ok(mut g) = inner.phase.lock() {
-                    if *g == SessionPhase::Yielded {
+                    if phase::transition(*g, PhaseInput::Continue).is_some() {
                         *g = SessionPhase::Running;
                     }
                 }
@@ -488,7 +493,6 @@ impl AgentSession {
             let result = host
                 .respond_permission(&inner.session_id, &call_id, parsed, tx, cancel)
                 .await;
-            drop(host);
             let _ = pump.await;
             finish_turn(&inner, op, result, gen).await;
         });
@@ -532,33 +536,127 @@ impl AgentSession {
     }
 
     pub fn abort(&self) -> Result<(), String> {
+        self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        disarm_yield_watch(&self.inner);
         if let Ok(g) = self.inner.cancel.lock() {
             if let Some(token) = g.as_ref() {
                 token.cancel();
             }
         }
-        self.inner.generation.fetch_add(1, Ordering::SeqCst);
         let inner = self.inner.clone();
         rt().block_on(async move {
-            let _gate = inner.complete_gate.lock().await;
-            let host = inner.host.read().await;
-            host.cancel_pending_tools(&inner.session_id).await;
-            drop(host);
-            if let Ok(mut g) = inner.phase.lock() {
-                *g = SessionPhase::Idle;
+            let grace = inner.limits.cancel_grace;
+            match tokio::time::timeout(grace, inner.complete_gate.lock()).await {
+                Ok(_gate) => {
+                    let host = {
+                        let guard = inner.host.read().await;
+                        guard.clone()
+                    };
+                    host.cancel_pending_tools(&inner.session_id).await;
+                    if let Ok(mut g) = inner.phase.lock() {
+                        *g = SessionPhase::Idle;
+                    }
+                    if let Ok(mut g) = inner.replay.lock() {
+                        g.clear();
+                    }
+                    let mut ev = AgentUiEvent::aborted(String::new());
+                    ev.stop_reason = "cancelled".into();
+                    let _ = inner.events.send(ev);
+                    Ok(())
+                }
+                Err(_) => {
+                    let _ = recreate_host(&inner).await;
+                    if let Ok(mut g) = inner.phase.lock() {
+                        *g = SessionPhase::Idle;
+                    }
+                    if let Ok(mut g) = inner.replay.lock() {
+                        g.clear();
+                    }
+                    let mut ev = AgentUiEvent::failed(String::new(), "host poisoned".into());
+                    ev.stop_reason = "poisoned".into();
+                    let _ = inner.events.send(ev);
+                    Ok(())
+                }
             }
-            if let Ok(mut g) = inner.replay.lock() {
-                g.clear();
-            }
-            let _ = inner.events.send(AgentUiEvent::aborted(String::new()));
-        });
-        Ok(())
+        })
+    }
+
+    pub fn steer(&self, text: String) -> Result<(), String> {
+        let inner = self.inner.clone();
+        rt().block_on(async move {
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
+            host.steer(&inner.session_id, &text)
+                .await
+                .map_err(map_host_err)
+        })
     }
 
     pub fn resume(&self) -> Result<ResumeReportDto, String> {
-        Ok(ResumeReportDto {
-            resumed_ops: Vec::new(),
-            statuses: Vec::new(),
+        let inner = self.inner.clone();
+        rt().block_on(async move {
+            let _gate = inner.complete_gate.lock().await;
+            {
+                let phase = inner.phase.lock().map_err(|_| "phase lock".to_string())?;
+                if *phase != SessionPhase::Idle {
+                    return Err("session is not idle".into());
+                }
+            }
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
+            host.repair_in_process_pairing(&inner.session_id).await;
+            let pending = host.pending_yields(&inner.session_id).await;
+            if pending.is_empty() {
+                return Ok(ResumeReportDto {
+                    resumed_ops: Vec::new(),
+                    statuses: Vec::new(),
+                });
+            }
+            if let Ok(mut g) = inner.phase.lock() {
+                *g = SessionPhase::Yielded;
+            }
+            let op = "resume".to_string();
+            let mut resumed_ops = Vec::new();
+            let mut statuses = Vec::new();
+            let mut replayed = Vec::new();
+            for p in pending {
+                let status = match p.kind {
+                    YieldKind::ActionRequired => "action_required",
+                    YieldKind::ToolRequest => "tool_request",
+                };
+                let ev = match p.kind {
+                    YieldKind::ActionRequired => AgentUiEvent::action_required(
+                        op.clone(),
+                        p.call_id.clone(),
+                        p.name,
+                        p.arguments_json,
+                        p.prompt,
+                    ),
+                    YieldKind::ToolRequest => AgentUiEvent::tool_request(
+                        op.clone(),
+                        p.call_id.clone(),
+                        p.name,
+                        p.arguments_json,
+                    ),
+                };
+                let _ = inner.events.send(ev.clone());
+                replayed.push(ev);
+                resumed_ops.push(p.call_id);
+                statuses.push(status.to_string());
+            }
+            if let Ok(mut g) = inner.replay.lock() {
+                *g = replayed;
+            }
+            let gen = inner.generation.load(Ordering::SeqCst);
+            arm_yield_watch(&inner, gen);
+            Ok(ResumeReportDto {
+                resumed_ops,
+                statuses,
+            })
         })
     }
 
@@ -572,7 +670,10 @@ impl AgentSession {
             .map(|g| *g)
             .unwrap_or(SessionPhase::Idle);
         let pending = rt().block_on(async {
-            let host = self.inner.host.read().await;
+            let host = {
+                let guard = self.inner.host.read().await;
+                guard.clone()
+            };
             host.pending_yields(&self.inner.session_id).await
         });
         Ok(SessionSnapshotDto {
@@ -588,6 +689,9 @@ impl AgentSession {
         let resolved = resolved_from_opts(&opts, String::new())?;
         let inner = self.inner.clone();
         rt().block_on(async move {
+            if let Ok(mut slot) = inner.resolved.lock() {
+                *slot = Some(resolved.clone());
+            }
             {
                 let slot = inner.host.read().await;
                 let current = slot.profile_snapshot();
@@ -602,7 +706,12 @@ impl AgentSession {
                     return Ok(());
                 }
             }
-            let host = AgentHost::from_resolved(resolved).map_err(map_host_err)?;
+            let host = AgentHost::from_resolved(resolved.clone())
+                .map_err(map_host_err)?
+                .with_limits(
+                    resolve_limits(&opts.harness_json, resolved.profile.harness.as_ref())
+                        .unwrap_or_else(|_| kim_agent_host::HarnessLimits::disabled()),
+                );
             host.connect_extensions().await.map_err(map_host_err)?;
             let mut slot = inner.host.write().await;
             let state = slot.runtime_state().await;
@@ -617,7 +726,10 @@ impl AgentSession {
         let _ = self.abort();
         let inner = self.inner.clone();
         rt().block_on(async move {
-            let host = inner.host.read().await;
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
             host.disconnect_extensions().await;
         });
         Ok(())
@@ -634,12 +746,6 @@ fn spawn_host_pump(
             match ev {
                 HostEvent::TextDelta { delta } => {
                     let _ = events.send(AgentUiEvent::text_delta(op.clone(), delta));
-                }
-                HostEvent::Finished { text } => {
-                    let _ = events.send(AgentUiEvent::completed(op.clone(), text));
-                }
-                HostEvent::Failed { message } => {
-                    let _ = events.send(AgentUiEvent::failed(op.clone(), message));
                 }
                 HostEvent::ToolRequest { call_id, name, .. } => {
                     let _ = events.send(AgentUiEvent::tool_started(op.clone(), call_id, name));
@@ -658,14 +764,29 @@ fn spawn_host_pump(
                         ok,
                     ));
                 }
-                HostEvent::ActionRequired { .. } | HostEvent::Usage { .. } => {}
+                HostEvent::Usage {
+                    input_tokens,
+                    output_tokens,
+                } => {
+                    let mut ev = AgentUiEvent::base("usage");
+                    ev.operation_id = op.clone();
+                    ev.input_tokens = input_tokens;
+                    ev.output_tokens = output_tokens;
+                    let _ = events.send(ev);
+                }
+                HostEvent::Keepalive => {
+                    let mut ev = AgentUiEvent::base("keepalive");
+                    ev.operation_id = op.clone();
+                    let _ = events.send(ev);
+                }
+                HostEvent::ActionRequired { .. } => {}
             }
         }
     })
 }
 
 fn turn_is_current(inner: &Shared, gen: u64) -> bool {
-    inner.generation.load(Ordering::SeqCst) == gen
+    !phase::stale(inner.generation.load(Ordering::SeqCst), gen)
 }
 
 fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
@@ -682,23 +803,46 @@ fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
     true
 }
 
-async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, HostError>, gen: u64) {
+async fn finish_turn(
+    inner: &Arc<Shared>,
+    op: String,
+    result: Result<TurnOutcome, HostError>,
+    gen: u64,
+) {
     if !turn_is_current(inner, gen) {
         return;
     }
     match result {
-        Ok(TurnOutcome::Finished { .. }) => {
+        Ok(TurnOutcome::Finished {
+            text,
+            replied,
+            visible,
+        }) => {
+            disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
             }
             if let Ok(mut g) = inner.replay.lock() {
                 g.clear();
             }
+            let mut ev = AgentUiEvent::completed(op, text);
+            ev.ok = replied;
+            ev.stop_reason = if replied {
+                "completed"
+            } else if visible {
+                "side_effect"
+            } else {
+                "empty"
+            }
+            .into();
+            let _ = inner.events.send(ev);
         }
         Ok(TurnOutcome::Yielded { .. }) => {
-            let host = inner.host.read().await;
+            let host = {
+                let guard = inner.host.read().await;
+                guard.clone()
+            };
             let pending = host.pending_yields(&inner.session_id).await;
-            drop(host);
             if !set_phase_if_current(inner, gen, SessionPhase::Yielded) {
                 return;
             }
@@ -728,20 +872,73 @@ async fn finish_turn(inner: &Shared, op: String, result: Result<TurnOutcome, Hos
             if let Ok(mut g) = inner.replay.lock() {
                 *g = replayed;
             }
+            arm_yield_watch(inner, gen);
         }
-        Err(HostError::Failed(msg)) if msg.contains("cancel") => {
+        Ok(TurnOutcome::Cancelled { reason }) => {
+            disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
             }
-            let _ = inner.events.send(AgentUiEvent::aborted(op));
+            if let Ok(mut g) = inner.replay.lock() {
+                g.clear();
+            }
+            let mut ev = AgentUiEvent::aborted(op);
+            ev.stop_reason = match reason {
+                CancelReason::UserAbort => "cancelled",
+                CancelReason::YieldAbandoned => "yield_abandoned",
+            }
+            .into();
+            let _ = inner.events.send(ev);
+        }
+        Ok(TurnOutcome::TimedOut { kind }) => {
+            disarm_yield_watch(inner);
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
+            }
+            let mut ev = AgentUiEvent::failed(op, String::new());
+            ev.stop_reason = match kind {
+                TimeoutKind::Idle => "idle_timeout".into(),
+                TimeoutKind::Hard { recently_active } => {
+                    ev.recently_active = recently_active;
+                    "hard_timeout".into()
+                }
+            };
+            let _ = inner.events.send(ev);
+        }
+        Err(HostError::Poisoned {
+            message,
+            recently_active,
+        }) => {
+            disarm_yield_watch(inner);
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
+            }
+            if let Ok(mut g) = inner.replay.lock() {
+                g.clear();
+            }
+            let _ = recreate_host(inner).await;
+            let mut ev = AgentUiEvent::failed(op, message);
+            ev.stop_reason = "poisoned".into();
+            ev.recently_active = recently_active;
+            let _ = inner.events.send(ev);
+        }
+        Err(HostError::Provider(fail)) => {
+            disarm_yield_watch(inner);
+            if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
+                return;
+            }
+            let mut ev = AgentUiEvent::failed(op, fail.to_string());
+            ev.stop_reason = "provider".into();
+            let _ = inner.events.send(ev);
         }
         Err(err) => {
+            disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
             }
-            let _ = inner
-                .events
-                .send(AgentUiEvent::failed(op, map_host_err(err)));
+            let mut ev = AgentUiEvent::failed(op, map_host_err(err));
+            ev.stop_reason = "failed".into();
+            let _ = inner.events.send(ev);
         }
     }
 }
@@ -835,6 +1032,121 @@ fn map_host_err(err: HostError) -> String {
     err.to_string()
 }
 
+fn shared_new(host: AgentHost, session_id: String, resolved: Option<ResolvedProfile>) -> Shared {
+    let limits = host.limits();
+    let (tx, _) = broadcast::channel(256);
+    Shared {
+        host: RwLock::new(host),
+        session_id,
+        events: tx,
+        phase: Mutex::new(SessionPhase::Idle),
+        replay: Mutex::new(Vec::new()),
+        complete_gate: tokio::sync::Mutex::new(()),
+        cancel: Mutex::new(None),
+        generation: AtomicU64::new(0),
+        limits,
+        yield_cancel: Mutex::new(None),
+        resolved: Mutex::new(resolved),
+        recreate_attempts: AtomicU64::new(0),
+    }
+}
+
+fn disarm_yield_watch(inner: &Shared) {
+    if let Ok(mut slot) = inner.yield_cancel.lock() {
+        if let Some(token) = slot.take() {
+            token.cancel();
+        }
+    }
+}
+
+fn arm_yield_watch(inner: &Arc<Shared>, gen: u64) {
+    disarm_yield_watch(inner);
+    let token = CancellationToken::new();
+    if let Ok(mut slot) = inner.yield_cancel.lock() {
+        *slot = Some(token.clone());
+    }
+    let wait = inner.limits.yield_wait;
+    let inner = Arc::clone(inner);
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = token.cancelled() => {}
+            _ = sleep_bounded(wait) => {
+                if turn_is_current(&inner, gen) {
+                    abandon_yield(inner).await;
+                }
+            }
+        }
+    });
+}
+
+async fn abandon_yield(inner: Arc<Shared>) {
+    let _gate = inner.complete_gate.lock().await;
+    {
+        let Ok(phase) = inner.phase.lock() else {
+            return;
+        };
+        if *phase != SessionPhase::Yielded {
+            return;
+        }
+    }
+    inner.generation.fetch_add(1, Ordering::SeqCst);
+    if let Ok(slot) = inner.cancel.lock() {
+        if let Some(token) = slot.as_ref() {
+            token.cancel();
+        }
+    }
+    let host = {
+        let guard = inner.host.read().await;
+        guard.clone()
+    };
+    host.repair_pairing(&inner.session_id).await;
+    if let Ok(mut phase) = inner.phase.lock() {
+        *phase = SessionPhase::Idle;
+    }
+    if let Ok(mut replay) = inner.replay.lock() {
+        replay.clear();
+    }
+    let mut ev = AgentUiEvent::aborted(String::new());
+    ev.stop_reason = "yield_abandoned".into();
+    let _ = inner.events.send(ev);
+}
+
+async fn recreate_host(inner: &Shared) -> Result<(), String> {
+    inner.recreate_attempts.fetch_add(1, Ordering::SeqCst);
+    let resolved = inner
+        .resolved
+        .lock()
+        .map_err(|_| "resolved lock".to_string())?
+        .clone();
+    let Some(resolved) = resolved else {
+        return Ok(());
+    };
+    let host = AgentHost::from_resolved(resolved)
+        .map_err(map_host_err)?
+        .with_limits(inner.limits.clone());
+    let old = {
+        let guard = inner.host.read().await;
+        guard.clone()
+    };
+    let state = old.runtime_state().await;
+    host.restore_runtime_state(state).await;
+    let _ = host.connect_extensions().await;
+    host.repair_pairing(&inner.session_id).await;
+    let mut slot = inner.host.write().await;
+    slot.disconnect_extensions().await;
+    *slot = host;
+    Ok(())
+}
+
+async fn sleep_bounded(d: Duration) {
+    const CAP: Duration = Duration::from_secs(24 * 60 * 60);
+    if d >= CAP {
+        std::future::pending::<()>().await;
+    } else if !d.is_zero() {
+        tokio::time::sleep(d).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -844,18 +1156,8 @@ mod tests {
     use std::time::Duration;
 
     fn session_from_host(session_id: String, host: AgentHost) -> AgentSession {
-        let (tx, _) = broadcast::channel(256);
         AgentSession {
-            inner: Arc::new(Shared {
-                host: RwLock::new(host),
-                session_id,
-                events: tx,
-                phase: Mutex::new(SessionPhase::Idle),
-                replay: Mutex::new(Vec::new()),
-                complete_gate: tokio::sync::Mutex::new(()),
-                cancel: Mutex::new(None),
-                generation: AtomicU64::new(0),
-            }),
+            inner: Arc::new(shared_new(host, session_id, None)),
         }
     }
 
@@ -961,13 +1263,17 @@ mod tests {
 
     #[test]
     fn send_message_action_required_after_yielded() {
-        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+        let mut profile = AgentProfile::from_legacy(&LegacyOpenOpts {
             enable_kim_tools: true,
             enable_approvals: true,
             model: "scripted".into(),
             llm_backend: "scripted".into(),
             ..LegacyOpenOpts::default()
         });
+        profile.permissions.tools.insert(
+            "send_message".into(),
+            kim_agent_host::PermissionDefault::AskBefore,
+        );
         let host = AgentHost::from_provider_for_test(
             profile,
             Arc::new(ScriptedProvider::kim_send_message("c1", "bob", "hi")),
@@ -1042,5 +1348,264 @@ mod tests {
         }
         session.prompt("again".into()).unwrap();
         wait_phase(&session, "idle");
+    }
+
+    #[test]
+    fn finish_turn_maps_stop_reason_without_string_scan() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::saying("hi")),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        let cases = [
+            (
+                Ok(TurnOutcome::Finished {
+                    text: "hi".into(),
+                    replied: true,
+                    visible: true,
+                }),
+                "assistant_finished",
+                "completed",
+                false,
+            ),
+            (
+                Ok(TurnOutcome::Finished {
+                    text: String::new(),
+                    replied: false,
+                    visible: true,
+                }),
+                "assistant_finished",
+                "side_effect",
+                false,
+            ),
+            (
+                Ok(TurnOutcome::Finished {
+                    text: String::new(),
+                    replied: false,
+                    visible: false,
+                }),
+                "assistant_finished",
+                "empty",
+                false,
+            ),
+            (
+                Ok(TurnOutcome::TimedOut {
+                    kind: TimeoutKind::Idle,
+                }),
+                "failed",
+                "idle_timeout",
+                false,
+            ),
+            (
+                Ok(TurnOutcome::TimedOut {
+                    kind: TimeoutKind::Hard {
+                        recently_active: true,
+                    },
+                }),
+                "failed",
+                "hard_timeout",
+                true,
+            ),
+            (
+                Ok(TurnOutcome::Cancelled {
+                    reason: CancelReason::UserAbort,
+                }),
+                "aborted",
+                "cancelled",
+                false,
+            ),
+            (
+                Err(HostError::Poisoned {
+                    message: "boom".into(),
+                    recently_active: true,
+                }),
+                "failed",
+                "poisoned",
+                true,
+            ),
+            (
+                Err(HostError::Failed("please cancel".into())),
+                "failed",
+                "failed",
+                false,
+            ),
+        ];
+        for (result, kind, stop, recent) in cases {
+            rt().block_on(finish_turn(&session.inner, "op".into(), result, 0));
+            let mut matched = false;
+            while let Ok(ev) = rx.try_recv() {
+                if ev.operation_id == "op" || ev.stop_reason == stop {
+                    assert_eq!(ev.kind, kind, "{stop}");
+                    assert_eq!(ev.stop_reason, stop);
+                    assert_eq!(ev.recently_active, recent, "{stop}");
+                    matched = true;
+                }
+            }
+            assert!(matched, "missing {stop}");
+        }
+    }
+
+    #[test]
+    fn listen_emits_exactly_one_terminal_event_per_turn() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::saying("hello")),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        session.prompt("hello".into()).unwrap();
+        wait_phase(&session, "idle");
+        thread::sleep(Duration::from_millis(40));
+        let mut terminals = 0;
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(
+                ev.kind.as_str(),
+                "assistant_finished" | "failed" | "aborted"
+            ) {
+                terminals += 1;
+                assert_eq!(ev.kind, "assistant_finished");
+                assert_eq!(ev.stop_reason, "completed");
+            }
+        }
+        assert_eq!(terminals, 1);
+    }
+
+    #[test]
+    fn yield_wait_abandon_cancels_permission() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            enable_approvals: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_send_message("c1", "bob", "hi")),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap()
+        .with_limits(kim_agent_host::HarnessLimits {
+            yield_wait: Duration::from_millis(50),
+            ..kim_agent_host::HarnessLimits::default()
+        });
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        session.prompt("ping bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        wait_phase(&session, "idle");
+        let mut saw = false;
+        while let Ok(ev) = rx.try_recv() {
+            if ev.stop_reason == "yield_abandoned" {
+                saw = true;
+                assert_eq!(ev.kind, "aborted");
+            }
+        }
+        assert!(saw);
+        assert!(session
+            .respond_permission("c1".into(), "allow_once".into())
+            .is_err());
+    }
+
+    #[test]
+    fn resume_reports_pending_yields() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_search_contacts(&[("c1", "bob")])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        session.prompt("find bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        if let Ok(mut phase) = session.inner.phase.lock() {
+            *phase = SessionPhase::Idle;
+        }
+        let report = session.resume().unwrap();
+        assert_eq!(report.resumed_ops, vec!["c1".to_string()]);
+        assert_eq!(report.statuses, vec!["tool_request".to_string()]);
+        assert_eq!(session.snapshot().unwrap().phase, "yielded");
+    }
+
+    #[test]
+    fn resume_rejects_when_not_idle() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            enable_kim_tools: true,
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::kim_search_contacts(&[("c1", "bob")])),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        session.prompt("find bob".into()).unwrap();
+        wait_phase(&session, "yielded");
+        let err = match session.resume() {
+            Ok(_) => panic!("expected resume to reject non-idle"),
+            Err(e) => e,
+        };
+        assert!(err.contains("not idle"), "{err}");
+        assert_eq!(session.snapshot().unwrap().phase, "yielded");
+    }
+
+    #[test]
+    fn finish_turn_poisoned_attempts_recreate() {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "scripted".into(),
+            llm_backend: "scripted".into(),
+            ..LegacyOpenOpts::default()
+        });
+        let host = AgentHost::from_provider_for_test(
+            profile,
+            Arc::new(ScriptedProvider::saying("hi")),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        let session = session_from_host("s".into(), host);
+        let mut rx = session.inner.events.subscribe();
+        rt().block_on(finish_turn(
+            &session.inner,
+            "op".into(),
+            Err(HostError::Poisoned {
+                message: "boom".into(),
+                recently_active: true,
+            }),
+            0,
+        ));
+        assert_eq!(session.inner.recreate_attempts.load(Ordering::SeqCst), 1);
+        let mut saw = false;
+        while let Ok(ev) = rx.try_recv() {
+            if ev.stop_reason == "poisoned" {
+                saw = true;
+                assert_eq!(ev.kind, "failed");
+                assert!(ev.recently_active);
+            }
+        }
+        assert!(saw);
     }
 }
