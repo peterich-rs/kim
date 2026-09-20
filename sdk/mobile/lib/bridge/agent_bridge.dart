@@ -268,6 +268,7 @@ class AgentRunLoop {
     );
     final prefs = await SharedPreferences.getInstance();
     final harnessOn = prefs.getBool('agent.harness_v1') ?? false;
+    final runtime = prefs.getString('agent.runtime') ?? 'goose';
     final session = await goose.open(
       sqlitePath: sessionFile.path,
       projectRoot: ws.path,
@@ -291,7 +292,10 @@ class AgentRunLoop {
         enableKimTools: false,
         enableApprovals: false,
         sessionId: '${req.dest}:${req.profileId}',
-        harnessJson: harnessOn ? '{"enabled":true}' : '{"enabled":false}',
+        harnessJson: jsonEncode({
+          'enabled': harnessOn,
+          if (runtime == 'codex') 'runtime': 'codex',
+        }),
       ),
     );
     return driveSession(session, dest: req.dest, text: req.text);

@@ -121,19 +121,23 @@ fn map_row(row: sqlx::sqlite::SqliteRow) -> Result<OutboxRow, SdkError> {
     })
 }
 
-const ROW_COLS: &str = "client_id, dest, kind, payload_type, body, extra, local_path, mime, \
-     width, height, byte_size, status, attempt";
+const SELECT_DUE: &str = "\
+SELECT client_id, dest, kind, payload_type, body, extra, local_path, mime, \
+width, height, byte_size, status, attempt FROM outbox \
+WHERE account = ? AND status = 'pending' AND next_attempt_at <= ? \
+ORDER BY created_at ASC, client_id ASC";
+
+const SELECT_ONE: &str = "\
+SELECT client_id, dest, kind, payload_type, body, extra, local_path, mime, \
+width, height, byte_size, status, attempt FROM outbox \
+WHERE account = ? AND client_id = ?";
 
 pub(crate) async fn load_due(
     pool: &sqlx::SqlitePool,
     account: &str,
     now: i64,
 ) -> Result<Vec<OutboxRow>, SdkError> {
-    let rows = sqlx::query(&format!(
-        "SELECT {ROW_COLS} FROM outbox
-         WHERE account = ? AND status = 'pending' AND next_attempt_at <= ?
-         ORDER BY created_at ASC, client_id ASC"
-    ))
+    let rows = sqlx::query(SELECT_DUE)
     .bind(account)
     .bind(now)
     .fetch_all(pool)
@@ -151,9 +155,7 @@ pub(crate) async fn get_row(
     account: &str,
     client_id: &str,
 ) -> Result<Option<OutboxRow>, SdkError> {
-    let row = sqlx::query(&format!(
-        "SELECT {ROW_COLS} FROM outbox WHERE account = ? AND client_id = ?"
-    ))
+    let row = sqlx::query(SELECT_ONE)
     .bind(account)
     .bind(client_id)
     .fetch_optional(pool)

@@ -77,7 +77,7 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
 }
 
 async fn column_names(pool: &sqlx::SqlitePool, table: &str) -> Vec<String> {
-    let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!("PRAGMA table_info({table})")))
         .fetch_all(pool)
         .await
         .unwrap();

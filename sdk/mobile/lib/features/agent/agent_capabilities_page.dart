@@ -20,6 +20,7 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_runtime_switch.dart';
 import 'package:kim_mobile/features/agent/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/session/providers.dart';
@@ -612,6 +613,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
           KimBodySliver(
             sliver: SliverList.list(
               children: [
+                const AgentRuntimeSwitch(),
                 if (_previewSummary.isNotEmpty || !_previewFromHost) ...[
                   KimGroupCard(
                     children: [

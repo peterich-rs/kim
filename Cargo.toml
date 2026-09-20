@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["third_party"]
 members = [
     "crates/kim-core",
     "crates/kim-tcp",
@@ -13,6 +14,7 @@ members = [
     "crates/kim-client",
     "crates/kim-sdk",
     "crates/kim-agent-host",
+    "crates/kim-codex-helper",
     "crates/kim-agent-codec",
     "services/gateway",
     "services/chat",
@@ -61,7 +63,9 @@ kim-container = { path = "crates/kim-container" }
 kim-router = { path = "crates/kim-router" }
 kim-session = { path = "crates/kim-session" }
 snowflake_me = "2"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "sqlite", "macros", "migrate"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "sqlite-bundled", "macros", "migrate"] }
+# Same crate Codex rust-v0.155.1 locks. sqlx 0.9 accepts this; 0.8 cannot.
+libsqlite3-sys = { version = "=0.37.0", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 serde_json = "1"
@@ -82,5 +86,14 @@ tempfile = "3"
 dashmap = "6"
 arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
-kim-agent-host = { path = "crates/kim-agent-host" }
 kim-agent-codec = { path = "crates/kim-agent-codec" }
+kim-agent-host = { path = "crates/kim-agent-host" }
+
+# Codex pin rust-v0.155.1 patches crates.io copies that lack the `proxy`
+# feature. Path deps do not inherit the Codex workspace [patch] table.
+[patch.crates-io]
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+
+[patch."ssh://git@github.com/openai-oss-forks/tungstenite-rs.git"]
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }

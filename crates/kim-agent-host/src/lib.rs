@@ -6,6 +6,12 @@
 
 pub mod capability;
 mod catalog;
+#[cfg(feature = "codex")]
+mod codex_drive;
+#[cfg(feature = "codex")]
+mod codex_inject;
+#[cfg(feature = "codex")]
+mod codex_rt;
 mod events;
 mod harness;
 mod machine;
@@ -17,7 +23,7 @@ mod skills;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -66,6 +72,15 @@ pub use skills::{
     RegistryScan, SkillClass, SkillDoc, SkillEntry, SkillError, SkillMeta, SkillPackage, SkillRef,
     SkillRegistry, SkillResolver, SkillSource,
 };
+
+#[cfg(feature = "codex")]
+pub use codex_drive::CodexLaunch;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentRuntime {
+    Goose,
+    Codex,
+}
 
 pub(crate) use events::HostEffect;
 
@@ -167,6 +182,9 @@ struct Inner {
     idle: std::sync::Mutex<Option<Arc<harness::IdleClock>>>,
     active_cancel: std::sync::Mutex<Option<CancellationToken>>,
     input_tokens: Arc<AtomicU64>,
+    codex_runtime: AtomicU8,
+    #[cfg(feature = "codex")]
+    codex: Mutex<codex_drive::CodexSlot>,
 }
 
 fn blank_inner(
@@ -197,6 +215,9 @@ fn blank_inner(
         idle: std::sync::Mutex::new(None),
         active_cancel: std::sync::Mutex::new(None),
         input_tokens: Arc::new(AtomicU64::new(0)),
+        codex_runtime: AtomicU8::new(0),
+        #[cfg(feature = "codex")]
+        codex: Mutex::new(codex_drive::CodexSlot::new()),
     }
 }
 
@@ -342,6 +363,12 @@ impl AgentHost {
         if text.len() > self.limits().prompt_bytes {
             return Err(HostError::Failed("prompt exceeds byte cap".into()));
         }
+        #[cfg(feature = "codex")]
+        if self.is_codex() {
+            let _busy = self.acquire_session(session_id)?;
+            self.reset_hard_budget(session_id);
+            return self.codex_prompt(text, context_json, events, cancel).await;
+        }
         let _busy = self.acquire_session(session_id)?;
         self.reset_hard_budget(session_id);
 
@@ -372,6 +399,13 @@ impl AgentHost {
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
     ) -> Result<TurnOutcome, HostError> {
+        #[cfg(feature = "codex")]
+        if self.is_codex() {
+            let _busy = self.acquire_session(session_id)?;
+            return self
+                .codex_complete_tool(call_id, output_json, events, cancel)
+                .await;
+        }
         let _busy = self.acquire_session(session_id)?;
         {
             let mut store = self.inner.store.lock().await;
@@ -412,6 +446,13 @@ impl AgentHost {
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
     ) -> Result<TurnOutcome, HostError> {
+        #[cfg(feature = "codex")]
+        if self.is_codex() {
+            let _busy = self.acquire_session(session_id)?;
+            return self
+                .codex_respond_permission(call_id, permission, events, cancel)
+                .await;
+        }
         let _busy = self.acquire_session(session_id)?;
         {
             let mut store = self.inner.store.lock().await;
@@ -443,6 +484,10 @@ impl AgentHost {
     }
 
     pub async fn pending_yields(&self, session_id: &str) -> Vec<PendingYield> {
+        #[cfg(feature = "codex")]
+        if self.is_codex() {
+            return self.codex_pending().await;
+        }
         let store = self.inner.store.lock().await;
         store
             .conversations
@@ -452,7 +497,16 @@ impl AgentHost {
     }
 
     pub async fn cancel_pending_tools(&self, session_id: &str) {
+        #[cfg(feature = "codex")]
+        if self.is_codex() {
+            self.codex_cancel_pending().await;
+            return;
+        }
         self.repair_pairing(session_id).await;
+    }
+
+    pub fn is_codex(&self) -> bool {
+        self.inner.codex_runtime.load(Ordering::Relaxed) == 1
     }
 
     pub fn kim_tool_names(&self) -> Vec<&'static str> {
@@ -848,6 +902,112 @@ pub fn session_file_from_sqlite_path(sqlite_path: &str) -> Option<PathBuf> {
     }
 }
 
+pub fn runtime_from_harness_json(json: &str) -> AgentRuntime {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return AgentRuntime::Goose;
+    };
+    match value.get("runtime").and_then(|item| item.as_str()) {
+        Some("codex") => AgentRuntime::Codex,
+        _ => AgentRuntime::Goose,
+    }
+}
+
+pub fn codex_home_from_session_file(session_file: &Path) -> PathBuf {
+    session_file
+        .parent()
+        .and_then(|sessions| sessions.parent())
+        .map(|agent| agent.join("codex"))
+        .unwrap_or_else(|| session_file.join("codex"))
+}
+
+/// Locate `kim-codex-helper`.
+///
+/// Order: `KIM_CODEX_HELPER`, then the sibling of this process (the macOS
+/// assemble script copies the binary into `Contents/MacOS`), then a walk up
+/// from the cwd and executable for a repo `target/{debug,release}` build.
+pub fn resolve_codex_helper() -> Result<PathBuf, HostError> {
+    let name = if cfg!(windows) {
+        "kim-codex-helper.exe"
+    } else {
+        "kim-codex-helper"
+    };
+    if let Some(raw) = std::env::var_os("KIM_CODEX_HELPER") {
+        let path = PathBuf::from(raw);
+        if path.is_file() {
+            return Ok(absolute_file(&path));
+        }
+        return Err(HostError::Failed(format!(
+            "codex helper executable is not configured ({})",
+            path.display()
+        )));
+    }
+    if let Some(path) = helper_beside_exe(name) {
+        return Ok(path);
+    }
+    for root in helper_search_roots() {
+        for profile in ["debug", "release"] {
+            let candidate = root.join("target").join(profile).join(name);
+            if candidate.is_file() {
+                return Ok(absolute_file(&candidate));
+            }
+        }
+        let sibling = root.join(name);
+        if sibling.is_file() {
+            return Ok(absolute_file(&sibling));
+        }
+    }
+    Err(HostError::Failed(
+        "codex helper executable is not configured".into(),
+    ))
+}
+
+pub fn linux_sandbox_beside(helper: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        let path = helper.parent()?.join("codex-linux-sandbox");
+        path.is_file().then(|| absolute_file(&path))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = helper;
+        None
+    }
+}
+
+fn absolute_file(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn helper_beside_exe(name: &str) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let sibling = exe.parent()?.join(name);
+    sibling.is_file().then(|| absolute_file(&sibling))
+}
+
+fn helper_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        push_ancestors(&mut roots, cwd, 8);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            push_ancestors(&mut roots, dir.to_path_buf(), 8);
+        }
+    }
+    roots
+}
+
+fn push_ancestors(out: &mut Vec<PathBuf>, mut dir: PathBuf, depth: usize) {
+    for _ in 0..depth {
+        if !out.iter().any(|have| have == &dir) {
+            out.push(dir.clone());
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -858,6 +1018,19 @@ mod tests {
         assert!(mentions_default_agent("@goose please"));
         assert!(!mentions_default_agent("hello goose"));
         assert!(!mentions_default_agent("email goose@x.com"));
+    }
+
+    #[test]
+    fn harness_json_runtime_defaults_to_goose() {
+        assert_eq!(runtime_from_harness_json(""), AgentRuntime::Goose);
+        assert_eq!(
+            runtime_from_harness_json("{\"enabled\":true}"),
+            AgentRuntime::Goose
+        );
+        assert_eq!(
+            runtime_from_harness_json("{\"enabled\":false,\"runtime\":\"codex\"}"),
+            AgentRuntime::Codex
+        );
     }
 
     #[test]

@@ -12,13 +12,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 flutter_rust_bridge = "=2.13.0"
 async-trait = "0.1"
 futures = "0.3"
-kim-agent-host = { path = "../../../crates/kim-agent-host" }
+kim-agent-host = { path = "../../../crates/kim-agent-host", features = ["codex"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 tokio-util = "0.7"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4", "v7"] }
+
+# Codex pin rust-v0.155.1. See crates/kim-agent-host/Cargo.toml.
+[patch.crates-io]
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+
+[patch."ssh://git@github.com/openai-oss-forks/tungstenite-rs.git"]
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -6,9 +6,30 @@ license.workspace = true
 rust-version.workspace = true
 description = "Local Goose agent host for KIM desktop IM (@agent)"
 
+[features]
+# Desktop `rust_agent` enables this. Off by default so the phone FFI does not
+# link the Codex agent. SQLite itself is shared with the root workspace.
+codex = [
+    "dep:codex-core-api",
+    "dep:codex-protocol",
+    "dep:codex-utils-redacted-string",
+    "dep:rama-error",
+    "dep:rama-macros",
+    "dep:rama-utils",
+]
+
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+codex-core-api = { path = "../../third_party/codex/codex-rs/core-api", optional = true }
+# Facade does not re-export ReviewDecision, ReasoningEffort, or RedactedString.
+codex-protocol = { path = "../../third_party/codex/codex-rs/protocol", optional = true }
+codex-utils-redacted-string = { path = "../../third_party/codex/codex-rs/utils/redacted-string", optional = true }
+# `cargo update` otherwise selects rama 0.3.0, which needs rustc 1.96.
+# Codex lock pins 0.3.0-alpha.4, which builds on 1.95.
+rama-error = { version = "=0.3.0-alpha.4", optional = true }
+rama-macros = { version = "=0.3.0-alpha.4", optional = true }
+rama-utils = { version = "=0.3.0-alpha.4", optional = true }
 futures.workspace = true
 goose-agent = "0.1.0-alpha.9"
 goose-provider-types = { version = "0.1.0-alpha.9", default-features = false }

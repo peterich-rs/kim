@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:code_assets/code_assets.dart';
 import 'package:flutter_rust_bridge_hooks/flutter_rust_bridge_hooks.dart';
 
@@ -21,6 +23,7 @@ void main(List<String> args) async {
       buildMode: rustMode,
       extraCargoEnvironmentVariables: extraEnv,
     ).run(input: input, output: output);
+    await _buildCodexHelper(input, extraEnv, rustMode);
   });
 }
 
@@ -61,4 +64,58 @@ bool _desktopAgentHost(BuildInput input) {
   }
   final os = input.config.code.targetOS;
   return os == OS.macOS || os == OS.windows || os == OS.linux;
+}
+
+/// Sandbox re-exec target. Not linked into `rust_agent`. Phone builds skip it.
+Future<void> _buildCodexHelper(
+  BuildInput input,
+  Map<String, String> extraEnv,
+  FlutterRustBridgeBuildMode rustMode,
+) async {
+  final root = _repoRoot();
+  final release = rustMode == FlutterRustBridgeBuildMode.release;
+  final env = Map<String, String>.from(Platform.environment)..addAll(extraEnv);
+  final proc = await Process.start(
+    'cargo',
+    [
+      'build',
+      '-p',
+      'kim-codex-helper',
+      if (release) '--release',
+    ],
+    workingDirectory: root.path,
+    environment: env,
+    mode: ProcessStartMode.inheritStdio,
+  );
+  final code = await proc.exitCode;
+  if (code != 0) {
+    throw StateError('cargo build -p kim-codex-helper exited $code');
+  }
+  if (input.config.code.targetOS != OS.linux) {
+    return;
+  }
+  final profile = release ? 'release' : 'debug';
+  final dir = Directory('${root.path}/target/$profile');
+  final link = Link('${dir.path}/codex-linux-sandbox');
+  if (link.existsSync()) {
+    link.deleteSync();
+  }
+  link.createSync('kim-codex-helper');
+}
+
+Directory _repoRoot() {
+  var dir = Directory.current;
+  for (var i = 0; i < 6; i++) {
+    if (File('${dir.path}/crates/kim-codex-helper/Cargo.toml').existsSync()) {
+      return dir;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) {
+      break;
+    }
+    dir = parent;
+  }
+  throw StateError(
+    'kim repo root not found from ${Directory.current.path}',
+  );
 }

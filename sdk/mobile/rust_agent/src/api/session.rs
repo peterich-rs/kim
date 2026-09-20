@@ -268,6 +268,42 @@ fn resolved_from_opts(
     })
 }
 
+async fn attach_codex(
+    host: &AgentHost,
+    opts: &SessionOpenOpts,
+    sqlite_path: &str,
+    project_root: &str,
+) -> Result<(), String> {
+    if kim_agent_host::runtime_from_harness_json(&opts.harness_json)
+        != kim_agent_host::AgentRuntime::Codex
+    {
+        return Ok(());
+    }
+    let helper = kim_agent_host::resolve_codex_helper().map_err(|err| err.to_string())?;
+    let linux = kim_agent_host::linux_sandbox_beside(&helper);
+    let home = kim_agent_host::session_file_from_sqlite_path(sqlite_path)
+        .map(|file| kim_agent_host::codex_home_from_session_file(&file))
+        .unwrap_or_else(|| {
+            let root = std::path::Path::new(project_root);
+            if root.is_absolute() {
+                root.join("codex-home")
+            } else {
+                std::env::temp_dir().join("kim-codex")
+            }
+        });
+    let transcript = kim_agent_host::session_file_from_sqlite_path(sqlite_path)
+        .map(|file| std::path::PathBuf::from(format!("{}.codex-transcript", file.display())));
+    host.use_codex(kim_agent_host::CodexLaunch {
+        codex_home: home,
+        helper,
+        linux_sandbox: linux,
+        api_key: opts.api_key.clone(),
+        transcript,
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
 pub fn session_open(
     sqlite_path: String,
     project_root: String,
@@ -275,6 +311,8 @@ pub fn session_open(
 ) -> Result<AgentSession, String> {
     let _guard = rt().enter();
     let disk = kim_agent_host::session_file_from_sqlite_path(&sqlite_path);
+    let sqlite_for_codex = sqlite_path.clone();
+    let root_for_codex = project_root.clone();
     let session_id = if !opts.session_id.trim().is_empty() {
         opts.session_id.clone()
     } else if sqlite_path.trim().is_empty() {
@@ -289,10 +327,13 @@ pub fn session_open(
         .map_err(map_host_err)?
         .with_limits(limits);
     rt().block_on(async {
+        attach_codex(&host, &opts, &sqlite_for_codex, &root_for_codex).await?;
         host.configure_persist(disk, opts.resume_on_open).await;
-        host.connect_extensions().await
-    })
-    .map_err(map_host_err)?;
+        if !host.is_codex() {
+            host.connect_extensions().await.map_err(map_host_err)?;
+        }
+        Ok::<(), String>(())
+    })?;
     let shared = shared_new(host, session_id, Some(resolved));
     let _ = shared.events.send(AgentUiEvent::session_ready());
     Ok(AgentSession {
@@ -599,10 +640,7 @@ impl AgentSession {
         rt().block_on(async move {
             let _gate = inner.complete_gate.lock().await;
             {
-                let phase = inner
-                    .phase
-                    .lock()
-                    .map_err(|_| "phase lock".to_string())?;
+                let phase = inner.phase.lock().map_err(|_| "phase lock".to_string())?;
                 if *phase != SessionPhase::Idle {
                     return Err("session is not idle".into());
                 }
@@ -806,7 +844,12 @@ fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
     true
 }
 
-async fn finish_turn(inner: &Arc<Shared>, op: String, result: Result<TurnOutcome, HostError>, gen: u64) {
+async fn finish_turn(
+    inner: &Arc<Shared>,
+    op: String,
+    result: Result<TurnOutcome, HostError>,
+    gen: u64,
+) {
     if !turn_is_current(inner, gen) {
         return;
     }
@@ -1595,10 +1638,7 @@ mod tests {
             }),
             0,
         ));
-        assert_eq!(
-            session.inner.recreate_attempts.load(Ordering::SeqCst),
-            1
-        );
+        assert_eq!(session.inner.recreate_attempts.load(Ordering::SeqCst), 1);
         let mut saw = false;
         while let Ok(ev) = rx.try_recv() {
             if ev.stop_reason == "poisoned" {
