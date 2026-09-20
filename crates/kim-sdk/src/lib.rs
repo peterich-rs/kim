@@ -17,7 +17,7 @@ mod timeline;
 pub mod outbox;
 pub mod sync;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -101,6 +101,9 @@ pub(crate) struct Inner {
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
     ffi_runtime: Arc<FfiAgentRuntime>,
     media_dir: Mutex<Option<PathBuf>>,
+    /// Profiles that permanently failed `agent_spec_upsert` this process.
+    /// Prevents a bad local row from hammering the wire on every sync.
+    agent_spec_push_skip: Mutex<HashSet<String>>,
 }
 
 impl Drop for Inner {
@@ -150,6 +153,7 @@ impl KimSdk {
                 token_persist: Mutex::new(Vec::new()),
                 ffi_runtime: FfiAgentRuntime::new(),
                 media_dir: Mutex::new(None),
+                agent_spec_push_skip: Mutex::new(HashSet::new()),
             }),
         })
     }
@@ -675,8 +679,15 @@ impl KimSdk {
         }
         let local_accounts = store.load_provider_accounts_all(&account).await?;
         let mut push_err: Option<SdkError> = None;
+        let skipped = lock(&self.inner.agent_spec_push_skip).clone();
+        let mut newly_skipped = Vec::new();
         for row in local_by_id.into_values() {
-            if row.body_blob.is_empty() && row.deleted_at == 0 {
+            // Empty blob is never a valid upsert; soft-delete tombstones still need a
+            // non-empty body from the writer. Skipping here stops a permanent 101 loop.
+            if row.body_blob.is_empty() {
+                continue;
+            }
+            if skipped.contains(&row.profile_id) {
                 continue;
             }
             if let Err(err) = proto
@@ -688,10 +699,17 @@ impl KimSdk {
                     profile_id = %row.profile_id,
                     "agent spec upsert failed"
                 );
-                if push_err.is_none() {
-                    push_err = Some(err);
+                if err.retryable() {
+                    if push_err.is_none() {
+                        push_err = Some(err);
+                    }
+                } else {
+                    newly_skipped.push(row.profile_id.clone());
                 }
             }
+        }
+        if !newly_skipped.is_empty() {
+            lock(&self.inner.agent_spec_push_skip).extend(newly_skipped);
         }
         for acc in &local_accounts {
             let remote_ts = remote_accounts
@@ -706,7 +724,7 @@ impl KimSdk {
                 .await
             {
                 tracing::warn!(error = %err, account_id = %acc.id, "provider account upsert failed");
-                if push_err.is_none() {
+                if err.retryable() && push_err.is_none() {
                     push_err = Some(err);
                 }
             }

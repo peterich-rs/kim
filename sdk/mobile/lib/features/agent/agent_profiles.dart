@@ -828,6 +828,7 @@ class AgentProfile {
     this.enabled = true,
     this.steer = '',
     this.serverAccount = '',
+    this.runtime = 'goose',
   });
 
   final String id;
@@ -858,6 +859,11 @@ class AgentProfile {
 
   /// Empty = unregistered. Not a secret. IM dest after `chat.bot.create`.
   final String serverAccount;
+
+  /// `goose` (default) or `codex`. Switching starts a new session.
+  final String runtime;
+
+  bool get usesCodex => runtime.trim() == 'codex';
 
   String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
 
@@ -907,6 +913,7 @@ class AgentProfile {
     String? steer,
     String? serverAccount,
     String? keyRef,
+    String? runtime,
   }) {
     return AgentProfile(
       id: id,
@@ -933,6 +940,7 @@ class AgentProfile {
       enabled: enabled ?? this.enabled,
       steer: steer ?? this.steer,
       serverAccount: serverAccount ?? this.serverAccount,
+      runtime: runtime ?? this.runtime,
     );
   }
 
@@ -967,6 +975,7 @@ class AgentProfile {
       'enabled': enabled,
       if (steer.isNotEmpty) 'steer': steer,
       'server_account': serverAccount,
+      if (usesCodex) 'runtime': 'codex',
     };
   }
 
@@ -1091,7 +1100,12 @@ class AgentProfile {
       enabled: json['enabled'] != false,
       steer: json['steer'] as String? ?? '',
       serverAccount: json['server_account'] as String? ?? '',
+      runtime: _normalizeRuntime(json['runtime'] as String?),
     );
+  }
+
+  static String _normalizeRuntime(String? raw) {
+    return raw?.trim() == 'codex' ? 'codex' : 'goose';
   }
 
   static AgentProfile gooseFromSettings(AgentSettings s) {
@@ -1676,6 +1690,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       portableDenylist: source.portableDenylist,
       enabled: true,
       steer: source.steer,
+      runtime: source.runtime,
     );
     await _upsertOne(copy);
     await ensureBotIdentity(copy);
@@ -1697,6 +1712,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       contextTokens: defaultContextTokens(model),
       capabilities: kCreateDefaultCapabilities,
       tools: kCreateDefaultTools,
+      runtime: 'goose',
     );
   }
 

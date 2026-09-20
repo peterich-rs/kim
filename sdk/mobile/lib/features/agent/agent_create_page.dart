@@ -13,6 +13,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_runtime_switch.dart';
 import 'package:kim_mobile/features/agent/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
@@ -64,6 +65,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
   final _appSelected = <String>{};
   final _portableSelected = <String>{};
   var _portableHydrated = false;
+  var _runtimeCodex = false;
 
   @override
   void initState() {
@@ -635,6 +637,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
           skills: skills,
           portableDenylist: denylist,
           permissionOverrides: Map<String, String>.from(_perms),
+          runtime: _runtimeCodex ? 'codex' : 'goose',
         )
         .withCapabilities(caps);
     try {
@@ -772,6 +775,10 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
         ],
       ),
       const Gap(18),
+      AgentRuntimeSwitch(
+        codex: _runtimeCodex,
+        onChanged: (value) => setState(() => _runtimeCodex = value),
+      ),
       Text(
         l10n.agentProvider,
         style: theme.textTheme.labelLarge?.copyWith(

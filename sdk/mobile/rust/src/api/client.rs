@@ -536,21 +536,21 @@ impl KimUiHandle {
         self.inner.supervisor().map_err(|e| e.to_string())
     }
 
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
         if let Ok(sup) = self.supervisor() {
             sup.stop();
         }
         let inner = self.inner.clone();
-        let _ = rt().block_on(inner.stop_session());
+        let _ = inner.stop_session().await;
     }
 
-    pub fn notify_radio_up(&self) -> Result<(), String> {
-        rt().block_on(self.inner.notify_radio_up())
+    pub async fn notify_radio_up(&self) -> Result<(), String> {
+        self.inner.notify_radio_up().await
             .map_err(|e| e.to_string())
     }
 
-    pub fn notify_foreground(&self) -> Result<(), String> {
-        rt().block_on(self.inner.notify_foreground())
+    pub async fn notify_foreground(&self) -> Result<(), String> {
+        self.inner.notify_foreground().await
             .map_err(|e| e.to_string())
     }
 
@@ -609,7 +609,16 @@ impl KimUiHandle {
         let _guard = rt().enter();
         rt().spawn(async move {
             while let Some(req) = rx.recv().await {
+                let dest = req.dest.clone();
+                let profile_id = req.profile_id.clone();
                 if sink.add(AgentRunRequestDto::from(req)).is_err() {
+                    // Dart port closed ("Fail to post message to Dart"). Drop
+                    // this watch; AgentRunLoop must re-subscribe.
+                    tracing::warn!(
+                        %dest,
+                        %profile_id,
+                        "agent_run StreamSink closed; dart watch ended"
+                    );
                     break;
                 }
             }
@@ -795,10 +804,11 @@ impl KimUiHandle {
             .map_err(SdkErrorDto::from)
     }
 
-    pub fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
+    pub async fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
-        let users = rt()
-            .block_on(client.friend_list())
+        let users = client
+            .friend_list()
+            .await
             .map_err(|e| e.to_string())?;
         Ok(users
             .into_iter()
@@ -806,10 +816,11 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub fn friend_incoming(&self) -> Result<Vec<PersonDto>, String> {
+    pub async fn friend_incoming(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
-        let users = rt()
-            .block_on(client.friend_incoming())
+        let users = client
+            .friend_incoming()
+            .await
             .map_err(|e| e.to_string())?;
         Ok(users
             .into_iter()
@@ -817,31 +828,34 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub fn profile(&self, dest: String) -> Result<ProfileDto, String> {
+    pub async fn profile(&self, dest: String) -> Result<ProfileDto, String> {
         let client = self.supervisor()?.client();
-        let p = rt()
-            .block_on(client.profile(&dest))
+        let p = client
+            .profile(&dest)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(p.into())
     }
 
-    pub fn update_profile(
+    pub async fn update_profile(
         &self,
         nickname: String,
         avatar: String,
         bio: String,
     ) -> Result<ProfileDto, String> {
         let client = self.supervisor()?.client();
-        let p = rt()
-            .block_on(client.update_profile(&nickname, &avatar, &bio))
+        let p = client
+            .update_profile(&nickname, &avatar, &bio)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(p.into())
     }
 
-    pub fn search_users(&self, query: String) -> Result<Vec<PersonDto>, String> {
+    pub async fn search_users(&self, query: String) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
-        let users = rt()
-            .block_on(client.search_users(&query))
+        let users = client
+            .search_users(&query)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(users
             .into_iter()
@@ -849,10 +863,11 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMemberDto>, String> {
+    pub async fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMemberDto>, String> {
         let client = self.supervisor()?.client();
-        let rows = rt()
-            .block_on(client.room_enter(&dest, kind))
+        let rows = client
+            .room_enter(&dest, kind)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(rows
             .into_iter()
@@ -864,20 +879,24 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
+    pub async fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
         let client = self.supervisor()?.client();
-        rt().block_on(client.room_leave(&dest, kind))
+        client
+            .room_leave(&dest, kind)
+            .await
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
-    pub fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+    pub async fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
         let client = self.supervisor()?.client();
-        rt().block_on(client.send_typing(&dest, kind, active))
+        client
+            .send_typing(&dest, kind, active)
+            .await
             .map_err(|e| e.to_string())
     }
 
-    pub fn bot_create(
+    pub async fn bot_create(
         &self,
         client_profile_id: String,
         nickname: String,
@@ -899,22 +918,27 @@ impl KimUiHandle {
             },
             visibility,
         };
-        let p = rt()
-            .block_on(client.bot_create(&client_profile_id, &nickname, &avatar, &bio, &config))
+        let p = client
+            .bot_create(&client_profile_id, &nickname, &avatar, &bio, &config)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(PersonDto::from_profile(p, "none"))
     }
 
-    pub fn bot_delete(&self, dest: String) -> Result<String, String> {
+    pub async fn bot_delete(&self, dest: String) -> Result<String, String> {
         let client = self.supervisor()?.client();
-        rt().block_on(client.bot_delete(&dest))
+        client
+            .bot_delete(&dest)
+            .await
             .map_err(|e| e.to_string())?;
-        rt().block_on(self.inner.remove_contact(dest))
+        self.inner
+            .remove_contact(dest)
+            .await
             .map_err(|e| e.to_string())?;
         Ok("ok".into())
     }
 
-    pub fn bot_update(
+    pub async fn bot_update(
         &self,
         dest: String,
         nickname: String,
@@ -936,13 +960,14 @@ impl KimUiHandle {
             },
             visibility,
         };
-        let p = rt()
-            .block_on(client.bot_update(&dest, &nickname, &avatar, &bio, &config))
+        let p = client
+            .bot_update(&dest, &nickname, &avatar, &bio, &config)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(PersonDto::from_profile(p, "none"))
     }
 
-    pub fn bot_reply(
+    pub async fn bot_reply(
         &self,
         dest: String,
         body: String,
@@ -950,23 +975,31 @@ impl KimUiHandle {
         client_id: String,
     ) -> Result<KimTalkResult, String> {
         let client = self.supervisor()?.client();
-        let result = rt()
-            .block_on(client.bot_reply(&dest, &body, in_reply_to, &client_id))
+        let result = client
+            .bot_reply(&dest, &body, in_reply_to, &client_id)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(KimTalkResult::from(result))
     }
 
-    pub fn bot_pending(&self, dest: String, limit: i32) -> Result<Vec<KimBotPendingItem>, String> {
+    pub async fn bot_pending(
+        &self,
+        dest: String,
+        limit: i32,
+    ) -> Result<Vec<KimBotPendingItem>, String> {
         let client = self.supervisor()?.client();
-        let items = rt()
-            .block_on(client.bot_pending(&dest, limit))
+        let items = client
+            .bot_pending(&dest, limit)
+            .await
             .map_err(|e| e.to_string())?;
         Ok(items.into_iter().map(KimBotPendingItem::from).collect())
     }
 
-    pub fn bot_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+    pub async fn bot_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
         let client = self.supervisor()?.client();
-        rt().block_on(client.bot_typing(&dest, kind, active))
+        client
+            .bot_typing(&dest, kind, active)
+            .await
             .map_err(|e| e.to_string())
     }
 }

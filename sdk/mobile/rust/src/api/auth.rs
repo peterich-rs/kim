@@ -1,7 +1,5 @@
 use kim_client::{http_origin_from_ws as map_origin, AuthClient};
 
-use super::rt;
-
 /// JWT issued by Royal. UI stores it in Keychain / Keystore.
 pub struct AuthSession {
     pub token: String,
@@ -22,34 +20,36 @@ impl KimAuth {
         })
     }
 
-    pub fn register(&self, account: String, password: String) -> Result<AuthSession, String> {
-        rt().block_on(self.inner.register(&account, &password))
+    pub async fn register(&self, account: String, password: String) -> Result<AuthSession, String> {
+        self.inner
+            .register(&account, &password)
+            .await
             .map(Into::into)
             .map_err(|e| e.to_string())
     }
 
-    pub fn login(&self, account: String, password: String) -> Result<AuthSession, String> {
-        rt().block_on(self.inner.login(&account, &password))
+    pub async fn login(&self, account: String, password: String) -> Result<AuthSession, String> {
+        self.inner
+            .login(&account, &password)
+            .await
             .map(Into::into)
             .map_err(|e| e.to_string())
     }
 
-    pub fn logout(&self, token: String) -> Result<(), String> {
-        rt().block_on(self.inner.logout(&token))
-            .map_err(|e| e.to_string())
+    pub async fn logout(&self, token: String) -> Result<(), String> {
+        self.inner.logout(&token).await.map_err(|e| e.to_string())
     }
 
-    pub fn change_password(
+    pub async fn change_password(
         &self,
         token: String,
         old_password: String,
         new_password: String,
     ) -> Result<(), String> {
-        rt().block_on(
-            self.inner
-                .change_password(&token, &old_password, &new_password),
-        )
-        .map_err(|e| e.to_string())
+        self.inner
+            .change_password(&token, &old_password, &new_password)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 

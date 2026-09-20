@@ -83,7 +83,8 @@ pub fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
         ClientError::Status(108) => SdkError::UserNotFound {
             dest: dest.to_string(),
         },
-        ClientError::Status(101) => SdkError::CannotChatSelf,
+        // InvalidPacketBody — not "cannot chat with self" (that is local dest==account).
+        ClientError::Status(101) => SdkError::Protocol { status: 101 },
         ClientError::Status(105) => SdkError::Unauthorized,
         ClientError::Status(status) => SdkError::Protocol { status },
         ClientError::Http { status: 401, .. } => SdkError::Unauthorized,

@@ -613,7 +613,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
           KimBodySliver(
             sliver: SliverList.list(
               children: [
-                const AgentRuntimeSwitch(),
+                AgentProfileRuntimeSwitch(profileId: widget.profileId),
                 if (_previewSummary.isNotEmpty || !_previewFromHost) ...[
                   KimGroupCard(
                     children: [

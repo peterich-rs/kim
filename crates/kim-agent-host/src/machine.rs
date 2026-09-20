@@ -234,6 +234,7 @@ mod tests {
             skills: Vec::new(),
             portable_denylist: Vec::new(),
             user_agents_skills: String::new(),
+            runtime: String::new(),
             harness: None,
         }
     }

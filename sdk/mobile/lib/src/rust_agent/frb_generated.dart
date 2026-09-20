@@ -123,7 +123,7 @@ abstract class AgentRustLibApi extends BaseApi {
     required AgentSession that,
   });
 
-  SessionSnapshotDto crateApiSessionAgentSessionSnapshot({
+  Future<SessionSnapshotDto> crateApiSessionAgentSessionSnapshot({
     required AgentSession that,
   });
 
@@ -521,18 +521,23 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "AgentSession_resume", argNames: ["that"]);
 
   @override
-  SessionSnapshotDto crateApiSessionAgentSessionSnapshot({
+  Future<SessionSnapshotDto> crateApiSessionAgentSessionSnapshot({
     required AgentSession that,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_session_snapshot_dto,
@@ -1656,7 +1661,7 @@ class AgentSessionImpl extends RustOpaque implements AgentSession {
   Future<ResumeReportDto> resume() =>
       AgentRustLib.instance.api.crateApiSessionAgentSessionResume(that: this);
 
-  SessionSnapshotDto snapshot() =>
+  Future<SessionSnapshotDto> snapshot() =>
       AgentRustLib.instance.api.crateApiSessionAgentSessionSnapshot(that: this);
 
   Future<void> steer({required String text}) => AgentRustLib.instance.api

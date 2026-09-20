@@ -156,6 +156,10 @@ fn install_custom_provider(
     info.base_url = Some(base_url);
     info.env_key = None;
     info.requires_openai_auth = false;
+    // Cloned from the OpenAI built-in (`supports_websockets = true`). Most
+    // gateways only speak HTTP SSE Responses; leave WS on and Codex tries
+    // `wss://…/responses` first, which hangs or fails before HTTP fallback.
+    info.supports_websockets = false;
     info.experimental_bearer_token = Some(RedactedString::from(api_key));
     let id = "kim".to_string();
     config.model_provider_id = id.clone();
@@ -545,6 +549,7 @@ mod tests {
         let config = config_for(&profile);
         assert_eq!(config.model_provider_id, "kim");
         assert!(!config.model_provider.requires_openai_auth);
+        assert!(!config.model_provider.supports_websockets);
         assert_eq!(
             config.model_provider.base_url.as_deref(),
             Some("https://example.test/v1")

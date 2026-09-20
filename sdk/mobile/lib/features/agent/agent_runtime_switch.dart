@@ -1,50 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:kim_mobile/design/kim_group.dart';
+import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 
-const agentRuntimePref = 'agent.runtime';
+/// Profile-scoped runtime picker. Default stays Goose. The next open uses the
+/// selected runtime; an in-flight session is not migrated.
+class AgentRuntimeSwitch extends ConsumerWidget {
+  const AgentRuntimeSwitch({
+    super.key,
+    required this.codex,
+    required this.onChanged,
+  });
 
-/// Session-open switch. Default stays Goose. The next message uses the
-/// selected runtime; an in-flight Goose session is not migrated.
-class AgentRuntimeSwitch extends StatefulWidget {
-  const AgentRuntimeSwitch({super.key});
-
-  @override
-  State<AgentRuntimeSwitch> createState() => _AgentRuntimeSwitchState();
-}
-
-class _AgentRuntimeSwitchState extends State<AgentRuntimeSwitch> {
-  var _codex = false;
-  var _ready = false;
+  final bool codex;
+  final ValueChanged<bool>? onChanged;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _codex = prefs.getString(agentRuntimePref) == 'codex';
-      _ready = true;
-    });
-  }
-
-  Future<void> _set(bool codex) async {
-    setState(() => _codex = codex);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(agentRuntimePref, codex ? 'codex' : 'goose');
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (!agentHostSupported) {
       return const SizedBox.shrink();
     }
@@ -67,16 +44,68 @@ class _AgentRuntimeSwitchState extends State<AgentRuntimeSwitch> {
               title: Text(zh ? '用 Codex 跑这个助手' : 'Run this assistant on Codex'),
               subtitle: Text(
                 zh
-                    ? '默认仍是 Goose。从下一条消息生效，旧会话不会迁过去。'
-                    : 'Goose stays the default. Applies on the next message. Existing sessions are not migrated.',
+                    ? '默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。'
+                    : 'Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.',
               ),
-              value: _codex,
-              onChanged: _ready ? (value) => _set(value) : null,
+              value: codex,
+              onChanged: onChanged,
             ),
           ],
         ),
         const Gap(18),
       ],
+    );
+  }
+}
+
+/// Capabilities-page wrapper: reads/writes [AgentProfile.runtime].
+class AgentProfileRuntimeSwitch extends ConsumerStatefulWidget {
+  const AgentProfileRuntimeSwitch({super.key, required this.profileId});
+
+  final String profileId;
+
+  @override
+  ConsumerState<AgentProfileRuntimeSwitch> createState() =>
+      _AgentProfileRuntimeSwitchState();
+}
+
+class _AgentProfileRuntimeSwitchState
+    extends ConsumerState<AgentProfileRuntimeSwitch> {
+  var _busy = false;
+
+  Future<void> _set(AgentProfile profile, bool codex) async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final next = profile.copyWith(runtime: codex ? 'codex' : 'goose');
+      await ref.read(agentProfilesProvider.notifier).saveEditor(next);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    AgentProfile? profile;
+    for (final p in ref.watch(agentProfilesProvider)) {
+      if (p.id == widget.profileId) {
+        profile = p;
+        break;
+      }
+    }
+    if (profile == null) {
+      return const SizedBox.shrink();
+    }
+    final current = profile;
+    return AgentRuntimeSwitch(
+      codex: current.usesCodex,
+      onChanged: _busy
+          ? null
+          : (value) => unawaited(_set(current, value)),
     );
   }
 }

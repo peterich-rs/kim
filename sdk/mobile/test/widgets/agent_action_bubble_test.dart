@@ -151,7 +151,7 @@ class _BubbleSession implements AgentSessionPort {
       const ResumeReportDto(resumedOps: [], statuses: []);
 
   @override
-  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
+  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
     busy: false,
     lastOperationId: '',
     phase: '',

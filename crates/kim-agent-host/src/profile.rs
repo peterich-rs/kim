@@ -109,6 +109,10 @@ pub struct AgentProfile {
     /// `$HOME` is not the ecosystem directory (S-KD 23).
     #[serde(default)]
     pub user_agents_skills: String,
+    /// Agent harness. Empty / missing / `"goose"` → Goose. `"codex"` → Codex.
+    /// Switching runtime starts a new session; it is not migrated in place.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub runtime: String,
     /// Optional harness overrides. Missing → timers stay at MAX until a session
     /// explicitly enables them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -360,6 +364,7 @@ impl AgentProfile {
             skills: Vec::new(),
             portable_denylist: Vec::new(),
             user_agents_skills: String::new(),
+            runtime: String::new(),
             harness: None,
         }
     }
@@ -412,6 +417,14 @@ impl AgentProfile {
             return self.capabilities.clone();
         }
         CapabilityRef::from_legacy(&self.tools, &self.extensions)
+    }
+
+    /// Empty / missing / `"goose"` → Goose. `"codex"` → Codex.
+    pub fn agent_runtime(&self) -> crate::AgentRuntime {
+        match self.runtime.trim() {
+            "codex" => crate::AgentRuntime::Codex,
+            _ => crate::AgentRuntime::Goose,
+        }
     }
 
     /// Project resolved capabilities onto the legacy `ToolSet` surface.
@@ -479,6 +492,7 @@ impl ResolvedProfile {
                 skills: Vec::new(),
                 portable_denylist: Vec::new(),
                 user_agents_skills: String::new(),
+                runtime: String::new(),
                 harness: None,
             },
             api_key: config.api_key,
@@ -545,6 +559,7 @@ fn goose_template() -> AgentProfile {
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+        runtime: String::new(),
         harness: None,
     }
 }
@@ -586,6 +601,7 @@ Reply in the target language of the request."
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+            runtime: String::new(),
             harness: None,
     }
 }
@@ -633,6 +649,7 @@ If the user asks you to send messages or act outside this workspace, say that is
         skills: Vec::new(),
         portable_denylist: Vec::new(),
         user_agents_skills: String::new(),
+            runtime: String::new(),
             harness: None,
     }
 }

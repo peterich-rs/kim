@@ -117,12 +117,28 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     } catch (e, st) {
       if (e is SdkErrorDto) {
         KimLogger.warn('agent spec sync ${e.kind}: ${e.message}', e, st);
+        // Permanent protocol / validation failures must not spin with every
+        // session snapshot rebuild (was flooding FRB + UI every 1–4s).
+        if (ref.mounted &&
+            gen == _sessionGen &&
+            account == _startedFor &&
+            !_specSyncRetryable(e)) {
+          _specSynced = true;
+        }
       } else {
         KimLogger.warn('agent spec sync', e, st);
       }
     } finally {
       _specSyncing = false;
     }
+  }
+
+  bool _specSyncRetryable(SdkErrorDto e) {
+    return switch (e.kind) {
+      'not_connected' || 'busy' || 'sqlite_busy' || 'rate_limited' => true,
+      'protocol' when e.message.contains('status 3') => true,
+      _ => false,
+    };
   }
 
   Future<void> _radioUp() async {

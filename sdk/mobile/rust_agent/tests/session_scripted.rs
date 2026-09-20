@@ -3,8 +3,8 @@ use std::fs;
 
 // Scripted prompt loops land in PR1 (host) / PR3 (FFI). This test only
 // proves session_open with a dummy key, snapshot idle, and close.
-#[test]
-fn scripted_session_opens_idle_and_closes() {
+#[tokio::test]
+async fn scripted_session_opens_idle_and_closes() {
     let dir = tempfile::tempdir().unwrap();
     let sqlite = dir.path().join("s.sqlite");
     let root = dir.path().join("workspace");
@@ -21,14 +21,15 @@ fn scripted_session_opens_idle_and_closes() {
             ..SessionOpenOpts::default()
         },
     )
+    .await
     .unwrap();
 
-    assert!(!session.snapshot().unwrap().busy);
-    session.close().unwrap();
+    assert!(!session.snapshot().await.unwrap().busy);
+    session.close().await.unwrap();
 }
 
-#[test]
-fn scripted_backend_is_unknown_on_session_open() {
+#[tokio::test]
+async fn scripted_backend_is_unknown_on_session_open() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("workspace");
     std::fs::create_dir_all(&root).unwrap();
@@ -42,7 +43,8 @@ fn scripted_backend_is_unknown_on_session_open() {
             model: "scripted".into(),
             ..SessionOpenOpts::default()
         },
-    );
+    )
+    .await;
     let err = match result {
         Ok(_) => panic!("scripted should be unknown outside host tests"),
         Err(e) => e,

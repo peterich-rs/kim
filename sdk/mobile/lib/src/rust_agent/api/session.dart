@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `abandon_yield`, `aborted`, `action_required`, `arm_yield_watch`, `base`, `begin_run`, `completed`, `disarm_yield_watch`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `recreate_host`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `shared_new`, `sleep_bounded`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
+// These functions are ignored because they are not marked as `pub`: `abandon_yield`, `aborted`, `action_required`, `arm_yield_watch`, `attach_codex`, `base`, `begin_run`, `completed`, `disarm_yield_watch`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `recreate_host`, `recv_op_id`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `shared_new`, `sleep_bounded`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Shared`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
@@ -108,7 +108,7 @@ abstract class AgentSession implements RustOpaqueInterface {
 
   Future<ResumeReportDto> resume();
 
-  SessionSnapshotDto snapshot();
+  Future<SessionSnapshotDto> snapshot();
 
   Future<void> steer({required String text});
 }

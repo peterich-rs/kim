@@ -104,6 +104,9 @@ struct ExtraPocket {
     permissions: PermissionConfig,
     #[serde(default)]
     sandbox: SandboxPolicy,
+    /// Empty / missing / `"goose"` → Goose. `"codex"` → Codex.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    runtime: String,
 }
 
 pub fn encode_spec(
@@ -207,6 +210,7 @@ fn encode_spec_parts(
         extensions: profile.extensions.clone(),
         permissions: profile.permissions.clone(),
         sandbox: profile.sandbox.clone(),
+        runtime: profile.runtime.clone(),
     };
     let extra_json = serde_json::to_vec(&extra).map_err(|e| CodecError::Json(e.to_string()))?;
     let model_ref = agent::ModelRef {
@@ -307,6 +311,7 @@ fn profile_from_proto(
         skills: spec.skills.iter().map(decode_skill).collect(),
         portable_denylist: spec.portable_denylist,
         user_agents_skills: String::new(),
+        runtime: extra.runtime,
         harness: None,
     };
     Ok(DecodedSpec {

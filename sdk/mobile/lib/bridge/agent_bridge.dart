@@ -110,77 +110,92 @@ class AgentRunLoop {
     if (!agentHostSupported && promptOverride == null) {
       return;
     }
-    final incoming = StreamController<AgentRunRequestDto>();
-    _incoming = incoming;
-    _sub = client.watchAgentRun().listen(
-      (req) {
-        if (_stopped || incoming.isClosed) {
-          return;
+    // FRB StreamSink dies on "Fail to post message to Dart" (isolate busy /
+    // hot restart / port closed). Rust then drops the watch task and never
+    // delivers turns again unless we re-subscribe.
+    while (!_stopped) {
+      final incoming = StreamController<AgentRunRequestDto>();
+      _incoming = incoming;
+      _sub = client.watchAgentRun().listen(
+        (req) {
+          if (_stopped || incoming.isClosed) {
+            return;
+          }
+          incoming.add(req);
+        },
+        onError: (Object error, StackTrace st) {
+          KimLogger.warn('agent run watch', error, st);
+          if (!_stopped && !incoming.isClosed) {
+            incoming.addError(error, st);
+          }
+        },
+        onDone: () {
+          if (!incoming.isClosed) {
+            incoming.close();
+          }
+        },
+      );
+      try {
+        await for (final req in incoming.stream) {
+          if (_stopped) {
+            break;
+          }
+          try {
+            sink?.begin(req.dest);
+            final result = promptOverride != null
+                ? DriveResult.fromText(await promptOverride!(req))
+                : await _promptGoose(req);
+            sink?.finish(req.dest, failed: false);
+            await client.submitAgentRun(
+              AgentRunResultDto(
+                dest: req.dest,
+                profileId: req.profileId,
+                epoch: req.epoch,
+                output: result.text,
+                stopReason: result.stopReason,
+                replied: result.replied,
+                visible: result.visible,
+                recentlyActive: result.recentlyActive,
+              ),
+            );
+          } catch (e, st) {
+            KimLogger.warn('agent run', e, st);
+            sink?.finish(req.dest, failed: true);
+            final typed = e is DriveStop ? e.result : null;
+            await client.submitAgentRun(
+              AgentRunResultDto(
+                dest: req.dest,
+                profileId: req.profileId,
+                epoch: req.epoch,
+                output: typed?.text ?? '',
+                error: _runErrorText(e),
+                stopReason: typed?.stopReason ?? 'failed',
+                replied: typed?.replied ?? false,
+                visible: typed?.visible ?? false,
+                recentlyActive: typed?.recentlyActive ?? false,
+              ),
+            );
+          }
         }
-        incoming.add(req);
-      },
-      onError: (Object error, StackTrace st) {
-        if (!_stopped && !incoming.isClosed) {
-          incoming.addError(error, st);
+      } catch (e, st) {
+        if (!_stopped) {
+          KimLogger.warn('agent run loop', e, st);
         }
-      },
-      onDone: () {
+      } finally {
+        await _sub?.cancel();
+        _sub = null;
         if (!incoming.isClosed) {
-          incoming.close();
+          await incoming.close();
         }
-      },
-    );
-    try {
-      await for (final req in incoming.stream) {
-        if (_stopped) {
-          break;
-        }
-        try {
-          sink?.begin(req.dest);
-          final result = promptOverride != null
-              ? DriveResult.fromText(await promptOverride!(req))
-              : await _promptGoose(req);
-          sink?.finish(req.dest, failed: false);
-          await client.submitAgentRun(
-            AgentRunResultDto(
-              dest: req.dest,
-              profileId: req.profileId,
-              epoch: req.epoch,
-              output: result.text,
-              stopReason: result.stopReason,
-              replied: result.replied,
-              visible: result.visible,
-              recentlyActive: result.recentlyActive,
-            ),
-          );
-        } catch (e, st) {
-          KimLogger.warn('agent run', e, st);
-          sink?.finish(req.dest, failed: true);
-          final typed = e is DriveStop ? e.result : null;
-          await client.submitAgentRun(
-            AgentRunResultDto(
-              dest: req.dest,
-              profileId: req.profileId,
-              epoch: req.epoch,
-              output: typed?.text ?? '',
-              error: _runErrorText(e),
-              stopReason: typed?.stopReason ?? 'failed',
-              replied: typed?.replied ?? false,
-              visible: typed?.visible ?? false,
-              recentlyActive: typed?.recentlyActive ?? false,
-            ),
-          );
+        if (identical(_incoming, incoming)) {
+          _incoming = null;
         }
       }
-    } finally {
-      await _sub?.cancel();
-      _sub = null;
-      if (!incoming.isClosed) {
-        await incoming.close();
+      if (_stopped) {
+        break;
       }
-      if (identical(_incoming, incoming)) {
-        _incoming = null;
-      }
+      KimLogger.warn('agent run watch ended; resubscribing');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
   }
 
@@ -268,7 +283,7 @@ class AgentRunLoop {
     );
     final prefs = await SharedPreferences.getInstance();
     final harnessOn = prefs.getBool('agent.harness_v1') ?? false;
-    final runtime = prefs.getString('agent.runtime') ?? 'goose';
+    final runtime = profile.usesCodex ? 'codex' : 'goose';
     final session = await goose.open(
       sqlitePath: sessionFile.path,
       projectRoot: ws.path,

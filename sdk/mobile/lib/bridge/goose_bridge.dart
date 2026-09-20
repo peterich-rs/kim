@@ -40,7 +40,7 @@ abstract class AgentSessionPort {
   Future<void> steer({required String text});
   Future<void> reconfigure({required SessionOpenOpts opts});
   Future<ResumeReportDto> resume();
-  SessionSnapshotDto snapshot();
+  Future<SessionSnapshotDto> snapshot();
 }
 
 class NativeAgentSession implements AgentSessionPort {
@@ -89,7 +89,7 @@ class NativeAgentSession implements AgentSessionPort {
   Future<ResumeReportDto> resume() => _inner.resume();
 
   @override
-  SessionSnapshotDto snapshot() => _inner.snapshot();
+  Future<SessionSnapshotDto> snapshot() => _inner.snapshot();
 }
 
 final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
