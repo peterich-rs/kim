@@ -316,7 +316,7 @@ fs / bash / MCP 不走这条 yield。它们在 Codex 内部跑完，适配层只
 
 ## 实现设计：第一刀只嵌入
 
-上文 CX-KD 1–13 仍是目标形状。第一刀（`run_turn`、helper、不进 `run_loop`）已经落地。当前又接上了 `runtime=codex`：默认仍是 Goose，桌面能力页可以切到 Codex。配置在内存里投影，IM 工具走 `dynamic_tools`，压缩阈值是上下文的 70%。MCP server 和技能根目录还没投影，因为 `codex-core-api` 没有导出那两种配置类型，本轮不改 Codex 源码。跨进程续聊用会话旁边的 transcript 文件，不用 `resume_thread_*`，那个入口会丢掉动态工具。
+上文 CX-KD 1–13 仍是目标形状。第一刀（`run_turn`、helper、不进 `run_loop`）已经落地。当前又接上了 `runtime=codex`：默认仍是 Goose，桌面能力页可以切到 Codex。配置在内存里投影，IM 工具走 `dynamic_tools`，压缩阈值是上下文的 70%。MCP 用 `project_extensions` 写进 `Config.mcp_servers`（stdio，或带 url 的 streamable HTTP；不配 OAuth）。技能 denylist 写在本次 `SessionFlags` 层的 `skills.config` 里。`user_agents_skills` 只有在它是绝对路径且目录名是 `skills` 时才加一层 user config，空字符串不会去扫 `$HOME`。KIM 自己的 app skill 引用仍然不落成 Codex 的 `SKILL.md`。跨进程续聊用会话旁边的 transcript 文件，不用 `resume_thread_*`，那个入口会丢掉动态工具。
 
 **E-KD 1 — 只依赖一个 crate：`codex-core-api`。**
 

@@ -3,6 +3,17 @@
 //! The shared `codex_home` is not the source of truth. Nothing here writes
 //! `config.toml` or `auth.json`.
 
+use codex_config::ConfigLayerEntry;
+use codex_config::ConfigLayerSource;
+use codex_config::ConfigLayerStack;
+use codex_config::ConfigRequirements;
+use codex_config::ConfigRequirementsToml;
+use codex_config::McpServerAuth;
+use codex_config::McpServerConfig;
+use codex_config::McpServerTransportConfig;
+use codex_config::SkillConfig;
+use codex_config::SkillsConfig;
+use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_core_api::built_in_model_providers;
 use codex_core_api::AskForApproval;
 use codex_core_api::AutoCompactTokenLimitScope;
@@ -24,7 +35,11 @@ use goose_provider_types::thinking::ThinkingEffort;
 use crate::capability::interpolate_identity;
 use crate::events::HostError;
 use crate::profile::AgentProfile;
+use crate::profile::ExtensionSpec;
 use crate::profile::PermissionDefault;
+
+use std::collections::HashMap;
+use std::path::Path;
 
 pub(crate) fn apply_profile(
     config: &mut Config,
@@ -35,7 +50,6 @@ pub(crate) fn apply_profile(
         return Err(HostError::MissingApiKey);
     }
     reject_unsupported_provider(&profile.provider.kind)?;
-    log_unprojected(profile);
 
     let model = profile.model.name.trim();
     if !model.is_empty() {
@@ -78,8 +92,13 @@ pub(crate) fn apply_profile(
     config.show_raw_agent_reasoning = false;
     config.ephemeral = false;
     config.analytics_enabled = Some(false);
-    if !profile.skills.is_empty() || !profile.user_agents_skills.trim().is_empty() {
-        config.include_skill_instructions = true;
+    project_extensions(config, profile)?;
+    project_skills(config, profile)?;
+    if !profile.skills.is_empty() {
+        tracing::debug!(
+            profile_id = %profile.id,
+            "app skill refs stay on the KIM catalog; Codex only loads portable SKILL.md directories"
+        );
     }
     Ok(())
 }
@@ -225,18 +244,163 @@ fn map_effort(effort: ThinkingEffort) -> ReasoningEffort {
     }
 }
 
-fn log_unprojected(profile: &AgentProfile) {
-    if profile.extensions.is_empty()
-        && profile.skills.is_empty()
-        && profile.portable_denylist.is_empty()
-        && profile.user_agents_skills.trim().is_empty()
-    {
-        return;
+fn project_extensions(config: &mut Config, profile: &AgentProfile) -> Result<(), HostError> {
+    let specs = profile.project_extensions();
+    if specs.is_empty() {
+        return Ok(());
     }
-    tracing::debug!(
-        profile_id = %profile.id,
-        "mcp servers and skill roots are not on the codex-core-api config surface; not projected"
-    );
+    let mut servers = HashMap::new();
+    for spec in &specs {
+        let name = spec.name.trim();
+        if name.is_empty() {
+            return Err(HostError::Failed("mcp extension name is empty".into()));
+        }
+        if servers.contains_key(name) {
+            return Err(HostError::Failed(format!(
+                "mcp extension name {name} is duplicated"
+            )));
+        }
+        servers.insert(name.to_string(), mcp_server(spec)?);
+    }
+    config.mcp_servers = Constrained::allow_any(servers);
+    Ok(())
+}
+
+fn mcp_server(spec: &ExtensionSpec) -> Result<McpServerConfig, HostError> {
+    let transport_name = spec.transport.trim();
+    let http = !spec.url.trim().is_empty()
+        && (spec.command.is_empty()
+            || matches!(
+                transport_name,
+                "http" | "streamable_http" | "sse" | "streamable-http"
+            ));
+    let transport = if http {
+        McpServerTransportConfig::StreamableHttp {
+            url: spec.url.trim().to_string(),
+            bearer_token_env_var: None,
+            http_headers: None,
+            env_http_headers: None,
+            http_headers_helper: None,
+        }
+    } else if !spec.command.is_empty() && (transport_name.is_empty() || transport_name == "stdio") {
+        McpServerTransportConfig::Stdio {
+            command: spec.command[0].clone(),
+            args: spec.command[1..].to_vec(),
+            env: None,
+            env_vars: Vec::new(),
+            cwd: None,
+        }
+    } else {
+        return Err(HostError::Failed(format!(
+            "mcp transport {transport_name} is not supported"
+        )));
+    };
+    Ok(McpServerConfig {
+        transport,
+        auth: McpServerAuth::default(),
+        environment_id: DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
+        enabled: true,
+        required: false,
+        supports_parallel_tool_calls: false,
+        omit_tools_from: None,
+        disabled_reason: None,
+        startup_timeout_sec: None,
+        tool_timeout_sec: None,
+        default_tools_approval_mode: None,
+        enabled_tools: None,
+        disabled_tools: None,
+        scopes: None,
+        oauth: None,
+        oauth_resource: None,
+        tools: HashMap::new(),
+    })
+}
+
+/// Skill enablement stays on this session's layer stack. A user layer is added
+/// only when `user_agents_skills` is an absolute `.../skills` directory, so an
+/// empty field does not make Codex scan `$HOME`.
+fn project_skills(config: &mut Config, profile: &AgentProfile) -> Result<(), HostError> {
+    let mut layers = Vec::new();
+    if let Some(layer) = user_skills_layer(&profile.user_agents_skills)? {
+        layers.push(layer);
+    }
+    if let Some(layer) = denylist_layer(&profile.portable_denylist)? {
+        layers.push(layer);
+    }
+    if layers.is_empty() {
+        if !profile.skills.is_empty() {
+            config.include_skill_instructions = true;
+        }
+        return Ok(());
+    }
+    config.include_skill_instructions = true;
+    config.config_layer_stack = ConfigLayerStack::new(
+        layers,
+        ConfigRequirements::default(),
+        ConfigRequirementsToml::default(),
+    )
+    .map_err(|err| HostError::Failed(format!("skill config layer: {err}")))?;
+    Ok(())
+}
+
+fn user_skills_layer(raw: &str) -> Result<Option<ConfigLayerEntry>, HostError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let path = Path::new(raw);
+    if path.file_name().and_then(|name| name.to_str()) != Some("skills") {
+        return Err(HostError::Failed(
+            "user_agents_skills must be an absolute directory named skills".into(),
+        ));
+    }
+    let Some(folder) = path.parent() else {
+        return Err(HostError::Failed(
+            "user_agents_skills must be an absolute directory named skills".into(),
+        ));
+    };
+    let file = codex_config::AbsolutePathBuf::from_absolute_path(folder.join("config.toml"))
+        .map_err(|_| {
+            HostError::Failed(
+                "user_agents_skills must be an absolute directory named skills".into(),
+            )
+        })?;
+    Ok(Some(ConfigLayerEntry::new(
+        ConfigLayerSource::User {
+            file,
+            profile: None,
+        },
+        toml::Value::Table(toml::map::Map::new()),
+    )))
+}
+
+fn denylist_layer(ids: &[String]) -> Result<Option<ConfigLayerEntry>, HostError> {
+    let config: Vec<SkillConfig> = ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(|id| SkillConfig {
+            path: None,
+            name: Some(id.to_string()),
+            enabled: false,
+        })
+        .collect();
+    if config.is_empty() {
+        return Ok(None);
+    }
+    let skills = SkillsConfig {
+        config,
+        include_instructions: Some(true),
+        ..SkillsConfig::default()
+    };
+    let skills_value = toml::Value::try_from(skills)
+        .map_err(|err| HostError::Failed(format!("skills config: {err}")))?;
+    let mut root = toml::map::Map::new();
+    root.insert("skills".to_string(), skills_value);
+    Ok(Some(ConfigLayerEntry::new(
+        ConfigLayerSource::SessionFlags,
+        toml::Value::Table(root),
+    )))
 }
 
 fn function_spec(name: &str) -> DynamicToolFunctionSpec {
@@ -438,5 +602,62 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert!(confirms_in_app(&profile, "send_message"));
         assert!(!confirms_in_app(&profile, "search_contacts"));
+    }
+
+    #[test]
+    fn stdio_extension_becomes_an_mcp_server() {
+        let mut profile = legacy("openai", "chat");
+        profile.extensions = vec![ExtensionSpec {
+            name: "github".into(),
+            transport: "stdio".into(),
+            command: vec!["npx".into(), "-y".into(), "srv".into()],
+            url: String::new(),
+            env: Default::default(),
+        }];
+        let config = config_for(&profile);
+        let server = config
+            .mcp_servers
+            .get()
+            .get("github")
+            .expect("github server");
+        match &server.transport {
+            McpServerTransportConfig::Stdio { command, args, .. } => {
+                assert_eq!(command, "npx");
+                assert_eq!(args, &["-y".to_string(), "srv".to_string()]);
+            }
+            other => panic!("expected stdio, got {other:?}"),
+        }
+        assert!(server.oauth.is_none());
+    }
+
+    #[test]
+    fn skill_denylist_is_a_session_layer_and_empty_root_skips_home() {
+        let mut profile = legacy("openai", "chat");
+        profile.portable_denylist = vec!["mute-me".into()];
+        let config = config_for(&profile);
+        assert!(config.config_layer_stack.get_active_user_layer().is_none());
+        let rules = codex_config::skill_config_rules_from_stack(&config.config_layer_stack);
+        assert_eq!(rules.entries.len(), 1);
+        assert!(!rules.entries[0].enabled);
+        assert!(matches!(
+            &rules.entries[0].selector,
+            codex_config::SkillConfigRuleSelector::Name(name) if name == "mute-me"
+        ));
+    }
+
+    #[test]
+    fn absolute_skills_directory_becomes_the_user_scan_root() {
+        let mut profile = legacy("openai", "chat");
+        profile.user_agents_skills = "/tmp/kim-agents/skills".into();
+        let config = config_for(&profile);
+        let folder = config
+            .config_layer_stack
+            .get_active_user_layer()
+            .and_then(|layer| layer.config_folder())
+            .expect("user skill folder");
+        assert_eq!(
+            folder.join("skills").as_path(),
+            Path::new("/tmp/kim-agents/skills")
+        );
     }
 }

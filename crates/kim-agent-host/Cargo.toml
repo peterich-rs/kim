@@ -10,17 +10,20 @@ description = "Local Goose agent host for KIM desktop IM (@agent)"
 # Desktop `rust_agent` enables this. Off by default so the phone FFI does not
 # link the Codex agent. SQLite itself is shared with the root workspace.
 codex = [
+    "dep:codex-config",
     "dep:codex-core-api",
     "dep:codex-protocol",
     "dep:codex-utils-redacted-string",
     "dep:rama-error",
     "dep:rama-macros",
     "dep:rama-utils",
+    "dep:toml",
 ]
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+codex-config = { path = "../../third_party/codex/codex-rs/config", optional = true }
 codex-core-api = { path = "../../third_party/codex/codex-rs/core-api", optional = true }
 # Facade does not re-export ReviewDecision, ReasoningEffort, or RedactedString.
 codex-protocol = { path = "../../third_party/codex/codex-rs/protocol", optional = true }
@@ -30,6 +33,7 @@ codex-utils-redacted-string = { path = "../../third_party/codex/codex-rs/utils/r
 rama-error = { version = "=0.3.0-alpha.4", optional = true }
 rama-macros = { version = "=0.3.0-alpha.4", optional = true }
 rama-utils = { version = "=0.3.0-alpha.4", optional = true }
+toml = { version = "0.9.5", optional = true }
 futures.workspace = true
 goose-agent = "0.1.0-alpha.9"
 goose-provider-types = { version = "0.1.0-alpha.9", default-features = false }
