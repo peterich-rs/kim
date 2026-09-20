@@ -75,6 +75,7 @@ Future<void> _buildCodexHelper(
   final root = _repoRoot();
   final release = rustMode == FlutterRustBridgeBuildMode.release;
   final env = Map<String, String>.from(Platform.environment)..addAll(extraEnv);
+  await _sanitizeAppleCargoEnv(env, input);
   final proc = await Process.start(
     'cargo',
     [
@@ -101,6 +102,59 @@ Future<void> _buildCodexHelper(
     link.deleteSync();
   }
   link.createSync('kim-codex-helper');
+}
+
+/// Xcode script phases export `SDKROOT=macosx` and sometimes
+/// `IPHONEOS_DEPLOYMENT_TARGET`. Plain `cc` then compiles `ring` without a
+/// usable sysroot (`TargetConditionals.h` not found). Resolve the macOS SDK
+/// path and pin the deployment target to the Runner project value.
+Future<void> _sanitizeAppleCargoEnv(
+  Map<String, String> env,
+  BuildInput input,
+) async {
+  if (!input.config.buildCodeAssets) {
+    return;
+  }
+  if (input.config.code.targetOS != OS.macOS) {
+    return;
+  }
+  for (final key in [
+    'IPHONEOS_DEPLOYMENT_TARGET',
+    'IOS_DEPLOYMENT_TARGET',
+    'TVOS_DEPLOYMENT_TARGET',
+    'WATCHOS_DEPLOYMENT_TARGET',
+    'CFLAGS',
+    'CXXFLAGS',
+    'CPPFLAGS',
+    'LDFLAGS',
+  ]) {
+    env.remove(key);
+  }
+  env['MACOSX_DEPLOYMENT_TARGET'] = '12.0';
+  final sdk = await _macosSdkPath();
+  if (sdk == null || sdk.isEmpty) {
+    env.remove('SDKROOT');
+    return;
+  }
+  env['SDKROOT'] = sdk;
+  env['CFLAGS'] = '-isysroot $sdk';
+}
+
+Future<String?> _macosSdkPath() async {
+  try {
+    final result = await Process.run('xcrun', [
+      '--sdk',
+      'macosx',
+      '--show-sdk-path',
+    ]);
+    if (result.exitCode != 0) {
+      return null;
+    }
+    final path = (result.stdout as String).trim();
+    return path.isEmpty ? null : path;
+  } on Object {
+    return null;
+  }
 }
 
 Directory _repoRoot() {
