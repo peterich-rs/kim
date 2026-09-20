@@ -599,10 +599,7 @@ impl AgentSession {
         rt().block_on(async move {
             let _gate = inner.complete_gate.lock().await;
             {
-                let phase = inner
-                    .phase
-                    .lock()
-                    .map_err(|_| "phase lock".to_string())?;
+                let phase = inner.phase.lock().map_err(|_| "phase lock".to_string())?;
                 if *phase != SessionPhase::Idle {
                     return Err("session is not idle".into());
                 }
@@ -806,7 +803,12 @@ fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
     true
 }
 
-async fn finish_turn(inner: &Arc<Shared>, op: String, result: Result<TurnOutcome, HostError>, gen: u64) {
+async fn finish_turn(
+    inner: &Arc<Shared>,
+    op: String,
+    result: Result<TurnOutcome, HostError>,
+    gen: u64,
+) {
     if !turn_is_current(inner, gen) {
         return;
     }
@@ -1595,10 +1597,7 @@ mod tests {
             }),
             0,
         ));
-        assert_eq!(
-            session.inner.recreate_attempts.load(Ordering::SeqCst),
-            1
-        );
+        assert_eq!(session.inner.recreate_attempts.load(Ordering::SeqCst), 1);
         let mut saw = false;
         while let Ok(ev) = rx.try_recv() {
             if ev.stop_reason == "poisoned" {
