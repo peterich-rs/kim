@@ -68,7 +68,7 @@ fn fallback_summary(older: &[Message]) -> String {
     buf
 }
 
-fn split_older<'a>(conversation: &'a Conversation) -> (&'a [Message], &'a [Message]) {
+fn split_older(conversation: &Conversation) -> (&[Message], &[Message]) {
     let messages = conversation.messages();
     let kickoff = messages_since_kickoff(conversation)
         .map(|turn| turn.len())

@@ -31,15 +31,15 @@ impl Default for Bounds {
     }
 }
 
+struct LiveSlot {
+    client: rmcp::service::RunningService<RoleClient, ()>,
+    child: Option<tokio::process::Child>,
+    pgid: Option<u32>,
+}
+
 enum SlotState {
-    Live {
-        client: rmcp::service::RunningService<RoleClient, ()>,
-        child: Option<tokio::process::Child>,
-        pgid: Option<u32>,
-    },
-    Dead {
-        until: Instant,
-    },
+    Live(Box<LiveSlot>),
+    Dead { until: Instant },
 }
 
 struct ServerSlot {
@@ -100,16 +100,16 @@ impl McpHub {
         };
         for mut slot in drained {
             kill_slot(&mut slot);
-            if let SlotState::Live { mut client, .. } = slot.state {
-                let _ = client.close().await;
+            if let SlotState::Live(mut live) = slot.state {
+                let _ = live.client.close().await;
             }
         }
     }
 }
 
 fn kill_slot(slot: &mut ServerSlot) {
-    if let SlotState::Live { pgid, child, .. } = &mut slot.state {
-        kill_child_process(*pgid, child.as_mut());
+    if let SlotState::Live(live) = &mut slot.state {
+        kill_child_process(live.pgid, live.child.as_mut());
     }
 }
 
@@ -162,11 +162,11 @@ async fn spawn_slot(ext: &ExtensionSpec, cwd: &Path) -> Result<ServerSlot, HostE
         name: ext.name.clone(),
         spec: ext.clone(),
         cwd: cwd.to_path_buf(),
-        state: SlotState::Live {
+        state: SlotState::Live(Box::new(LiveSlot {
             client,
             child: Some(child),
             pgid,
-        },
+        })),
     })
 }
 
@@ -201,9 +201,7 @@ impl ToolProvider<HostSession> for McpToolProvider {
             clients
                 .iter()
                 .filter_map(|slot| match &slot.state {
-                    SlotState::Live { client, .. } => {
-                        Some((slot.name.clone(), client.peer().clone()))
-                    }
+                    SlotState::Live(live) => Some((slot.name.clone(), live.client.peer().clone())),
                     SlotState::Dead { .. } => None,
                 })
                 .collect()
@@ -249,7 +247,7 @@ impl ToolProvider<HostSession> for McpToolProvider {
                     return None;
                 }
                 match &slot.state {
-                    SlotState::Live { client, .. } => Some(client.peer().clone()),
+                    SlotState::Live(live) => Some(live.client.peer().clone()),
                     SlotState::Dead { .. } => None,
                 }
             })
@@ -362,7 +360,7 @@ mod tests {
     async fn mcp_timeout_poisons_one_server() {
         let hub = McpHub::new();
         hub.set_bounds(Duration::from_millis(20), 16, 128);
-        let mut live = ServerSlot {
+        let live = ServerSlot {
             name: "other".into(),
             spec: ExtensionSpec {
                 name: "other".into(),
@@ -390,12 +388,12 @@ mod tests {
         // The other slot is untouched by poisoning `hung`.
         let until_live = match live.state {
             SlotState::Dead { until } => until,
-            SlotState::Live { .. } => Instant::now(),
+            SlotState::Live(_) => Instant::now(),
         };
         poison_slot(&mut hung, "again");
         match live.state {
             SlotState::Dead { until } => assert_eq!(until, until_live),
-            SlotState::Live { .. } => panic!("live mutated"),
+            SlotState::Live(_) => panic!("live mutated"),
         }
         let _ = hub;
     }

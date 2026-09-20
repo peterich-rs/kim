@@ -27,6 +27,7 @@ use crate::{HostError, HostSession};
 pub struct MachineFactory;
 
 impl MachineFactory {
+    #[cfg(test)]
     pub(crate) fn assemble(
         profile: &AgentProfile,
         provider: Arc<dyn Provider>,

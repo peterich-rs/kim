@@ -81,6 +81,7 @@ pub fn repair_in_process(conversation: &mut Conversation, yield_names: &[&str]) 
     n
 }
 
+#[cfg(test)]
 pub fn history_valid(conversation: &Conversation) -> bool {
     unanswered_tool_requests(conversation).is_empty()
         && unanswered_confirmations(conversation).is_empty()

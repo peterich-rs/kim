@@ -21,15 +21,6 @@ pub struct BashToolProvider {
     pub timeout: Duration,
 }
 
-impl BashToolProvider {
-    pub fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            timeout: Duration::from_secs(30),
-        }
-    }
-}
-
 fn schema(value: Value) -> Arc<JsonObject> {
     match value {
         Value::Object(map) => Arc::new(map),
@@ -228,7 +219,10 @@ mod tests {
     #[tokio::test]
     async fn rejects_dotdot_argv0() {
         let dir = tempfile::tempdir().unwrap();
-        let provider = BashToolProvider::new(dir.path().to_path_buf());
+        let provider = BashToolProvider {
+            root: dir.path().to_path_buf(),
+            timeout: Duration::from_secs(30),
+        };
         let mut call = CallToolRequestParams::new("bash");
         let mut args = JsonObject::new();
         args.insert("argv".into(), json!(["../bin/echo", "hi"]));
@@ -240,7 +234,10 @@ mod tests {
     #[tokio::test]
     async fn does_not_expand_env_in_argv() {
         let dir = tempfile::tempdir().unwrap();
-        let provider = BashToolProvider::new(dir.path().to_path_buf());
+        let provider = BashToolProvider {
+            root: dir.path().to_path_buf(),
+            timeout: Duration::from_secs(30),
+        };
         let mut call = CallToolRequestParams::new("bash");
         let mut args = JsonObject::new();
         args.insert("argv".into(), json!(["/bin/echo", "$HOME"]));

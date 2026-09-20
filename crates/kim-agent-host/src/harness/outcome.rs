@@ -26,7 +26,6 @@ pub enum Classify {
     Finished(TurnVisibility),
     Recover(RecoverKind),
     Provider(ProviderFail),
-    Failed(String),
 }
 
 #[derive(Debug)]
@@ -158,7 +157,7 @@ pub fn successful_send_message(conversation: &Conversation) -> bool {
             let MessageContent::ToolResponse(res) = block else {
                 continue;
             };
-            if !wanted.iter().any(|id| *id == res.id.as_str()) {
+            if !wanted.contains(&res.id.as_str()) {
                 continue;
             }
             if response_ok(res) {

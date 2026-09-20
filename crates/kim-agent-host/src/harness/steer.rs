@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 #[derive(Default)]
 pub struct SteerInbox {
@@ -18,5 +17,3 @@ impl SteerInbox {
         self.pending.remove(session_id).unwrap_or_default()
     }
 }
-
-pub type SteerLock = Mutex<SteerInbox>;

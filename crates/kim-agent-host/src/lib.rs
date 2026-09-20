@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use goose_agent::machine::{EffectHandler, MachineSession, SessionLoader, StateMachine};
+use goose_agent::machine::{EffectHandler, MachineSession, SessionLoader};
 use goose_agent::operation::{ConversationEffect, Emitter};
 use goose_provider_types::base::Provider;
 use goose_provider_types::conversation::message::{Message, MessageContent};
@@ -158,7 +158,7 @@ struct Inner {
     store: Mutex<Store>,
     mcp: Arc<ops::mcp::McpHub>,
     provider_generation: AtomicU64,
-    limits: std::sync::RwLock<HarnessLimits>,
+    limits: RwLock<HarnessLimits>,
     busy: std::sync::Mutex<HashSet<String>>,
     hard_remaining: std::sync::Mutex<HashMap<String, Duration>>,
     last_usage: std::sync::Mutex<HashMap<String, ProviderUsage>>,
@@ -188,7 +188,7 @@ fn blank_inner(
         }),
         mcp: Arc::new(ops::mcp::McpHub::new()),
         provider_generation: AtomicU64::new(1),
-        limits: std::sync::RwLock::new(HarnessLimits::default()),
+        limits: RwLock::new(HarnessLimits::default()),
         busy: std::sync::Mutex::new(HashSet::new()),
         hard_remaining: std::sync::Mutex::new(HashMap::new()),
         last_usage: std::sync::Mutex::new(HashMap::new()),
@@ -805,6 +805,7 @@ fn truncate_chars(s: &str, max_bytes: usize) -> String {
     s[..end].to_string()
 }
 
+#[cfg(test)]
 fn last_assistant_text(conversation: &Conversation) -> String {
     if !goose_agent::operation::ends_turn(conversation.messages()) {
         return String::new();

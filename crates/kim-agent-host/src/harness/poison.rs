@@ -4,8 +4,6 @@ use std::sync::Once;
 pub enum HostPoison {
     MachinePanic,
     CancelGrace,
-    HardStuck,
-    McpUnrecoverable,
 }
 
 impl HostPoison {
@@ -13,8 +11,6 @@ impl HostPoison {
         match self {
             Self::MachinePanic => "machine panic",
             Self::CancelGrace => "cancel_grace exceeded",
-            Self::HardStuck => "hard timeout did not stop",
-            Self::McpUnrecoverable => "mcp hub unrecoverable",
         }
     }
 }

@@ -257,7 +257,7 @@ pub struct ExtensionSpec {
     /// Optional process env. v1 ignores caller-supplied values and uses the
     /// shared allowlist instead.
     #[serde(default)]
-    pub env: std::collections::HashMap<String, String>,
+    pub env: HashMap<String, String>,
 }
 
 /// Secrets travel beside the profile, never inside it.

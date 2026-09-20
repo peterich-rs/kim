@@ -14,19 +14,18 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::events::{
-    is_idle_activity, stop_reason_finished, CancelReason, HostError, HostEvent, ProviderFail,
-    TimeoutKind, TurnOutcome,
+    stop_reason_finished, CancelReason, HostError, HostEvent, ProviderFail, TimeoutKind,
+    TurnOutcome,
 };
 use crate::machine::MachineFactory;
 use crate::ops::compaction::CompactionOp;
 use crate::profile::{AgentProfile, HarnessSpec};
 use crate::{AgentHost, HostSession};
 
-pub use children::{env_allowed, kill_child_process, kill_group, prepare};
-pub use outcome::{turn_visibility, TurnVisibility};
+pub use children::{kill_child_process, kill_group, prepare};
 pub use poison::{install_panic_hook, HostPoison};
 pub use steer::SteerInbox;
-pub use timeout::{HardDeadline, IdleClock, YieldWatch};
+pub use timeout::{HardDeadline, IdleClock};
 
 #[derive(Debug, Clone)]
 pub struct HarnessLimits {
@@ -468,6 +467,7 @@ impl AgentHost {
                         session_id,
                         outcome = "finished",
                         visible = vis.visible,
+                        send_ok = vis.send_ok,
                         stop_reason = stop_reason_finished(vis.replied, vis.visible),
                         "harness.turn_end"
                     );
@@ -495,9 +495,6 @@ impl AgentHost {
                 outcome::Classify::Provider(fail) => {
                     tracing::info!(session_id, kind = %fail, "harness.recover_exhausted");
                     return Err(HostError::Provider(fail));
-                }
-                outcome::Classify::Failed(message) => {
-                    return Err(HostError::Failed(message));
                 }
             }
         }
@@ -849,7 +846,7 @@ mod tests {
             });
         }
         assert!(
-            kinds.iter().any(|k| *k == "ka"),
+            kinds.contains(&"ka"),
             "events={kinds:?} elapsed={:?}",
             started.elapsed()
         );

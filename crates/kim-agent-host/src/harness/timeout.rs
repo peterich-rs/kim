@@ -6,9 +6,7 @@ pub async fn sleep_for(d: Duration) {
     const CAP: Duration = Duration::from_secs(24 * 60 * 60);
     if d >= CAP {
         std::future::pending::<()>().await;
-    } else if d.is_zero() {
-        return;
-    } else {
+    } else if !d.is_zero() {
         tokio::time::sleep(d).await;
     }
 }
@@ -80,10 +78,12 @@ impl HardDeadline {
 }
 
 /// Pure yield-wait helper. FFI owns the real timer; this is the testable clock.
+#[cfg(test)]
 pub struct YieldWatch {
     limit: Duration,
 }
 
+#[cfg(test)]
 impl YieldWatch {
     pub fn new(limit: Duration) -> Self {
         Self { limit }

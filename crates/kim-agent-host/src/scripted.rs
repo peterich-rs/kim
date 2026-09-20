@@ -130,13 +130,14 @@ impl Provider for ScriptedProvider {
         _messages: &[Message],
         _tools: &[Tool],
     ) -> Result<MessageStream, ProviderError> {
-        if self.hang || self.hangs_left.load(Ordering::Relaxed) > 0 {
-            if self.hang || self.hangs_left.fetch_sub(1, Ordering::Relaxed) > 0 {
-                let pending = stream::pending::<
-                    Result<(Option<Message>, Option<ProviderUsage>), ProviderError>,
-                >();
-                return Ok(Box::pin(pending));
-            }
+        if self.hang
+            || (self.hangs_left.load(Ordering::Relaxed) > 0
+                && self.hangs_left.fetch_sub(1, Ordering::Relaxed) > 0)
+        {
+            let pending = stream::pending::<
+                Result<(Option<Message>, Option<ProviderUsage>), ProviderError>,
+            >();
+            return Ok(Box::pin(pending));
         }
         if system == SUMMARIZE_SYSTEM {
             let next = Self::pop_message(&self.summarize)
