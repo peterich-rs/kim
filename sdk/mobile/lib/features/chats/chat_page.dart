@@ -4,7 +4,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:toastification/toastification.dart';
@@ -297,47 +296,58 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                        child: Row(
-                          children: [
-                            if (!wide)
-                              FrostedCircleButton(
-                                key: const Key('chat-back'),
-                                onTap: () {
-                                  if (context.canPop()) {
-                                    context.pop();
-                                  } else {
-                                    context.go('/');
-                                  }
-                                },
-                                child: const Icon(
-                                  LucideIcons.chevronLeft,
-                                  size: 22,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              if (!wide)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FrostedCircleButton(
+                                    key: const Key('chat-back'),
+                                    onTap: () {
+                                      if (context.canPop()) {
+                                        context.pop();
+                                      } else {
+                                        context.go('/');
+                                      }
+                                    },
+                                    child: const Icon(
+                                      LucideIcons.chevronLeft,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ChatTitleChrome(
+                                title: liveTitle,
+                                avatarUrl: avatarUrl,
+                                avatar: _agentAvatar(liveTitle, avatarUrl),
+                                presence: ref.watch(
+                                  peerPresenceProvider(widget.id),
+                                ),
+                                onTap: kind == ThreadKind.user
+                                    ? () => openKimPeerProfile(
+                                        context,
+                                        ref,
+                                        id: widget.id,
+                                        title: liveTitle,
+                                      )
+                                    : null,
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: FrostedCircleButton(
+                                  key: const Key('chat-more'),
+                                  tooltip: l10n.more,
+                                  child: const Icon(
+                                    LucideIcons.ellipsis,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
-                            if (!wide) const Gap(8),
-                            ChatTitleChrome(
-                              title: liveTitle,
-                              avatarUrl: avatarUrl,
-                              avatar: _agentAvatar(liveTitle, avatarUrl),
-                              presence: ref.watch(
-                                peerPresenceProvider(widget.id),
-                              ),
-                              onTap: kind == ThreadKind.user
-                                  ? () => openKimPeerProfile(
-                                      context,
-                                      ref,
-                                      id: widget.id,
-                                      title: liveTitle,
-                                    )
-                                  : null,
-                            ),
-                            const Spacer(),
-                            FrostedCircleButton(
-                              key: const Key('chat-more'),
-                              tooltip: l10n.more,
-                              child: const Icon(LucideIcons.ellipsis, size: 20),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                       ConnectionBanner(
