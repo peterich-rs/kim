@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshotDto;
 
@@ -70,6 +72,9 @@ class _StopSession implements AgentSessionPort {
 
   @override
   Future<void> abort() async {}
+
+  @override
+  Future<void> park() async {}
 
   @override
   Future<void> steer({required String text}) async {}
@@ -166,4 +171,126 @@ void main() {
     expect(fake.submittedAgentRuns.last.stopReason, 'provider');
     expect(fake.submittedAgentRuns.last.error, 'rate limited');
   });
+
+  test('driveSession returns completed when cancel waits for close', () async {
+    final session = _HangUntilCloseSession(
+      _ev(
+        kind: 'assistant_finished',
+        stopReason: 'completed',
+        message: 'hi',
+        ok: true,
+      ),
+    );
+    final loop = AgentRunLoop(FakeKim(), AgentBridge());
+    final result = await loop
+        .driveSession(session, dest: 'b_bot', text: 'hi')
+        .timeout(const Duration(milliseconds: 200));
+    expect(result.stopReason, 'completed');
+    expect(result.text, 'hi');
+    expect(session.closeCount, 1);
+  });
+
+  test('driveSession persist parks instead of closing', () async {
+    final session = _HangUntilCloseSession(
+      _ev(
+        kind: 'assistant_finished',
+        stopReason: 'completed',
+        message: 'hi',
+        ok: true,
+      ),
+    );
+    final loop = AgentRunLoop(FakeKim(), AgentBridge());
+    final result = await loop.driveSession(
+      session,
+      dest: 'b_bot',
+      text: 'hi',
+      persist: true,
+    );
+    expect(result.stopReason, 'completed');
+    expect(session.parkCount, 1);
+    expect(session.closeCount, 0);
+  });
+}
+
+class _HangUntilCloseSession implements AgentSessionPort {
+  _HangUntilCloseSession(this.event);
+
+  final AgentUiEvent event;
+  final _src = StreamController<AgentUiEvent>.broadcast();
+  final _cancel = Completer<void>();
+  var closeCount = 0;
+  var parkCount = 0;
+
+  @override
+  Stream<AgentUiEvent> listen() {
+    late final StreamController<AgentUiEvent> out;
+    out = StreamController<AgentUiEvent>(
+      onListen: () {
+        _src.stream.listen(out.add, onError: out.addError, onDone: out.close);
+      },
+      onCancel: () => _cancel.future,
+    );
+    return out.stream;
+  }
+
+  @override
+  Future<String> prompt({required String text}) async {
+    _src.add(event);
+    return '';
+  }
+
+  @override
+  Future<String> promptWithContext({
+    required String text,
+    required String contextJson,
+  }) async => '';
+
+  @override
+  Future<String> completeTool({
+    required String callId,
+    required String outputJson,
+  }) async => '';
+
+  @override
+  Future<String> respondPermission({
+    required String callId,
+    required String permission,
+  }) async => '';
+
+  @override
+  Future<void> close() async {
+    closeCount += 1;
+    if (!_cancel.isCompleted) {
+      _cancel.complete();
+    }
+  }
+
+  @override
+  Future<void> abort() async {}
+
+  @override
+  Future<void> park() async {
+    parkCount += 1;
+    if (!_cancel.isCompleted) {
+      _cancel.complete();
+    }
+  }
+
+  @override
+  Future<void> steer({required String text}) async {}
+
+  @override
+  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+
+  @override
+  Future<ResumeReportDto> resume() async =>
+      const ResumeReportDto(resumedOps: [], statuses: []);
+
+  @override
+  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
+    busy: false,
+    lastOperationId: '',
+    phase: '',
+    pendingCallIds: [],
+  );
 }

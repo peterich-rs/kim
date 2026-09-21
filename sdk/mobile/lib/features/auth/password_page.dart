@@ -14,6 +14,7 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/validation.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/auth_form.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/design/kim_text_field.dart';
 
@@ -28,9 +29,6 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   late final TextEditingController _old;
   late final TextEditingController _next;
   late final TextEditingController _confirm;
-  String? _oldErr;
-  String? _nextErr;
-  String? _confirmErr;
 
   @override
   void initState() {
@@ -57,11 +55,9 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       newPassword,
       sanitizePassword(_confirm.text),
     );
-    setState(() {
-      _oldErr = oldErr;
-      _nextErr = nextErr;
-      _confirmErr = confirmErr;
-    });
+    ref
+        .read(passwordDraftProvider.notifier)
+        .showErrors(old: oldErr, next: nextErr, confirm: confirmErr);
     if (oldErr != null || nextErr != null || confirmErr != null) {
       return;
     }
@@ -95,6 +91,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final draft = ref.watch(passwordDraftProvider);
     final mut = ref.watch(changePasswordMutation);
     final busy = mut is MutationPending;
     final error = switch (mut) {
@@ -114,7 +111,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
             KimTextField(
               controller: _old,
               label: Copy.oldPassword,
-              errorText: _oldErr,
+              errorText: draft.oldErr,
               obscureable: true,
               keyboardType: TextInputType.visiblePassword,
               maxLength: 128,
@@ -124,7 +121,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
             KimTextField(
               controller: _next,
               label: Copy.newPassword,
-              errorText: _nextErr,
+              errorText: draft.nextErr,
               obscureable: true,
               keyboardType: TextInputType.visiblePassword,
               maxLength: 128,
@@ -133,7 +130,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
             KimTextField(
               controller: _confirm,
               label: Copy.confirmPassword,
-              errorText: _confirmErr,
+              errorText: draft.confirmErr,
               obscureable: true,
               keyboardType: TextInputType.visiblePassword,
               maxLength: 128,

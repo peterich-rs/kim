@@ -3,6 +3,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/bridge/kim_bridge.dart';
 
 const kPermissionAskBefore = 'ask_before';
 
@@ -64,9 +65,14 @@ class AgentPermissionState {
 
 class AgentPermissionHub extends Notifier<AgentPermissionState> {
   final _sessions = <String, AgentSessionPort>{};
+  KimClientPort? _client;
 
   @override
   AgentPermissionState build() => const AgentPermissionState();
+
+  void bindClient(KimClientPort client) {
+    _client = client;
+  }
 
   void attach(String dest, AgentSessionPort session) {
     if (dest.isEmpty) {
@@ -104,10 +110,10 @@ class AgentPermissionHub extends Notifier<AgentPermissionState> {
     required String callId,
     required String permission,
   }) async {
-    final session = _sessions[dest];
-    if (session == null || callId.isEmpty) {
+    if (callId.isEmpty) {
       return;
     }
+    final session = _sessions[dest];
     final remaining = [
       for (final p in state.of(dest))
         if (p.callId != callId) p,
@@ -119,7 +125,11 @@ class AgentPermissionHub extends Notifier<AgentPermissionState> {
       next[dest] = remaining;
     }
     state = AgentPermissionState(byDest: next);
-    await session.respondPermission(callId: callId, permission: permission);
+    if (session != null) {
+      await session.respondPermission(callId: callId, permission: permission);
+    }
+    final allow = !permission.startsWith('deny');
+    await _client?.respondAgentPermission(callId: callId, allow: allow);
   }
 }
 

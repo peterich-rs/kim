@@ -13,6 +13,7 @@ import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_peer.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/contacts_search.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
@@ -30,7 +31,6 @@ class ContactsPage extends ConsumerStatefulWidget {
 
 class _ContactsPageState extends ConsumerState<ContactsPage> {
   late final TextEditingController _query;
-  var _searching = false;
 
   @override
   void initState() {
@@ -59,7 +59,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 
   Future<void> _search() async {
-    setState(() => _searching = true);
+    ref.read(contactsSearchUiProvider.notifier).setSearching(true);
     try {
       await searchPeopleMutation.run(ref, (tsx) {
         return tsx.get(contactsProvider.notifier).search(_query.text);
@@ -68,7 +68,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       _toast(socialError(err));
     } finally {
       if (mounted) {
-        setState(() => _searching = false);
+        ref.read(contactsSearchUiProvider.notifier).setSearching(false);
       }
     }
   }
@@ -112,6 +112,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   @override
   Widget build(BuildContext context) {
     final social = ref.watch(contactsProvider);
+    final searching = ref.watch(contactsSearchUiProvider);
     ref.watch(agentProfilesProvider);
     final localAgents = ref.read(agentProfilesProvider.notifier).visibleAgents;
     final theme = Theme.of(context);
@@ -143,7 +144,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                     ),
                     const Gap(8),
                     FilledButton.tonal(
-                      onPressed: _searching ? null : _search,
+                      onPressed: searching ? null : _search,
                       child: Text(Copy.addFriend),
                     ),
                   ],

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';

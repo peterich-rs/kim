@@ -12,3 +12,14 @@ class ChatsSearchTick extends Notifier<int> {
 final chatsSearchTickProvider = NotifierProvider<ChatsSearchTick, int>(
   ChatsSearchTick.new,
 );
+
+class ChatsSearchUi extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setOpen(bool open) => state = open;
+}
+
+final chatsSearchUiProvider = NotifierProvider<ChatsSearchUi, bool>(
+  ChatsSearchUi.new,
+);

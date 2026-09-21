@@ -20,6 +20,7 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_capabilities_form.dart';
 import 'package:kim_mobile/features/agent/agent_runtime_switch.dart';
 import 'package:kim_mobile/features/agent/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
@@ -53,23 +54,24 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
   final _skillsKey = GlobalKey();
 
   late final TextEditingController _mcp;
-  var _loaded = false;
-  AgentProfile? _profile;
-  List<CapabilityRef> _caps = const [];
-  List<SkillRef> _assigned = const [];
-  List<String> _denylist = const [];
-  List<CatalogSkill> _appCatalog = const [];
-  List<CatalogSkill> _portable = const [];
-
-  var _kindRepo = false;
-  var _invalidRepo = false;
-  String _cwd = '';
-  String _repoPath = '';
-  String _bookmark = '';
-
-  String _previewSummary = '';
-  var _previewFromHost = false;
   Timer? _previewDebounce;
+
+  AgentCapabilitiesDraft get _draft => ref.read(agentCapabilitiesFormProvider);
+
+  AgentCapabilitiesForm get _form =>
+      ref.read(agentCapabilitiesFormProvider.notifier);
+
+  AgentProfile? get _profile => _draft.profile;
+  List<CapabilityRef> get _caps => _draft.caps;
+  List<SkillRef> get _assigned => _draft.assigned;
+  List<String> get _denylist => _draft.denylist;
+  List<CatalogSkill> get _appCatalog => _draft.appCatalog;
+  List<CatalogSkill> get _portable => _draft.portable;
+  bool get _kindRepo => _draft.kindRepo;
+  bool get _invalidRepo => _draft.invalidRepo;
+  String get _cwd => _draft.cwd;
+  String get _repoPath => _draft.repoPath;
+  String get _bookmark => _draft.bookmark;
 
   @override
   void initState() {
@@ -137,21 +139,20 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       return;
     }
     final caps = profile.resolveCapabilities();
-    setState(() {
-      _profile = profile;
-      _caps = List<CapabilityRef>.from(caps);
-      _assigned = List<SkillRef>.from(profile!.skills);
-      _denylist = List<String>.from(profile.portableDenylist);
-      _appCatalog = app;
-      _portable = portable;
-      _kindRepo = profile.workspace.isRepo;
-      _repoPath = profile.workspace.path;
-      _bookmark = storedBookmark;
-      _cwd = resolved.path;
-      _invalidRepo = resolved.invalidRepo;
-      _mcp.text = mcpTextFromCaps(caps);
-      _loaded = true;
-    });
+    _mcp.text = mcpTextFromCaps(caps);
+    _form.hydrate(
+      profile: profile,
+      caps: List<CapabilityRef>.from(caps),
+      assigned: List<SkillRef>.from(profile.skills),
+      denylist: List<String>.from(profile.portableDenylist),
+      appCatalog: app,
+      portable: portable,
+      kindRepo: profile.workspace.isRepo,
+      repoPath: profile.workspace.path,
+      bookmark: storedBookmark,
+      cwd: resolved.path,
+      invalidRepo: resolved.invalidRepo,
+    );
     _schedulePreview();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection());
   }
@@ -282,10 +283,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _previewFromHost = fromHost;
-      _previewSummary = summary;
-    });
+    _form.setPreview(fromHost: fromHost, summary: summary);
   }
 
   WorkspaceSpec _workspaceSpec() {
@@ -324,12 +322,12 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
           workspace: workspace ?? _workspaceSpec(),
           permissionOverrides: permissionOverrides,
         );
-    setState(() {
-      _profile = next;
-      _caps = List<CapabilityRef>.from(next.resolveCapabilities());
-      _assigned = List<SkillRef>.from(next.skills);
-      _denylist = List<String>.from(next.portableDenylist);
-    });
+    _form.applyEditor(
+      profile: next,
+      caps: List<CapabilityRef>.from(next.resolveCapabilities()),
+      assigned: List<SkillRef>.from(next.skills),
+      denylist: List<String>.from(next.portableDenylist),
+    );
     _schedulePreview();
     try {
       await ref.read(agentProfilesProvider.notifier).saveEditor(next);
@@ -345,13 +343,14 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
         }
       }
       if (rolled != null) {
-        setState(() {
-          _profile = rolled;
-          _caps = List<CapabilityRef>.from(rolled!.resolveCapabilities());
-          _assigned = List<SkillRef>.from(rolled.skills);
-          _denylist = List<String>.from(rolled.portableDenylist);
-          _mcp.text = mcpTextFromCaps(_caps);
-        });
+        final caps = List<CapabilityRef>.from(rolled.resolveCapabilities());
+        _mcp.text = mcpTextFromCaps(caps);
+        _form.applyEditor(
+          profile: rolled,
+          caps: caps,
+          assigned: List<SkillRef>.from(rolled.skills),
+          denylist: List<String>.from(rolled.portableDenylist),
+        );
       }
       toastification.show(
         context: context,
@@ -447,13 +446,13 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     if (picked == null || !mounted) {
       return;
     }
-    setState(() {
-      _kindRepo = true;
-      _repoPath = picked.path;
-      _bookmark = picked.bookmarkBase64;
-      _cwd = picked.path;
-      _invalidRepo = false;
-    });
+    _form.applyWorkspace(
+      kindRepo: true,
+      repoPath: picked.path,
+      bookmark: picked.bookmarkBase64,
+      cwd: picked.path,
+      invalidRepo: false,
+    );
     final profile = _profile;
     if (profile != null) {
       await workspaceAccess.saveBookmark(profile.id, _bookmark);
@@ -477,16 +476,17 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _kindRepo = false;
-      _repoPath = '';
-      _bookmark = '';
-      _invalidRepo = false;
-    });
+    _form.applyWorkspace(
+      kindRepo: false,
+      repoPath: '',
+      bookmark: '',
+      cwd: _cwd,
+      invalidRepo: false,
+    );
     final paths = KimPaths.instance;
     final sandbox = await paths.ensureSandbox(widget.profileId);
     if (mounted) {
-      setState(() => _cwd = sandbox.path);
+      _form.setCwd(sandbox.path);
     }
     await _persist(workspace: WorkspaceSpec.sandbox);
   }
@@ -577,6 +577,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final draft = ref.watch(agentCapabilitiesFormProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
@@ -587,7 +588,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
           context.push('/agent/plaza?assignTo=${widget.profileId}'),
       icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
     );
-    if (!_loaded) {
+    if (!draft.loaded) {
       return Scaffold(
         body: CustomScrollView(
           slivers: [
@@ -614,19 +615,20 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
             sliver: SliverList.list(
               children: [
                 AgentProfileRuntimeSwitch(profileId: widget.profileId),
-                if (_previewSummary.isNotEmpty || !_previewFromHost) ...[
+                if (draft.previewSummary.isNotEmpty ||
+                    !draft.previewFromHost) ...[
                   KimGroupCard(
                     children: [
                       ListTile(
                         key: const Key('agent-capabilities-preview'),
                         title: Text(l10n.agentCapabilitiesPreview),
                         subtitle: Text(
-                          _previewSummary.isEmpty
+                          draft.previewSummary.isEmpty
                               ? l10n.agentCapabilitiesPreviewEmpty
-                              : (_previewFromHost
-                                    ? _previewSummary
+                              : (draft.previewFromHost
+                                    ? draft.previewSummary
                                     : l10n.agentCapabilitiesPreviewLocal(
-                                        _previewSummary,
+                                        draft.previewSummary,
                                       )),
                         ),
                       ),
@@ -729,7 +731,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                     OutlinedButton(
                       key: const Key('agent-workspace-preset-knowledge'),
                       onPressed: () async {
-                        setState(() => _kindRepo = false);
+                        _form.setKindRepo(false);
                         await _setFs(read: true, write: true);
                         await _persist(workspace: WorkspaceSpec.sandbox);
                       },
@@ -738,7 +740,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
                     OutlinedButton(
                       key: const Key('agent-workspace-preset-coding'),
                       onPressed: () async {
-                        setState(() => _kindRepo = true);
+                        _form.setKindRepo(true);
                         if (_repoPath.isEmpty) {
                           await _pickRepo();
                         } else {

@@ -16,6 +16,7 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_chat.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/agent_settings_form.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_group.dart';
@@ -51,14 +52,19 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   late final TextEditingController _prompt;
   late final TextEditingController _model;
   late final TextEditingController _advanced;
-  ReasoningChoice _choice = const ReasoningChoice(kind: 'none');
-  ReasoningSurfaceDto _surface = const ReasoningSurfaceDto(kind: 'none');
-  var _contextTokens = kDefaultContextTokens;
-  var _loaded = false;
-  String _accountId = '';
-  List<VendorSummaryDto> _vendors = const [];
-  List<String> _pendingModels = const [];
-  AgentProfile? _draft;
+
+  AgentSettingsDraft get _state => ref.read(agentSettingsFormProvider);
+
+  AgentSettingsForm get _form => ref.read(agentSettingsFormProvider.notifier);
+
+  ReasoningChoice get _choice => _state.choice;
+  ReasoningSurfaceDto get _surface => _state.surface;
+  int get _contextTokens => _state.contextTokens;
+  bool get _loaded => _state.loaded;
+  String get _accountId => _state.accountId;
+  List<VendorSummaryDto> get _vendors => _state.vendors;
+  List<String> get _pendingModels => _state.pendingModels;
+  AgentProfile? get _editorDraft => _state.profile;
 
   @override
   void initState() {
@@ -82,14 +88,14 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   }
 
   AgentProfile? get _profile {
-    final draft = _draft;
-    if (draft != null) {
+    final stored = _editorDraft;
+    if (stored != null) {
       for (final p in ref.read(agentProfilesProvider)) {
-        if (p.id == draft.id) {
+        if (p.id == stored.id) {
           return p;
         }
       }
-      return draft;
+      return stored;
     }
     final id = widget.profileId;
     if (id == null || id.isEmpty) {
@@ -110,8 +116,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     return ref.read(providerAccountsProvider.notifier).byId(_accountId);
   }
 
-  VendorSummaryDto? _vendorById(String id) {
-    for (final v in _vendors) {
+  VendorSummaryDto? _vendorById(String id, [List<VendorSummaryDto>? vendors]) {
+    for (final v in vendors ?? _vendors) {
       if (v.id == id) {
         return v;
       }
@@ -143,7 +149,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     try {
       final vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
       if (mounted) {
-        setState(() => _vendors = vendors);
+        _form.setVendors(vendors);
       }
     } catch (_) {}
     if (!mounted) {
@@ -156,42 +162,42 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     if (_loaded) {
       return;
     }
-    _loaded = true;
     final accounts = ref.read(providerAccountsProvider);
     if (widget.isCreate) {
       if (accounts.isNotEmpty) {
-        _accountId = accounts.first.id;
         final model = defaultModelForAccount(
           accounts.first,
           _vendorById(accounts.first.vendorId),
         );
         _model.text = model;
-        _contextTokens = defaultContextTokens(model);
-      }
-      if (mounted) {
-        setState(() {});
+        _form.seedCreate(
+          accountId: accounts.first.id,
+          contextTokens: defaultContextTokens(model),
+        );
+      } else {
+        _form.markLoaded();
       }
       await _reloadSurface(toastDropped: false);
       return;
     }
     final profile = _profile;
     if (profile == null) {
+      _form.markLoaded();
       return;
     }
     _displayName.text = profile.displayName;
     _aliases.text = profile.aliases.join(', ');
     _prompt.text = profile.systemPrompt;
-    _accountId = profile.accountId;
     _model.text = profile.model;
-    _contextTokens =
-        profile.contextTokens ?? defaultContextTokens(profile.model);
-    _choice =
-        profile.reasoning ??
-        ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
-        const ReasoningChoice(kind: 'none');
-    if (mounted) {
-      setState(() {});
-    }
+    _form.hydrateEditor(
+      accountId: profile.accountId,
+      contextTokens:
+          profile.contextTokens ?? defaultContextTokens(profile.model),
+      choice:
+          profile.reasoning ??
+          ReasoningChoice.fromThinkingEffort(profile.thinkingEffort) ??
+          const ReasoningChoice(kind: 'none'),
+    );
     await _reloadSurface(toastDropped: false);
   }
 
@@ -211,10 +217,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         return;
       }
       final aligned = alignChoice(surface, _choice);
-      setState(() {
-        _surface = surface;
-        _choice = aligned.choice;
-      });
+      _form.setSurface(surface: surface, choice: aligned.choice);
       if (toastDropped && aligned.dropped) {
         _toastInfo(Copy.agentReasoningDropped);
       }
@@ -268,12 +271,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       model = defaultModelForAccount(account, _vendorById(account.vendorId));
       fell = true;
     }
-    setState(() {
-      _accountId = id;
-      _pendingModels = const [];
-      _model.text = model;
-      _contextTokens = defaultContextTokens(model);
-    });
+    _model.text = model;
+    _form.bindAccount(id: id, contextTokens: defaultContextTokens(model));
     if (fell && mounted) {
       _toastInfo(AppLocalizations.of(context).agentModelFallback(model));
     }
@@ -335,10 +334,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       await _otherModel();
       return;
     }
-    setState(() {
-      _model.text = picked;
-      _contextTokens = defaultContextTokens(picked);
-    });
+    _model.text = picked;
+    _form.setContextTokens(defaultContextTokens(picked));
     unawaited(_reloadSurface(toastDropped: true));
   }
 
@@ -378,13 +375,15 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
       await ref
           .read(providerAccountsProvider.notifier)
           .upsert(account.copyWith(models: models));
-    } else {
-      _pendingModels = selectableModelIds([..._pendingModels, raw]);
-    }
-    setState(() {
       _model.text = raw;
-      _contextTokens = defaultContextTokens(raw);
-    });
+      _form.setContextTokens(defaultContextTokens(raw));
+    } else {
+      _model.text = raw;
+      _form.rememberCustomModel(
+        pendingModels: selectableModelIds([..._pendingModels, raw]),
+        contextTokens: defaultContextTokens(raw),
+      );
+    }
     unawaited(_reloadSurface(toastDropped: true));
   }
 
@@ -443,7 +442,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
         thinkingEffort: choice.value ?? '',
         contextTokens: _contextTokens,
       );
-      _draft = next;
+      _form.setProfile(next);
     } else {
       if (existing == null) {
         if (mounted) {
@@ -470,7 +469,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     if (!mounted) {
       return;
     }
-    setState(() => _choice = choice);
+    _form.setChoice(choice);
     toastification.show(
       context: context,
       type: ToastificationType.success,
@@ -493,7 +492,10 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     );
   }
 
-  List<DropdownMenuItem<String>> _providerItems(AppLocalizations l10n) {
+  List<DropdownMenuItem<String>> _providerItems(
+    AppLocalizations l10n,
+    AgentSettingsDraft settings,
+  ) {
     final accounts = ref.watch(providerAccountsProvider);
     final items = <DropdownMenuItem<String>>[
       for (final a in accounts)
@@ -502,7 +504,8 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
           child: Text(
             a.displayName.isNotEmpty
                 ? a.displayName
-                : (_vendorById(a.vendorId)?.displayName ?? a.vendorId),
+                : (_vendorById(a.vendorId, settings.vendors)?.displayName ??
+                      a.vendorId),
           ),
         ),
       DropdownMenuItem(
@@ -518,13 +521,15 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     if (widget.isCreate) {
       return const AgentCreatePage();
     }
-    ref.watch(providerAccountsProvider);
+    final settings = ref.watch(agentSettingsFormProvider);
     ref.watch(agentProfilesProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final accounts = ref.watch(providerAccountsProvider);
-    final providerValue = _accountId.isNotEmpty ? _accountId : null;
+    final providerValue = settings.accountId.isNotEmpty
+        ? settings.accountId
+        : null;
     final overview = !widget.isCreate ? _profile : null;
 
     return Scaffold(
@@ -570,7 +575,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                           border: InputBorder.none,
                           hintText: l10n.agentNameHint,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) => _form.bump(),
                       ),
                     ),
                     if (!widget.isCreate) ...[
@@ -615,7 +620,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                         child: DropdownButton<String>(
                           key: const Key('agent-provider'),
                           value: () {
-                            final items = _providerItems(l10n);
+                            final items = _providerItems(l10n, settings);
                             if (providerValue != null &&
                                 items.any((i) => i.value == providerValue)) {
                               return providerValue;
@@ -623,7 +628,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                             return items.first.value;
                           }(),
                           isExpanded: true,
-                          items: _providerItems(l10n),
+                          items: _providerItems(l10n, settings),
                           onChanged: (next) {
                             if (next == null) {
                               return;
@@ -634,7 +639,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                       ),
                     ],
                   ),
-                if (_accountId.isNotEmpty) ...[
+                if (settings.accountId.isNotEmpty) ...[
                   const Gap(18),
                   Text(
                     Copy.agentModel,
@@ -677,9 +682,9 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                   ),
                   const Gap(8),
                   ContextWindowControls(
-                    tokens: _contextTokens,
+                    tokens: settings.contextTokens,
                     model: _model.text.trim(),
-                    onChanged: (next) => setState(() => _contextTokens = next),
+                    onChanged: (next) => _form.setContextTokens(next),
                   ),
                   if (!widget.isCreate) ...[
                     const Gap(18),
@@ -691,9 +696,9 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                     ),
                     const Gap(8),
                     ReasoningControls(
-                      surface: _surface,
-                      choice: _choice,
-                      onChanged: (next) => setState(() => _choice = next),
+                      surface: settings.surface,
+                      choice: settings.choice,
+                      onChanged: (next) => _form.setChoice(next),
                       advancedController: _advanced,
                     ),
                   ],

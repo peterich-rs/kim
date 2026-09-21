@@ -43,9 +43,7 @@ class AgentRuntimeSwitch extends ConsumerWidget {
               key: const Key('agent-runtime-codex'),
               title: Text(zh ? '用 Codex 跑这个助手' : 'Run this assistant on Codex'),
               subtitle: Text(
-                zh
-                    ? '默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。'
-                    : 'Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.',
+                zh ? '默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。' : 'Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.',
               ),
               value: codex,
               onChanged: onChanged,
@@ -71,25 +69,25 @@ class AgentProfileRuntimeSwitch extends ConsumerStatefulWidget {
 
 class _AgentProfileRuntimeSwitchState
     extends ConsumerState<AgentProfileRuntimeSwitch> {
-  var _busy = false;
-
   Future<void> _set(AgentProfile profile, bool codex) async {
-    if (_busy) {
+    final busy = runtimeSwitchBusyProvider(widget.profileId);
+    if (ref.read(busy)) {
       return;
     }
-    setState(() => _busy = true);
+    ref.read(busy.notifier).setBusy(true);
     try {
       final next = profile.copyWith(runtime: codex ? 'codex' : 'goose');
       await ref.read(agentProfilesProvider.notifier).saveEditor(next);
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        ref.read(busy.notifier).setBusy(false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final busy = ref.watch(runtimeSwitchBusyProvider(widget.profileId));
     AgentProfile? profile;
     for (final p in ref.watch(agentProfilesProvider)) {
       if (p.id == widget.profileId) {
@@ -103,9 +101,21 @@ class _AgentProfileRuntimeSwitchState
     final current = profile;
     return AgentRuntimeSwitch(
       codex: current.usesCodex,
-      onChanged: _busy
-          ? null
-          : (value) => unawaited(_set(current, value)),
+      onChanged: busy ? null : (value) => unawaited(_set(current, value)),
     );
   }
 }
+
+class RuntimeSwitchBusy extends Notifier<bool> {
+  RuntimeSwitchBusy(this.profileId);
+
+  final String profileId;
+
+  @override
+  bool build() => false;
+
+  void setBusy(bool value) => state = value;
+}
+
+final runtimeSwitchBusyProvider = NotifierProvider.autoDispose
+    .family<RuntimeSwitchBusy, bool, String>(RuntimeSwitchBusy.new);

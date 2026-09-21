@@ -141,6 +141,9 @@ class _BubbleSession implements AgentSessionPort {
   Future<void> abort() async {}
 
   @override
+  Future<void> park() async {}
+
+  @override
   Future<void> steer({required String text}) async {}
 
   @override

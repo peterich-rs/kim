@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/handles.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 class FakeKim implements KimAuthPort, KimClientPort {
@@ -932,6 +933,25 @@ class FakeKim implements KimAuthPort, KimClientPort {
       storeWipeTotal: BigInt.zero,
     );
   }
+
+  @override
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  }) async {}
+
+  @override
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  }) async {}
+
+  @override
+  Stream<AgentPermissionEventDto> watchAgentPermission() =>
+      const Stream.empty();
+
+  @override
+  Stream<AgentUiStatusDto> watchAgentUi() => const Stream.empty();
 
   @override
   Future<void> refreshContacts() async {

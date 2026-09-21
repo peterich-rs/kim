@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/features/agent/catalog.dart';
+import 'package:kim_mobile/features/agent/provider_account_form.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
@@ -53,12 +54,12 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
   late final TextEditingController _name;
   late final TextEditingController _url;
   late final TextEditingController _key;
-  late String _vendor;
-  late List<String> _models;
-  List<VendorSummaryDto> _vendors = const [];
-  var _fetching = false;
-  var _hydrated = false;
   final _secure = SettingsStore.productionSecureStorage();
+
+  ProviderAccountDraft get _draft => ref.read(providerAccountFormProvider);
+
+  ProviderAccountForm get _form =>
+      ref.read(providerAccountFormProvider.notifier);
 
   @override
   void initState() {
@@ -66,8 +67,6 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     _name = TextEditingController();
     _url = TextEditingController();
     _key = TextEditingController();
-    _vendor = 'openai';
-    _models = const [];
     unawaited(_load());
   }
 
@@ -87,9 +86,9 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     return ref.read(providerAccountsProvider.notifier).byId(id);
   }
 
-  VendorSummaryDto? get _vendorSummary {
-    for (final v in _vendors) {
-      if (v.id == _vendor) {
+  VendorSummaryDto? _vendorSummaryOf(ProviderAccountDraft draft) {
+    for (final v in draft.vendors) {
+      if (v.id == draft.vendor) {
         return v;
       }
     }
@@ -101,19 +100,20 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     try {
       final vendors = await ref.read(catalogRepositoryProvider).ensureVendors();
       if (mounted) {
-        setState(() => _vendors = vendors);
+        _form.setVendors(vendors);
       }
     } catch (_) {}
-    if (!mounted || _hydrated) {
+    if (!mounted || _draft.hydrated) {
       return;
     }
-    _hydrated = true;
     final existing = _existing;
+    var vendor = _draft.vendor;
+    var models = _draft.models;
     if (existing != null) {
       _name.text = existing.displayName;
       _url.text = existing.baseUrl;
-      _vendor = existing.vendorId;
-      _models = List<String>.from(existing.models);
+      vendor = existing.vendorId;
+      models = List<String>.from(existing.models);
       try {
         final v = await _secure.read(key: existing.keyRef);
         if (mounted && v != null && v.isNotEmpty) {
@@ -121,33 +121,34 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
         }
       } catch (_) {}
     } else {
-      final vendor = _vendorSummary;
-      if (vendor != null && vendor.defaultBaseUrl.isNotEmpty) {
-        _url.text = vendor.defaultBaseUrl;
+      final summary = _vendorSummaryOf(_draft);
+      if (summary != null && summary.defaultBaseUrl.isNotEmpty) {
+        _url.text = summary.defaultBaseUrl;
       }
-      _name.text = vendor?.displayName ?? 'OpenAI';
+      _name.text = summary?.displayName ?? 'OpenAI';
     }
     if (mounted) {
-      setState(() {});
+      _form.applyHydrated(vendor: vendor, models: models);
     }
     await _seedModels();
   }
 
   Future<void> _seedModels() async {
-    if (_models.isNotEmpty) {
+    final draft = _draft;
+    if (draft.models.isNotEmpty) {
       return;
     }
-    final vendor = _vendorSummary;
+    final vendor = _vendorSummaryOf(draft);
     final models = await migrateAccountModelIds(
-      vendorId: _vendor,
-      existing: _models,
+      vendorId: draft.vendor,
+      existing: draft.models,
       catalogModels: vendor?.models ?? const [],
       defaultModel: vendor?.defaultModel ?? '',
     );
     if (!mounted || models.isEmpty) {
       return;
     }
-    setState(() => _models = models);
+    _form.setModels(models);
     final existing = _existing;
     if (existing == null) {
       return;
@@ -166,15 +167,16 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       _toast(Copy.agentKeyMissing, error: true);
       return;
     }
-    setState(() => _fetching = true);
-    final original = List<String>.from(_models);
+    _form.setFetching(true);
+    final draft = _draft;
+    final original = List<String>.from(draft.models);
     try {
       final bridge = ref.read(agentBridgeProvider);
       await bridge.ensure();
       final list = await bridge.fetchModels(
         SessionOpenOpts(
-          model: _models.isNotEmpty ? _models.first : '',
-          llmBackend: canonicalizeVendorId(_vendor),
+          model: draft.models.isNotEmpty ? draft.models.first : '',
+          llmBackend: canonicalizeVendorId(draft.vendor),
           resumeOnOpen: false,
           baseUrl: _url.text.trim(),
           apiKey: _key.text.trim(),
@@ -197,17 +199,17 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       if (models.isEmpty) {
         throw StateError(Copy.agentFetchModelsFailed('empty'));
       }
-      setState(() => _models = models);
+      _form.setModels(models);
       final existing = _existing;
       if (existing != null) {
         await ref
             .read(providerAccountsProvider.notifier)
             .upsert(
               existing.copyWith(
-                vendorId: canonicalizeVendorId(_vendor),
+                vendorId: canonicalizeVendorId(draft.vendor),
                 baseUrl: _url.text.trim(),
                 displayName: _name.text.trim().isEmpty
-                    ? _vendor
+                    ? draft.vendor
                     : _name.text.trim(),
                 models: models,
               ),
@@ -226,11 +228,11 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       if (!mounted) {
         return;
       }
-      setState(() => _models = original);
+      _form.setModels(original);
       _toast(Copy.agentFetchModelsFailed(err.toString()), error: true);
     } finally {
       if (mounted) {
-        setState(() => _fetching = false);
+        _form.setFetching(false);
       }
     }
   }
@@ -253,8 +255,9 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       _toast(Copy.agentInvalidUrl, error: true);
       return;
     }
-    final vendorId = canonicalizeVendorId(_vendor);
-    final vendor = _vendorSummary;
+    final draft = _draft;
+    final vendorId = canonicalizeVendorId(draft.vendor);
+    final vendor = _vendorSummaryOf(draft);
     final existingId = widget.accountId;
     final id = widget.isCreate || existingId == null || existingId.isEmpty
         ? 'acct-${DateTime.now().microsecondsSinceEpoch}'
@@ -269,7 +272,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       displayName: _name.text.trim().isEmpty
           ? (vendor?.displayName ?? vendorId)
           : _name.text.trim(),
-      models: _models,
+      models: draft.models,
     );
     await ref.read(providerAccountsProvider.notifier).upsert(account);
     final key = _key.text.trim();
@@ -288,10 +291,11 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
 
   @override
   Widget build(BuildContext context) {
+    final draft = ref.watch(providerAccountFormProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final vendor = _vendorSummary;
+    final vendor = _vendorSummaryOf(draft);
     final urlChoices = <String>{
       if (vendor != null && vendor.defaultBaseUrl.isNotEmpty)
         vendor.defaultBaseUrl,
@@ -329,24 +333,27 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                       child: DropdownButton<String>(
                         key: const Key('provider-vendor'),
                         value: () {
-                          final ids = {for (final v in _vendors) v.id};
-                          if (ids.contains(_vendor) || _vendors.isEmpty) {
-                            return _vendor;
+                          final ids = {for (final v in draft.vendors) v.id};
+                          if (ids.contains(draft.vendor) ||
+                              draft.vendors.isEmpty) {
+                            return draft.vendor;
                           }
-                          return _vendors.first.id;
+                          return draft.vendors.first.id;
                         }(),
                         isExpanded: true,
                         items: [
-                          for (final v in sortVendors(_vendors))
+                          for (final v in sortVendors(draft.vendors))
                             DropdownMenuItem(
                               value: v.id,
                               child: Text(v.displayName),
                             ),
-                          if (_vendors.every((v) => v.id != _vendor) &&
-                              _vendor.isNotEmpty)
+                          if (draft.vendors.every(
+                                (v) => v.id != draft.vendor,
+                              ) &&
+                              draft.vendor.isNotEmpty)
                             DropdownMenuItem(
-                              value: _vendor,
-                              child: Text(_vendor),
+                              value: draft.vendor,
+                              child: Text(draft.vendor),
                             ),
                         ],
                         onChanged: (next) {
@@ -354,23 +361,20 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                             return;
                           }
                           VendorSummaryDto? hit;
-                          for (final v in _vendors) {
+                          for (final v in draft.vendors) {
                             if (v.id == next) {
                               hit = v;
                               break;
                             }
                           }
-                          setState(() {
-                            _vendor = next;
-                            if (hit != null && hit.defaultBaseUrl.isNotEmpty) {
-                              _url.text = hit.defaultBaseUrl;
-                            }
-                            if (_name.text.isEmpty ||
-                                _name.text ==
-                                    (_vendorSummary?.displayName ?? '')) {
-                              _name.text = hit?.displayName ?? next;
-                            }
-                          });
+                          _form.setVendor(next);
+                          if (hit != null && hit.defaultBaseUrl.isNotEmpty) {
+                            _url.text = hit.defaultBaseUrl;
+                          }
+                          if (_name.text.isEmpty ||
+                              _name.text == (hit?.displayName ?? '')) {
+                            _name.text = hit?.displayName ?? next;
+                          }
                         },
                       ),
                     ),
@@ -382,9 +386,9 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                         controller: _name,
                         decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: vendor?.displayName ?? _vendor,
+                          hintText: vendor?.displayName ?? draft.vendor,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) => _form.bump(),
                       ),
                     ),
                     const Divider(height: 1),
@@ -419,7 +423,8 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                             if (next == null) {
                               return;
                             }
-                            setState(() => _url.text = next);
+                            _url.text = next;
+                            _form.bump();
                           },
                         ),
                       ),
@@ -451,24 +456,24 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                 const Gap(8),
                 KimGroupCard(
                   children: [
-                    if (_models.isEmpty)
+                    if (draft.models.isEmpty)
                       ListTile(title: Text(l10n.agentModelHint))
                     else
-                      for (final m in _models) ...[
-                        if (m != _models.first) const Divider(height: 1),
+                      for (final m in draft.models) ...[
+                        if (m != draft.models.first) const Divider(height: 1),
                         ListTile(dense: true, title: Text(m)),
                       ],
                     const Divider(height: 1),
                     ListTile(
                       title: Text(l10n.agentFetchModels),
-                      trailing: _fetching
+                      trailing: draft.fetching
                           ? const SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.refresh, size: 18),
-                      onTap: _fetching
+                      onTap: draft.fetching
                           ? null
                           : () => unawaited(_refreshModels()),
                     ),

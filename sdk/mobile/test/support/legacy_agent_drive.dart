@@ -1,4 +1,5 @@
-/// Forwards MobileAgent run requests to desktop `rust_agent`. No queue/LRU here.
+/// Session-port test harness. Production turns run in `HostAgentRuntime`;
+/// this loop only exists so drive/session tests can stub `AgentSessionPort`.
 library;
 
 import 'dart:async';
@@ -103,7 +104,9 @@ class AgentRunLoop {
   Future<String> Function(AgentRunRequestDto req)? promptOverride;
 
   StreamSubscription<AgentRunRequestDto>? _sub;
+  StreamSubscription<dynamic>? _permSub;
   StreamController<AgentRunRequestDto>? _incoming;
+  final _sessions = <String, AgentSessionPort>{};
   var _stopped = false;
 
   Future<void> start() async {
@@ -114,6 +117,20 @@ class AgentRunLoop {
     // hot restart / port closed). Rust then drops the watch task and never
     // delivers turns again unless we re-subscribe.
     while (!_stopped) {
+      await _seedSecrets();
+      permissions?.bindClient(client);
+      await _permSub?.cancel();
+      _permSub = client.watchAgentPermission().listen((event) {
+        permissions?.prompt(
+          event.dest,
+          AgentPermissionPrompt(
+            callId: event.callId,
+            name: event.name,
+            preview: event.preview,
+          ),
+        );
+      });
+      KimLogger.info('agent run watch');
       final incoming = StreamController<AgentRunRequestDto>();
       _incoming = incoming;
       _sub = client.watchAgentRun().listen(
@@ -122,6 +139,9 @@ class AgentRunLoop {
             return;
           }
           incoming.add(req);
+          KimLogger.info(
+            'agent run begin dest=${req.dest} profile=${req.profileId} epoch=${req.epoch} replyTo=${req.inReplyTo}',
+          );
         },
         onError: (Object error, StackTrace st) {
           KimLogger.warn('agent run watch', error, st);
@@ -146,6 +166,9 @@ class AgentRunLoop {
                 ? DriveResult.fromText(await promptOverride!(req))
                 : await _promptGoose(req);
             sink?.finish(req.dest, failed: false);
+            KimLogger.info(
+              'agent run done dest=${req.dest} stop=${result.stopReason} replied=${result.replied}',
+            );
             await client.submitAgentRun(
               AgentRunResultDto(
                 dest: req.dest,
@@ -200,13 +223,25 @@ class AgentRunLoop {
   }
 
   Future<void> stop() async {
+    KimLogger.info('agent run loop stop');
     _stopped = true;
     await _sub?.cancel();
     _sub = null;
+    await _permSub?.cancel();
+    _permSub = null;
     final incoming = _incoming;
     _incoming = null;
     if (incoming != null && !incoming.isClosed) {
       await incoming.close();
+    }
+    final sessions = List<AgentSessionPort>.from(_sessions.values);
+    _sessions.clear();
+    for (final session in sessions) {
+      try {
+        await session.close().timeout(const Duration(seconds: 2));
+      } catch (e, st) {
+        KimLogger.warn('agent session close', e, st);
+      }
     }
   }
 
@@ -284,36 +319,60 @@ class AgentRunLoop {
     final prefs = await SharedPreferences.getInstance();
     final harnessOn = prefs.getBool('agent.harness_v1') ?? false;
     final runtime = profile.usesCodex ? 'codex' : 'goose';
-    final session = await goose.open(
+    final opts = SessionOpenOpts(
+      model: profile.model,
+      llmBackend: account.vendorId,
+      resumeOnOpen: true,
+      baseUrl: account.baseUrl,
+      apiKey: apiKey,
+      enableFsTools: profile.tools.fs,
+      bashEnabled: profile.tools.bash,
+      profileId: profile.id,
+      profileJson: jsonEncode(
+        profile.toHostJson(
+          account,
+          userAgentsSkills: skillPaths.userAgentsSkills,
+        ),
+      ),
+      thinkingEffort: profile.thinkingEffort,
+      gooseMode: profile.mode,
+      enableKimTools: false,
+      enableApprovals: false,
+      sessionId: '${req.dest}:${req.profileId}',
+      harnessJson: jsonEncode({
+        'enabled': harnessOn,
+        if (runtime == 'codex') 'runtime': 'codex',
+      }),
+    );
+    final key = '${req.dest}:${req.profileId}';
+    var session = _sessions[key];
+    if (session != null) {
+      KimLogger.info('agent session reconfigure key=$key runtime=$runtime');
+      try {
+        await session.reconfigure(opts: opts);
+      } catch (e, st) {
+        KimLogger.warn('agent session reconfigure', e, st);
+        _sessions.remove(key);
+        try {
+          await session.close().timeout(const Duration(seconds: 2));
+        } catch (closeErr, closeSt) {
+          KimLogger.warn('agent session close', closeErr, closeSt);
+        }
+        session = null;
+      }
+    }
+    if (session == null) {
+      KimLogger.info(
+        'agent session open dest=${req.dest} profile=${profile.id} runtime=$runtime',
+      );
+    }
+    session ??= await goose.open(
       sqlitePath: sessionFile.path,
       projectRoot: ws.path,
-      opts: SessionOpenOpts(
-        model: profile.model,
-        llmBackend: account.vendorId,
-        resumeOnOpen: true,
-        baseUrl: account.baseUrl,
-        apiKey: apiKey,
-        enableFsTools: profile.tools.fs,
-        bashEnabled: profile.tools.bash,
-        profileId: profile.id,
-        profileJson: jsonEncode(
-          profile.toHostJson(
-            account,
-            userAgentsSkills: skillPaths.userAgentsSkills,
-          ),
-        ),
-        thinkingEffort: profile.thinkingEffort,
-        gooseMode: profile.mode,
-        enableKimTools: false,
-        enableApprovals: false,
-        sessionId: '${req.dest}:${req.profileId}',
-        harnessJson: jsonEncode({
-          'enabled': harnessOn,
-          if (runtime == 'codex') 'runtime': 'codex',
-        }),
-      ),
+      opts: opts,
     );
-    return driveSession(session, dest: req.dest, text: req.text);
+    _sessions[key] = session;
+    return driveSession(session, dest: req.dest, text: req.text, persist: true);
   }
 
   /// Visible for tests. Host yields deferred IM tools to Dart; ignoring
@@ -323,6 +382,7 @@ class AgentRunLoop {
     required String dest,
     required String text,
     KimImTools? tools,
+    bool persist = false,
   }) async {
     final im = tools ?? KimImTools(client);
     permissions?.attach(dest, session);
@@ -336,10 +396,15 @@ class AgentRunLoop {
       final pending = await session.resume();
       var prompted = pending.resumedOps.isEmpty;
       if (prompted) {
+        KimLogger.info('agent prompt dest=$dest chars=${text.length}');
         await session.prompt(text: text);
       }
       await for (final ev in inbox.stream) {
+        if (ev.kind == 'listener_released') {
+          continue;
+        }
         if (ev.kind == 'action_required') {
+          KimLogger.info('agent permission ${ev.name} call=${ev.callId}');
           permissions?.prompt(
             dest,
             AgentPermissionPrompt(
@@ -351,6 +416,7 @@ class AgentRunLoop {
           continue;
         }
         if (ev.kind == 'tool_request') {
+          KimLogger.info('agent tool ${ev.name} call=${ev.callId}');
           final output = await im.execute(
             name: ev.name,
             argumentsJson: ev.argumentsJson,
@@ -365,32 +431,89 @@ class AgentRunLoop {
         if (quiet) {
           if (!prompted) {
             prompted = true;
+            KimLogger.info('agent prompt dest=$dest chars=${text.length}');
             await session.prompt(text: text);
             continue;
           }
+          KimLogger.info(
+            'agent turn stop=${ev.stopReason} kind=${ev.kind} dest=$dest',
+          );
           return DriveResult.fromEvent(ev);
         }
         if (ev.kind == 'failed' || ev.kind == 'aborted') {
           if (!prompted && ev.stopReason == 'yield_abandoned') {
             prompted = true;
+            KimLogger.info('agent prompt dest=$dest chars=${text.length}');
             await session.prompt(text: text);
             continue;
           }
+          KimLogger.warn(
+            'agent turn ${ev.kind} stop=${ev.stopReason} dest=$dest',
+          );
           throw DriveStop(DriveResult.fromEvent(ev));
         }
       }
       throw StateError(Copy.agentRunFailed);
     } finally {
-      await sub.cancel();
+      permissions?.detach(dest);
+      try {
+        if (persist) {
+          await session.park().timeout(const Duration(seconds: 2));
+        } else {
+          await session.close().timeout(const Duration(seconds: 2));
+        }
+      } on TimeoutException {
+        KimLogger.warn(
+          persist
+              ? 'agent session park timed out'
+              : 'agent session close timed out',
+        );
+      } catch (e, st) {
+        KimLogger.warn(
+          persist ? 'agent session park' : 'agent session close',
+          e,
+          st,
+        );
+      }
+      try {
+        await sub.cancel().timeout(const Duration(seconds: 1));
+      } on TimeoutException {
+        KimLogger.warn('agent event subscription cancel timed out');
+      }
       if (!inbox.isClosed) {
         await inbox.close();
       }
-      permissions?.detach(dest);
-      try {
-        await session.close();
-      } catch (e, st) {
-        KimLogger.warn('agent session close', e, st);
+    }
+  }
+
+  Future<void> _seedSecrets() async {
+    try {
+      final accounts = await client.listProviderAccounts();
+      for (final account in accounts) {
+        final secret = await _readStoredKey(account.keyRef);
+        if (secret.isEmpty) {
+          continue;
+        }
+        await client.cacheAgentSecret(keyRef: account.keyRef, secret: secret);
       }
+      final goose = await _readStoredKey('agent.api_key.goose');
+      if (goose.isNotEmpty) {
+        await client.cacheAgentSecret(
+          keyRef: 'agent.api_key.goose',
+          secret: goose,
+        );
+      }
+    } catch (err, stack) {
+      KimLogger.warn('agent secret seed', err, stack);
+    }
+  }
+
+  Future<String> _readStoredKey(String key) async {
+    try {
+      final secure = SettingsStore.productionSecureStorage();
+      return await secure.read(key: key) ?? '';
+    } catch (_) {
+      return '';
     }
   }
 

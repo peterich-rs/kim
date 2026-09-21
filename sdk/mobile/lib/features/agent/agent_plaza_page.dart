@@ -18,6 +18,7 @@ import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/features/agent/agent_plaza_ui.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/design/kim_group.dart';
@@ -33,11 +34,6 @@ class AgentPlazaPage extends ConsumerStatefulWidget {
 }
 
 class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
-  var _loaded = false;
-  List<CatalogSkill> _app = const [];
-  List<CatalogSkill> _eco = const [];
-  AgentProfile? _assignProfile;
-
   @override
   void initState() {
     super.initState();
@@ -89,16 +85,13 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _app = app;
-      _eco = eco;
-      _assignProfile = assign;
-      _loaded = true;
-    });
+    ref
+        .read(plazaUiProvider.notifier)
+        .showLoaded(app: app, eco: eco, assign: assign);
   }
 
   Future<void> _assignApp(CatalogSkill skill) async {
-    final profile = _assignProfile;
+    final profile = ref.read(plazaUiProvider).assign;
     final l10n = AppLocalizations.of(context);
     if (profile == null) {
       toastification.show(
@@ -153,7 +146,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
     if (!mounted) {
       return;
     }
-    setState(() => _assignProfile = next);
+    ref.read(plazaUiProvider.notifier).setAssign(next);
     toastification.show(
       context: context,
       type: ToastificationType.success,
@@ -217,6 +210,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
 
   @override
   Widget build(BuildContext context) {
+    final view = ref.watch(plazaUiProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
@@ -233,7 +227,7 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
               ),
             ),
           ];
-    if (!_loaded) {
+    if (!view.loaded) {
       return Scaffold(
         body: CustomScrollView(
           slivers: [
@@ -253,9 +247,9 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
           KimBodySliver(
             sliver: SliverList.list(
               children: [
-                if (_assignProfile != null) ...[
+                if (view.assign != null) ...[
                   Text(
-                    l10n.agentPlazaAssigningTo(_assignProfile!.displayName),
+                    l10n.agentPlazaAssigningTo(view.assign!.displayName),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -279,37 +273,37 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                 const Gap(8),
                 KimGroupCard(
                   children: [
-                    if (_app.isEmpty)
+                    if (view.app.isEmpty)
                       ListTile(title: Text(l10n.agentSkillsAppEmpty))
                     else
-                      for (var i = 0; i < _app.length; i++) ...[
+                      for (var i = 0; i < view.app.length; i++) ...[
                         if (i > 0) const Divider(height: 1),
                         ListTile(
-                          key: Key('agent-plaza-kim-${_app[i].id}'),
+                          key: Key('agent-plaza-kim-${view.app[i].id}'),
                           title: Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  _app[i].name,
+                                  view.app[i].name,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              SkillOriginChip(shelf: _app[i].shelf),
+                              SkillOriginChip(shelf: view.app[i].shelf),
                             ],
                           ),
-                          subtitle: _app[i].listDescription.isEmpty
+                          subtitle: view.app[i].listDescription.isEmpty
                               ? null
                               : Text(
-                                  _app[i].listDescription,
+                                  view.app[i].listDescription,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                          trailing: _assignProfile == null
+                          trailing: view.assign == null
                               ? null
                               : TextButton(
                                   onPressed: () =>
-                                      unawaited(_assignApp(_app[i])),
+                                      unawaited(_assignApp(view.app[i])),
                                   child: Text(l10n.agentPlazaAssign),
                                 ),
                         ),
@@ -326,32 +320,32 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
                 const Gap(8),
                 KimGroupCard(
                   children: [
-                    if (_eco.isEmpty)
+                    if (view.eco.isEmpty)
                       ListTile(
                         title: Text(l10n.agentPlazaEcoEmpty),
                         subtitle: Text(l10n.agentPlazaEcoEmptyHint),
                       )
                     else
-                      for (var i = 0; i < _eco.length; i++) ...[
+                      for (var i = 0; i < view.eco.length; i++) ...[
                         if (i > 0) const Divider(height: 1),
                         ListTile(
-                          key: Key('agent-plaza-eco-${_eco[i].id}'),
+                          key: Key('agent-plaza-eco-${view.eco[i].id}'),
                           title: Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  _eco[i].name,
+                                  view.eco[i].name,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              SkillOriginChip(shelf: _eco[i].shelf),
+                              SkillOriginChip(shelf: view.eco[i].shelf),
                             ],
                           ),
-                          subtitle: _eco[i].listDescription.isEmpty
+                          subtitle: view.eco[i].listDescription.isEmpty
                               ? null
                               : Text(
-                                  _eco[i].listDescription,
+                                  view.eco[i].listDescription,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),

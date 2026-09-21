@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/bridge/conversation_port.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
@@ -43,7 +44,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   Timer? _typingIdle;
   Timer? _typingSendGate;
   var _typingActive = false;
-  KimClientPort? _client;
+  ConversationPort? _room;
   VoidCallback? _leaveRoom;
 
   ThreadKind get kind =>
@@ -65,7 +66,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   }
 
   Future<void> _start() async {
-    _client = ref.read(clientPortProvider);
+    _room = ref.read(clientPortProvider).conversation(dest);
     final unread = ref.read(threadsProvider).thread(dest)?.unread ?? 0;
     final messages = ref.read(threadMessagesProvider(dest).notifier);
     messages.captureUnreadAnchor(
@@ -123,14 +124,15 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       return;
     }
     final KimClientPort client = ref.read(clientPortProvider);
-    _client = client;
     final id = dest;
+    final port = client.conversation(id);
+    _room = port;
     try {
-      final rows = await client.roomEnter(id, kind: 0);
+      final rows = await port.enter();
       void leave() {
         unawaited(() async {
           try {
-            await client.roomLeave(id, kind: 0);
+            await port.leave();
           } catch (_) {}
         }());
       }
@@ -149,12 +151,12 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   void _disposeSession() {
     _typingIdle?.cancel();
     _typingSendGate?.cancel();
-    final client = _client;
-    if (_typingActive && isUserThread && client != null) {
+    final room = _room;
+    if (_typingActive && isUserThread && room != null) {
       _typingActive = false;
       unawaited(() async {
         try {
-          await client.sendTyping(dest, kind: 0, active: false);
+          await room.setTyping(false);
         } catch (_) {}
       }());
     }
@@ -199,12 +201,12 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   }
 
   Future<void> _emitTyping(bool active) async {
-    final client = _client;
-    if (client == null) {
+    final room = _room;
+    if (room == null) {
       return;
     }
     try {
-      await client.sendTyping(dest, kind: 0, active: active);
+      await room.setTyping(active);
     } catch (_) {}
   }
 
@@ -235,7 +237,8 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     } on StateError catch (err) {
       _toast(err.message, error: true);
       return false;
-    } catch (err) {
+    } catch (err, st) {
+      KimLogger.warn('sendText', err, st);
       _toast(agentRegisterError(err), error: true);
       return false;
     }
@@ -276,17 +279,21 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       });
     } on StateError catch (err) {
       _toast(err.message, error: true);
-    } catch (_) {
+    } catch (e, st) {
+      KimLogger.warn('sendImages', e, st);
       _toast(Copy.sendFailed, error: true);
     }
   }
 
   Future<void> retry(String key) async {
+    KimLogger.info('retry send clientId=$key');
     try {
       await ref.read(clientPortProvider).retrySend(key);
     } on StateError catch (err) {
       _toast(err.message, error: true);
-    } catch (_) {}
+    } catch (e, st) {
+      KimLogger.warn('retry send', e, st);
+    }
   }
 
   void consumeToast() {
@@ -305,12 +312,10 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       throw StateError(Copy.required);
     }
     final id = const Uuid().v4();
-    return client.enqueueMessage(
-      dest: dest,
-      kind: kind,
-      content: KimOutgoingContent.text(body),
-      clientId: id,
-    );
+    KimLogger.info('enqueue text dest=$dest clientId=$id kind=$kind');
+    return client
+        .conversation(dest)
+        .sendText(kind: kind, text: body, clientId: id);
   }
 
   Future<List<KimCommandReceipt>> _enqueueImages(
@@ -324,6 +329,9 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
         continue;
       }
       final id = const Uuid().v4();
+      KimLogger.info(
+        'enqueue media dest=$dest clientId=$id kind=$kind video=${asset.isVideo}',
+      );
       final content = asset.isVideo
           ? KimOutgoingContent.video(url: asset.path)
           : KimOutgoingContent.image(

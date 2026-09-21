@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/features/agent/kim_im_tools.dart';
 import 'package:kim_mobile/models/models.dart';
@@ -88,6 +90,9 @@ class _ToolSession implements AgentSessionPort {
 
   @override
   Future<void> abort() async {}
+
+  @override
+  Future<void> park() async {}
 
   @override
   Future<void> steer({required String text}) async {}
@@ -235,6 +240,9 @@ class _DeltaSession implements AgentSessionPort {
 
   @override
   Future<void> abort() async {}
+
+  @override
+  Future<void> park() async {}
 
   @override
   Future<void> steer({required String text}) async {}

@@ -81,6 +81,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  custom_lint: ^0.8.0
+  kim_lints:
+    path: packages/kim_lints
   build_runner: ^2.5.4
   freezed: ^3.1.0
 

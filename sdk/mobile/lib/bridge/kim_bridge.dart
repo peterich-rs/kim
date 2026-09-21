@@ -18,6 +18,7 @@ import 'package:kim_mobile/core/image_extra.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/auth.dart' as rust_auth;
 import 'package:kim_mobile/src/rust/api/client.dart' as rust;
+import 'package:kim_mobile/src/rust/api/handles.dart' as rust_handles;
 import 'package:kim_mobile/src/rust/api/simple.dart' as rust_simple;
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/src/rust/frb_generated.dart';
@@ -241,6 +242,21 @@ abstract class KimClientPort {
   });
 
   Future<rust_types.MetricsDto> metricsSnapshot();
+
+  /// One-shot handoff into the desktop secret vault.
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  });
+
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  });
+
+  Stream<rust_handles.AgentPermissionEventDto> watchAgentPermission();
+
+  Stream<rust_handles.AgentUiStatusDto> watchAgentUi();
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -277,7 +293,6 @@ abstract class KimAuthPort {
 }
 
 class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
-  static const flutterPin = '3.47.2';
   static const ffiReady = true;
 
   static bool _inited = false;
@@ -868,6 +883,32 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   @override
   Stream<rust_types.AgentRunRequestDto> watchAgentRun() {
     return _require().watchAgentRun();
+  }
+
+  @override
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  }) {
+    return _require().cacheAgentSecret(keyRef: keyRef, secret: secret);
+  }
+
+  @override
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  }) {
+    return _require().respondAgentPermission(callId: callId, allow: allow);
+  }
+
+  @override
+  Stream<rust_handles.AgentPermissionEventDto> watchAgentPermission() {
+    return _require().watchAgentPermission();
+  }
+
+  @override
+  Stream<rust_handles.AgentUiStatusDto> watchAgentUi() {
+    return _require().watchAgentUi();
   }
 
   @override

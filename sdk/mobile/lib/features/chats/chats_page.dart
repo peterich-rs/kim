@@ -36,7 +36,6 @@ class ChatsPage extends ConsumerStatefulWidget {
 }
 
 class _ChatsPageState extends ConsumerState<ChatsPage> {
-  var _searchOpen = false;
   final _searchFocus = FocusNode();
 
   @override
@@ -46,8 +45,9 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
   }
 
   void _toggleSearch() {
-    setState(() => _searchOpen = !_searchOpen);
-    if (_searchOpen) {
+    final open = !ref.read(chatsSearchUiProvider);
+    ref.read(chatsSearchUiProvider.notifier).setOpen(open);
+    if (open) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _searchFocus.requestFocus();
@@ -61,11 +61,12 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final searchOpen = ref.watch(chatsSearchUiProvider);
     ref.listen(chatsSearchTickProvider, (prev, next) {
       if (widget.compact) {
         return;
       }
-      if (prev != next && !_searchOpen) {
+      if (prev != next && !searchOpen) {
         _toggleSearch();
       }
     });
@@ -128,7 +129,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
               const SizedBox(width: 12),
             ],
           ),
-          if (_searchOpen)
+          if (searchOpen)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),

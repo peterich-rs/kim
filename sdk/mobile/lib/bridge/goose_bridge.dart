@@ -37,6 +37,9 @@ abstract class AgentSessionPort {
   });
   Future<void> close();
   Future<void> abort();
+
+  /// Wake the FRB event stream so `listen` can cancel without aborting Codex.
+  Future<void> park();
   Future<void> steer({required String text});
   Future<void> reconfigure({required SessionOpenOpts opts});
   Future<ResumeReportDto> resume();
@@ -77,6 +80,9 @@ class NativeAgentSession implements AgentSessionPort {
 
   @override
   Future<void> abort() => _inner.abort();
+
+  @override
+  Future<void> park() => _inner.park();
 
   @override
   Future<void> steer({required String text}) => _inner.steer(text: text);

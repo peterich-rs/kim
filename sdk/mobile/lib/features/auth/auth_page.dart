@@ -13,6 +13,7 @@ import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/validation.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/auth_form.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/motion.dart';
@@ -32,16 +33,12 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   late final TextEditingController _account;
   late final TextEditingController _password;
   late final TextEditingController _confirm;
-  late bool _register;
   var _sending = false;
-  String? _accountErr;
-  String? _passwordErr;
-  String? _confirmErr;
 
   @override
   void initState() {
     super.initState();
-    _register = widget.register;
+    ref.read(authDraftProvider.notifier).setRegister(widget.register);
     _account = TextEditingController();
     _password = TextEditingController();
     _confirm = TextEditingController();
@@ -51,7 +48,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   void didUpdateWidget(covariant AuthPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.register != widget.register) {
-      _register = widget.register;
+      ref.read(authDraftProvider.notifier).setRegister(widget.register);
     }
   }
 
@@ -63,7 +60,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     super.dispose();
   }
 
-  Mutation<void> get _mutation => _register ? registerMutation : signInMutation;
+  Mutation<void> get _mutation =>
+      ref.read(authDraftProvider).register ? registerMutation : signInMutation;
 
   Future<void> _submit() async {
     if (_sending) {
@@ -80,14 +78,16 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       final password = sanitizePassword(_password.text);
       final accountErr = validateAccount(account);
       final passwordErr = validatePassword(password);
-      final confirmErr = _register
+      final confirmErr = ref.read(authDraftProvider).register
           ? validateConfirm(password, sanitizePassword(_confirm.text))
           : null;
-      setState(() {
-        _accountErr = accountErr;
-        _passwordErr = passwordErr;
-        _confirmErr = confirmErr;
-      });
+      ref
+          .read(authDraftProvider.notifier)
+          .showErrors(
+            account: accountErr,
+            password: passwordErr,
+            confirm: confirmErr,
+          );
       if (accountErr != null || passwordErr != null || confirmErr != null) {
         return;
       }
@@ -97,7 +97,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
           await tsx
               .get(authProvider.notifier)
               .signIn(
-                register: _register,
+                register: ref.read(authDraftProvider).register,
                 account: account,
                 password: password,
               );
@@ -116,7 +116,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isRegister = _register;
+    final draft = ref.watch(authDraftProvider);
+    final isRegister = draft.register;
     final mut = ref.watch(_mutation);
     final busy = mut is MutationPending;
     final notice = ref.watch(authProvider).notice ?? '';
@@ -138,20 +139,15 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               account: _account,
               password: _password,
               confirm: _confirm,
-              accountErr: _accountErr,
-              passwordErr: _passwordErr,
-              confirmErr: _confirmErr,
+              accountErr: draft.accountErr,
+              passwordErr: draft.passwordErr,
+              confirmErr: draft.confirmErr,
               onSubmit: _submit,
               onToggle: busy
                   ? null
                   : () {
                       _mutation.reset(ref);
-                      setState(() {
-                        _register = !_register;
-                        _confirmErr = null;
-                        _passwordErr = null;
-                        _accountErr = null;
-                      });
+                      ref.read(authDraftProvider.notifier).toggleRegister();
                     },
             );
             return SingleChildScrollView(

@@ -14,6 +14,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_chat.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/peer_profile.dart';
 import 'package:kim_mobile/features/chats/inbox.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
@@ -39,10 +40,6 @@ class PeerProfilePage extends ConsumerStatefulWidget {
 }
 
 class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
-  KimPerson? _person;
-  var _loading = true;
-  String? _error;
-
   @override
   void initState() {
     super.initState();
@@ -54,33 +51,27 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
     final social = ref.read(contactsProvider);
     final cached = social.person(account);
     if (cached != null) {
-      setState(() {
-        _person = cached;
-        _loading = false;
-      });
+      ref.read(peerProfileProvider(account).notifier).showCached(cached);
     }
     try {
       final person = await ref.read(clientPortProvider).profile(dest: account);
       if (!mounted) {
         return;
       }
-      setState(() {
-        _person = person;
-        _loading = false;
-        _error = null;
-      });
+      ref.read(peerProfileProvider(account).notifier).showLoaded(person);
     } catch (err) {
       if (!mounted) {
         return;
       }
-      setState(() {
-        _loading = false;
-        _error ??= socialError(err);
-        _person ??= KimPerson(
-          account: account,
-          nickname: widget.seedTitle.isEmpty ? account : widget.seedTitle,
-        );
-      });
+      ref
+          .read(peerProfileProvider(account).notifier)
+          .showFailed(
+            error: socialError(err),
+            fallback: KimPerson(
+              account: account,
+              nickname: widget.seedTitle.isEmpty ? account : widget.seedTitle,
+            ),
+          );
     }
   }
 
@@ -172,9 +163,10 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
+    final view = ref.watch(peerProfileProvider(widget.account));
     final social = ref.watch(contactsProvider);
     final me = ref.watch(sessionProvider).account;
-    final person = _person;
+    final person = view.person;
     final account = widget.account;
     final isSelf = account == me;
     final friend = social.isFriend(account);
@@ -188,7 +180,7 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
       body: CustomScrollView(
         slivers: [
           KimSliverHeader(title: l10n.profile),
-          if (_loading && person == null)
+          if (view.loading && person == null)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: CircularProgressIndicator()),
@@ -196,7 +188,7 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
           else if (person == null)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(child: Text(_error ?? l10n.userNotFound)),
+              child: Center(child: Text(view.error ?? l10n.userNotFound)),
             )
           else ...[
             SliverToBoxAdapter(
@@ -330,10 +322,10 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
                       ],
                     ],
                   ),
-                  if (_error != null) ...[
+                  if (view.error != null) ...[
                     const Gap(12),
                     Text(
-                      _error!,
+                      view.error!,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.error,
                       ),
