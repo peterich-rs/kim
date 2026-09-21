@@ -1,5 +1,6 @@
 //! Thin FFI over `kim-agent-host` (Goose). Isolated from `kim_client_ffi`.
 
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::rt;
 use crate::frb_generated::StreamSink;
 
+#[derive(Clone)]
 pub struct SessionOpenOpts {
     pub model: String,
     pub llm_backend: String,
@@ -135,6 +137,10 @@ impl AgentUiEvent {
         e
     }
 
+    fn listener_released() -> Self {
+        Self::base("listener_released")
+    }
+
     fn tool_request(
         operation_id: String,
         call_id: String,
@@ -215,6 +221,9 @@ struct Shared {
     yield_cancel: Mutex<Option<CancellationToken>>,
     resolved: Mutex<Option<ResolvedProfile>>,
     recreate_attempts: AtomicU64,
+    open_opts: Mutex<Option<SessionOpenOpts>>,
+    sqlite_for_codex: String,
+    root_for_codex: String,
 }
 
 pub struct AgentSession {
@@ -311,6 +320,7 @@ pub async fn session_open(
     project_root: String,
     opts: SessionOpenOpts,
 ) -> Result<AgentSession, String> {
+    kim_log::init_beside(&sqlite_path, "kim-agent.log");
     let disk = kim_agent_host::session_file_from_sqlite_path(&sqlite_path);
     let sqlite_for_codex = sqlite_path.clone();
     let root_for_codex = project_root.clone();
@@ -339,7 +349,19 @@ pub async fn session_open(
     if !host.is_codex() {
         host.connect_extensions().await.map_err(map_host_err)?;
     }
-    let shared = shared_new(host, session_id, Some(resolved));
+    tracing::info!(
+        session_id = %session_id,
+        profile_id = %resolved.profile.id,
+        "agent session ready"
+    );
+    let shared = shared_new(
+        host,
+        session_id,
+        Some(resolved),
+        Some(opts),
+        sqlite_for_codex,
+        root_for_codex,
+    );
     let _ = shared.events.send(AgentUiEvent::session_ready());
     Ok(AgentSession {
         inner: Arc::new(shared),
@@ -387,10 +409,15 @@ impl AgentSession {
         if text.is_empty() {
             return Err("empty prompt".into());
         }
+        tracing::info!(
+            session_id = %self.inner.session_id,
+            chars = text.chars().count(),
+            "agent prompt"
+        );
         let (cancel, gen) = self.begin_run()?;
         let inner = self.inner.clone();
         let (op_tx, op_rx) = oneshot::channel();
-        rt().spawn(async move {
+        spawn_on_current(async move {
             let _gate = inner.complete_gate.lock().await;
             if inner.generation.load(Ordering::SeqCst) != gen {
                 let _ = op_tx.send(Err("aborted".into()));
@@ -431,6 +458,7 @@ impl AgentSession {
                 return Err("unknown tool call".into());
             }
         }
+        tracing::info!(call_id = %call_id, "agent tool complete");
         let inner = self.inner.clone();
         let gen = inner.generation.load(Ordering::SeqCst);
         let (op_tx, op_rx) = oneshot::channel();
@@ -438,7 +466,7 @@ impl AgentSession {
         if let Ok(mut g) = inner.cancel.lock() {
             *g = Some(cancel.clone());
         }
-        rt().spawn(async move {
+        spawn_on_current(async move {
             let _gate = inner.complete_gate.lock().await;
             if inner.generation.load(Ordering::SeqCst) != gen {
                 let _ = op_tx.send(Err("aborted".into()));
@@ -486,6 +514,7 @@ impl AgentSession {
         permission: String,
     ) -> Result<String, String> {
         let parsed = parse_permission(&permission)?;
+        tracing::info!(call_id = %call_id, permission = %permission, "agent permission");
         {
             let phase = self
                 .inner
@@ -503,7 +532,7 @@ impl AgentSession {
         if let Ok(mut g) = inner.cancel.lock() {
             *g = Some(cancel.clone());
         }
-        rt().spawn(async move {
+        spawn_on_current(async move {
             let _gate = inner.complete_gate.lock().await;
             if inner.generation.load(Ordering::SeqCst) != gen {
                 let _ = op_tx.send(Err("aborted".into()));
@@ -547,7 +576,6 @@ impl AgentSession {
 
     #[flutter_rust_bridge::frb(sync)]
     pub fn listen(&self, sink: StreamSink<AgentUiEvent>) -> Result<(), String> {
-        let _guard = rt().enter();
         let replay = self
             .inner
             .replay
@@ -576,6 +604,12 @@ impl AgentSession {
                 }
             }
         });
+        Ok(())
+    }
+
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn park(&self) -> Result<(), String> {
+        let _ = self.inner.events.send(AgentUiEvent::listener_released());
         Ok(())
     }
 
@@ -722,9 +756,13 @@ impl AgentSession {
     }
 
     pub async fn reconfigure(&self, opts: SessionOpenOpts) -> Result<(), String> {
-        let resolved = resolved_from_opts(&opts, String::new())?;
+        let root = self.inner.root_for_codex.clone();
+        let resolved = resolved_from_opts(&opts, root.clone())?;
         if let Ok(mut slot) = self.inner.resolved.lock() {
             *slot = Some(resolved.clone());
+        }
+        if let Ok(mut slot) = self.inner.open_opts.lock() {
+            *slot = Some(opts.clone());
         }
         {
             let slot = self.inner.host.read().await;
@@ -743,22 +781,41 @@ impl AgentSession {
                 resolve_limits(&opts.harness_json, resolved.profile.harness.as_ref())
                     .unwrap_or_else(|_| kim_agent_host::HarnessLimits::disabled()),
             );
-        host.connect_extensions().await.map_err(map_host_err)?;
+        attach_codex(
+            &host,
+            &opts,
+            &resolved.profile,
+            &self.inner.sqlite_for_codex,
+            &self.inner.root_for_codex,
+        )
+        .await?;
+        if !host.is_codex() {
+            host.connect_extensions().await.map_err(map_host_err)?;
+        }
         let mut slot = self.inner.host.write().await;
         let state = slot.runtime_state().await;
         host.restore_runtime_state(state).await;
         slot.disconnect_extensions().await;
+        slot.shutdown_codex().await;
         *slot = host;
+        tracing::info!(
+            session_id = %self.inner.session_id,
+            profile_id = %resolved.profile.id,
+            provider = %resolved.profile.provider.kind,
+            "agent session reconfigure"
+        );
         Ok(())
     }
 
     pub async fn close(&self) -> Result<(), String> {
+        tracing::info!(session_id = %self.inner.session_id, "agent session close");
         let _ = self.abort().await;
         let host = {
             let guard = self.inner.host.read().await;
             guard.clone()
         };
         host.disconnect_extensions().await;
+        host.shutdown_codex().await;
         Ok(())
     }
 }
@@ -775,6 +832,7 @@ fn spawn_host_pump(
                     let _ = events.send(AgentUiEvent::text_delta(op.clone(), delta));
                 }
                 HostEvent::ToolRequest { call_id, name, .. } => {
+                    tracing::info!(op = %op, call_id = %call_id, name = %name, "agent tool request");
                     let _ = events.send(AgentUiEvent::tool_started(op.clone(), call_id, name));
                 }
                 HostEvent::ToolResult {
@@ -783,6 +841,7 @@ fn spawn_host_pump(
                     output_preview,
                     ok,
                 } => {
+                    tracing::info!(op = %op, call_id = %call_id, name = %name, ok, "agent tool result");
                     let _ = events.send(AgentUiEvent::tool_finished(
                         op.clone(),
                         call_id,
@@ -845,6 +904,7 @@ async fn finish_turn(
             replied,
             visible,
         }) => {
+            tracing::info!(op = %op, replied, visible, "agent turn finished");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -870,6 +930,7 @@ async fn finish_turn(
                 guard.clone()
             };
             let pending = host.pending_yields(&inner.session_id).await;
+            tracing::info!(op = %op, pending = pending.len(), "agent turn yielded");
             if !set_phase_if_current(inner, gen, SessionPhase::Yielded) {
                 return;
             }
@@ -902,6 +963,7 @@ async fn finish_turn(
             arm_yield_watch(inner, gen);
         }
         Ok(TurnOutcome::Cancelled { reason }) => {
+            tracing::info!(op = %op, reason = ?reason, "agent turn cancelled");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -918,6 +980,7 @@ async fn finish_turn(
             let _ = inner.events.send(ev);
         }
         Ok(TurnOutcome::TimedOut { kind }) => {
+            tracing::warn!(op = %op, kind = ?kind, "agent turn timed out");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -936,6 +999,7 @@ async fn finish_turn(
             message,
             recently_active,
         }) => {
+            tracing::warn!(op = %op, recently_active, "agent turn poisoned");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -950,6 +1014,7 @@ async fn finish_turn(
             let _ = inner.events.send(ev);
         }
         Err(HostError::Provider(fail)) => {
+            tracing::warn!(op = %op, error = %fail, "agent turn provider failed");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -959,6 +1024,7 @@ async fn finish_turn(
             let _ = inner.events.send(ev);
         }
         Err(err) => {
+            tracing::warn!(op = %op, error = %err, "agent turn failed");
             disarm_yield_watch(inner);
             if !set_phase_if_current(inner, gen, SessionPhase::Idle) {
                 return;
@@ -1066,7 +1132,25 @@ async fn recv_op_id(
         .map_err(|_| "operation start canceled".to_string())?
 }
 
-fn shared_new(host: AgentHost, session_id: String, resolved: Option<ResolvedProfile>) -> Shared {
+fn spawn_on_current<F>(fut: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(fut);
+    } else {
+        rt().spawn(fut);
+    }
+}
+
+fn shared_new(
+    host: AgentHost,
+    session_id: String,
+    resolved: Option<ResolvedProfile>,
+    open_opts: Option<SessionOpenOpts>,
+    sqlite_for_codex: String,
+    root_for_codex: String,
+) -> Shared {
     let limits = host.limits();
     let (tx, _) = broadcast::channel(256);
     Shared {
@@ -1082,6 +1166,9 @@ fn shared_new(host: AgentHost, session_id: String, resolved: Option<ResolvedProf
         yield_cancel: Mutex::new(None),
         resolved: Mutex::new(resolved),
         recreate_attempts: AtomicU64::new(0),
+        open_opts: Mutex::new(open_opts),
+        sqlite_for_codex,
+        root_for_codex,
     }
 }
 
@@ -1155,19 +1242,37 @@ async fn recreate_host(inner: &Shared) -> Result<(), String> {
     let Some(resolved) = resolved else {
         return Ok(());
     };
-    let host = AgentHost::from_resolved(resolved)
+    let host = AgentHost::from_resolved(resolved.clone())
         .map_err(map_host_err)?
         .with_limits(inner.limits.clone());
+    let opts = inner
+        .open_opts
+        .lock()
+        .map_err(|_| "open_opts lock".to_string())?
+        .clone();
+    if let Some(opts) = opts {
+        attach_codex(
+            &host,
+            &opts,
+            &resolved.profile,
+            &inner.sqlite_for_codex,
+            &inner.root_for_codex,
+        )
+        .await?;
+    }
+    if !host.is_codex() {
+        let _ = host.connect_extensions().await;
+    }
+    host.repair_pairing(&inner.session_id).await;
     let old = {
         let guard = inner.host.read().await;
         guard.clone()
     };
     let state = old.runtime_state().await;
     host.restore_runtime_state(state).await;
-    let _ = host.connect_extensions().await;
-    host.repair_pairing(&inner.session_id).await;
     let mut slot = inner.host.write().await;
     slot.disconnect_extensions().await;
+    slot.shutdown_codex().await;
     *slot = host;
     Ok(())
 }
@@ -1191,7 +1296,14 @@ mod tests {
 
     fn session_from_host(session_id: String, host: AgentHost) -> AgentSession {
         AgentSession {
-            inner: Arc::new(shared_new(host, session_id, None)),
+            inner: Arc::new(shared_new(
+                host,
+                session_id,
+                None,
+                None,
+                String::new(),
+                String::new(),
+            )),
         }
     }
 
@@ -1207,6 +1319,20 @@ mod tests {
             "timed out waiting for phase {want}, got {}",
             rt().block_on(session.snapshot()).unwrap().phase
         );
+    }
+
+    #[test]
+    fn spawn_on_current_from_plain_thread_uses_app_runtime() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            spawn_on_current(async move {
+                let _ = tx.send(());
+            });
+        })
+        .join()
+        .expect("thread");
+        rx.recv_timeout(Duration::from_secs(1))
+            .expect("spawned task ran");
     }
 
     fn wait_pending(session: &AgentSession, want: &[&str]) {
@@ -1283,7 +1409,10 @@ mod tests {
         rt().block_on(session.prompt("find".into())).unwrap();
         wait_phase(&session, "yielded");
         assert_eq!(
-            rt().block_on(session.snapshot()).unwrap().pending_call_ids.len(),
+            rt().block_on(session.snapshot())
+                .unwrap()
+                .pending_call_ids
+                .len(),
             2
         );
         rt().block_on(session.complete_tool("c1".into(), r#"{"people":[]}"#.into()))

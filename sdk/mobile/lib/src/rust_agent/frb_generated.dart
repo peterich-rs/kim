@@ -97,6 +97,8 @@ abstract class AgentRustLibApi extends BaseApi {
     required AgentSession that,
   });
 
+  Future<void> crateApiSessionAgentSessionPark({required AgentSession that});
+
   Future<String> crateApiSessionAgentSessionPrompt({
     required AgentSession that,
     required String text,
@@ -330,6 +332,38 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
         debugName: "AgentSession_listen",
         argNames: ["that", "sink"],
       );
+
+  @override
+  Future<void> crateApiSessionAgentSessionPark({required AgentSession that}) {
+    return Future.value(
+      handler.executeSync(
+        SyncTask(
+          callFfi: () {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
+              that,
+              serializer,
+            );
+            return pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 25,
+            )!;
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiSessionAgentSessionParkConstMeta,
+          argValues: [that],
+          apiImpl: this,
+        ),
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionAgentSessionParkConstMeta =>
+      const TaskConstMeta(debugName: "AgentSession_park", argNames: ["that"]);
 
   @override
   Future<String> crateApiSessionAgentSessionPrompt({
@@ -1631,6 +1665,9 @@ class AgentSessionImpl extends RustOpaque implements AgentSession {
 
   Stream<AgentUiEvent> listen() =>
       AgentRustLib.instance.api.crateApiSessionAgentSessionListen(that: this);
+
+  Future<void> park() =>
+      AgentRustLib.instance.api.crateApiSessionAgentSessionPark(that: this);
 
   Future<String> prompt({required String text}) => AgentRustLib.instance.api
       .crateApiSessionAgentSessionPrompt(that: this, text: text);

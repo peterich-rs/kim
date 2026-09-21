@@ -1,0 +1,24 @@
+[package]
+name = "kim-desktop-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "In-process desktop agent runtime. Dart subscribes; it does not orchestrate turns."
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+kim-agent-codec = { path = "../kim-agent-codec" }
+kim-agent-host = { path = "../kim-agent-host" }
+kim-sdk = { path = "../kim-sdk" }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

@@ -295,7 +295,7 @@ Flutter composer / 通讯录
 
 **拒绝：**
 
-- 在 `kim-agent-host` 里 `path-dep kim-client`，或 `kim_agent_ffi` 调 `kim_client_ffi`。违反 `docs/agent-goose.md:24`「Dart orchestrates the two FFIs」。
+- 在 `kim-agent-host` 里 `path-dep kim-client`，或 `kim_agent_ffi` 调 `kim_client_ffi`。编排放在 `kim-desktop-runtime`（同时依赖 `kim-sdk` 与 `kim-agent-host`），见 `docs/impl/ffi-oo-contract.md`。`kim-agent-host` 仍然不能依赖 `kim-client`。
 - 用 oneshot channel 把 `ToolProvider::call` 阻塞到 Dart 回包。机器在 `run()` 内持有 session lock/busy，Flutter 无法在同一 session 上 `complete_tool`；也更难做确认卡与取消。
 - ACP `was_executed_externally` 冒充：该 meta（`goose.external_dispatch`）表示「已经在外部执行完、loop 不要再 dispatch」。Dart 工具在 yield 时 **尚未执行**，不能打这个标记。Dart 跑完之后写的是正常 `ToolResponse`；**任何阶段都不得**设置 `goose.external_dispatch`。
 

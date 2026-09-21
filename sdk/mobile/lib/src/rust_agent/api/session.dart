@@ -92,6 +92,8 @@ abstract class AgentSession implements RustOpaqueInterface {
 
   Stream<AgentUiEvent> listen();
 
+  Future<void> park();
+
   Future<String> prompt({required String text});
 
   Future<String> promptWithContext({

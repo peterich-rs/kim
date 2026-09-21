@@ -16,6 +16,8 @@ members = [
     "crates/kim-agent-host",
     "crates/kim-codex-helper",
     "crates/kim-agent-codec",
+    "crates/kim-log",
+    "crates/kim-desktop-runtime",
     "services/gateway",
     "services/chat",
     "services/royal",
@@ -88,6 +90,7 @@ arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
 kim-agent-codec = { path = "crates/kim-agent-codec" }
 kim-agent-host = { path = "crates/kim-agent-host" }
+kim-log = { path = "crates/kim-log" }
 
 # Codex pin rust-v0.155.1 patches crates.io copies that lack the `proxy`
 # feature. Path deps do not inherit the Codex workspace [patch] table.

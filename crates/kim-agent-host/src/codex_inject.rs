@@ -79,6 +79,10 @@ pub(crate) fn apply_profile(
     } else {
         install_custom_provider(config, profile, api_key)?;
     }
+    config.model_provider.supports_websockets = false;
+    if let Some(slot) = config.model_providers.get_mut(&config.model_provider_id) {
+        slot.supports_websockets = false;
+    }
 
     let writable = writable_shell(profile);
     config.permissions = Permissions::from_approval_and_profile(
@@ -489,9 +493,9 @@ mod tests {
     use crate::profile::LegacyOpenOpts;
     use crate::profile::ToolSet;
 
-    fn config_for(profile: &AgentProfile) -> Config {
+    async fn config_for(profile: &AgentProfile) -> Config {
         let home = tempfile::tempdir().expect("tempdir");
-        let mut opts = CodexEmbedOpts {
+        let opts = CodexEmbedOpts {
             codex_home: home.path().join("codex"),
             codex_self_exe: Some(home.path().join("kim-codex-helper")),
             codex_linux_sandbox_exe: None,
@@ -500,8 +504,7 @@ mod tests {
             api_key: "test-key".into(),
             prompt: "ping".into(),
         };
-        let _ = &mut opts;
-        let mut config = embed_config(&opts).expect("config");
+        let mut config = embed_config(&opts).await.expect("config");
         apply_profile(&mut config, profile, "test-key").expect("apply");
         config
     }
@@ -516,12 +519,12 @@ mod tests {
         })
     }
 
-    #[test]
-    fn chat_profile_is_read_only_and_compacts_at_seventy_percent() {
+    #[tokio::test]
+    async fn chat_profile_is_read_only_and_compacts_at_seventy_percent() {
         let mut profile = legacy("openai", "chat");
         profile.mode = GooseMode::Chat;
         profile.model.context_tokens = Some(1000);
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         assert_eq!(
             config.permissions.approval_policy.get(),
             &AskForApproval::Never
@@ -538,15 +541,23 @@ mod tests {
         let instructions = config.developer_instructions.unwrap_or_default();
         assert!(instructions.contains("没有文件写入"));
         assert!(instructions.contains("助手"));
+        assert!(!config.model_provider.supports_websockets);
+        assert!(
+            !config
+                .model_providers
+                .get(&config.model_provider_id)
+                .expect("openai provider")
+                .supports_websockets
+        );
     }
 
-    #[test]
-    fn custom_provider_keeps_the_key_on_the_bearer() {
+    #[tokio::test]
+    async fn custom_provider_keeps_the_key_on_the_bearer() {
         let mut profile = legacy("openai_compatible", "auto");
         profile.provider.base_url = "https://example.test/v1".into();
         profile.mode = GooseMode::Auto;
         profile.tools.bash = true;
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         assert_eq!(config.model_provider_id, "kim");
         assert!(!config.model_provider.requires_openai_auth);
         assert!(!config.model_provider.supports_websockets);
@@ -565,20 +576,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn smart_approve_with_bash_asks_on_request() {
+    #[tokio::test]
+    async fn smart_approve_with_bash_asks_on_request() {
         let mut profile = legacy("openai", "smart_approve");
         profile.mode = GooseMode::SmartApprove;
         profile.tools.bash = true;
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         assert_eq!(
             config.permissions.approval_policy.get(),
             &AskForApproval::OnRequest
         );
     }
 
-    #[test]
-    fn anthropic_is_rejected_before_a_thread_starts() {
+    #[tokio::test]
+    async fn anthropic_is_rejected_before_a_thread_starts() {
         let profile = legacy("anthropic", "chat");
         let home = tempfile::tempdir().expect("tempdir");
         let opts = CodexEmbedOpts {
@@ -590,7 +601,7 @@ mod tests {
             api_key: "test-key".into(),
             prompt: "ping".into(),
         };
-        let mut config = embed_config(&opts).expect("config");
+        let mut config = embed_config(&opts).await.expect("config");
         let err = apply_profile(&mut config, &profile, "test-key").unwrap_err();
         assert!(err.to_string().contains("Responses"), "{err}");
     }
@@ -609,8 +620,8 @@ mod tests {
         assert!(!confirms_in_app(&profile, "search_contacts"));
     }
 
-    #[test]
-    fn stdio_extension_becomes_an_mcp_server() {
+    #[tokio::test]
+    async fn stdio_extension_becomes_an_mcp_server() {
         let mut profile = legacy("openai", "chat");
         profile.extensions = vec![ExtensionSpec {
             name: "github".into(),
@@ -619,7 +630,7 @@ mod tests {
             url: String::new(),
             env: Default::default(),
         }];
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         let server = config
             .mcp_servers
             .get()
@@ -635,11 +646,11 @@ mod tests {
         assert!(server.oauth.is_none());
     }
 
-    #[test]
-    fn skill_denylist_is_a_session_layer_and_empty_root_skips_home() {
+    #[tokio::test]
+    async fn skill_denylist_is_a_session_layer_and_empty_root_skips_home() {
         let mut profile = legacy("openai", "chat");
         profile.portable_denylist = vec!["mute-me".into()];
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         assert!(config.config_layer_stack.get_active_user_layer().is_none());
         let rules = codex_config::skill_config_rules_from_stack(&config.config_layer_stack);
         assert_eq!(rules.entries.len(), 1);
@@ -650,11 +661,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn absolute_skills_directory_becomes_the_user_scan_root() {
+    #[tokio::test]
+    async fn absolute_skills_directory_becomes_the_user_scan_root() {
         let mut profile = legacy("openai", "chat");
         profile.user_agents_skills = "/tmp/kim-agents/skills".into();
-        let config = config_for(&profile);
+        let config = config_for(&profile).await;
         let folder = config
             .config_layer_stack
             .get_active_user_layer()

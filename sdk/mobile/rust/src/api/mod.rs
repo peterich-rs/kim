@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod client;
+pub mod handles;
 pub mod simple;
 pub mod types;
 

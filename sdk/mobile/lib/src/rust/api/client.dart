@@ -4,16 +4,19 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'handles.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import 'types.dart';
 
 // These functions are ignored because they are not marked as `pub`: `ack_from_receipt`, `empty_ack`, `supervisor`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `from`, `from`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>>
 abstract class KimUiHandle implements RustOpaqueInterface {
+  Future<AgentCatalogHandle> agentCatalog();
+
   Future<String> agentFlags();
 
   Future<void> attachStore({required String dbPath});
@@ -60,9 +63,19 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required String visibility,
   });
 
+  /// Seeds the desktop secret vault once. Not part of a turn payload.
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  });
+
   Future<void> cancelSend({required String clientId});
 
   Future<CommandAckDto> command({required UiCommandDto cmd});
+
+  Future<ContactsHandle> contacts();
+
+  Future<ConversationHandle> conversation({required String dest});
 
   /// Always callable. Does not open SQLite.
   static KimUiHandle create() =>
@@ -109,6 +122,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required String locale,
   });
 
+  Future<InboxHandle> inbox();
+
   Future<List<AgentProfileDto>> listAgentProfiles();
 
   Future<List<ProviderAccountDto>> listProviderAccounts();
@@ -129,6 +144,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 messageId,
   });
 
+  Future<MediaHandle> media();
+
   Future<LocalMediaDto> mediaFetch({required String url});
 
   Future<LocalMediaDto> mediaUpload({
@@ -148,6 +165,11 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   Future<ProfileDto> profile({required String dest});
 
   Future<void> refreshContacts();
+
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  });
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
@@ -215,7 +237,13 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> upsertProviderAccount({required ProviderAccountDto row});
 
+  /// Desktop permission cards. Phone returns an idle stream.
+  Stream<AgentPermissionEventDto> watchAgentPermission();
+
   Stream<AgentRunRequestDto> watchAgentRun();
+
+  /// Desktop pet presence (`running` / `done` / `failed`). Phone is idle.
+  Stream<AgentUiStatusDto> watchAgentUi();
 
   Stream<ContactsSnapshotDto> watchContacts();
 

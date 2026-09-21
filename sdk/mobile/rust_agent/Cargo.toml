@@ -13,6 +13,7 @@ flutter_rust_bridge = "=2.13.0"
 async-trait = "0.1"
 futures = "0.3"
 kim-agent-host = { path = "../../../crates/kim-agent-host", features = ["codex"] }
+kim-log = { path = "../../../crates/kim-log" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }

@@ -47,17 +47,16 @@ Registered 1:1 busy state reuses `typingProvider` / `KimTypingRow`. kim-sdk pers
 ## Layout
 
 ```
-Flutter composer  --talk-->  kim_client_ffi (IM / WGateway)
-                 --unregistered dest=goose / agent:<id>-->  kim_agent_ffi
-                      --> kim-agent-host
-                           AgentProfile → MachineFactory → Goose
-                           (+ AGENTS.md + skill catalog + SkillOp)
-                 --registered 1:1 TalkResp-->  kim_agent_ffi
-                      --> assistant_finished → chat.bot.reply → persist timeline
-                      --> Running → chat.bot.typing (heartbeat) + local Typing footer
+Flutter UI  --intent / watch projection-->  KimUiHandle
+Desktop Rust HostAgentRuntime
+  consumes MobileAgent turns in-process
+  kim-agent-host session + IM tools on KimSdk
+  permission cards are the only Dart round-trip
+  assistant_finished → chat.bot.reply inside the runtime
+Phone stays NoopAgent (no agent host linked)
 ```
 
-Dart orchestrates the two FFIs. Do not merge IM and agent Rust clients. `kim_agent_ffi` must not depend on `kim-client`.
+Desktop Rust orchestrates IM and the agent host. Dart is a UI subscriber: handles, intents, and snapshots. Do not merge the `kim-agent-host` crate into `kim-client`. `kim_agent_ffi` must not depend on `kim-client`. The orchestrator is `kim-desktop-runtime`. See [impl/ffi-oo-contract.md](impl/ffi-oo-contract.md).
 
 ## Build / test
 

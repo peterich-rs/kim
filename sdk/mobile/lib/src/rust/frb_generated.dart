@@ -5,6 +5,7 @@
 
 import 'api/auth.dart';
 import 'api/client.dart';
+import 'api/handles.dart';
 import 'api/simple.dart';
 import 'api/types.dart';
 
@@ -72,7 +73,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 2076388975;
+  int get rustContentHash => -1053079161;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -84,6 +85,83 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<void> crateApiHandlesAgentCatalogHandleDeleteProfile({
+    required AgentCatalogHandle that,
+    required String id,
+  });
+
+  Future<List<ProviderAccountDto>>
+  crateApiHandlesAgentCatalogHandleListAccounts({
+    required AgentCatalogHandle that,
+  });
+
+  Future<List<AgentProfileDto>> crateApiHandlesAgentCatalogHandleListProfiles({
+    required AgentCatalogHandle that,
+  });
+
+  Future<void> crateApiHandlesAgentCatalogHandleUpsertProfile({
+    required AgentCatalogHandle that,
+    required AgentProfileDto row,
+  });
+
+  Future<List<PersonDto>> crateApiHandlesContactsHandleFriends({
+    required ContactsHandle that,
+  });
+
+  Future<ProfileDto> crateApiHandlesContactsHandleProfile({
+    required ContactsHandle that,
+    required String dest,
+  });
+
+  Future<List<PersonDto>> crateApiHandlesContactsHandleSearch({
+    required ContactsHandle that,
+    required String query,
+  });
+
+  Stream<ContactsSnapshotDto> crateApiHandlesContactsHandleWatch({
+    required ContactsHandle that,
+  });
+
+  Future<String> crateApiHandlesConversationHandleDest({
+    required ConversationHandle that,
+  });
+
+  Future<List<RoomMemberDto>> crateApiHandlesConversationHandleEnter({
+    required ConversationHandle that,
+  });
+
+  Future<String> crateApiHandlesConversationHandleLeave({
+    required ConversationHandle that,
+  });
+
+  Future<void> crateApiHandlesConversationHandleLoadOlder({
+    required ConversationHandle that,
+  });
+
+  Future<void> crateApiHandlesConversationHandleMarkRead({
+    required ConversationHandle that,
+  });
+
+  Future<KimCommandReceipt> crateApiHandlesConversationHandleSendText({
+    required ConversationHandle that,
+    required String text,
+    required String clientId,
+  });
+
+  Future<void> crateApiHandlesConversationHandleSetTyping({
+    required ConversationHandle that,
+    required bool active,
+  });
+
+  Stream<TimelineUpdateDto> crateApiHandlesConversationHandleWatchTimeline({
+    required ConversationHandle that,
+    required int limit,
+  });
+
+  Future<KimUiHandle> crateApiHandlesInboxHandleApp({
+    required InboxHandle that,
+  });
+
   Future<void> crateApiAuthKimAuthChangePassword({
     required KimAuth that,
     required String token,
@@ -111,6 +189,10 @@ abstract class RustLibApi extends BaseApi {
     required KimAuth that,
     required String account,
     required String password,
+  });
+
+  Future<AgentCatalogHandle> crateApiClientKimUiHandleAgentCatalog({
+    required KimUiHandle that,
   });
 
   Future<String> crateApiClientKimUiHandleAgentFlags({
@@ -172,6 +254,12 @@ abstract class RustLibApi extends BaseApi {
     required String visibility,
   });
 
+  Future<void> crateApiClientKimUiHandleCacheAgentSecret({
+    required KimUiHandle that,
+    required String keyRef,
+    required String secret,
+  });
+
   Future<void> crateApiClientKimUiHandleCancelSend({
     required KimUiHandle that,
     required String clientId,
@@ -180,6 +268,15 @@ abstract class RustLibApi extends BaseApi {
   Future<CommandAckDto> crateApiClientKimUiHandleCommand({
     required KimUiHandle that,
     required UiCommandDto cmd,
+  });
+
+  Future<ContactsHandle> crateApiClientKimUiHandleContacts({
+    required KimUiHandle that,
+  });
+
+  Future<ConversationHandle> crateApiClientKimUiHandleConversation({
+    required KimUiHandle that,
+    required String dest,
   });
 
   KimUiHandle crateApiClientKimUiHandleCreate();
@@ -258,6 +355,10 @@ abstract class RustLibApi extends BaseApi {
     required String locale,
   });
 
+  Future<InboxHandle> crateApiClientKimUiHandleInbox({
+    required KimUiHandle that,
+  });
+
   Future<List<AgentProfileDto>> crateApiClientKimUiHandleListAgentProfiles({
     required KimUiHandle that,
   });
@@ -288,6 +389,10 @@ abstract class RustLibApi extends BaseApi {
     required String dest,
     required int kind,
     required PlatformInt64 messageId,
+  });
+
+  Future<MediaHandle> crateApiClientKimUiHandleMedia({
+    required KimUiHandle that,
   });
 
   Future<LocalMediaDto> crateApiClientKimUiHandleMediaFetch({
@@ -323,6 +428,12 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiClientKimUiHandleRefreshContacts({
     required KimUiHandle that,
+  });
+
+  Future<void> crateApiClientKimUiHandleRespondAgentPermission({
+    required KimUiHandle that,
+    required String callId,
+    required bool allow,
   });
 
   Future<KimCommandReceipt> crateApiClientKimUiHandleRetrySend({
@@ -427,7 +538,14 @@ abstract class RustLibApi extends BaseApi {
     required ProviderAccountDto row,
   });
 
+  Stream<AgentPermissionEventDto>
+  crateApiClientKimUiHandleWatchAgentPermission({required KimUiHandle that});
+
   Stream<AgentRunRequestDto> crateApiClientKimUiHandleWatchAgentRun({
+    required KimUiHandle that,
+  });
+
+  Stream<AgentUiStatusDto> crateApiClientKimUiHandleWatchAgentUi({
     required KimUiHandle that,
   });
 
@@ -453,6 +571,20 @@ abstract class RustLibApi extends BaseApi {
     required KimUiHandle that,
   });
 
+  Future<LocalMediaDto> crateApiHandlesMediaHandleFetch({
+    required MediaHandle that,
+    required String url,
+  });
+
+  Future<LocalMediaDto> crateApiHandlesMediaHandleUpload({
+    required MediaHandle that,
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  });
+
   String crateApiSimpleGreet({required String name});
 
   String crateApiAuthHttpOriginFromWs({required String wsUrl});
@@ -462,6 +594,41 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiSimpleSpecBlobToJson({required List<int> blob});
 
   Future<Uint8List> crateApiSimpleSpecJsonToBlob({required String bodyJson});
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_AgentCatalogHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_AgentCatalogHandle;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_AgentCatalogHandlePtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ContactsHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ContactsHandle;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_ContactsHandlePtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ConversationHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ConversationHandle;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_ConversationHandlePtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_InboxHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_InboxHandle;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_InboxHandlePtr;
 
   RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_KimAuth;
 
@@ -476,6 +643,14 @@ abstract class RustLibApi extends BaseApi {
   get rust_arc_decrement_strong_count_KimUiHandle;
 
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KimUiHandlePtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_MediaHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_MediaHandle;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_MediaHandlePtr;
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -485,6 +660,643 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  Future<void> crateApiHandlesAgentCatalogHandleDeleteProfile({
+    required AgentCatalogHandle that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesAgentCatalogHandleDeleteProfileConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesAgentCatalogHandleDeleteProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentCatalogHandle_delete_profile",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<List<ProviderAccountDto>>
+  crateApiHandlesAgentCatalogHandleListAccounts({
+    required AgentCatalogHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_provider_account_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesAgentCatalogHandleListAccountsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesAgentCatalogHandleListAccountsConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentCatalogHandle_list_accounts",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<List<AgentProfileDto>> crateApiHandlesAgentCatalogHandleListProfiles({
+    required AgentCatalogHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_agent_profile_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesAgentCatalogHandleListProfilesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesAgentCatalogHandleListProfilesConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentCatalogHandle_list_profiles",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiHandlesAgentCatalogHandleUpsertProfile({
+    required AgentCatalogHandle that,
+    required AgentProfileDto row,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+            that,
+            serializer,
+          );
+          sse_encode_box_autoadd_agent_profile_dto(row, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesAgentCatalogHandleUpsertProfileConstMeta,
+        argValues: [that, row],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesAgentCatalogHandleUpsertProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "AgentCatalogHandle_upsert_profile",
+        argNames: ["that", "row"],
+      );
+
+  @override
+  Future<List<PersonDto>> crateApiHandlesContactsHandleFriends({
+    required ContactsHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_person_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesContactsHandleFriendsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesContactsHandleFriendsConstMeta =>
+      const TaskConstMeta(
+        debugName: "ContactsHandle_friends",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<ProfileDto> crateApiHandlesContactsHandleProfile({
+    required ContactsHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_profile_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesContactsHandleProfileConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesContactsHandleProfileConstMeta =>
+      const TaskConstMeta(
+        debugName: "ContactsHandle_profile",
+        argNames: ["that", "dest"],
+      );
+
+  @override
+  Future<List<PersonDto>> crateApiHandlesContactsHandleSearch({
+    required ContactsHandle that,
+    required String query,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(query, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_person_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesContactsHandleSearchConstMeta,
+        argValues: [that, query],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesContactsHandleSearchConstMeta =>
+      const TaskConstMeta(
+        debugName: "ContactsHandle_search",
+        argNames: ["that", "query"],
+      );
+
+  @override
+  Stream<ContactsSnapshotDto> crateApiHandlesContactsHandleWatch({
+    required ContactsHandle that,
+  }) {
+    final sink = RustStreamSink<ContactsSnapshotDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_contacts_snapshot_dto_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 8,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiHandlesContactsHandleWatchConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiHandlesContactsHandleWatchConstMeta =>
+      const TaskConstMeta(
+        debugName: "ContactsHandle_watch",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<String> crateApiHandlesConversationHandleDest({
+    required ConversationHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleDestConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleDestConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_dest",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<List<RoomMemberDto>> crateApiHandlesConversationHandleEnter({
+    required ConversationHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_room_member_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleEnterConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleEnterConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_enter",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<String> crateApiHandlesConversationHandleLeave({
+    required ConversationHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleLeaveConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleLeaveConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_leave",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiHandlesConversationHandleLoadOlder({
+    required ConversationHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleLoadOlderConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleLoadOlderConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_load_older",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiHandlesConversationHandleMarkRead({
+    required ConversationHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleMarkReadConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleMarkReadConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_mark_read",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<KimCommandReceipt> crateApiHandlesConversationHandleSendText({
+    required ConversationHandle that,
+    required String text,
+    required String clientId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(text, serializer);
+          sse_encode_String(clientId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_kim_command_receipt,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleSendTextConstMeta,
+        argValues: [that, text, clientId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleSendTextConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_send_text",
+        argNames: ["that", "text", "clientId"],
+      );
+
+  @override
+  Future<void> crateApiHandlesConversationHandleSetTyping({
+    required ConversationHandle that,
+    required bool active,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+            that,
+            serializer,
+          );
+          sse_encode_bool(active, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHandlesConversationHandleSetTypingConstMeta,
+        argValues: [that, active],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleSetTypingConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_set_typing",
+        argNames: ["that", "active"],
+      );
+
+  @override
+  Stream<TimelineUpdateDto> crateApiHandlesConversationHandleWatchTimeline({
+    required ConversationHandle that,
+    required int limit,
+  }) {
+    final sink = RustStreamSink<TimelineUpdateDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+              that,
+              serializer,
+            );
+            sse_encode_i_32(limit, serializer);
+            sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 16,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiHandlesConversationHandleWatchTimelineConstMeta,
+          argValues: [that, limit, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiHandlesConversationHandleWatchTimelineConstMeta =>
+      const TaskConstMeta(
+        debugName: "ConversationHandle_watch_timeline",
+        argNames: ["that", "limit", "sink"],
+      );
+
+  @override
+  Future<KimUiHandle> crateApiHandlesInboxHandleApp({
+    required InboxHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiHandlesInboxHandleAppConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesInboxHandleAppConstMeta =>
+      const TaskConstMeta(debugName: "InboxHandle_app", argNames: ["that"]);
 
   @override
   Future<void> crateApiAuthKimAuthChangePassword({
@@ -507,7 +1319,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 18,
             port: port_,
           );
         },
@@ -547,7 +1359,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 19,
             port: port_,
           );
         },
@@ -584,7 +1396,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 20,
             port: port_,
           );
         },
@@ -615,7 +1427,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(baseUrl, serializer);
           sse_encode_String(userAgent, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -653,7 +1465,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 22,
             port: port_,
           );
         },
@@ -675,6 +1487,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<AgentCatalogHandle> crateApiClientKimUiHandleAgentCatalog({
+    required KimUiHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleAgentCatalogConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleAgentCatalogConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_agent_catalog",
+        argNames: ["that"],
+      );
+
+  @override
   Future<String> crateApiClientKimUiHandleAgentFlags({
     required KimUiHandle that,
   }) {
@@ -689,7 +1538,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 24,
             port: port_,
           );
         },
@@ -727,7 +1576,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 25,
             port: port_,
           );
         },
@@ -779,7 +1628,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 26,
             port: port_,
           );
         },
@@ -837,7 +1686,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 27,
             port: port_,
           );
         },
@@ -877,7 +1726,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 28,
             port: port_,
           );
         },
@@ -921,7 +1770,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 29,
             port: port_,
           );
         },
@@ -963,7 +1812,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1015,7 +1864,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1057,6 +1906,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiClientKimUiHandleCacheAgentSecret({
+    required KimUiHandle that,
+    required String keyRef,
+    required String secret,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(keyRef, serializer);
+          sse_encode_String(secret, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleCacheAgentSecretConstMeta,
+        argValues: [that, keyRef, secret],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleCacheAgentSecretConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_cache_agent_secret",
+        argNames: ["that", "keyRef", "secret"],
+      );
+
+  @override
   Future<void> crateApiClientKimUiHandleCancelSend({
     required KimUiHandle that,
     required String clientId,
@@ -1073,7 +1962,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1111,7 +2000,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1133,12 +2022,88 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<ContactsHandle> crateApiClientKimUiHandleContacts({
+    required KimUiHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleContactsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleContactsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_contacts",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<ConversationHandle> crateApiClientKimUiHandleConversation({
+    required KimUiHandle that,
+    required String dest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(dest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleConversationConstMeta,
+        argValues: [that, dest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleConversationConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_conversation",
+        argNames: ["that", "dest"],
+      );
+
+  @override
   KimUiHandle crateApiClientKimUiHandleCreate() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 37)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -1172,7 +2137,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1210,7 +2175,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1248,7 +2213,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1302,7 +2267,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1362,7 +2327,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1398,7 +2363,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1434,7 +2399,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1472,7 +2437,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1510,7 +2475,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1548,7 +2513,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1586,7 +2551,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1624,7 +2589,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1668,7 +2633,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1690,6 +2655,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<InboxHandle> crateApiClientKimUiHandleInbox({
+    required KimUiHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 51,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleInboxConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleInboxConstMeta =>
+      const TaskConstMeta(debugName: "KimUiHandle_inbox", argNames: ["that"]);
+
+  @override
   Future<List<AgentProfileDto>> crateApiClientKimUiHandleListAgentProfiles({
     required KimUiHandle that,
   }) {
@@ -1704,7 +2703,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1739,7 +2738,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1777,7 +2776,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 54,
             port: port_,
           );
         },
@@ -1817,7 +2816,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 55,
             port: port_,
           );
         },
@@ -1859,7 +2858,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 56,
             port: port_,
           );
         },
@@ -1901,7 +2900,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 57,
             port: port_,
           );
         },
@@ -1923,6 +2922,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<MediaHandle> crateApiClientKimUiHandleMedia({
+    required KimUiHandle that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 58,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleMediaConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleMediaConstMeta =>
+      const TaskConstMeta(debugName: "KimUiHandle_media", argNames: ["that"]);
+
+  @override
   Future<LocalMediaDto> crateApiClientKimUiHandleMediaFetch({
     required KimUiHandle that,
     required String url,
@@ -1939,7 +2972,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 59,
             port: port_,
           );
         },
@@ -1985,7 +3018,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 60,
             port: port_,
           );
         },
@@ -2018,7 +3051,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 38)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 61)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_metrics_dto,
@@ -2052,7 +3085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 62,
             port: port_,
           );
         },
@@ -2088,7 +3121,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 63,
             port: port_,
           );
         },
@@ -2126,7 +3159,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 64,
             port: port_,
           );
         },
@@ -2162,7 +3195,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 65,
             port: port_,
           );
         },
@@ -2184,6 +3217,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiClientKimUiHandleRespondAgentPermission({
+    required KimUiHandle that,
+    required String callId,
+    required bool allow,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(callId, serializer);
+          sse_encode_bool(allow, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 66,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiClientKimUiHandleRespondAgentPermissionConstMeta,
+        argValues: [that, callId, allow],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleRespondAgentPermissionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_respond_agent_permission",
+        argNames: ["that", "callId", "allow"],
+      );
+
+  @override
   Future<KimCommandReceipt> crateApiClientKimUiHandleRetrySend({
     required KimUiHandle that,
     required String clientId,
@@ -2200,7 +3273,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 67,
             port: port_,
           );
         },
@@ -2240,7 +3313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 68,
             port: port_,
           );
         },
@@ -2280,7 +3353,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 69,
             port: port_,
           );
         },
@@ -2320,7 +3393,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 70,
             port: port_,
           );
         },
@@ -2358,7 +3431,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 71,
             port: port_,
           );
         },
@@ -2400,7 +3473,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 48,
+            funcId: 72,
             port: port_,
           );
         },
@@ -2438,7 +3511,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 49,
+            funcId: 73,
             port: port_,
           );
         },
@@ -2482,7 +3555,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 74,
             port: port_,
           );
         },
@@ -2519,7 +3592,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 51,
+            funcId: 75,
             port: port_,
           );
         },
@@ -2561,7 +3634,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 76,
             port: port_,
           );
         },
@@ -2605,7 +3678,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 53,
+            funcId: 77,
             port: port_,
           );
         },
@@ -2639,7 +3712,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 54,
+            funcId: 78,
             port: port_,
           );
         },
@@ -2667,7 +3740,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 55)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 79)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -2703,7 +3776,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 56,
+            funcId: 80,
             port: port_,
           );
         },
@@ -2739,7 +3812,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 57,
+            funcId: 81,
             port: port_,
           );
         },
@@ -2781,7 +3854,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 58,
+            funcId: 82,
             port: port_,
           );
         },
@@ -2819,7 +3892,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 59,
+            funcId: 83,
             port: port_,
           );
         },
@@ -2857,7 +3930,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 60,
+            funcId: 84,
             port: port_,
           );
         },
@@ -2895,7 +3968,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 61,
+            funcId: 85,
             port: port_,
           );
         },
@@ -2917,6 +3990,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Stream<AgentPermissionEventDto>
+  crateApiClientKimUiHandleWatchAgentPermission({required KimUiHandle that}) {
+    final sink = RustStreamSink<AgentPermissionEventDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_agent_permission_event_dto_Sse(
+              sink,
+              serializer,
+            );
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 86,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiClientKimUiHandleWatchAgentPermissionConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleWatchAgentPermissionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_watch_agent_permission",
+        argNames: ["that", "sink"],
+      );
+
+  @override
   Stream<AgentRunRequestDto> crateApiClientKimUiHandleWatchAgentRun({
     required KimUiHandle that,
   }) {
@@ -2930,7 +4046,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_agent_run_request_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 62)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 87)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2951,6 +4067,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Stream<AgentUiStatusDto> crateApiClientKimUiHandleWatchAgentUi({
+    required KimUiHandle that,
+  }) {
+    final sink = RustStreamSink<AgentUiStatusDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_agent_ui_status_dto_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 88,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiClientKimUiHandleWatchAgentUiConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleWatchAgentUiConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_watch_agent_ui",
+        argNames: ["that", "sink"],
+      );
+
+  @override
   Stream<ContactsSnapshotDto> crateApiClientKimUiHandleWatchContacts({
     required KimUiHandle that,
   }) {
@@ -2964,7 +4121,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_contacts_snapshot_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 63)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 89)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2998,7 +4155,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 64)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 90)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -3032,7 +4189,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_session_snapshot_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 65)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 91)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -3070,7 +4227,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(dest, serializer);
           sse_encode_i_32(limit, serializer);
           sse_encode_StreamSink_timeline_update_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 66)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 92)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -3104,7 +4261,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_StreamSink_token_persist_dto_Sse(sink, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 67)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 93)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -3125,13 +4282,97 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<LocalMediaDto> crateApiHandlesMediaHandleFetch({
+    required MediaHandle that,
+    required String url,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(url, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 94,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_local_media_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesMediaHandleFetchConstMeta,
+        argValues: [that, url],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesMediaHandleFetchConstMeta =>
+      const TaskConstMeta(
+        debugName: "MediaHandle_fetch",
+        argNames: ["that", "url"],
+      );
+
+  @override
+  Future<LocalMediaDto> crateApiHandlesMediaHandleUpload({
+    required MediaHandle that,
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(path, serializer);
+          sse_encode_String(mime, serializer);
+          sse_encode_i_32(width, serializer);
+          sse_encode_i_32(height, serializer);
+          sse_encode_i_64(byteSize, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 95,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_local_media_dto,
+          decodeErrorData: sse_decode_sdk_error_dto,
+        ),
+        constMeta: kCrateApiHandlesMediaHandleUploadConstMeta,
+        argValues: [that, path, mime, width, height, byteSize],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHandlesMediaHandleUploadConstMeta =>
+      const TaskConstMeta(
+        debugName: "MediaHandle_upload",
+        argNames: ["that", "path", "mime", "width", "height", "byteSize"],
+      );
+
+  @override
   String crateApiSimpleGreet({required String name}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 68)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 96)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -3154,7 +4395,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(wsUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 69)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 97)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -3182,7 +4423,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 70,
+            funcId: 98,
             port: port_,
           );
         },
@@ -3210,7 +4451,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 71,
+            funcId: 99,
             port: port_,
           );
         },
@@ -3238,7 +4479,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 72,
+            funcId: 100,
             port: port_,
           );
         },
@@ -3260,6 +4501,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_AgentCatalogHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_AgentCatalogHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ContactsHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ContactsHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ConversationHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ConversationHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_InboxHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_InboxHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KimAuth => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth;
 
@@ -3275,10 +4548,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   get rust_arc_decrement_strong_count_KimUiHandle => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle;
 
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_MediaHandle => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_MediaHandle => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle;
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  AgentCatalogHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ContactsHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ConversationHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  InboxHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -3300,6 +4617,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MediaHandle
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  AgentCatalogHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ContactsHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ConversationHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  InboxHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   KimAuth
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     dynamic raw,
@@ -3315,6 +4677,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KimUiHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  MediaHandle
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  AgentCatalogHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ContactsHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ConversationHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  InboxHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -3336,8 +4743,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MediaHandle
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  RustStreamSink<AgentPermissionEventDto>
+  dco_decode_StreamSink_agent_permission_event_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   RustStreamSink<AgentRunRequestDto>
   dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<AgentUiStatusDto>
+  dco_decode_StreamSink_agent_ui_status_dto_Sse(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -3403,6 +4833,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AgentPermissionEventDto dco_decode_agent_permission_event_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return AgentPermissionEventDto(
+      dest: dco_decode_String(arr[0]),
+      callId: dco_decode_String(arr[1]),
+      name: dco_decode_String(arr[2]),
+      preview: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
   AgentProfileDto dco_decode_agent_profile_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -3457,6 +4901,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   AgentTurnStateDto dco_decode_agent_turn_state_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AgentTurnStateDto.values[raw as int];
+  }
+
+  @protected
+  AgentUiStatusDto dco_decode_agent_ui_status_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return AgentUiStatusDto(
+      dest: dco_decode_String(arr[0]),
+      phase: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -4237,6 +5693,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AgentCatalogHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ContactsHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ConversationHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  InboxHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KimAuth
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     SseDeserializer deserializer,
@@ -4255,6 +5759,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return KimUiHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  MediaHandle
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  AgentCatalogHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ContactsHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ConversationHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  InboxHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -4285,6 +5849,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MediaHandle
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  AgentCatalogHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return AgentCatalogHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ContactsHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ContactsHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ConversationHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ConversationHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  InboxHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return InboxHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KimAuth
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     SseDeserializer deserializer,
@@ -4309,10 +5933,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  MediaHandle
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return MediaHandleImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  RustStreamSink<AgentPermissionEventDto>
+  sse_decode_StreamSink_agent_permission_event_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<AgentRunRequestDto>
   sse_decode_StreamSink_agent_run_request_dto_Sse(
     SseDeserializer deserializer,
   ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<AgentUiStatusDto>
+  sse_decode_StreamSink_agent_ui_status_dto_Sse(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -4381,6 +6033,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       state: var_state,
       preview: var_preview,
       ok: var_ok,
+    );
+  }
+
+  @protected
+  AgentPermissionEventDto sse_decode_agent_permission_event_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_callId = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_preview = sse_decode_String(deserializer);
+    return AgentPermissionEventDto(
+      dest: var_dest,
+      callId: var_callId,
+      name: var_name,
+      preview: var_preview,
     );
   }
 
@@ -4458,6 +6127,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return AgentTurnStateDto.values[inner];
+  }
+
+  @protected
+  AgentUiStatusDto sse_decode_agent_ui_status_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_dest = sse_decode_String(deserializer);
+    var var_phase = sse_decode_String(deserializer);
+    return AgentUiStatusDto(dest: var_dest, phase: var_phase);
   }
 
   @protected
@@ -5465,6 +7144,58 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    AgentCatalogHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as AgentCatalogHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    ContactsHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ContactsHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    ConversationHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ConversationHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    InboxHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as InboxHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     KimAuth self,
     SseSerializer serializer,
@@ -5485,6 +7216,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KimUiHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    MediaHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as MediaHandleImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    AgentCatalogHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as AgentCatalogHandleImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    ContactsHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ContactsHandleImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    ConversationHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ConversationHandleImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    InboxHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as InboxHandleImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -5517,6 +7313,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    MediaHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as MediaHandleImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
+    AgentCatalogHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as AgentCatalogHandleImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
+    ContactsHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ContactsHandleImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
+    ConversationHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ConversationHandleImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
+    InboxHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as InboxHandleImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     KimAuth self,
     SseSerializer serializer,
@@ -5542,6 +7403,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
+    MediaHandle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as MediaHandleImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_agent_permission_event_dto_Sse(
+    RustStreamSink<AgentPermissionEventDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_agent_permission_event_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_agent_run_request_dto_Sse(
     RustStreamSink<AgentRunRequestDto> self,
     SseSerializer serializer,
@@ -5551,6 +7442,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       self.setupAndSerialize(
         codec: SseCodec(
           decodeSuccessData: sse_decode_agent_run_request_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_agent_ui_status_dto_Sse(
+    RustStreamSink<AgentUiStatusDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_agent_ui_status_dto,
           decodeErrorData: sse_decode_AnyhowException,
         ),
       ),
@@ -5662,6 +7570,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_agent_permission_event_dto(
+    AgentPermissionEventDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.callId, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.preview, serializer);
+  }
+
+  @protected
   void sse_encode_agent_profile_dto(
     AgentProfileDto self,
     SseSerializer serializer,
@@ -5713,6 +7633,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_agent_ui_status_dto(
+    AgentUiStatusDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.dest, serializer);
+    sse_encode_String(self.phase, serializer);
   }
 
   @protected
@@ -6593,6 +8523,159 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 }
 
 @sealed
+class AgentCatalogHandleImpl extends RustOpaque implements AgentCatalogHandle {
+  // Not to be used by end users
+  AgentCatalogHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  AgentCatalogHandleImpl.frbInternalSseDecode(
+    BigInt ptr,
+    int externalSizeOnNative,
+  ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_AgentCatalogHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_AgentCatalogHandle,
+    rustArcDecrementStrongCountPtr: RustLib
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_AgentCatalogHandlePtr,
+  );
+
+  Future<void> deleteProfile({required String id}) => RustLib.instance.api
+      .crateApiHandlesAgentCatalogHandleDeleteProfile(that: this, id: id);
+
+  Future<List<ProviderAccountDto>> listAccounts() => RustLib.instance.api
+      .crateApiHandlesAgentCatalogHandleListAccounts(that: this);
+
+  Future<List<AgentProfileDto>> listProfiles() => RustLib.instance.api
+      .crateApiHandlesAgentCatalogHandleListProfiles(that: this);
+
+  Future<void> upsertProfile({required AgentProfileDto row}) => RustLib
+      .instance
+      .api
+      .crateApiHandlesAgentCatalogHandleUpsertProfile(that: this, row: row);
+}
+
+@sealed
+class ContactsHandleImpl extends RustOpaque implements ContactsHandle {
+  // Not to be used by end users
+  ContactsHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  ContactsHandleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_ContactsHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ContactsHandle,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ContactsHandlePtr,
+  );
+
+  Future<List<PersonDto>> friends() =>
+      RustLib.instance.api.crateApiHandlesContactsHandleFriends(that: this);
+
+  Future<ProfileDto> profile({required String dest}) => RustLib.instance.api
+      .crateApiHandlesContactsHandleProfile(that: this, dest: dest);
+
+  Future<List<PersonDto>> search({required String query}) => RustLib
+      .instance
+      .api
+      .crateApiHandlesContactsHandleSearch(that: this, query: query);
+
+  Stream<ContactsSnapshotDto> watch() =>
+      RustLib.instance.api.crateApiHandlesContactsHandleWatch(that: this);
+}
+
+@sealed
+class ConversationHandleImpl extends RustOpaque implements ConversationHandle {
+  // Not to be used by end users
+  ConversationHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  ConversationHandleImpl.frbInternalSseDecode(
+    BigInt ptr,
+    int externalSizeOnNative,
+  ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_ConversationHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ConversationHandle,
+    rustArcDecrementStrongCountPtr: RustLib
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_ConversationHandlePtr,
+  );
+
+  Future<String> dest() =>
+      RustLib.instance.api.crateApiHandlesConversationHandleDest(that: this);
+
+  Future<List<RoomMemberDto>> enter() =>
+      RustLib.instance.api.crateApiHandlesConversationHandleEnter(that: this);
+
+  Future<String> leave() =>
+      RustLib.instance.api.crateApiHandlesConversationHandleLeave(that: this);
+
+  Future<void> loadOlder() => RustLib.instance.api
+      .crateApiHandlesConversationHandleLoadOlder(that: this);
+
+  Future<void> markRead() => RustLib.instance.api
+      .crateApiHandlesConversationHandleMarkRead(that: this);
+
+  Future<KimCommandReceipt> sendText({
+    required String text,
+    required String clientId,
+  }) => RustLib.instance.api.crateApiHandlesConversationHandleSendText(
+    that: this,
+    text: text,
+    clientId: clientId,
+  );
+
+  Future<void> setTyping({required bool active}) => RustLib.instance.api
+      .crateApiHandlesConversationHandleSetTyping(that: this, active: active);
+
+  Stream<TimelineUpdateDto> watchTimeline({required int limit}) => RustLib
+      .instance
+      .api
+      .crateApiHandlesConversationHandleWatchTimeline(that: this, limit: limit);
+}
+
+@sealed
+class InboxHandleImpl extends RustOpaque implements InboxHandle {
+  // Not to be used by end users
+  InboxHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  InboxHandleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_InboxHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_InboxHandle,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_InboxHandlePtr,
+  );
+
+  /// Session snapshot still carries the thread list. The handle is the object
+  /// boundary; splitting the DTO is a later cut.
+  Future<KimUiHandle> app() =>
+      RustLib.instance.api.crateApiHandlesInboxHandleApp(that: this);
+}
+
+@sealed
 class KimAuthImpl extends RustOpaque implements KimAuth {
   // Not to be used by end users
   KimAuthImpl.frbInternalDcoDecode(List<dynamic> wire)
@@ -6662,6 +8745,9 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     rustArcDecrementStrongCountPtr:
         RustLib.instance.api.rust_arc_decrement_strong_count_KimUiHandlePtr,
   );
+
+  Future<AgentCatalogHandle> agentCatalog() =>
+      RustLib.instance.api.crateApiClientKimUiHandleAgentCatalog(that: this);
 
   Future<String> agentFlags() =>
       RustLib.instance.api.crateApiClientKimUiHandleAgentFlags(that: this);
@@ -6747,6 +8833,16 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     visibility: visibility,
   );
 
+  /// Seeds the desktop secret vault once. Not part of a turn payload.
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  }) => RustLib.instance.api.crateApiClientKimUiHandleCacheAgentSecret(
+    that: this,
+    keyRef: keyRef,
+    secret: secret,
+  );
+
   Future<void> cancelSend({required String clientId}) => RustLib.instance.api
       .crateApiClientKimUiHandleCancelSend(that: this, clientId: clientId);
 
@@ -6754,6 +8850,14 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
       .instance
       .api
       .crateApiClientKimUiHandleCommand(that: this, cmd: cmd);
+
+  Future<ContactsHandle> contacts() =>
+      RustLib.instance.api.crateApiClientKimUiHandleContacts(that: this);
+
+  Future<ConversationHandle> conversation({required String dest}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimUiHandleConversation(that: this, dest: dest);
 
   Future<void> deleteAgentProfile({required String profileId}) =>
       RustLib.instance.api.crateApiClientKimUiHandleDeleteAgentProfile(
@@ -6835,6 +8939,9 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     locale: locale,
   );
 
+  Future<InboxHandle> inbox() =>
+      RustLib.instance.api.crateApiClientKimUiHandleInbox(that: this);
+
   Future<List<AgentProfileDto>> listAgentProfiles() => RustLib.instance.api
       .crateApiClientKimUiHandleListAgentProfiles(that: this);
 
@@ -6877,6 +8984,9 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     messageId: messageId,
   );
 
+  Future<MediaHandle> media() =>
+      RustLib.instance.api.crateApiClientKimUiHandleMedia(that: this);
+
   Future<LocalMediaDto> mediaFetch({required String url}) => RustLib
       .instance
       .api
@@ -6911,6 +9021,15 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
 
   Future<void> refreshContacts() =>
       RustLib.instance.api.crateApiClientKimUiHandleRefreshContacts(that: this);
+
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  }) => RustLib.instance.api.crateApiClientKimUiHandleRespondAgentPermission(
+    that: this,
+    callId: callId,
+    allow: allow,
+  );
 
   Future<KimCommandReceipt> retrySend({required String clientId}) => RustLib
       .instance
@@ -7042,8 +9161,16 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
         row: row,
       );
 
+  /// Desktop permission cards. Phone returns an idle stream.
+  Stream<AgentPermissionEventDto> watchAgentPermission() => RustLib.instance.api
+      .crateApiClientKimUiHandleWatchAgentPermission(that: this);
+
   Stream<AgentRunRequestDto> watchAgentRun() =>
       RustLib.instance.api.crateApiClientKimUiHandleWatchAgentRun(that: this);
+
+  /// Desktop pet presence (`running` / `done` / `failed`). Phone is idle.
+  Stream<AgentUiStatusDto> watchAgentUi() =>
+      RustLib.instance.api.crateApiClientKimUiHandleWatchAgentUi(that: this);
 
   Stream<ContactsSnapshotDto> watchContacts() =>
       RustLib.instance.api.crateApiClientKimUiHandleWatchContacts(that: this);
@@ -7066,4 +9193,42 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
 
   Stream<TokenPersistDto> watchTokenPersist() => RustLib.instance.api
       .crateApiClientKimUiHandleWatchTokenPersist(that: this);
+}
+
+@sealed
+class MediaHandleImpl extends RustOpaque implements MediaHandle {
+  // Not to be used by end users
+  MediaHandleImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  MediaHandleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_MediaHandle,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_MediaHandle,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_MediaHandlePtr,
+  );
+
+  Future<LocalMediaDto> fetch({required String url}) => RustLib.instance.api
+      .crateApiHandlesMediaHandleFetch(that: this, url: url);
+
+  Future<LocalMediaDto> upload({
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  }) => RustLib.instance.api.crateApiHandlesMediaHandleUpload(
+    that: this,
+    path: path,
+    mime: mime,
+    width: width,
+    height: height,
+    byteSize: byteSize,
+  );
 }

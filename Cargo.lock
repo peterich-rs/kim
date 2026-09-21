@@ -7241,6 +7241,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "codex-config",
+ "codex-core",
  "codex-core-api",
  "codex-protocol",
  "codex-utils-redacted-string",
@@ -7346,6 +7347,29 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "kim-desktop-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kim-agent-codec",
+ "kim-agent-host",
+ "kim-sdk",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "kim-log"
+version = "0.1.0"
+dependencies = [
+ "humantime",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

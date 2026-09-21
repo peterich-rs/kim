@@ -4645,7 +4645,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6427,6 +6427,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "humantime"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
+
+[[package]]
 name = "hybrid-array"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7212,6 +7218,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "codex-config",
+ "codex-core",
  "codex-core-api",
  "codex-protocol",
  "codex-utils-redacted-string",
@@ -7237,6 +7244,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-log"
+version = "0.1.0"
+dependencies = [
+ "humantime",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "kim_agent_ffi"
 version = "0.1.0"
 dependencies = [
@@ -7244,6 +7260,7 @@ dependencies = [
  "flutter_rust_bridge",
  "futures",
  "kim-agent-host",
+ "kim-log",
  "serde",
  "serde_json",
  "tempfile",

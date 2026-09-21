@@ -38,9 +38,14 @@ use crate::events::PendingYield;
 use crate::events::TimeoutKind;
 use crate::events::TurnOutcome;
 use crate::events::YieldKind;
+use crate::harness::HarnessLimits;
 use crate::truncate_chars;
 use crate::AgentHost;
 
+#[cfg(test)]
+static TEST_START_HOLD: std::sync::Mutex<Option<Duration>> = std::sync::Mutex::new(None);
+
+#[derive(Clone)]
 pub struct CodexLaunch {
     pub codex_home: PathBuf,
     pub helper: PathBuf,
@@ -210,58 +215,50 @@ impl AgentHost {
         events: mpsc::Sender<HostEvent>,
         cancel: CancellationToken,
     ) -> Result<TurnOutcome, HostError> {
-        let mut slot = self.inner.codex.lock().await;
-        if slot.pending.is_some() {
-            return Err(HostError::Failed("agent waiting for tool".into()));
-        }
-        let profile = self.profile_snapshot();
-        if let Some(max) = profile.max_turns {
-            if slot.turns >= max {
-                return Err(HostError::Failed("max turns".into()));
-            }
-        }
-        self.ensure_live(&mut slot).await?;
-        let mut body = String::new();
-        if let Some(path) = slot
-            .launch
-            .as_ref()
-            .and_then(|launch| launch.transcript.clone())
         {
-            let earlier = read_transcript(&path);
-            if !earlier.is_empty() {
-                body.push_str("Earlier turns in this chat:\n");
-                body.push_str(&earlier);
-                body.push_str("\n\n");
+            let slot = self.inner.codex.lock().await;
+            if slot.pending.is_some() {
+                return Err(HostError::Failed("agent waiting for tool".into()));
+            }
+            if let Some(max) = self.profile_snapshot().max_turns {
+                if slot.turns >= max {
+                    return Err(HostError::Failed("max turns".into()));
+                }
             }
         }
-        if let Some(ctx) = context_json.map(str::trim).filter(|s| !s.is_empty()) {
-            body.push_str(&truncate_chars(ctx, 8 * 1024));
-            body.push_str("\n\n");
+        self.ensure_live(&cancel).await?;
+        if cancel.is_cancelled() {
+            return self.interrupted_from_slot().await;
         }
-        body.push_str(text);
-        let thread = slot
-            .live
-            .as_ref()
-            .map(|live| Arc::clone(&live.thread))
-            .ok_or_else(|| HostError::Failed("codex thread is not open".into()))?;
-        let submission = thread
-            .start_turn_if_idle(TurnInputRequest::user_input(vec![UserInput::Text {
-                text: body,
-                text_elements: Vec::new(),
-            }]))
-            .await
-            .map_err(|err| HostError::Failed(err.to_string()))?;
+
+        let (thread, transcript, body) = {
+            let slot = self.inner.codex.lock().await;
+            let thread = live_thread(&slot)?;
+            let transcript = slot
+                .launch
+                .as_ref()
+                .and_then(|launch| launch.transcript.clone());
+            (thread, transcript, assemble_user_body(context_json, text))
+        };
+
+        let submission = tokio::select! {
+            _ = cancel.cancelled() => return self.interrupted_from_slot().await,
+            submission = thread.start_turn_if_idle(TurnInputRequest::user_input(vec![
+                UserInput::Text {
+                    text: body,
+                    text_elements: Vec::new(),
+                },
+            ])) => submission.map_err(|err| HostError::Failed(err.to_string()))?,
+        };
         if let StartIfIdleSubmission::NotSubmitted { reason } = submission {
             return Err(HostError::Failed(format!(
                 "turn input was not submitted: {reason:?}"
             )));
         }
+
+        let mut slot = self.inner.codex.lock().await;
         slot.turns = slot.turns.saturating_add(1);
         slot.send_ok = false;
-        let transcript = slot
-            .launch
-            .as_ref()
-            .and_then(|launch| launch.transcript.clone());
         let (idle, hard) = self.arm_deadlines(true);
         slot.hard_deadline = hard;
         let outcome = self.pump(&mut slot, thread, events, cancel, idle).await?;
@@ -276,6 +273,19 @@ impl AgentHost {
             }
         }
         Ok(outcome)
+    }
+
+    pub async fn shutdown_codex(&self) {
+        let mut slot = self.inner.codex.lock().await;
+        if let Some(live) = slot.live.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(2), live.thread.shutdown_and_wait())
+                .await;
+            let _ = live.manager.remove_thread(&live.thread_id).await;
+        }
+        slot.pending = None;
+        self.inner
+            .codex_runtime
+            .store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(crate) async fn codex_complete_tool(
@@ -422,15 +432,21 @@ impl AgentHost {
         let _ = thread.submit(Op::Interrupt).await;
     }
 
-    async fn ensure_live(&self, slot: &mut CodexSlot) -> Result<(), HostError> {
-        if slot.live.is_some() {
-            return Ok(());
+    pub(crate) async fn ensure_live(&self, cancel: &CancellationToken) -> Result<(), HostError> {
+        {
+            let slot = self.inner.codex.lock().await;
+            if slot.live.is_some() {
+                return Ok(());
+            }
         }
-        let launch = slot
-            .launch
-            .as_ref()
-            .ok_or_else(|| HostError::Failed("codex runtime is not configured".into()))?;
-        let profile = self.profile_snapshot();
+        let (launch, profile) = {
+            let slot = self.inner.codex.lock().await;
+            let launch = slot
+                .launch
+                .clone()
+                .ok_or_else(|| HostError::Failed("codex runtime is not configured".into()))?;
+            (launch, self.profile_snapshot())
+        };
         let mut opts = CodexEmbedOpts {
             codex_home: launch.codex_home.clone(),
             codex_self_exe: Some(launch.helper.clone()),
@@ -443,11 +459,37 @@ impl AgentHost {
         if !opts.cwd.is_absolute() {
             opts.cwd = std::env::current_dir().unwrap_or(opts.cwd);
         }
-        let api_key = launch.api_key.clone();
-        let mut config = embed_config(&opts)?;
-        apply_profile(&mut config, &profile, &api_key)?;
+        let mut config = embed_config(&opts).await?;
+        apply_profile(&mut config, &profile, &launch.api_key)?;
         let tools = kim_dynamic_tools(&profile);
-        let started = start_thread(config, &api_key, tools).await?;
+        let startup = startup_budget(self.limits());
+        #[cfg(test)]
+        if let Some(hold) = test_start_hold() {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(HostError::Failed("codex startup cancelled".into()));
+                }
+                _ = tokio::time::sleep(startup) => {
+                    return Err(HostError::Failed("codex startup timed out".into()));
+                }
+                _ = tokio::time::sleep(hold) => {}
+            }
+        }
+        let started = tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(HostError::Failed("codex startup cancelled".into()));
+            }
+            _ = tokio::time::sleep(startup) => {
+                return Err(HostError::Failed("codex startup timed out".into()));
+            }
+            started = start_thread(config, &launch.api_key, tools) => started?,
+        };
+        let mut slot = self.inner.codex.lock().await;
+        if slot.live.is_some() {
+            let _ = started.thread.shutdown_and_wait().await;
+            let _ = started.manager.remove_thread(&started.thread_id).await;
+            return Ok(());
+        }
         slot.live = Some(LiveThread {
             manager: started.manager,
             thread: started.thread,
@@ -500,26 +542,22 @@ impl AgentHost {
             };
             let reset_idle = !matches!(event.msg, EventMsg::TokenCount(_));
             match event.msg {
-                EventMsg::AgentMessageContentDelta(delta) => {
-                    if !delta.delta.is_empty() {
-                        saw_delta = true;
-                        assistant.push_str(&delta.delta);
-                        emit(&events, HostEvent::TextDelta { delta: delta.delta }).await?;
-                    }
+                EventMsg::AgentMessageContentDelta(delta) if !delta.delta.is_empty() => {
+                    saw_delta = true;
+                    assistant.push_str(&delta.delta);
+                    emit(&events, HostEvent::TextDelta { delta: delta.delta }).await?;
                 }
-                EventMsg::AgentMessage(message) => {
-                    if !message.message.is_empty() {
-                        if !saw_delta {
-                            emit(
-                                &events,
-                                HostEvent::TextDelta {
-                                    delta: message.message.clone(),
-                                },
-                            )
-                            .await?;
-                        }
-                        assistant = message.message;
+                EventMsg::AgentMessage(message) if !message.message.is_empty() => {
+                    if !saw_delta {
+                        emit(
+                            &events,
+                            HostEvent::TextDelta {
+                                delta: message.message.clone(),
+                            },
+                        )
+                        .await?;
                     }
+                    assistant = message.message;
                 }
                 EventMsg::TokenCount(count) => {
                     if let Some(info) = count.info {
@@ -719,6 +757,51 @@ impl AgentHost {
             reason: CancelReason::UserAbort,
         })
     }
+
+    async fn interrupted_from_slot(&self) -> Result<TurnOutcome, HostError> {
+        let thread = {
+            let slot = self.inner.codex.lock().await;
+            live_thread(&slot).ok()
+        };
+        if let Some(thread) = thread {
+            return self.interrupted(&thread).await;
+        }
+        Ok(TurnOutcome::Cancelled {
+            reason: CancelReason::UserAbort,
+        })
+    }
+}
+
+fn assemble_user_body(context_json: Option<&str>, text: &str) -> String {
+    let mut body = String::new();
+    if let Some(ctx) = context_json.map(str::trim).filter(|s| !s.is_empty()) {
+        body.push_str(&truncate_chars(ctx, 8 * 1024));
+        body.push_str("\n\n");
+    }
+    body.push_str(text);
+    body
+}
+
+pub(crate) fn startup_budget(limits: HarnessLimits) -> Duration {
+    const CAP: Duration = Duration::from_secs(30);
+    if limits.idle == Duration::MAX || limits.idle > CAP {
+        CAP
+    } else {
+        limits.idle
+    }
+}
+
+#[cfg(test)]
+fn test_start_hold() -> Option<Duration> {
+    TEST_START_HOLD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+#[cfg(test)]
+fn set_test_start_hold(hold: Option<Duration>) {
+    *TEST_START_HOLD.lock().unwrap_or_else(|e| e.into_inner()) = hold;
 }
 
 fn live_thread(slot: &CodexSlot) -> Result<Arc<CodexThread>, HostError> {
@@ -775,6 +858,7 @@ fn finite(duration: Duration) -> Option<Duration> {
     }
 }
 
+#[allow(dead_code)]
 fn read_transcript(path: &std::path::Path) -> String {
     let Ok(text) = std::fs::read_to_string(path) else {
         return String::new();
@@ -823,5 +907,140 @@ async fn sleep_until(deadline: Option<Instant>) {
             tokio::time::sleep(deadline.saturating_duration_since(Instant::now())).await;
         }
         None => std::future::pending().await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::profile::AgentProfile;
+    use crate::profile::LegacyOpenOpts;
+    use crate::ScriptedProvider;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn test_host(root: PathBuf) -> AgentHost {
+        let profile = AgentProfile::from_legacy(&LegacyOpenOpts {
+            model: "gpt-4o".into(),
+            llm_backend: "openai".into(),
+            ..LegacyOpenOpts::default()
+        });
+        AgentHost::from_provider_for_test(profile, Arc::new(ScriptedProvider::new(vec![])), root)
+            .expect("host")
+    }
+
+    struct HoldGuard;
+
+    impl Drop for HoldGuard {
+        fn drop(&mut self) {
+            set_test_start_hold(None);
+        }
+    }
+
+    #[test]
+    fn startup_budget_caps_disabled_and_long_idle() {
+        assert_eq!(
+            startup_budget(HarnessLimits::disabled()),
+            Duration::from_secs(30)
+        );
+        let mut limits = HarnessLimits::default();
+        limits.idle = Duration::from_secs(10);
+        assert_eq!(startup_budget(limits.clone()), Duration::from_secs(10));
+        limits.idle = Duration::from_secs(120);
+        assert_eq!(startup_budget(limits), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn assemble_user_body_skips_transcript_prefix() {
+        assert_eq!(assemble_user_body(None, "hello"), "hello");
+        assert_eq!(
+            assemble_user_body(Some("ctx"), "hello"),
+            "ctx\n\nhello"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_without_live_thread_clears_runtime_flag() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let helper = dir.path().join("kim-codex-helper");
+        std::fs::write(&helper, []).expect("helper");
+        let host = test_host(dir.path().to_path_buf());
+        host.use_codex(CodexLaunch {
+            codex_home: dir.path().join("codex"),
+            helper,
+            linux_sandbox: None,
+            api_key: "test-key".into(),
+            transcript: None,
+        })
+        .await
+        .expect("use_codex");
+        assert!(host.is_codex());
+        host.shutdown_codex().await;
+        assert!(!host.is_codex());
+        let pending = tokio::time::timeout(Duration::from_millis(200), host.codex_pending())
+            .await
+            .expect("pending");
+        assert!(pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ensure_live_cancel_and_pending_query_do_not_wait_on_startup() {
+        let _guard = HoldGuard;
+        set_test_start_hold(Some(Duration::from_secs(60)));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let helper = dir.path().join("kim-codex-helper");
+        std::fs::write(&helper, []).expect("helper");
+        let host = test_host(dir.path().to_path_buf());
+        host.use_codex(CodexLaunch {
+            codex_home: dir.path().join("codex"),
+            helper,
+            linux_sandbox: None,
+            api_key: "test-key".into(),
+            transcript: None,
+        })
+        .await
+        .expect("use_codex");
+        let cancel = CancellationToken::new();
+        let start = host.ensure_live(&cancel);
+        let pending = tokio::time::timeout(Duration::from_millis(300), host.codex_pending())
+            .await
+            .expect("pending during startup");
+        assert!(pending.is_empty());
+        cancel.cancel();
+        let err = start.await.expect_err("cancelled");
+        assert!(
+            err.to_string().contains("cancelled"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_live_times_out_when_start_is_held() {
+        let _guard = HoldGuard;
+        set_test_start_hold(Some(Duration::from_secs(60)));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let helper = dir.path().join("kim-codex-helper");
+        std::fs::write(&helper, []).expect("helper");
+        let host = test_host(dir.path().to_path_buf()).with_limits(HarnessLimits {
+            idle: Duration::from_millis(50),
+            ..HarnessLimits::default()
+        });
+        host.use_codex(CodexLaunch {
+            codex_home: dir.path().join("codex"),
+            helper,
+            linux_sandbox: None,
+            api_key: "test-key".into(),
+            transcript: None,
+        })
+        .await
+        .expect("use_codex");
+        let err = host
+            .ensure_live(&CancellationToken::new())
+            .await
+            .expect_err("timeout");
+        assert!(
+            err.to_string().contains("timed out"),
+            "{err}"
+        );
     }
 }

@@ -42,6 +42,7 @@ pub struct KimBotPendingItem {
 }
 
 /// Opaque handle. Protocol plus optional store attach (production always attaches).
+#[derive(Clone)]
 pub struct KimUiHandle {
     inner: Arc<KimSdk>,
 }
@@ -56,12 +57,13 @@ impl KimUiHandle {
     }
 
     pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
+        kim_log::init_beside(&db_path, "kim.log");
         self.inner
             .attach_store(db_path)
             .await
             .map_err(SdkErrorDto::from)?;
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-        self.inner.install_mobile_agent();
+        kim_desktop_runtime::install(self.inner.as_ref().clone());
         Ok(())
     }
 
@@ -545,12 +547,16 @@ impl KimUiHandle {
     }
 
     pub async fn notify_radio_up(&self) -> Result<(), String> {
-        self.inner.notify_radio_up().await
+        self.inner
+            .notify_radio_up()
+            .await
             .map_err(|e| e.to_string())
     }
 
     pub async fn notify_foreground(&self) -> Result<(), String> {
-        self.inner.notify_foreground().await
+        self.inner
+            .notify_foreground()
+            .await
             .map_err(|e| e.to_string())
     }
 
@@ -806,10 +812,7 @@ impl KimUiHandle {
 
     pub async fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
-        let users = client
-            .friend_list()
-            .await
-            .map_err(|e| e.to_string())?;
+        let users = client.friend_list().await.map_err(|e| e.to_string())?;
         Ok(users
             .into_iter()
             .map(|p| PersonDto::from_profile(p, "friend"))
@@ -818,10 +821,7 @@ impl KimUiHandle {
 
     pub async fn friend_incoming(&self) -> Result<Vec<PersonDto>, String> {
         let client = self.supervisor()?.client();
-        let users = client
-            .friend_incoming()
-            .await
-            .map_err(|e| e.to_string())?;
+        let users = client.friend_incoming().await.map_err(|e| e.to_string())?;
         Ok(users
             .into_iter()
             .map(|p| PersonDto::from_profile(p, "incoming"))
@@ -830,10 +830,7 @@ impl KimUiHandle {
 
     pub async fn profile(&self, dest: String) -> Result<ProfileDto, String> {
         let client = self.supervisor()?.client();
-        let p = client
-            .profile(&dest)
-            .await
-            .map_err(|e| e.to_string())?;
+        let p = client.profile(&dest).await.map_err(|e| e.to_string())?;
         Ok(p.into())
     }
 
@@ -927,10 +924,7 @@ impl KimUiHandle {
 
     pub async fn bot_delete(&self, dest: String) -> Result<String, String> {
         let client = self.supervisor()?.client();
-        client
-            .bot_delete(&dest)
-            .await
-            .map_err(|e| e.to_string())?;
+        client.bot_delete(&dest).await.map_err(|e| e.to_string())?;
         self.inner
             .remove_contact(dest)
             .await

@@ -11,6 +11,7 @@ description = "Local Goose agent host for KIM desktop IM (@agent)"
 # link the Codex agent. SQLite itself is shared with the root workspace.
 codex = [
     "dep:codex-config",
+    "dep:codex-core",
     "dep:codex-core-api",
     "dep:codex-protocol",
     "dep:codex-utils-redacted-string",
@@ -24,6 +25,7 @@ codex = [
 anyhow.workspace = true
 async-trait.workspace = true
 codex-config = { path = "../../third_party/codex/codex-rs/config", optional = true }
+codex-core = { path = "../../third_party/codex/codex-rs/core", optional = true }
 codex-core-api = { path = "../../third_party/codex/codex-rs/core-api", optional = true }
 # Facade does not re-export ReviewDecision, ReasoningEffort, or RedactedString.
 codex-protocol = { path = "../../third_party/codex/codex-rs/protocol", optional = true }
