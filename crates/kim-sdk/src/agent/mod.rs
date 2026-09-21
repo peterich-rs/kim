@@ -323,8 +323,11 @@ impl AgentPort for MobileAgent {
                     epoch,
                     retried: false,
                 })
-                .map_err(|_| SdkError::Busy {
-                    queue: "agent".into(),
+                .map_err(|_| {
+                    tracing::warn!(dest, in_reply_to, "agent queue full");
+                    SdkError::Busy {
+                        queue: "agent".into(),
+                    }
                 })?;
             // Record only successful admissions; a full queue remains retryable.
             if in_reply_to > 0 {
@@ -334,6 +337,7 @@ impl AgentPort for MobileAgent {
                 queue.admitted.push_back(key);
             }
         }
+        tracing::info!(dest, profile_id = %profile_id, in_reply_to, "agent turn queued");
         self.sdk
             .emit_session_wait(SessionUpdate::AgentTurn {
                 dest: dest.to_string(),

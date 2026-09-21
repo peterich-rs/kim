@@ -91,6 +91,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   }
 
   Future<void> retry() async {
+    KimLogger.info('link retry');
     if (_startedFor.isNotEmpty) {
       try {
         await ref.read(clientPortProvider).notifyRadioUp();
@@ -110,9 +111,11 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     final gen = _sessionGen;
     final account = _startedFor;
     try {
+      KimLogger.info('agent spec sync');
       await ref.read(clientPortProvider).syncAgentSpecs();
       if (ref.mounted && gen == _sessionGen && account == _startedFor) {
         _specSynced = true;
+        KimLogger.info('agent spec sync ok');
       }
     } catch (e, st) {
       if (e is SdkErrorDto) {
@@ -146,6 +149,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       await _start();
       return;
     }
+    KimLogger.info('radioUp');
     try {
       await ref.read(clientPortProvider).notifyRadioUp();
     } catch (e, st) {
@@ -158,6 +162,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (_startedFor.isEmpty) {
       return;
     }
+    KimLogger.info('foreground');
     try {
       await ref.read(clientPortProvider).notifyForeground();
     } catch (e, st) {
@@ -166,6 +171,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   }
 
   Future<void> _stop() async {
+    KimLogger.info('stopSession');
     _sessionGen += 1;
     await _events?.cancel();
     _events = null;
@@ -186,6 +192,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     if (loopbackUnreachableOnThisDevice(runtime.settings.url)) {
       KimLogger.warn('loopback unreachable');
     }
+    KimLogger.info('startSession url=${runtime.settings.url}');
     try {
       await ref
           .read(clientPortProvider)
@@ -198,6 +205,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       KimLogger.warn('startSession', err, st);
       return;
     }
+    KimLogger.info('startSession ok');
     if (!ref.mounted || gen != _sessionGen) {
       return;
     }
@@ -215,10 +223,12 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       }
       switch (event) {
         case SessionUpdateDto_Kickout():
+          KimLogger.warn('kickout');
           unawaited(
             ref.read(authProvider.notifier).signOut(notice: Copy.kicked),
           );
         case SessionUpdateDto_AuthExpired():
+          KimLogger.warn('auth expired');
           unawaited(ref.read(authProvider.notifier).signOut(expired: true));
         case SessionUpdateDto_TokenRenew(:final token):
           unawaited(ref.read(authProvider.notifier).savePushedToken(token));
@@ -287,8 +297,12 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 messageId: messageId.toInt(),
               );
         case SessionUpdateDto_RustPanic(:final message):
+          KimLogger.error('rust panic', message);
           ref.read(rustPanicProvider.notifier).setMessage(message);
-        case SessionUpdateDto_Link():
+        case SessionUpdateDto_Link(:final state, :final lastError):
+          KimLogger.info(
+            'link ${_linkLabel(state)}${lastError == null || lastError.isEmpty ? '' : ' error=$lastError'}',
+          );
         case SessionUpdateDto_Inbox():
         case SessionUpdateDto_ThreadUpsert():
         case SessionUpdateDto_ProfileUpdated():
@@ -311,4 +325,14 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+String _linkLabel(LinkStateDto state) {
+  return switch (state) {
+    LinkStateDto_Connecting() => 'connecting',
+    LinkStateDto_Online() => 'online',
+    LinkStateDto_Reconnecting(:final attempt) =>
+      'reconnecting attempt=$attempt',
+    LinkStateDto_Offline() => 'offline',
+  };
 }

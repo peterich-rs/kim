@@ -138,11 +138,11 @@ pub(crate) async fn load_due(
     now: i64,
 ) -> Result<Vec<OutboxRow>, SdkError> {
     let rows = sqlx::query(SELECT_DUE)
-    .bind(account)
-    .bind(now)
-    .fetch_all(pool)
-    .await
-    .map_err(map_sqlx)?;
+        .bind(account)
+        .bind(now)
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         out.push(map_row(row)?);
@@ -156,11 +156,11 @@ pub(crate) async fn get_row(
     client_id: &str,
 ) -> Result<Option<OutboxRow>, SdkError> {
     let row = sqlx::query(SELECT_ONE)
-    .bind(account)
-    .bind(client_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx)?;
+        .bind(account)
+        .bind(client_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx)?;
     row.map(map_row).transpose()
 }
 

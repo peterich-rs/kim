@@ -56,6 +56,12 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                 .await
             {
                 Ok((message_id, _)) if message_id != 0 => {
+                    tracing::info!(
+                        dest = %row.dest,
+                        client_id = %row.client_id,
+                        message_id,
+                        "bot reply sent"
+                    );
                     if cancel.is_cancelled() {
                         continue;
                     }
@@ -70,12 +76,24 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                     sent += 1;
                 }
                 Ok(_) => {
+                    tracing::warn!(
+                        dest = %row.dest,
+                        client_id = %row.client_id,
+                        "bot reply missing message id"
+                    );
                     let ((), _seq) = store
                         .mark_failed(epoch, session.account.clone(), row.client_id)
                         .await?;
                 }
                 Err(err) if err.retryable_send() => {
                     let attempt = row.attempt.saturating_add(1);
+                    tracing::warn!(
+                        error = %err,
+                        dest = %row.dest,
+                        client_id = %row.client_id,
+                        attempt,
+                        "bot reply retry"
+                    );
                     let delay = 1000i64.saturating_mul(1i64 << attempt.min(6));
                     let ((), _seq) = store
                         .mark_retry(
@@ -108,6 +126,13 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
             .await
         {
             Ok((message_id, _)) => {
+                tracing::info!(
+                    dest = %row.dest,
+                    client_id = %row.client_id,
+                    message_id,
+                    kind = row.kind,
+                    "outbox sent"
+                );
                 if cancel.is_cancelled() {
                     continue;
                 }
@@ -139,6 +164,13 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
             }
             Err(err) if err.retryable_send() => {
                 let attempt = row.attempt.saturating_add(1);
+                tracing::warn!(
+                    error = %err,
+                    dest = %row.dest,
+                    client_id = %row.client_id,
+                    attempt,
+                    "outbox retry"
+                );
                 let delay = 1000i64.saturating_mul(1i64 << attempt.min(6));
                 let ((), _seq) = store
                     .mark_retry(
@@ -150,7 +182,13 @@ pub(crate) async fn run_once(sdk: &KimSdk, cancel: &CancellationToken) -> Result
                     )
                     .await?;
             }
-            Err(_) => {
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    dest = %row.dest,
+                    client_id = %row.client_id,
+                    "outbox failed"
+                );
                 let ((), _seq) = store
                     .mark_failed(epoch, session.account.clone(), row.client_id)
                     .await?;

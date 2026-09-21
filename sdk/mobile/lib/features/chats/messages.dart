@@ -72,6 +72,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   }
 
   void _listen() {
+    KimLogger.info('watchThread dest=$dest');
     unawaited(_sub?.cancel());
     _awaitingSnapshot = false;
     try {
@@ -92,6 +93,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
                   }
                   _onDelta(delta);
                 case TimelineUpdateDto_Resync():
+                  KimLogger.info('timeline resync dest=$dest');
                   _awaitingSnapshot = true;
                   state = state.copyWith(items: const []);
               }

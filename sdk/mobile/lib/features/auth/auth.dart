@@ -47,6 +47,7 @@ class AuthNotifier extends Notifier<AuthState> {
     if (insecure != null) {
       throw StateError(Copy.insecureAuthOrigin);
     }
+    KimLogger.info(register ? 'register' : 'login');
     final session = register
         ? await auth.register(
             origin: origin,
@@ -71,10 +72,12 @@ class AuthNotifier extends Notifier<AuthState> {
       return;
     }
     await KimHaptics.success();
+    KimLogger.info('signed in account=${session.account}');
     state = AuthState(signedIn: true, account: session.account);
   }
 
   Future<void> signOut({bool expired = false, String? notice}) async {
+    KimLogger.info('signOut expired=$expired');
     final runtime = ref.read(runtimeProvider);
     final auth = ref.read(authPortProvider);
     final client = ref.read(clientPortProvider);

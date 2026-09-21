@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use kim_core::{Conn, Error as CoreError, Frame, OpCode};
 use kim_ws::{connect_ws_with_user_agent, WsHandshakeConn};
 use tokio::sync::Mutex;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::config::ClientConfig;
@@ -96,6 +97,7 @@ impl KimClient {
         .await
         .map_err(|_| ClientError::HandshakeTimeout(self.config.handshake_timeout))??;
         *io = Io::Handshake(conn);
+        info!(url = %url, "ws connect");
         Ok(())
     }
 
@@ -118,6 +120,11 @@ impl KimClient {
                         self.store_session(session.clone());
                         let (read, write) = ws.split_conn();
                         *io = Io::Live(start_split_pump(read, write, self.pump_opts()));
+                        info!(
+                            account = %session.account,
+                            channel = %session.channel_id,
+                            "login"
+                        );
                         Ok(session)
                     }
                     Err(err) => {

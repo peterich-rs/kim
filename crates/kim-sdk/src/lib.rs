@@ -202,6 +202,7 @@ impl KimSdk {
             })??;
         if wiped {
             self.inner.metrics.inc_store_wipe();
+            tracing::warn!(path = %path.display(), "store wiped");
         }
         let epoch = self.inner.epoch.clone();
         let store = Store::open(path.clone(), epoch).await?;
@@ -212,6 +213,7 @@ impl KimSdk {
         if let Some(parent) = path.parent() {
             *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
         }
+        tracing::info!(path = %path.display(), wiped, "store attached");
         Ok(())
     }
 
@@ -300,10 +302,12 @@ impl KimSdk {
                 .rekey_agent_profiles(String::new(), s.account.clone())
                 .await?;
         }
+        tracing::info!(account = %s.account, url = %s.url, "session start");
         Ok(())
     }
 
     pub async fn stop_session(&self) -> Result<(), SdkError> {
+        tracing::info!("session stop");
         let _ = self.bump_epoch();
         self.cancel_outbox_run();
         self.stop_supervisor();
@@ -353,9 +357,10 @@ impl KimSdk {
         let epoch = self.current_epoch().0;
         let (receipt, sequence) = store.enqueue(epoch, session.account, cmd).await?;
         self.inner.metrics.inc_enqueue();
-        tracing::debug!(
+        tracing::info!(
             request_id = %receipt.request_id,
             client_id = %receipt.client_id,
+            dest = %receipt.dest,
             "enqueue committed"
         );
         self.after_command(sequence).await;
@@ -1133,10 +1138,12 @@ impl KimSdk {
             })
             .cloned()
             .collect();
+        let count = talks.len();
         let ((), sequence) = store
             .persist_talks(epoch, account.clone(), talks, policy)
             .await?;
         self.inner.metrics.inc_persist_talk();
+        tracing::info!(account = %account, count, "persist talks");
         self.kick_read_sync();
         for talk in agent_talks {
             if self.current_epoch().0 != epoch {
@@ -1181,6 +1188,7 @@ impl KimSdk {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             let message = info.to_string();
+            tracing::error!(panic = %message, "rust panic");
             if let Ok(subs) = inner.session_subs.try_lock() {
                 for tx in subs.iter() {
                     let _ = tx.try_send(SessionUpdate::RustPanic {

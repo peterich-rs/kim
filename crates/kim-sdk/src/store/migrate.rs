@@ -240,7 +240,9 @@ async fn ensure_column(
     }
     let sql = format!("ALTER TABLE {table} ADD COLUMN {column} {spec}");
     // Identifiers come from this crate's migrations, not user input.
-    tx.execute(sqlx::AssertSqlSafe(sql)).await.map_err(map_sqlx)?;
+    tx.execute(sqlx::AssertSqlSafe(sql))
+        .await
+        .map_err(map_sqlx)?;
     Ok(())
 }
 
