@@ -278,8 +278,8 @@ impl AgentHost {
     pub async fn shutdown_codex(&self) {
         let mut slot = self.inner.codex.lock().await;
         if let Some(live) = slot.live.take() {
-            let _ = tokio::time::timeout(Duration::from_secs(2), live.thread.shutdown_and_wait())
-                .await;
+            let _ =
+                tokio::time::timeout(Duration::from_secs(2), live.thread.shutdown_and_wait()).await;
             let _ = live.manager.remove_thread(&live.thread_id).await;
         }
         slot.pending = None;
@@ -793,10 +793,7 @@ pub(crate) fn startup_budget(limits: HarnessLimits) -> Duration {
 
 #[cfg(test)]
 fn test_start_hold() -> Option<Duration> {
-    TEST_START_HOLD
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    *TEST_START_HOLD.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]
@@ -943,8 +940,10 @@ mod tests {
             startup_budget(HarnessLimits::disabled()),
             Duration::from_secs(30)
         );
-        let mut limits = HarnessLimits::default();
-        limits.idle = Duration::from_secs(10);
+        let mut limits = HarnessLimits {
+            idle: Duration::from_secs(10),
+            ..HarnessLimits::default()
+        };
         assert_eq!(startup_budget(limits.clone()), Duration::from_secs(10));
         limits.idle = Duration::from_secs(120);
         assert_eq!(startup_budget(limits), Duration::from_secs(30));
@@ -953,10 +952,7 @@ mod tests {
     #[test]
     fn assemble_user_body_skips_transcript_prefix() {
         assert_eq!(assemble_user_body(None, "hello"), "hello");
-        assert_eq!(
-            assemble_user_body(Some("ctx"), "hello"),
-            "ctx\n\nhello"
-        );
+        assert_eq!(assemble_user_body(Some("ctx"), "hello"), "ctx\n\nhello");
     }
 
     #[tokio::test]
@@ -1008,10 +1004,7 @@ mod tests {
         assert!(pending.is_empty());
         cancel.cancel();
         let err = start.await.expect_err("cancelled");
-        assert!(
-            err.to_string().contains("cancelled"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("cancelled"), "{err}");
     }
 
     #[tokio::test]
@@ -1038,9 +1031,6 @@ mod tests {
             .ensure_live(&CancellationToken::new())
             .await
             .expect_err("timeout");
-        assert!(
-            err.to_string().contains("timed out"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("timed out"), "{err}");
     }
 }

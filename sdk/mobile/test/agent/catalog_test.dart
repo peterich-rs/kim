@@ -27,7 +27,7 @@ void main() {
     expect(
       defaultModelForAccount(
         account,
-        const VendorSummaryDto(
+        const VendorSummary(
           id: 'openai',
           displayName: 'OpenAI',
           group: 'primary',
@@ -41,7 +41,7 @@ void main() {
     expect(
       defaultModelForAccount(
         account,
-        const VendorSummaryDto(
+        const VendorSummary(
           id: 'openai',
           displayName: 'OpenAI',
           group: 'primary',
@@ -75,7 +75,7 @@ void main() {
   });
 
   test('sortVendors uses group then sort_rank, not vendor id', () {
-    final vendors = VendorSummaryDto.listFromJson(vendorsJson);
+    final vendors = VendorSummary.listFromJson(vendorsJson);
     final sorted = sortVendors(vendors);
     expect(sorted.map((v) => v.id).toList(), [
       'openai',
@@ -90,12 +90,12 @@ void main() {
     expect(vendorsInGroup(vendors, 'gateway').single.id, 'openrouter');
     expect(
       vendorsInGroup(vendors, 'primary'),
-      isNot(contains(predicate<VendorSummaryDto>((v) => v.id == 'openrouter'))),
+      isNot(contains(predicate<VendorSummary>((v) => v.id == 'openrouter'))),
     );
   });
 
   test('DeepSeek surface default is effort_enum none|low|high|max', () {
-    const surface = ReasoningSurfaceDto(
+    const surface = ReasoningSurface(
       kind: 'effort_enum',
       allowed: ['none', 'low', 'high', 'max'],
       defaultValue: 'high',
@@ -109,7 +109,7 @@ void main() {
   });
 
   test('alignChoice drops unsupported effort onto surface default', () {
-    const surface = ReasoningSurfaceDto(
+    const surface = ReasoningSurface(
       kind: 'effort_enum',
       allowed: ['none', 'low', 'high', 'max'],
       defaultValue: 'high',
@@ -123,7 +123,7 @@ void main() {
   });
 
   test('alignChoice keeps a value in the allowed list', () {
-    const surface = ReasoningSurfaceDto(
+    const surface = ReasoningSurface(
       kind: 'effort_enum',
       allowed: ['none', 'low', 'high', 'max'],
       defaultValue: 'high',
@@ -231,7 +231,7 @@ void main() {
   );
 
   test('Claude surface has no Off or Medium', () {
-    const surface = ReasoningSurfaceDto(
+    const surface = ReasoningSurface(
       kind: 'effort_enum',
       allowed: ['low', 'high', 'max'],
       defaultValue: 'high',

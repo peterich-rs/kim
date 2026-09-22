@@ -8,16 +8,17 @@ use std::time::Duration;
 
 use kim_agent_host::{
     parse_permission, resolve_limits, AgentHost, AgentProfile, CancelReason, HostError, HostEvent,
-    LegacyOpenOpts, ProviderSpec, ResolvedProfile, TimeoutKind, TurnOutcome, YieldKind,
+    ProviderSpec, ResolvedProfile, TimeoutKind, TurnOutcome, YieldKind,
 };
 
-use super::phase::{self, PhaseInput, SessionPhase};
+use kim_agent_host::{phase_stale, phase_transition, OpenRequest, PhaseInput, SessionPhase};
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use super::rt;
 use crate::frb_generated::StreamSink;
 
+#[flutter_rust_bridge::frb(ignore)]
 #[derive(Clone)]
 pub struct SessionOpenOpts {
     pub model: String,
@@ -60,6 +61,7 @@ impl Default for SessionOpenOpts {
 }
 
 #[derive(Clone)]
+#[flutter_rust_bridge::frb(unignore)]
 pub struct AgentUiEvent {
     pub kind: String,
     pub operation_id: String,
@@ -196,12 +198,14 @@ impl AgentUiEvent {
     }
 }
 
-pub struct ResumeReportDto {
+#[flutter_rust_bridge::frb(unignore)]
+pub struct ResumeReport {
     pub resumed_ops: Vec<String>,
     pub statuses: Vec<String>,
 }
 
-pub struct SessionSnapshotDto {
+#[flutter_rust_bridge::frb(unignore)]
+pub struct SessionSnapshot {
     pub busy: bool,
     pub last_operation_id: String,
     pub phase: String,
@@ -226,55 +230,35 @@ struct Shared {
     root_for_codex: String,
 }
 
+#[flutter_rust_bridge::frb(ignore)]
 pub struct AgentSession {
     inner: Arc<Shared>,
+}
+
+fn open_request(opts: &SessionOpenOpts) -> OpenRequest {
+    OpenRequest {
+        model: opts.model.clone(),
+        llm_backend: opts.llm_backend.clone(),
+        base_url: opts.base_url.clone(),
+        api_key: opts.api_key.clone(),
+        enable_fs_tools: opts.enable_fs_tools,
+        bash_enabled: opts.bash_enabled,
+        profile_id: opts.profile_id.clone(),
+        profile_json: opts.profile_json.clone(),
+        thinking_effort: opts.thinking_effort.clone(),
+        goose_mode: opts.goose_mode.clone(),
+        enable_kim_tools: opts.enable_kim_tools,
+        enable_approvals: opts.enable_approvals,
+        harness_json: opts.harness_json.clone(),
+    }
 }
 
 fn resolved_from_opts(
     opts: &SessionOpenOpts,
     project_root: String,
 ) -> Result<ResolvedProfile, String> {
-    let mut profile = if opts.profile_json.trim().is_empty() {
-        if !opts.profile_id.trim().is_empty() {
-            return Err("profile_json required when profile_id is set".into());
-        }
-        AgentProfile::from_legacy(&LegacyOpenOpts {
-            model: opts.model.clone(),
-            llm_backend: opts.llm_backend.clone(),
-            base_url: opts.base_url.clone(),
-            enable_fs_tools: opts.enable_fs_tools,
-            bash_enabled: opts.bash_enabled,
-            enable_kim_tools: opts.enable_kim_tools,
-            enable_approvals: opts.enable_approvals,
-            thinking_effort: opts.thinking_effort.clone(),
-            goose_mode: opts.goose_mode.clone(),
-            profile_id: if opts.profile_id.trim().is_empty() {
-                "goose".into()
-            } else {
-                opts.profile_id.clone()
-            },
-        })
-    } else {
-        serde_json::from_str(&opts.profile_json).map_err(|e| e.to_string())?
-    };
-    profile.fill_provider_from_legacy(&LegacyOpenOpts {
-        llm_backend: opts.llm_backend.clone(),
-        base_url: opts.base_url.clone(),
-        ..LegacyOpenOpts::default()
-    });
-    profile.normalize_mode();
-    profile.apply_reasoning().map_err(map_host_err)?;
-    tracing::info!(
-        profile_id = %profile.id,
-        provider = %profile.provider.kind,
-        model = %profile.model.name,
-        "session_open"
-    );
-    Ok(ResolvedProfile {
-        profile,
-        api_key: opts.api_key.clone(),
-        project_root: PathBuf::from(project_root),
-    })
+    kim_agent_host::resolve_open(&open_request(opts), PathBuf::from(project_root))
+        .map_err(map_host_err)
 }
 
 async fn attach_codex(
@@ -284,37 +268,18 @@ async fn attach_codex(
     sqlite_path: &str,
     project_root: &str,
 ) -> Result<(), String> {
-    let from_profile = matches!(profile.agent_runtime(), kim_agent_host::AgentRuntime::Codex);
-    let from_harness = kim_agent_host::runtime_from_harness_json(&opts.harness_json)
-        == kim_agent_host::AgentRuntime::Codex;
-    if !from_profile && !from_harness {
-        return Ok(());
-    }
-    let helper = kim_agent_host::resolve_codex_helper().map_err(|err| err.to_string())?;
-    let linux = kim_agent_host::linux_sandbox_beside(&helper);
-    let home = kim_agent_host::session_file_from_sqlite_path(sqlite_path)
-        .map(|file| kim_agent_host::codex_home_from_session_file(&file))
-        .unwrap_or_else(|| {
-            let root = std::path::Path::new(project_root);
-            if root.is_absolute() {
-                root.join("codex-home")
-            } else {
-                std::env::temp_dir().join("kim-codex")
-            }
-        });
-    let transcript = kim_agent_host::session_file_from_sqlite_path(sqlite_path)
-        .map(|file| std::path::PathBuf::from(format!("{}.codex-transcript", file.display())));
-    host.use_codex(kim_agent_host::CodexLaunch {
-        codex_home: home,
-        helper,
-        linux_sandbox: linux,
-        api_key: opts.api_key.clone(),
-        transcript,
-    })
+    kim_agent_host::attach_codex_for_open(
+        host,
+        &open_request(opts),
+        profile,
+        sqlite_path,
+        project_root,
+    )
     .await
-    .map_err(|err| err.to_string())
+    .map_err(map_host_err)
 }
 
+#[flutter_rust_bridge::frb(ignore)]
 pub async fn session_open(
     sqlite_path: String,
     project_root: String,
@@ -380,7 +345,7 @@ impl AgentSession {
             SessionPhase::Yielded => return Err("agent waiting for tool".into()),
             SessionPhase::Idle => {}
         }
-        if phase::transition(*phase, PhaseInput::Prompt).is_none() {
+        if phase_transition(*phase, PhaseInput::Prompt).is_none() {
             return Err("agent busy".into());
         }
         *phase = SessionPhase::Running;
@@ -494,7 +459,7 @@ impl AgentSession {
             if pending.len() == 1 && pending[0].call_id == call_id {
                 disarm_yield_watch(&inner);
                 if let Ok(mut g) = inner.phase.lock() {
-                    if phase::transition(*g, PhaseInput::Continue).is_some() {
+                    if phase_transition(*g, PhaseInput::Continue).is_some() {
                         *g = SessionPhase::Running;
                     }
                 }
@@ -560,7 +525,7 @@ impl AgentSession {
             if pending.len() == 1 && pending[0].call_id == call_id {
                 disarm_yield_watch(&inner);
                 if let Ok(mut g) = inner.phase.lock() {
-                    if phase::transition(*g, PhaseInput::Continue).is_some() {
+                    if phase_transition(*g, PhaseInput::Continue).is_some() {
                         *g = SessionPhase::Running;
                     }
                 }
@@ -668,7 +633,7 @@ impl AgentSession {
             .map_err(map_host_err)
     }
 
-    pub async fn resume(&self) -> Result<ResumeReportDto, String> {
+    pub async fn resume(&self) -> Result<ResumeReport, String> {
         let _gate = self.inner.complete_gate.lock().await;
         {
             let phase = self
@@ -687,7 +652,7 @@ impl AgentSession {
         host.repair_in_process_pairing(&self.inner.session_id).await;
         let pending = host.pending_yields(&self.inner.session_id).await;
         if pending.is_empty() {
-            return Ok(ResumeReportDto {
+            return Ok(ResumeReport {
                 resumed_ops: Vec::new(),
                 statuses: Vec::new(),
             });
@@ -729,13 +694,13 @@ impl AgentSession {
         }
         let gen = self.inner.generation.load(Ordering::SeqCst);
         arm_yield_watch(&self.inner, gen);
-        Ok(ResumeReportDto {
+        Ok(ResumeReport {
             resumed_ops,
             statuses,
         })
     }
 
-    pub async fn snapshot(&self) -> Result<SessionSnapshotDto, String> {
+    pub async fn snapshot(&self) -> Result<SessionSnapshot, String> {
         let phase = self
             .inner
             .phase
@@ -747,7 +712,7 @@ impl AgentSession {
             guard.clone()
         };
         let pending = host.pending_yields(&self.inner.session_id).await;
-        Ok(SessionSnapshotDto {
+        Ok(SessionSnapshot {
             busy: phase == SessionPhase::Running,
             last_operation_id: String::new(),
             phase: phase.as_str().to_string(),
@@ -755,6 +720,7 @@ impl AgentSession {
         })
     }
 
+    #[flutter_rust_bridge::frb(ignore)]
     pub async fn reconfigure(&self, opts: SessionOpenOpts) -> Result<(), String> {
         let root = self.inner.root_for_codex.clone();
         let resolved = resolved_from_opts(&opts, root.clone())?;
@@ -872,7 +838,7 @@ fn spawn_host_pump(
 }
 
 fn turn_is_current(inner: &Shared, gen: u64) -> bool {
-    !phase::stale(inner.generation.load(Ordering::SeqCst), gen)
+    !phase_stale(inner.generation.load(Ordering::SeqCst), gen)
 }
 
 fn set_phase_if_current(inner: &Shared, gen: u64, next: SessionPhase) -> bool {
@@ -1036,86 +1002,46 @@ async fn finish_turn(
     }
 }
 
-pub async fn fetch_supported_models(opts: SessionOpenOpts) -> Result<Vec<String>, String> {
+pub async fn fetch_supported_models(
+    llm_backend: String,
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<String>, super::failure::AgentFailure> {
     let spec = ProviderSpec {
-        kind: opts.llm_backend.clone(),
-        base_url: opts.base_url.clone(),
+        kind: llm_backend,
+        base_url,
         key_ref: String::new(),
     };
-    kim_agent_host::fetch_models(&spec, &opts.api_key)
+    kim_agent_host::fetch_models(&spec, &api_key)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|err| super::failure::AgentFailure::Failed {
+            message: err.to_string(),
+        })
 }
 
-pub fn list_builtin_profiles() -> Result<Vec<String>, String> {
+pub fn list_builtin_profiles() -> Result<Vec<String>, super::failure::AgentFailure> {
     kim_agent_host::builtin_templates()
         .into_iter()
-        .map(|p| serde_json::to_string(&p).map_err(|e| e.to_string()))
+        .map(|profile| {
+            serde_json::to_string(&profile).map_err(|err| super::failure::AgentFailure::Failed {
+                message: err.to_string(),
+            })
+        })
         .collect()
 }
 
-pub fn list_bundled_providers() -> Result<Vec<String>, String> {
-    Ok(kim_agent_host::bundled_provider_summaries()
+pub fn list_bundled_providers() -> Vec<String> {
+    kim_agent_host::bundled_provider_summaries()
         .into_iter()
-        .map(|s| {
+        .map(|summary| {
             serde_json::json!({
-                "name": s.name,
-                "display_name": s.display_name,
-                "mobile": s.mobile,
+                "name": summary.name,
+                "display_name": summary.display_name,
+                "mobile": summary.mobile,
             })
             .to_string()
         })
-        .collect())
-}
-
-pub fn catalog_vendors() -> Result<String, String> {
-    kim_agent_host::catalog_vendors_json().map_err(map_host_err)
-}
-
-pub fn catalog_surface(vendor: String, model: String) -> Result<String, String> {
-    kim_agent_host::catalog_surface_json(&vendor, &model).map_err(map_host_err)
-}
-
-pub fn catalog_validate(
-    vendor: String,
-    model: String,
-    choice_json: String,
-) -> Result<String, String> {
-    kim_agent_host::catalog_validate(&vendor, &model, &choice_json).map_err(map_host_err)
-}
-
-/// Portable skills under the user shelf and/or `<project>/.agents/skills`.
-pub fn skill_portable_list(user_root: String, project_root: String) -> Result<String, String> {
-    Ok(kim_agent_host::skill_portable_list_json(
-        &user_root,
-        &project_root,
-    ))
-}
-
-/// Bundled (and optional cache) `kim-*` app skill summaries for assignment UI.
-pub fn skill_app_catalog(cache_root: String) -> Result<String, String> {
-    let root = cache_root.trim();
-    let path = if root.is_empty() {
-        None
-    } else {
-        Some(std::path::Path::new(root))
-    };
-    Ok(kim_agent_host::skill_app_catalog_json(path))
-}
-
-/// Preview assembled tools + layered prompts for a profile (no network).
-pub fn preview_assembled(profile_json: String, project_root: String) -> Result<String, String> {
-    let profile: AgentProfile =
-        serde_json::from_str(&profile_json).map_err(|e| format!("profile_json: {e}"))?;
-    let preview = kim_agent_host::preview_assembled(&profile, std::path::Path::new(&project_root))
-        .map_err(map_host_err)?;
-    serde_json::to_string(&preview).map_err(|e| e.to_string())
-}
-
-/// Registered capability kinds + risk + param_schema for UI cards.
-pub fn capability_catalog_json() -> Result<String, String> {
-    let entries = kim_agent_host::capability::catalog_entries();
-    serde_json::to_string(&entries).map_err(|e| e.to_string())
+        .collect()
 }
 
 fn map_host_err(err: HostError) -> String {
@@ -1287,6 +1213,7 @@ async fn sleep_bounded(d: Duration) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use kim_agent_host::{AgentProfile, LegacyOpenOpts, ScriptedProvider};
@@ -1324,7 +1251,7 @@ mod tests {
     #[test]
     fn spawn_on_current_from_plain_thread_uses_app_runtime() {
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             spawn_on_current(async move {
                 let _ = tx.send(());
             });

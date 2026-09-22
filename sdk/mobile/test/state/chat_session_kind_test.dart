@@ -16,11 +16,11 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
+      SessionSnapshot(
         link: env.fake.snapshot.link,
         lastError: env.fake.snapshot.lastError,
         threads: const [
-          ThreadViewDto(
+          ThreadView(
             id: 'G1',
             kind: 1,
             title: 'G1',
@@ -51,11 +51,11 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
+      SessionSnapshot(
         link: env.fake.snapshot.link,
         lastError: env.fake.snapshot.lastError,
         threads: const [
-          ThreadViewDto(
+          ThreadView(
             id: 'bob',
             kind: 0,
             title: 'bob',

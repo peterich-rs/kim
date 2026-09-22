@@ -52,7 +52,7 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
   ThreadMessagesNotifier(this.dest);
 
   final String dest;
-  StreamSubscription<TimelineUpdateDto>? _sub;
+  StreamSubscription<TimelineUpdate>? _sub;
   var _awaitingSnapshot = false;
 
   @override
@@ -85,14 +85,14 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
                 return;
               }
               switch (update) {
-                case TimelineUpdateDto_Snapshot(:final snapshot):
+                case TimelineUpdate_Snapshot(:final snapshot):
                   _onSnapshot(snapshot);
-                case TimelineUpdateDto_Delta(:final delta):
+                case TimelineUpdate_Delta(:final delta):
                   if (_awaitingSnapshot) {
                     return;
                   }
                   _onDelta(delta);
-                case TimelineUpdateDto_Resync():
+                case TimelineUpdate_Resync():
                   KimLogger.info('timeline resync dest=$dest');
                   _awaitingSnapshot = true;
                   state = state.copyWith(items: const []);
@@ -107,11 +107,11 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     }
   }
 
-  void _onSnapshot(TimelineSnapshotDto snapshot) {
+  void _onSnapshot(TimelineSnapshot snapshot) {
     _awaitingSnapshot = false;
     final hot = [
-      for (final m in snapshot.messages) kimChatFromDto(m),
-      for (final m in snapshot.pending) kimChatFromDto(m),
+      for (final m in snapshot.messages) kimChatFrom(m),
+      for (final m in snapshot.pending) kimChatFrom(m),
     ];
     state = state.copyWith(
       items: _sorted(hot),
@@ -121,13 +121,13 @@ class ThreadMessagesNotifier extends Notifier<ThreadMessagesState> {
     );
   }
 
-  void _onDelta(TimelineDeltaDto delta) {
+  void _onDelta(TimelineDelta delta) {
     final byKey = {for (final m in state.items) m.key: m};
     for (final key in delta.deletedKeys) {
       byKey.remove(key);
     }
     for (final u in delta.upserts) {
-      byKey[u.key] = kimChatFromDto(u);
+      byKey[u.key] = kimChatFrom(u);
     }
     state = state.copyWith(items: _sorted(byKey.values.toList()));
   }

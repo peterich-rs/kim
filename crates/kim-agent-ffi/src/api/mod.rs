@@ -1,4 +1,5 @@
-mod phase;
+pub mod catalog;
+pub mod failure;
 pub mod session;
 pub mod simple;
 

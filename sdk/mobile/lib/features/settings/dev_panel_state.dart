@@ -6,11 +6,11 @@ import 'package:kim_mobile/src/rust/api/types.dart';
 class DevPanelView {
   const DevPanelView({this.metrics, this.wipeSeen = 0, this.revision = 0});
 
-  final MetricsDto? metrics;
+  final Metrics? metrics;
   final int wipeSeen;
   final int revision;
 
-  DevPanelView copyWith({MetricsDto? metrics, int? wipeSeen, int? revision}) {
+  DevPanelView copyWith({Metrics? metrics, int? wipeSeen, int? revision}) {
     return DevPanelView(
       metrics: metrics ?? this.metrics,
       wipeSeen: wipeSeen ?? this.wipeSeen,
@@ -23,7 +23,7 @@ class DevPanelUi extends Notifier<DevPanelView> {
   @override
   DevPanelView build() => const DevPanelView();
 
-  void showMetrics({required MetricsDto metrics, required int wipeSeen}) {
+  void showMetrics({required Metrics metrics, required int wipeSeen}) {
     state = state.copyWith(
       metrics: metrics,
       wipeSeen: wipeSeen,

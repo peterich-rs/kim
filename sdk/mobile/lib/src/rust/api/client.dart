@@ -18,11 +18,11 @@ import 'types.dart';
 abstract class KimUiHandle implements RustOpaqueInterface {
   Future<AgentCatalogHandle> agentCatalog();
 
-  Future<String> agentFlags();
+  Future<AgentFlags> agentFlags();
 
   Future<void> attachStore({required String dbPath});
 
-  Future<PersonDto> botCreate({
+  Future<Person> botCreate({
     required String clientProfileId,
     required String nickname,
     required String avatar,
@@ -53,7 +53,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  Future<PersonDto> botUpdate({
+  Future<Person> botUpdate({
     required String dest,
     required String nickname,
     required String avatar,
@@ -72,7 +72,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> cancelSend({required String clientId});
 
-  Future<CommandAckDto> command({required UiCommandDto cmd});
+  Future<CommandAck> command({required UiCommand cmd});
 
   Future<ContactsHandle> contacts();
 
@@ -102,9 +102,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> friendAccept({required String dest});
 
-  Future<List<PersonDto>> friendIncoming();
+  Future<List<Person>> friendIncoming();
 
-  Future<List<PersonDto>> friendList();
+  Future<List<Person>> friendList();
 
   Future<void> friendReject({required String dest});
 
@@ -112,11 +112,11 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> friendRequest({required String dest});
 
-  Future<DeviceOverlayDto?> getDeviceOverlay({required String profileId});
+  Future<DeviceOverlay?> getDeviceOverlay({required String profileId});
 
-  Future<void> importAgentProfiles({required List<AgentProfileDto> rows});
+  Future<void> importAgentProfiles({required List<AgentProfile> rows});
 
-  Future<SettingsDto> importDeviceSettings({
+  Future<Settings> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
     required String env,
@@ -125,9 +125,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<InboxHandle> inbox();
 
-  Future<List<AgentProfileDto>> listAgentProfiles();
+  Future<List<AgentProfile>> listAgentProfiles();
 
-  Future<List<ProviderAccountDto>> listProviderAccounts();
+  Future<List<ProviderAccount>> listProviderAccounts();
 
   Future<void> loadOlder({required String dest});
 
@@ -147,9 +147,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<MediaHandle> media();
 
-  Future<LocalMediaDto> mediaFetch({required String url});
+  Future<LocalMedia> mediaFetch({required String url});
 
-  Future<LocalMediaDto> mediaUpload({
+  Future<LocalMedia> mediaUpload({
     required String path,
     required String mime,
     required int width,
@@ -157,13 +157,13 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
-  MetricsDto metricsSnapshot();
+  Metrics metricsSnapshot();
 
   Future<void> notifyForeground();
 
   Future<void> notifyRadioUp();
 
-  Future<ProfileDto> profile({required String dest});
+  Future<Profile> profile({required String dest});
 
   Future<void> refreshContacts();
 
@@ -174,19 +174,19 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
-  Future<List<RoomMemberDto>> roomEnter({
+  Future<List<RoomMember>> roomEnter({
     required String dest,
     required int kind,
   });
 
   Future<String> roomLeave({required String dest, required int kind});
 
-  Future<List<MessageViewDto>> searchMessages({
+  Future<List<MessageView>> searchMessages({
     required String query,
     String? dest,
   });
 
-  Future<List<PersonDto>> searchUsers({required String query});
+  Future<List<Person>> searchUsers({required String query});
 
   Future<void> sendTyping({
     required String dest,
@@ -194,7 +194,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required bool active,
   });
 
-  Future<void> setAgentFlags({required String flagsJson});
+  Future<void> setAgentFlags({required AgentFlags flags});
 
   Future<void> setConversationVisibility({
     required BigInt generation,
@@ -203,9 +203,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required int kind,
   });
 
-  Future<SettingsDto> settingsGet();
+  Future<Settings> settingsGet();
 
-  Future<SettingsDto> settingsPatch({
+  Future<Settings> settingsPatch({
     String? wsUrl,
     String? httpOrigin,
     String? env,
@@ -222,43 +222,43 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   bool storeAttached();
 
-  Future<void> submitAgentRun({required AgentRunResultDto result});
+  Future<void> submitAgentRun({required AgentRunResult result});
 
   Future<void> syncAgentSpecs();
 
-  Future<ProfileDto> updateProfile({
+  Future<Profile> updateProfile({
     required String nickname,
     required String avatar,
     required String bio,
   });
 
-  Future<void> upsertAgentProfile({required AgentProfileDto row});
+  Future<void> upsertAgentProfile({required AgentProfile row});
 
-  Future<void> upsertDeviceOverlay({required DeviceOverlayDto row});
+  Future<void> upsertDeviceOverlay({required DeviceOverlay row});
 
-  Future<void> upsertProviderAccount({required ProviderAccountDto row});
+  Future<void> upsertProviderAccount({required ProviderAccount row});
 
   /// Desktop permission cards. Phone returns an idle stream.
-  Stream<AgentPermissionEventDto> watchAgentPermission();
+  Stream<AgentPermissionEvent> watchAgentPermission();
 
-  Stream<AgentRunRequestDto> watchAgentRun();
+  Stream<AgentRunRequest> watchAgentRun();
 
   /// Desktop pet presence (`running` / `done` / `failed`). Phone is idle.
-  Stream<AgentUiStatusDto> watchAgentUi();
+  Stream<AgentUiStatus> watchAgentUi();
 
-  Stream<ContactsSnapshotDto> watchContacts();
+  Stream<ContactsSnapshot> watchContacts();
 
   /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
-  Stream<SessionUpdateDto> watchSession();
+  Stream<SessionUpdate> watchSession();
 
-  Stream<SessionSnapshotDto> watchSessionSnapshot();
+  Stream<SessionSnapshot> watchSessionSnapshot();
 
-  Stream<TimelineUpdateDto> watchTimeline({
+  Stream<TimelineUpdate> watchTimeline({
     required String dest,
     required int limit,
   });
 
-  Stream<TokenPersistDto> watchTokenPersist();
+  Stream<TokenPersist> watchTokenPersist();
 }
 
 class KimBotPendingItem {
@@ -290,7 +290,7 @@ class KimCommandReceipt {
   final String clientId;
   final String dest;
   final PlatformInt64 acceptedAt;
-  final SendStatusDto sendStatus;
+  final SendStatus sendStatus;
 
   const KimCommandReceipt({
     required this.requestId,

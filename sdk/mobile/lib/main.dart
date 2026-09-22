@@ -89,9 +89,9 @@ class _KimBootState extends State<KimBoot> {
     await runtime.settings.dropImportedPrefs();
     bridge.watchTokenPersist().listen((event) {
       switch (event) {
-        case rust_types.TokenPersistDto_Write(:final token):
+        case rust_types.TokenPersist_Write(:final token):
           unawaited(runtime.settings.saveToken(token));
-        case rust_types.TokenPersistDto_Clear():
+        case rust_types.TokenPersist_Clear():
           unawaited(runtime.settings.saveToken(''));
       }
     });

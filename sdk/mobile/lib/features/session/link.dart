@@ -37,7 +37,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   var _specSynced = false;
   var _specSyncing = false;
   var _lifecycleBound = false;
-  StreamSubscription<SessionUpdateDto>? _events;
+  StreamSubscription<SessionUpdate>? _events;
 
   @override
   KimLinkState build() {
@@ -72,7 +72,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     _radioWasUp = radio;
     _listenEvents();
     ref.watch(conversationVisibilityProvider);
-    final mapped = kimLinkFromDto(snap.link, snap.lastError);
+    final mapped = kimLinkFrom(snap.link, snap.lastError);
     if (mapped.status == ConnStatus.online) {
       _askNotifications();
       if (!_specSynced && !_specSyncing) {
@@ -216,21 +216,21 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         return;
       }
       switch (event) {
-        case SessionUpdateDto_Kickout():
+        case SessionUpdate_Kickout():
           KimLogger.warn('kickout');
           unawaited(
             ref.read(authProvider.notifier).signOut(notice: Copy.kicked),
           );
-        case SessionUpdateDto_AuthExpired():
+        case SessionUpdate_AuthExpired():
           KimLogger.warn('auth expired');
           unawaited(ref.read(authProvider.notifier).signOut(expired: true));
-        case SessionUpdateDto_TokenRenew(:final token):
+        case SessionUpdate_TokenRenew(:final token):
           unawaited(ref.read(authProvider.notifier).savePushedToken(token));
-        case SessionUpdateDto_FriendRequest():
+        case SessionUpdate_FriendRequest():
           unawaited(KimHaptics.light());
-        case SessionUpdateDto_FriendAccepted():
+        case SessionUpdate_FriendAccepted():
           unawaited(KimHaptics.success());
-        case SessionUpdateDto_Presence(
+        case SessionUpdate_Presence(
           :final account,
           :final status,
           :final lastSeen,
@@ -242,7 +242,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 status: status,
                 lastSeen: lastSeen.toInt(),
               );
-        case SessionUpdateDto_Typing(:final typer, :final dest, :final active):
+        case SessionUpdate_Typing(:final typer, :final dest, :final active):
           final agentWire =
               isAgentDest(typer) ||
               isServerBotAccount(typer) ||
@@ -260,14 +260,14 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 active: active,
                 me: ref.read(authProvider).account,
               );
-        case SessionUpdateDto_AgentTurn(:final dest, :final state):
+        case SessionUpdate_AgentTurn(:final dest, :final state):
           final busy = switch (state) {
-            AgentTurnStateDto.running => true,
-            AgentTurnStateDto.queued ||
-            AgentTurnStateDto.waitingPermission ||
-            AgentTurnStateDto.done ||
-            AgentTurnStateDto.error ||
-            AgentTurnStateDto.empty => false,
+            AgentTurnState.running => true,
+            AgentTurnState.queued ||
+            AgentTurnState.waitingPermission ||
+            AgentTurnState.done ||
+            AgentTurnState.error ||
+            AgentTurnState.empty => false,
           };
           ref
               .read(typingProvider.notifier)
@@ -276,7 +276,7 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 busy: busy,
                 me: ref.read(authProvider).account,
               );
-        case SessionUpdateDto_ReceiptRead(
+        case SessionUpdate_ReceiptRead(
           :final reader,
           :final dest,
           :final kind,
@@ -290,17 +290,17 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
                 kind: kind,
                 messageId: messageId.toInt(),
               );
-        case SessionUpdateDto_RustPanic(:final message):
+        case SessionUpdate_RustPanic(:final message):
           KimLogger.error('rust panic', message);
           ref.read(rustPanicProvider.notifier).setMessage(message);
-        case SessionUpdateDto_Link(:final state, :final lastError):
+        case SessionUpdate_Link(:final state, :final lastError):
           KimLogger.info(
             'link ${_linkLabel(state)}${lastError == null || lastError.isEmpty ? '' : ' error=$lastError'}',
           );
-        case SessionUpdateDto_Inbox():
-        case SessionUpdateDto_ThreadUpsert():
-        case SessionUpdateDto_ProfileUpdated():
-        case SessionUpdateDto_ContactsChanged():
+        case SessionUpdate_Inbox():
+        case SessionUpdate_ThreadUpsert():
+        case SessionUpdate_ProfileUpdated():
+        case SessionUpdate_ContactsChanged():
           break;
         default:
           break;
@@ -321,12 +321,12 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
   }
 }
 
-String _linkLabel(LinkStateDto state) {
+String _linkLabel(LinkState state) {
   return switch (state) {
-    LinkStateDto_Connecting() => 'connecting',
-    LinkStateDto_Online() => 'online',
-    LinkStateDto_Reconnecting(:final attempt) =>
+    LinkState_Connecting() => 'connecting',
+    LinkState_Online() => 'online',
+    LinkState_Reconnecting(:final attempt) =>
       'reconnecting attempt=$attempt',
-    LinkStateDto_Offline() => 'offline',
+    LinkState_Offline() => 'offline',
   };
 }

@@ -18,20 +18,20 @@ void main() {
     env.container.listen(linkProvider, (_, _) {});
     await Future<void>.delayed(const Duration(milliseconds: 20));
     for (final state in [
-      AgentTurnStateDto.queued,
-      AgentTurnStateDto.running,
-      AgentTurnStateDto.waitingPermission,
-      AgentTurnStateDto.done,
-      AgentTurnStateDto.error,
-      AgentTurnStateDto.empty,
+      AgentTurnState.queued,
+      AgentTurnState.running,
+      AgentTurnState.waitingPermission,
+      AgentTurnState.done,
+      AgentTurnState.error,
+      AgentTurnState.empty,
     ]) {
       env.fake.pushEvent(
-        SessionUpdateDto.agentTurn(dest: 'b_bot', state: state, text: ''),
+        SessionUpdate.agentTurn(dest: 'b_bot', state: state, text: ''),
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(
         env.container.read(peerTypingProvider('b_bot')),
-        state == AgentTurnStateDto.running,
+        state == AgentTurnState.running,
         reason: '$state',
       );
       expect(env.container.read(peerTypingProvider('alice')), isFalse);
@@ -50,7 +50,7 @@ void main() {
       env.container.listen(linkProvider, (_, _) {});
       await Future<void>.delayed(const Duration(milliseconds: 20));
       env.fake.pushEvent(
-        const SessionUpdateDto.typing(
+        const SessionUpdate.typing(
           typer: 'b_bot',
           dest: 'alice',
           kind: 0,
@@ -60,9 +60,9 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(env.container.read(peerTypingProvider('b_bot')), isFalse);
       env.fake.pushEvent(
-        SessionUpdateDto.agentTurn(
+        SessionUpdate.agentTurn(
           dest: 'b_bot',
-          state: AgentTurnStateDto.running,
+          state: AgentTurnState.running,
           text: '',
         ),
       );
@@ -81,25 +81,25 @@ void main() {
       env.container.listen(linkProvider, (_, _) {});
       await Future<void>.delayed(const Duration(milliseconds: 20));
       env.fake.pushEvent(
-        SessionUpdateDto.agentTurn(
+        SessionUpdate.agentTurn(
           dest: 'b_bot',
-          state: AgentTurnStateDto.running,
+          state: AgentTurnState.running,
           text: '',
         ),
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(env.container.read(peerTypingProvider('b_bot')), isTrue);
       env.fake.pushEvent(
-        SessionUpdateDto.agentTurn(
+        SessionUpdate.agentTurn(
           dest: 'b_bot',
-          state: AgentTurnStateDto.done,
+          state: AgentTurnState.done,
           text: 'pong',
         ),
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(env.container.read(peerTypingProvider('b_bot')), isFalse);
       env.fake.pushEvent(
-        const SessionUpdateDto.typing(
+        const SessionUpdate.typing(
           typer: 'b_bot',
           dest: 'alice',
           kind: 0,
@@ -119,15 +119,15 @@ void main() {
     env.container.listen(linkProvider, (_, _) {});
     await Future<void>.delayed(const Duration(milliseconds: 20));
     env.fake.pushEvent(
-      SessionUpdateDto.agentTurn(
+      SessionUpdate.agentTurn(
         dest: 'b_bot',
-        state: AgentTurnStateDto.done,
+        state: AgentTurnState.done,
         text: 'pong',
       ),
     );
     await Future<void>.delayed(const Duration(milliseconds: 20));
     env.fake.pushEvent(
-      const SessionUpdateDto.typing(
+      const SessionUpdate.typing(
         typer: 'b_bot',
         dest: 'alice',
         kind: 0,
@@ -137,9 +137,9 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(env.container.read(peerTypingProvider('b_bot')), isFalse);
     env.fake.pushEvent(
-      SessionUpdateDto.agentTurn(
+      SessionUpdate.agentTurn(
         dest: 'b_bot',
-        state: AgentTurnStateDto.running,
+        state: AgentTurnState.running,
         text: '',
       ),
     );

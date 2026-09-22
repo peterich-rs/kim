@@ -1,27 +1,27 @@
-/// Dart shell around `kim_agent_ffi` (hard isolation from [KimBridge] / IM).
+/// Desktop catalog and skill queries. Turns run in `HostAgentRuntime`.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
-import 'package:kim_mobile/src/rust_agent/api/session.dart'
-    hide previewAssembled, capabilityCatalogJson;
-import 'package:kim_mobile/src/rust_agent/api/session.dart'
-    as rust_session
-    show previewAssembled, capabilityCatalogJson;
+import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as catalog;
+import 'package:kim_mobile/src/rust_agent/api/session.dart' as session;
 import 'package:kim_mobile/src/rust_agent/frb_generated.dart';
 
-export 'package:kim_mobile/src/rust_agent/api/session.dart'
+export 'package:kim_mobile/src/rust_agent/api/catalog.dart'
     show
-        AgentSession,
-        AgentUiEvent,
-        ResumeReportDto,
-        SessionOpenOpts,
-        SessionSnapshotDto;
+        AssembledPreview,
+        CapabilityEntry,
+        CatalogValidate,
+        PreviewTool,
+        Skill,
+        Vendor;
+export 'package:kim_mobile/src/rust_agent/api/session.dart'
+    show AgentUiEvent, ResumeReport, SessionSnapshot;
 
-/// Production FFI session or a test double. ChatAgent is the only caller.
+/// Test double for the old session loop. Production does not open one.
 abstract class AgentSessionPort {
-  Stream<AgentUiEvent> listen();
+  Stream<session.AgentUiEvent> listen();
   Future<String> prompt({required String text});
   Future<String> promptWithContext({
     required String text,
@@ -37,65 +37,11 @@ abstract class AgentSessionPort {
   });
   Future<void> close();
   Future<void> abort();
-
-  /// Wake the FRB event stream so `listen` can cancel without aborting Codex.
   Future<void> park();
   Future<void> steer({required String text});
-  Future<void> reconfigure({required SessionOpenOpts opts});
-  Future<ResumeReportDto> resume();
-  Future<SessionSnapshotDto> snapshot();
-}
-
-class NativeAgentSession implements AgentSessionPort {
-  NativeAgentSession(this._inner);
-
-  final AgentSession _inner;
-
-  @override
-  Stream<AgentUiEvent> listen() => _inner.listen();
-
-  @override
-  Future<String> prompt({required String text}) => _inner.prompt(text: text);
-
-  @override
-  Future<String> promptWithContext({
-    required String text,
-    required String contextJson,
-  }) => _inner.promptWithContext(text: text, contextJson: contextJson);
-
-  @override
-  Future<String> completeTool({
-    required String callId,
-    required String outputJson,
-  }) => _inner.completeTool(callId: callId, outputJson: outputJson);
-
-  @override
-  Future<String> respondPermission({
-    required String callId,
-    required String permission,
-  }) => _inner.respondPermission(callId: callId, permission: permission);
-
-  @override
-  Future<void> close() => _inner.close();
-
-  @override
-  Future<void> abort() => _inner.abort();
-
-  @override
-  Future<void> park() => _inner.park();
-
-  @override
-  Future<void> steer({required String text}) => _inner.steer(text: text);
-
-  @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) =>
-      _inner.reconfigure(opts: opts);
-
-  @override
-  Future<ResumeReportDto> resume() => _inner.resume();
-
-  @override
-  Future<SessionSnapshotDto> snapshot() => _inner.snapshot();
+  Future<void> reconfigure();
+  Future<session.ResumeReport> resume();
+  Future<session.SessionSnapshot> snapshot();
 }
 
 final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
@@ -113,94 +59,85 @@ class AgentBridge {
 
   bool get isReady => _inited;
 
-  Future<AgentSessionPort> open({
-    required String sqlitePath,
-    required String projectRoot,
-    required SessionOpenOpts opts,
+  Future<List<String>> fetchModels({
+    required String vendor,
+    required String baseUrl,
+    required String apiKey,
   }) async {
     await ensure();
-    final session = await sessionOpen(
-      sqlitePath: sqlitePath,
-      projectRoot: projectRoot,
-      opts: opts,
+    return session.fetchSupportedModels(
+      llmBackend: vendor,
+      baseUrl: baseUrl,
+      apiKey: apiKey,
     );
-    return NativeAgentSession(session);
-  }
-
-  Future<List<String>> fetchModels(SessionOpenOpts opts) async {
-    await ensure();
-    return fetchSupportedModels(opts: opts);
   }
 
   Future<List<String>> builtinProfiles() async {
     await ensure();
-    return listBuiltinProfiles();
+    return session.listBuiltinProfiles();
   }
 
   Future<List<String>> bundledProviders() async {
     await ensure();
-    return listBundledProviders();
+    return session.listBundledProviders();
   }
 
-  Future<String> catalogVendorsJson() async {
+  Future<List<catalog.Vendor>> catalogVendors() async {
     await ensure();
-    return catalogVendors();
+    return catalog.catalogVendors();
   }
 
-  Future<String> catalogSurfaceJson({
+  Future<catalog.ReasoningSurface> catalogSurface({
     required String vendor,
     required String model,
   }) async {
     await ensure();
-    return catalogSurface(vendor: vendor, model: model);
+    return catalog.catalogSurface(vendor: vendor, model: model);
   }
 
-  Future<void> respondPermission({
-    required String callId,
-    required String permission,
-  }) async {}
-
-  Future<String> catalogValidateChoice({
+  Future<catalog.CatalogValidate> catalogValidateChoice({
     required String vendor,
     required String model,
-    required String choiceJson,
+    required String kind,
+    required bool on,
+    required String value,
+    required int budget,
   }) async {
     await ensure();
-    return catalogValidate(
+    return catalog.catalogValidate(
       vendor: vendor,
       model: model,
-      choiceJson: choiceJson,
+      choiceKind: kind,
+      on_: on,
+      value: value,
+      budget: budget,
     );
   }
 
-  Future<String> skillAppCatalogJson({required String cacheRoot}) async {
+  Future<List<catalog.Skill>> skillAppCatalog({required String cacheRoot}) async {
     await ensure();
-    return skillAppCatalog(cacheRoot: cacheRoot);
+    return catalog.skillAppCatalog(cacheRoot: cacheRoot);
   }
 
-  Future<String> skillPortableListJson({
+  Future<List<catalog.Skill>> skillPortableList({
     required String userRoot,
     required String projectRoot,
   }) async {
     await ensure();
-    return skillPortableList(userRoot: userRoot, projectRoot: projectRoot);
-  }
-
-  /// Host FFI: assembled tools + layered prompts (no network).
-  Future<String> previewAssembled({
-    required String profileJson,
-    required String projectRoot,
-  }) async {
-    await ensure();
-    return rust_session.previewAssembled(
-      profileJson: profileJson,
+    return catalog.skillPortableList(
+      userRoot: userRoot,
       projectRoot: projectRoot,
     );
   }
 
-  /// Host FFI: registered capability kinds for UI cards.
-  Future<String> capabilityCatalogJson() async {
+  Future<catalog.AssembledPreview> previewAssembled({
+    required String profileJson,
+    required String projectRoot,
+  }) async {
     await ensure();
-    return rust_session.capabilityCatalogJson();
+    return catalog.previewAssembled(
+      profileJson: profileJson,
+      projectRoot: projectRoot,
+    );
   }
 }

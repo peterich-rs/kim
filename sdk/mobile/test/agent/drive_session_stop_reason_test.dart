@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/legacy_agent_drive.dart';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshotDto;
+import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshot;
 
 import '../support/fake_kim.dart';
 
@@ -80,14 +80,14 @@ class _StopSession implements AgentSessionPort {
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',
@@ -156,7 +156,7 @@ void main() {
       };
     final done = loop.start();
     fake.agentRunCtrl.add(
-      AgentRunRequestDto(
+      AgentRunRequest(
         dest: 'b_bot',
         profileId: 'p-1',
         text: 'hi',
@@ -280,14 +280,14 @@ class _HangUntilCloseSession implements AgentSessionPort {
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',

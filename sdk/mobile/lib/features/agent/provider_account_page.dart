@@ -86,7 +86,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     return ref.read(providerAccountsProvider.notifier).byId(id);
   }
 
-  VendorSummaryDto? _vendorSummaryOf(ProviderAccountDraft draft) {
+  VendorSummary? _vendorSummaryOf(ProviderAccountDraft draft) {
     for (final v in draft.vendors) {
       if (v.id == draft.vendor) {
         return v;
@@ -174,23 +174,9 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       final bridge = ref.read(agentBridgeProvider);
       await bridge.ensure();
       final list = await bridge.fetchModels(
-        SessionOpenOpts(
-          model: draft.models.isNotEmpty ? draft.models.first : '',
-          llmBackend: canonicalizeVendorId(draft.vendor),
-          resumeOnOpen: false,
-          baseUrl: _url.text.trim(),
-          apiKey: _key.text.trim(),
-          enableFsTools: false,
-          bashEnabled: false,
-          profileId: '',
-          profileJson: '',
-          thinkingEffort: '',
-          gooseMode: '',
-          enableKimTools: false,
-          enableApprovals: false,
-          sessionId: '',
-          harnessJson: '',
-        ),
+        vendor: canonicalizeVendorId(draft.vendor),
+        baseUrl: _url.text.trim(),
+        apiKey: _key.text.trim(),
       );
       if (!mounted) {
         return;
@@ -360,7 +346,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
                           if (next == null) {
                             return;
                           }
-                          VendorSummaryDto? hit;
+                          VendorSummary? hit;
                           for (final v in draft.vendors) {
                             if (v.id == next) {
                               hit = v;

@@ -3,7 +3,6 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/core/settings.dart';
 
 const _kMode = 'agent.llm_backend';
@@ -60,26 +59,6 @@ class AgentSettings {
       enableFsTools: enableFsTools ?? this.enableFsTools,
       bashEnabled: bashEnabled ?? this.bashEnabled,
       thinkingEffort: thinkingEffort ?? this.thinkingEffort,
-    );
-  }
-
-  SessionOpenOpts toOpts({bool resumeOnOpen = true}) {
-    return SessionOpenOpts(
-      model: model,
-      llmBackend: llmBackend,
-      resumeOnOpen: resumeOnOpen,
-      baseUrl: baseUrl,
-      apiKey: apiKey,
-      enableFsTools: enableFsTools,
-      bashEnabled: bashEnabled,
-      profileId: 'goose',
-      profileJson: '',
-      thinkingEffort: thinkingEffort,
-      gooseMode: '',
-      enableKimTools: false,
-      enableApprovals: false,
-      sessionId: '',
-      harnessJson: '',
     );
   }
 

@@ -53,11 +53,11 @@ class KimAuthSession {
 
 /// Long-lived WGateway session. Tests inject a fake; the app uses [KimBridge].
 abstract class KimClientPort {
-  Stream<rust_types.SessionSnapshotDto> watchSessionSnapshot();
+  Stream<rust_types.SessionSnapshot> watchSessionSnapshot();
 
-  Stream<rust_types.SessionUpdateDto> watchSessionEvents();
+  Stream<rust_types.SessionUpdate> watchSessionEvents();
 
-  Stream<rust_types.TimelineUpdateDto> watchThread(
+  Stream<rust_types.TimelineUpdate> watchThread(
     String dest, {
     int limit = 50,
   });
@@ -171,17 +171,17 @@ abstract class KimClientPort {
   /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
   Future<void> botTyping(String dest, {int kind = 0, bool active = true});
 
-  Stream<rust_types.TokenPersistDto> watchTokenPersist();
+  Stream<rust_types.TokenPersist> watchTokenPersist();
 
-  Future<rust_types.SettingsDto> settingsGet();
+  Future<rust_types.Settings> settingsGet();
 
-  Future<rust_types.SettingsDto> settingsPatch({
+  Future<rust_types.Settings> settingsPatch({
     String? wsUrl,
     String? httpOrigin,
     String? env,
   });
 
-  Future<rust_types.SettingsDto> importDeviceSettings({
+  Future<rust_types.Settings> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
     String env = 'prod',
@@ -190,33 +190,33 @@ abstract class KimClientPort {
 
   Future<void> refreshContacts();
 
-  Stream<rust_types.ContactsSnapshotDto> watchContacts();
+  Stream<rust_types.ContactsSnapshot> watchContacts();
 
-  Stream<rust_types.AgentRunRequestDto> watchAgentRun();
+  Stream<rust_types.AgentRunRequest> watchAgentRun();
 
-  Future<void> submitAgentRun(rust_types.AgentRunResultDto result);
+  Future<void> submitAgentRun(rust_types.AgentRunResult result);
 
-  Future<List<rust_types.AgentProfileDto>> listAgentProfiles();
+  Future<List<rust_types.AgentProfile>> listAgentProfiles();
 
-  Future<void> upsertAgentProfile(rust_types.AgentProfileDto row);
+  Future<void> upsertAgentProfile(rust_types.AgentProfile row);
 
   Future<void> deleteAgentProfile(String profileId);
 
-  Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows);
+  Future<void> importAgentProfiles(List<rust_types.AgentProfile> rows);
 
-  Future<List<rust_types.ProviderAccountDto>> listProviderAccounts();
+  Future<List<rust_types.ProviderAccount>> listProviderAccounts();
 
-  Future<void> upsertProviderAccount(rust_types.ProviderAccountDto row);
+  Future<void> upsertProviderAccount(rust_types.ProviderAccount row);
 
   Future<void> deleteProviderAccount(String id);
 
-  Future<rust_types.DeviceOverlayDto?> getDeviceOverlay(String profileId);
+  Future<rust_types.DeviceOverlay?> getDeviceOverlay(String profileId);
 
-  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlayDto row);
+  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlay row);
 
-  Future<String> agentFlags();
+  Future<rust_types.AgentFlags> agentFlags();
 
-  Future<void> setAgentFlags(String flagsJson);
+  Future<void> setAgentFlags(rust_types.AgentFlags flags);
 
   Future<void> syncAgentSpecs();
 
@@ -224,16 +224,16 @@ abstract class KimClientPort {
 
   Future<String> specBlobToJson(List<int> blob);
 
-  Future<rust_types.CommandAckDto> command(rust_types.UiCommandDto cmd);
+  Future<rust_types.CommandAck> command(rust_types.UiCommand cmd);
 
-  Future<List<rust_types.MessageViewDto>> searchMessages(
+  Future<List<rust_types.MessageView>> searchMessages(
     String query, {
     String? dest,
   });
 
-  Future<rust_types.LocalMediaDto> mediaFetch(String url);
+  Future<rust_types.LocalMedia> mediaFetch(String url);
 
-  Future<rust_types.LocalMediaDto> mediaUpload({
+  Future<rust_types.LocalMedia> mediaUpload({
     required String path,
     required String mime,
     int width = 0,
@@ -241,7 +241,7 @@ abstract class KimClientPort {
     int byteSize = 0,
   });
 
-  Future<rust_types.MetricsDto> metricsSnapshot();
+  Future<rust_types.Metrics> metricsSnapshot();
 
   /// One-shot handoff into the desktop secret vault.
   Future<void> cacheAgentSecret({
@@ -254,9 +254,9 @@ abstract class KimClientPort {
     required bool allow,
   });
 
-  Stream<rust_handles.AgentPermissionEventDto> watchAgentPermission();
+  Stream<rust_handles.AgentPermissionEvent> watchAgentPermission();
 
-  Stream<rust_handles.AgentUiStatusDto> watchAgentUi();
+  Stream<rust_handles.AgentUiStatus> watchAgentUi();
 }
 
 /// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
@@ -445,17 +445,17 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Stream<rust_types.SessionSnapshotDto> watchSessionSnapshot() {
+  Stream<rust_types.SessionSnapshot> watchSessionSnapshot() {
     return _require().watchSessionSnapshot();
   }
 
   @override
-  Stream<rust_types.SessionUpdateDto> watchSessionEvents() {
+  Stream<rust_types.SessionUpdate> watchSessionEvents() {
     return _require().watchSession();
   }
 
   @override
-  Stream<rust_types.TimelineUpdateDto> watchThread(
+  Stream<rust_types.TimelineUpdate> watchThread(
     String dest, {
     int limit = 50,
   }) {
@@ -602,7 +602,7 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
     await _require().deleteThread(dest: dest);
   }
 
-  KimPerson _fromPerson(rust_types.PersonDto p) {
+  KimPerson _fromPerson(rust_types.Person p) {
     return KimPerson(
       account: p.account,
       nickname: p.nickname,
@@ -612,7 +612,7 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
     );
   }
 
-  KimPerson _fromProfile(rust_types.ProfileDto p) {
+  KimPerson _fromProfile(rust_types.Profile p) {
     return KimPerson(
       account: p.account,
       nickname: p.nickname,
@@ -622,14 +622,14 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
     );
   }
 
-  String _sendStatusLabel(rust_types.SendStatusDto status) {
+  String _sendStatusLabel(rust_types.SendStatus status) {
     return switch (status) {
-      rust_types.SendStatusDto.pending => 'pending',
-      rust_types.SendStatusDto.uploading => 'uploading',
-      rust_types.SendStatusDto.sending => 'sending',
-      rust_types.SendStatusDto.sent => 'sent',
-      rust_types.SendStatusDto.failed => 'failed',
-      rust_types.SendStatusDto.cancelled => 'cancelled',
+      rust_types.SendStatus.pending => 'pending',
+      rust_types.SendStatus.uploading => 'uploading',
+      rust_types.SendStatus.sending => 'sending',
+      rust_types.SendStatus.sent => 'sent',
+      rust_types.SendStatus.failed => 'failed',
+      rust_types.SendStatus.cancelled => 'cancelled',
     };
   }
 
@@ -833,17 +833,17 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Stream<rust_types.TokenPersistDto> watchTokenPersist() {
+  Stream<rust_types.TokenPersist> watchTokenPersist() {
     return _require().watchTokenPersist();
   }
 
   @override
-  Future<rust_types.SettingsDto> settingsGet() {
+  Future<rust_types.Settings> settingsGet() {
     return _require().settingsGet();
   }
 
   @override
-  Future<rust_types.SettingsDto> settingsPatch({
+  Future<rust_types.Settings> settingsPatch({
     String? wsUrl,
     String? httpOrigin,
     String? env,
@@ -856,7 +856,7 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.SettingsDto> importDeviceSettings({
+  Future<rust_types.Settings> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
     String env = 'prod',
@@ -876,12 +876,12 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Stream<rust_types.ContactsSnapshotDto> watchContacts() {
+  Stream<rust_types.ContactsSnapshot> watchContacts() {
     return _require().watchContacts();
   }
 
   @override
-  Stream<rust_types.AgentRunRequestDto> watchAgentRun() {
+  Stream<rust_types.AgentRunRequest> watchAgentRun() {
     return _require().watchAgentRun();
   }
 
@@ -902,27 +902,27 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Stream<rust_handles.AgentPermissionEventDto> watchAgentPermission() {
+  Stream<rust_handles.AgentPermissionEvent> watchAgentPermission() {
     return _require().watchAgentPermission();
   }
 
   @override
-  Stream<rust_handles.AgentUiStatusDto> watchAgentUi() {
+  Stream<rust_handles.AgentUiStatus> watchAgentUi() {
     return _require().watchAgentUi();
   }
 
   @override
-  Future<void> submitAgentRun(rust_types.AgentRunResultDto result) {
+  Future<void> submitAgentRun(rust_types.AgentRunResult result) {
     return _require().submitAgentRun(result: result);
   }
 
   @override
-  Future<List<rust_types.AgentProfileDto>> listAgentProfiles() {
+  Future<List<rust_types.AgentProfile>> listAgentProfiles() {
     return _require().listAgentProfiles();
   }
 
   @override
-  Future<void> upsertAgentProfile(rust_types.AgentProfileDto row) {
+  Future<void> upsertAgentProfile(rust_types.AgentProfile row) {
     return _require().upsertAgentProfile(row: row);
   }
 
@@ -932,17 +932,17 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<void> importAgentProfiles(List<rust_types.AgentProfileDto> rows) {
+  Future<void> importAgentProfiles(List<rust_types.AgentProfile> rows) {
     return _require().importAgentProfiles(rows: rows);
   }
 
   @override
-  Future<List<rust_types.ProviderAccountDto>> listProviderAccounts() {
+  Future<List<rust_types.ProviderAccount>> listProviderAccounts() {
     return _require().listProviderAccounts();
   }
 
   @override
-  Future<void> upsertProviderAccount(rust_types.ProviderAccountDto row) {
+  Future<void> upsertProviderAccount(rust_types.ProviderAccount row) {
     return _require().upsertProviderAccount(row: row);
   }
 
@@ -952,23 +952,23 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.DeviceOverlayDto?> getDeviceOverlay(String profileId) {
+  Future<rust_types.DeviceOverlay?> getDeviceOverlay(String profileId) {
     return _require().getDeviceOverlay(profileId: profileId);
   }
 
   @override
-  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlayDto row) {
+  Future<void> upsertDeviceOverlay(rust_types.DeviceOverlay row) {
     return _require().upsertDeviceOverlay(row: row);
   }
 
   @override
-  Future<String> agentFlags() {
+  Future<rust_types.AgentFlags> agentFlags() {
     return _require().agentFlags();
   }
 
   @override
-  Future<void> setAgentFlags(String flagsJson) {
-    return _require().setAgentFlags(flagsJson: flagsJson);
+  Future<void> setAgentFlags(rust_types.AgentFlags flags) {
+    return _require().setAgentFlags(flags: flags);
   }
 
   @override
@@ -987,12 +987,12 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.CommandAckDto> command(rust_types.UiCommandDto cmd) {
+  Future<rust_types.CommandAck> command(rust_types.UiCommand cmd) {
     return _require().command(cmd: cmd);
   }
 
   @override
-  Future<List<rust_types.MessageViewDto>> searchMessages(
+  Future<List<rust_types.MessageView>> searchMessages(
     String query, {
     String? dest,
   }) {
@@ -1000,12 +1000,12 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
   }
 
   @override
-  Future<rust_types.LocalMediaDto> mediaFetch(String url) {
+  Future<rust_types.LocalMedia> mediaFetch(String url) {
     return _require().mediaFetch(url: url);
   }
 
   @override
-  Future<rust_types.LocalMediaDto> mediaUpload({
+  Future<rust_types.LocalMedia> mediaUpload({
     required String path,
     required String mime,
     int width = 0,
@@ -1023,7 +1023,7 @@ class KimBridge implements KimAuthPort, KimClientPort, KimMediaPort {
 
   @override
   @override
-  Future<rust_types.MetricsDto> metricsSnapshot() async {
+  Future<rust_types.Metrics> metricsSnapshot() async {
     return _require().metricsSnapshot();
   }
 

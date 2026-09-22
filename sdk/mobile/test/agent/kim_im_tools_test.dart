@@ -98,14 +98,14 @@ class _ToolSession implements AgentSessionPort {
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',
@@ -248,14 +248,14 @@ class _DeltaSession implements AgentSessionPort {
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  Future<SessionSnapshotDto> snapshot() async => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',

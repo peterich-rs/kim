@@ -52,12 +52,12 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
   AgentCreateForm get _form => ref.read(agentCreateFormProvider.notifier);
 
   ReasoningChoice get _choice => _state.choice;
-  ReasoningSurfaceDto get _surface => _state.surface;
+  ReasoningSurface get _surface => _state.surface;
   int get _contextTokens => _state.contextTokens;
   int get _step => _state.step;
   bool get _saving => _state.saving;
   String get _accountId => _state.accountId;
-  List<VendorSummaryDto> get _vendors => _state.vendors;
+  List<VendorSummary> get _vendors => _state.vendors;
   List<String> get _pendingModels => _state.pendingModels;
   List<CapabilityRef> get _caps => _state.caps;
   Map<String, String> get _perms => _state.perms;
@@ -96,7 +96,7 @@ class _AgentCreatePageState extends ConsumerState<AgentCreatePage> {
     return ref.read(providerAccountsProvider.notifier).byId(_accountId);
   }
 
-  VendorSummaryDto? _vendorById(String id, [List<VendorSummaryDto>? vendors]) {
+  VendorSummary? _vendorById(String id, [List<VendorSummary>? vendors]) {
     for (final v in vendors ?? _vendors) {
       if (v.id == id) {
         return v;

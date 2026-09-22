@@ -9,7 +9,7 @@ import 'package:kim_mobile/features/agent/context_window.dart';
 class AgentSettingsDraft {
   const AgentSettingsDraft({
     this.choice = const ReasoningChoice(kind: 'none'),
-    this.surface = const ReasoningSurfaceDto(kind: 'none'),
+    this.surface = const ReasoningSurface(kind: 'none'),
     this.contextTokens = kDefaultContextTokens,
     this.loaded = false,
     this.accountId = '',
@@ -20,22 +20,22 @@ class AgentSettingsDraft {
   });
 
   final ReasoningChoice choice;
-  final ReasoningSurfaceDto surface;
+  final ReasoningSurface surface;
   final int contextTokens;
   final bool loaded;
   final String accountId;
-  final List<VendorSummaryDto> vendors;
+  final List<VendorSummary> vendors;
   final List<String> pendingModels;
   final AgentProfile? profile;
   final int revision;
 
   AgentSettingsDraft copyWith({
     ReasoningChoice? choice,
-    ReasoningSurfaceDto? surface,
+    ReasoningSurface? surface,
     int? contextTokens,
     bool? loaded,
     String? accountId,
-    List<VendorSummaryDto>? vendors,
+    List<VendorSummary>? vendors,
     List<String>? pendingModels,
     AgentProfile? profile,
     int? revision,
@@ -60,7 +60,7 @@ class AgentSettingsForm extends Notifier<AgentSettingsDraft> {
 
   void bump() => state = state.copyWith(revision: state.revision + 1);
 
-  void setVendors(List<VendorSummaryDto> vendors) =>
+  void setVendors(List<VendorSummary> vendors) =>
       state = state.copyWith(vendors: vendors);
 
   void markLoaded() => state = state.copyWith(loaded: true);
@@ -87,7 +87,7 @@ class AgentSettingsForm extends Notifier<AgentSettingsDraft> {
   }
 
   void setSurface({
-    required ReasoningSurfaceDto surface,
+    required ReasoningSurface surface,
     required ReasoningChoice choice,
   }) {
     state = state.copyWith(surface: surface, choice: choice);

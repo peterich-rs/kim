@@ -22,7 +22,7 @@ class AgentCreateDraft {
     this.vendors = const [],
     this.pendingModels = const [],
     this.choice = const ReasoningChoice(kind: 'none'),
-    this.surface = const ReasoningSurfaceDto(kind: 'none'),
+    this.surface = const ReasoningSurface(kind: 'none'),
     this.perms = const {},
     this.app = const [],
     this.portable = const [],
@@ -41,10 +41,10 @@ class AgentCreateDraft {
   final bool saving;
   final List<CapabilityRef> caps;
   final Set<String> appSelected;
-  final List<VendorSummaryDto> vendors;
+  final List<VendorSummary> vendors;
   final List<String> pendingModels;
   final ReasoningChoice choice;
-  final ReasoningSurfaceDto surface;
+  final ReasoningSurface surface;
   final Map<String, String> perms;
   final List<CatalogSkill> app;
   final List<CatalogSkill> portable;
@@ -63,10 +63,10 @@ class AgentCreateDraft {
     bool? saving,
     List<CapabilityRef>? caps,
     Set<String>? appSelected,
-    List<VendorSummaryDto>? vendors,
+    List<VendorSummary>? vendors,
     List<String>? pendingModels,
     ReasoningChoice? choice,
-    ReasoningSurfaceDto? surface,
+    ReasoningSurface? surface,
     Map<String, String>? perms,
     List<CatalogSkill>? app,
     List<CatalogSkill>? portable,
@@ -173,7 +173,7 @@ class AgentCreateForm extends Notifier<AgentCreateDraft> {
   void setPerms(Map<String, String> perms) =>
       state = state.copyWith(perms: perms);
 
-  void setVendors(List<VendorSummaryDto> vendors) =>
+  void setVendors(List<VendorSummary> vendors) =>
       state = state.copyWith(vendors: vendors);
 
   void setPendingModels(List<String> models) =>
@@ -193,7 +193,7 @@ class AgentCreateForm extends Notifier<AgentCreateDraft> {
       state = state.copyWith(choice: choice);
 
   void setSurface({
-    required ReasoningSurfaceDto surface,
+    required ReasoningSurface surface,
     required ReasoningChoice choice,
   }) {
     state = state.copyWith(surface: surface, choice: choice);

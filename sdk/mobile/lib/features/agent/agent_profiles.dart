@@ -14,7 +14,7 @@ import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/features/agent/agent_catalog.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
 import 'package:kim_mobile/features/agent/context_window.dart';
@@ -249,7 +249,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         }
       }
       for (final row in rows) {
-        final profile = await _fromDto(row);
+        final profile = await _fromRow(row);
         if (profile != null) {
           profiles.add(profile);
         }
@@ -268,10 +268,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     var flags = <String, Object?>{};
     try {
       final raw = await ref.read(clientPortProvider).agentFlags();
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        flags = Map<String, Object?>.from(decoded);
-      }
+      flags = {
+        'multi_profile': raw.multiProfile,
+        'server_identity': raw.serverIdentity,
+      };
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     if (flags.isEmpty) {
@@ -298,10 +298,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       await ref
           .read(clientPortProvider)
           .setAgentFlags(
-            jsonEncode({
-              'multi_profile': multiProfile,
-              'server_identity': serverIdentity,
-            }),
+            rust_types.AgentFlags(
+              multiProfile: multiProfile,
+              serverIdentity: serverIdentity,
+            ),
           );
     } catch (e, st) {
       KimLogger.warn('agent flags persist', e, st);
@@ -333,16 +333,16 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       return const [];
     }
     await client.importAgentProfiles([
-      for (final p in profiles) await _toDto(p),
+      for (final p in profiles) await _toRow(p),
     ]);
     await prefs.remove(_kProfiles);
     return profiles;
   }
 
-  Future<AgentProfileDto> _toDto(AgentProfile p) async {
+  Future<rust_types.AgentProfile> _toRow(AgentProfile p) async {
     final client = ref.read(clientPortProvider);
     final blob = await client.specJsonToBlob(jsonEncode(p.toJson()));
-    return AgentProfileDto(
+    return rust_types.AgentProfile(
       profileId: p.id,
       nickname: p.displayName,
       serverAccount: p.serverAccount,
@@ -353,7 +353,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     );
   }
 
-  Future<AgentProfile?> _fromDto(AgentProfileDto row) async {
+  Future<AgentProfile?> _fromRow(rust_types.AgentProfile row) async {
     try {
       final client = ref.read(clientPortProvider);
       var rawJson = row.bodyJson;
@@ -476,7 +476,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     try {
       final client = ref.read(clientPortProvider);
-      await AgentCatalog(client).upsert(await _toDto(p));
+      await AgentCatalog(client).upsert(await _toRow(p));
       String? live;
       try {
         live = await ref.read(workspaceAccessProvider).realUserAgentsSkills();
@@ -485,7 +485,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
       final previous = await client.getDeviceOverlay(p.id);
       await client.upsertDeviceOverlay(
-        DeviceOverlayDto(
+        rust_types.DeviceOverlay(
           profileId: p.id,
           workspacePath: p.workspace.path,
           workspaceBookmark: p.workspace.bookmarkRef,

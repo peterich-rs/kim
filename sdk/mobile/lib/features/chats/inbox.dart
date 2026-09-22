@@ -77,7 +77,7 @@ class ThreadsNotifier extends Notifier<ThreadsState> {
   ThreadsState build() {
     final dtos = ref.watch(kimSessionProvider.select((s) => s.threads));
     ref.watch(agentProfilesProvider);
-    var threads = [for (final t in dtos) kimThreadFromDto(t)];
+    var threads = [for (final t in dtos) kimThreadFrom(t)];
     if (agentHostSupported) {
       final agents = ref.read(agentProfilesProvider.notifier).visibleAgents;
       threads = withLocalThreads(threads, agents);

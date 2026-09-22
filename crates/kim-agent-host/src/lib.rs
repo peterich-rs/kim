@@ -15,10 +15,12 @@ mod codex_rt;
 mod events;
 mod harness;
 mod machine;
+mod open_request;
 mod ops;
 mod profile;
 mod provider;
 mod scripted;
+mod session_phase;
 mod skills;
 
 use std::collections::{HashMap, HashSet};
@@ -40,13 +42,13 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 pub use capability::{
-    preview_assembled, AssembledPreview, CapabilityRef, PermissionMatch, PermissionRule,
-    PreviewTool, RiskTier,
+    catalog_entries, preview_assembled, AssembledPreview, CapabilityRef, PermissionMatch,
+    PermissionRule, PreviewTool, RiskTier,
 };
 pub use catalog::{
     catalog_surface_json, catalog_validate, catalog_vendors_json, default_context_tokens,
-    normalize_vendor_id, ReasoningChoice, ReasoningChoiceBody, ReasoningSurface, VendorSummary,
-    DEFAULT_CONTEXT_TOKENS,
+    normalize_vendor_id, surface_for, vendor_summaries, ReasoningChoice, ReasoningChoiceBody,
+    ReasoningSurface, VendorGroup, VendorSummary, DEFAULT_CONTEXT_TOKENS,
 };
 pub use events::{
     CancelReason, HostError, HostEvent, PendingYield, ProviderFail, TimeoutKind, TurnOutcome,
@@ -54,6 +56,7 @@ pub use events::{
 };
 pub use harness::{resolve_limits, HarnessLimits};
 pub use machine::MachineFactory;
+pub use open_request::{attach_codex_for_open, parse_agent_runtime, resolve_open, OpenRequest};
 pub use ops::permission::parse_permission;
 pub use ops::skill::{activate_skill_tool, ACTIVATE_SKILL};
 pub use profile::{
@@ -66,11 +69,15 @@ pub use provider::{
     ProviderConfig, ProviderKind, SessionKeyResolver,
 };
 pub use scripted::ScriptedProvider;
+pub use session_phase::{
+    stale as phase_stale, transition as phase_transition, PhaseInput, SessionPhase,
+};
 pub use skills::{
     activate, build_registry, bundled_ids, catalog_prompt_block, parse_skill_md, read_agents_md,
-    scan_portable, skill_app_catalog_json, skill_portable_list_json, Activation, PortableSkill,
-    RegistryScan, SkillClass, SkillDoc, SkillEntry, SkillError, SkillMeta, SkillPackage, SkillRef,
-    SkillRegistry, SkillResolver, SkillSource,
+    scan_portable, skill_app_catalog, skill_app_catalog_json, skill_portable_list,
+    skill_portable_list_json, Activation, ListedSkill, PortableSkill, RegistryScan, SkillClass,
+    SkillDoc, SkillEntry, SkillError, SkillMeta, SkillPackage, SkillRef, SkillRegistry,
+    SkillResolver, SkillSource,
 };
 
 #[cfg(feature = "codex")]
@@ -259,6 +266,7 @@ impl AgentHost {
         if resolved.api_key.trim().is_empty() {
             return Err(HostError::MissingApiKey);
         }
+        parse_agent_runtime(&resolved.profile.runtime)?;
         let mut resolved = resolved;
         resolved.profile.normalize_mode();
         resolved.profile.apply_reasoning()?;

@@ -238,35 +238,17 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
             userAgentsSkills: paths.userAgentsSkills,
           );
         }
-        final raw = await bridge.previewAssembled(
+        final preview = await bridge.previewAssembled(
           profileJson: jsonEncode(previewJson),
           projectRoot: _cwd,
         );
-        if (raw.isNotEmpty) {
-          final decoded = jsonDecode(raw);
-          if (decoded is Map) {
-            final tools = decoded['tools'];
-            final warnings = decoded['warnings'];
-            final names = <String>[];
-            if (tools is List) {
-              for (final t in tools) {
-                if (t is Map && t['name'] != null) {
-                  names.add('${t['name']}');
-                } else if (t is String) {
-                  names.add(t);
-                }
-              }
-            }
-            final warnTexts = <String>[];
-            if (warnings is List) {
-              for (final w in warnings) {
-                final text = '$w'.trim();
-                if (text.isNotEmpty) {
-                  warnTexts.add(text);
-                }
-              }
-            }
-            if (names.isNotEmpty || warnTexts.isNotEmpty) {
+        if (preview.tools.isNotEmpty || preview.warnings.isNotEmpty) {
+          final names = [for (final tool in preview.tools) tool.name];
+          final warnTexts = [
+            for (final warning in preview.warnings)
+              if (warning.trim().isNotEmpty) warning.trim(),
+          ];
+          if (names.isNotEmpty || warnTexts.isNotEmpty) {
               summary = names.join(' · ');
               if (warnTexts.isNotEmpty) {
                 final warn = warnTexts.join(' · ');
@@ -274,7 +256,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
               }
               fromHost = true;
             }
-          }
         }
       } catch (_) {
         // Keep local fallback.

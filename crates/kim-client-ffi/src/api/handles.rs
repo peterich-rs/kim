@@ -4,8 +4,8 @@
 use super::client::{KimCommandReceipt, KimOutgoingContent, KimUiHandle};
 use super::failure::ApiFailure;
 use super::types::{
-    AgentProfileDto, ContactsSnapshotDto, LocalMediaDto, PersonDto, ProfileDto, ProviderAccountDto,
-    RoomMemberDto, TimelineUpdateDto,
+    AgentProfile, ContactsSnapshot, LocalMedia, Person, Profile, ProviderAccount,
+    RoomMember, TimelineUpdate,
 };
 use crate::frb_generated::StreamSink;
 
@@ -15,7 +15,7 @@ pub struct InboxHandle {
 
 impl InboxHandle {
     /// Session snapshot still carries the thread list. The handle is the object
-    /// boundary; splitting the DTO is a later cut.
+    /// boundary; splitting the projection type is a later cut.
     pub fn app(&self) -> KimUiHandle {
         self.app.clone()
     }
@@ -35,7 +35,7 @@ impl ConversationHandle {
     pub fn watch_timeline(
         &self,
         limit: i32,
-        sink: StreamSink<TimelineUpdateDto>,
+        sink: StreamSink<TimelineUpdate>,
     ) -> Result<(), ApiFailure> {
         self.app.watch_timeline(self.dest.clone(), limit, sink)
     }
@@ -64,7 +64,7 @@ impl ConversationHandle {
             .await
     }
 
-    pub async fn enter(&self) -> Result<Vec<RoomMemberDto>, ApiFailure> {
+    pub async fn enter(&self) -> Result<Vec<RoomMember>, ApiFailure> {
         self.app.room_enter(self.dest.clone(), 0).await
     }
 
@@ -90,19 +90,19 @@ pub struct ContactsHandle {
 }
 
 impl ContactsHandle {
-    pub fn watch(&self, sink: StreamSink<ContactsSnapshotDto>) -> Result<(), ApiFailure> {
+    pub fn watch(&self, sink: StreamSink<ContactsSnapshot>) -> Result<(), ApiFailure> {
         self.app.watch_contacts(sink)
     }
 
-    pub async fn friends(&self) -> Result<Vec<PersonDto>, ApiFailure> {
+    pub async fn friends(&self) -> Result<Vec<Person>, ApiFailure> {
         self.app.friend_list().await
     }
 
-    pub async fn search(&self, query: String) -> Result<Vec<PersonDto>, ApiFailure> {
+    pub async fn search(&self, query: String) -> Result<Vec<Person>, ApiFailure> {
         self.app.search_users(query).await
     }
 
-    pub async fn profile(&self, dest: String) -> Result<ProfileDto, ApiFailure> {
+    pub async fn profile(&self, dest: String) -> Result<Profile, ApiFailure> {
         self.app.profile(dest).await
     }
 }
@@ -112,7 +112,7 @@ pub struct MediaHandle {
 }
 
 impl MediaHandle {
-    pub async fn fetch(&self, url: String) -> Result<LocalMediaDto, ApiFailure> {
+    pub async fn fetch(&self, url: String) -> Result<LocalMedia, ApiFailure> {
         self.app.media_fetch(url).await
     }
 
@@ -123,7 +123,7 @@ impl MediaHandle {
         width: i32,
         height: i32,
         byte_size: i64,
-    ) -> Result<LocalMediaDto, ApiFailure> {
+    ) -> Result<LocalMedia, ApiFailure> {
         self.app
             .media_upload(path, mime, width, height, byte_size)
             .await
@@ -135,11 +135,11 @@ pub struct AgentCatalogHandle {
 }
 
 impl AgentCatalogHandle {
-    pub async fn list_profiles(&self) -> Result<Vec<AgentProfileDto>, ApiFailure> {
+    pub async fn list_profiles(&self) -> Result<Vec<AgentProfile>, ApiFailure> {
         self.app.list_agent_profiles().await
     }
 
-    pub async fn upsert_profile(&self, row: AgentProfileDto) -> Result<(), ApiFailure> {
+    pub async fn upsert_profile(&self, row: AgentProfile) -> Result<(), ApiFailure> {
         self.app.upsert_agent_profile(row).await
     }
 
@@ -147,7 +147,7 @@ impl AgentCatalogHandle {
         self.app.delete_agent_profile(id).await
     }
 
-    pub async fn list_accounts(&self) -> Result<Vec<ProviderAccountDto>, ApiFailure> {
+    pub async fn list_accounts(&self) -> Result<Vec<ProviderAccount>, ApiFailure> {
         self.app.list_provider_accounts().await
     }
 }
@@ -199,7 +199,7 @@ impl KimUiHandle {
     /// Desktop permission cards. Phone returns an idle stream.
     pub fn watch_agent_permission(
         &self,
-        sink: StreamSink<AgentPermissionEventDto>,
+        sink: StreamSink<AgentPermissionEvent>,
     ) -> Result<(), ApiFailure> {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
@@ -211,7 +211,7 @@ impl KimUiHandle {
             super::rt().spawn(async move {
                 while let Some(event) = rx.recv().await {
                     if sink
-                        .add(AgentPermissionEventDto {
+                        .add(AgentPermissionEvent {
                             dest: event.dest,
                             call_id: event.call_id,
                             name: event.name,
@@ -233,7 +233,7 @@ impl KimUiHandle {
     }
 
     /// Desktop pet presence (`running` / `done` / `failed`). Phone is idle.
-    pub fn watch_agent_ui(&self, sink: StreamSink<AgentUiStatusDto>) -> Result<(), ApiFailure> {
+    pub fn watch_agent_ui(&self, sink: StreamSink<AgentUiStatus>) -> Result<(), ApiFailure> {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let Some(runtime) = kim_desktop_runtime::installed() else {
@@ -244,7 +244,7 @@ impl KimUiHandle {
             super::rt().spawn(async move {
                 while let Some(event) = rx.recv().await {
                     if sink
-                        .add(AgentUiStatusDto {
+                        .add(AgentUiStatus {
                             dest: event.dest,
                             phase: event.phase,
                         })
@@ -264,14 +264,14 @@ impl KimUiHandle {
     }
 }
 
-pub struct AgentPermissionEventDto {
+pub struct AgentPermissionEvent {
     pub dest: String,
     pub call_id: String,
     pub name: String,
     pub preview: String,
 }
 
-pub struct AgentUiStatusDto {
+pub struct AgentUiStatus {
     pub dest: String,
     pub phase: String,
 }

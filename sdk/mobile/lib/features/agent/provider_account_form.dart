@@ -16,7 +16,7 @@ class ProviderAccountDraft {
 
   final String vendor;
   final List<String> models;
-  final List<VendorSummaryDto> vendors;
+  final List<VendorSummary> vendors;
   final bool fetching;
   final bool hydrated;
   final int revision;
@@ -24,7 +24,7 @@ class ProviderAccountDraft {
   ProviderAccountDraft copyWith({
     String? vendor,
     List<String>? models,
-    List<VendorSummaryDto>? vendors,
+    List<VendorSummary>? vendors,
     bool? fetching,
     bool? hydrated,
     int? revision,
@@ -46,7 +46,7 @@ class ProviderAccountForm extends Notifier<ProviderAccountDraft> {
 
   void bump() => state = state.copyWith(revision: state.revision + 1);
 
-  void setVendors(List<VendorSummaryDto> vendors) =>
+  void setVendors(List<VendorSummary> vendors) =>
       state = state.copyWith(vendors: vendors);
 
   void applyHydrated({required String vendor, required List<String> models}) {

@@ -61,12 +61,10 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
         // Ecosystem shelf: always scan real ~/.agents (S-KD 9 / 23).
         final userRoot = await workspaceAccess.realUserAgentsSkills() ?? '';
         if (userRoot.isNotEmpty) {
-          await bridge.ensure();
-          final raw = await bridge.skillPortableListJson(
+          eco = await loadPortableSkills(
+            bridge: bridge,
             userRoot: userRoot,
-            projectRoot: '',
           );
-          eco = parseSkillsJson(raw);
         }
         // Also merge project shelf when assigning to a coding profile.
         if (assign != null) {

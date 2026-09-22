@@ -1,10 +1,7 @@
-use kim_sdk::{
-    AgentCard, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentTurnState, CommandReceipt,
-    ContactsSnapshot, LinkStateView, MessagePage, MessageView, SendStatus, SessionSnapshot,
-    SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
-};
+use kim_sdk::{AgentProfileRow, CommandReceipt, LinkStateView};
+use kim_sdk as sdk;
 
-pub enum SendStatusDto {
+pub enum SendStatus {
     Pending,
     Uploading,
     Sending,
@@ -13,14 +10,14 @@ pub enum SendStatusDto {
     Cancelled,
 }
 
-pub enum LinkStateDto {
+pub enum LinkState {
     Connecting,
     Online,
     Reconnecting { attempt: u32 },
     Offline,
 }
 
-pub struct MessageViewDto {
+pub struct MessageView {
     pub key: String,
     pub dest: String,
     pub sender: String,
@@ -33,10 +30,10 @@ pub struct MessageViewDto {
     pub height: i32,
     pub message_id: i64,
     pub batch_id: Option<String>,
-    pub send_status: SendStatusDto,
+    pub send_status: SendStatus,
 }
 
-pub struct ThreadViewDto {
+pub struct ThreadView {
     pub id: String,
     pub kind: i32,
     pub title: String,
@@ -46,11 +43,11 @@ pub struct ThreadViewDto {
     pub unread: i32,
 }
 
-pub struct TimelineSnapshotDto {
+pub struct TimelineSnapshot {
     pub dest: String,
     pub version: u64,
-    pub messages: Vec<MessageViewDto>,
-    pub pending: Vec<MessageViewDto>,
+    pub messages: Vec<MessageView>,
+    pub pending: Vec<MessageView>,
     pub unread: i32,
     pub last_read_message_id: i64,
     pub has_more: bool,
@@ -58,23 +55,23 @@ pub struct TimelineSnapshotDto {
     pub history_error: Option<String>,
 }
 
-pub struct TimelineDeltaDto {
+pub struct TimelineDelta {
     pub dest: String,
     pub from_version: u64,
     pub to_version: u64,
-    pub upserts: Vec<MessageViewDto>,
+    pub upserts: Vec<MessageView>,
     pub deleted_keys: Vec<String>,
     pub unread: Option<i32>,
     pub last_read_message_id: Option<i64>,
 }
 
-pub enum TimelineUpdateDto {
-    Snapshot { snapshot: TimelineSnapshotDto },
-    Delta { delta: TimelineDeltaDto },
+pub enum TimelineUpdate {
+    Snapshot { snapshot: TimelineSnapshot },
+    Delta { delta: TimelineDelta },
     Resync { dest: String, reason: String },
 }
 
-pub struct PersonDto {
+pub struct Person {
     pub account: String,
     pub nickname: String,
     pub avatar: String,
@@ -83,20 +80,20 @@ pub struct PersonDto {
     pub kind: i32,
 }
 
-pub struct ContactsSnapshotDto {
+pub struct ContactsSnapshot {
     pub version: u64,
-    pub contacts: Vec<PersonDto>,
+    pub contacts: Vec<Person>,
     pub sync_error: Option<String>,
 }
 
-pub struct RoomMemberDto {
+pub struct RoomMember {
     pub account: String,
     pub status: i32,
     pub last_seen: i64,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct BotDto {
+pub struct Bot {
     pub dest: String,
     pub nickname: String,
     pub avatar: String,
@@ -107,7 +104,7 @@ pub struct BotDto {
     pub visibility: String,
 }
 
-pub struct ProfileDto {
+pub struct Profile {
     pub account: String,
     pub nickname: String,
     pub avatar: String,
@@ -115,38 +112,38 @@ pub struct ProfileDto {
     pub kind: i32,
 }
 
-pub struct MessagePageDto {
+pub struct MessagePage {
     pub dest: String,
-    pub messages: Vec<MessageViewDto>,
+    pub messages: Vec<MessageView>,
     pub has_more: bool,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct CommandAckDto {
+pub struct CommandAck {
     pub request_id: String,
     pub client_id: String,
     pub dest: String,
     pub accepted_at: i64,
-    pub send_status: SendStatusDto,
+    pub send_status: SendStatus,
 }
 
-pub struct SessionSnapshotDto {
-    pub link: LinkStateDto,
+pub struct SessionSnapshot {
+    pub link: LinkState,
     pub last_error: Option<String>,
-    pub threads: Vec<ThreadViewDto>,
+    pub threads: Vec<ThreadView>,
     pub unread_total: i32,
 }
 
-pub enum SessionUpdateDto {
+pub enum SessionUpdate {
     Link {
-        state: LinkStateDto,
+        state: LinkState,
         last_error: Option<String>,
     },
     Inbox {
-        threads: Vec<ThreadViewDto>,
+        threads: Vec<ThreadView>,
     },
     ThreadUpsert {
-        thread: ThreadViewDto,
+        thread: ThreadView,
     },
     SyncProgress {
         pulled: u64,
@@ -197,23 +194,23 @@ pub enum SessionUpdateDto {
         members: Vec<String>,
     },
     ContactsChanged {
-        contacts: Vec<PersonDto>,
+        contacts: Vec<Person>,
     },
     AgentTurn {
         dest: String,
-        state: AgentTurnStateDto,
+        state: AgentTurnState,
         text: String,
     },
     AgentCard {
         dest: String,
-        card: AgentCardDto,
+        card: AgentCard,
     },
     RustPanic {
         message: String,
     },
 }
 
-pub enum AgentTurnStateDto {
+pub enum AgentTurnState {
     Queued,
     Running,
     WaitingPermission,
@@ -223,7 +220,7 @@ pub enum AgentTurnStateDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct AgentCardDto {
+pub struct AgentCard {
     pub v: i32,
     pub card_type: String,
     pub call_id: String,
@@ -234,7 +231,7 @@ pub struct AgentCardDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct AgentRunRequestDto {
+pub struct AgentRunRequest {
     pub dest: String,
     pub profile_id: String,
     pub text: String,
@@ -243,7 +240,7 @@ pub struct AgentRunRequestDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct AgentRunResultDto {
+pub struct AgentRunResult {
     pub dest: String,
     pub profile_id: String,
     pub epoch: u64,
@@ -256,7 +253,7 @@ pub struct AgentRunResultDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct AgentProfileDto {
+pub struct AgentProfile {
     pub profile_id: String,
     pub nickname: String,
     pub server_account: String,
@@ -267,7 +264,7 @@ pub struct AgentProfileDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct ProviderAccountDto {
+pub struct ProviderAccount {
     pub id: String,
     pub vendor_id: String,
     pub base_url: String,
@@ -279,7 +276,7 @@ pub struct ProviderAccountDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct DeviceOverlayDto {
+pub struct DeviceOverlay {
     pub profile_id: String,
     pub workspace_path: String,
     pub workspace_bookmark: String,
@@ -287,7 +284,13 @@ pub struct DeviceOverlayDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct SettingsDto {
+pub struct AgentFlags {
+    pub multi_profile: bool,
+    pub server_identity: bool,
+}
+
+#[flutter_rust_bridge::frb(unignore)]
+pub struct Settings {
     pub ws_url: String,
     pub http_origin: String,
     pub env: String,
@@ -296,13 +299,13 @@ pub struct SettingsDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub enum TokenPersistDto {
+pub enum TokenPersist {
     Write { token: String },
     Clear,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct LocalMediaDto {
+pub struct LocalMedia {
     pub local_path: String,
     pub byte_size: i64,
     pub width: i32,
@@ -310,14 +313,14 @@ pub struct LocalMediaDto {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct MetricsDto {
+pub struct Metrics {
     pub enqueue_total: u64,
     pub persist_talk_total: u64,
     pub epoch_drop_total: u64,
     pub store_wipe_total: u64,
 }
 
-pub enum UiCommandDto {
+pub enum UiCommand {
     SendText {
         dest: String,
         text: String,
@@ -385,20 +388,20 @@ pub enum UiCommandDto {
     },
 }
 
-impl From<SendStatus> for SendStatusDto {
-    fn from(v: SendStatus) -> Self {
+impl From<sdk::SendStatus> for SendStatus {
+    fn from(v: sdk::SendStatus) -> Self {
         match v {
-            SendStatus::Pending => Self::Pending,
-            SendStatus::Uploading => Self::Uploading,
-            SendStatus::Sending => Self::Sending,
-            SendStatus::Sent => Self::Sent,
-            SendStatus::Failed => Self::Failed,
-            SendStatus::Cancelled => Self::Cancelled,
+            sdk::SendStatus::Pending => Self::Pending,
+            sdk::SendStatus::Uploading => Self::Uploading,
+            sdk::SendStatus::Sending => Self::Sending,
+            sdk::SendStatus::Sent => Self::Sent,
+            sdk::SendStatus::Failed => Self::Failed,
+            sdk::SendStatus::Cancelled => Self::Cancelled,
         }
     }
 }
 
-impl From<LinkStateView> for LinkStateDto {
+impl From<LinkStateView> for LinkState {
     fn from(v: LinkStateView) -> Self {
         match v {
             LinkStateView::Connecting => Self::Connecting,
@@ -409,8 +412,8 @@ impl From<LinkStateView> for LinkStateDto {
     }
 }
 
-impl From<MessageView> for MessageViewDto {
-    fn from(v: MessageView) -> Self {
+impl From<sdk::MessageView> for MessageView {
+    fn from(v: sdk::MessageView) -> Self {
         Self {
             key: v.key,
             dest: v.dest,
@@ -429,8 +432,8 @@ impl From<MessageView> for MessageViewDto {
     }
 }
 
-impl From<ThreadView> for ThreadViewDto {
-    fn from(v: ThreadView) -> Self {
+impl From<sdk::ThreadView> for ThreadView {
+    fn from(v: sdk::ThreadView) -> Self {
         Self {
             id: v.id,
             kind: v.kind,
@@ -443,8 +446,8 @@ impl From<ThreadView> for ThreadViewDto {
     }
 }
 
-impl From<TimelineSnapshot> for TimelineSnapshotDto {
-    fn from(v: TimelineSnapshot) -> Self {
+impl From<sdk::TimelineSnapshot> for TimelineSnapshot {
+    fn from(v: sdk::TimelineSnapshot) -> Self {
         Self {
             dest: v.dest,
             version: v.version,
@@ -459,8 +462,8 @@ impl From<TimelineSnapshot> for TimelineSnapshotDto {
     }
 }
 
-impl From<TimelineDelta> for TimelineDeltaDto {
-    fn from(v: TimelineDelta) -> Self {
+impl From<sdk::TimelineDelta> for TimelineDelta {
+    fn from(v: sdk::TimelineDelta) -> Self {
         Self {
             dest: v.dest,
             from_version: v.from_version,
@@ -473,22 +476,22 @@ impl From<TimelineDelta> for TimelineDeltaDto {
     }
 }
 
-impl From<TimelineUpdate> for TimelineUpdateDto {
-    fn from(v: TimelineUpdate) -> Self {
+impl From<sdk::TimelineUpdate> for TimelineUpdate {
+    fn from(v: sdk::TimelineUpdate) -> Self {
         match v {
-            TimelineUpdate::Snapshot { snapshot } => Self::Snapshot {
+            sdk::TimelineUpdate::Snapshot { snapshot } => Self::Snapshot {
                 snapshot: snapshot.into(),
             },
-            TimelineUpdate::Delta { delta } => Self::Delta {
+            sdk::TimelineUpdate::Delta { delta } => Self::Delta {
                 delta: delta.into(),
             },
-            TimelineUpdate::Resync { dest, reason } => Self::Resync { dest, reason },
+            sdk::TimelineUpdate::Resync { dest, reason } => Self::Resync { dest, reason },
         }
     }
 }
 
-impl From<MessagePage> for MessagePageDto {
-    fn from(v: MessagePage) -> Self {
+impl From<sdk::MessagePage> for MessagePage {
+    fn from(v: sdk::MessagePage) -> Self {
         Self {
             dest: v.dest,
             messages: v.messages.into_iter().map(Into::into).collect(),
@@ -497,7 +500,7 @@ impl From<MessagePage> for MessagePageDto {
     }
 }
 
-impl From<CommandReceipt> for CommandAckDto {
+impl From<CommandReceipt> for CommandAck {
     fn from(v: CommandReceipt) -> Self {
         Self {
             request_id: v.request_id,
@@ -509,8 +512,8 @@ impl From<CommandReceipt> for CommandAckDto {
     }
 }
 
-impl From<SessionSnapshot> for SessionSnapshotDto {
-    fn from(v: SessionSnapshot) -> Self {
+impl From<sdk::SessionSnapshot> for SessionSnapshot {
+    fn from(v: sdk::SessionSnapshot) -> Self {
         Self {
             link: v.link.into(),
             last_error: v.last_error,
@@ -520,36 +523,36 @@ impl From<SessionSnapshot> for SessionSnapshotDto {
     }
 }
 
-impl From<SessionUpdate> for SessionUpdateDto {
-    fn from(v: SessionUpdate) -> Self {
+impl From<sdk::SessionUpdate> for SessionUpdate {
+    fn from(v: sdk::SessionUpdate) -> Self {
         match v {
-            SessionUpdate::Link { state, last_error } => Self::Link {
+            sdk::SessionUpdate::Link { state, last_error } => Self::Link {
                 state: state.into(),
                 last_error,
             },
-            SessionUpdate::Inbox { threads } => Self::Inbox {
+            sdk::SessionUpdate::Inbox { threads } => Self::Inbox {
                 threads: threads.into_iter().map(Into::into).collect(),
             },
-            SessionUpdate::ThreadUpsert { thread } => Self::ThreadUpsert {
+            sdk::SessionUpdate::ThreadUpsert { thread } => Self::ThreadUpsert {
                 thread: thread.into(),
             },
-            SessionUpdate::SyncProgress {
+            sdk::SessionUpdate::SyncProgress {
                 pulled,
                 catching_up,
             } => Self::SyncProgress {
                 pulled,
                 catching_up,
             },
-            SessionUpdate::Kickout { channel_id } => Self::Kickout { channel_id },
-            SessionUpdate::AuthExpired { reason } => Self::AuthExpired { reason },
-            SessionUpdate::TokenRenew { token, exp } => Self::TokenRenew { token, exp },
-            SessionUpdate::FriendRequest { from, nickname } => {
+            sdk::SessionUpdate::Kickout { channel_id } => Self::Kickout { channel_id },
+            sdk::SessionUpdate::AuthExpired { reason } => Self::AuthExpired { reason },
+            sdk::SessionUpdate::TokenRenew { token, exp } => Self::TokenRenew { token, exp },
+            sdk::SessionUpdate::FriendRequest { from, nickname } => {
                 Self::FriendRequest { from, nickname }
             }
-            SessionUpdate::FriendAccepted { from, nickname } => {
+            sdk::SessionUpdate::FriendAccepted { from, nickname } => {
                 Self::FriendAccepted { from, nickname }
             }
-            SessionUpdate::ProfileUpdated {
+            sdk::SessionUpdate::ProfileUpdated {
                 account,
                 nickname,
                 avatar,
@@ -558,7 +561,7 @@ impl From<SessionUpdate> for SessionUpdateDto {
                 nickname,
                 avatar,
             },
-            SessionUpdate::Presence {
+            sdk::SessionUpdate::Presence {
                 account,
                 status,
                 last_seen,
@@ -567,7 +570,7 @@ impl From<SessionUpdate> for SessionUpdateDto {
                 status,
                 last_seen,
             },
-            SessionUpdate::Typing {
+            sdk::SessionUpdate::Typing {
                 typer,
                 dest,
                 kind,
@@ -579,7 +582,7 @@ impl From<SessionUpdate> for SessionUpdateDto {
                 kind,
                 active,
             },
-            SessionUpdate::ReceiptRead {
+            sdk::SessionUpdate::ReceiptRead {
                 reader,
                 dest,
                 kind,
@@ -590,13 +593,13 @@ impl From<SessionUpdate> for SessionUpdateDto {
                 kind,
                 message_id,
             },
-            SessionUpdate::GroupCreate { group_id, members } => {
+            sdk::SessionUpdate::GroupCreate { group_id, members } => {
                 Self::GroupCreate { group_id, members }
             }
-            SessionUpdate::ContactsChanged { contacts } => Self::ContactsChanged {
+            sdk::SessionUpdate::ContactsChanged { contacts } => Self::ContactsChanged {
                 contacts: contacts
                     .into_iter()
-                    .map(|p| PersonDto {
+                    .map(|p| Person {
                         account: p.account,
                         nickname: p.nickname,
                         avatar: p.avatar,
@@ -606,35 +609,35 @@ impl From<SessionUpdate> for SessionUpdateDto {
                     })
                     .collect(),
             },
-            SessionUpdate::AgentTurn { dest, state, text } => Self::AgentTurn {
+            sdk::SessionUpdate::AgentTurn { dest, state, text } => Self::AgentTurn {
                 dest,
                 state: state.into(),
                 text,
             },
-            SessionUpdate::AgentCard { dest, card } => Self::AgentCard {
+            sdk::SessionUpdate::AgentCard { dest, card } => Self::AgentCard {
                 dest,
                 card: card.into(),
             },
-            SessionUpdate::RustPanic { message } => Self::RustPanic { message },
+            sdk::SessionUpdate::RustPanic { message } => Self::RustPanic { message },
         }
     }
 }
 
-impl From<AgentTurnState> for AgentTurnStateDto {
-    fn from(v: AgentTurnState) -> Self {
+impl From<sdk::AgentTurnState> for AgentTurnState {
+    fn from(v: sdk::AgentTurnState) -> Self {
         match v {
-            AgentTurnState::Queued => Self::Queued,
-            AgentTurnState::Running => Self::Running,
-            AgentTurnState::WaitingPermission => Self::WaitingPermission,
-            AgentTurnState::Done => Self::Done,
-            AgentTurnState::Error => Self::Error,
-            AgentTurnState::Empty => Self::Empty,
+            sdk::AgentTurnState::Queued => Self::Queued,
+            sdk::AgentTurnState::Running => Self::Running,
+            sdk::AgentTurnState::WaitingPermission => Self::WaitingPermission,
+            sdk::AgentTurnState::Done => Self::Done,
+            sdk::AgentTurnState::Error => Self::Error,
+            sdk::AgentTurnState::Empty => Self::Empty,
         }
     }
 }
 
-impl From<AgentCard> for AgentCardDto {
-    fn from(c: AgentCard) -> Self {
+impl From<sdk::AgentCard> for AgentCard {
+    fn from(c: sdk::AgentCard) -> Self {
         Self {
             v: c.v,
             card_type: c.card_type,
@@ -647,8 +650,8 @@ impl From<AgentCard> for AgentCardDto {
     }
 }
 
-impl From<AgentRunRequest> for AgentRunRequestDto {
-    fn from(r: AgentRunRequest) -> Self {
+impl From<sdk::AgentRunRequest> for AgentRunRequest {
+    fn from(r: sdk::AgentRunRequest) -> Self {
         Self {
             dest: r.dest,
             profile_id: r.profile_id,
@@ -659,8 +662,8 @@ impl From<AgentRunRequest> for AgentRunRequestDto {
     }
 }
 
-impl From<AgentRunResultDto> for AgentRunResult {
-    fn from(r: AgentRunResultDto) -> Self {
+impl From<AgentRunResult> for sdk::AgentRunResult {
+    fn from(r: AgentRunResult) -> Self {
         let replied = r.replied;
         let stop_reason = if r.stop_reason.is_empty() {
             if r.error.is_some() {
@@ -687,7 +690,7 @@ impl From<AgentRunResultDto> for AgentRunResult {
     }
 }
 
-impl From<AgentProfileRow> for AgentProfileDto {
+impl From<AgentProfileRow> for AgentProfile {
     fn from(r: AgentProfileRow) -> Self {
         Self {
             profile_id: r.profile_id,
@@ -701,8 +704,8 @@ impl From<AgentProfileRow> for AgentProfileDto {
     }
 }
 
-impl From<AgentProfileDto> for AgentProfileRow {
-    fn from(r: AgentProfileDto) -> Self {
+impl From<AgentProfile> for AgentProfileRow {
+    fn from(r: AgentProfile) -> Self {
         Self {
             profile_id: r.profile_id,
             nickname: r.nickname,
@@ -720,7 +723,7 @@ impl From<AgentProfileDto> for AgentProfileRow {
     }
 }
 
-impl From<kim_sdk::ProviderAccountRow> for ProviderAccountDto {
+impl From<kim_sdk::ProviderAccountRow> for ProviderAccount {
     fn from(r: kim_sdk::ProviderAccountRow) -> Self {
         Self {
             id: r.id,
@@ -735,8 +738,8 @@ impl From<kim_sdk::ProviderAccountRow> for ProviderAccountDto {
     }
 }
 
-impl From<ProviderAccountDto> for kim_sdk::ProviderAccountRow {
-    fn from(r: ProviderAccountDto) -> Self {
+impl From<ProviderAccount> for kim_sdk::ProviderAccountRow {
+    fn from(r: ProviderAccount) -> Self {
         Self {
             id: r.id,
             vendor_id: r.vendor_id,
@@ -750,7 +753,7 @@ impl From<ProviderAccountDto> for kim_sdk::ProviderAccountRow {
     }
 }
 
-impl From<kim_sdk::DeviceOverlayRow> for DeviceOverlayDto {
+impl From<kim_sdk::DeviceOverlayRow> for DeviceOverlay {
     fn from(r: kim_sdk::DeviceOverlayRow) -> Self {
         Self {
             profile_id: r.profile_id,
@@ -761,8 +764,8 @@ impl From<kim_sdk::DeviceOverlayRow> for DeviceOverlayDto {
     }
 }
 
-impl From<DeviceOverlayDto> for kim_sdk::DeviceOverlayRow {
-    fn from(r: DeviceOverlayDto) -> Self {
+impl From<DeviceOverlay> for kim_sdk::DeviceOverlayRow {
+    fn from(r: DeviceOverlay) -> Self {
         Self {
             profile_id: r.profile_id,
             workspace_path: r.workspace_path,
@@ -772,7 +775,7 @@ impl From<DeviceOverlayDto> for kim_sdk::DeviceOverlayRow {
     }
 }
 
-impl From<kim_sdk::PersonRef> for PersonDto {
+impl From<kim_sdk::PersonRef> for Person {
     fn from(p: kim_sdk::PersonRef) -> Self {
         Self {
             account: p.account,
@@ -785,8 +788,8 @@ impl From<kim_sdk::PersonRef> for PersonDto {
     }
 }
 
-impl From<ContactsSnapshot> for ContactsSnapshotDto {
-    fn from(snapshot: ContactsSnapshot) -> Self {
+impl From<sdk::ContactsSnapshot> for ContactsSnapshot {
+    fn from(snapshot: sdk::ContactsSnapshot) -> Self {
         Self {
             version: snapshot.version,
             contacts: snapshot.contacts.into_iter().map(Into::into).collect(),
@@ -795,8 +798,8 @@ impl From<ContactsSnapshot> for ContactsSnapshotDto {
     }
 }
 
-impl From<PersonDto> for kim_sdk::PersonRef {
-    fn from(p: PersonDto) -> Self {
+impl From<Person> for kim_sdk::PersonRef {
+    fn from(p: Person) -> Self {
         Self {
             account: p.account,
             nickname: p.nickname,
@@ -808,7 +811,7 @@ impl From<PersonDto> for kim_sdk::PersonRef {
     }
 }
 
-impl PersonDto {
+impl Person {
     pub(crate) fn from_profile(p: kim_client::Profile, relation: &str) -> Self {
         Self {
             account: p.account,
@@ -821,7 +824,7 @@ impl PersonDto {
     }
 }
 
-impl From<kim_client::Profile> for ProfileDto {
+impl From<kim_client::Profile> for Profile {
     fn from(p: kim_client::Profile) -> Self {
         Self {
             account: p.account,
@@ -833,7 +836,7 @@ impl From<kim_client::Profile> for ProfileDto {
     }
 }
 
-impl From<kim_client::Profile> for PersonDto {
+impl From<kim_client::Profile> for Person {
     fn from(p: kim_client::Profile) -> Self {
         Self::from_profile(p, "none")
     }

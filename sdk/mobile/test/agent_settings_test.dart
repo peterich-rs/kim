@@ -20,7 +20,7 @@ void main() {
     FlutterSecureStoragePlatform.instance = previousPlatform;
   });
 
-  test('toOpts preserves session-safe fields', () {
+  test('settings keep the provider fields', () {
     const s = AgentSettings(
       llmBackend: 'openai',
       baseUrl: 'https://example.com/v1',
@@ -29,11 +29,9 @@ void main() {
       enableFsTools: false,
       bashEnabled: false,
     );
-    final opts = s.toOpts(resumeOnOpen: false);
-    expect(opts.llmBackend, 'openai');
-    expect(opts.baseUrl, 'https://example.com/v1');
-    expect(opts.apiKey, 'sk-test');
-    expect(opts.resumeOnOpen, isFalse);
+    expect(s.llmBackend, 'openai');
+    expect(s.baseUrl, 'https://example.com/v1');
+    expect(s.apiKey, 'sk-test');
     expect(s.isLive, isTrue);
   });
 

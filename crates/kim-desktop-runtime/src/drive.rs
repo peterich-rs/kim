@@ -2,10 +2,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use kim_agent_host::{AgentHost, AgentProfile, HostEvent, TurnOutcome, YieldKind};
-use tracing::info;
 use kim_sdk::{AgentRunResult, SdkError};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 
 use crate::tools::execute_im_tool;
 use crate::{HostAgentRuntime, PermissionEvent, PreparedTurn};
@@ -35,6 +35,25 @@ pub async fn drive_host(
         PathBuf::from(&prepared.project_root),
     )
     .map_err(map_host)?;
+    // `runtime` on the profile selects the harness. Dart does not pass it.
+    let open = kim_agent_host::OpenRequest {
+        model: profile.model.name.clone(),
+        llm_backend: profile.provider.kind.clone(),
+        base_url: profile.provider.base_url.clone(),
+        api_key: prepared.api_key.clone(),
+        enable_fs_tools: false,
+        bash_enabled: false,
+        profile_id: profile.id.clone(),
+        profile_json: String::new(),
+        thinking_effort: String::new(),
+        goose_mode: String::new(),
+        enable_kim_tools: false,
+        enable_approvals: false,
+        harness_json: String::new(),
+    };
+    kim_agent_host::attach_codex_for_open(&host, &open, &profile, "", &prepared.project_root)
+        .await
+        .map_err(map_host)?;
     let session_id = format!("{}:{}", prepared.dest, prepared.profile_id);
     let mut outcome = prompt(&host, &session_id, &prepared.text).await?;
     let mut yields = 0;

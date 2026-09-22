@@ -11,33 +11,33 @@ import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
-SessionSnapshotDto emptySessionSnapshot() => const SessionSnapshotDto(
-  link: LinkStateDto.offline(),
+SessionSnapshot emptySessionSnapshot() => const SessionSnapshot(
+  link: LinkState.offline(),
   threads: [],
   unreadTotal: 0,
 );
 
-KimLinkState kimLinkFromDto(LinkStateDto link, String? lastError) {
+KimLinkState kimLinkFrom(LinkState link, String? lastError) {
   final error = sessionFaultIsIdentity(lastError) ? null : lastError;
   return switch (link) {
-    LinkStateDto_Connecting() => KimLinkState(
+    LinkState_Connecting() => KimLinkState(
       status: ConnStatus.connecting,
       error: error,
     ),
-    LinkStateDto_Online() => const KimLinkState(status: ConnStatus.online),
-    LinkStateDto_Reconnecting(:final attempt) => KimLinkState(
+    LinkState_Online() => const KimLinkState(status: ConnStatus.online),
+    LinkState_Reconnecting(:final attempt) => KimLinkState(
       status: ConnStatus.reconnecting,
       attempt: attempt,
       error: error,
     ),
-    LinkStateDto_Offline() => KimLinkState(
+    LinkState_Offline() => KimLinkState(
       status: ConnStatus.offline,
       error: error,
     ),
   };
 }
 
-KimThread kimThreadFromDto(ThreadViewDto t) {
+KimThread kimThreadFrom(ThreadView t) {
   return KimThread(
     id: t.id,
     kind: t.kind == 1 ? ThreadKind.group : ThreadKind.user,
@@ -49,10 +49,10 @@ KimThread kimThreadFromDto(ThreadViewDto t) {
   );
 }
 
-KimChatMsg kimChatFromDto(MessageViewDto m) {
+KimChatMsg kimChatFrom(MessageView m) {
   final status = switch (m.sendStatus) {
-    SendStatusDto.failed || SendStatusDto.cancelled => KimSendStatus.failed,
-    SendStatusDto.sent => KimSendStatus.sent,
+    SendStatus.failed || SendStatus.cancelled => KimSendStatus.failed,
+    SendStatus.sent => KimSendStatus.sent,
     _ => KimSendStatus.sending,
   };
   final kind = switch (m.kind) {
@@ -78,11 +78,11 @@ KimChatMsg kimChatFromDto(MessageViewDto m) {
   );
 }
 
-class KimSessionNotifier extends Notifier<SessionSnapshotDto> {
-  StreamSubscription<SessionSnapshotDto>? _sub;
+class KimSessionNotifier extends Notifier<SessionSnapshot> {
+  StreamSubscription<SessionSnapshot>? _sub;
 
   @override
-  SessionSnapshotDto build() {
+  SessionSnapshot build() {
     ref.listen<bool>(authProvider.select((s) => s.signedIn), (prev, next) {
       if (next) {
         _listen();
@@ -129,6 +129,6 @@ class KimSessionNotifier extends Notifier<SessionSnapshotDto> {
 }
 
 final kimSessionProvider =
-    NotifierProvider<KimSessionNotifier, SessionSnapshotDto>(
+    NotifierProvider<KimSessionNotifier, SessionSnapshot>(
       KimSessionNotifier.new,
     );

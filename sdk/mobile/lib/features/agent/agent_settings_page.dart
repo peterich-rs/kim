@@ -58,11 +58,11 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
   AgentSettingsForm get _form => ref.read(agentSettingsFormProvider.notifier);
 
   ReasoningChoice get _choice => _state.choice;
-  ReasoningSurfaceDto get _surface => _state.surface;
+  ReasoningSurface get _surface => _state.surface;
   int get _contextTokens => _state.contextTokens;
   bool get _loaded => _state.loaded;
   String get _accountId => _state.accountId;
-  List<VendorSummaryDto> get _vendors => _state.vendors;
+  List<VendorSummary> get _vendors => _state.vendors;
   List<String> get _pendingModels => _state.pendingModels;
   AgentProfile? get _editorDraft => _state.profile;
 
@@ -116,7 +116,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
     return ref.read(providerAccountsProvider.notifier).byId(_accountId);
   }
 
-  VendorSummaryDto? _vendorById(String id, [List<VendorSummaryDto>? vendors]) {
+  VendorSummary? _vendorById(String id, [List<VendorSummary>? vendors]) {
     for (final v in vendors ?? _vendors) {
       if (v.id == id) {
         return v;

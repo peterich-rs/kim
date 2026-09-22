@@ -15,29 +15,29 @@ import 'types.dart';
 abstract class AgentCatalogHandle implements RustOpaqueInterface {
   Future<void> deleteProfile({required String id});
 
-  Future<List<ProviderAccountDto>> listAccounts();
+  Future<List<ProviderAccount>> listAccounts();
 
-  Future<List<AgentProfileDto>> listProfiles();
+  Future<List<AgentProfile>> listProfiles();
 
-  Future<void> upsertProfile({required AgentProfileDto row});
+  Future<void> upsertProfile({required AgentProfile row});
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ContactsHandle>>
 abstract class ContactsHandle implements RustOpaqueInterface {
-  Future<List<PersonDto>> friends();
+  Future<List<Person>> friends();
 
-  Future<ProfileDto> profile({required String dest});
+  Future<Profile> profile({required String dest});
 
-  Future<List<PersonDto>> search({required String query});
+  Future<List<Person>> search({required String query});
 
-  Stream<ContactsSnapshotDto> watch();
+  Stream<ContactsSnapshot> watch();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ConversationHandle>>
 abstract class ConversationHandle implements RustOpaqueInterface {
   Future<String> dest();
 
-  Future<List<RoomMemberDto>> enter();
+  Future<List<RoomMember>> enter();
 
   Future<String> leave();
 
@@ -52,21 +52,21 @@ abstract class ConversationHandle implements RustOpaqueInterface {
 
   Future<void> setTyping({required bool active});
 
-  Stream<TimelineUpdateDto> watchTimeline({required int limit});
+  Stream<TimelineUpdate> watchTimeline({required int limit});
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<InboxHandle>>
 abstract class InboxHandle implements RustOpaqueInterface {
   /// Session snapshot still carries the thread list. The handle is the object
-  /// boundary; splitting the DTO is a later cut.
+  /// boundary; splitting the projection type is a later cut.
   Future<KimUiHandle> app();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MediaHandle>>
 abstract class MediaHandle implements RustOpaqueInterface {
-  Future<LocalMediaDto> fetch({required String url});
+  Future<LocalMedia> fetch({required String url});
 
-  Future<LocalMediaDto> upload({
+  Future<LocalMedia> upload({
     required String path,
     required String mime,
     required int width,
@@ -75,13 +75,13 @@ abstract class MediaHandle implements RustOpaqueInterface {
   });
 }
 
-class AgentPermissionEventDto {
+class AgentPermissionEvent {
   final String dest;
   final String callId;
   final String name;
   final String preview;
 
-  const AgentPermissionEventDto({
+  const AgentPermissionEvent({
     required this.dest,
     required this.callId,
     required this.name,
@@ -95,7 +95,7 @@ class AgentPermissionEventDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentPermissionEventDto &&
+      other is AgentPermissionEvent &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           callId == other.callId &&
@@ -103,11 +103,11 @@ class AgentPermissionEventDto {
           preview == other.preview;
 }
 
-class AgentUiStatusDto {
+class AgentUiStatus {
   final String dest;
   final String phase;
 
-  const AgentUiStatusDto({required this.dest, required this.phase});
+  const AgentUiStatus({required this.dest, required this.phase});
 
   @override
   int get hashCode => dest.hashCode ^ phase.hashCode;
@@ -115,7 +115,7 @@ class AgentUiStatusDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentUiStatusDto &&
+      other is AgentUiStatus &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           phase == other.phase;

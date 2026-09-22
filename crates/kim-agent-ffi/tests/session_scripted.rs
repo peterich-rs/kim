@@ -32,7 +32,7 @@ async fn scripted_session_opens_idle_and_closes() {
 async fn scripted_backend_is_unknown_on_session_open() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("workspace");
-    std::fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&root).unwrap();
     let result = session_open(
         "scripted-prompt".into(),
         root.to_string_lossy().into(),

@@ -16,7 +16,7 @@ void main() {
       ..promptOverride = (req) async => 'echo:${req.text}';
     final done = loop.start();
     env.fake.agentRunCtrl.add(
-      AgentRunRequestDto(
+      AgentRunRequest(
         dest: 'b_bot',
         profileId: 'bot',
         text: 'hi',

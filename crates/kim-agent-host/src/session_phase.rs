@@ -1,14 +1,14 @@
-//! Pure session-phase machine. Side effects (yield-wait, events) stay in `session`.
+//! Pure session-phase machine. Side effects stay with the caller.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum SessionPhase {
+pub enum SessionPhase {
     Idle,
     Running,
     Yielded,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum PhaseInput {
+pub enum PhaseInput {
     Prompt,
     Yield,
     Abort,
@@ -17,7 +17,8 @@ pub(crate) enum PhaseInput {
 }
 
 impl SessionPhase {
-    pub(crate) fn as_str(self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "idle",
             Self::Running => "running",
@@ -26,8 +27,9 @@ impl SessionPhase {
     }
 }
 
-/// `None` means the input is illegal in `current` (caller keeps the phase and returns an error).
-pub(crate) fn transition(current: SessionPhase, input: PhaseInput) -> Option<SessionPhase> {
+/// `None` means the input is illegal in `current`.
+#[must_use]
+pub fn transition(current: SessionPhase, input: PhaseInput) -> Option<SessionPhase> {
     match (current, input) {
         (SessionPhase::Idle, PhaseInput::Prompt) => Some(SessionPhase::Running),
         (SessionPhase::Running, PhaseInput::Yield) => Some(SessionPhase::Yielded),
@@ -40,7 +42,8 @@ pub(crate) fn transition(current: SessionPhase, input: PhaseInput) -> Option<Ses
     }
 }
 
-pub(crate) fn stale(current_gen: u64, event_gen: u64) -> bool {
+#[must_use]
+pub fn stale(current_gen: u64, event_gen: u64) -> bool {
     current_gen != event_gen
 }
 

@@ -186,36 +186,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<AgentPermissionEventDto>
-  dco_decode_StreamSink_agent_permission_event_dto_Sse(dynamic raw);
+  RustStreamSink<AgentPermissionEvent>
+  dco_decode_StreamSink_agent_permission_event_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<AgentRunRequestDto>
-  dco_decode_StreamSink_agent_run_request_dto_Sse(dynamic raw);
+  RustStreamSink<AgentRunRequest>
+  dco_decode_StreamSink_agent_run_request_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<AgentUiStatusDto>
-  dco_decode_StreamSink_agent_ui_status_dto_Sse(dynamic raw);
+  RustStreamSink<AgentUiStatus>
+  dco_decode_StreamSink_agent_ui_status_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<ContactsSnapshotDto>
-  dco_decode_StreamSink_contacts_snapshot_dto_Sse(dynamic raw);
+  RustStreamSink<ContactsSnapshot>
+  dco_decode_StreamSink_contacts_snapshot_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<SessionSnapshotDto>
-  dco_decode_StreamSink_session_snapshot_dto_Sse(dynamic raw);
+  RustStreamSink<SessionSnapshot>
+  dco_decode_StreamSink_session_snapshot_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<SessionUpdateDto> dco_decode_StreamSink_session_update_dto_Sse(
+  RustStreamSink<SessionUpdate> dco_decode_StreamSink_session_update_Sse(
     dynamic raw,
   );
 
   @protected
-  RustStreamSink<TimelineUpdateDto>
-  dco_decode_StreamSink_timeline_update_dto_Sse(dynamic raw);
+  RustStreamSink<TimelineUpdate>
+  dco_decode_StreamSink_timeline_update_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<TokenPersistDto> dco_decode_StreamSink_token_persist_dto_Sse(
+  RustStreamSink<TokenPersist> dco_decode_StreamSink_token_persist_Sse(
     dynamic raw,
   );
 
@@ -223,25 +223,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
-  AgentCardDto dco_decode_agent_card_dto(dynamic raw);
+  AgentCard dco_decode_agent_card(dynamic raw);
 
   @protected
-  AgentPermissionEventDto dco_decode_agent_permission_event_dto(dynamic raw);
+  AgentFlags dco_decode_agent_flags(dynamic raw);
 
   @protected
-  AgentProfileDto dco_decode_agent_profile_dto(dynamic raw);
+  AgentPermissionEvent dco_decode_agent_permission_event(dynamic raw);
 
   @protected
-  AgentRunRequestDto dco_decode_agent_run_request_dto(dynamic raw);
+  AgentProfile dco_decode_agent_profile(dynamic raw);
 
   @protected
-  AgentRunResultDto dco_decode_agent_run_result_dto(dynamic raw);
+  AgentRunRequest dco_decode_agent_run_request(dynamic raw);
 
   @protected
-  AgentTurnStateDto dco_decode_agent_turn_state_dto(dynamic raw);
+  AgentRunResult dco_decode_agent_run_result(dynamic raw);
 
   @protected
-  AgentUiStatusDto dco_decode_agent_ui_status_dto(dynamic raw);
+  AgentTurnState dco_decode_agent_turn_state(dynamic raw);
+
+  @protected
+  AgentUiStatus dco_decode_agent_ui_status(dynamic raw);
 
   @protected
   ApiFailure dco_decode_api_failure(dynamic raw);
@@ -253,19 +256,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
-  BotDto dco_decode_bot_dto(dynamic raw);
+  Bot dco_decode_bot(dynamic raw);
 
   @protected
-  AgentCardDto dco_decode_box_autoadd_agent_card_dto(dynamic raw);
+  AgentCard dco_decode_box_autoadd_agent_card(dynamic raw);
 
   @protected
-  AgentProfileDto dco_decode_box_autoadd_agent_profile_dto(dynamic raw);
+  AgentFlags dco_decode_box_autoadd_agent_flags(dynamic raw);
 
   @protected
-  AgentRunResultDto dco_decode_box_autoadd_agent_run_result_dto(dynamic raw);
+  AgentProfile dco_decode_box_autoadd_agent_profile(dynamic raw);
 
   @protected
-  DeviceOverlayDto dco_decode_box_autoadd_device_overlay_dto(dynamic raw);
+  AgentRunResult dco_decode_box_autoadd_agent_run_result(dynamic raw);
+
+  @protected
+  DeviceOverlay dco_decode_box_autoadd_device_overlay(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_i_32(dynamic raw);
@@ -277,31 +283,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimOutgoingContent dco_decode_box_autoadd_kim_outgoing_content(dynamic raw);
 
   @protected
-  LinkStateDto dco_decode_box_autoadd_link_state_dto(dynamic raw);
+  LinkState dco_decode_box_autoadd_link_state(dynamic raw);
 
   @protected
-  ProviderAccountDto dco_decode_box_autoadd_provider_account_dto(dynamic raw);
+  ProviderAccount dco_decode_box_autoadd_provider_account(dynamic raw);
 
   @protected
-  ThreadViewDto dco_decode_box_autoadd_thread_view_dto(dynamic raw);
+  ThreadView dco_decode_box_autoadd_thread_view(dynamic raw);
 
   @protected
-  TimelineDeltaDto dco_decode_box_autoadd_timeline_delta_dto(dynamic raw);
+  TimelineDelta dco_decode_box_autoadd_timeline_delta(dynamic raw);
 
   @protected
-  TimelineSnapshotDto dco_decode_box_autoadd_timeline_snapshot_dto(dynamic raw);
+  TimelineSnapshot dco_decode_box_autoadd_timeline_snapshot(dynamic raw);
 
   @protected
-  UiCommandDto dco_decode_box_autoadd_ui_command_dto(dynamic raw);
+  UiCommand dco_decode_box_autoadd_ui_command(dynamic raw);
 
   @protected
-  CommandAckDto dco_decode_command_ack_dto(dynamic raw);
+  CommandAck dco_decode_command_ack(dynamic raw);
 
   @protected
-  ContactsSnapshotDto dco_decode_contacts_snapshot_dto(dynamic raw);
+  ContactsSnapshot dco_decode_contacts_snapshot(dynamic raw);
 
   @protected
-  DeviceOverlayDto dco_decode_device_overlay_dto(dynamic raw);
+  DeviceOverlay dco_decode_device_overlay(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -322,22 +328,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimTalkResult dco_decode_kim_talk_result(dynamic raw);
 
   @protected
-  LinkStateDto dco_decode_link_state_dto(dynamic raw);
+  LinkState dco_decode_link_state(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
-  List<AgentProfileDto> dco_decode_list_agent_profile_dto(dynamic raw);
+  List<AgentProfile> dco_decode_list_agent_profile(dynamic raw);
 
   @protected
   List<KimBotPendingItem> dco_decode_list_kim_bot_pending_item(dynamic raw);
 
   @protected
-  List<MessageViewDto> dco_decode_list_message_view_dto(dynamic raw);
+  List<MessageView> dco_decode_list_message_view(dynamic raw);
 
   @protected
-  List<PersonDto> dco_decode_list_person_dto(dynamic raw);
+  List<Person> dco_decode_list_person(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -346,28 +352,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
-  List<ProviderAccountDto> dco_decode_list_provider_account_dto(dynamic raw);
+  List<ProviderAccount> dco_decode_list_provider_account(dynamic raw);
 
   @protected
-  List<RoomMemberDto> dco_decode_list_room_member_dto(dynamic raw);
+  List<RoomMember> dco_decode_list_room_member(dynamic raw);
 
   @protected
-  List<ThreadViewDto> dco_decode_list_thread_view_dto(dynamic raw);
+  List<ThreadView> dco_decode_list_thread_view(dynamic raw);
 
   @protected
-  LocalMediaDto dco_decode_local_media_dto(dynamic raw);
+  LocalMedia dco_decode_local_media(dynamic raw);
 
   @protected
-  MessageViewDto dco_decode_message_view_dto(dynamic raw);
+  MessageView dco_decode_message_view(dynamic raw);
 
   @protected
-  MetricsDto dco_decode_metrics_dto(dynamic raw);
+  Metrics dco_decode_metrics(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
-  DeviceOverlayDto? dco_decode_opt_box_autoadd_device_overlay_dto(dynamic raw);
+  DeviceOverlay? dco_decode_opt_box_autoadd_device_overlay(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_i_32(dynamic raw);
@@ -376,43 +382,43 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
   @protected
-  PersonDto dco_decode_person_dto(dynamic raw);
+  Person dco_decode_person(dynamic raw);
 
   @protected
-  ProfileDto dco_decode_profile_dto(dynamic raw);
+  Profile dco_decode_profile(dynamic raw);
 
   @protected
-  ProviderAccountDto dco_decode_provider_account_dto(dynamic raw);
+  ProviderAccount dco_decode_provider_account(dynamic raw);
 
   @protected
-  RoomMemberDto dco_decode_room_member_dto(dynamic raw);
+  RoomMember dco_decode_room_member(dynamic raw);
 
   @protected
-  SendStatusDto dco_decode_send_status_dto(dynamic raw);
+  SendStatus dco_decode_send_status(dynamic raw);
 
   @protected
-  SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw);
+  SessionSnapshot dco_decode_session_snapshot(dynamic raw);
 
   @protected
-  SessionUpdateDto dco_decode_session_update_dto(dynamic raw);
+  SessionUpdate dco_decode_session_update(dynamic raw);
 
   @protected
-  SettingsDto dco_decode_settings_dto(dynamic raw);
+  Settings dco_decode_settings(dynamic raw);
 
   @protected
-  ThreadViewDto dco_decode_thread_view_dto(dynamic raw);
+  ThreadView dco_decode_thread_view(dynamic raw);
 
   @protected
-  TimelineDeltaDto dco_decode_timeline_delta_dto(dynamic raw);
+  TimelineDelta dco_decode_timeline_delta(dynamic raw);
 
   @protected
-  TimelineSnapshotDto dco_decode_timeline_snapshot_dto(dynamic raw);
+  TimelineSnapshot dco_decode_timeline_snapshot(dynamic raw);
 
   @protected
-  TimelineUpdateDto dco_decode_timeline_update_dto(dynamic raw);
+  TimelineUpdate dco_decode_timeline_update(dynamic raw);
 
   @protected
-  TokenPersistDto dco_decode_token_persist_dto(dynamic raw);
+  TokenPersist dco_decode_token_persist(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
@@ -427,7 +433,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_u_8(dynamic raw);
 
   @protected
-  UiCommandDto dco_decode_ui_command_dto(dynamic raw);
+  UiCommand dco_decode_ui_command(dynamic raw);
 
   @protected
   void dco_decode_unit(dynamic raw);
@@ -565,38 +571,38 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<AgentPermissionEventDto>
-  sse_decode_StreamSink_agent_permission_event_dto_Sse(
+  RustStreamSink<AgentPermissionEvent>
+  sse_decode_StreamSink_agent_permission_event_Sse(
     SseDeserializer deserializer,
   );
 
   @protected
-  RustStreamSink<AgentRunRequestDto>
-  sse_decode_StreamSink_agent_run_request_dto_Sse(SseDeserializer deserializer);
+  RustStreamSink<AgentRunRequest>
+  sse_decode_StreamSink_agent_run_request_Sse(SseDeserializer deserializer);
 
   @protected
-  RustStreamSink<AgentUiStatusDto>
-  sse_decode_StreamSink_agent_ui_status_dto_Sse(SseDeserializer deserializer);
+  RustStreamSink<AgentUiStatus>
+  sse_decode_StreamSink_agent_ui_status_Sse(SseDeserializer deserializer);
 
   @protected
-  RustStreamSink<ContactsSnapshotDto>
-  sse_decode_StreamSink_contacts_snapshot_dto_Sse(SseDeserializer deserializer);
+  RustStreamSink<ContactsSnapshot>
+  sse_decode_StreamSink_contacts_snapshot_Sse(SseDeserializer deserializer);
 
   @protected
-  RustStreamSink<SessionSnapshotDto>
-  sse_decode_StreamSink_session_snapshot_dto_Sse(SseDeserializer deserializer);
+  RustStreamSink<SessionSnapshot>
+  sse_decode_StreamSink_session_snapshot_Sse(SseDeserializer deserializer);
 
   @protected
-  RustStreamSink<SessionUpdateDto> sse_decode_StreamSink_session_update_dto_Sse(
+  RustStreamSink<SessionUpdate> sse_decode_StreamSink_session_update_Sse(
     SseDeserializer deserializer,
   );
 
   @protected
-  RustStreamSink<TimelineUpdateDto>
-  sse_decode_StreamSink_timeline_update_dto_Sse(SseDeserializer deserializer);
+  RustStreamSink<TimelineUpdate>
+  sse_decode_StreamSink_timeline_update_Sse(SseDeserializer deserializer);
 
   @protected
-  RustStreamSink<TokenPersistDto> sse_decode_StreamSink_token_persist_dto_Sse(
+  RustStreamSink<TokenPersist> sse_decode_StreamSink_token_persist_Sse(
     SseDeserializer deserializer,
   );
 
@@ -604,33 +610,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
-  AgentCardDto sse_decode_agent_card_dto(SseDeserializer deserializer);
+  AgentCard sse_decode_agent_card(SseDeserializer deserializer);
 
   @protected
-  AgentPermissionEventDto sse_decode_agent_permission_event_dto(
+  AgentFlags sse_decode_agent_flags(SseDeserializer deserializer);
+
+  @protected
+  AgentPermissionEvent sse_decode_agent_permission_event(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentProfileDto sse_decode_agent_profile_dto(SseDeserializer deserializer);
+  AgentProfile sse_decode_agent_profile(SseDeserializer deserializer);
 
   @protected
-  AgentRunRequestDto sse_decode_agent_run_request_dto(
+  AgentRunRequest sse_decode_agent_run_request(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentRunResultDto sse_decode_agent_run_result_dto(
+  AgentRunResult sse_decode_agent_run_result(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentTurnStateDto sse_decode_agent_turn_state_dto(
+  AgentTurnState sse_decode_agent_turn_state(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentUiStatusDto sse_decode_agent_ui_status_dto(SseDeserializer deserializer);
+  AgentUiStatus sse_decode_agent_ui_status(SseDeserializer deserializer);
 
   @protected
   ApiFailure sse_decode_api_failure(SseDeserializer deserializer);
@@ -642,25 +651,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
-  BotDto sse_decode_bot_dto(SseDeserializer deserializer);
+  Bot sse_decode_bot(SseDeserializer deserializer);
 
   @protected
-  AgentCardDto sse_decode_box_autoadd_agent_card_dto(
+  AgentCard sse_decode_box_autoadd_agent_card(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentProfileDto sse_decode_box_autoadd_agent_profile_dto(
+  AgentFlags sse_decode_box_autoadd_agent_flags(
     SseDeserializer deserializer,
   );
 
   @protected
-  AgentRunResultDto sse_decode_box_autoadd_agent_run_result_dto(
+  AgentProfile sse_decode_box_autoadd_agent_profile(
     SseDeserializer deserializer,
   );
 
   @protected
-  DeviceOverlayDto sse_decode_box_autoadd_device_overlay_dto(
+  AgentRunResult sse_decode_box_autoadd_agent_run_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DeviceOverlay sse_decode_box_autoadd_device_overlay(
     SseDeserializer deserializer,
   );
 
@@ -676,45 +690,45 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  LinkStateDto sse_decode_box_autoadd_link_state_dto(
+  LinkState sse_decode_box_autoadd_link_state(
     SseDeserializer deserializer,
   );
 
   @protected
-  ProviderAccountDto sse_decode_box_autoadd_provider_account_dto(
+  ProviderAccount sse_decode_box_autoadd_provider_account(
     SseDeserializer deserializer,
   );
 
   @protected
-  ThreadViewDto sse_decode_box_autoadd_thread_view_dto(
+  ThreadView sse_decode_box_autoadd_thread_view(
     SseDeserializer deserializer,
   );
 
   @protected
-  TimelineDeltaDto sse_decode_box_autoadd_timeline_delta_dto(
+  TimelineDelta sse_decode_box_autoadd_timeline_delta(
     SseDeserializer deserializer,
   );
 
   @protected
-  TimelineSnapshotDto sse_decode_box_autoadd_timeline_snapshot_dto(
+  TimelineSnapshot sse_decode_box_autoadd_timeline_snapshot(
     SseDeserializer deserializer,
   );
 
   @protected
-  UiCommandDto sse_decode_box_autoadd_ui_command_dto(
+  UiCommand sse_decode_box_autoadd_ui_command(
     SseDeserializer deserializer,
   );
 
   @protected
-  CommandAckDto sse_decode_command_ack_dto(SseDeserializer deserializer);
+  CommandAck sse_decode_command_ack(SseDeserializer deserializer);
 
   @protected
-  ContactsSnapshotDto sse_decode_contacts_snapshot_dto(
+  ContactsSnapshot sse_decode_contacts_snapshot(
     SseDeserializer deserializer,
   );
 
   @protected
-  DeviceOverlayDto sse_decode_device_overlay_dto(SseDeserializer deserializer);
+  DeviceOverlay sse_decode_device_overlay(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -741,13 +755,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   KimTalkResult sse_decode_kim_talk_result(SseDeserializer deserializer);
 
   @protected
-  LinkStateDto sse_decode_link_state_dto(SseDeserializer deserializer);
+  LinkState sse_decode_link_state(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
-  List<AgentProfileDto> sse_decode_list_agent_profile_dto(
+  List<AgentProfile> sse_decode_list_agent_profile(
     SseDeserializer deserializer,
   );
 
@@ -757,12 +771,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  List<MessageViewDto> sse_decode_list_message_view_dto(
+  List<MessageView> sse_decode_list_message_view(
     SseDeserializer deserializer,
   );
 
   @protected
-  List<PersonDto> sse_decode_list_person_dto(SseDeserializer deserializer);
+  List<Person> sse_decode_list_person(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
@@ -771,34 +785,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
-  List<ProviderAccountDto> sse_decode_list_provider_account_dto(
+  List<ProviderAccount> sse_decode_list_provider_account(
     SseDeserializer deserializer,
   );
 
   @protected
-  List<RoomMemberDto> sse_decode_list_room_member_dto(
+  List<RoomMember> sse_decode_list_room_member(
     SseDeserializer deserializer,
   );
 
   @protected
-  List<ThreadViewDto> sse_decode_list_thread_view_dto(
+  List<ThreadView> sse_decode_list_thread_view(
     SseDeserializer deserializer,
   );
 
   @protected
-  LocalMediaDto sse_decode_local_media_dto(SseDeserializer deserializer);
+  LocalMedia sse_decode_local_media(SseDeserializer deserializer);
 
   @protected
-  MessageViewDto sse_decode_message_view_dto(SseDeserializer deserializer);
+  MessageView sse_decode_message_view(SseDeserializer deserializer);
 
   @protected
-  MetricsDto sse_decode_metrics_dto(SseDeserializer deserializer);
+  Metrics sse_decode_metrics(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
-  DeviceOverlayDto? sse_decode_opt_box_autoadd_device_overlay_dto(
+  DeviceOverlay? sse_decode_opt_box_autoadd_device_overlay(
     SseDeserializer deserializer,
   );
 
@@ -809,51 +823,51 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
-  PersonDto sse_decode_person_dto(SseDeserializer deserializer);
+  Person sse_decode_person(SseDeserializer deserializer);
 
   @protected
-  ProfileDto sse_decode_profile_dto(SseDeserializer deserializer);
+  Profile sse_decode_profile(SseDeserializer deserializer);
 
   @protected
-  ProviderAccountDto sse_decode_provider_account_dto(
+  ProviderAccount sse_decode_provider_account(
     SseDeserializer deserializer,
   );
 
   @protected
-  RoomMemberDto sse_decode_room_member_dto(SseDeserializer deserializer);
+  RoomMember sse_decode_room_member(SseDeserializer deserializer);
 
   @protected
-  SendStatusDto sse_decode_send_status_dto(SseDeserializer deserializer);
+  SendStatus sse_decode_send_status(SseDeserializer deserializer);
 
   @protected
-  SessionSnapshotDto sse_decode_session_snapshot_dto(
+  SessionSnapshot sse_decode_session_snapshot(
     SseDeserializer deserializer,
   );
 
   @protected
-  SessionUpdateDto sse_decode_session_update_dto(SseDeserializer deserializer);
+  SessionUpdate sse_decode_session_update(SseDeserializer deserializer);
 
   @protected
-  SettingsDto sse_decode_settings_dto(SseDeserializer deserializer);
+  Settings sse_decode_settings(SseDeserializer deserializer);
 
   @protected
-  ThreadViewDto sse_decode_thread_view_dto(SseDeserializer deserializer);
+  ThreadView sse_decode_thread_view(SseDeserializer deserializer);
 
   @protected
-  TimelineDeltaDto sse_decode_timeline_delta_dto(SseDeserializer deserializer);
+  TimelineDelta sse_decode_timeline_delta(SseDeserializer deserializer);
 
   @protected
-  TimelineSnapshotDto sse_decode_timeline_snapshot_dto(
+  TimelineSnapshot sse_decode_timeline_snapshot(
     SseDeserializer deserializer,
   );
 
   @protected
-  TimelineUpdateDto sse_decode_timeline_update_dto(
+  TimelineUpdate sse_decode_timeline_update(
     SseDeserializer deserializer,
   );
 
   @protected
-  TokenPersistDto sse_decode_token_persist_dto(SseDeserializer deserializer);
+  TokenPersist sse_decode_token_persist(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
@@ -868,7 +882,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
-  UiCommandDto sse_decode_ui_command_dto(SseDeserializer deserializer);
+  UiCommand sse_decode_ui_command(SseDeserializer deserializer);
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
@@ -1030,50 +1044,50 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_StreamSink_agent_permission_event_dto_Sse(
-    RustStreamSink<AgentPermissionEventDto> self,
+  void sse_encode_StreamSink_agent_permission_event_Sse(
+    RustStreamSink<AgentPermissionEvent> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_agent_run_request_dto_Sse(
-    RustStreamSink<AgentRunRequestDto> self,
+  void sse_encode_StreamSink_agent_run_request_Sse(
+    RustStreamSink<AgentRunRequest> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_agent_ui_status_dto_Sse(
-    RustStreamSink<AgentUiStatusDto> self,
+  void sse_encode_StreamSink_agent_ui_status_Sse(
+    RustStreamSink<AgentUiStatus> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_contacts_snapshot_dto_Sse(
-    RustStreamSink<ContactsSnapshotDto> self,
+  void sse_encode_StreamSink_contacts_snapshot_Sse(
+    RustStreamSink<ContactsSnapshot> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_session_snapshot_dto_Sse(
-    RustStreamSink<SessionSnapshotDto> self,
+  void sse_encode_StreamSink_session_snapshot_Sse(
+    RustStreamSink<SessionSnapshot> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_session_update_dto_Sse(
-    RustStreamSink<SessionUpdateDto> self,
+  void sse_encode_StreamSink_session_update_Sse(
+    RustStreamSink<SessionUpdate> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_timeline_update_dto_Sse(
-    RustStreamSink<TimelineUpdateDto> self,
+  void sse_encode_StreamSink_timeline_update_Sse(
+    RustStreamSink<TimelineUpdate> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_StreamSink_token_persist_dto_Sse(
-    RustStreamSink<TokenPersistDto> self,
+  void sse_encode_StreamSink_token_persist_Sse(
+    RustStreamSink<TokenPersist> self,
     SseSerializer serializer,
   );
 
@@ -1081,41 +1095,44 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
-  void sse_encode_agent_card_dto(AgentCardDto self, SseSerializer serializer);
+  void sse_encode_agent_card(AgentCard self, SseSerializer serializer);
 
   @protected
-  void sse_encode_agent_permission_event_dto(
-    AgentPermissionEventDto self,
+  void sse_encode_agent_flags(AgentFlags self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_agent_permission_event(
+    AgentPermissionEvent self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_agent_profile_dto(
-    AgentProfileDto self,
+  void sse_encode_agent_profile(
+    AgentProfile self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_agent_run_request_dto(
-    AgentRunRequestDto self,
+  void sse_encode_agent_run_request(
+    AgentRunRequest self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_agent_run_result_dto(
-    AgentRunResultDto self,
+  void sse_encode_agent_run_result(
+    AgentRunResult self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_agent_turn_state_dto(
-    AgentTurnStateDto self,
+  void sse_encode_agent_turn_state(
+    AgentTurnState self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_agent_ui_status_dto(
-    AgentUiStatusDto self,
+  void sse_encode_agent_ui_status(
+    AgentUiStatus self,
     SseSerializer serializer,
   );
 
@@ -1129,29 +1146,35 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
-  void sse_encode_bot_dto(BotDto self, SseSerializer serializer);
+  void sse_encode_bot(Bot self, SseSerializer serializer);
 
   @protected
-  void sse_encode_box_autoadd_agent_card_dto(
-    AgentCardDto self,
+  void sse_encode_box_autoadd_agent_card(
+    AgentCard self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_agent_profile_dto(
-    AgentProfileDto self,
+  void sse_encode_box_autoadd_agent_flags(
+    AgentFlags self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_agent_run_result_dto(
-    AgentRunResultDto self,
+  void sse_encode_box_autoadd_agent_profile(
+    AgentProfile self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_device_overlay_dto(
-    DeviceOverlayDto self,
+  void sse_encode_box_autoadd_agent_run_result(
+    AgentRunResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_device_overlay(
+    DeviceOverlay self,
     SseSerializer serializer,
   );
 
@@ -1171,53 +1194,53 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_link_state_dto(
-    LinkStateDto self,
+  void sse_encode_box_autoadd_link_state(
+    LinkState self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_provider_account_dto(
-    ProviderAccountDto self,
+  void sse_encode_box_autoadd_provider_account(
+    ProviderAccount self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_thread_view_dto(
-    ThreadViewDto self,
+  void sse_encode_box_autoadd_thread_view(
+    ThreadView self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_timeline_delta_dto(
-    TimelineDeltaDto self,
+  void sse_encode_box_autoadd_timeline_delta(
+    TimelineDelta self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_timeline_snapshot_dto(
-    TimelineSnapshotDto self,
+  void sse_encode_box_autoadd_timeline_snapshot(
+    TimelineSnapshot self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_ui_command_dto(
-    UiCommandDto self,
+  void sse_encode_box_autoadd_ui_command(
+    UiCommand self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_command_ack_dto(CommandAckDto self, SseSerializer serializer);
+  void sse_encode_command_ack(CommandAck self, SseSerializer serializer);
 
   @protected
-  void sse_encode_contacts_snapshot_dto(
-    ContactsSnapshotDto self,
+  void sse_encode_contacts_snapshot(
+    ContactsSnapshot self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_device_overlay_dto(
-    DeviceOverlayDto self,
+  void sse_encode_device_overlay(
+    DeviceOverlay self,
     SseSerializer serializer,
   );
 
@@ -1249,14 +1272,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_kim_talk_result(KimTalkResult self, SseSerializer serializer);
 
   @protected
-  void sse_encode_link_state_dto(LinkStateDto self, SseSerializer serializer);
+  void sse_encode_link_state(LinkState self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
-  void sse_encode_list_agent_profile_dto(
-    List<AgentProfileDto> self,
+  void sse_encode_list_agent_profile(
+    List<AgentProfile> self,
     SseSerializer serializer,
   );
 
@@ -1267,14 +1290,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_message_view_dto(
-    List<MessageViewDto> self,
+  void sse_encode_list_message_view(
+    List<MessageView> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_list_person_dto(
-    List<PersonDto> self,
+  void sse_encode_list_person(
+    List<Person> self,
     SseSerializer serializer,
   );
 
@@ -1288,41 +1311,41 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_provider_account_dto(
-    List<ProviderAccountDto> self,
+  void sse_encode_list_provider_account(
+    List<ProviderAccount> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_list_room_member_dto(
-    List<RoomMemberDto> self,
+  void sse_encode_list_room_member(
+    List<RoomMember> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_list_thread_view_dto(
-    List<ThreadViewDto> self,
+  void sse_encode_list_thread_view(
+    List<ThreadView> self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_local_media_dto(LocalMediaDto self, SseSerializer serializer);
+  void sse_encode_local_media(LocalMedia self, SseSerializer serializer);
 
   @protected
-  void sse_encode_message_view_dto(
-    MessageViewDto self,
+  void sse_encode_message_view(
+    MessageView self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_metrics_dto(MetricsDto self, SseSerializer serializer);
+  void sse_encode_metrics(Metrics self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
-  void sse_encode_opt_box_autoadd_device_overlay_dto(
-    DeviceOverlayDto? self,
+  void sse_encode_opt_box_autoadd_device_overlay(
+    DeviceOverlay? self,
     SseSerializer serializer,
   );
 
@@ -1336,62 +1359,62 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_person_dto(PersonDto self, SseSerializer serializer);
+  void sse_encode_person(Person self, SseSerializer serializer);
 
   @protected
-  void sse_encode_profile_dto(ProfileDto self, SseSerializer serializer);
+  void sse_encode_profile(Profile self, SseSerializer serializer);
 
   @protected
-  void sse_encode_provider_account_dto(
-    ProviderAccountDto self,
+  void sse_encode_provider_account(
+    ProviderAccount self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_room_member_dto(RoomMemberDto self, SseSerializer serializer);
+  void sse_encode_room_member(RoomMember self, SseSerializer serializer);
 
   @protected
-  void sse_encode_send_status_dto(SendStatusDto self, SseSerializer serializer);
+  void sse_encode_send_status(SendStatus self, SseSerializer serializer);
 
   @protected
-  void sse_encode_session_snapshot_dto(
-    SessionSnapshotDto self,
+  void sse_encode_session_snapshot(
+    SessionSnapshot self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_session_update_dto(
-    SessionUpdateDto self,
+  void sse_encode_session_update(
+    SessionUpdate self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_settings_dto(SettingsDto self, SseSerializer serializer);
+  void sse_encode_settings(Settings self, SseSerializer serializer);
 
   @protected
-  void sse_encode_thread_view_dto(ThreadViewDto self, SseSerializer serializer);
+  void sse_encode_thread_view(ThreadView self, SseSerializer serializer);
 
   @protected
-  void sse_encode_timeline_delta_dto(
-    TimelineDeltaDto self,
+  void sse_encode_timeline_delta(
+    TimelineDelta self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_timeline_snapshot_dto(
-    TimelineSnapshotDto self,
+  void sse_encode_timeline_snapshot(
+    TimelineSnapshot self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_timeline_update_dto(
-    TimelineUpdateDto self,
+  void sse_encode_timeline_update(
+    TimelineUpdate self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_token_persist_dto(
-    TokenPersistDto self,
+  void sse_encode_token_persist(
+    TokenPersist self,
     SseSerializer serializer,
   );
 
@@ -1408,7 +1431,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
-  void sse_encode_ui_command_dto(UiCommandDto self, SseSerializer serializer);
+  void sse_encode_ui_command(UiCommand self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);

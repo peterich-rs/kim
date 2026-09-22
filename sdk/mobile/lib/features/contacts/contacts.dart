@@ -91,7 +91,7 @@ class ContactsState {
 }
 
 class ContactsNotifier extends Notifier<ContactsState> {
-  StreamSubscription<ContactsSnapshotDto>? _contacts;
+  StreamSubscription<ContactsSnapshot>? _contacts;
 
   @override
   ContactsState build() {
@@ -105,7 +105,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
       }
     });
     ref.listen(kimSessionProvider.select((s) => s.link), (prev, next) {
-      if (next is LinkStateDto_Online) {
+      if (next is LinkState_Online) {
         unawaited(refresh());
       }
     });
@@ -122,7 +122,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
       if (!ref.mounted) {
         return;
       }
-      if (ref.read(kimSessionProvider).link is LinkStateDto_Online) {
+      if (ref.read(kimSessionProvider).link is LinkState_Online) {
         unawaited(refresh());
       }
     });
@@ -241,7 +241,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
     await KimHaptics.success();
   }
 
-  void _applySnapshot(ContactsSnapshotDto snapshot) {
+  void _applySnapshot(ContactsSnapshot snapshot) {
     if (!ref.mounted) {
       return;
     }

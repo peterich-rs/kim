@@ -31,13 +31,13 @@ void main() {
     final clientId = env.fake.lastClientId;
     env.fake.pushTimeline(
       'bob',
-      TimelineUpdateDto.delta(
-        delta: TimelineDeltaDto(
+      TimelineUpdate.delta(
+        delta: TimelineDelta(
           dest: 'bob',
           fromVersion: BigInt.zero,
           toVersion: BigInt.one,
           upserts: [
-            MessageViewDto(
+            MessageView(
               key: clientId,
               dest: 'bob',
               sender: 'alice',
@@ -48,7 +48,7 @@ void main() {
               width: 0,
               height: 0,
               messageId: 0,
-              sendStatus: SendStatusDto.pending,
+              sendStatus: SendStatus.pending,
             ),
           ],
           deletedKeys: const [],

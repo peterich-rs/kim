@@ -10,11 +10,11 @@ class AgentCatalog {
 
   final KimClientPort client;
 
-  Future<List<AgentProfileDto>> profiles() => client.listAgentProfiles();
+  Future<List<AgentProfile>> profiles() => client.listAgentProfiles();
 
-  Future<void> upsert(AgentProfileDto row) => client.upsertAgentProfile(row);
+  Future<void> upsert(AgentProfile row) => client.upsertAgentProfile(row);
 
   Future<void> delete(String id) => client.deleteAgentProfile(id);
 
-  Future<List<ProviderAccountDto>> accounts() => client.listProviderAccounts();
+  Future<List<ProviderAccount>> accounts() => client.listProviderAccounts();
 }

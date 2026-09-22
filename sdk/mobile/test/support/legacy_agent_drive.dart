@@ -12,7 +12,7 @@ import 'package:kim_mobile/features/agent/kim_im_tools.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/agent/workspace.dart';
+
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
@@ -20,8 +20,7 @@ import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 /// One turn's outcome. Control flow uses [stopReason], not thrown strings.
 class DriveResult {
@@ -91,6 +90,7 @@ class AgentRunLoop {
     this.goose, {
     this.sink,
     this.permissions,
+    this.onPrepared,
     WorkspaceAccess? access,
   }) : access = access ?? workspaceAccess;
 
@@ -100,12 +100,16 @@ class AgentRunLoop {
   final AgentPermissionHub? permissions;
   final WorkspaceAccess access;
 
-  /// Tests inject a prompt stub. Production uses [rust_agent] `prompt`.
-  Future<String> Function(AgentRunRequestDto req)? promptOverride;
+  /// Test seam. Production turns do not open a Goose session from Dart.
+  final void Function(String profileJson, String sqlitePath, bool resumeOnOpen)?
+  onPrepared;
 
-  StreamSubscription<AgentRunRequestDto>? _sub;
+  /// Tests inject a prompt stub. Production uses [rust_agent] `prompt`.
+  Future<String> Function(rust_types.AgentRunRequest req)? promptOverride;
+
+  StreamSubscription<rust_types.AgentRunRequest>? _sub;
   StreamSubscription<dynamic>? _permSub;
-  StreamController<AgentRunRequestDto>? _incoming;
+  StreamController<rust_types.AgentRunRequest>? _incoming;
   final _sessions = <String, AgentSessionPort>{};
   var _stopped = false;
 
@@ -131,7 +135,7 @@ class AgentRunLoop {
         );
       });
       KimLogger.info('agent run watch');
-      final incoming = StreamController<AgentRunRequestDto>();
+      final incoming = StreamController<rust_types.AgentRunRequest>();
       _incoming = incoming;
       _sub = client.watchAgentRun().listen(
         (req) {
@@ -170,7 +174,7 @@ class AgentRunLoop {
               'agent run done dest=${req.dest} stop=${result.stopReason} replied=${result.replied}',
             );
             await client.submitAgentRun(
-              AgentRunResultDto(
+              rust_types.AgentRunResult(
                 dest: req.dest,
                 profileId: req.profileId,
                 epoch: req.epoch,
@@ -186,7 +190,7 @@ class AgentRunLoop {
             sink?.finish(req.dest, failed: true);
             final typed = e is DriveStop ? e.result : null;
             await client.submitAgentRun(
-              AgentRunResultDto(
+              rust_types.AgentRunResult(
                 dest: req.dest,
                 profileId: req.profileId,
                 epoch: req.epoch,
@@ -245,13 +249,13 @@ class AgentRunLoop {
     }
   }
 
-  Future<DriveResult> _promptGoose(AgentRunRequestDto req) async {
+  Future<DriveResult> _promptGoose(rust_types.AgentRunRequest req) async {
     await goose.ensure();
     if (!goose.isReady) {
       throw StateError(Copy.agentHostNotReady);
     }
     final rows = await client.listAgentProfiles();
-    AgentProfileDto? row;
+    rust_types.AgentProfile? row;
     for (final r in rows) {
       if (r.profileId == req.profileId) {
         row = r;
@@ -288,7 +292,7 @@ class AgentRunLoop {
       overlay: overlay?.userAgentsSkills ?? '',
     );
     final accounts = await client.listProviderAccounts();
-    ProviderAccountDto? accountRow;
+    rust_types.ProviderAccount? accountRow;
     for (final a in accounts) {
       if (a.id == profile.accountId) {
         accountRow = a;
@@ -311,68 +315,20 @@ class AgentRunLoop {
     }
     final paths = KimPaths.instance;
     await paths.ensureAgentDirs();
-    final ws = await resolveAgentProjectRoot(profile: profile, paths: paths);
     final sessionFile = paths.agentSessionFile(
       dest: req.dest,
       profileId: profile.id,
     );
-    final prefs = await SharedPreferences.getInstance();
-    final harnessOn = prefs.getBool('agent.harness_v1') ?? false;
-    final runtime = profile.usesCodex ? 'codex' : 'goose';
-    final opts = SessionOpenOpts(
-      model: profile.model,
-      llmBackend: account.vendorId,
-      resumeOnOpen: true,
-      baseUrl: account.baseUrl,
-      apiKey: apiKey,
-      enableFsTools: profile.tools.fs,
-      bashEnabled: profile.tools.bash,
-      profileId: profile.id,
-      profileJson: jsonEncode(
-        profile.toHostJson(
-          account,
-          userAgentsSkills: skillPaths.userAgentsSkills,
-        ),
+    final profileJson = jsonEncode(
+      profile.toHostJson(
+        account,
+        userAgentsSkills: skillPaths.userAgentsSkills,
       ),
-      thinkingEffort: profile.thinkingEffort,
-      gooseMode: profile.mode,
-      enableKimTools: false,
-      enableApprovals: false,
-      sessionId: '${req.dest}:${req.profileId}',
-      harnessJson: jsonEncode({
-        'enabled': harnessOn,
-        if (runtime == 'codex') 'runtime': 'codex',
-      }),
     );
-    final key = '${req.dest}:${req.profileId}';
-    var session = _sessions[key];
-    if (session != null) {
-      KimLogger.info('agent session reconfigure key=$key runtime=$runtime');
-      try {
-        await session.reconfigure(opts: opts);
-      } catch (e, st) {
-        KimLogger.warn('agent session reconfigure', e, st);
-        _sessions.remove(key);
-        try {
-          await session.close().timeout(const Duration(seconds: 2));
-        } catch (closeErr, closeSt) {
-          KimLogger.warn('agent session close', closeErr, closeSt);
-        }
-        session = null;
-      }
-    }
-    if (session == null) {
-      KimLogger.info(
-        'agent session open dest=${req.dest} profile=${profile.id} runtime=$runtime',
-      );
-    }
-    session ??= await goose.open(
-      sqlitePath: sessionFile.path,
-      projectRoot: ws.path,
-      opts: opts,
+    onPrepared?.call(profileJson, sessionFile.path, true);
+    throw StateError(
+      'Dart no longer opens a harness session; HostAgentRuntime owns the turn',
     );
-    _sessions[key] = session;
-    return driveSession(session, dest: req.dest, text: req.text, persist: true);
   }
 
   /// Visible for tests. Host yields deferred IM tools to Dart; ignoring

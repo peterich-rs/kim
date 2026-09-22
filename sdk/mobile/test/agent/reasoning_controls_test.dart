@@ -7,7 +7,7 @@ import 'package:kim_mobile/features/agent/agent_profiles.dart';
 
 Future<void> _pump(
   WidgetTester tester, {
-  required ReasoningSurfaceDto surface,
+  required ReasoningSurface surface,
   required ReasoningChoice choice,
   ValueChanged<ReasoningChoice>? onChanged,
 }) async {
@@ -33,7 +33,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      surface: const ReasoningSurfaceDto(
+      surface: const ReasoningSurface(
         kind: 'effort_enum',
         allowed: ['none', 'low', 'high', 'max'],
         defaultValue: 'high',
@@ -51,7 +51,7 @@ void main() {
   testWidgets('Claude effort_enum is low|high|max without Off', (tester) async {
     await _pump(
       tester,
-      surface: const ReasoningSurfaceDto(
+      surface: const ReasoningSurface(
         kind: 'effort_enum',
         allowed: ['low', 'high', 'max'],
         defaultValue: 'high',
@@ -68,7 +68,7 @@ void main() {
   testWidgets('toggle surface is a Switch, not an effort row', (tester) async {
     await _pump(
       tester,
-      surface: const ReasoningSurfaceDto(kind: 'toggle', defaultOn: false),
+      surface: const ReasoningSurface(kind: 'toggle', defaultOn: false),
       choice: const ReasoningChoice(kind: 'toggle', on: false),
     );
     expect(find.byType(SwitchListTile), findsOneWidget);
@@ -80,7 +80,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      surface: const ReasoningSurfaceDto(
+      surface: const ReasoningSurface(
         kind: 'always_on',
         note: 'thinking stays on',
       ),
@@ -95,7 +95,7 @@ void main() {
   testWidgets('none surface hides the effort control', (tester) async {
     await _pump(
       tester,
-      surface: const ReasoningSurfaceDto(kind: 'none'),
+      surface: const ReasoningSurface(kind: 'none'),
       choice: const ReasoningChoice(kind: 'none'),
     );
     expect(find.byType(SegmentedButton<String>), findsNothing);

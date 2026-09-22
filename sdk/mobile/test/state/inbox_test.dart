@@ -18,10 +18,10 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
-        link: const LinkStateDto.online(),
+      SessionSnapshot(
+        link: const LinkState.online(),
         threads: [
-          ThreadViewDto(
+          ThreadView(
             id: 'bob',
             kind: 0,
             title: 'Bob',
@@ -99,12 +99,12 @@ void main() {
     final notifier = env.container.read(threadMessagesProvider('bob').notifier);
     env.fake.pushTimeline(
       'bob',
-      TimelineUpdateDto.snapshot(
-        snapshot: TimelineSnapshotDto(
+      TimelineUpdate.snapshot(
+        snapshot: TimelineSnapshot(
           dest: 'bob',
           version: BigInt.one,
           messages: [
-            MessageViewDto(
+            MessageView(
               key: 'newer',
               dest: 'bob',
               sender: 'bob',
@@ -115,7 +115,7 @@ void main() {
               width: 0,
               height: 0,
               messageId: 2,
-              sendStatus: SendStatusDto.sent,
+              sendStatus: SendStatus.sent,
             ),
           ],
           pending: const [],
@@ -128,7 +128,7 @@ void main() {
       ),
     );
     env.fake.setOlderTimeline('bob', [
-      MessageViewDto(
+      MessageView(
         key: 'older',
         dest: 'bob',
         sender: 'bob',
@@ -139,7 +139,7 @@ void main() {
         width: 0,
         height: 0,
         messageId: 1,
-        sendStatus: SendStatusDto.sent,
+        sendStatus: SendStatus.sent,
       ),
     ]);
     await Future<void>.delayed(Duration.zero);
@@ -160,10 +160,10 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
-        link: const LinkStateDto.online(),
+      SessionSnapshot(
+        link: const LinkState.online(),
         threads: [
-          ThreadViewDto(
+          ThreadView(
             id: 'bob',
             kind: 0,
             title: 'Bob',
@@ -172,7 +172,7 @@ void main() {
             lastAt: 1,
             unread: 0,
           ),
-          ThreadViewDto(
+          ThreadView(
             id: 'carol',
             kind: 0,
             title: 'Carol',

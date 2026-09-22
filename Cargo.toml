@@ -18,6 +18,8 @@ members = [
     "crates/kim-agent-codec",
     "crates/kim-log",
     "crates/kim-desktop-runtime",
+    "crates/kim-client-ffi",
+    "crates/kim-agent-ffi",
     "services/gateway",
     "services/chat",
     "services/royal",
@@ -64,6 +66,7 @@ kim-naming = { path = "crates/kim-naming" }
 kim-container = { path = "crates/kim-container" }
 kim-router = { path = "crates/kim-router" }
 kim-session = { path = "crates/kim-session" }
+kim-sdk = { path = "crates/kim-sdk" }
 snowflake_me = "2"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "sqlite-bundled", "macros", "migrate"] }
 # Same crate Codex rust-v0.155.1 locks. sqlx 0.9 accepts this; 0.8 cannot.
@@ -90,10 +93,26 @@ arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
 kim-agent-codec = { path = "crates/kim-agent-codec" }
 kim-agent-host = { path = "crates/kim-agent-host" }
+kim-desktop-runtime = { path = "crates/kim-desktop-runtime" }
 kim-log = { path = "crates/kim-log" }
+flutter_rust_bridge = "=2.13.0"
 
 # Codex pin rust-v0.155.1 patches crates.io copies that lack the `proxy`
 # feature. Path deps do not inherit the Codex workspace [patch] table.
+#
+# macOS `split-debuginfo = "off"` does not embed DWARF in a cdylib. rustc
+# skips dsymutil and deletes the `.rcgu.o` files the debug map still names,
+# so lldb cannot bind breakpoints after Flutter copies the library into the
+# app framework. `unpacked` keeps those objects; lldb follows the absolute
+# paths. `packed` writes a `.dSYM` beside the cargo output, which the
+# framework copy does not include. This stays on the two FFI packages so a
+# root profile change cannot drop their object files.
+[profile.dev.package.kim_client_ffi]
+split-debuginfo = "unpacked"
+
+[profile.dev.package.kim_agent_ffi]
+split-debuginfo = "unpacked"
+
 [patch.crates-io]
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
 tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }

@@ -4,116 +4,31 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'failure.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `abandon_yield`, `aborted`, `action_required`, `arm_yield_watch`, `attach_codex`, `base`, `begin_run`, `completed`, `disarm_yield_watch`, `failed`, `finish_turn`, `map_host_err`, `operation_started`, `recreate_host`, `recv_op_id`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `shared_new`, `sleep_bounded`, `spawn_host_pump`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Shared`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
+// These functions are ignored because they are not marked as `pub`: `abandon_yield`, `aborted`, `action_required`, `arm_yield_watch`, `attach_codex`, `base`, `begin_run`, `completed`, `disarm_yield_watch`, `failed`, `finish_turn`, `listener_released`, `map_host_err`, `open_request`, `operation_started`, `recreate_host`, `recv_op_id`, `resolved_from_opts`, `session_ready`, `set_phase_if_current`, `shared_new`, `sleep_bounded`, `spawn_host_pump`, `spawn_on_current`, `start_prompt`, `text_delta`, `tool_finished`, `tool_request`, `tool_started`, `turn_is_current`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AgentSession`, `SessionOpenOpts`, `Shared`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `reconfigure`, `session_open`
+// These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `abort`, `close`, `complete_tool`, `default`, `listen`, `park`, `prompt_with_context`, `prompt`, `respond_permission`, `resume`, `snapshot`, `steer`
 
-Future<AgentSession> sessionOpen({
-  required String sqlitePath,
-  required String projectRoot,
-  required SessionOpenOpts opts,
-}) => AgentRustLib.instance.api.crateApiSessionSessionOpen(
-  sqlitePath: sqlitePath,
-  projectRoot: projectRoot,
-  opts: opts,
+Future<List<String>> fetchSupportedModels({
+  required String llmBackend,
+  required String baseUrl,
+  required String apiKey,
+}) => AgentRustLib.instance.api.crateApiSessionFetchSupportedModels(
+  llmBackend: llmBackend,
+  baseUrl: baseUrl,
+  apiKey: apiKey,
 );
-
-Future<List<String>> fetchSupportedModels({required SessionOpenOpts opts}) =>
-    AgentRustLib.instance.api.crateApiSessionFetchSupportedModels(opts: opts);
 
 Future<List<String>> listBuiltinProfiles() =>
     AgentRustLib.instance.api.crateApiSessionListBuiltinProfiles();
 
 Future<List<String>> listBundledProviders() =>
     AgentRustLib.instance.api.crateApiSessionListBundledProviders();
-
-Future<String> catalogVendors() =>
-    AgentRustLib.instance.api.crateApiSessionCatalogVendors();
-
-Future<String> catalogSurface({
-  required String vendor,
-  required String model,
-}) => AgentRustLib.instance.api.crateApiSessionCatalogSurface(
-  vendor: vendor,
-  model: model,
-);
-
-Future<String> catalogValidate({
-  required String vendor,
-  required String model,
-  required String choiceJson,
-}) => AgentRustLib.instance.api.crateApiSessionCatalogValidate(
-  vendor: vendor,
-  model: model,
-  choiceJson: choiceJson,
-);
-
-/// Portable skills under the user shelf and/or `<project>/.agents/skills`.
-Future<String> skillPortableList({
-  required String userRoot,
-  required String projectRoot,
-}) => AgentRustLib.instance.api.crateApiSessionSkillPortableList(
-  userRoot: userRoot,
-  projectRoot: projectRoot,
-);
-
-/// Bundled (and optional cache) `kim-*` app skill summaries for assignment UI.
-Future<String> skillAppCatalog({required String cacheRoot}) => AgentRustLib
-    .instance
-    .api
-    .crateApiSessionSkillAppCatalog(cacheRoot: cacheRoot);
-
-/// Preview assembled tools + layered prompts for a profile (no network).
-Future<String> previewAssembled({
-  required String profileJson,
-  required String projectRoot,
-}) => AgentRustLib.instance.api.crateApiSessionPreviewAssembled(
-  profileJson: profileJson,
-  projectRoot: projectRoot,
-);
-
-/// Registered capability kinds + risk + param_schema for UI cards.
-Future<String> capabilityCatalogJson() =>
-    AgentRustLib.instance.api.crateApiSessionCapabilityCatalogJson();
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentSession>>
-abstract class AgentSession implements RustOpaqueInterface {
-  Future<void> abort();
-
-  Future<void> close();
-
-  Future<String> completeTool({
-    required String callId,
-    required String outputJson,
-  });
-
-  Stream<AgentUiEvent> listen();
-
-  Future<void> park();
-
-  Future<String> prompt({required String text});
-
-  Future<String> promptWithContext({
-    required String text,
-    required String contextJson,
-  });
-
-  Future<void> reconfigure({required SessionOpenOpts opts});
-
-  Future<String> respondPermission({
-    required String callId,
-    required String permission,
-  });
-
-  Future<ResumeReportDto> resume();
-
-  Future<SessionSnapshotDto> snapshot();
-
-  Future<void> steer({required String text});
-}
 
 class AgentUiEvent {
   final String kind;
@@ -186,11 +101,11 @@ class AgentUiEvent {
           recentlyActive == other.recentlyActive;
 }
 
-class ResumeReportDto {
+class ResumeReport {
   final List<String> resumedOps;
   final List<String> statuses;
 
-  const ResumeReportDto({required this.resumedOps, required this.statuses});
+  const ResumeReport({required this.resumedOps, required this.statuses});
 
   @override
   int get hashCode => resumedOps.hashCode ^ statuses.hashCode;
@@ -198,97 +113,19 @@ class ResumeReportDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ResumeReportDto &&
+      other is ResumeReport &&
           runtimeType == other.runtimeType &&
           resumedOps == other.resumedOps &&
           statuses == other.statuses;
 }
 
-class SessionOpenOpts {
-  final String model;
-  final String llmBackend;
-  final bool resumeOnOpen;
-  final String baseUrl;
-  final String apiKey;
-  final bool enableFsTools;
-  final bool bashEnabled;
-  final String profileId;
-  final String profileJson;
-  final String thinkingEffort;
-  final String gooseMode;
-  final bool enableKimTools;
-  final bool enableApprovals;
-  final String sessionId;
-  final String harnessJson;
-
-  const SessionOpenOpts({
-    required this.model,
-    required this.llmBackend,
-    required this.resumeOnOpen,
-    required this.baseUrl,
-    required this.apiKey,
-    required this.enableFsTools,
-    required this.bashEnabled,
-    required this.profileId,
-    required this.profileJson,
-    required this.thinkingEffort,
-    required this.gooseMode,
-    required this.enableKimTools,
-    required this.enableApprovals,
-    required this.sessionId,
-    required this.harnessJson,
-  });
-
-  static Future<SessionOpenOpts> default_() =>
-      AgentRustLib.instance.api.crateApiSessionSessionOpenOptsDefault();
-
-  @override
-  int get hashCode =>
-      model.hashCode ^
-      llmBackend.hashCode ^
-      resumeOnOpen.hashCode ^
-      baseUrl.hashCode ^
-      apiKey.hashCode ^
-      enableFsTools.hashCode ^
-      bashEnabled.hashCode ^
-      profileId.hashCode ^
-      profileJson.hashCode ^
-      thinkingEffort.hashCode ^
-      gooseMode.hashCode ^
-      enableKimTools.hashCode ^
-      enableApprovals.hashCode ^
-      sessionId.hashCode ^
-      harnessJson.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SessionOpenOpts &&
-          runtimeType == other.runtimeType &&
-          model == other.model &&
-          llmBackend == other.llmBackend &&
-          resumeOnOpen == other.resumeOnOpen &&
-          baseUrl == other.baseUrl &&
-          apiKey == other.apiKey &&
-          enableFsTools == other.enableFsTools &&
-          bashEnabled == other.bashEnabled &&
-          profileId == other.profileId &&
-          profileJson == other.profileJson &&
-          thinkingEffort == other.thinkingEffort &&
-          gooseMode == other.gooseMode &&
-          enableKimTools == other.enableKimTools &&
-          enableApprovals == other.enableApprovals &&
-          sessionId == other.sessionId &&
-          harnessJson == other.harnessJson;
-}
-
-class SessionSnapshotDto {
+class SessionSnapshot {
   final bool busy;
   final String lastOperationId;
   final String phase;
   final List<String> pendingCallIds;
 
-  const SessionSnapshotDto({
+  const SessionSnapshot({
     required this.busy,
     required this.lastOperationId,
     required this.phase,
@@ -305,7 +142,7 @@ class SessionSnapshotDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is SessionSnapshotDto &&
+      other is SessionSnapshot &&
           runtimeType == other.runtimeType &&
           busy == other.busy &&
           lastOperationId == other.lastOperationId &&

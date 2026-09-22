@@ -8,7 +8,7 @@ void main(List<String> args) async {
     final extraEnv = _appleLinkeditStripWorkaround(input);
     final rustMode = _rustBuildMode(input);
     await FlutterRustBridgeNativeAssetsBuilder(
-      cratePath: 'rust',
+      cratePath: '../../crates/kim-client-ffi',
       assetName: 'src/rust/frb_generated.io.dart',
       buildMode: rustMode,
       extraCargoEnvironmentVariables: extraEnv,
@@ -18,7 +18,7 @@ void main(List<String> args) async {
       return;
     }
     await FlutterRustBridgeNativeAssetsBuilder(
-      cratePath: 'rust_agent',
+      cratePath: '../../crates/kim-agent-ffi',
       assetName: 'src/rust_agent/frb_generated.io.dart',
       buildMode: rustMode,
       extraCargoEnvironmentVariables: extraEnv,

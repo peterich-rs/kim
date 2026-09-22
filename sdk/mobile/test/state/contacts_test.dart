@@ -6,8 +6,7 @@ import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
-
+import 'package:kim_mobile/src/rust/api/types.dart' hide AgentProfile;
 import '../support/harness.dart';
 
 Future<void> _online(dynamic env) async {
@@ -20,22 +19,22 @@ Future<void> _online(dynamic env) async {
   }
 }
 
-ContactsSnapshotDto _contacts(List<PersonDto> contacts, {String? syncError}) {
-  return ContactsSnapshotDto(
+ContactsSnapshot _contacts(List<Person> contacts, {String? syncError}) {
+  return ContactsSnapshot(
     version: BigInt.one,
     contacts: contacts,
     syncError: syncError,
   );
 }
 
-PersonDto _person({
+Person _person({
   required String account,
   required String nickname,
   String avatar = '',
   String relation = 'friend',
   int kind = ProfileKind.user,
 }) {
-  return PersonDto(
+  return Person(
     account: account,
     nickname: nickname,
     avatar: avatar,
@@ -150,7 +149,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     env.fake.pushEvent(
-      SessionUpdateDto.profileUpdated(
+      SessionUpdate.profileUpdated(
         account: 'bob',
         nickname: 'Robert',
         avatar: 'new.png',
