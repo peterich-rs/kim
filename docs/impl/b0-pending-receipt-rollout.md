@@ -5,7 +5,7 @@
 | 状态 | 代码与 SCAN fail-closed 已合入（#72）。剩：**运维执行** + **验收后文档 PR**。无代码变更 |
 | 日期 | 2026-09-03 |
 | 覆盖 | G-03 / G-04 / G-10 运维关门闩 |
-| 父规格 | [next-stage.md](./next-stage.md)、[reliable-delivery.md](../reliable-delivery.md) |
+| 父规格 | [reliable-delivery.md](../reliable-delivery.md) |
 
 ## Breaking Change Notice
 

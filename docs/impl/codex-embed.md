@@ -1,4 +1,4 @@
-# Codex Agent Harness 嵌入（替换 Goose 运行时）
+# Codex Agent Harness 嵌入（与 Goose 并列）
 
 | Field | Value |
 |---|---|
@@ -8,15 +8,17 @@
 | Audience | 实现 `kim-agent-host` + `sdk/mobile/rust_agent` 的资深工程师 |
 | Codex pin | 本地检出 `/Users/zhangfan/develop/github.com/codex`，`origin` = `https://github.com/openai/codex.git`，**stable tag `rust-v0.155.1`**（`be2951ea3`，2026-09-18）。本文行号与核对项以该 pin 为准。比它新的 `0.156.0-alpha.*` 不跟。 |
 | 仓库 | `/Users/zhangfan/develop/github.com/im` |
-| 扩展（不替换产品模型） | [agent-config-as-data.md](./agent-config-as-data.md)（A-KD）、[agent-provider-persona.md](./agent-provider-persona.md)（P-KD）、[agent-capability-blocks.md](./agent-capability-blocks.md)（B-KD）、[agent-productivity.md](./agent-productivity.md)（S-KD）、[human-agent-im-parity.md](./human-agent-im-parity.md)（HA-KD） |
-| 取代的运行时 | [goose-agent-harness.md](./goose-agent-harness.md)（H-KD）里「自实现 CompactionOp / 自实现推理环」不再是目标。H-KD 的 idle / hard / yield / 可见性仍留在适配层。Goose crate 在切流完成前不删。 |
+| 扩展（不替换产品模型） | 已落地的产品形状在 [agent-goose.md](../agent-goose.md)。A-KD / P-KD / B-KD / S-KD / HA-KD 是前序决策编号，切片稿已随合入删除 |
+| 两个底座 | Goose 与 Codex 都留。`AgentProfile.runtime` 选择。Goose：轻 Agent（产品、调研、文档），协议面宽、代码量小。Codex：编码和长上下文，OpenAI 维护、能力成熟。上层只看见同一种 turn。H-KD 的 idle / hard / yield / 可见性留在适配层，不进任一底座 |
 | 编号 | 本文决策写作 **CX-KD *n***。 |
 
 ---
 
 ## Overview
 
-Goose `0.1.0-alpha.9` 没有已发布的 conversation summary。KIM 自写的 `CompactionOp` 用 `chars/4` 估 token、只压一轮、摘要是截断片段（`crates/kim-agent-host/src/ops/compaction.rs`）。上下文一长就顶死。这是换运行时的原因，不是再补一层 Operation。
+Goose `0.1.0-alpha.9` 没有已发布的 conversation summary。KIM 自写的 `CompactionOp` 用 `chars/4` 估 token、只压一轮、摘要是截断片段（`crates/kim-agent-host/src/ops/compaction.rs`）。长上下文、编码类人设因此走 Codex，不是因此删掉 Goose。轻 Agent 继续走 Goose 的状态机和它的协议面。
+
+上层不出现两个框架。`kim-sdk` 的 `AgentRuntime::run_turn` 是唯一入口。`kim-agent-host` 按 `profile.runtime` 分到 Goose 机器或 Codex `ThreadManager`。Dart 只订同一种 UI 事件和权限卡，不打开第二套 `session_open`。
 
 Codex 的压缩、多 profile、外部 provider、技能、MCP、审批、rollout 都在 `codex-core` 里，并且已经有库入口：`codex-core-api` 的 `ThreadManager`。官方样例是 `codex-rs/thread-manager-sample`，它明确写了「只依赖 `codex-core-api`，新表面加到 core-api，不要再依赖别的 codex crate」。
 
@@ -64,10 +66,10 @@ Caveats（必须写进实现，不是口头说明）：
 
 ### Goals
 
-- `kim-agent-host` 的运行时从 `goose-agent` `StateMachine` 换成 `codex_core_api::ThreadManager`。对外仍是 `prompt` / `complete_tool` / `respond_permission` / `abort` / `steer`。
+- `runtime=codex` 的人设走 `codex_core_api::ThreadManager`。`runtime=goose` 继续走 `goose-agent` `StateMachine`。对外仍是同一种 `prompt` / `complete_tool` / `respond_permission` / `abort` / `steer`。
 - `AgentProfile`（以及以后的 `AgentSpec`）是唯一产品配置。Codex `config.toml` 是打开会话时的投影，不是用户编辑的第二真相，也不上云。
 - 官方 OpenAI 与自定义 Responses provider 都用 API key。`forced_login_method = "api"`。不实现、不调用 ChatGPT OAuth。
-- 压缩交给 Codex：`model_context_window` + `model_auto_compact_token_limit` 从 `ModelSpec.context_tokens` 注入。删掉热路径上的 `CompactionOp`（Goose 代码文件先留着，flag 默认切过去之后再删）。
+- Codex 路径的压缩交给 Codex：`model_context_window` + `model_auto_compact_token_limit` 从 `ModelSpec.context_tokens` 注入。`runtime=codex` 不装 `CompactionOp`。Goose 路径保留自己的压缩，不删 `goose-agent`。
 - IM 工具继续让给 Dart。注册 `dynamic_tools` 命名空间 `kim`，`DynamicToolCallRequest` ↔ 今天的 yield。
 - 不读、不写用户真实的 `~/.codex`。进程内共用一个 app 目录下的 `codex_home`；每个会话的 `Config` / `ConfigOverrides` / 密钥彼此隔离。
 - 两条 FFI 仍分开。手机仍不编 agent host。
@@ -82,7 +84,7 @@ Caveats（必须写进实现，不是口头说明）：
 - 不改 WGateway、不改 `chat.bot.*`、不合并 `kim_agent_ffi` 与 `kim_client_ffi`。
 - 不在本切片重做 A-KD 的 protobuf 存储。投影读今天的 `AgentProfile` JSON；`from_spec` 落地后只换读入口。
 - 不在本切片做手机运行时。
-- 不在 PR0–PR7 删除 `goose-agent` 依赖。切流 flag 默认仍是 goose，直到压缩与 IM 工具在桌面走通。
+- 不删除 `goose-agent` 依赖。它是轻 Agent 的长期底座，不是切流完成后的清理项。默认 runtime 仍是 goose，直到 Codex 路径的压缩与 IM 工具在桌面走通。
 
 ---
 
@@ -497,7 +499,7 @@ PR0 之前不要改 Flutter 聊天路径。
 
 | 文档 | 关系 |
 |---|---|
-| H-KD `goose-agent-harness.md` | 监督语义（idle、hard、yield 暂停、单一终端事件、可见性）留在适配层。其中「自写 CompactionOp、自写 400 环内摘要」在 `runtime=codex` 时作废。不删除那份文档，文首加一句「运行时迁移见 codex-embed」即可，本切片不动那份正文 |
+| H-KD | 监督语义（idle、hard、yield 暂停、单一终端事件、可见性）留在适配层。其中「自写 CompactionOp、自写 400 环内摘要」在 `runtime=codex` 时作废。切片稿已随合入删除；产品形状见 [agent-goose.md](../agent-goose.md) |
 | A-KD | 配置仍是数据。Codex toml 是投影 |
 | B-KD | capability 仍是汇编输入。输出从 `MachineFactory` step 改成动态工具列表 + Codex 内置工具开关 |
 | S-KD | skill 包仍由 KIM 安装到磁盘。启用/禁用交给 `skills.config`。不把 Skill 再实现成 Operation |

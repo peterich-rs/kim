@@ -6,7 +6,7 @@
 | 作者 | — |
 | 日期 | 2026-09-18 |
 | 对照代码 | 工作树 HEAD `8c6d2d2`（用户分析基于 `dead0fc`；下文行号均已对当前树核验，不以旧分析为准） |
-| 父规格 | [user-social-inbox.md](docs/user-social-inbox.md)、[control-layer-chat.md](docs/control-layer-chat.md)、[production-gaps.md](docs/production-gaps.md) |
+| 父规格 | [user-social-inbox.md](../user-social-inbox.md)、[control-layer-chat.md](../control-layer-chat.md)、[production-gaps.md](../production-gaps.md) |
 | 范围 | v1：服务端 **按账号隐藏会话** + 客户端滑删不再被 `chat.inbox.list` 复活。不含清空聊天、撤回、人类双向物理 purge、账号注销。 |
 
 ---
@@ -752,7 +752,7 @@ PR3：`withLocalThreads` 接收 SDK 暴露的 hidden dest 集合（snapshot 增 
 - `docs/user-social-inbox.md` — 好友与 inbox 已落地形状；人类 remove 不清历史。
 - `docs/control-layer-chat.md` — 命令、1xx、dest 规则。
 - `docs/production-gaps.md` — G-17 物化读；inbox 非全量。
-- `docs/impl/09-mobile-production-architecture.md` — Dart 不持业务；threads 来自 SDK snapshot。
+- `docs/mobile-client.md` — Dart 不持业务；threads 来自 SDK snapshot。
 - `services/chat/migrations/0010_conversation_inbox.sql`、`0006_user_social_inbox.sql`、`0001_messages.sql`。
 - `services/chat/src/store/postgres.rs` — insert/list/history/mark_read/purge。
 - `services/chat/src/royal.rs` `HttpMessageStore::inbox` 只 map items。

@@ -9,8 +9,8 @@ KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host*
 - Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine, assembled per `AgentProfile` by `MachineFactory`
 - Providers: [`goose-providers`](https://crates.io/crates/goose-providers) (OpenAI Completions/Responses, Anthropic Messages)
 - Host: `crates/kim-agent-host` (profile, vendor catalog, session map, @mention helper, system prompt)
-- Catalog: `catalog/vendors.json` + `catalog_surface` DTO. UI switches on `ReasoningSurface.kind`, not vendor id. Catalog URLs feed `build_openai` / `build_anthropic`.
-- FFI: `sdk/mobile/rust_agent` (`kim_agent_ffi`) — still isolated from `kim_client_ffi`
+- Catalog: `catalog/vendors.json` + `catalog_surface` 投影。UI switches on `ReasoningSurface.kind`, not vendor id. Catalog URLs feed `build_openai` / `build_anthropic`.
+- FFI: `crates/kim-agent-ffi` (`kim_agent_ffi`) — still isolated from `kim_client_ffi`
 - Dest: a stored row with `id=goose` still uses local dest `goose` (alias of `agent:goose`). Other personas use `agent:<profile_id>`. After `chat.bot.create`, the IM dest is the server-assigned `serverAccount` (`b_…`). New installs have an empty agent list; goose is not synthesized.
 
 Three layers: **Agent** (`AgentProfile`: persona + model + `ReasoningChoice`), **ProviderAccount** (vendor + URL + key), **ModelChoice** (model id + reasoning). Disk profiles do not persist `provider`; `session_open` injects it.
@@ -21,6 +21,17 @@ and logged in, registered 1:1 user↔agent traffic goes through WGateway
 (`chat.user.talk` / `chat.bot.reply`). Group `@mention` is not implemented.
 `agent.multi_profile` is a hidden kill-switch that also defaults on for desktop.
 
+## Harness
+
+`AgentProfile.runtime` 选底座。产品层和 Dart 不引用 goose 或 codex 的 crate。
+
+| runtime | 底座 | 适合 |
+| --- | --- | --- |
+| `goose` | `goose-agent` 状态机。代码量小，协议面宽 | 产品、调研、文档这类轻 Agent |
+| `codex` | `codex_core_api::ThreadManager`。OpenAI 维护，压缩、工具、MCP、审批已在库里 | 编码和长上下文 |
+
+嵌入步骤在 [impl/codex-embed.md](impl/codex-embed.md)。两条路径共用 `AgentRuntime::run_turn`。
+
 ## Product
 
 1. Open **我 → Agent**. List / create / edit personas at `/agent`, `/agent/new`, `/agent/:id`; provider keys at `/agent/accounts`. `/agent/settings` redirects to `/agent`.
@@ -28,8 +39,6 @@ and logged in, registered 1:1 user↔agent traffic goes through WGateway
 3. An Agent is a **1:1 contact** in 通讯录 / 消息 after `chat.bot.create`. New / duplicate profiles register immediately when the identity flag is on; an existing empty `serverAccount` registers on first 1:1 open. Login / `ConnStatus.online` does **not** batch-ensure. Any persona (including goose) can be deleted: `botDelete` then drop the local row.
 4. Tap the contact and chat like a friend. Registered 1:1 messages are stored on the server so phone / web can read and send. Goose still runs only on this desktop; the owner session posts `chat.bot.reply`.
 5. Human 1:1 composer does **not** intercept `@助手`. Talk to an Agent by opening its 1:1. Mentions stay available for a later group-@ path.
-
-Shape: [impl/agent-provider-persona.md](impl/agent-provider-persona.md) (IA); [impl/multi-agent-vendor-catalog.md](impl/multi-agent-vendor-catalog.md) (catalog); [impl/agent-productivity.md](impl/agent-productivity.md) (workspace / Skill / plaza / typing).
 
 ## Workspace and Skills
 
@@ -56,7 +65,7 @@ Desktop Rust HostAgentRuntime
 Phone stays NoopAgent (no agent host linked)
 ```
 
-Desktop Rust orchestrates IM and the agent host. Dart is a UI subscriber: handles, intents, and snapshots. Do not merge the `kim-agent-host` crate into `kim-client`. `kim_agent_ffi` must not depend on `kim-client`. The orchestrator is `kim-desktop-runtime`. See [impl/ffi-oo-contract.md](impl/ffi-oo-contract.md).
+Desktop Rust orchestrates IM and the agent host. Dart is a UI subscriber: handles, intents, and snapshots. Do not merge the `kim-agent-host` crate into `kim-client`. `kim_agent_ffi` must not depend on `kim-client`. The orchestrator is `kim-desktop-runtime`. See [ffi-oo-contract.md](ffi-oo-contract.md).
 
 ## Build / test
 
