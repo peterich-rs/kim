@@ -1,0 +1,74 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "kim macos (Dart)",
+            "request": "launch",
+            "type": "dart",
+            "cwd": "${workspaceFolder}/sdk/mobile",
+            "program": "lib/main.dart",
+            "deviceId": "macos",
+            "toolArgs": ["-d", "macos"],
+            "flutterMode": "debug"
+        },
+        {
+            "name": "kim macos attach Rust",
+            "type": "lldb",
+            "request": "attach",
+            "sourceLanguages": ["rust"],
+            "pid": "${input:pickKimMobile}",
+            "stopOnEntry": false,
+            "preRunCommands": [
+                "settings set target.inline-breakpoint-strategy always"
+            ],
+            "postRunCommands": [
+                "process handle --pass true --stop false --notify false SIGPROF",
+                "process handle --pass true --stop false --notify false SIGPIPE",
+                "process handle --pass true --stop false --notify false SIGUSR1",
+                "process handle --pass true --stop false --notify false SIGUSR2"
+            ]
+        },
+        {
+            "name": "kim macos wait Rust",
+            "type": "lldb",
+            "request": "attach",
+            "sourceLanguages": ["rust"],
+            "stopOnEntry": false,
+            "targetCreateCommands": [
+                "platform select host"
+            ],
+            "processCreateCommands": [
+                "process attach --name kim_mobile --waitfor"
+            ],
+            "preRunCommands": [
+                "settings set target.inline-breakpoint-strategy always"
+            ],
+            "postRunCommands": [
+                "process handle --pass true --stop false --notify false SIGPROF",
+                "process handle --pass true --stop false --notify false SIGPIPE",
+                "process handle --pass true --stop false --notify false SIGUSR1",
+                "process handle --pass true --stop false --notify false SIGUSR2"
+            ]
+        }
+    ],
+    "compounds": [
+        {
+            "name": "kim macos (Dart + Rust)",
+            "configurations": [
+                "kim macos (Dart)",
+                "kim macos wait Rust"
+            ],
+            "stopAll": true
+        }
+    ],
+    "inputs": [
+        {
+            "id": "pickKimMobile",
+            "type": "command",
+            "command": "lldb.pickMyProcess",
+            "args": {
+                "filter": "kim_mobile"
+            }
+        }
+    ]
+}

@@ -1,7 +1,10 @@
 /target
 **/*.rs.bk
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
 .DS_Store
 node_modules/
 /deploy/kim.env

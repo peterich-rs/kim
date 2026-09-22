@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "Dart-Code.flutter",
+        "Dart-Code.dart-code",
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb"
+    ]
+}
