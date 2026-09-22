@@ -18,11 +18,14 @@ import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/features/agent/agent_catalog.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
 import 'package:kim_mobile/features/agent/context_window.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
+part 'agent_profile_defaults.dart';
+part 'agent_capability_kinds.dart';
+part 'agent_profile_types.dart';
 part 'agent_profile_model.dart';
 
 class AgentProfileStore extends Notifier<List<AgentProfile>> {

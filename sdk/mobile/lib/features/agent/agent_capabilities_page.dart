@@ -28,6 +28,7 @@ import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 /// Unified capability sheet (B-KD 9 / Phase 4).
 class AgentCapabilitiesPage extends ConsumerStatefulWidget {
@@ -566,7 +567,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       key: const Key('agent-skills-plaza'),
       tooltip: l10n.agentSkillsOpenPlaza,
       onPressed: () =>
-          context.push('/agent/plaza?assignTo=${widget.profileId}'),
+          context.push(AppRoutes.agentPlazaAssign(widget.profileId)),
       icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
     );
     if (!draft.loaded) {

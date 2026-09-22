@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/models/models.dart';

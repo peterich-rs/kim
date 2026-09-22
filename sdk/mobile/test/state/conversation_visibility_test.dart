@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/chats/conversation_visibility.dart';
+import 'package:kim_mobile/features/chats/providers/conversation_visibility.dart';
 import 'package:kim_mobile/features/session/location.dart';
 import 'package:kim_mobile/models/models.dart';
 

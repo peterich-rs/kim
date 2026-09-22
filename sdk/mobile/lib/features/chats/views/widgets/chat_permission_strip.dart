@@ -7,7 +7,7 @@ import 'package:kim_mobile/design/agent_action_bubble.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/kim_typing_bars.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/chats/chat_view.dart';
+import 'package:kim_mobile/features/chats/providers/chat_view.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 
 /// Permission cards and the typing row. Isolated so a typing tick does not

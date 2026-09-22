@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/chats/chat_session.dart';
-import 'package:kim_mobile/features/chats/messages.dart';
+import 'package:kim_mobile/features/chats/providers/chat_session.dart';
+import 'package:kim_mobile/features/chats/providers/messages.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';

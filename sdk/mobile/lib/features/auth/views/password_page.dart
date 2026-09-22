@@ -13,8 +13,8 @@ import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/validation.dart';
 import 'package:kim_mobile/design/kim_header.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
-import 'package:kim_mobile/features/auth/auth_form.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth_form.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/design/kim_text_field.dart';
 

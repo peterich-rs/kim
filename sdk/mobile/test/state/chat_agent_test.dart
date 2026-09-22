@@ -15,6 +15,8 @@ void main() {
     final loop = AgentRunLoop(env.fake, AgentBridge())
       ..promptOverride = (req) async => 'echo:${req.text}';
     final done = loop.start();
+    // Broadcast drops events with no listeners — wait for watch to attach.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     env.fake.agentRunCtrl.add(
       AgentRunRequest(
         dest: 'b_bot',
@@ -24,9 +26,12 @@ void main() {
         epoch: BigInt.one,
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    for (var i = 0; i < 50 && env.fake.submittedAgentRuns.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     expect(env.fake.submittedAgentRuns, isNotEmpty);
     expect(env.fake.submittedAgentRuns.single.output, 'echo:hi');
+    await loop.stop();
     await env.fake.agentRunCtrl.close();
     await done;
   });

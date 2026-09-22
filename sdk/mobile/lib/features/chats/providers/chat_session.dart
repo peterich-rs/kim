@@ -13,11 +13,11 @@ import 'package:kim_mobile/bridge/conversation_port.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 
 import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
-import 'package:kim_mobile/features/chats/messages.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/messages.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';

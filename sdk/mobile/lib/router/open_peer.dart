@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 void openKimPeerProfile(
   BuildContext context,
@@ -17,10 +18,7 @@ void openKimPeerProfile(
     return;
   }
   KimHaptics.selection();
-  final q = (title == null || title.isEmpty)
-      ? ''
-      : '?title=${Uri.encodeQueryComponent(title)}';
-  final path = '/peer/$id$q';
+  final path = AppRoutes.peer(id, title: title);
   if (kimIsWide(context)) {
     context.push(path);
   } else {

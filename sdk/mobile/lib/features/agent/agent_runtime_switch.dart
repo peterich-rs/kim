@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
+import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
@@ -25,13 +26,13 @@ class AgentRuntimeSwitch extends ConsumerWidget {
     if (!agentHostSupported) {
       return const SizedBox.shrink();
     }
-    final zh = Localizations.localeOf(context).languageCode.startsWith('zh');
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          zh ? '运行时' : 'Runtime',
+          l10n.agentRuntimeTitle,
           style: theme.textTheme.titleSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -41,10 +42,8 @@ class AgentRuntimeSwitch extends ConsumerWidget {
           children: [
             SwitchListTile(
               key: const Key('agent-runtime-codex'),
-              title: Text(zh ? '用 Codex 跑这个助手' : 'Run this assistant on Codex'),
-              subtitle: Text(
-                zh ? '默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。' : 'Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.',
-              ),
+              title: Text(l10n.agentRuntimeCodexTitle),
+              subtitle: Text(l10n.agentRuntimeCodexSubtitle),
               value: codex,
               onChanged: onChanged,
             ),

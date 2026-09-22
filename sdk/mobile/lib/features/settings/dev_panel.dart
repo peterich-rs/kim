@@ -114,11 +114,11 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
         children: [
           if (showWipe)
             MaterialBanner(
-              content: Text('本地库已按 kim-sdk schema 重建 ×$wipe'),
+              content: Text(Copy.devPanelWipeBanner(wipe)),
               actions: [
                 TextButton(
                   onPressed: () => _ackWipe(wipe),
-                  child: const Text('知道了'),
+                  child: Text(Copy.devPanelGotIt),
                 ),
               ],
             ),

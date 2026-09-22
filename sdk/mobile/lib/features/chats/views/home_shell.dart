@@ -11,6 +11,7 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.navigationShell});
@@ -22,7 +23,7 @@ class HomeShell extends ConsumerWidget {
     final incoming = ref.watch(contactsProvider.select((s) => s.incomingCount));
     final layout = kimLayoutSize(context);
     final split = layout != KimLayoutSize.narrow;
-    final onChat = GoRouterState.of(context).uri.path.startsWith('/chat/');
+    final onChat = AppRoutes.isChat(GoRouterState.of(context).uri.path);
     final destinations = <NavigationDestination>[
       NavigationDestination(
         icon: const Icon(LucideIcons.messageCircle),

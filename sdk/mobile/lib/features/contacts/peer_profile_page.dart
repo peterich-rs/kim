@@ -15,7 +15,7 @@ import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_chat.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/features/contacts/peer_profile.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/features/session/providers.dart';
@@ -24,6 +24,7 @@ import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class PeerProfilePage extends ConsumerStatefulWidget {
   const PeerProfilePage({
@@ -151,7 +152,7 @@ class _PeerProfilePageState extends ConsumerState<PeerProfilePage> {
       if (context.canPop()) {
         context.pop();
       } else {
-        context.go('/contacts');
+        context.go(AppRoutes.contacts);
       }
     } catch (err) {
       _toast(socialError(err));

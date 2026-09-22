@@ -1082,4 +1082,56 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get agentSkillsPickerEmpty => '还没有可分配的技能';
+
+  @override
+  String get agentRuntimeTitle => '运行时';
+
+  @override
+  String get agentRuntimeCodexTitle => '用 Codex 跑这个助手';
+
+  @override
+  String get agentRuntimeCodexSubtitle =>
+      '默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。';
+
+  @override
+  String get providerAccountDeleted => '厂商账号已删除';
+
+  @override
+  String devPanelWipeBanner(int count) {
+    return '本地库已按 kim-sdk schema 重建 ×$count';
+  }
+
+  @override
+  String get devPanelGotIt => '知道了';
+
+  @override
+  String get weekdayMon => '周一';
+
+  @override
+  String get weekdayTue => '周二';
+
+  @override
+  String get weekdayWed => '周三';
+
+  @override
+  String get weekdayThu => '周四';
+
+  @override
+  String get weekdayFri => '周五';
+
+  @override
+  String get weekdaySat => '周六';
+
+  @override
+  String get weekdaySun => '周日';
+
+  @override
+  String dateMd(int month, int day) {
+    return '$month月$day日';
+  }
+
+  @override
+  String dateYmd(int year, int month, int day) {
+    return '$year年$month月$day日';
+  }
 }

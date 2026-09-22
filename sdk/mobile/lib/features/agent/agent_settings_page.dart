@@ -28,6 +28,7 @@ import 'package:kim_mobile/features/agent/provider_account_page.dart';
 import 'package:kim_mobile/features/agent/context_window.dart';
 import 'package:kim_mobile/features/agent/context_window_controls.dart';
 import 'package:kim_mobile/features/agent/reasoning_controls.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 const _kNewProvider = '__new__';
 
@@ -741,7 +742,7 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () =>
-                            context.push('/agent/${overview.id}/capabilities'),
+                            context.push(AppRoutes.agentCapabilities(overview.id)),
                       ),
                     ],
                   ),

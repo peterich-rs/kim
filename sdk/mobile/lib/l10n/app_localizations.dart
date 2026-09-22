@@ -2179,6 +2179,96 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'还没有可分配的技能'**
   String get agentSkillsPickerEmpty;
+
+  /// No description provided for @agentRuntimeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行时'**
+  String get agentRuntimeTitle;
+
+  /// No description provided for @agentRuntimeCodexTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'用 Codex 跑这个助手'**
+  String get agentRuntimeCodexTitle;
+
+  /// No description provided for @agentRuntimeCodexSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。'**
+  String get agentRuntimeCodexSubtitle;
+
+  /// No description provided for @providerAccountDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'厂商账号已删除'**
+  String get providerAccountDeleted;
+
+  /// No description provided for @devPanelWipeBanner.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地库已按 kim-sdk schema 重建 ×{count}'**
+  String devPanelWipeBanner(int count);
+
+  /// No description provided for @devPanelGotIt.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get devPanelGotIt;
+
+  /// No description provided for @weekdayMon.
+  ///
+  /// In zh, this message translates to:
+  /// **'周一'**
+  String get weekdayMon;
+
+  /// No description provided for @weekdayTue.
+  ///
+  /// In zh, this message translates to:
+  /// **'周二'**
+  String get weekdayTue;
+
+  /// No description provided for @weekdayWed.
+  ///
+  /// In zh, this message translates to:
+  /// **'周三'**
+  String get weekdayWed;
+
+  /// No description provided for @weekdayThu.
+  ///
+  /// In zh, this message translates to:
+  /// **'周四'**
+  String get weekdayThu;
+
+  /// No description provided for @weekdayFri.
+  ///
+  /// In zh, this message translates to:
+  /// **'周五'**
+  String get weekdayFri;
+
+  /// No description provided for @weekdaySat.
+  ///
+  /// In zh, this message translates to:
+  /// **'周六'**
+  String get weekdaySat;
+
+  /// No description provided for @weekdaySun.
+  ///
+  /// In zh, this message translates to:
+  /// **'周日'**
+  String get weekdaySun;
+
+  /// No description provided for @dateMd.
+  ///
+  /// In zh, this message translates to:
+  /// **'{month}月{day}日'**
+  String dateMd(int month, int day);
+
+  /// No description provided for @dateYmd.
+  ///
+  /// In zh, this message translates to:
+  /// **'{year}年{month}月{day}日'**
+  String dateYmd(int year, int month, int day);
 }
 
 class _AppLocalizationsDelegate

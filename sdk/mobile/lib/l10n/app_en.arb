@@ -418,5 +418,38 @@
   "agentSkillTagDownload": "download",
   "agentSkillTagGlobal": "global",
   "agentSkillTagProject": "project",
-  "agentSkillsPickerEmpty": "No skills to assign yet"
+  "agentSkillsPickerEmpty": "No skills to assign yet",
+  "agentRuntimeTitle": "Runtime",
+  "agentRuntimeCodexTitle": "Run this assistant on Codex",
+  "agentRuntimeCodexSubtitle": "Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.",
+  "providerAccountDeleted": "Provider account deleted",
+  "devPanelWipeBanner": "Local store rebuilt for kim-sdk schema ×{count}",
+  "@devPanelWipeBanner": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "devPanelGotIt": "Got it",
+  "weekdayMon": "Mon",
+  "weekdayTue": "Tue",
+  "weekdayWed": "Wed",
+  "weekdayThu": "Thu",
+  "weekdayFri": "Fri",
+  "weekdaySat": "Sat",
+  "weekdaySun": "Sun",
+  "dateMd": "{month}/{day}",
+  "@dateMd": {
+    "placeholders": {
+      "month": { "type": "int" },
+      "day": { "type": "int" }
+    }
+  },
+  "dateYmd": "{year}/{month}/{day}",
+  "@dateYmd": {
+    "placeholders": {
+      "year": { "type": "int" },
+      "month": { "type": "int" },
+      "day": { "type": "int" }
+    }
+  }
 }

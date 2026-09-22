@@ -7,9 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/kim_composer.dart';
-import 'package:kim_mobile/features/chats/chat_chrome.dart';
-import 'package:kim_mobile/features/chats/chat_session.dart';
-import 'package:kim_mobile/features/chats/chat_view.dart';
+import 'package:kim_mobile/features/chats/providers/chat_chrome.dart';
+import 'package:kim_mobile/features/chats/providers/chat_session.dart';
+import 'package:kim_mobile/features/chats/providers/chat_view.dart';
 
 class ChatComposerBar extends ConsumerWidget {
   const ChatComposerBar({

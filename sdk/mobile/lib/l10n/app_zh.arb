@@ -418,5 +418,38 @@
   "agentSkillTagDownload": "下载",
   "agentSkillTagGlobal": "全局",
   "agentSkillTagProject": "项目",
-  "agentSkillsPickerEmpty": "还没有可分配的技能"
+  "agentSkillsPickerEmpty": "还没有可分配的技能",
+  "agentRuntimeTitle": "运行时",
+  "agentRuntimeCodexTitle": "用 Codex 跑这个助手",
+  "agentRuntimeCodexSubtitle": "默认仍是 Goose。创建时选定即可；改完从下次打开会话生效，旧会话不会迁过去。",
+  "providerAccountDeleted": "厂商账号已删除",
+  "devPanelWipeBanner": "本地库已按 kim-sdk schema 重建 ×{count}",
+  "@devPanelWipeBanner": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "devPanelGotIt": "知道了",
+  "weekdayMon": "周一",
+  "weekdayTue": "周二",
+  "weekdayWed": "周三",
+  "weekdayThu": "周四",
+  "weekdayFri": "周五",
+  "weekdaySat": "周六",
+  "weekdaySun": "周日",
+  "dateMd": "{month}月{day}日",
+  "@dateMd": {
+    "placeholders": {
+      "month": { "type": "int" },
+      "day": { "type": "int" }
+    }
+  },
+  "dateYmd": "{year}年{month}月{day}日",
+  "@dateYmd": {
+    "placeholders": {
+      "year": { "type": "int" },
+      "month": { "type": "int" },
+      "day": { "type": "int" }
+    }
+  }
 }

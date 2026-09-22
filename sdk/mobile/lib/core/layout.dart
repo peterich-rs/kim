@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:kim_mobile/router/app_routes.dart';
+
 /// Window width where the shell uses a labeled rail and a full conversation list.
 const double kKimWideBreakpoint = 900;
 
@@ -64,12 +66,7 @@ double kimBodyInset(
 }
 
 /// Overlay routes sit on top of the tab shell and must always be leavable.
-bool kimIsOverlayPath(String path) {
-  return path.startsWith('/agent') ||
-      path.startsWith('/password') ||
-      path.startsWith('/dev') ||
-      path.startsWith('/peer');
-}
+bool kimIsOverlayPath(String path) => AppRoutes.isOverlay(path);
 
 /// Whether a page header should show a back control.
 bool kimShowsBack(BuildContext context) {
@@ -91,7 +88,7 @@ void kimLeaveOverlay(BuildContext context) {
       router.pop();
       return;
     }
-    router.go('/');
+    router.go(AppRoutes.home);
     return;
   }
   Navigator.of(context).maybePop();

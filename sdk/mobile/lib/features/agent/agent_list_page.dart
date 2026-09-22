@@ -18,6 +18,7 @@ import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class AgentListPage extends ConsumerWidget {
   const AgentListPage({super.key});
@@ -48,13 +49,13 @@ class AgentListPage extends ConsumerWidget {
                 tooltip: l10n.agentPlazaTitle,
                 onPressed: () {
                   unawaited(KimHaptics.light());
-                  context.push('/agent/plaza');
+                  context.push(AppRoutes.agentPlaza);
                 },
                 icon: Icon(LucideIcons.store, color: scheme.onSurfaceVariant),
               ),
               IconButton(
                 tooltip: l10n.agentAccounts,
-                onPressed: () => context.push('/agent/accounts'),
+                onPressed: () => context.push(AppRoutes.agentAccounts),
                 icon: Icon(LucideIcons.key, color: scheme.onSurfaceVariant),
               ),
               IconButton(
@@ -62,7 +63,7 @@ class AgentListPage extends ConsumerWidget {
                 tooltip: l10n.agentCreate,
                 onPressed: () {
                   unawaited(KimHaptics.light());
-                  context.push('/agent/new');
+                  context.push(AppRoutes.agentNew);
                 },
                 icon: const Icon(Icons.add),
               ),
@@ -78,7 +79,7 @@ class AgentListPage extends ConsumerWidget {
                     subtitle: l10n.agentEmptyHint,
                     action: FilledButton(
                       key: const Key('agent-create'),
-                      onPressed: () => context.push('/agent/new'),
+                      onPressed: () => context.push(AppRoutes.agentNew),
                       child: Text(l10n.agentCreate),
                     ),
                   )
@@ -107,7 +108,7 @@ class AgentListPage extends ConsumerWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          onTap: () => context.push('/agent/${profile.id}'),
+                          onTap: () => context.push(AppRoutes.agentProfile(profile.id)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

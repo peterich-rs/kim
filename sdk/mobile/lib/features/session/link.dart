@@ -14,14 +14,14 @@ import 'package:kim_mobile/core/permissions.dart';
 import 'package:kim_mobile/core/user_agent.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
 import 'package:kim_mobile/features/session/typing.dart';
-import 'package:kim_mobile/features/chats/conversation_visibility.dart';
+import 'package:kim_mobile/features/chats/providers/conversation_visibility.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 

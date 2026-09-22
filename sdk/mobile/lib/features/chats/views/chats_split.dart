@@ -8,8 +8,9 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/empty_state.dart';
-import 'package:kim_mobile/features/chats/chat_page.dart';
-import 'package:kim_mobile/features/chats/chats_page.dart';
+import 'package:kim_mobile/features/chats/views/chat_page.dart';
+import 'package:kim_mobile/features/chats/views/chats_page.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class ChatsSplitView extends StatelessWidget {
   const ChatsSplitView({super.key, this.selectedId});
@@ -80,7 +81,7 @@ class KimErrorPage extends StatelessWidget {
         title: l10n.routeNotFound,
         subtitle: error?.toString() ?? '',
         action: FilledButton.tonal(
-          onPressed: () => context.go('/'),
+          onPressed: () => context.go(AppRoutes.home),
           child: Text(l10n.goHome),
         ),
       ),

@@ -12,12 +12,13 @@ import 'package:kim_mobile/design/kim_composer.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/features/chats/chat_session.dart';
-import 'package:kim_mobile/features/chats/messages.dart';
-import 'package:kim_mobile/features/chats/widgets/chat_composer_bar.dart';
-import 'package:kim_mobile/features/chats/widgets/chat_header.dart';
-import 'package:kim_mobile/features/chats/widgets/chat_message_list.dart';
+import 'package:kim_mobile/features/chats/providers/chat_session.dart';
+import 'package:kim_mobile/features/chats/providers/messages.dart';
+import 'package:kim_mobile/features/chats/views/widgets/chat_composer_bar.dart';
+import 'package:kim_mobile/features/chats/views/widgets/chat_header.dart';
+import 'package:kim_mobile/features/chats/views/widgets/chat_message_list.dart';
 import 'package:kim_mobile/features/session/session.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 /// Assembles the conversation. Subscriptions live in the child widgets.
 class ChatPage extends ConsumerStatefulWidget {
@@ -75,7 +76,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           redirect.isNotEmpty &&
           redirect != widget.id &&
           redirect != prev?.redirectDest) {
-        context.replace('/chat/$redirect');
+        context.replace(AppRoutes.chat(redirect));
       }
       final toast = next.toast;
       if (toast == null || toast == prev?.toast) {

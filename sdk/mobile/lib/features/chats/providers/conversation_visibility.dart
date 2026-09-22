@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/session/location.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/models/models.dart';

@@ -10,13 +10,14 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/status_chip.dart';
-import 'package:kim_mobile/features/chats/chat_chrome.dart';
-import 'package:kim_mobile/features/chats/chat_view.dart';
+import 'package:kim_mobile/features/chats/providers/chat_chrome.dart';
+import 'package:kim_mobile/features/chats/providers/chat_view.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/session/session.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_peer.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class ChatHeader extends ConsumerWidget {
   const ChatHeader({super.key, required this.dest});
@@ -53,7 +54,7 @@ class ChatHeader extends ConsumerWidget {
                       if (context.canPop()) {
                         context.pop();
                       } else {
-                        context.go('/');
+                        context.go(AppRoutes.home);
                       }
                     },
                     child: const Icon(LucideIcons.chevronLeft, size: 22),

@@ -11,11 +11,11 @@ import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/router/open_chat.dart';
-import 'package:kim_mobile/features/chats/chats_search.dart';
+import 'package:kim_mobile/features/chats/providers/chats_search.dart';
 import 'package:kim_mobile/features/session/presence.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/features/session/link.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/features/session/session.dart';
 import 'package:kim_mobile/design/conversation_tile.dart';
@@ -24,6 +24,7 @@ import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/design/new_chat_sheet.dart';
 import 'package:kim_mobile/design/status_chip.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class ChatsPage extends ConsumerStatefulWidget {
   const ChatsPage({super.key, this.selectedId, this.compact = false});
@@ -101,7 +102,7 @@ class _ChatsPageState extends ConsumerState<ChatsPage> {
             title: Align(
               alignment: Alignment.centerLeft,
               child: GestureDetector(
-                onTap: () => context.go('/me'),
+                onTap: () => context.go(AppRoutes.me),
                 child: KimAvatar(
                   name: me.title.isEmpty ? Copy.me : me.title,
                   url: me.avatar,

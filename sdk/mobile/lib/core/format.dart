@@ -81,8 +81,7 @@ String formatListTime(int ts) {
     return Copy.yesterday;
   }
   if (now.difference(point).inDays < 7 && now.difference(point).inDays >= 0) {
-    const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return days[d.weekday - 1];
+    return _weekday(d.weekday);
   }
   return '${d.month}/${d.day}';
 }
@@ -132,9 +131,9 @@ String _dayLabel(DateTime d, DateTime now) {
     return Copy.yesterday;
   }
   if (d.year == now.year) {
-    return '${d.month}月${d.day}日';
+    return Copy.dateMd(d.month, d.day);
   }
-  return '${d.year}年${d.month}月${d.day}日';
+  return Copy.dateYmd(d.year, d.month, d.day);
 }
 
 String truncate(String text, {int max = 36}) {
@@ -143,6 +142,19 @@ String truncate(String text, {int max = 36}) {
     return t;
   }
   return '${t.substring(0, max)}…';
+}
+
+String _weekday(int weekday) {
+  final l10n = Copy;
+  return switch (weekday) {
+    1 => l10n.weekdayMon,
+    2 => l10n.weekdayTue,
+    3 => l10n.weekdayWed,
+    4 => l10n.weekdayThu,
+    5 => l10n.weekdayFri,
+    6 => l10n.weekdaySat,
+    _ => l10n.weekdaySun,
+  };
 }
 
 String _two(int n) => n.toString().padLeft(2, '0');

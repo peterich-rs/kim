@@ -18,6 +18,7 @@ import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/design/kim_pinned_footer.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 /// Full-screen create/edit. Prefer this over a sheet on phones.
 Future<String?> openProviderAccountEditor(
@@ -25,8 +26,8 @@ Future<String?> openProviderAccountEditor(
   String? accountId,
 }) {
   final path = accountId == null || accountId.isEmpty
-      ? '/agent/accounts/new'
-      : '/agent/accounts/$accountId';
+      ? AppRoutes.agentAccountNew
+      : AppRoutes.agentAccount(accountId);
   final router = GoRouter.maybeOf(context);
   if (router != null) {
     return router.push<String>(path);
