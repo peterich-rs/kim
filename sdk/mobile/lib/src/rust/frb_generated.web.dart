@@ -8,6 +8,7 @@
 
 import 'api/auth.dart';
 import 'api/client.dart';
+import 'api/failure.dart';
 import 'api/handles.dart';
 import 'api/simple.dart';
 import 'api/types.dart';
@@ -243,6 +244,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentUiStatusDto dco_decode_agent_ui_status_dto(dynamic raw);
 
   @protected
+  ApiFailure dco_decode_api_failure(dynamic raw);
+
+  @protected
   AuthSession dco_decode_auth_session(dynamic raw);
 
   @protected
@@ -384,9 +388,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RoomMemberDto dco_decode_room_member_dto(dynamic raw);
 
   @protected
-  SdkErrorDto dco_decode_sdk_error_dto(dynamic raw);
-
-  @protected
   SendStatusDto dco_decode_send_status_dto(dynamic raw);
 
   @protected
@@ -412,6 +413,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenPersistDto dco_decode_token_persist_dto(dynamic raw);
+
+  @protected
+  int dco_decode_u_16(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -629,6 +633,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentUiStatusDto sse_decode_agent_ui_status_dto(SseDeserializer deserializer);
 
   @protected
+  ApiFailure sse_decode_api_failure(SseDeserializer deserializer);
+
+  @protected
   AuthSession sse_decode_auth_session(SseDeserializer deserializer);
 
   @protected
@@ -816,9 +823,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RoomMemberDto sse_decode_room_member_dto(SseDeserializer deserializer);
 
   @protected
-  SdkErrorDto sse_decode_sdk_error_dto(SseDeserializer deserializer);
-
-  @protected
   SendStatusDto sse_decode_send_status_dto(SseDeserializer deserializer);
 
   @protected
@@ -850,6 +854,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenPersistDto sse_decode_token_persist_dto(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -1113,6 +1120,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_api_failure(ApiFailure self, SseSerializer serializer);
+
+  @protected
   void sse_encode_auth_session(AuthSession self, SseSerializer serializer);
 
   @protected
@@ -1341,9 +1351,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_room_member_dto(RoomMemberDto self, SseSerializer serializer);
 
   @protected
-  void sse_encode_sdk_error_dto(SdkErrorDto self, SseSerializer serializer);
-
-  @protected
   void sse_encode_send_status_dto(SendStatusDto self, SseSerializer serializer);
 
   @protected
@@ -1387,6 +1394,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     TokenPersistDto self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

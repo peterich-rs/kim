@@ -9,9 +9,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `from_profile`, `from_str`
+// These functions are ignored because they are not marked as `pub`: `from_profile`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePageDto`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCardDto {
   final int v;
@@ -611,24 +611,6 @@ class RoomMemberDto {
           account == other.account &&
           status == other.status &&
           lastSeen == other.lastSeen;
-}
-
-class SdkErrorDto implements FrbException {
-  final String kind;
-  final String message;
-
-  const SdkErrorDto({required this.kind, required this.message});
-
-  @override
-  int get hashCode => kind.hashCode ^ message.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SdkErrorDto &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          message == other.message;
 }
 
 enum SendStatusDto { pending, uploading, sending, sent, failed, cancelled }

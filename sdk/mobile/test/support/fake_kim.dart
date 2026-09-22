@@ -14,6 +14,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   KimAuthSession? session;
   Object? error;
   Object? connectError;
+  String? snapshotErrorOnConnect;
   Object? talkError;
   Object? watchThreadError;
   Duration? loginDelay;
@@ -232,6 +233,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }) async {
     connects += 1;
     lastUserAgent = userAgent;
+    if (snapshotErrorOnConnect != null) {
+      pushSnapshot(
+        SessionSnapshotDto(
+          link: const LinkStateDto.offline(),
+          lastError: snapshotErrorOnConnect,
+          threads: snapshot.threads,
+          unreadTotal: snapshot.unreadTotal,
+        ),
+      );
+      return;
+    }
     if (connectError != null) {
       throw connectError!;
     }

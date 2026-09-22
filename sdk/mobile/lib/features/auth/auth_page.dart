@@ -35,21 +35,15 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   late final TextEditingController _confirm;
   var _sending = false;
 
+  NotifierProvider<AuthDraftNotifier, AuthDraft> get _draft =>
+      authDraftProvider(widget.register);
+
   @override
   void initState() {
     super.initState();
-    ref.read(authDraftProvider.notifier).setRegister(widget.register);
     _account = TextEditingController();
     _password = TextEditingController();
     _confirm = TextEditingController();
-  }
-
-  @override
-  void didUpdateWidget(covariant AuthPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.register != widget.register) {
-      ref.read(authDraftProvider.notifier).setRegister(widget.register);
-    }
   }
 
   @override
@@ -60,8 +54,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     super.dispose();
   }
 
-  Mutation<void> get _mutation =>
-      ref.read(authDraftProvider).register ? registerMutation : signInMutation;
+  Mutation<void> _mutationFor(bool register) =>
+      register ? registerMutation : signInMutation;
 
   Future<void> _submit() async {
     if (_sending) {
@@ -78,11 +72,12 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       final password = sanitizePassword(_password.text);
       final accountErr = validateAccount(account);
       final passwordErr = validatePassword(password);
-      final confirmErr = ref.read(authDraftProvider).register
+      final register = ref.read(_draft).register;
+      final confirmErr = register
           ? validateConfirm(password, sanitizePassword(_confirm.text))
           : null;
       ref
-          .read(authDraftProvider.notifier)
+          .read(_draft.notifier)
           .showErrors(
             account: accountErr,
             password: passwordErr,
@@ -91,16 +86,13 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       if (accountErr != null || passwordErr != null || confirmErr != null) {
         return;
       }
-      _mutation.reset(ref);
+      final mutation = _mutationFor(register);
+      mutation.reset(ref);
       try {
-        await _mutation.run(ref, (tsx) async {
+        await mutation.run(ref, (tsx) async {
           await tsx
               .get(authProvider.notifier)
-              .signIn(
-                register: ref.read(authDraftProvider).register,
-                account: account,
-                password: password,
-              );
+              .signIn(register: register, account: account, password: password);
         });
         _password.clear();
         _confirm.clear();
@@ -116,9 +108,9 @@ class _AuthPageState extends ConsumerState<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
-    final draft = ref.watch(authDraftProvider);
+    final draft = ref.watch(_draft);
     final isRegister = draft.register;
-    final mut = ref.watch(_mutation);
+    final mut = ref.watch(_mutationFor(isRegister));
     final busy = mut is MutationPending;
     final notice = ref.watch(authProvider).notice ?? '';
     final error = switch (mut) {
@@ -146,8 +138,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
               onToggle: busy
                   ? null
                   : () {
-                      _mutation.reset(ref);
-                      ref.read(authDraftProvider.notifier).toggleRegister();
+                      _mutationFor(isRegister).reset(ref);
+                      ref.read(_draft.notifier).toggleRegister();
                     },
             );
             return SingleChildScrollView(

@@ -54,6 +54,10 @@ pub struct PreparedTurn {
     pub api_key: String,
     pub project_root: String,
     pub account_id: String,
+    /// Provider account vendor. Disk profiles omit `provider` (C-KD 1).
+    pub vendor_id: String,
+    /// Provider account base URL. Not the catalog default.
+    pub base_url: String,
 }
 
 enum Engine {
@@ -129,10 +133,26 @@ impl HostAgentRuntime {
         })?;
         let profile_json = profile_body(row)?;
         let account_id = account_id_from_json(&profile_json);
+        if account_id.is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: format!("agent profile {profile_id} has no provider account"),
+            });
+        }
         let accounts = self.sdk.list_provider_accounts().await?;
-        let account = accounts.into_iter().find(|a| a.id == account_id);
-        let key_ref = account.as_ref().map(|a| a.key_ref.as_str()).unwrap_or("");
-        let mut api_key = self.secret(key_ref);
+        let account = accounts
+            .into_iter()
+            .find(|row| row.id == account_id)
+            .ok_or_else(|| SdkError::InvalidArgument {
+                message: format!("provider account {account_id} missing for {profile_id}"),
+            })?;
+        let vendor_id = account.vendor_id.trim().to_string();
+        let base_url = account.base_url.trim().to_string();
+        if vendor_id.is_empty() || base_url.is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: format!("provider account {account_id} has no vendor or base url"),
+            });
+        }
+        let mut api_key = self.secret(&account.key_ref);
         if api_key.is_empty() {
             api_key = self.secret("agent.api_key.goose");
         }
@@ -152,6 +172,8 @@ impl HostAgentRuntime {
             api_key,
             project_root,
             account_id,
+            vendor_id,
+            base_url,
         })
     }
 }

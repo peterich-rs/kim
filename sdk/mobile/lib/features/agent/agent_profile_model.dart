@@ -478,24 +478,9 @@ int cloudIdentitySlots(
   return n;
 }
 
-bool isBotAlreadyGone(Object err) {
-  final msg = err.toString().toLowerCase();
-  return msg.contains('status 108') ||
-      msg.contains('not_owner') ||
-      msg.contains('not owner') ||
-      msg.contains(Copy.userNotFound.toLowerCase());
-}
+bool isBotAlreadyGone(Object err) => botAlreadyGone(err);
 
-String agentRegisterError(Object err) {
-  final msg = err.toString();
-  if (msg.contains('status 2')) {
-    return Copy.agentRegisterFailed;
-  }
-  if (err is StateError && err.message.isNotEmpty) {
-    return err.message;
-  }
-  return Copy.agentRegisterFailed;
-}
+String agentRegisterError(Object err) => agentRegisterFailureCopy(err);
 
 class AgentToolSet {
   const AgentToolSet({

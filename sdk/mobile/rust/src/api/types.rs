@@ -385,20 +385,6 @@ pub enum UiCommandDto {
     },
 }
 
-pub struct SdkErrorDto {
-    pub kind: String,
-    pub message: String,
-}
-
-impl SdkErrorDto {
-    pub(crate) fn from_str(message: String) -> Self {
-        Self {
-            kind: "internal".into(),
-            message,
-        }
-    }
-}
-
 impl From<SendStatus> for SendStatusDto {
     fn from(v: SendStatus) -> Self {
         match v {
@@ -850,36 +836,5 @@ impl From<kim_client::Profile> for ProfileDto {
 impl From<kim_client::Profile> for PersonDto {
     fn from(p: kim_client::Profile) -> Self {
         Self::from_profile(p, "none")
-    }
-}
-
-impl From<kim_sdk::SdkError> for SdkErrorDto {
-    fn from(err: kim_sdk::SdkError) -> Self {
-        use kim_sdk::SdkError::*;
-        let kind = match &err {
-            NotFriends { .. } => "not_friends",
-            Blocked { .. } => "blocked",
-            UserNotFound { .. } => "user_not_found",
-            CannotChatSelf => "cannot_chat_self",
-            AuthExpired => "auth_expired",
-            Unauthorized => "unauthorized",
-            NotConnected => "not_connected",
-            StorageFull => "storage_full",
-            SqliteBusy => "sqlite_busy",
-            Disk { .. } => "disk",
-            RateLimited { .. } => "rate_limited",
-            PayloadTooLarge { .. } => "payload_too_large",
-            UnsupportedMedia { .. } => "unsupported_media",
-            Busy { .. } => "busy",
-            StaleEpoch { .. } => "stale_epoch",
-            NotFound { .. } => "not_found",
-            InvalidArgument { .. } => "invalid_argument",
-            Protocol { .. } => "protocol",
-            Internal { .. } => "internal",
-        };
-        Self {
-            kind: kind.into(),
-            message: err.to_string(),
-        }
     }
 }

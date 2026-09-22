@@ -5,6 +5,7 @@
 
 import 'api/auth.dart';
 import 'api/client.dart';
+import 'api/failure.dart';
 import 'api/handles.dart';
 import 'api/simple.dart';
 import 'api/types.dart';
@@ -684,7 +685,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesAgentCatalogHandleDeleteProfileConstMeta,
         argValues: [that, id],
@@ -721,7 +722,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_provider_account_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesAgentCatalogHandleListAccountsConstMeta,
         argValues: [that],
@@ -757,7 +758,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_agent_profile_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesAgentCatalogHandleListProfilesConstMeta,
         argValues: [that],
@@ -795,7 +796,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesAgentCatalogHandleUpsertProfileConstMeta,
         argValues: [that, row],
@@ -831,7 +832,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesContactsHandleFriendsConstMeta,
         argValues: [that],
@@ -869,7 +870,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_profile_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesContactsHandleProfileConstMeta,
         argValues: [that, dest],
@@ -907,7 +908,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesContactsHandleSearchConstMeta,
         argValues: [that, query],
@@ -946,7 +947,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           },
           codec: SseCodec(
             decodeSuccessData: sse_decode_unit,
-            decodeErrorData: sse_decode_String,
+            decodeErrorData: sse_decode_api_failure,
           ),
           constMeta: kCrateApiHandlesContactsHandleWatchConstMeta,
           argValues: [that, sink],
@@ -1020,7 +1021,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_room_member_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleEnterConstMeta,
         argValues: [that],
@@ -1056,7 +1057,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleLeaveConstMeta,
         argValues: [that],
@@ -1092,7 +1093,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleLoadOlderConstMeta,
         argValues: [that],
@@ -1128,7 +1129,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleMarkReadConstMeta,
         argValues: [that],
@@ -1168,7 +1169,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_kim_command_receipt,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleSendTextConstMeta,
         argValues: [that, text, clientId],
@@ -1206,7 +1207,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesConversationHandleSetTypingConstMeta,
         argValues: [that, active],
@@ -1247,7 +1248,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           },
           codec: SseCodec(
             decodeSuccessData: sse_decode_unit,
-            decodeErrorData: sse_decode_String,
+            decodeErrorData: sse_decode_api_failure,
           ),
           constMeta: kCrateApiHandlesConversationHandleWatchTimelineConstMeta,
           argValues: [that, limit, sink],
@@ -1325,7 +1326,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiAuthKimAuthChangePasswordConstMeta,
         argValues: [that, token, oldPassword, newPassword],
@@ -1365,7 +1366,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_auth_session,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiAuthKimAuthLoginConstMeta,
         argValues: [that, account, password],
@@ -1402,7 +1403,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiAuthKimAuthLogoutConstMeta,
         argValues: [that, token],
@@ -1432,7 +1433,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         codec: SseCodec(
           decodeSuccessData:
               sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiAuthKimAuthNewConstMeta,
         argValues: [baseUrl, userAgent],
@@ -1471,7 +1472,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_auth_session,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiAuthKimAuthRegisterConstMeta,
         argValues: [that, account, password],
@@ -1544,7 +1545,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleAgentFlagsConstMeta,
         argValues: [that],
@@ -1582,7 +1583,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleAttachStoreConstMeta,
         argValues: [that, dbPath],
@@ -1634,7 +1635,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotCreateConstMeta,
         argValues: [
@@ -1692,7 +1693,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotDeleteConstMeta,
         argValues: [that, dest],
@@ -1732,7 +1733,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_kim_bot_pending_item,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotPendingConstMeta,
         argValues: [that, dest, limit],
@@ -1776,7 +1777,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_kim_talk_result,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotReplyConstMeta,
         argValues: [that, dest, body, inReplyTo, clientId],
@@ -1818,7 +1819,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotTypingConstMeta,
         argValues: [that, dest, kind, active],
@@ -1870,7 +1871,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleBotUpdateConstMeta,
         argValues: [
@@ -1968,7 +1969,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleCancelSendConstMeta,
         argValues: [that, clientId],
@@ -2006,7 +2007,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_command_ack_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleCommandConstMeta,
         argValues: [that, cmd],
@@ -2143,7 +2144,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleDeleteAgentProfileConstMeta,
         argValues: [that, profileId],
@@ -2181,7 +2182,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleDeleteProviderAccountConstMeta,
         argValues: [that, id],
@@ -2219,7 +2220,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleDeleteThreadConstMeta,
         argValues: [that, dest],
@@ -2273,7 +2274,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_kim_command_receipt,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleEnqueueMessageConstMeta,
         argValues: [
@@ -2333,7 +2334,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendAcceptConstMeta,
         argValues: [that, dest],
@@ -2369,7 +2370,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendIncomingConstMeta,
         argValues: [that],
@@ -2405,7 +2406,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendListConstMeta,
         argValues: [that],
@@ -2443,7 +2444,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRejectConstMeta,
         argValues: [that, dest],
@@ -2481,7 +2482,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRemoveConstMeta,
         argValues: [that, dest],
@@ -2519,7 +2520,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleFriendRequestConstMeta,
         argValues: [that, dest],
@@ -2557,7 +2558,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_box_autoadd_device_overlay_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleGetDeviceOverlayConstMeta,
         argValues: [that, profileId],
@@ -2595,7 +2596,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleImportAgentProfilesConstMeta,
         argValues: [that, rows],
@@ -2639,7 +2640,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_settings_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleImportDeviceSettingsConstMeta,
         argValues: [that, wsUrl, httpOrigin, env, locale],
@@ -2709,7 +2710,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_agent_profile_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleListAgentProfilesConstMeta,
         argValues: [that],
@@ -2744,7 +2745,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_provider_account_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleListProviderAccountsConstMeta,
         argValues: [that],
@@ -2782,7 +2783,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleLoadOlderConstMeta,
         argValues: [that, dest],
@@ -2822,7 +2823,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleMarkConversationReadConstMeta,
         argValues: [that, dest, kind],
@@ -2864,7 +2865,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleMarkReadConstMeta,
         argValues: [that, dest, kind, messageId],
@@ -2906,7 +2907,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleMarkThreadReadConstMeta,
         argValues: [that, dest, kind, messageId],
@@ -2978,7 +2979,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_local_media_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleMediaFetchConstMeta,
         argValues: [that, url],
@@ -3024,7 +3025,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_local_media_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleMediaUploadConstMeta,
         argValues: [that, path, mime, width, height, byteSize],
@@ -3091,7 +3092,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleNotifyForegroundConstMeta,
         argValues: [that],
@@ -3127,7 +3128,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleNotifyRadioUpConstMeta,
         argValues: [that],
@@ -3165,7 +3166,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_profile_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleProfileConstMeta,
         argValues: [that, dest],
@@ -3201,7 +3202,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleRefreshContactsConstMeta,
         argValues: [that],
@@ -3279,7 +3280,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_kim_command_receipt,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleRetrySendConstMeta,
         argValues: [that, clientId],
@@ -3319,7 +3320,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_room_member_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleRoomEnterConstMeta,
         argValues: [that, dest, kind],
@@ -3359,7 +3360,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleRoomLeaveConstMeta,
         argValues: [that, dest, kind],
@@ -3399,7 +3400,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_message_view_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSearchMessagesConstMeta,
         argValues: [that, query, dest],
@@ -3437,7 +3438,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_person_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSearchUsersConstMeta,
         argValues: [that, query],
@@ -3479,7 +3480,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSendTypingConstMeta,
         argValues: [that, dest, kind, active],
@@ -3517,7 +3518,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSetAgentFlagsConstMeta,
         argValues: [that, flagsJson],
@@ -3561,7 +3562,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSetConversationVisibilityConstMeta,
         argValues: [that, generation, foreground, dest, kind],
@@ -3598,7 +3599,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_settings_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSettingsGetConstMeta,
         argValues: [that],
@@ -3640,7 +3641,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_settings_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSettingsPatchConstMeta,
         argValues: [that, wsUrl, httpOrigin, env],
@@ -3684,7 +3685,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleStartSessionConstMeta,
         argValues: [that, url, token, userAgent, account],
@@ -3782,7 +3783,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSubmitAgentRunConstMeta,
         argValues: [that, result],
@@ -3818,7 +3819,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleSyncAgentSpecsConstMeta,
         argValues: [that],
@@ -3860,7 +3861,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_profile_dto,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleUpdateProfileConstMeta,
         argValues: [that, nickname, avatar, bio],
@@ -3898,7 +3899,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleUpsertAgentProfileConstMeta,
         argValues: [that, row],
@@ -3936,7 +3937,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleUpsertDeviceOverlayConstMeta,
         argValues: [that, row],
@@ -3974,7 +3975,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleUpsertProviderAccountConstMeta,
         argValues: [that, row],
@@ -4015,7 +4016,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           },
           codec: SseCodec(
             decodeSuccessData: sse_decode_unit,
-            decodeErrorData: sse_decode_String,
+            decodeErrorData: sse_decode_api_failure,
           ),
           constMeta: kCrateApiClientKimUiHandleWatchAgentPermissionConstMeta,
           argValues: [that, sink],
@@ -4050,7 +4051,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchAgentRunConstMeta,
         argValues: [that, sink],
@@ -4090,7 +4091,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           },
           codec: SseCodec(
             decodeSuccessData: sse_decode_unit,
-            decodeErrorData: sse_decode_String,
+            decodeErrorData: sse_decode_api_failure,
           ),
           constMeta: kCrateApiClientKimUiHandleWatchAgentUiConstMeta,
           argValues: [that, sink],
@@ -4125,7 +4126,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchContactsConstMeta,
         argValues: [that, sink],
@@ -4159,7 +4160,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchSessionConstMeta,
         argValues: [that, sink],
@@ -4193,7 +4194,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchSessionSnapshotConstMeta,
         argValues: [that, sink],
@@ -4231,7 +4232,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchTimelineConstMeta,
         argValues: [that, dest, limit, sink],
@@ -4265,7 +4266,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWatchTokenPersistConstMeta,
         argValues: [that, sink],
@@ -4304,7 +4305,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_local_media_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesMediaHandleFetchConstMeta,
         argValues: [that, url],
@@ -4350,7 +4351,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_local_media_dto,
-          decodeErrorData: sse_decode_sdk_error_dto,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiHandlesMediaHandleUploadConstMeta,
         argValues: [that, path, mime, width, height, byteSize],
@@ -4457,7 +4458,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiSimpleSpecBlobToJsonConstMeta,
         argValues: [blob],
@@ -4485,7 +4486,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiSimpleSpecJsonToBlobConstMeta,
         argValues: [bodyJson],
@@ -4913,6 +4914,75 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       dest: dco_decode_String(arr[0]),
       phase: dco_decode_String(arr[1]),
     );
+  }
+
+  @protected
+  ApiFailure dco_decode_api_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return ApiFailure_NotFriends(dest: dco_decode_String(raw[1]));
+      case 1:
+        return ApiFailure_Blocked(dest: dco_decode_String(raw[1]));
+      case 2:
+        return ApiFailure_UserNotFound(dest: dco_decode_String(raw[1]));
+      case 3:
+        return ApiFailure_CannotChatSelf();
+      case 4:
+        return ApiFailure_AuthExpired();
+      case 5:
+        return ApiFailure_Unauthorized();
+      case 6:
+        return ApiFailure_InvalidAccount();
+      case 7:
+        return ApiFailure_InvalidPassword();
+      case 8:
+        return ApiFailure_AccountExists();
+      case 9:
+        return ApiFailure_InsecureOrigin();
+      case 10:
+        return ApiFailure_PasswordSeal();
+      case 11:
+        return ApiFailure_AlreadyConnected();
+      case 12:
+        return ApiFailure_NotConnected();
+      case 13:
+        return ApiFailure_StorageFull();
+      case 14:
+        return ApiFailure_SqliteBusy();
+      case 15:
+        return ApiFailure_Disk(message: dco_decode_String(raw[1]));
+      case 16:
+        return ApiFailure_RateLimited(retryAfterMs: dco_decode_i_64(raw[1]));
+      case 17:
+        return ApiFailure_PayloadTooLarge(
+          bytes: dco_decode_i_64(raw[1]),
+          max: dco_decode_i_64(raw[2]),
+        );
+      case 18:
+        return ApiFailure_UnsupportedMedia(mime: dco_decode_String(raw[1]));
+      case 19:
+        return ApiFailure_Busy(queue: dco_decode_String(raw[1]));
+      case 20:
+        return ApiFailure_StaleEpoch(
+          expected: dco_decode_u_64(raw[1]),
+          actual: dco_decode_u_64(raw[2]),
+        );
+      case 21:
+        return ApiFailure_NotFound(what: dco_decode_String(raw[1]));
+      case 22:
+        return ApiFailure_InvalidArgument(message: dco_decode_String(raw[1]));
+      case 23:
+        return ApiFailure_Protocol(status: dco_decode_i_32(raw[1]));
+      case 24:
+        return ApiFailure_Http(status: dco_decode_u_16(raw[1]));
+      case 25:
+        return ApiFailure_Unavailable(what: dco_decode_String(raw[1]));
+      case 26:
+        return ApiFailure_Internal(message: dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -5354,18 +5424,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  SdkErrorDto dco_decode_sdk_error_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return SdkErrorDto(
-      kind: dco_decode_String(arr[0]),
-      message: dco_decode_String(arr[1]),
-    );
-  }
-
-  @protected
   SendStatusDto dco_decode_send_status_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return SendStatusDto.values[raw as int];
@@ -5580,6 +5638,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       default:
         throw Exception("unreachable");
     }
+  }
+
+  @protected
+  int dco_decode_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -6137,6 +6201,91 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_dest = sse_decode_String(deserializer);
     var var_phase = sse_decode_String(deserializer);
     return AgentUiStatusDto(dest: var_dest, phase: var_phase);
+  }
+
+  @protected
+  ApiFailure sse_decode_api_failure(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_dest = sse_decode_String(deserializer);
+        return ApiFailure_NotFriends(dest: var_dest);
+      case 1:
+        var var_dest = sse_decode_String(deserializer);
+        return ApiFailure_Blocked(dest: var_dest);
+      case 2:
+        var var_dest = sse_decode_String(deserializer);
+        return ApiFailure_UserNotFound(dest: var_dest);
+      case 3:
+        return ApiFailure_CannotChatSelf();
+      case 4:
+        return ApiFailure_AuthExpired();
+      case 5:
+        return ApiFailure_Unauthorized();
+      case 6:
+        return ApiFailure_InvalidAccount();
+      case 7:
+        return ApiFailure_InvalidPassword();
+      case 8:
+        return ApiFailure_AccountExists();
+      case 9:
+        return ApiFailure_InsecureOrigin();
+      case 10:
+        return ApiFailure_PasswordSeal();
+      case 11:
+        return ApiFailure_AlreadyConnected();
+      case 12:
+        return ApiFailure_NotConnected();
+      case 13:
+        return ApiFailure_StorageFull();
+      case 14:
+        return ApiFailure_SqliteBusy();
+      case 15:
+        var var_message = sse_decode_String(deserializer);
+        return ApiFailure_Disk(message: var_message);
+      case 16:
+        var var_retryAfterMs = sse_decode_i_64(deserializer);
+        return ApiFailure_RateLimited(retryAfterMs: var_retryAfterMs);
+      case 17:
+        var var_bytes = sse_decode_i_64(deserializer);
+        var var_max = sse_decode_i_64(deserializer);
+        return ApiFailure_PayloadTooLarge(bytes: var_bytes, max: var_max);
+      case 18:
+        var var_mime = sse_decode_String(deserializer);
+        return ApiFailure_UnsupportedMedia(mime: var_mime);
+      case 19:
+        var var_queue = sse_decode_String(deserializer);
+        return ApiFailure_Busy(queue: var_queue);
+      case 20:
+        var var_expected = sse_decode_u_64(deserializer);
+        var var_actual = sse_decode_u_64(deserializer);
+        return ApiFailure_StaleEpoch(
+          expected: var_expected,
+          actual: var_actual,
+        );
+      case 21:
+        var var_what = sse_decode_String(deserializer);
+        return ApiFailure_NotFound(what: var_what);
+      case 22:
+        var var_message = sse_decode_String(deserializer);
+        return ApiFailure_InvalidArgument(message: var_message);
+      case 23:
+        var var_status = sse_decode_i_32(deserializer);
+        return ApiFailure_Protocol(status: var_status);
+      case 24:
+        var var_status = sse_decode_u_16(deserializer);
+        return ApiFailure_Http(status: var_status);
+      case 25:
+        var var_what = sse_decode_String(deserializer);
+        return ApiFailure_Unavailable(what: var_what);
+      case 26:
+        var var_message = sse_decode_String(deserializer);
+        return ApiFailure_Internal(message: var_message);
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -6715,14 +6864,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  SdkErrorDto sse_decode_sdk_error_dto(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_kind = sse_decode_String(deserializer);
-    var var_message = sse_decode_String(deserializer);
-    return SdkErrorDto(kind: var_kind, message: var_message);
-  }
-
-  @protected
   SendStatusDto sse_decode_send_status_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
@@ -6992,6 +7133,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       default:
         throw UnimplementedError('');
     }
+  }
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint16();
   }
 
   @protected
@@ -7646,6 +7793,87 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_api_failure(ApiFailure self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case ApiFailure_NotFriends(dest: final dest):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(dest, serializer);
+      case ApiFailure_Blocked(dest: final dest):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(dest, serializer);
+      case ApiFailure_UserNotFound(dest: final dest):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(dest, serializer);
+      case ApiFailure_CannotChatSelf():
+        sse_encode_i_32(3, serializer);
+      case ApiFailure_AuthExpired():
+        sse_encode_i_32(4, serializer);
+      case ApiFailure_Unauthorized():
+        sse_encode_i_32(5, serializer);
+      case ApiFailure_InvalidAccount():
+        sse_encode_i_32(6, serializer);
+      case ApiFailure_InvalidPassword():
+        sse_encode_i_32(7, serializer);
+      case ApiFailure_AccountExists():
+        sse_encode_i_32(8, serializer);
+      case ApiFailure_InsecureOrigin():
+        sse_encode_i_32(9, serializer);
+      case ApiFailure_PasswordSeal():
+        sse_encode_i_32(10, serializer);
+      case ApiFailure_AlreadyConnected():
+        sse_encode_i_32(11, serializer);
+      case ApiFailure_NotConnected():
+        sse_encode_i_32(12, serializer);
+      case ApiFailure_StorageFull():
+        sse_encode_i_32(13, serializer);
+      case ApiFailure_SqliteBusy():
+        sse_encode_i_32(14, serializer);
+      case ApiFailure_Disk(message: final message):
+        sse_encode_i_32(15, serializer);
+        sse_encode_String(message, serializer);
+      case ApiFailure_RateLimited(retryAfterMs: final retryAfterMs):
+        sse_encode_i_32(16, serializer);
+        sse_encode_i_64(retryAfterMs, serializer);
+      case ApiFailure_PayloadTooLarge(bytes: final bytes, max: final max):
+        sse_encode_i_32(17, serializer);
+        sse_encode_i_64(bytes, serializer);
+        sse_encode_i_64(max, serializer);
+      case ApiFailure_UnsupportedMedia(mime: final mime):
+        sse_encode_i_32(18, serializer);
+        sse_encode_String(mime, serializer);
+      case ApiFailure_Busy(queue: final queue):
+        sse_encode_i_32(19, serializer);
+        sse_encode_String(queue, serializer);
+      case ApiFailure_StaleEpoch(
+        expected: final expected,
+        actual: final actual,
+      ):
+        sse_encode_i_32(20, serializer);
+        sse_encode_u_64(expected, serializer);
+        sse_encode_u_64(actual, serializer);
+      case ApiFailure_NotFound(what: final what):
+        sse_encode_i_32(21, serializer);
+        sse_encode_String(what, serializer);
+      case ApiFailure_InvalidArgument(message: final message):
+        sse_encode_i_32(22, serializer);
+        sse_encode_String(message, serializer);
+      case ApiFailure_Protocol(status: final status):
+        sse_encode_i_32(23, serializer);
+        sse_encode_i_32(status, serializer);
+      case ApiFailure_Http(status: final status):
+        sse_encode_i_32(24, serializer);
+        sse_encode_u_16(status, serializer);
+      case ApiFailure_Unavailable(what: final what):
+        sse_encode_i_32(25, serializer);
+        sse_encode_String(what, serializer);
+      case ApiFailure_Internal(message: final message):
+        sse_encode_i_32(26, serializer);
+        sse_encode_String(message, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_auth_session(AuthSession self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.token, serializer);
@@ -8147,13 +8375,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_sdk_error_dto(SdkErrorDto self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.kind, serializer);
-    sse_encode_String(self.message, serializer);
-  }
-
-  @protected
   void sse_encode_send_status_dto(
     SendStatusDto self,
     SseSerializer serializer,
@@ -8384,6 +8605,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case TokenPersistDto_Clear():
         sse_encode_i_32(1, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint16(self);
   }
 
   @protected

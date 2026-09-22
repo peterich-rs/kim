@@ -78,7 +78,7 @@ fn wire__crate__api__handles__AgentCatalogHandle_delete_profile_impl(
             let api_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -137,7 +137,7 @@ fn wire__crate__api__handles__AgentCatalogHandle_list_accounts_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -195,7 +195,7 @@ fn wire__crate__api__handles__AgentCatalogHandle_list_profiles_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -254,7 +254,7 @@ fn wire__crate__api__handles__AgentCatalogHandle_upsert_profile_impl(
             let api_row = <crate::api::types::AgentProfileDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -313,7 +313,7 @@ fn wire__crate__api__handles__ContactsHandle_friends_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -370,7 +370,7 @@ fn wire__crate__api__handles__ContactsHandle_profile_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -430,7 +430,7 @@ fn wire__crate__api__handles__ContactsHandle_search_impl(
             let api_query = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -493,7 +493,7 @@ fn wire__crate__api__handles__ContactsHandle_watch_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -594,7 +594,7 @@ fn wire__crate__api__handles__ConversationHandle_enter_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -651,7 +651,7 @@ fn wire__crate__api__handles__ConversationHandle_leave_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -708,7 +708,7 @@ fn wire__crate__api__handles__ConversationHandle_load_older_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -765,7 +765,7 @@ fn wire__crate__api__handles__ConversationHandle_mark_read_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -824,7 +824,7 @@ fn wire__crate__api__handles__ConversationHandle_send_text_impl(
             let api_client_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -885,7 +885,7 @@ fn wire__crate__api__handles__ConversationHandle_set_typing_impl(
             let api_active = <bool>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -949,7 +949,7 @@ fn wire__crate__api__handles__ConversationHandle_watch_timeline_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -1055,7 +1055,7 @@ fn wire__crate__api__auth__KimAuth_change_password_impl(
             let api_new_password = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1118,7 +1118,7 @@ fn wire__crate__api__auth__KimAuth_login_impl(
             let api_password = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1179,7 +1179,7 @@ fn wire__crate__api__auth__KimAuth_logout_impl(
             let api_token = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1232,7 +1232,7 @@ fn wire__crate__api__auth__KimAuth_new_impl(
             let api_base_url = <String>::sse_decode(&mut deserializer);
             let api_user_agent = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let output_ok = crate::api::auth::KimAuth::new(api_base_url, api_user_agent)?;
                 std::result::Result::Ok(output_ok)
             })())
@@ -1268,7 +1268,7 @@ fn wire__crate__api__auth__KimAuth_register_impl(
             let api_password = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1379,7 +1379,7 @@ fn wire__crate__api__client__KimUiHandle_agent_flags_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1436,7 +1436,7 @@ fn wire__crate__api__client__KimUiHandle_attach_store_impl(
             let api_db_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1503,7 +1503,7 @@ fn wire__crate__api__client__KimUiHandle_bot_create_impl(
             let api_visibility = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1570,7 +1570,7 @@ fn wire__crate__api__client__KimUiHandle_bot_delete_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1629,7 +1629,7 @@ fn wire__crate__api__client__KimUiHandle_bot_pending_impl(
             let api_limit = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1693,7 +1693,7 @@ fn wire__crate__api__client__KimUiHandle_bot_reply_impl(
             let api_client_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1758,7 +1758,7 @@ fn wire__crate__api__client__KimUiHandle_bot_typing_impl(
             let api_active = <bool>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1827,7 +1827,7 @@ fn wire__crate__api__client__KimUiHandle_bot_update_impl(
             let api_visibility = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -1951,7 +1951,7 @@ fn wire__crate__api__client__KimUiHandle_cancel_send_impl(
             let api_client_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2011,7 +2011,7 @@ fn wire__crate__api__client__KimUiHandle_command_impl(
             let api_cmd = <crate::api::types::UiCommandDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2201,7 +2201,7 @@ fn wire__crate__api__client__KimUiHandle_delete_agent_profile_impl(
             let api_profile_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2261,7 +2261,7 @@ fn wire__crate__api__client__KimUiHandle_delete_provider_account_impl(
             let api_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2321,7 +2321,7 @@ fn wire__crate__api__client__KimUiHandle_delete_thread_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2390,7 +2390,7 @@ fn wire__crate__api__client__KimUiHandle_enqueue_message_impl(
             let api_byte_size = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2458,7 +2458,7 @@ fn wire__crate__api__client__KimUiHandle_friend_accept_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2517,7 +2517,7 @@ fn wire__crate__api__client__KimUiHandle_friend_incoming_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2574,7 +2574,7 @@ fn wire__crate__api__client__KimUiHandle_friend_list_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2631,7 +2631,7 @@ fn wire__crate__api__client__KimUiHandle_friend_reject_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2691,7 +2691,7 @@ fn wire__crate__api__client__KimUiHandle_friend_remove_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2751,7 +2751,7 @@ fn wire__crate__api__client__KimUiHandle_friend_request_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2811,7 +2811,7 @@ fn wire__crate__api__client__KimUiHandle_get_device_overlay_impl(
             let api_profile_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2871,7 +2871,7 @@ fn wire__crate__api__client__KimUiHandle_import_agent_profiles_impl(
             let api_rows = <Vec<crate::api::types::AgentProfileDto>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -2934,7 +2934,7 @@ fn wire__crate__api__client__KimUiHandle_import_device_settings_impl(
             let api_locale = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3046,7 +3046,7 @@ fn wire__crate__api__client__KimUiHandle_list_agent_profiles_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3103,7 +3103,7 @@ fn wire__crate__api__client__KimUiHandle_list_provider_accounts_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3162,7 +3162,7 @@ fn wire__crate__api__client__KimUiHandle_load_older_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3221,7 +3221,7 @@ fn wire__crate__api__client__KimUiHandle_mark_conversation_read_impl(
             let api_kind = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3284,7 +3284,7 @@ fn wire__crate__api__client__KimUiHandle_mark_read_impl(
             let api_message_id = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3348,7 +3348,7 @@ fn wire__crate__api__client__KimUiHandle_mark_thread_read_impl(
             let api_message_id = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3460,7 +3460,7 @@ fn wire__crate__api__client__KimUiHandle_media_fetch_impl(
             let api_url = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3522,7 +3522,7 @@ fn wire__crate__api__client__KimUiHandle_media_upload_impl(
             let api_byte_size = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3633,7 +3633,7 @@ fn wire__crate__api__client__KimUiHandle_notify_foreground_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3690,7 +3690,7 @@ fn wire__crate__api__client__KimUiHandle_notify_radio_up_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3748,7 +3748,7 @@ fn wire__crate__api__client__KimUiHandle_profile_impl(
             let api_dest = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3805,7 +3805,7 @@ fn wire__crate__api__client__KimUiHandle_refresh_contacts_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3920,7 +3920,7 @@ fn wire__crate__api__client__KimUiHandle_retry_send_impl(
             let api_client_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -3981,7 +3981,7 @@ fn wire__crate__api__client__KimUiHandle_room_enter_impl(
             let api_kind = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4043,7 +4043,7 @@ fn wire__crate__api__client__KimUiHandle_room_leave_impl(
             let api_kind = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4105,7 +4105,7 @@ fn wire__crate__api__client__KimUiHandle_search_messages_impl(
             let api_dest = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4166,7 +4166,7 @@ fn wire__crate__api__client__KimUiHandle_search_users_impl(
             let api_query = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4228,7 +4228,7 @@ fn wire__crate__api__client__KimUiHandle_send_typing_impl(
             let api_active = <bool>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4290,7 +4290,7 @@ fn wire__crate__api__client__KimUiHandle_set_agent_flags_impl(
             let api_flags_json = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4353,7 +4353,7 @@ fn wire__crate__api__client__KimUiHandle_set_conversation_visibility_impl(
             let api_kind = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4416,7 +4416,7 @@ fn wire__crate__api__client__KimUiHandle_settings_get_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4475,7 +4475,7 @@ fn wire__crate__api__client__KimUiHandle_settings_patch_impl(
             let api_env = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4540,7 +4540,7 @@ fn wire__crate__api__client__KimUiHandle_start_session_impl(
             let api_account = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4708,7 +4708,7 @@ fn wire__crate__api__client__KimUiHandle_submit_agent_run_impl(
             let api_result = <crate::api::types::AgentRunResultDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4767,7 +4767,7 @@ fn wire__crate__api__client__KimUiHandle_sync_agent_specs_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4827,7 +4827,7 @@ fn wire__crate__api__client__KimUiHandle_update_profile_impl(
             let api_bio = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4889,7 +4889,7 @@ fn wire__crate__api__client__KimUiHandle_upsert_agent_profile_impl(
             let api_row = <crate::api::types::AgentProfileDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -4949,7 +4949,7 @@ fn wire__crate__api__client__KimUiHandle_upsert_device_overlay_impl(
             let api_row = <crate::api::types::DeviceOverlayDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -5009,7 +5009,7 @@ fn wire__crate__api__client__KimUiHandle_upsert_provider_account_impl(
             let api_row = <crate::api::types::ProviderAccountDto>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -5072,7 +5072,7 @@ fn wire__crate__api__client__KimUiHandle_watch_agent_permission_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5126,7 +5126,7 @@ fn wire__crate__api__client__KimUiHandle_watch_agent_run_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5179,7 +5179,7 @@ fn wire__crate__api__client__KimUiHandle_watch_agent_ui_impl(
             >>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let mut api_that_guard = None;
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5233,7 +5233,7 @@ fn wire__crate__api__client__KimUiHandle_watch_contacts_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5284,7 +5284,7 @@ fn wire__crate__api__client__KimUiHandle_watch_session_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5335,7 +5335,7 @@ fn wire__crate__api__client__KimUiHandle_watch_session_snapshot_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5390,7 +5390,7 @@ fn wire__crate__api__client__KimUiHandle_watch_timeline_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5445,7 +5445,7 @@ fn wire__crate__api__client__KimUiHandle_watch_token_persist_impl(
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
+            transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                 let mut api_that_guard = None;
                 let decode_indices_ =
                     flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
@@ -5497,7 +5497,7 @@ fn wire__crate__api__handles__MediaHandle_fetch_impl(
             let api_url = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -5559,7 +5559,7 @@ fn wire__crate__api__handles__MediaHandle_upload_impl(
             let api_byte_size = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, crate::api::types::SdkErrorDto>(
+                transform_result_sse::<_, crate::api::failure::ApiFailure>(
                     (move || async move {
                         let mut api_that_guard = None;
                         let decode_indices_ =
@@ -5714,7 +5714,7 @@ fn wire__crate__api__simple__spec_blob_to_json_impl(
             let api_blob = <Vec<u8>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let output_ok = crate::api::simple::spec_blob_to_json(api_blob)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -5747,7 +5747,7 @@ fn wire__crate__api__simple__spec_json_to_blob_impl(
             let api_body_json = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, String>((move || {
+                transform_result_sse::<_, crate::api::failure::ApiFailure>((move || {
                     let output_ok = crate::api::simple::spec_json_to_blob(api_body_json)?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -6166,6 +6166,130 @@ impl SseDecode for crate::api::handles::AgentUiStatusDto {
             dest: var_dest,
             phase: var_phase,
         };
+    }
+}
+
+impl SseDecode for crate::api::failure::ApiFailure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_dest = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::NotFriends { dest: var_dest };
+            }
+            1 => {
+                let mut var_dest = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Blocked { dest: var_dest };
+            }
+            2 => {
+                let mut var_dest = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::UserNotFound { dest: var_dest };
+            }
+            3 => {
+                return crate::api::failure::ApiFailure::CannotChatSelf;
+            }
+            4 => {
+                return crate::api::failure::ApiFailure::AuthExpired;
+            }
+            5 => {
+                return crate::api::failure::ApiFailure::Unauthorized;
+            }
+            6 => {
+                return crate::api::failure::ApiFailure::InvalidAccount;
+            }
+            7 => {
+                return crate::api::failure::ApiFailure::InvalidPassword;
+            }
+            8 => {
+                return crate::api::failure::ApiFailure::AccountExists;
+            }
+            9 => {
+                return crate::api::failure::ApiFailure::InsecureOrigin;
+            }
+            10 => {
+                return crate::api::failure::ApiFailure::PasswordSeal;
+            }
+            11 => {
+                return crate::api::failure::ApiFailure::AlreadyConnected;
+            }
+            12 => {
+                return crate::api::failure::ApiFailure::NotConnected;
+            }
+            13 => {
+                return crate::api::failure::ApiFailure::StorageFull;
+            }
+            14 => {
+                return crate::api::failure::ApiFailure::SqliteBusy;
+            }
+            15 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Disk {
+                    message: var_message,
+                };
+            }
+            16 => {
+                let mut var_retryAfterMs = <i64>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::RateLimited {
+                    retry_after_ms: var_retryAfterMs,
+                };
+            }
+            17 => {
+                let mut var_bytes = <i64>::sse_decode(deserializer);
+                let mut var_max = <i64>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::PayloadTooLarge {
+                    bytes: var_bytes,
+                    max: var_max,
+                };
+            }
+            18 => {
+                let mut var_mime = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::UnsupportedMedia { mime: var_mime };
+            }
+            19 => {
+                let mut var_queue = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Busy { queue: var_queue };
+            }
+            20 => {
+                let mut var_expected = <u64>::sse_decode(deserializer);
+                let mut var_actual = <u64>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::StaleEpoch {
+                    expected: var_expected,
+                    actual: var_actual,
+                };
+            }
+            21 => {
+                let mut var_what = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::NotFound { what: var_what };
+            }
+            22 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::InvalidArgument {
+                    message: var_message,
+                };
+            }
+            23 => {
+                let mut var_status = <i32>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Protocol { status: var_status };
+            }
+            24 => {
+                let mut var_status = <u16>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Http { status: var_status };
+            }
+            25 => {
+                let mut var_what = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Unavailable { what: var_what };
+            }
+            26 => {
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::api::failure::ApiFailure::Internal {
+                    message: var_message,
+                };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -6665,18 +6789,6 @@ impl SseDecode for crate::api::types::RoomMemberDto {
     }
 }
 
-impl SseDecode for crate::api::types::SdkErrorDto {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_kind = <String>::sse_decode(deserializer);
-        let mut var_message = <String>::sse_decode(deserializer);
-        return crate::api::types::SdkErrorDto {
-            kind: var_kind,
-            message: var_message,
-        };
-    }
-}
-
 impl SseDecode for crate::api::types::SendStatusDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -7001,6 +7113,13 @@ impl SseDecode for crate::api::types::TokenPersistDto {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for u16 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u16::<NativeEndian>().unwrap()
     }
 }
 
@@ -7925,6 +8044,90 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::handles::AgentUiStatusDto>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::failure::ApiFailure {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::failure::ApiFailure::NotFriends { dest } => {
+                [0.into_dart(), dest.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Blocked { dest } => {
+                [1.into_dart(), dest.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::UserNotFound { dest } => {
+                [2.into_dart(), dest.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::CannotChatSelf => [3.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::AuthExpired => [4.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::Unauthorized => [5.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::InvalidAccount => [6.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::InvalidPassword => [7.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::AccountExists => [8.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::InsecureOrigin => [9.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::PasswordSeal => [10.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::AlreadyConnected => [11.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::NotConnected => [12.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::StorageFull => [13.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::SqliteBusy => [14.into_dart()].into_dart(),
+            crate::api::failure::ApiFailure::Disk { message } => {
+                [15.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::RateLimited { retry_after_ms } => {
+                [16.into_dart(), retry_after_ms.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::PayloadTooLarge { bytes, max } => [
+                17.into_dart(),
+                bytes.into_into_dart().into_dart(),
+                max.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::failure::ApiFailure::UnsupportedMedia { mime } => {
+                [18.into_dart(), mime.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Busy { queue } => {
+                [19.into_dart(), queue.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::StaleEpoch { expected, actual } => [
+                20.into_dart(),
+                expected.into_into_dart().into_dart(),
+                actual.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::failure::ApiFailure::NotFound { what } => {
+                [21.into_dart(), what.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::InvalidArgument { message } => {
+                [22.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Protocol { status } => {
+                [23.into_dart(), status.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Http { status } => {
+                [24.into_dart(), status.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Unavailable { what } => {
+                [25.into_dart(), what.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::failure::ApiFailure::Internal { message } => {
+                [26.into_dart(), message.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::failure::ApiFailure
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::failure::ApiFailure>
+    for crate::api::failure::ApiFailure
+{
+    fn into_into_dart(self) -> crate::api::failure::ApiFailure {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::auth::AuthSession {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -8314,27 +8517,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::types::RoomMemberDto>
     for crate::api::types::RoomMemberDto
 {
     fn into_into_dart(self) -> crate::api::types::RoomMemberDto {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::types::SdkErrorDto {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.kind.into_into_dart().into_dart(),
-            self.message.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::types::SdkErrorDto
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::types::SdkErrorDto>
-    for crate::api::types::SdkErrorDto
-{
-    fn into_into_dart(self) -> crate::api::types::SdkErrorDto {
         self
     }
 }
@@ -9139,6 +9321,115 @@ impl SseEncode for crate::api::handles::AgentUiStatusDto {
     }
 }
 
+impl SseEncode for crate::api::failure::ApiFailure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::failure::ApiFailure::NotFriends { dest } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(dest, serializer);
+            }
+            crate::api::failure::ApiFailure::Blocked { dest } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(dest, serializer);
+            }
+            crate::api::failure::ApiFailure::UserNotFound { dest } => {
+                <i32>::sse_encode(2, serializer);
+                <String>::sse_encode(dest, serializer);
+            }
+            crate::api::failure::ApiFailure::CannotChatSelf => {
+                <i32>::sse_encode(3, serializer);
+            }
+            crate::api::failure::ApiFailure::AuthExpired => {
+                <i32>::sse_encode(4, serializer);
+            }
+            crate::api::failure::ApiFailure::Unauthorized => {
+                <i32>::sse_encode(5, serializer);
+            }
+            crate::api::failure::ApiFailure::InvalidAccount => {
+                <i32>::sse_encode(6, serializer);
+            }
+            crate::api::failure::ApiFailure::InvalidPassword => {
+                <i32>::sse_encode(7, serializer);
+            }
+            crate::api::failure::ApiFailure::AccountExists => {
+                <i32>::sse_encode(8, serializer);
+            }
+            crate::api::failure::ApiFailure::InsecureOrigin => {
+                <i32>::sse_encode(9, serializer);
+            }
+            crate::api::failure::ApiFailure::PasswordSeal => {
+                <i32>::sse_encode(10, serializer);
+            }
+            crate::api::failure::ApiFailure::AlreadyConnected => {
+                <i32>::sse_encode(11, serializer);
+            }
+            crate::api::failure::ApiFailure::NotConnected => {
+                <i32>::sse_encode(12, serializer);
+            }
+            crate::api::failure::ApiFailure::StorageFull => {
+                <i32>::sse_encode(13, serializer);
+            }
+            crate::api::failure::ApiFailure::SqliteBusy => {
+                <i32>::sse_encode(14, serializer);
+            }
+            crate::api::failure::ApiFailure::Disk { message } => {
+                <i32>::sse_encode(15, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            crate::api::failure::ApiFailure::RateLimited { retry_after_ms } => {
+                <i32>::sse_encode(16, serializer);
+                <i64>::sse_encode(retry_after_ms, serializer);
+            }
+            crate::api::failure::ApiFailure::PayloadTooLarge { bytes, max } => {
+                <i32>::sse_encode(17, serializer);
+                <i64>::sse_encode(bytes, serializer);
+                <i64>::sse_encode(max, serializer);
+            }
+            crate::api::failure::ApiFailure::UnsupportedMedia { mime } => {
+                <i32>::sse_encode(18, serializer);
+                <String>::sse_encode(mime, serializer);
+            }
+            crate::api::failure::ApiFailure::Busy { queue } => {
+                <i32>::sse_encode(19, serializer);
+                <String>::sse_encode(queue, serializer);
+            }
+            crate::api::failure::ApiFailure::StaleEpoch { expected, actual } => {
+                <i32>::sse_encode(20, serializer);
+                <u64>::sse_encode(expected, serializer);
+                <u64>::sse_encode(actual, serializer);
+            }
+            crate::api::failure::ApiFailure::NotFound { what } => {
+                <i32>::sse_encode(21, serializer);
+                <String>::sse_encode(what, serializer);
+            }
+            crate::api::failure::ApiFailure::InvalidArgument { message } => {
+                <i32>::sse_encode(22, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            crate::api::failure::ApiFailure::Protocol { status } => {
+                <i32>::sse_encode(23, serializer);
+                <i32>::sse_encode(status, serializer);
+            }
+            crate::api::failure::ApiFailure::Http { status } => {
+                <i32>::sse_encode(24, serializer);
+                <u16>::sse_encode(status, serializer);
+            }
+            crate::api::failure::ApiFailure::Unavailable { what } => {
+                <i32>::sse_encode(25, serializer);
+                <String>::sse_encode(what, serializer);
+            }
+            crate::api::failure::ApiFailure::Internal { message } => {
+                <i32>::sse_encode(26, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for crate::api::auth::AuthSession {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -9489,14 +9780,6 @@ impl SseEncode for crate::api::types::RoomMemberDto {
     }
 }
 
-impl SseEncode for crate::api::types::SdkErrorDto {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.kind, serializer);
-        <String>::sse_encode(self.message, serializer);
-    }
-}
-
 impl SseEncode for crate::api::types::SendStatusDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -9741,6 +10024,13 @@ impl SseEncode for crate::api::types::TokenPersistDto {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for u16 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u16::<NativeEndian>(self).unwrap();
     }
 }
 

@@ -34,6 +34,17 @@ void main() {
     expect(env.container.read(authProvider).signedIn, isFalse);
   });
 
+  test('auth_expired on session snapshot signs out', () async {
+    final env = await kimHarness(
+      token: testJwt(acc: 'alice', exp: 4_000_000_000),
+      account: 'alice',
+    );
+    env.fake.snapshotErrorOnConnect = 'auth_expired';
+    env.container.listen(linkProvider, (_, _) {});
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(env.container.read(authProvider).signedIn, isFalse);
+  });
+
   test('friend request is upserted from discrete event', () async {
     final env = await kimHarness(
       token: testJwt(acc: 'alice', exp: 4_000_000_000),

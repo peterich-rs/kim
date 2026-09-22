@@ -12,6 +12,7 @@ import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/src/rust/api/failure.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/conversation_tile.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
@@ -96,6 +97,7 @@ void main() {
     await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
+    expect(tester.takeException(), isNull);
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.byKey(const Key('auth-submit')), findsOneWidget);
     expect(find.text(Copy.conversations), findsNothing);
@@ -246,9 +248,9 @@ void main() {
     expect(find.text(Copy.badCredentials), findsNothing);
   });
 
-  testWidgets('http 401 maps to bad credentials', (tester) async {
+  testWidgets('unauthorized maps to bad credentials', (tester) async {
     final env = await testRuntime();
-    final fake = FakeKim(error: Exception('http 401: 账号或密码错误'));
+    final fake = FakeKim(error: const ApiFailure.unauthorized());
     await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 

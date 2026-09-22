@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/haptics.dart';
+import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/permissions.dart';
 import 'package:kim_mobile/core/user_agent.dart';
@@ -118,14 +119,15 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         KimLogger.info('agent spec sync ok');
       }
     } catch (e, st) {
-      if (e is SdkErrorDto) {
-        KimLogger.warn('agent spec sync ${e.kind}: ${e.message}', e, st);
+      final failure = apiFailureOf(e);
+      if (failure != null) {
+        KimLogger.warn('agent spec sync $failure', e, st);
         // Permanent protocol / validation failures must not spin with every
         // session snapshot rebuild (was flooding FRB + UI every 1–4s).
         if (ref.mounted &&
             gen == _sessionGen &&
             account == _startedFor &&
-            !_specSyncRetryable(e)) {
+            !failure.retryableSend) {
           _specSynced = true;
         }
       } else {
@@ -134,14 +136,6 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
     } finally {
       _specSyncing = false;
     }
-  }
-
-  bool _specSyncRetryable(SdkErrorDto e) {
-    return switch (e.kind) {
-      'not_connected' || 'busy' || 'sqlite_busy' || 'rate_limited' => true,
-      'protocol' when e.message.contains('status 3') => true,
-      _ => false,
-    };
   }
 
   Future<void> _radioUp() async {

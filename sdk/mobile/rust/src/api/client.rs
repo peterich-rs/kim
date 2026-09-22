@@ -6,12 +6,13 @@ use kim_sdk::{
     SendMessageCommand, StartSession,
 };
 
+use super::failure::ApiFailure;
 use super::rt;
 use super::types::{
     AgentProfileDto, AgentRunRequestDto, AgentRunResultDto, CommandAckDto, ContactsSnapshotDto,
     DeviceOverlayDto, LocalMediaDto, MessageViewDto, MetricsDto, PersonDto, ProfileDto,
-    ProviderAccountDto, RoomMemberDto, SdkErrorDto, SendStatusDto, SessionSnapshotDto,
-    SessionUpdateDto, SettingsDto, TimelineUpdateDto, TokenPersistDto, UiCommandDto,
+    ProviderAccountDto, RoomMemberDto, SendStatusDto, SessionSnapshotDto, SessionUpdateDto,
+    SettingsDto, TimelineUpdateDto, TokenPersistDto, UiCommandDto,
 };
 use crate::frb_generated::StreamSink;
 
@@ -56,18 +57,18 @@ impl KimUiHandle {
         Self { inner }
     }
 
-    pub async fn attach_store(&self, db_path: String) -> Result<(), SdkErrorDto> {
+    pub async fn attach_store(&self, db_path: String) -> Result<(), ApiFailure> {
         kim_log::init_beside(&db_path, "kim.log");
         self.inner
             .attach_store(db_path)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         kim_desktop_runtime::install(self.inner.as_ref().clone());
         Ok(())
     }
 
-    pub async fn command(&self, cmd: UiCommandDto) -> Result<CommandAckDto, SdkErrorDto> {
+    pub async fn command(&self, cmd: UiCommandDto) -> Result<CommandAckDto, ApiFailure> {
         match cmd {
             UiCommandDto::SendText { dest, text, kind } => {
                 let receipt = self
@@ -162,16 +163,16 @@ impl KimUiHandle {
                 self.inner
                     .enqueue_agent_turn(dest, text, in_reply_to)
                     .await
-                    .map_err(SdkErrorDto::from)?;
+                    .map_err(ApiFailure::from)?;
                 Ok(empty_ack())
             }
             UiCommandDto::AgentRespondPermission { .. } => {
-                Err(SdkErrorDto::from(kim_sdk::SdkError::InvalidArgument {
+                Err(ApiFailure::from(kim_sdk::SdkError::InvalidArgument {
                     message: "respond permission via rust_agent session".into(),
                 }))
             }
             UiCommandDto::AgentAbortTurn { .. } => {
-                Err(SdkErrorDto::from(kim_sdk::SdkError::InvalidArgument {
+                Err(ApiFailure::from(kim_sdk::SdkError::InvalidArgument {
                     message: "abort turn via rust_agent session".into(),
                 }))
             }
@@ -219,21 +220,21 @@ impl KimUiHandle {
         &self,
         query: String,
         dest: Option<String>,
-    ) -> Result<Vec<MessageViewDto>, SdkErrorDto> {
+    ) -> Result<Vec<MessageViewDto>, ApiFailure> {
         let rows = self
             .inner
             .search_messages(query, dest)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(rows.into_iter().map(MessageViewDto::from).collect())
     }
 
-    pub async fn media_fetch(&self, url: String) -> Result<LocalMediaDto, SdkErrorDto> {
+    pub async fn media_fetch(&self, url: String) -> Result<LocalMediaDto, ApiFailure> {
         let path = self
             .inner
             .fetch_media(url)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         let size = tokio::fs::metadata(&path)
             .await
             .map(|m| i64::try_from(m.len()).unwrap_or(0))
@@ -253,7 +254,7 @@ impl KimUiHandle {
         width: i32,
         height: i32,
         byte_size: i64,
-    ) -> Result<LocalMediaDto, SdkErrorDto> {
+    ) -> Result<LocalMediaDto, ApiFailure> {
         let url = self
             .inner
             .upload_media(MediaRef {
@@ -264,7 +265,7 @@ impl KimUiHandle {
                 byte_size,
             })
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(LocalMediaDto {
             local_path: url,
             byte_size,
@@ -293,7 +294,7 @@ impl KimUiHandle {
     pub fn watch_session_snapshot(
         &self,
         sink: StreamSink<SessionSnapshotDto>,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiFailure> {
         let rx = self.inner.subscribe_session_snapshot();
         let _guard = rt().enter();
         rt().spawn(async move {
@@ -313,7 +314,7 @@ impl KimUiHandle {
 
     /// Discrete Kickout/token/friend/agent events. Inbox/link live on snapshot.
     #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), String> {
+    pub fn watch_session(&self, sink: StreamSink<SessionUpdateDto>) -> Result<(), ApiFailure> {
         let mut rx = self.inner.subscribe_session();
         let _guard = rt().enter();
         rt().spawn(async move {
@@ -332,7 +333,7 @@ impl KimUiHandle {
         dest: String,
         limit: i32,
         sink: StreamSink<TimelineUpdateDto>,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiFailure> {
         let _guard = rt().enter();
         let rx = self
             .inner
@@ -353,7 +354,7 @@ impl KimUiHandle {
     }
 
     #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_contacts(&self, sink: StreamSink<ContactsSnapshotDto>) -> Result<(), String> {
+    pub fn watch_contacts(&self, sink: StreamSink<ContactsSnapshotDto>) -> Result<(), ApiFailure> {
         let _guard = rt().enter();
         let rx = self.inner.subscribe_contacts();
         rt().spawn(async move {
@@ -377,7 +378,7 @@ impl KimUiHandle {
         token: String,
         user_agent: String,
         account: String,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiFailure> {
         let account = if account.is_empty() {
             kim_client::account_from_token(&token).unwrap_or_default()
         } else {
@@ -391,7 +392,7 @@ impl KimUiHandle {
                 account,
             })
             .await
-            .map_err(|e| e.to_string())
+            .map_err(ApiFailure::from)
     }
 
     pub async fn enqueue_message(
@@ -405,7 +406,7 @@ impl KimUiHandle {
         width: i32,
         height: i32,
         byte_size: i64,
-    ) -> Result<KimCommandReceipt, SdkErrorDto> {
+    ) -> Result<KimCommandReceipt, ApiFailure> {
         let payload = match content.kind {
             2 => OutgoingPayload::Image {
                 media: MediaRef {
@@ -440,7 +441,7 @@ impl KimUiHandle {
                 batch_id: None,
             })
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(KimCommandReceipt {
             request_id: receipt.request_id,
             client_id: receipt.client_id,
@@ -450,19 +451,19 @@ impl KimUiHandle {
         })
     }
 
-    pub async fn cancel_send(&self, client_id: String) -> Result<(), SdkErrorDto> {
+    pub async fn cancel_send(&self, client_id: String) -> Result<(), ApiFailure> {
         self.inner
             .cancel_send(client_id)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn retry_send(&self, client_id: String) -> Result<KimCommandReceipt, SdkErrorDto> {
+    pub async fn retry_send(&self, client_id: String) -> Result<KimCommandReceipt, ApiFailure> {
         let receipt = self
             .inner
             .retry_send(client_id)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(KimCommandReceipt {
             request_id: receipt.request_id,
             client_id: receipt.client_id,
@@ -472,15 +473,15 @@ impl KimUiHandle {
         })
     }
 
-    pub async fn load_older(&self, dest: String) -> Result<(), SdkErrorDto> {
-        self.inner.load_older(dest).await.map_err(SdkErrorDto::from)
+    pub async fn load_older(&self, dest: String) -> Result<(), ApiFailure> {
+        self.inner.load_older(dest).await.map_err(ApiFailure::from)
     }
 
-    pub async fn delete_thread(&self, dest: String) -> Result<(), SdkErrorDto> {
+    pub async fn delete_thread(&self, dest: String) -> Result<(), ApiFailure> {
         self.inner
             .delete_thread(dest)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     pub async fn mark_thread_read(
@@ -488,13 +489,13 @@ impl KimUiHandle {
         dest: String,
         kind: i32,
         message_id: i64,
-    ) -> Result<(), SdkErrorDto> {
+    ) -> Result<(), ApiFailure> {
         if message_id <= 0 {
             return self
                 .inner
                 .mark_thread_read(dest, kind)
                 .await
-                .map_err(SdkErrorDto::from);
+                .map_err(ApiFailure::from);
         }
         self.inner
             .mark_read(ReadMarker {
@@ -503,14 +504,14 @@ impl KimUiHandle {
                 visible_message_id: message_id,
             })
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn mark_conversation_read(&self, dest: String, kind: i32) -> Result<(), SdkErrorDto> {
+    pub async fn mark_conversation_read(&self, dest: String, kind: i32) -> Result<(), ApiFailure> {
         self.inner
             .mark_thread_read(dest, kind)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     pub async fn set_conversation_visibility(
@@ -519,7 +520,7 @@ impl KimUiHandle {
         foreground: bool,
         dest: String,
         kind: i32,
-    ) -> Result<(), SdkErrorDto> {
+    ) -> Result<(), ApiFailure> {
         self.inner
             .set_conversation_visibility(ConversationVisibility {
                 generation,
@@ -531,11 +532,11 @@ impl KimUiHandle {
                 },
             })
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    fn supervisor(&self) -> Result<Arc<SessionSupervisor>, String> {
-        self.inner.supervisor().map_err(|e| e.to_string())
+    fn supervisor(&self) -> Result<Arc<SessionSupervisor>, ApiFailure> {
+        self.inner.supervisor().map_err(ApiFailure::from)
     }
 
     pub async fn stop(&self) {
@@ -546,18 +547,15 @@ impl KimUiHandle {
         let _ = inner.stop_session().await;
     }
 
-    pub async fn notify_radio_up(&self) -> Result<(), String> {
-        self.inner
-            .notify_radio_up()
-            .await
-            .map_err(|e| e.to_string())
+    pub async fn notify_radio_up(&self) -> Result<(), ApiFailure> {
+        self.inner.notify_radio_up().await.map_err(ApiFailure::from)
     }
 
-    pub async fn notify_foreground(&self) -> Result<(), String> {
+    pub async fn notify_foreground(&self) -> Result<(), ApiFailure> {
         self.inner
             .notify_foreground()
             .await
-            .map_err(|e| e.to_string())
+            .map_err(ApiFailure::from)
     }
 
     pub async fn mark_read(
@@ -565,52 +563,52 @@ impl KimUiHandle {
         dest: String,
         kind: i32,
         message_id: i64,
-    ) -> Result<(), SdkErrorDto> {
+    ) -> Result<(), ApiFailure> {
         self.mark_thread_read(dest, kind, message_id).await
     }
 
-    pub async fn friend_request(&self, dest: String) -> Result<(), SdkErrorDto> {
-        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+    pub async fn friend_request(&self, dest: String) -> Result<(), ApiFailure> {
+        let client = self.supervisor()?.client();
         client
             .friend_request(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         self.inner
             .mark_outgoing_contact(dest)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn friend_accept(&self, dest: String) -> Result<(), SdkErrorDto> {
-        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+    pub async fn friend_accept(&self, dest: String) -> Result<(), ApiFailure> {
+        let client = self.supervisor()?.client();
         client
             .friend_accept(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
+            .map_err(|e| ApiFailure::from_client(e, &dest))
     }
 
-    pub async fn friend_reject(&self, dest: String) -> Result<(), SdkErrorDto> {
-        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+    pub async fn friend_reject(&self, dest: String) -> Result<(), ApiFailure> {
+        let client = self.supervisor()?.client();
         client
             .friend_reject(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))
+            .map_err(|e| ApiFailure::from_client(e, &dest))
     }
 
-    pub async fn friend_remove(&self, dest: String) -> Result<(), SdkErrorDto> {
-        let client = self.supervisor().map_err(SdkErrorDto::from_str)?.client();
+    pub async fn friend_remove(&self, dest: String) -> Result<(), ApiFailure> {
+        let client = self.supervisor()?.client();
         client
             .friend_remove(&dest)
             .await
-            .map_err(|e| SdkErrorDto::from(kim_sdk::map_client(e, &dest)))?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         self.inner
             .remove_contact(dest)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_agent_run(&self, sink: StreamSink<AgentRunRequestDto>) -> Result<(), String> {
+    pub fn watch_agent_run(&self, sink: StreamSink<AgentRunRequestDto>) -> Result<(), ApiFailure> {
         let mut rx = self.inner.subscribe_agent_run();
         let _guard = rt().enter();
         rt().spawn(async move {
@@ -632,109 +630,106 @@ impl KimUiHandle {
         Ok(())
     }
 
-    pub async fn submit_agent_run(&self, result: AgentRunResultDto) -> Result<(), SdkErrorDto> {
+    pub async fn submit_agent_run(&self, result: AgentRunResultDto) -> Result<(), ApiFailure> {
         self.inner.submit_agent_run(result.into());
         Ok(())
     }
 
-    pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileDto>, SdkErrorDto> {
+    pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileDto>, ApiFailure> {
         let rows = self
             .inner
             .list_agent_profiles()
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(rows.into_iter().map(AgentProfileDto::from).collect())
     }
 
-    pub async fn upsert_agent_profile(&self, row: AgentProfileDto) -> Result<(), SdkErrorDto> {
+    pub async fn upsert_agent_profile(&self, row: AgentProfileDto) -> Result<(), ApiFailure> {
         self.inner
             .upsert_agent_profile(row.into())
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), SdkErrorDto> {
+    pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), ApiFailure> {
         self.inner
             .delete_agent_profile(profile_id)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     pub async fn import_agent_profiles(
         &self,
         rows: Vec<AgentProfileDto>,
-    ) -> Result<(), SdkErrorDto> {
+    ) -> Result<(), ApiFailure> {
         self.inner
             .import_agent_profiles(rows.into_iter().map(Into::into).collect())
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountDto>, SdkErrorDto> {
+    pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccountDto>, ApiFailure> {
         let rows = self
             .inner
             .list_provider_accounts()
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(rows.into_iter().map(ProviderAccountDto::from).collect())
     }
 
-    pub async fn upsert_provider_account(
-        &self,
-        row: ProviderAccountDto,
-    ) -> Result<(), SdkErrorDto> {
+    pub async fn upsert_provider_account(&self, row: ProviderAccountDto) -> Result<(), ApiFailure> {
         self.inner
             .upsert_provider_account(row.into())
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn delete_provider_account(&self, id: String) -> Result<(), SdkErrorDto> {
+    pub async fn delete_provider_account(&self, id: String) -> Result<(), ApiFailure> {
         self.inner
             .delete_provider_account(id)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     pub async fn get_device_overlay(
         &self,
         profile_id: String,
-    ) -> Result<Option<DeviceOverlayDto>, SdkErrorDto> {
+    ) -> Result<Option<DeviceOverlayDto>, ApiFailure> {
         let row = self
             .inner
             .get_device_overlay(profile_id)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(row.map(DeviceOverlayDto::from))
     }
 
-    pub async fn upsert_device_overlay(&self, row: DeviceOverlayDto) -> Result<(), SdkErrorDto> {
+    pub async fn upsert_device_overlay(&self, row: DeviceOverlayDto) -> Result<(), ApiFailure> {
         self.inner
             .upsert_device_overlay(row.into())
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn agent_flags(&self) -> Result<String, SdkErrorDto> {
-        self.inner.agent_flags().await.map_err(SdkErrorDto::from)
+    pub async fn agent_flags(&self) -> Result<String, ApiFailure> {
+        self.inner.agent_flags().await.map_err(ApiFailure::from)
     }
 
-    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkErrorDto> {
+    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), ApiFailure> {
         self.inner
             .set_agent_flags(flags_json)
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn sync_agent_specs(&self) -> Result<(), SdkErrorDto> {
+    pub async fn sync_agent_specs(&self) -> Result<(), ApiFailure> {
         self.inner
             .sync_agent_specs()
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
     #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_token_persist(&self, sink: StreamSink<TokenPersistDto>) -> Result<(), String> {
+    pub fn watch_token_persist(&self, sink: StreamSink<TokenPersistDto>) -> Result<(), ApiFailure> {
         let mut rx = self.inner.subscribe_token_persist();
         let _guard = rt().enter();
         rt().spawn(async move {
@@ -751,8 +746,8 @@ impl KimUiHandle {
         Ok(())
     }
 
-    pub async fn settings_get(&self) -> Result<SettingsDto, SdkErrorDto> {
-        let row = self.inner.settings_get().await.map_err(SdkErrorDto::from)?;
+    pub async fn settings_get(&self) -> Result<SettingsDto, ApiFailure> {
+        let row = self.inner.settings_get().await.map_err(ApiFailure::from)?;
         Ok(SettingsDto {
             ws_url: row.ws_url,
             http_origin: row.http_origin,
@@ -767,12 +762,12 @@ impl KimUiHandle {
         ws_url: Option<String>,
         http_origin: Option<String>,
         env: Option<String>,
-    ) -> Result<SettingsDto, SdkErrorDto> {
+    ) -> Result<SettingsDto, ApiFailure> {
         let row = self
             .inner
             .settings_patch(ws_url, http_origin, env, None)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(SettingsDto {
             ws_url: row.ws_url,
             http_origin: row.http_origin,
@@ -788,12 +783,12 @@ impl KimUiHandle {
         http_origin: String,
         env: String,
         locale: String,
-    ) -> Result<SettingsDto, SdkErrorDto> {
+    ) -> Result<SettingsDto, ApiFailure> {
         let row = self
             .inner
             .import_device_settings(ws_url, http_origin, env, locale)
             .await
-            .map_err(SdkErrorDto::from)?;
+            .map_err(ApiFailure::from)?;
         Ok(SettingsDto {
             ws_url: row.ws_url,
             http_origin: row.http_origin,
@@ -803,34 +798,37 @@ impl KimUiHandle {
         })
     }
 
-    pub async fn refresh_contacts(&self) -> Result<(), SdkErrorDto> {
+    pub async fn refresh_contacts(&self) -> Result<(), ApiFailure> {
         self.inner
             .refresh_contacts()
             .await
-            .map_err(SdkErrorDto::from)
+            .map_err(ApiFailure::from)
     }
 
-    pub async fn friend_list(&self) -> Result<Vec<PersonDto>, String> {
+    pub async fn friend_list(&self) -> Result<Vec<PersonDto>, ApiFailure> {
         let client = self.supervisor()?.client();
-        let users = client.friend_list().await.map_err(|e| e.to_string())?;
+        let users = client.friend_list().await.map_err(ApiFailure::from)?;
         Ok(users
             .into_iter()
             .map(|p| PersonDto::from_profile(p, "friend"))
             .collect())
     }
 
-    pub async fn friend_incoming(&self) -> Result<Vec<PersonDto>, String> {
+    pub async fn friend_incoming(&self) -> Result<Vec<PersonDto>, ApiFailure> {
         let client = self.supervisor()?.client();
-        let users = client.friend_incoming().await.map_err(|e| e.to_string())?;
+        let users = client.friend_incoming().await.map_err(ApiFailure::from)?;
         Ok(users
             .into_iter()
             .map(|p| PersonDto::from_profile(p, "incoming"))
             .collect())
     }
 
-    pub async fn profile(&self, dest: String) -> Result<ProfileDto, String> {
+    pub async fn profile(&self, dest: String) -> Result<ProfileDto, ApiFailure> {
         let client = self.supervisor()?.client();
-        let p = client.profile(&dest).await.map_err(|e| e.to_string())?;
+        let p = client
+            .profile(&dest)
+            .await
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(p.into())
     }
 
@@ -839,33 +837,37 @@ impl KimUiHandle {
         nickname: String,
         avatar: String,
         bio: String,
-    ) -> Result<ProfileDto, String> {
+    ) -> Result<ProfileDto, ApiFailure> {
         let client = self.supervisor()?.client();
         let p = client
             .update_profile(&nickname, &avatar, &bio)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(ApiFailure::from)?;
         Ok(p.into())
     }
 
-    pub async fn search_users(&self, query: String) -> Result<Vec<PersonDto>, String> {
+    pub async fn search_users(&self, query: String) -> Result<Vec<PersonDto>, ApiFailure> {
         let client = self.supervisor()?.client();
         let users = client
             .search_users(&query)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(ApiFailure::from)?;
         Ok(users
             .into_iter()
             .map(|p| PersonDto::from_profile(p, "none"))
             .collect())
     }
 
-    pub async fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMemberDto>, String> {
+    pub async fn room_enter(
+        &self,
+        dest: String,
+        kind: i32,
+    ) -> Result<Vec<RoomMemberDto>, ApiFailure> {
         let client = self.supervisor()?.client();
         let rows = client
             .room_enter(&dest, kind)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(rows
             .into_iter()
             .map(|e| RoomMemberDto {
@@ -876,21 +878,26 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub async fn room_leave(&self, dest: String, kind: i32) -> Result<String, String> {
+    pub async fn room_leave(&self, dest: String, kind: i32) -> Result<String, ApiFailure> {
         let client = self.supervisor()?.client();
         client
             .room_leave(&dest, kind)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok("ok".into())
     }
 
-    pub async fn send_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+    pub async fn send_typing(
+        &self,
+        dest: String,
+        kind: i32,
+        active: bool,
+    ) -> Result<(), ApiFailure> {
         let client = self.supervisor()?.client();
         client
             .send_typing(&dest, kind, active)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| ApiFailure::from_client(e, &dest))
     }
 
     pub async fn bot_create(
@@ -903,7 +910,7 @@ impl KimUiHandle {
         thinking_effort: String,
         context_tokens: i32,
         visibility: String,
-    ) -> Result<PersonDto, String> {
+    ) -> Result<PersonDto, ApiFailure> {
         let client = self.supervisor()?.client();
         let config = kim_client::BotConfig {
             model,
@@ -918,17 +925,20 @@ impl KimUiHandle {
         let p = client
             .bot_create(&client_profile_id, &nickname, &avatar, &bio, &config)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(ApiFailure::from)?;
         Ok(PersonDto::from_profile(p, "none"))
     }
 
-    pub async fn bot_delete(&self, dest: String) -> Result<String, String> {
+    pub async fn bot_delete(&self, dest: String) -> Result<String, ApiFailure> {
         let client = self.supervisor()?.client();
-        client.bot_delete(&dest).await.map_err(|e| e.to_string())?;
+        client
+            .bot_delete(&dest)
+            .await
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         self.inner
             .remove_contact(dest)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(ApiFailure::from)?;
         Ok("ok".into())
     }
 
@@ -942,7 +952,7 @@ impl KimUiHandle {
         thinking_effort: String,
         context_tokens: i32,
         visibility: String,
-    ) -> Result<PersonDto, String> {
+    ) -> Result<PersonDto, ApiFailure> {
         let client = self.supervisor()?.client();
         let config = kim_client::BotConfig {
             model,
@@ -957,7 +967,7 @@ impl KimUiHandle {
         let p = client
             .bot_update(&dest, &nickname, &avatar, &bio, &config)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(PersonDto::from_profile(p, "none"))
     }
 
@@ -967,12 +977,12 @@ impl KimUiHandle {
         body: String,
         in_reply_to: i64,
         client_id: String,
-    ) -> Result<KimTalkResult, String> {
+    ) -> Result<KimTalkResult, ApiFailure> {
         let client = self.supervisor()?.client();
         let result = client
             .bot_reply(&dest, &body, in_reply_to, &client_id)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(KimTalkResult::from(result))
     }
 
@@ -980,21 +990,26 @@ impl KimUiHandle {
         &self,
         dest: String,
         limit: i32,
-    ) -> Result<Vec<KimBotPendingItem>, String> {
+    ) -> Result<Vec<KimBotPendingItem>, ApiFailure> {
         let client = self.supervisor()?.client();
         let items = client
             .bot_pending(&dest, limit)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(items.into_iter().map(KimBotPendingItem::from).collect())
     }
 
-    pub async fn bot_typing(&self, dest: String, kind: i32, active: bool) -> Result<(), String> {
+    pub async fn bot_typing(
+        &self,
+        dest: String,
+        kind: i32,
+        active: bool,
+    ) -> Result<(), ApiFailure> {
         let client = self.supervisor()?.client();
         client
             .bot_typing(&dest, kind, active)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| ApiFailure::from_client(e, &dest))
     }
 }
 

@@ -14,32 +14,15 @@ class AuthDraft {
   final String? accountErr;
   final String? passwordErr;
   final String? confirmErr;
-
-  AuthDraft copyWith({
-    bool? register,
-    String? accountErr,
-    String? passwordErr,
-    String? confirmErr,
-    bool clearErrors = false,
-  }) {
-    return AuthDraft(
-      register: register ?? this.register,
-      accountErr: clearErrors ? accountErr : (accountErr ?? this.accountErr),
-      passwordErr: clearErrors
-          ? passwordErr
-          : (passwordErr ?? this.passwordErr),
-      confirmErr: clearErrors ? confirmErr : (confirmErr ?? this.confirmErr),
-    );
-  }
 }
 
 class AuthDraftNotifier extends Notifier<AuthDraft> {
-  @override
-  AuthDraft build() => const AuthDraft();
+  AuthDraftNotifier(this._register);
 
-  void setRegister(bool register) {
-    state = state.copyWith(register: register, clearErrors: true);
-  }
+  final bool _register;
+
+  @override
+  AuthDraft build() => AuthDraft(register: _register);
 
   void showErrors({String? account, String? password, String? confirm}) {
     state = AuthDraft(
@@ -55,10 +38,8 @@ class AuthDraftNotifier extends Notifier<AuthDraft> {
   }
 }
 
-final authDraftProvider =
-    NotifierProvider.autoDispose<AuthDraftNotifier, AuthDraft>(
-      AuthDraftNotifier.new,
-    );
+final authDraftProvider = NotifierProvider.autoDispose
+    .family<AuthDraftNotifier, AuthDraft, bool>(AuthDraftNotifier.new);
 
 class PasswordDraft {
   const PasswordDraft({this.oldErr, this.nextErr, this.confirmErr});

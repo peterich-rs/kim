@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use kim_agent_host::{AgentHost, AgentProfile, HostEvent, TurnOutcome, YieldKind};
+use tracing::info;
 use kim_sdk::{AgentRunResult, SdkError};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -15,10 +16,19 @@ pub async fn drive_host(
     runtime: &HostAgentRuntime,
     prepared: PreparedTurn,
 ) -> Result<AgentRunResult, SdkError> {
-    let profile: AgentProfile =
+    let mut profile: AgentProfile =
         serde_json::from_str(&prepared.profile_json).map_err(|err| SdkError::InvalidArgument {
             message: format!("profile_json: {err}"),
         })?;
+    // Disk JSON keeps only account_id. Kind and base URL are injected here,
+    // the same way session open used to call toHostJson.
+    bind_account_provider(&mut profile, &prepared.vendor_id, &prepared.base_url);
+    info!(
+        profile_id = %prepared.profile_id,
+        provider = %profile.provider.kind,
+        base_url = %profile.provider.base_url,
+        "agent provider bound"
+    );
     let host = AgentHost::from_spec(
         &profile,
         &prepared.api_key,
@@ -124,6 +134,16 @@ fn drain(mut rx: mpsc::Receiver<HostEvent>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move { while rx.recv().await.is_some() {} })
 }
 
+/// Fill only empty provider slots. A kind or URL already on the profile wins.
+fn bind_account_provider(profile: &mut AgentProfile, vendor_id: &str, base_url: &str) {
+    if profile.provider.kind.trim().is_empty() {
+        profile.provider.kind = vendor_id.trim().to_string();
+    }
+    if profile.provider.base_url.trim().is_empty() {
+        profile.provider.base_url = base_url.trim().to_string();
+    }
+}
+
 fn failed(prepared: &PreparedTurn, reason: &str) -> AgentRunResult {
     AgentRunResult {
         dest: prepared.dest.clone(),
@@ -141,5 +161,37 @@ fn failed(prepared: &PreparedTurn, reason: &str) -> AgentRunResult {
 fn map_host(err: kim_agent_host::HostError) -> SdkError {
     SdkError::Internal {
         message: err.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bind_account_provider;
+    use kim_agent_host::AgentProfile;
+
+    fn disk_profile() -> AgentProfile {
+        serde_json::from_str(
+            r#"{"id":"p","display_name":"grok","model":{"name":"grok-4.6"},"provider":{"kind":"","base_url":"","key_ref":""}}"#,
+        )
+        .expect("disk profile")
+    }
+
+    #[test]
+    fn empty_provider_takes_account_vendor_and_url() {
+        let mut profile = disk_profile();
+        bind_account_provider(&mut profile, "xai", "https://api.world.ainexc.com/v1");
+        assert_eq!(profile.provider.kind, "xai");
+        assert_eq!(profile.provider.base_url, "https://api.world.ainexc.com/v1");
+        assert!(profile.provider.key_ref.is_empty());
+    }
+
+    #[test]
+    fn filled_provider_is_left_alone() {
+        let mut profile = disk_profile();
+        profile.provider.kind = "openai".into();
+        profile.provider.base_url = "https://example.test/v1".into();
+        bind_account_provider(&mut profile, "xai", "https://api.world.ainexc.com/v1");
+        assert_eq!(profile.provider.kind, "openai");
+        assert_eq!(profile.provider.base_url, "https://example.test/v1");
     }
 }

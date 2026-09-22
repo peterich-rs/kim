@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/session/retry.dart';
+import 'package:kim_mobile/src/rust/api/failure.dart';
 
 void main() {
   test('permanent auth errors are not retried', () {
-    expect(isPermanentClientError(Exception('http 401: 账号或密码错误')), isTrue);
-    expect(kimRetry(0, Exception('http 401: 账号或密码错误')), isNull);
-    expect(kimRetry(0, Exception('http 409: 账号已存在')), isNull);
+    expect(isPermanentClientError(const ApiFailure.unauthorized()), isTrue);
+    expect(kimRetry(0, const ApiFailure.unauthorized()), isNull);
+    expect(kimRetry(0, const ApiFailure.accountExists()), isNull);
   });
 
   test('macOS Keychain -34018 is not bad credentials', () {
@@ -28,14 +28,11 @@ void main() {
     );
   });
 
-  test('sdk error dto maps by kind not message substring', () {
+  test('talk errors map by variant', () {
     expect(
-      mapTalkError(const SdkErrorDto(kind: 'not_friends', message: 'x')),
+      mapTalkError(const ApiFailure.notFriends(dest: 'x')),
       Copy.notFriends,
     );
-    expect(
-      mapTalkError(const SdkErrorDto(kind: 'blocked', message: 'x')),
-      Copy.blocked,
-    );
+    expect(mapTalkError(const ApiFailure.blocked(dest: 'x')), Copy.blocked);
   });
 }

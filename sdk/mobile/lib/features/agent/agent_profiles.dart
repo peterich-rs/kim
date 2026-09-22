@@ -10,6 +10,8 @@ import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
@@ -387,7 +389,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         return profile;
       }
     } catch (e, st) {
-      final msg = e.toString();
+      final msg = apiFailureDetail(e);
       if (msg.contains('schema_version') || msg.contains('UnsupportedSchema')) {
         _opaqueUnsupported.add(row.profileId);
         identityError = 'Agent config requires an app upgrade';

@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/session_fault.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/auth/auth.dart';
@@ -16,20 +18,21 @@ SessionSnapshotDto emptySessionSnapshot() => const SessionSnapshotDto(
 );
 
 KimLinkState kimLinkFromDto(LinkStateDto link, String? lastError) {
+  final error = sessionFaultIsIdentity(lastError) ? null : lastError;
   return switch (link) {
     LinkStateDto_Connecting() => KimLinkState(
       status: ConnStatus.connecting,
-      error: lastError,
+      error: error,
     ),
     LinkStateDto_Online() => const KimLinkState(status: ConnStatus.online),
     LinkStateDto_Reconnecting(:final attempt) => KimLinkState(
       status: ConnStatus.reconnecting,
       attempt: attempt,
-      error: lastError,
+      error: error,
     ),
     LinkStateDto_Offline() => KimLinkState(
       status: ConnStatus.offline,
-      error: lastError,
+      error: error,
     ),
   };
 }
@@ -102,10 +105,26 @@ class KimSessionNotifier extends Notifier<SessionSnapshotDto> {
   void _listen() {
     unawaited(_sub?.cancel());
     _sub = ref.read(clientPortProvider).watchSessionSnapshot().listen((snap) {
-      if (ref.mounted) {
-        state = snap;
+      if (!ref.mounted) {
+        return;
       }
+      state = snap;
+      unawaited(_applyIdentity(snap.lastError));
     });
+  }
+
+  Future<void> _applyIdentity(String? lastError) async {
+    if (!ref.read(authProvider).signedIn) {
+      return;
+    }
+    switch (classifySessionFault(lastError)) {
+      case SessionFault.identityExpired:
+        await ref.read(authProvider.notifier).signOut(expired: true);
+      case SessionFault.kicked:
+        await ref.read(authProvider.notifier).signOut(notice: Copy.kicked);
+      case null:
+        break;
+    }
   }
 }
 
