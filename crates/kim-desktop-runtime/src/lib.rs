@@ -15,6 +15,7 @@ use kim_sdk::{
     ProviderAccountRow, SdkError, SessionEpoch,
 };
 
+pub use kim_agent_host::THREAD_STACK_SIZE_BYTES;
 pub use permissions::{PermissionEvent, PermissionMailbox};
 pub use tools::execute_im_tool;
 pub use ui::{AgentUiStatus, UiBus};

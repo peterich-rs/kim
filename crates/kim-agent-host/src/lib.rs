@@ -81,6 +81,8 @@ pub use skills::{
 };
 
 #[cfg(feature = "codex")]
+pub use codex_async_utils::THREAD_STACK_SIZE_BYTES;
+#[cfg(feature = "codex")]
 pub use codex_drive::CodexLaunch;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

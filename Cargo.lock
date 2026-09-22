@@ -7369,6 +7369,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "codex-async-utils",
  "codex-config",
  "codex-core",
  "codex-core-api",
@@ -7663,6 +7664,7 @@ dependencies = [
  "kim-desktop-runtime",
  "kim-log",
  "kim-sdk",
+ "libc",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",

@@ -10,6 +10,7 @@ description = "Local Goose agent host for KIM desktop IM (@agent)"
 # Desktop `rust_agent` enables this. Off by default so the phone FFI does not
 # link the Codex agent. SQLite itself is shared with the root workspace.
 codex = [
+    "dep:codex-async-utils",
     "dep:codex-config",
     "dep:codex-core",
     "dep:codex-core-api",
@@ -24,6 +25,7 @@ codex = [
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+codex-async-utils = { path = "../../third_party/codex/codex-rs/async-utils", optional = true }
 codex-config = { path = "../../third_party/codex/codex-rs/config", optional = true }
 codex-core = { path = "../../third_party/codex/codex-rs/core", optional = true }
 codex-core-api = { path = "../../third_party/codex/codex-rs/core-api", optional = true }
