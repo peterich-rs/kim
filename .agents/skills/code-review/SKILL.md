@@ -4,7 +4,7 @@ description: >
   Code review combining language strictness rules, security auditing, and performance
   analysis. Use when a user says /code-review or asks to review a branch, PR, or set of
   changes. Auto-detects languages and applies the relevant rule sets from
-  typescript-strict, rust-strict, swift-strict, go-strict, javascript-strict,
+  typescript-strict, rust-best-practice, swift-strict, go-strict, javascript-strict,
   security-audit-standard, performance-audit-standard, and github-standards.
 ---
 
@@ -38,7 +38,7 @@ Map file extensions to rule sets:
 | Extension | Rule set | Skill |
 |---|---|---|
 | `.ts`, `.tsx` | TypeScript | `typescript-strict` |
-| `.rs` | Rust | `rust-strict` |
+| `.rs` | Rust | `rust-best-practice` (`references/strict.md` for the security rules) |
 | `.swift` | Swift | `swift-strict` |
 | `.go` | Go | `go-strict` |
 | `.js`, `.mjs`, `.cjs` | JavaScript | `javascript-strict` |

@@ -1,17 +1,6 @@
----
-name: rust-tokio-net
-description: >
-  Tokio TCP and WebSocket networking for long-lived connections: framing,
-  codecs, half-close, backpressure, timeouts, graceful shutdown, and
-  read/write task split. Use when writing listeners, dialers, Conn
-  implementations, length-prefixed frames, HTTP Upgrade, or debugging
-  stuck I/O. Invoke with /rust-tokio-net.
-license: MIT
----
-
 # Tokio TCP / WebSocket
 
-Long-lived connection I/O on Tokio. Pair with `rust-async-patterns` for tasks/channels and `rust-skills` `async-*` rules for cancellation and lock hygiene.
+Long-lived connection I/O on Tokio. Design order is in [SKILL.md](../SKILL.md). Cancellation and lock hygiene are in `rules/` (`async-*`).
 
 This workspace already splits **protocol** (`kim-core` Conn / Channel / ChannelMap) from **wires** (`kim-tcp`, `kim-ws`). Keep that split.
 

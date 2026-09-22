@@ -90,23 +90,9 @@ let port = config.get("port")
 | Internal invariant | `expect("explanation")` |
 | Need to handle both cases | `match` or `if let` |
 
-## Clippy Lints
+## Lint level
 
-```toml
-# Cargo.toml
-[lints.clippy]
-unwrap_used = "warn"      # Warn on unwrap()
-expect_used = "warn"       # Also warn on expect() (stricter)
-```
-
-```rust
-// Allow in specific places where it's justified
-#[allow(clippy::unwrap_used)]
-fn definitely_safe() {
-    // Unwrap is safe here because...
-    let x = Some(5).unwrap();
-}
-```
+Workspace `unwrap_used` and `expect_used` are `deny`. The allowed exceptions are static init, a proven invariant, and tests. That policy, including the local `#[allow]` form, is in [strict.md](../references/strict.md).
 
 ## See Also
 

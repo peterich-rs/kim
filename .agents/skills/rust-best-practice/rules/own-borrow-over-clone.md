@@ -1,10 +1,10 @@
 # own-borrow-over-clone
 
-> Prefer `&T` borrowing over `.clone()`
+> Borrow when the callee only reads; clone when a new owner needs the value
 
 ## Why It Matters
 
-Cloning allocates new memory and copies data, while borrowing is free. Unnecessary clones can significantly impact performance, especially in hot paths or with large data structures.
+Cloning allocates new memory and copies data, while borrowing is free. A clone whose new owner is explicit is a valid ownership decision. A clone that only exists so a read can avoid a reference is the case to remove.
 
 ## Bad
 

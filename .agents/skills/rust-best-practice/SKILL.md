@@ -1,25 +1,38 @@
 ---
-name: rust-quality-coding
-description: Design and review idiomatic Rust around ownership, domain types, API and trait boundaries, errors, and concurrency. Use when a Rust change needs a design decision or a compiler error suggests the model is wrong; not for a lint-only or security-only review.
+name: rust-best-practice
+description: >
+  Design and review idiomatic Rust: ownership, domain types, trait boundaries,
+  errors, concurrency, and long-lived TCP or WebSocket connections, plus the
+  rule index and security constraints. Use when writing, reviewing, or
+  refactoring Rust, when a compiler error suggests the model is wrong, or when
+  auditing unwrap, unsafe, secrets, or locks. Invoke with /rust-best-practice.
+license: MIT
 ---
 
-# Rust Quality Coding
+# Rust
 
 写 Rust 时，先让数据的流向和约束变得清楚，再让代码通过编译。这个 skill 提供的是设计顺序和取舍标准，不是一份把所有代码压成同一形状的禁令表。
 
 Rust 的难处通常不在语法。一个 `borrow of moved value`、难以写出的 trait bound，或必须处处加 `Arc<Mutex<_>>`，往往说明数据的所有者、状态的边界或扩展点还没有决定好。把这些决定补上，编译器的限制会成为设计的校验，而不是需要绕过的障碍。
 
-## 适用范围
-
-在新增或改动类型、公共 API、trait、错误路径、并发代码、模块边界时使用。普通的局部表达式、命名或 clippy 风格问题不需要把本 skill 当成流程。
+## 先看哪一层
 
 | 需要解决的问题 | 使用的资料 |
 | --- | --- |
 | 所有权、借用、领域类型、错误或生命周期 | [core.md](references/core.md) |
 | trait、泛型、`impl Trait`、`dyn Trait`、标准 trait | [traits.md](references/traits.md) |
 | async、任务、共享状态、channel、Axum 或协议解析 | [async-design.md](references/async-design.md) |
+| 长连接 TCP / WebSocket、framing、背压、半关闭 | [tokio-net.md](references/tokio-net.md) |
+| 生产路径上的 `unwrap` / `expect`、`unsafe`、密钥、锁、release profile | [strict.md](references/strict.md) |
+| 命名、serde、宏、集合、性能、文档等条文 | [rules-index.md](references/rules-index.md)，再打开 `rules/` |
 
-`rust-strict` 负责安全审计；`rust-skills` 负责细粒度的惯例和工具使用。本 skill 负责在写之前和审查时做架构判断。涉及 unsafe、密钥、权限或并发安全时，同时遵从更严格的安全要求。
+三层同时适用时：
+
+- 设计顺序以本文件为准。说得清新副本归谁用时，`.clone()` 是正当的所有权决定；[own-borrow-over-clone](rules/own-borrow-over-clone.md) 只检查这次复制是否必要。
+- 安全约束以 [strict.md](references/strict.md) 为准。
+- `rules/` 里的条文与上面两层冲突时，服从上面两层。
+
+普通的局部表达式、命名或 clippy 风格问题，直接查规则索引，不必把设计顺序走一遍。
 
 ## 从问题到代码
 
@@ -72,7 +85,7 @@ trait 描述一项可替换的能力，不是带字段的父类。把构造、�
 
 在失败发生处保留足够的信息，并用 `?` 交给能做出决定的上一层。库和可复用模块通常需要让调用者区分错误；应用入口、HTTP handler 或命令行入口则可以补充上下文、记录日志并映射成退出码或响应。
 
-是否采用 `thiserror`、`anyhow` 或项目现有错误类型取决于边界和仓库约定。不要为了统一而把所有错误提前转成 `String`，也不要把用户输入、网络、文件和数据库失败当作不变量而 `unwrap()`。
+默认是库用结构化错误、应用在边界补上下文，见 [strict.md](references/strict.md)。沿用仓库已有的错误类型。不要为了统一而把所有错误提前转成 `String`，也不要把用户输入、网络、文件和数据库失败当作不变量而 `unwrap()`。
 
 ### 5. 把并发放在资源边界
 
@@ -107,5 +120,6 @@ trait 描述一项可替换的能力，不是带字段的父类。把构造、�
 - trait 是否来自实际替换需求，且每个方法都属于同一项能力？
 - 错误是否能到达处理边界，保留排查所需的来源和上下文？
 - async 代码是否避免阻塞运行时，并有明确的状态共享、背压和退出方式？
+- 若改动碰到 `unsafe`、密钥、`unwrap` 或锁，是否满足 [strict.md](references/strict.md)？
 
 高质量 Rust 的标志不是零个 `clone`、零个 trait 或所有类型都泛型化，而是读者能沿签名看出值如何流动、哪些状态可能发生，以及失败在哪里被处理。

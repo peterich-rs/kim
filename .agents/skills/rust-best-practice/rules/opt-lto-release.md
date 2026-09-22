@@ -6,6 +6,8 @@
 
 Link-Time Optimization (LTO) enables optimizations across crate boundaries that aren't possible during normal compilation. This includes cross-crate inlining, dead code elimination, and devirtualization. Typically provides 5-20% performance improvement.
 
+Which setting to ship is in [strict.md](../references/strict.md): desktop apps use full LTO and `panic = "abort"`; servers use thin LTO. The samples below explain the knobs.
+
 ## Bad
 
 ```toml
@@ -15,7 +17,7 @@ opt-level = 3
 # No LTO = missed optimization opportunities
 ```
 
-## Good
+## Example: smallest desktop binary
 
 ```toml
 # Cargo.toml - optimized release profile
@@ -77,7 +79,7 @@ panic = "abort"
 strip = "symbols"
 ```
 
-## Complete Optimized Profile
+## Example profile, continued
 
 ```toml
 [profile.release]
@@ -109,7 +111,7 @@ opt-level = 3        # Optimize dependencies even in dev
 |-----------|-------------|
 | Development | `false` (fast compiles) |
 | CI builds | `"thin"` (balance) |
-| Release binaries | `"fat"` (max perf) |
+| Release binaries | [strict.md](../references/strict.md): full LTO for desktop apps, thin LTO for servers |
 | Libraries (crates.io) | `false` (users choose) |
 
 ## Measuring Impact

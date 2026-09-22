@@ -4,7 +4,9 @@
 
 ## Why It Matters
 
-The default release profile prioritizes compile speed over runtime performance. For production binaries, tuning the release profile can yield significant performance improvements (10-40% in some cases) at the cost of longer compile times.
+The default release profile prioritizes compile speed over runtime performance. Tuning it can improve runtime speed at the cost of longer compiles.
+
+Which profile to copy is in [strict.md](../references/strict.md): desktop apps use full LTO and `panic = "abort"`; servers use thin LTO. The samples below explain the knobs.
 
 ## Default Profile
 
@@ -16,7 +18,7 @@ lto = false
 codegen-units = 16
 ```
 
-## Optimized Profile
+## Example: smallest desktop binary
 
 ```toml
 [profile.release]

@@ -1,17 +1,6 @@
----
-name: rust-strict
-description: >
-  Rust security, strictness, and vulnerability prevention rules. Use when writing,
-  reviewing, or auditing Rust code. Complements rust-skills (179 general rules) with
-  security-focused rules: unsafe audit, unwrap/expect bans, error handling hierarchy,
-  secret handling, concurrency safety, input validation for Tauri commands, and
-  release profile hardening. Derived from production Rust projects.
----
+# Rust security constraints
 
-# Rust Strict Standard
-
-Security and strictness rules complementing the existing `rust-skills` (179 rules).
-These rules are derived from 5 production Rust projects.
+This file is the authority for production `unwrap`/`expect`, `unsafe`, secrets, locks held across `.await`, and release profiles. Design order is in `SKILL.md`.
 
 ## CRITICAL: Workspace Lint Configuration
 
@@ -24,8 +13,8 @@ unsafe_code = "deny"              # No unsafe in production code
 unused_qualifications = "deny"
 
 [workspace.lints.clippy]
-unwrap_used = "deny"              # Force proper error handling
-expect_used = "deny"              # Same: use ? or ok_or_else()
+unwrap_used = "deny"              # Production paths use ?
+expect_used = "deny"              # expect only for the exceptions below
 ```
 
 Per-crate opt-in:
@@ -35,21 +24,30 @@ Per-crate opt-in:
 workspace = true
 ```
 
-### Exceptions (feature-gated, never blanket)
+### Exceptions
+
+`unwrap()` and `expect()` stay off production paths that handle user input, I/O, network, or parse failures. Three cases may panic, and the comment names the invariant:
+
+- Static initialization (`LazyLock`, `OnceLock`, a literal regex).
+- A program invariant already guaranteed by types or an earlier check, where failure is a bug.
+- Tests.
+
+Workspace lints stay `deny`. A local `#[allow]` names the invariant. Do not allow the lint for a whole crate. `unsafe_code` stays denied outside the crate that actually needs FFI or intrinsics.
 
 ```rust
 // FFI crate only: deny everywhere else
 #![cfg_attr(feature = "local-llm", allow(unsafe_code))]
 
-// Static initialization (regex, lazy): this is the ONLY acceptable expect()
 static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"...").expect("regex must compile") // Bug if this fails
+    Regex::new(r"...").expect("regex literal must compile")
 });
 ```
 
 ## CRITICAL: Error Handling Hierarchy
 
 ### Rule: Library crates use `thiserror`, app crates use `anyhow`
+
+Keep a structured error until the boundary that records or presents it. Do not turn it into `String` earlier. Tauri commands below are the framework exception.
 
 ```rust
 // Library crate: structured errors
@@ -350,7 +348,7 @@ Default to `checked_*` for anything user-influenced (sizes, counts, indices).
 
 ## HIGH: Edition 2024
 
-Edition 2024 ships with Rust 1.85 (Feb 2025). Current stable is **1.95.0**. New crates start at edition 2024 with current stable. Migration changes that affect strict-mode rules:
+Edition 2024 ships with Rust 1.85. New crates start at edition 2024. Migration changes that affect these rules:
 
 ### Rule: Wrap external symbols in `unsafe extern "C"` blocks
 
@@ -429,7 +427,7 @@ opt-level = 3         # Optimize deps in dev (faster runtime)
 ## Vulnerability Checklist
 
 - [ ] No `unsafe` blocks without SAFETY comments and justification
-- [ ] No `.unwrap()` or `.expect()` in production (deny via lint)
+- [ ] No `.unwrap()` or `.expect()` on user input, I/O, network, or parse failures. Static init, proven invariants, and tests are the exceptions, with the invariant named beside the call
 - [ ] No string-constructed commands (enum-constrained)
 - [ ] No predictable temp file paths (use `tempfile` crate)
 - [ ] No secrets in source code (use env vars, Keychain, obfstr)
