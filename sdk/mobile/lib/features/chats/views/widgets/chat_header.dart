@@ -2,7 +2,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -45,47 +44,55 @@ class ChatHeader extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: Row(
-              children: [
-                if (!wide)
-                  FrostedCircleButton(
-                    key: const Key('chat-back'),
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go(AppRoutes.home);
-                      }
-                    },
-                    child: const Icon(LucideIcons.chevronLeft, size: 22),
+            child: SizedBox(
+              width: double.infinity,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (!wide)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FrostedCircleButton(
+                        key: const Key('chat-back'),
+                        onTap: () {
+                          if (context.canPop()) {
+                            context.pop();
+                          } else {
+                            context.go(AppRoutes.home);
+                          }
+                        },
+                        child: const Icon(LucideIcons.chevronLeft, size: 22),
+                      ),
+                    ),
+                  ChatTitleChrome(
+                    title: title,
+                    avatarUrl: avatarUrl,
+                    avatar: KimAvatar(
+                      name: title,
+                      url: avatarUrl,
+                      size: KimAvatarSize.sm,
+                      shape: KimAvatarShape.squircle,
+                    ),
+                    presence: presence,
+                    onTap: kind == ThreadKind.user
+                        ? () => openKimPeerProfile(
+                            context,
+                            ref,
+                            id: dest,
+                            title: title,
+                          )
+                        : null,
                   ),
-                if (!wide) const Gap(8),
-                ChatTitleChrome(
-                  title: title,
-                  avatarUrl: avatarUrl,
-                  avatar: KimAvatar(
-                    name: title,
-                    url: avatarUrl,
-                    size: KimAvatarSize.sm,
-                    shape: KimAvatarShape.squircle,
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FrostedCircleButton(
+                      key: const Key('chat-more'),
+                      tooltip: l10n.more,
+                      child: const Icon(LucideIcons.ellipsis, size: 20),
+                    ),
                   ),
-                  presence: presence,
-                  onTap: kind == ThreadKind.user
-                      ? () => openKimPeerProfile(
-                          context,
-                          ref,
-                          id: dest,
-                          title: title,
-                        )
-                      : null,
-                ),
-                const Spacer(),
-                FrostedCircleButton(
-                  key: const Key('chat-more'),
-                  tooltip: l10n.more,
-                  child: const Icon(LucideIcons.ellipsis, size: 20),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           ConnectionBanner(

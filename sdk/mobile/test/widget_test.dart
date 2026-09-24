@@ -17,6 +17,7 @@ import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/conversation_tile.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/design/status_chip.dart';
+import 'package:kim_mobile/features/chats/providers/chat_chrome.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -416,6 +417,16 @@ void main() {
     expect(find.byKey(const Key('chat-composer')), findsOneWidget);
     expect(find.text('Bobby'), findsWidgets);
     expect(find.byType(PeerPresenceDot), findsWidgets);
+    final title = tester.getRect(find.byType(ChatTitleChrome));
+    final back = tester.getRect(find.byKey(const Key('chat-back')));
+    final more = tester.getRect(find.byKey(const Key('chat-more')));
+    final screenWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(title.center.dx, closeTo(screenWidth / 2, 2));
+    expect(back.center.dy, closeTo(title.center.dy, 1));
+    expect(more.center.dy, closeTo(title.center.dy, 1));
+    expect(back.left, lessThan(title.left));
+    expect(more.right, greaterThan(title.right));
   });
 
   testWidgets('chat composer sits below the message list', (tester) async {

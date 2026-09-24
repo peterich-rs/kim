@@ -84,6 +84,16 @@ fn already_compacted(older: &[Message]) -> bool {
             .all(|message| !message.is_user_visible() && message.as_concat_text().starts_with(MARK))
 }
 
+/// Usable window is the tighter of the profile override and the provider native limit.
+/// Catalog defaults stamped onto `ModelConfig` must not hide a smaller provider window
+/// (`ScriptedProvider::with_context_limit`, or a model the provider actually supports).
+fn usable_context_limit(model_limit: Option<usize>, provider_native: usize) -> usize {
+    match model_limit {
+        Some(limit) => limit.min(provider_native),
+        None => provider_native,
+    }
+}
+
 impl CompactionOp {
     async fn summarize(&self, older: &[Message]) -> String {
         let cfg = summarize_config(&self.model.model_name);
@@ -203,10 +213,11 @@ impl Operation<HostSession, HostEffect> for CompactionOp {
         conversation: &Conversation,
         _emit: &goose_agent::operation::Emitter,
     ) -> Result<OperationResult<HostEffect>> {
-        let limit = self
+        let native = self
             .provider
-            .get_context_limit(&self.model.model_name, self.model.context_limit)
+            .get_context_limit(&self.model.model_name, None)
             .await;
+        let limit = usable_context_limit(self.model.context_limit, native);
         let threshold = limit.saturating_mul(70) / 100;
         let tokens = estimate_tokens(conversation, &self.input_tokens);
         if threshold == 0 || tokens <= threshold {
@@ -260,5 +271,12 @@ mod tests {
     fn force_noop_when_nothing_to_shrink() {
         let conv = Conversation::new_unvalidated(vec![Message::user().with_text("only")]);
         assert!(shrink_current_turn(&conv, 200).is_none());
+    }
+
+    #[test]
+    fn usable_limit_prefers_tighter_provider_window() {
+        assert_eq!(usable_context_limit(Some(128_000), 8), 8);
+        assert_eq!(usable_context_limit(Some(4), 8), 4);
+        assert_eq!(usable_context_limit(None, 8), 8);
     }
 }
