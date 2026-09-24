@@ -3,7 +3,11 @@ use std::process::Command;
 #[test]
 fn direct_launch_exits_2_without_codex_home() {
     let home = tempfile::tempdir().expect("tempdir");
-    let status = Command::new(env!("CARGO_BIN_EXE_kim_codex_helper"))
+    // Cargo 1.95 exports `CARGO_BIN_EXE_<bin-name>` with the hyphenated
+    // target name, and only on the running test — not to `env!`.
+    let exe = std::env::var("CARGO_BIN_EXE_kim-codex-helper")
+        .expect("cargo sets CARGO_BIN_EXE_kim-codex-helper for this test");
+    let status = Command::new(exe)
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
         .env_remove("CODEX_HOME")
