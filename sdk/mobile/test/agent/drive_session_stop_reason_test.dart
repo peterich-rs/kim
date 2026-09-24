@@ -155,6 +155,10 @@ void main() {
         );
       };
     final done = loop.start();
+    // Broadcast drops events with no listeners — wait for watch to attach.
+    // The loop resubscribes until stop(), so closing the controller does not
+    // finish start().
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     fake.agentRunCtrl.add(
       AgentRunRequest(
         dest: 'b_bot',
@@ -164,7 +168,10 @@ void main() {
         epoch: BigInt.one,
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    for (var i = 0; i < 50 && fake.submittedAgentRuns.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    await loop.stop();
     await fake.agentRunCtrl.close();
     await done;
     expect(fake.submittedAgentRuns, isNotEmpty);

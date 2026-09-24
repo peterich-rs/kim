@@ -482,21 +482,30 @@ void main() {
   });
 
   testWidgets('long-pressing a message offers copy', (tester) async {
-    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
-    final fake = FakeKim();
-    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake));
-    await pumpUi(tester);
+    // Desktop selects text instead of opening the copy sheet. CI is Linux
+    // with an en_US locale; this gesture is the phone sheet in zh.
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.platformDispatcher.localesTestValue = const [Locale('zh')];
+    try {
+      final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+      final fake = FakeKim();
+      fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+      await tester.pumpWidget(host(env.runtime, fake));
+      await pumpUi(tester);
 
-    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
-    await pumpUi(tester);
-    await tester.tap(find.text('hello from bob'));
-    await pumpUi(tester);
+      fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
+      await pumpUi(tester);
+      await tester.tap(find.text('hello from bob'));
+      await pumpUi(tester);
 
-    await tester.longPress(find.text('hello from bob'));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text(Copy.copy), findsOneWidget);
-    expect(find.text(Copy.quote), findsOneWidget);
+      await tester.longPress(find.text('hello from bob'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(Copy.copy), findsOneWidget);
+      expect(find.text(Copy.quote), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      tester.platformDispatcher.clearLocalesTestValue();
+    }
   });
 
   testWidgets('auth toggle keeps typed account without swapping routes', (

@@ -158,6 +158,7 @@ void main() {
         },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
         AgentRunRequest(
           dest: 'agent:p-1',
@@ -167,7 +168,10 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.lastProfileJson == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
 
@@ -217,6 +221,7 @@ void main() {
         },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
         AgentRunRequest(
           dest: 'agent:p-1',
@@ -226,7 +231,10 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.lastProfileJson == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
 
@@ -270,6 +278,7 @@ void main() {
         },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
         AgentRunRequest(
           dest: 'agent:p-1',
@@ -279,7 +288,10 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.prepared < 1; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
       expect(bridge.prepared, 1);
@@ -317,6 +329,7 @@ void main() {
         },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
         AgentRunRequest(
           dest: 'agent:p-1',
@@ -326,7 +339,9 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.prepared < 1; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       env.fake.agentRunCtrl.add(
         AgentRunRequest(
           dest: 'agent:p-1',
@@ -336,7 +351,10 @@ void main() {
           epoch: BigInt.two,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.prepared < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
       expect(bridge.prepared, 2);
