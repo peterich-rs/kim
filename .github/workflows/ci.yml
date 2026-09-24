@@ -70,6 +70,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # kim-agent-host and kim-codex-helper path-depend on the Codex
+          # submodule. Cargo reads those manifests for every workspace command.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make postgresql-client
@@ -103,6 +107,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Same Codex path deps as the Rust jobs. `cargo build -p chat`
+          # still loads every workspace member manifest.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
@@ -145,6 +153,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Desktop Flutter tests compile kim-client-ffi, which enables the
+          # Codex feature. `cargo fmt --all` also needs those manifests.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
