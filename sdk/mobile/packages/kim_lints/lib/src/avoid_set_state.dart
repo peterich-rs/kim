@@ -1,4 +1,4 @@
-import 'package:analyzer/error/error.dart' show ErrorSeverity;
+import 'package:analyzer/error/error.dart' show DiagnosticSeverity;
 import 'package:analyzer/error/listener.dart';
 import 'package:custom_lint_builder/custom_lint_builder.dart';
 
@@ -15,13 +15,13 @@ class AvoidSetState extends DartLintRule {
         'Move the field into a Notifier, or mark the file '
         '`// kim_lint: allow_ephemeral_set_state` when the state is only '
         'focus, scroll, or animation.',
-    errorSeverity: ErrorSeverity.ERROR,
+    errorSeverity: DiagnosticSeverity.ERROR,
   );
 
   @override
   void run(
     CustomLintResolver resolver,
-    ErrorReporter reporter,
+    DiagnosticReporter reporter,
     CustomLintContext context,
   ) {
     final path = resolver.source.fullName.replaceAll('\\', '/');
