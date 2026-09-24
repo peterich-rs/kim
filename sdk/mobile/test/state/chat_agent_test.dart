@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';
@@ -13,8 +15,10 @@ void main() {
     final loop = AgentRunLoop(env.fake, AgentBridge())
       ..promptOverride = (req) async => 'echo:${req.text}';
     final done = loop.start();
+    // Broadcast drops events with no listeners — wait for watch to attach.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     env.fake.agentRunCtrl.add(
-      AgentRunRequestDto(
+      AgentRunRequest(
         dest: 'b_bot',
         profileId: 'bot',
         text: 'hi',
@@ -22,9 +26,12 @@ void main() {
         epoch: BigInt.one,
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    for (var i = 0; i < 50 && env.fake.submittedAgentRuns.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     expect(env.fake.submittedAgentRuns, isNotEmpty);
     expect(env.fake.submittedAgentRuns.single.output, 'echo:hi');
+    await loop.stop();
     await env.fake.agentRunCtrl.close();
     await done;
   });

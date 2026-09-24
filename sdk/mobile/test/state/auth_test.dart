@@ -2,10 +2,11 @@ import 'package:flutter_riverpod/experimental/mutation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/session/session.dart';
+import 'package:kim_mobile/src/rust/api/failure.dart';
 
 import '../support/harness.dart';
 
@@ -44,9 +45,9 @@ void main() {
     expect(env.container.read(signInMutation), isA<MutationSuccess<void>>());
   });
 
-  test('signIn mutation surfaces 401 as MutationError', () async {
+  test('signIn mutation surfaces unauthorized as MutationError', () async {
     final env = await kimHarness();
-    env.fake.error = Exception('http 401: 账号或密码错误');
+    env.fake.error = const ApiFailure.unauthorized();
     await expectLater(
       signInMutation.run(env.container, (tsx) {
         return tsx

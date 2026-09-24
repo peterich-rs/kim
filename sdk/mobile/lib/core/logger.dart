@@ -3,6 +3,10 @@ library;
 import 'package:flutter/foundation.dart';
 
 abstract final class KimLogger {
+  static void info(String message) {
+    debugPrint(_line('info', message, null));
+  }
+
   static void error(String message, [Object? error, StackTrace? stack]) {
     debugPrint(_line('error', message, error));
     if (stack != null) {

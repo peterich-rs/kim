@@ -4,11 +4,9 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'failure.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
-
-String greet({required String name}) =>
-    RustLib.instance.api.crateApiSimpleGreet(name: name);
 
 Future<Uint8List> specJsonToBlob({required String bodyJson}) =>
     RustLib.instance.api.crateApiSimpleSpecJsonToBlob(bodyJson: bodyJson);

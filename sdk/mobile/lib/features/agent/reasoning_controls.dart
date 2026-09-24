@@ -1,4 +1,4 @@
-/// Surface-driven reasoning widgets. Switch on [ReasoningSurfaceDto.kind] only.
+/// Surface-driven reasoning widgets. Switch on [ReasoningSurface.kind] only.
 library;
 
 import 'dart:convert';
@@ -20,7 +20,7 @@ class ReasoningControls extends StatelessWidget {
     this.advancedController,
   });
 
-  final ReasoningSurfaceDto surface;
+  final ReasoningSurface surface;
   final ReasoningChoice choice;
   final ValueChanged<ReasoningChoice> onChanged;
   final TextEditingController? advancedController;
@@ -101,7 +101,7 @@ class _EffortEnumControl extends StatelessWidget {
     required this.onChanged,
   });
 
-  final ReasoningSurfaceDto surface;
+  final ReasoningSurface surface;
   final ReasoningChoice choice;
   final ValueChanged<ReasoningChoice> onChanged;
 
@@ -156,7 +156,7 @@ class _BudgetTokensControl extends StatefulWidget {
     required this.onChanged,
   });
 
-  final ReasoningSurfaceDto surface;
+  final ReasoningSurface surface;
   final ReasoningChoice choice;
   final ValueChanged<ReasoningChoice> onChanged;
 

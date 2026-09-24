@@ -1118,4 +1118,56 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get agentSkillsPickerEmpty => 'No skills to assign yet';
+
+  @override
+  String get agentRuntimeTitle => 'Runtime';
+
+  @override
+  String get agentRuntimeCodexTitle => 'Run this assistant on Codex';
+
+  @override
+  String get agentRuntimeCodexSubtitle =>
+      'Goose stays the default. Set at create time; applies on the next session open. Existing sessions are not migrated.';
+
+  @override
+  String get providerAccountDeleted => 'Provider account deleted';
+
+  @override
+  String devPanelWipeBanner(int count) {
+    return 'Local store rebuilt for kim-sdk schema ×$count';
+  }
+
+  @override
+  String get devPanelGotIt => 'Got it';
+
+  @override
+  String get weekdayMon => 'Mon';
+
+  @override
+  String get weekdayTue => 'Tue';
+
+  @override
+  String get weekdayWed => 'Wed';
+
+  @override
+  String get weekdayThu => 'Thu';
+
+  @override
+  String get weekdayFri => 'Fri';
+
+  @override
+  String get weekdaySat => 'Sat';
+
+  @override
+  String get weekdaySun => 'Sun';
+
+  @override
+  String dateMd(int month, int day) {
+    return '$month/$day';
+  }
+
+  @override
+  String dateYmd(int year, int month, int day) {
+    return '$year/$month/$day';
+  }
 }

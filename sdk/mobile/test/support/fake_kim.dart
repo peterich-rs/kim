@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/handles.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 class FakeKim implements KimAuthPort, KimClientPort {
@@ -13,6 +14,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   KimAuthSession? session;
   Object? error;
   Object? connectError;
+  String? snapshotErrorOnConnect;
   Object? talkError;
   Object? watchThreadError;
   Duration? loginDelay;
@@ -46,16 +48,16 @@ class FakeKim implements KimAuthPort, KimClientPort {
   Completer<void>? sendHold;
   bool autoPushEnqueueTimeline = true;
 
-  final snapshotCtrl = StreamController<SessionSnapshotDto>.broadcast();
-  final sessionUpdateCtrl = StreamController<SessionUpdateDto>.broadcast();
-  final contactsCtrl = StreamController<ContactsSnapshotDto>.broadcast();
-  final timelines = <String, StreamController<TimelineUpdateDto>>{};
-  SessionSnapshotDto snapshot = const SessionSnapshotDto(
-    link: LinkStateDto.offline(),
+  final snapshotCtrl = StreamController<SessionSnapshot>.broadcast();
+  final sessionUpdateCtrl = StreamController<SessionUpdate>.broadcast();
+  final contactsCtrl = StreamController<ContactsSnapshot>.broadcast();
+  final timelines = <String, StreamController<TimelineUpdate>>{};
+  SessionSnapshot snapshot = const SessionSnapshot(
+    link: LinkState.offline(),
     threads: [],
     unreadTotal: 0,
   );
-  ContactsSnapshotDto contactsSnapshot = ContactsSnapshotDto(
+  ContactsSnapshot contactsSnapshot = ContactsSnapshot(
     version: BigInt.zero,
     contacts: const [],
     syncError: null,
@@ -77,16 +79,16 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return _ok();
   }
 
-  void pushSnapshot(SessionSnapshotDto s) {
+  void pushSnapshot(SessionSnapshot s) {
     snapshot = s;
     snapshotCtrl.add(s);
   }
 
-  void pushEvent(SessionUpdateDto e) {
+  void pushEvent(SessionUpdate e) {
     sessionUpdateCtrl.add(e);
   }
 
-  void pushContacts(ContactsSnapshotDto snapshot) {
+  void pushContacts(ContactsSnapshot snapshot) {
     contactsSnapshot = snapshot;
     friends = [
       for (final person in snapshot.contacts)
@@ -113,10 +115,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
     contactsCtrl.add(snapshot);
   }
 
-  void pushTimeline(String dest, TimelineUpdateDto u) {
+  void pushTimeline(String dest, TimelineUpdate u) {
     lastTimeline[dest] = u;
     timelines
-        .putIfAbsent(dest, StreamController<TimelineUpdateDto>.broadcast)
+        .putIfAbsent(dest, StreamController<TimelineUpdate>.broadcast)
         .add(u);
   }
 
@@ -125,7 +127,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     required String body,
     int id = 1,
   }) {
-    final thread = ThreadViewDto(
+    final thread = ThreadView(
       id: dest,
       kind: 0,
       title: dest,
@@ -136,7 +138,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     );
     final rest = snapshot.threads.where((t) => t.id != dest).toList();
     pushSnapshot(
-      SessionSnapshotDto(
+      SessionSnapshot(
         link: snapshot.link,
         lastError: snapshot.lastError,
         threads: [thread, ...rest],
@@ -145,13 +147,13 @@ class FakeKim implements KimAuthPort, KimClientPort {
     );
     pushTimeline(
       dest,
-      TimelineUpdateDto.delta(
-        delta: TimelineDeltaDto(
+      TimelineUpdate.delta(
+        delta: TimelineDelta(
           dest: dest,
           fromVersion: BigInt.zero,
           toVersion: BigInt.one,
           upserts: [
-            MessageViewDto(
+            MessageView(
               key: 'm$id',
               dest: dest,
               sender: dest,
@@ -162,7 +164,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
               width: 0,
               height: 0,
               messageId: id,
-              sendStatus: SendStatusDto.sent,
+              sendStatus: SendStatus.sent,
             ),
           ],
           deletedKeys: const [],
@@ -231,12 +233,23 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }) async {
     connects += 1;
     lastUserAgent = userAgent;
+    if (snapshotErrorOnConnect != null) {
+      pushSnapshot(
+        SessionSnapshot(
+          link: const LinkState.offline(),
+          lastError: snapshotErrorOnConnect,
+          threads: snapshot.threads,
+          unreadTotal: snapshot.unreadTotal,
+        ),
+      );
+      return;
+    }
     if (connectError != null) {
       throw connectError!;
     }
     pushSnapshot(
-      SessionSnapshotDto(
-        link: const LinkStateDto.online(),
+      SessionSnapshot(
+        link: const LinkState.online(),
         lastError: snapshot.lastError,
         threads: snapshot.threads,
         unreadTotal: snapshot.unreadTotal,
@@ -247,8 +260,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<void> stopSession() async {
     pushSnapshot(
-      SessionSnapshotDto(
-        link: const LinkStateDto.offline(),
+      SessionSnapshot(
+        link: const LinkState.offline(),
         threads: snapshot.threads,
         unreadTotal: snapshot.unreadTotal,
       ),
@@ -256,30 +269,30 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Stream<SessionSnapshotDto> watchSessionSnapshot() async* {
+  Stream<SessionSnapshot> watchSessionSnapshot() async* {
     yield snapshot;
     yield* snapshotCtrl.stream;
   }
 
   @override
-  Stream<SessionUpdateDto> watchSessionEvents() => sessionUpdateCtrl.stream;
+  Stream<SessionUpdate> watchSessionEvents() => sessionUpdateCtrl.stream;
 
   @override
-  Stream<ContactsSnapshotDto> watchContacts() async* {
+  Stream<ContactsSnapshot> watchContacts() async* {
     yield contactsSnapshot;
     yield* contactsCtrl.stream;
   }
 
-  final lastTimeline = <String, TimelineUpdateDto>{};
-  final olderTimeline = <String, List<MessageViewDto>>{};
+  final lastTimeline = <String, TimelineUpdate>{};
+  final olderTimeline = <String, List<MessageView>>{};
 
   /// Queues rows that [loadOlder] will expose through the next snapshot.
-  void setOlderTimeline(String dest, List<MessageViewDto> messages) {
+  void setOlderTimeline(String dest, List<MessageView> messages) {
     olderTimeline[dest] = List.of(messages);
   }
 
   @override
-  Stream<TimelineUpdateDto> watchThread(String dest, {int limit = 50}) {
+  Stream<TimelineUpdate> watchThread(String dest, {int limit = 50}) {
     final err = watchThreadError;
     if (err != null) {
       throw err;
@@ -287,21 +300,21 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return _watchThreadStream(dest);
   }
 
-  Stream<TimelineUpdateDto> _watchThreadStream(String dest) async* {
+  Stream<TimelineUpdate> _watchThreadStream(String dest) async* {
     final last = lastTimeline[dest];
     if (last != null) {
       yield last;
     }
     yield* timelines
-        .putIfAbsent(dest, StreamController<TimelineUpdateDto>.broadcast)
+        .putIfAbsent(dest, StreamController<TimelineUpdate>.broadcast)
         .stream;
   }
 
   @override
   Future<void> loadOlder({required String dest}) async {
     final current = lastTimeline[dest];
-    final queued = olderTimeline.remove(dest) ?? const <MessageViewDto>[];
-    if (current case TimelineUpdateDto_Snapshot(:final snapshot)) {
+    final queued = olderTimeline.remove(dest) ?? const <MessageView>[];
+    if (current case TimelineUpdate_Snapshot(:final snapshot)) {
       final byKey = {
         for (final message in snapshot.messages) message.key: message,
       };
@@ -315,8 +328,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
         });
       pushTimeline(
         dest,
-        TimelineUpdateDto.snapshot(
-          snapshot: TimelineSnapshotDto(
+        TimelineUpdate.snapshot(
+          snapshot: TimelineSnapshot(
             dest: snapshot.dest,
             version: snapshot.version + BigInt.one,
             messages: messages,
@@ -368,11 +381,11 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   void emitKick({String channelId = 'ch-1'}) {
-    pushEvent(SessionUpdateDto.kickout(channelId: channelId));
+    pushEvent(SessionUpdate.kickout(channelId: channelId));
   }
 
   void emitAuthExpired({String error = 'unauthorized'}) {
-    pushEvent(SessionUpdateDto.authExpired(reason: error));
+    pushEvent(SessionUpdate.authExpired(reason: error));
   }
 
   void emitFriend({
@@ -381,11 +394,9 @@ class FakeKim implements KimAuthPort, KimClientPort {
     bool accepted = false,
   }) {
     if (accepted) {
-      pushEvent(
-        SessionUpdateDto.friendAccepted(from: from, nickname: nickname),
-      );
+      pushEvent(SessionUpdate.friendAccepted(from: from, nickname: nickname));
     } else {
-      pushEvent(SessionUpdateDto.friendRequest(from: from, nickname: nickname));
+      pushEvent(SessionUpdate.friendRequest(from: from, nickname: nickname));
     }
   }
 
@@ -410,7 +421,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     friendRequests += 1;
     final contacts = [
       ...contactsSnapshot.contacts.where((p) => p.account != dest),
-      PersonDto(
+      Person(
         account: dest,
         nickname: dest,
         avatar: '',
@@ -420,7 +431,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
       ),
     ];
     pushContacts(
-      ContactsSnapshotDto(
+      ContactsSnapshot(
         version: contactsSnapshot.version + BigInt.one,
         contacts: contacts,
         syncError: contactsSnapshot.syncError,
@@ -677,13 +688,13 @@ class FakeKim implements KimAuthPort, KimClientPort {
     if (autoPushEnqueueTimeline) {
       pushTimeline(
         dest,
-        TimelineUpdateDto.delta(
-          delta: TimelineDeltaDto(
+        TimelineUpdate.delta(
+          delta: TimelineDelta(
             dest: dest,
             fromVersion: BigInt.zero,
             toVersion: BigInt.one,
             upserts: [
-              MessageViewDto(
+              MessageView(
                 key: clientId,
                 dest: dest,
                 sender: 'alice',
@@ -694,9 +705,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
                 width: width,
                 height: height,
                 messageId: 0,
-                sendStatus: failed
-                    ? SendStatusDto.failed
-                    : SendStatusDto.pending,
+                sendStatus: failed ? SendStatus.failed : SendStatus.pending,
                 localPath: localPath.isEmpty ? null : localPath,
               ),
             ],
@@ -739,8 +748,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastTalkDest = dest;
   }
 
-  final tokenPersistCtrl = StreamController<TokenPersistDto>.broadcast();
-  SettingsDto settings = const SettingsDto(
+  final tokenPersistCtrl = StreamController<TokenPersist>.broadcast();
+  Settings settings = const Settings(
     wsUrl: 'wss://kim.ainexc.com/',
     httpOrigin: 'https://kim.ainexc.com',
     env: 'prod',
@@ -749,18 +758,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
   );
 
   @override
-  Stream<TokenPersistDto> watchTokenPersist() => tokenPersistCtrl.stream;
+  Stream<TokenPersist> watchTokenPersist() => tokenPersistCtrl.stream;
 
   @override
-  Future<SettingsDto> settingsGet() async => settings;
+  Future<Settings> settingsGet() async => settings;
 
   @override
-  Future<SettingsDto> settingsPatch({
+  Future<Settings> settingsPatch({
     String? wsUrl,
     String? httpOrigin,
     String? env,
   }) async {
-    settings = SettingsDto(
+    settings = Settings(
       wsUrl: wsUrl ?? settings.wsUrl,
       httpOrigin: httpOrigin ?? settings.httpOrigin,
       env: env ?? settings.env,
@@ -771,14 +780,14 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<SettingsDto> importDeviceSettings({
+  Future<Settings> importDeviceSettings({
     required String wsUrl,
     required String httpOrigin,
     String env = 'prod',
     String locale = '',
   }) async {
     if (settings.wsUrl.isEmpty || settings.wsUrl == 'wss://kim.ainexc.com/') {
-      settings = SettingsDto(
+      settings = Settings(
         wsUrl: wsUrl,
         httpOrigin: httpOrigin,
         env: env,
@@ -789,23 +798,23 @@ class FakeKim implements KimAuthPort, KimClientPort {
     return settings;
   }
 
-  final agentRunCtrl = StreamController<AgentRunRequestDto>.broadcast();
-  final submittedAgentRuns = <AgentRunResultDto>[];
-  List<AgentProfileDto> agentProfiles = const [];
+  final agentRunCtrl = StreamController<AgentRunRequest>.broadcast();
+  final submittedAgentRuns = <AgentRunResult>[];
+  List<AgentProfile> agentProfiles = const [];
 
   @override
-  Stream<AgentRunRequestDto> watchAgentRun() => agentRunCtrl.stream;
+  Stream<AgentRunRequest> watchAgentRun() => agentRunCtrl.stream;
 
   @override
-  Future<void> submitAgentRun(AgentRunResultDto result) async {
+  Future<void> submitAgentRun(AgentRunResult result) async {
     submittedAgentRuns.add(result);
   }
 
   @override
-  Future<List<AgentProfileDto>> listAgentProfiles() async => agentProfiles;
+  Future<List<AgentProfile>> listAgentProfiles() async => agentProfiles;
 
   @override
-  Future<void> upsertAgentProfile(AgentProfileDto row) async {
+  Future<void> upsertAgentProfile(AgentProfile row) async {
     agentProfiles = [
       for (final p in agentProfiles)
         if (p.profileId != row.profileId) p,
@@ -822,22 +831,22 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<void> importAgentProfiles(List<AgentProfileDto> rows) async {
+  Future<void> importAgentProfiles(List<AgentProfile> rows) async {
     if (agentProfiles.isEmpty) {
       agentProfiles = rows;
     }
   }
 
-  List<ProviderAccountDto> providerAccounts = const [];
-  final overlays = <String, DeviceOverlayDto>{};
+  List<ProviderAccount> providerAccounts = const [];
+  final overlays = <String, DeviceOverlay>{};
   String flagsJson = '{}';
 
   @override
-  Future<List<ProviderAccountDto>> listProviderAccounts() async =>
+  Future<List<ProviderAccount>> listProviderAccounts() async =>
       providerAccounts;
 
   @override
-  Future<void> upsertProviderAccount(ProviderAccountDto row) async {
+  Future<void> upsertProviderAccount(ProviderAccount row) async {
     providerAccounts = [
       for (final a in providerAccounts)
         if (a.id != row.id) a,
@@ -854,20 +863,35 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<DeviceOverlayDto?> getDeviceOverlay(String profileId) async =>
+  Future<DeviceOverlay?> getDeviceOverlay(String profileId) async =>
       overlays[profileId];
 
   @override
-  Future<void> upsertDeviceOverlay(DeviceOverlayDto row) async {
+  Future<void> upsertDeviceOverlay(DeviceOverlay row) async {
     overlays[row.profileId] = row;
   }
 
   @override
-  Future<String> agentFlags() async => flagsJson;
+  Future<AgentFlags> agentFlags() async {
+    if (flagsJson.trim().isEmpty) {
+      return const AgentFlags(multiProfile: false, serverIdentity: false);
+    }
+    final decoded = jsonDecode(flagsJson);
+    if (decoded is! Map) {
+      return const AgentFlags(multiProfile: false, serverIdentity: false);
+    }
+    return AgentFlags(
+      multiProfile: decoded['multi_profile'] == true,
+      serverIdentity: decoded['server_identity'] == true,
+    );
+  }
 
   @override
-  Future<void> setAgentFlags(String flagsJson) async {
-    this.flagsJson = flagsJson;
+  Future<void> setAgentFlags(AgentFlags flags) async {
+    flagsJson = jsonEncode({
+      'multi_profile': flags.multiProfile,
+      'server_identity': flags.serverIdentity,
+    });
   }
 
   @override
@@ -884,38 +908,35 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<CommandAckDto> command(UiCommandDto cmd) async {
-    return const CommandAckDto(
+  Future<CommandAck> command(UiCommand cmd) async {
+    return const CommandAck(
       requestId: '',
       clientId: '',
       dest: '',
       acceptedAt: 0,
-      sendStatus: SendStatusDto.sent,
+      sendStatus: SendStatus.sent,
     );
   }
 
   @override
-  Future<List<MessageViewDto>> searchMessages(
-    String query, {
-    String? dest,
-  }) async {
+  Future<List<MessageView>> searchMessages(String query, {String? dest}) async {
     return const [];
   }
 
   @override
-  Future<LocalMediaDto> mediaFetch(String url) async {
-    return const LocalMediaDto(localPath: '', byteSize: 0, width: 0, height: 0);
+  Future<LocalMedia> mediaFetch(String url) async {
+    return const LocalMedia(localPath: '', byteSize: 0, width: 0, height: 0);
   }
 
   @override
-  Future<LocalMediaDto> mediaUpload({
+  Future<LocalMedia> mediaUpload({
     required String path,
     required String mime,
     int width = 0,
     int height = 0,
     int byteSize = 0,
   }) async {
-    return LocalMediaDto(
+    return LocalMedia(
       localPath: path,
       byteSize: byteSize,
       width: width,
@@ -924,8 +945,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<MetricsDto> metricsSnapshot() async {
-    return MetricsDto(
+  Future<Metrics> metricsSnapshot() async {
+    return Metrics(
       enqueueTotal: BigInt.zero,
       persistTalkTotal: BigInt.zero,
       epochDropTotal: BigInt.zero,
@@ -934,11 +955,29 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
+  Future<void> cacheAgentSecret({
+    required String keyRef,
+    required String secret,
+  }) async {}
+
+  @override
+  Future<void> respondAgentPermission({
+    required String callId,
+    required bool allow,
+  }) async {}
+
+  @override
+  Stream<AgentPermissionEvent> watchAgentPermission() => const Stream.empty();
+
+  @override
+  Stream<AgentUiStatus> watchAgentUi() => const Stream.empty();
+
+  @override
   Future<void> refreshContacts() async {
     final friendIds = {for (final p in friends) p.account};
     final rows = [
       for (final p in friends)
-        PersonDto(
+        Person(
           account: p.account,
           nickname: p.nickname,
           avatar: p.avatar,
@@ -947,7 +986,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
           kind: p.kind,
         ),
       for (final p in incoming)
-        PersonDto(
+        Person(
           account: p.account,
           nickname: p.nickname,
           avatar: p.avatar,
@@ -959,7 +998,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
         if (p.relation == 'outgoing' && !friendIds.contains(p.account)) p,
     ];
     pushContacts(
-      ContactsSnapshotDto(
+      ContactsSnapshot(
         version: contactsSnapshot.version + BigInt.one,
         contacts: rows,
         syncError: contactsSnapshot.syncError,

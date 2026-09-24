@@ -84,6 +84,73 @@ async fn start_session_starts_reconnect_loop_and_publishes_snapshot() {
 }
 
 #[tokio::test]
+async fn expired_token_latches_auth_expired_on_snapshot() {
+    let sdk = KimSdk::protocol_only();
+    let mut snap = sdk.subscribe_session_snapshot();
+    sdk.start_session(kim_sdk::StartSession {
+        url: "ws://127.0.0.1:1/".into(),
+        token: expired_jwt("alice"),
+        user_agent: "test".into(),
+        account: "alice".into(),
+    })
+    .await
+    .expect("session");
+    let last_error = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let err = snap.borrow().last_error.clone();
+            if err.as_deref() == Some("auth_expired") {
+                return err;
+            }
+            snap.changed().await.expect("watch");
+        }
+    })
+    .await
+    .expect("snapshot latches auth_expired");
+    assert_eq!(last_error.as_deref(), Some("auth_expired"));
+}
+
+fn expired_jwt(account: &str) -> String {
+    kim_protocol::generate(kim_protocol::DEMO_DEFAULT_SECRET, account, "kim", 1).unwrap()
+}
+
+fn future_jwt(account: &str) -> String {
+    kim_protocol::generate(
+        kim_protocol::DEMO_DEFAULT_SECRET,
+        account,
+        "kim",
+        4_000_000_000,
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn protocol_unauthorized_latches_snapshot() {
+    let sdk = KimSdk::protocol_only();
+    let mut snap = sdk.subscribe_session_snapshot();
+    sdk.start_session(kim_sdk::StartSession {
+        url: "ws://127.0.0.1:1/".into(),
+        token: future_jwt("alice"),
+        user_agent: "test".into(),
+        account: "alice".into(),
+    })
+    .await
+    .expect("session");
+    sdk.observe_error(&kim_sdk::SdkError::Unauthorized);
+    let last_error = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let err = snap.borrow().last_error.clone();
+            if err.as_deref() == Some("auth_expired") {
+                return err;
+            }
+            snap.changed().await.expect("watch");
+        }
+    })
+    .await
+    .expect("unauthorized call latches auth_expired");
+    assert_eq!(last_error.as_deref(), Some("auth_expired"));
+}
+
+#[tokio::test]
 async fn timeline_watch_starts_without_store() {
     let sdk = KimSdk::protocol_only();
     let rx = sdk.subscribe_timeline(TimelineQuery {

@@ -1,4 +1,3 @@
-/// In-app diagnostics. Never uses OS alerts or [showDialog].
 library;
 
 import 'package:flutter/material.dart';
@@ -13,7 +12,7 @@ import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/providers.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/features/settings/dev_panel_state.dart';
 
 class DevPanelPage extends ConsumerStatefulWidget {
   const DevPanelPage({super.key});
@@ -23,9 +22,6 @@ class DevPanelPage extends ConsumerStatefulWidget {
 }
 
 class _DevPanelPageState extends ConsumerState<DevPanelPage> {
-  MetricsDto? _metrics;
-  var _wipeSeen = 0;
-
   @override
   void initState() {
     super.initState();
@@ -40,8 +36,10 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
         return;
       }
       final prefs = ref.read(runtimeProvider).settings.prefs;
-      _wipeSeen = prefs.getInt('kim.wipe_banner_seen') ?? 0;
-      setState(() => _metrics = m);
+      final wipeSeen = prefs.getInt('kim.wipe_banner_seen') ?? 0;
+      ref
+          .read(devPanelProvider.notifier)
+          .showMetrics(metrics: m, wipeSeen: wipeSeen);
     } catch (e, st) {
       KimLogger.warn('metricsSnapshot', e, st);
     }
@@ -53,7 +51,7 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
         .settings
         .prefs
         .setInt('kim.wipe_banner_seen', total);
-    setState(() => _wipeSeen = total);
+    ref.read(devPanelProvider.notifier).ackWipe(total);
   }
 
   Future<void> _switchEnv(bool local) async {
@@ -75,11 +73,11 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
       KimLogger.warn('settingsPatch env', e, st);
     }
     ref.read(linkProvider.notifier).retry();
-    setState(() {});
+    ref.read(devPanelProvider.notifier).bump();
   }
 
   Future<void> _export() async {
-    final m = _metrics;
+    final m = ref.read(devPanelProvider).metrics;
     final settings = ref.read(runtimeProvider).settings;
     final panic = ref.read(rustPanicProvider);
     final text = [
@@ -100,10 +98,11 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(runtimeProvider).settings;
+    final panel = ref.watch(devPanelProvider);
     final local = settings.httpOrigin.contains('127.0.0.1');
-    final m = _metrics;
+    final m = panel.metrics;
     final wipe = m?.storeWipeTotal.toInt() ?? 0;
-    final showWipe = wipe > _wipeSeen;
+    final showWipe = wipe > panel.wipeSeen;
     final panic = ref.watch(rustPanicProvider);
     return Scaffold(
       appBar: AppBar(
@@ -115,11 +114,11 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
         children: [
           if (showWipe)
             MaterialBanner(
-              content: Text('本地库已按 kim-sdk schema 重建 ×$wipe'),
+              content: Text(Copy.devPanelWipeBanner(wipe)),
               actions: [
                 TextButton(
                   onPressed: () => _ackWipe(wipe),
-                  child: const Text('知道了'),
+                  child: Text(Copy.devPanelGotIt),
                 ),
               ],
             ),

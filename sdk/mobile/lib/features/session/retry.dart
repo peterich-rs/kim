@@ -15,9 +15,9 @@ Duration? kimRetry(int retryCount, Object error) {
     ProviderException(:final exception) => exception,
     _ => error,
   };
-  final kim = KimException.tryFrom(inner);
-  if (kim != null) {
-    return kim.retryable
+  final failure = apiFailureOf(inner);
+  if (failure != null) {
+    return failure.retryable
         ? ProviderContainer.defaultRetry(retryCount, inner)
         : null;
   }

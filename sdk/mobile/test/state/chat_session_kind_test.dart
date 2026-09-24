@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/chats/chat_session.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/chat_session.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';
@@ -16,11 +16,11 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
+      SessionSnapshot(
         link: env.fake.snapshot.link,
         lastError: env.fake.snapshot.lastError,
         threads: const [
-          ThreadViewDto(
+          ThreadView(
             id: 'G1',
             kind: 1,
             title: 'G1',
@@ -51,11 +51,11 @@ void main() {
     );
     env.container.read(threadsProvider);
     env.fake.pushSnapshot(
-      SessionSnapshotDto(
+      SessionSnapshot(
         link: env.fake.snapshot.link,
         lastError: env.fake.snapshot.lastError,
         threads: const [
-          ThreadViewDto(
+          ThreadView(
             id: 'bob',
             kind: 0,
             title: 'bob',

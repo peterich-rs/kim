@@ -6,14 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/failures.dart';
+import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
@@ -92,7 +91,7 @@ class ContactsState {
 }
 
 class ContactsNotifier extends Notifier<ContactsState> {
-  StreamSubscription<ContactsSnapshotDto>? _contacts;
+  StreamSubscription<ContactsSnapshot>? _contacts;
 
   @override
   ContactsState build() {
@@ -106,7 +105,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
       }
     });
     ref.listen(kimSessionProvider.select((s) => s.link), (prev, next) {
-      if (next is LinkStateDto_Online) {
+      if (next is LinkState_Online) {
         unawaited(refresh());
       }
     });
@@ -123,7 +122,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
       if (!ref.mounted) {
         return;
       }
-      if (ref.read(kimSessionProvider).link is LinkStateDto_Online) {
+      if (ref.read(kimSessionProvider).link is LinkState_Online) {
         unawaited(refresh());
       }
     });
@@ -242,7 +241,7 @@ class ContactsNotifier extends Notifier<ContactsState> {
     await KimHaptics.success();
   }
 
-  void _applySnapshot(ContactsSnapshotDto snapshot) {
+  void _applySnapshot(ContactsSnapshot snapshot) {
     if (!ref.mounted) {
       return;
     }
@@ -287,18 +286,4 @@ final contactsProvider = NotifierProvider<ContactsNotifier, ContactsState>(
   ContactsNotifier.new,
 );
 
-String socialError(Object err) {
-  final kim = KimException.tryFrom(err);
-  if (kim != null) {
-    return switch (kim.kind) {
-      KimErrorKind.userNotFound => Copy.userNotFound,
-      KimErrorKind.blocked => Copy.blocked,
-      KimErrorKind.cannotChatSelf => Copy.cannotAddSelf,
-      KimErrorKind.notFriends => Copy.notFriends,
-      KimErrorKind.protocol when kim.message.contains('113') =>
-        Copy.botSocialDenied,
-      _ => Copy.sendFailed,
-    };
-  }
-  return Copy.sendFailed;
-}
+String socialError(Object err) => socialFailureCopy(err);

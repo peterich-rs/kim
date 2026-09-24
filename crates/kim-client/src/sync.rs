@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use tokio::sync::{broadcast, watch, Notify};
-use tracing::{debug, warn};
+use tracing::{info, warn};
 
 use crate::events::{IncomingTalk, Message, MessageIndex};
 use crate::link::DropReason;
@@ -159,10 +159,12 @@ impl SyncEngine {
     ) -> Result<usize, ClientError> {
         let account = client.session().account;
         let items = client.inbox_list(INBOX_LIMIT).await?;
+        info!(account = %account, inbox = items.len(), "sync inbox");
         if let Some(hook) = persist.as_ref() {
             let token = match hook.begin_inbox_sync().await {
                 Ok(t) => t,
                 Err(err) => {
+                    warn!(error = %err, "inbox sync begin failed");
                     let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
                     return Ok(0);
                 }
@@ -170,6 +172,7 @@ impl SyncEngine {
             let persist_result = hook.persist_inbox_with_token(&items, token).await;
             hook.finish_inbox_sync(token).await;
             if let Err(err) = persist_result {
+                warn!(error = %err, "inbox persist failed");
                 let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
                 return Ok(0);
             }
@@ -200,6 +203,7 @@ impl SyncEngine {
             if let Some(hook) = persist.as_ref() {
                 if new_count > 0 {
                     if let Err(err) = hook.persist_talks(&talks, UnreadPolicy::Keep).await {
+                        warn!(error = %err, page_id = max_id, "offline persist failed");
                         let _ = events.send(SessionEvent::SyncFailed(err.to_string()));
                         return Ok(pulled);
                     }
@@ -236,7 +240,7 @@ impl SyncEngine {
             }
         }
         let _ = events.send(SessionEvent::SyncDone { pulled });
-        debug!(pulled, "sync done");
+        info!(pulled, "sync done");
         Ok(pulled)
     }
 }

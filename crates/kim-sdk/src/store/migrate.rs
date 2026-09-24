@@ -239,7 +239,10 @@ async fn ensure_column(
         return Ok(());
     }
     let sql = format!("ALTER TABLE {table} ADD COLUMN {column} {spec}");
-    tx.execute(sql.as_str()).await.map_err(map_sqlx)?;
+    // Identifiers come from this crate's migrations, not user input.
+    tx.execute(sqlx::AssertSqlSafe(sql))
+        .await
+        .map_err(map_sqlx)?;
     Ok(())
 }
 
@@ -249,7 +252,7 @@ async fn column_exists(
     column: &str,
 ) -> Result<bool, SdkError> {
     let sql = format!("PRAGMA table_info({table})");
-    let rows = sqlx::query(&sql)
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
         .fetch_all(&mut *tx)
         .await
         .map_err(map_sqlx)?;

@@ -1,0 +1,6 @@
+{
+    "dart.flutterSdkPath": "sdk/mobile/.fvm/flutter_sdk",
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml"
+    ]
+}

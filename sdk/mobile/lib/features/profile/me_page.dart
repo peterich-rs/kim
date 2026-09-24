@@ -15,10 +15,11 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/env.dart';
+import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/ota_info.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
@@ -30,6 +31,7 @@ import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/design/status_chip.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 class MePage extends ConsumerWidget {
   const MePage({super.key});
@@ -105,7 +107,7 @@ class MePage extends ConsumerWidget {
                       leading: const Icon(LucideIcons.lock),
                       title: Text(Copy.changePassword),
                       trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                      onTap: () => context.push('/password'),
+                      onTap: () => context.push(AppRoutes.password),
                     ),
                     const Divider(indent: 56),
                     ListTile(
@@ -137,7 +139,7 @@ class MePage extends ConsumerWidget {
                           LucideIcons.chevronRight,
                           size: 18,
                         ),
-                        onTap: () => context.push('/agent'),
+                        onTap: () => context.push(AppRoutes.agent),
                       ),
                       const Divider(indent: 56),
                     ],
@@ -149,7 +151,7 @@ class MePage extends ConsumerWidget {
                           LucideIcons.chevronRight,
                           size: 18,
                         ),
-                        onTap: () => context.push('/dev'),
+                        onTap: () => context.push(AppRoutes.dev),
                       ),
                       const Divider(indent: 56),
                     ],
@@ -292,7 +294,7 @@ class _AvatarButton extends ConsumerWidget {
       }
     } catch (err) {
       if (context.mounted) {
-        _toastFail(context, _avatarError(err));
+        _toastFail(context, avatarFailureCopy(err));
       }
     }
   }
@@ -309,31 +311,6 @@ class _AvatarButton extends ConsumerWidget {
       autoCloseDuration: const Duration(seconds: 3),
       alignment: Alignment.topCenter,
     );
-  }
-
-  String _avatarError(Object err) {
-    final msg = err.toString();
-    if (msg.contains(Copy.avatarExportFailed)) {
-      return Copy.avatarExportFailed;
-    }
-    if (msg.contains('unsupported media type') || msg.contains('415')) {
-      return Copy.avatarUnsupportedType;
-    }
-    if (msg.contains('401') || msg.contains('unauthorized')) {
-      return Copy.avatarRelogin;
-    }
-    if (msg.contains('too large') || msg.contains('413')) {
-      return Copy.avatarFailed;
-    }
-    if (msg.contains('connect first') || msg.contains(Copy.notConnected)) {
-      return Copy.notConnected;
-    }
-    if (msg.contains('upload') ||
-        msg.contains('Socket') ||
-        msg.contains('network')) {
-      return Copy.network;
-    }
-    return Copy.avatarFailed;
   }
 }
 

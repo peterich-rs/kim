@@ -17,7 +17,7 @@ mod timeline;
 pub mod outbox;
 pub mod sync;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use crate::proto::ObservingProtocol;
 pub use agent::{
     AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, DeviceOverlayRow,
     FfiAgentRuntime, MobileAgent, NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
@@ -33,7 +34,7 @@ pub use command::{
     CommandReceipt, ConversationKey, ConversationVisibility, MessagePage, OutgoingPayload,
     PageCursor, ReadMarker, SendMessageCommand, SendStatus, StartSession, TimelineQuery,
 };
-pub use error::{map_client, SdkError};
+pub use error::{map_client, status_to_sdk_error, SdkError};
 pub use ids::{
     incoming_message_key, is_client_key, prefer_key, AccountId, ClientMessageId, DestId,
     SessionEpoch,
@@ -46,7 +47,8 @@ pub use store::settings::DeviceSettings;
 pub use sync::UnreadPolicy;
 pub use timeline::{
     AgentCard, AgentTurnState, ContactsSnapshot, LinkStateView, MessageView, PersonRef,
-    SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot, TimelineUpdate,
+    SessionFault, SessionSnapshot, SessionUpdate, ThreadView, TimelineDelta, TimelineSnapshot,
+    TimelineUpdate,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,8 +101,14 @@ pub(crate) struct Inner {
     outbox_run: Mutex<CancellationToken>,
     read_sync_kick: Mutex<Option<mpsc::Sender<()>>>,
     token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
+    /// Identity is over. Latched from the link loop *and* any protocol call.
+    /// The session snapshot is the control plane; events are notifications.
+    session_fault: Mutex<Option<SessionFault>>,
     ffi_runtime: Arc<FfiAgentRuntime>,
     media_dir: Mutex<Option<PathBuf>>,
+    /// Profiles that permanently failed `agent_spec_upsert` this process.
+    /// Prevents a bad local row from hammering the wire on every sync.
+    agent_spec_push_skip: Mutex<HashSet<String>>,
 }
 
 impl Drop for Inner {
@@ -148,8 +156,10 @@ impl KimSdk {
                 outbox_run: Mutex::new(CancellationToken::new()),
                 read_sync_kick: Mutex::new(None),
                 token_persist: Mutex::new(Vec::new()),
+                session_fault: Mutex::new(None),
                 ffi_runtime: FfiAgentRuntime::new(),
                 media_dir: Mutex::new(None),
+                agent_spec_push_skip: Mutex::new(HashSet::new()),
             }),
         })
     }
@@ -198,6 +208,7 @@ impl KimSdk {
             })??;
         if wiped {
             self.inner.metrics.inc_store_wipe();
+            tracing::warn!(path = %path.display(), "store wiped");
         }
         let epoch = self.inner.epoch.clone();
         let store = Store::open(path.clone(), epoch).await?;
@@ -208,6 +219,7 @@ impl KimSdk {
         if let Some(parent) = path.parent() {
             *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
         }
+        tracing::info!(path = %path.display(), wiped, "store attached");
         Ok(())
     }
 
@@ -226,6 +238,7 @@ impl KimSdk {
             .map(|session| session.account.clone());
         let _ = self.bump_epoch();
         self.stop_supervisor();
+        *lock(&self.inner.session_fault) = None;
         *lock(&self.inner.outbox_kick) = None;
         self.replace_session(s.clone());
         let epoch = self.current_epoch().0;
@@ -290,19 +303,25 @@ impl KimSdk {
         self.spawn_read_sync_worker();
         sup.ensure_running();
         *lock(&self.inner.supervisor) = Some(Arc::new(sup));
+        if let Some(err) = kim_client::token_unusable(&s.token) {
+            self.observe_error(&map_client(err, ""));
+        }
         self.refresh_session_snapshot().await;
         if let Ok(store) = self.store() {
             let ((), _seq) = store
                 .rekey_agent_profiles(String::new(), s.account.clone())
                 .await?;
         }
+        tracing::info!(account = %s.account, url = %s.url, "session start");
         Ok(())
     }
 
     pub async fn stop_session(&self) -> Result<(), SdkError> {
+        tracing::info!("session stop");
         let _ = self.bump_epoch();
         self.cancel_outbox_run();
         self.stop_supervisor();
+        *lock(&self.inner.session_fault) = None;
         *lock(&self.inner.outbox_kick) = None;
         *lock(&self.inner.session) = None;
         Ok(())
@@ -349,9 +368,10 @@ impl KimSdk {
         let epoch = self.current_epoch().0;
         let (receipt, sequence) = store.enqueue(epoch, session.account, cmd).await?;
         self.inner.metrics.inc_enqueue();
-        tracing::debug!(
+        tracing::info!(
             request_id = %receipt.request_id,
             client_id = %receipt.client_id,
+            dest = %receipt.dest,
             "enqueue committed"
         );
         self.after_command(sequence).await;
@@ -515,6 +535,10 @@ impl KimSdk {
     }
 
     pub fn install_protocol(&self, protocol: Arc<dyn ProtocolClient>) {
+        let protocol: Arc<dyn ProtocolClient> = Arc::new(ObservingProtocol {
+            inner: protocol,
+            sdk: self.downgrade(),
+        });
         *lock(&self.inner.protocol) = Some(protocol);
         let dests: Vec<String> = lock(&self.inner.timelines).keys().cloned().collect();
         if dests.is_empty() {
@@ -675,8 +699,15 @@ impl KimSdk {
         }
         let local_accounts = store.load_provider_accounts_all(&account).await?;
         let mut push_err: Option<SdkError> = None;
+        let skipped = lock(&self.inner.agent_spec_push_skip).clone();
+        let mut newly_skipped = Vec::new();
         for row in local_by_id.into_values() {
-            if row.body_blob.is_empty() && row.deleted_at == 0 {
+            // Empty blob is never a valid upsert; soft-delete tombstones still need a
+            // non-empty body from the writer. Skipping here stops a permanent 101 loop.
+            if row.body_blob.is_empty() {
+                continue;
+            }
+            if skipped.contains(&row.profile_id) {
                 continue;
             }
             if let Err(err) = proto
@@ -688,10 +719,17 @@ impl KimSdk {
                     profile_id = %row.profile_id,
                     "agent spec upsert failed"
                 );
-                if push_err.is_none() {
-                    push_err = Some(err);
+                if err.retryable() {
+                    if push_err.is_none() {
+                        push_err = Some(err);
+                    }
+                } else {
+                    newly_skipped.push(row.profile_id.clone());
                 }
             }
+        }
+        if !newly_skipped.is_empty() {
+            lock(&self.inner.agent_spec_push_skip).extend(newly_skipped);
         }
         for acc in &local_accounts {
             let remote_ts = remote_accounts
@@ -706,7 +744,7 @@ impl KimSdk {
                 .await
             {
                 tracing::warn!(error = %err, account_id = %acc.id, "provider account upsert failed");
-                if push_err.is_none() {
+                if err.retryable() && push_err.is_none() {
                     push_err = Some(err);
                 }
             }
@@ -898,6 +936,11 @@ impl KimSdk {
     }
 
     async fn recover_lagged_fatal(&self) {
+        let fault = lock(&self.inner.session_fault).clone();
+        if let Some(fault) = fault {
+            self.emit_session_wait(fault.to_update()).await;
+            return;
+        }
         let Ok(sup) = self.supervisor() else {
             return;
         };
@@ -1115,10 +1158,12 @@ impl KimSdk {
             })
             .cloned()
             .collect();
+        let count = talks.len();
         let ((), sequence) = store
             .persist_talks(epoch, account.clone(), talks, policy)
             .await?;
         self.inner.metrics.inc_persist_talk();
+        tracing::info!(account = %account, count, "persist talks");
         self.kick_read_sync();
         for talk in agent_talks {
             if self.current_epoch().0 != epoch {
@@ -1163,6 +1208,7 @@ impl KimSdk {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             let message = info.to_string();
+            tracing::error!(panic = %message, "rust panic");
             if let Ok(subs) = inner.session_subs.try_lock() {
                 for tx in subs.iter() {
                     let _ = tx.try_send(SessionUpdate::RustPanic {
@@ -1453,6 +1499,7 @@ impl KimSdk {
     }
 
     /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
+    /// Identity end is latched on the snapshot; this stream is a notification.
     pub fn subscribe_session(&self) -> mpsc::Receiver<SessionUpdate> {
         let (tx, rx) = mpsc::channel(64);
         lock(&self.inner.session_subs).push(tx);
@@ -1474,6 +1521,26 @@ impl KimSdk {
             let _ = tx.send(update.clone()).await;
         }
         lock(&self.inner.session_subs).retain(|tx| !tx.is_closed());
+    }
+
+    /// Any wire/API `SdkError` that ends identity writes the same session fact.
+    pub fn observe_error(&self, err: &SdkError) {
+        if let Some(fault) = SessionFault::from_sdk_error(err) {
+            self.latch_session_fault(fault);
+        }
+    }
+
+    fn latch_session_fault(&self, fault: SessionFault) {
+        *lock(&self.inner.session_fault) = Some(fault.clone());
+        let sdk = self.clone();
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(async move {
+                if matches!(fault, SessionFault::IdentityExpired { .. }) {
+                    sdk.publish_token_persist(TokenPersistEvent::Clear).await;
+                }
+                sdk.refresh_session_snapshot().await;
+            });
+        }
     }
 
     fn spawn_session_bridge(&self, sup: &kim_client::SessionSupervisor) {
@@ -1507,9 +1574,15 @@ impl KimSdk {
                                             })
                                             .await;
                                         }
-                                        SessionUpdate::AuthExpired { .. } => {
-                                            sdk.publish_token_persist(TokenPersistEvent::Clear)
-                                                .await;
+                                        SessionUpdate::AuthExpired { reason } => {
+                                            sdk.latch_session_fault(SessionFault::IdentityExpired {
+                                                reason: reason.clone(),
+                                            });
+                                        }
+                                        SessionUpdate::Kickout { channel_id } => {
+                                            sdk.latch_session_fault(SessionFault::Kicked {
+                                                channel_id: channel_id.clone(),
+                                            });
                                         }
                                         SessionUpdate::Link {
                                             state: LinkStateView::Online,
@@ -1739,10 +1812,26 @@ impl KimSdk {
                     }
                     kim_client::LinkState::Offline => LinkStateView::Offline,
                 };
-                let last_error = sup.last_drop_reason().map(|r| r.as_str().to_string());
+                let last_error = lock(&self.inner.session_fault)
+                    .as_ref()
+                    .map(SessionFault::wire_kind)
+                    .map(str::to_string)
+                    .or_else(|| {
+                        sup.last_drop_reason().map(|r| match r {
+                            kim_client::DropReason::AuthFailed => "auth_expired".into(),
+                            kim_client::DropReason::Kickout => "kickout".into(),
+                            other => other.as_str().to_string(),
+                        })
+                    });
                 (link, last_error)
             }
-            Err(_) => (LinkStateView::Offline, None),
+            Err(_) => {
+                let last_error = lock(&self.inner.session_fault)
+                    .as_ref()
+                    .map(SessionFault::wire_kind)
+                    .map(str::to_string);
+                (LinkStateView::Offline, last_error)
+            }
         };
         let threads = match (self.store(), self.session_snapshot()) {
             (Ok(store), Ok(session)) => store

@@ -670,11 +670,19 @@ fn finish(id: &str, version: &str, path: &str, body: String) -> Activation {
     }
 }
 
-/// JSON list for the plaza / skills page: discovered portable packages only.
-///
-/// `origin` is `global` (`user_root` / `~/.agents/skills`) or `project`
-/// (`{project}/.agents/skills`). Same id on both shelves keeps the project copy.
-pub fn skill_portable_list_json(user_root: &str, project_root: &str) -> String {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListedSkill {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub origin: String,
+    pub class_name: String,
+    pub dir: String,
+}
+
+/// Portable packages on the user shelf and `<project>/.agents/skills`.
+pub fn skill_portable_list(user_root: &str, project_root: &str) -> Vec<ListedSkill> {
     let mut found: BTreeMap<String, (PortableSkill, &'static str)> = BTreeMap::new();
     let user = user_root.trim();
     if !user.is_empty() {
@@ -689,17 +697,60 @@ pub fn skill_portable_list_json(user_root: &str, project_root: &str) -> String {
             found.insert(skill.id.clone(), (skill, "project"));
         }
     }
-    let items: Vec<Value> = found
+    found
         .into_values()
-        .map(|(skill, origin)| {
+        .map(|(skill, origin)| ListedSkill {
+            id: skill.id,
+            name: skill.meta.name,
+            description: skill.meta.description,
+            version: skill.meta.version,
+            origin: origin.to_string(),
+            class_name: "portable".into(),
+            dir: skill.dir.to_string_lossy().into_owned(),
+        })
+        .collect()
+}
+
+/// Bundled and optional cache app-skill rows.
+pub fn skill_app_catalog(cache_root: Option<&Path>) -> Vec<ListedSkill> {
+    let resolver = match cache_root {
+        Some(root) => SkillResolver::with_cache(root.to_path_buf()),
+        None => SkillResolver::new(),
+    };
+    let mut items = Vec::new();
+    for id in bundled_ids() {
+        match resolver.resolve(id, "") {
+            Ok(package) => items.push(ListedSkill {
+                id: package.id,
+                name: package.meta.name,
+                description: package.meta.description,
+                version: package.version,
+                origin: package.origin,
+                class_name: "app".into(),
+                dir: String::new(),
+            }),
+            Err(err) => tracing::warn!(skill_id = %id, error = %err, "app catalog skip"),
+        }
+    }
+    items
+}
+
+/// JSON list for the plaza / skills page: discovered portable packages only.
+///
+/// `origin` is `global` (`user_root` / `~/.agents/skills`) or `project`
+/// (`{project}/.agents/skills`). Same id on both shelves keeps the project copy.
+pub fn skill_portable_list_json(user_root: &str, project_root: &str) -> String {
+    let items: Vec<Value> = skill_portable_list(user_root, project_root)
+        .into_iter()
+        .map(|skill| {
             json!({
                 "id": skill.id,
-                "name": skill.meta.name,
-                "description": skill.meta.description,
-                "version": skill.meta.version,
-                "origin": origin,
-                "class": "portable",
-                "dir": skill.dir.to_string_lossy(),
+                "name": skill.name,
+                "description": skill.description,
+                "version": skill.version,
+                "origin": skill.origin,
+                "class": skill.class_name,
+                "dir": skill.dir,
             })
         })
         .collect();
@@ -708,24 +759,19 @@ pub fn skill_portable_list_json(user_root: &str, project_root: &str) -> String {
 
 /// Bundled (+ cache, when a root is passed) app-skill summaries for assignment UI.
 pub fn skill_app_catalog_json(cache_root: Option<&Path>) -> String {
-    let resolver = match cache_root {
-        Some(root) => SkillResolver::with_cache(root.to_path_buf()),
-        None => SkillResolver::new(),
-    };
-    let mut items = Vec::new();
-    for id in bundled_ids() {
-        match resolver.resolve(id, "") {
-            Ok(package) => items.push(json!({
-                "id": package.id,
-                "name": package.meta.name,
-                "description": package.meta.description,
-                "version": package.version,
-                "origin": package.origin,
-                "class": "app",
-            })),
-            Err(err) => tracing::warn!(skill_id = %id, error = %err, "app catalog skip"),
-        }
-    }
+    let items: Vec<Value> = skill_app_catalog(cache_root)
+        .into_iter()
+        .map(|skill| {
+            json!({
+                "id": skill.id,
+                "name": skill.name,
+                "description": skill.description,
+                "version": skill.version,
+                "origin": skill.origin,
+                "class": skill.class_name,
+            })
+        })
+        .collect();
     json!({ "skills": items }).to_string()
 }
 

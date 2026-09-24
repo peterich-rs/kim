@@ -52,6 +52,12 @@ impl SdkError {
         )
     }
 
+    /// Credential is dead. Callers must not retry; the session snapshot latches this.
+    #[must_use]
+    pub fn ends_identity(&self) -> bool {
+        matches!(self, Self::AuthExpired | Self::Unauthorized)
+    }
+
     /// Send retry. Aligns with web `isRetryable`: status 3 or 3xx; never 99 / 1xx / 111.
     #[must_use]
     pub fn retryable_send(&self) -> bool {
@@ -66,6 +72,26 @@ impl SdkError {
     }
 }
 
+/// IM status codes shared by [`map_client`] and the FFI `ApiFailure` mapping.
+#[must_use]
+pub fn status_to_sdk_error(status: i32, dest: &str) -> SdkError {
+    match status {
+        109 => SdkError::NotFriends {
+            dest: dest.to_string(),
+        },
+        110 => SdkError::Blocked {
+            dest: dest.to_string(),
+        },
+        108 => SdkError::UserNotFound {
+            dest: dest.to_string(),
+        },
+        // InvalidPacketBody — not "cannot chat with self" (that is local dest==account).
+        101 => SdkError::Protocol { status: 101 },
+        105 => SdkError::Unauthorized,
+        status => SdkError::Protocol { status },
+    }
+}
+
 pub fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
     use kim_client::ClientError;
     match err {
@@ -74,23 +100,20 @@ pub fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
         | ClientError::HandshakeTimeout(_)
         | ClientError::Handshake(_) => SdkError::NotConnected,
         ClientError::Unauthorized | ClientError::InvalidToken => SdkError::Unauthorized,
-        ClientError::Status(109) => SdkError::NotFriends {
-            dest: dest.to_string(),
-        },
-        ClientError::Status(110) => SdkError::Blocked {
-            dest: dest.to_string(),
-        },
-        ClientError::Status(108) => SdkError::UserNotFound {
-            dest: dest.to_string(),
-        },
-        ClientError::Status(101) => SdkError::CannotChatSelf,
-        ClientError::Status(105) => SdkError::Unauthorized,
-        ClientError::Status(status) => SdkError::Protocol { status },
+        ClientError::Status(status) => status_to_sdk_error(status, dest),
         ClientError::Http { status: 401, .. } => SdkError::Unauthorized,
         ClientError::Http { status: 429, .. } => SdkError::RateLimited {
             retry_after_ms: 1000,
         },
-        other => SdkError::Internal {
+        other @ (ClientError::AlreadyConnected
+        | ClientError::InvalidAccount
+        | ClientError::InvalidPassword
+        | ClientError::InsecureOrigin
+        | ClientError::PasswordSeal
+        | ClientError::Http { .. }
+        | ClientError::Protocol(_)
+        | ClientError::Core(_)
+        | ClientError::Other(_)) => SdkError::Internal {
             message: other.to_string(),
         },
     }

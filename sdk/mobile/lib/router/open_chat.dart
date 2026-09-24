@@ -6,7 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/features/chats/inbox.dart';
+import 'package:kim_mobile/features/chats/providers/inbox.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 void openKimChat(
   BuildContext context,
@@ -18,7 +19,7 @@ void openKimChat(
   ref
       .read(threadsProvider.notifier)
       .ensureThread(id: id, kind: kind, title: title ?? id);
-  final path = '/chat/$id';
+  final path = AppRoutes.chat(id);
   if (kimIsWide(context)) {
     context.go(path);
   } else {

@@ -4,14 +4,7 @@ Grok loads these from `.agents/skills/` (repo scope). Slash: `/<name>`.
 
 | Skill | Use when |
 |-------|----------|
-| `rust-quality-coding` | 写 Rust 前的设计判断：所有权、类型建模、trait 拆分、std trait、错误/async 边界 |
-| `rust-skills` | Writing or reviewing Rust (265 rules; open `rules/` as needed) |
-| `rust-strict` | Unwrap/unsafe/secret/lock-across-await audit |
-| `rust-async-patterns` | Tokio tasks, channels, `select!`, cancellation |
-| `rust-tokio-net` | TCP / WebSocket framing, Conn, backpressure |
-| `rust-distributed` | Raft, 2PC, consistency, distributed locks |
-| `rust-database` | SQLx / Diesel / SeaORM, transactions, migrations |
-| `rust-cache` | Redis, TTL, Cache-Aside, invalidation |
+| `rust-best-practice` | 写或审 Rust：先做设计判断（所有权、类型、trait、错误、并发、长连接），再按需查 `rules/` 和安全约束 |
 | `postgres-strict` | Postgres schema, RLS, migration safety |
 | `postgresql-table-design` | Types, indexes, constraints, partitioning |
 | `sql-optimization-patterns` | EXPLAIN, slow queries, N+1 |
@@ -20,6 +13,7 @@ Grok loads these from `.agents/skills/` (repo scope). Slash: `/<name>`.
 | `github-standards` | Branch/PR format, secrets scan, CI hygiene |
 | `code-review` | Structured review of a branch or PR |
 | `ascii-diagram` | Any logic spanning 2+ hops / 3+ participants: sequence, call-chain, dataflow, pipeline, layered, state diagrams -- diagram first, prose second |
+| `docs-maintenance` | 整理 `docs/`：长期合同留在根上，`docs/impl/` 只放未合入切片，合入时删切片稿 |
 
 Official Dart (`dart-*`) and Flutter (`flutter-*`) skills: slash `/<name>`, e.g. `/flutter-add-widget-test`. Update with `npx skills update`.
 
@@ -61,12 +55,11 @@ Official Dart (`dart-*`) and Flutter (`flutter-*`) skills: slash `/<name>`, e.g.
 
 | Skill | Upstream |
 |-------|----------|
-| `rust-quality-coding` | Local |
-| `rust-skills` | [leonardomso/rust-skills](https://github.com/leonardomso/rust-skills) |
-| `rust-strict`, `postgres-strict`, `github-standards`, `code-review` | [0xMassi/claude-skills](https://github.com/0xMassi/claude-skills) |
-| `rust-async-patterns`, `postgresql-table-design`, `sql-optimization-patterns`, `git-advanced-workflows` | [wshobson/agents](https://github.com/wshobson/agents) |
-| `rust-database`, `rust-cache`, `rust-distributed` | [huiali/rust-skills](https://github.com/huiali/rust-skills) |
-| `git-commit`, `rust-tokio-net` | Local; `git-commit` adapted from 0xMassi (Zapier/Jira MCP removed) |
+| `rust-best-practice` | Design text and `references/tokio-net.md` local; `rules/` from [leonardomso/rust-skills](https://github.com/leonardomso/rust-skills); `references/strict.md` from [0xMassi/claude-skills](https://github.com/0xMassi/claude-skills) |
+| `postgres-strict`, `github-standards`, `code-review` | [0xMassi/claude-skills](https://github.com/0xMassi/claude-skills) |
+| `postgresql-table-design`, `sql-optimization-patterns`, `git-advanced-workflows` | [wshobson/agents](https://github.com/wshobson/agents) |
+| `git-commit` | Local; adapted from 0xMassi (Zapier/Jira MCP removed) |
+| `docs-maintenance` | Local |
 | `dart-*` | [dart-lang/skills](https://github.com/dart-lang/skills) (BSD-3-Clause) |
 | `flutter-*` | [flutter/agent-plugins](https://github.com/flutter/agent-plugins) (BSD-3-Clause) |
 

@@ -1,0 +1,8 @@
+[submodule "third_party/codex"]
+	path = third_party/codex
+	url = https://github.com/openai/codex.git
+	shallow = false
+[submodule "goose"]
+	path = goose
+	url = https://github.com/block/goose.git
+	shallow = false

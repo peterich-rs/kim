@@ -157,7 +157,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: sdk/mobile/rust -> sdk/mobile/rust/target
+          workspaces: crates/kim-client-ffi -> crates/kim-client-ffi/target
 
       - name: Flutter pub get + release APK (arm64)
         working-directory: sdk/mobile

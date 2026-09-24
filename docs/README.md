@@ -19,14 +19,19 @@
 9. [web-sdk.md](web-sdk.md) — 已落地的 TypeScript Web SDK
 10. [user-social-inbox.md](user-social-inbox.md) — 资料 / 好友 / 服务端会话
 11. [mobile-client.md](mobile-client.md) — kim-client + Flutter 壳（WSS / WGateway）
-12. [agent-goose.md](agent-goose.md) — 桌面 IM 本机 Goose（@助手）
-13. [media.md](media.md) — R2 图床（upload Worker + 自定义域读）
-14. [bench.md](bench.md) — kimbench
-15. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
-16. [routing.md](routing.md) — router HTTP lookup
-17. [gray.md](gray.md) — zone 灰度
-18. [observability.md](observability.md) — kim-metrics
-19. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS
+12. [flutter-layering.md](flutter-layering.md) — Flutter 分层、Riverpod、`setState` 边界
+13. [ffi-oo-contract.md](ffi-oo-contract.md) — 桌面 FFI 句柄：Dart 只订投影，编排在 Rust
+14. [mobile-android-so-ota.md](mobile-android-so-ota.md) — Android Logic SO 热修通道
+15. [agent-goose.md](agent-goose.md) — 桌面 IM 本机 Agent（1:1 bot）
+16. [media.md](media.md) — R2 图床（upload Worker + 自定义域读）
+17. [bench.md](bench.md) — kimbench
+18. [perf.md](perf.md) — 写路径 / 缓冲 / 寻址
+19. [routing.md](routing.md) — router HTTP lookup
+20. [gray.md](gray.md) — zone 灰度
+21. [presence-room-interest.md](presence-room-interest.md) — 进房 / 退房与 peer presence
+22. [auth-password-envelope.md](auth-password-envelope.md) — 密码信封与 HTTPS
+23. [observability.md](observability.md) — kim-metrics
+24. [deploy.md](deploy.md) — Docker Compose / GHCR / VPS
 
 卡住时：先看文档里的「合同」和「执行链」，再去对应源码。文档和代码打架时，以代码为准。
 
@@ -38,13 +43,16 @@
 
 节奏：盘点 → 切片细化 → 写代码。不要对着 gaps 直接开巨型 PR。
 
-- [impl/README.md](impl/README.md) — 待写切片。已合入的实施稿已删，形状在上面的专题文档。
+- [impl/README.md](impl/README.md) — 尚未合入的切片。已合入的实施稿不留在这里。
 
 ## 文档怎么保持不腐烂
 
-- **只写已经落地或已经拍板的设计。** 尚未实现的标成「以后」。缺口清单单独放 [production-gaps.md](production-gaps.md)，不要把「缺什么」写进专题文档冒充现状。
-- 改了 trait、帧格式、分层，**同一轮把这里改掉**。文档和代码打架时，以代码为准。
-- 不复制付费小册章节。
+仓库里只留两类文档：
+
+- **长期。** `docs/` 根上的专题：当前代码的合同、分层、部署和仍开放的 [production-gaps.md](production-gaps.md)。阅读顺序就是清单；新专题要加进上面的列表。
+- **分支。** [impl/](impl/README.md) 里一份一切片，只在实现它的分支上存在。合入主干前删掉切片稿；还要长期遵守的句子写回对应专题，不要让切片稿变成第二份合同。
+
+没有分支、也不描述当前系统的稿子不提交。改了 trait、帧格式或分层，同一轮改专题文档。文档和代码打架时，以代码为准。不复制付费小册章节。
 
 ## 其它
 

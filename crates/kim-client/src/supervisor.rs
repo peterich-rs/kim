@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use tokio::sync::{broadcast, Notify};
 use tokio::task::JoinHandle;
+use tracing::info;
 
 use crate::config::ClientConfig;
 use crate::events::{InboxItem, IncomingTalk};
@@ -187,6 +188,7 @@ impl SessionSupervisor {
             return;
         }
         let running = self.inner.clone();
+        info!("link loop start");
         *task = Some(tokio::spawn(async move {
             machine::run_loop(running).await;
         }));
@@ -196,6 +198,7 @@ impl SessionSupervisor {
         if self.inner.stopped.swap(true, Ordering::SeqCst) {
             return;
         }
+        info!("link loop stop");
         set_state(&self.inner, LinkState::Offline);
         self.inner.stop.notify_waiters();
         self.inner.stop.notify_one();
@@ -235,6 +238,7 @@ impl SessionSupervisor {
     }
 
     pub fn notify_radio_up(&self) {
+        info!("link probe radio");
         self.ensure_running();
         self.inner.attempt.store(0, Ordering::SeqCst);
         ProbeSource::store(&self.inner.probe_source, ProbeSource::Radio);
@@ -243,6 +247,7 @@ impl SessionSupervisor {
     }
 
     pub fn notify_foreground(&self) {
+        info!("link probe foreground");
         self.ensure_running();
         self.inner.attempt.store(0, Ordering::SeqCst);
         ProbeSource::store(&self.inner.probe_source, ProbeSource::Foreground);
@@ -275,6 +280,14 @@ impl Drop for SessionSupervisor {
 }
 
 pub(crate) fn set_state(inner: &Inner, state: LinkState) {
+    match &state {
+        LinkState::Connecting => info!(state = "connecting", "link"),
+        LinkState::Online => info!(state = "online", "link"),
+        LinkState::Reconnecting { attempt } => {
+            info!(state = "reconnecting", attempt, "link");
+        }
+        LinkState::Offline => info!(state = "offline", "link"),
+    }
     *inner.state.lock().unwrap_or_else(|e| e.into_inner()) = state.clone();
     let _ = inner.events.send(SessionEvent::Link(state));
 }

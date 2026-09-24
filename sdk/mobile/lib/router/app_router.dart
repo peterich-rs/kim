@@ -6,10 +6,10 @@ import 'package:go_router/go_router.dart';
 
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/core/layout.dart';
-import 'package:kim_mobile/features/auth/auth_page.dart';
-import 'package:kim_mobile/features/chats/chats_split.dart';
+import 'package:kim_mobile/features/auth/views/auth_page.dart';
+import 'package:kim_mobile/features/chats/views/chats_split.dart';
 import 'package:kim_mobile/features/contacts/contacts_page.dart';
-import 'package:kim_mobile/features/chats/home_shell.dart';
+import 'package:kim_mobile/features/chats/views/home_shell.dart';
 import 'package:kim_mobile/features/agent/agent_list_page.dart';
 import 'package:kim_mobile/features/agent/agent_plaza_page.dart';
 import 'package:kim_mobile/features/agent/agent_create_page.dart';
@@ -21,10 +21,11 @@ import 'package:kim_mobile/core/env.dart';
 import 'package:kim_mobile/features/profile/me_page.dart';
 import 'package:kim_mobile/features/settings/dev_panel.dart';
 import 'package:kim_mobile/features/contacts/peer_profile_page.dart';
-import 'package:kim_mobile/features/auth/password_page.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/views/password_page.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/location.dart';
 import 'package:kim_mobile/features/session/session.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 import 'package:kim_mobile/router/kim_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -35,7 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   });
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: AppRoutes.home,
     refreshListenable: refresh,
     redirect: (context, state) {
       final path = state.uri.path;
@@ -47,23 +48,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       });
       final signedIn = ref.read(sessionProvider).signedIn;
       final loc = state.matchedLocation;
-      final onAuth = loc == '/login' || loc == '/register';
+      final onAuth = AppRoutes.isAuth(loc);
       if (!signedIn && !onAuth) {
-        return '/login';
+        return AppRoutes.login;
       }
       if (signedIn && onAuth) {
-        return '/';
+        return AppRoutes.home;
       }
       return null;
     },
     errorBuilder: (context, state) => KimErrorPage(error: state.error),
     routes: [
       GoRoute(
-        path: '/login',
+        path: AppRoutes.login,
         builder: (context, state) => const AuthPage(register: false),
       ),
       GoRoute(
-        path: '/register',
+        path: AppRoutes.register,
         builder: (context, state) => const AuthPage(register: true),
       ),
       StatefulShellRoute.indexedStack(
@@ -74,7 +75,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/',
+                path: AppRoutes.home,
                 builder: (context, state) => const ChatsSplitView(),
                 routes: [
                   GoRoute(
@@ -103,21 +104,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/contacts',
+                path: AppRoutes.contacts,
                 builder: (context, state) => const ContactsPage(),
               ),
             ],
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/me', builder: (context, state) => const MePage()),
+              GoRoute(
+                path: AppRoutes.me,
+                builder: (context, state) => const MePage(),
+              ),
             ],
           ),
         ],
       ),
       if (kimDevPanelEnabled)
         GoRoute(
-          path: '/dev',
+          path: AppRoutes.dev,
           pageBuilder: (context, state) => kimPushPage(
             key: state.pageKey,
             name: state.name,
@@ -138,7 +142,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/password',
+        path: AppRoutes.password,
         pageBuilder: (context, state) => kimPushPage(
           key: state.pageKey,
           name: state.name,
@@ -146,7 +150,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: '/agent',
+        path: AppRoutes.agent,
         pageBuilder: (context, state) => kimPushPage(
           key: state.pageKey,
           name: state.name,
@@ -180,7 +184,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: const ProviderAccountsPage(),
             ),
           ),
-          GoRoute(path: 'settings', redirect: (context, state) => '/agent'),
+          GoRoute(
+            path: 'settings',
+            redirect: (context, state) => AppRoutes.agent,
+          ),
           GoRoute(
             path: 'plaza',
             pageBuilder: (context, state) => kimPushPage(
@@ -228,21 +235,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'workspace',
                 redirect: (context, state) {
                   final id = state.pathParameters['id'] ?? kGooseAgentId;
-                  return '/agent/$id/capabilities?section=fs';
+                  return AppRoutes.agentCapabilities(id, section: 'fs');
                 },
               ),
               GoRoute(
                 path: 'skills',
                 redirect: (context, state) {
                   final id = state.pathParameters['id'] ?? kGooseAgentId;
-                  return '/agent/$id/capabilities?section=skills';
+                  return AppRoutes.agentCapabilities(id, section: 'skills');
                 },
               ),
               GoRoute(
                 path: 'tools',
                 redirect: (context, state) {
                   final id = state.pathParameters['id'] ?? kGooseAgentId;
-                  return '/agent/$id/capabilities?section=mcp';
+                  return AppRoutes.agentCapabilities(id, section: 'mcp');
                 },
               ),
             ],

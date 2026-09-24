@@ -15,9 +15,10 @@ import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/router/app_router.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 import 'package:kim_mobile/router/kim_page.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
-import 'package:kim_mobile/features/chats/chats_search.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
+import 'package:kim_mobile/features/chats/providers/chats_search.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/features/session/providers.dart';
@@ -56,9 +57,9 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
   }
 
   return {
-    chord(LogicalKeyboardKey.digit1): () => goTab('/'),
-    chord(LogicalKeyboardKey.digit2): () => goTab('/contacts'),
-    chord(LogicalKeyboardKey.digit3): () => goTab('/me'),
+    chord(LogicalKeyboardKey.digit1): () => goTab(AppRoutes.home),
+    chord(LogicalKeyboardKey.digit2): () => goTab(AppRoutes.contacts),
+    chord(LogicalKeyboardKey.digit3): () => goTab(AppRoutes.me),
     chord(LogicalKeyboardKey.keyN): () {
       if (!ref.read(authProvider).signedIn) {
         return;
@@ -69,7 +70,7 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
       if (!ref.read(authProvider).signedIn) {
         return;
       }
-      context.go('/');
+      context.go(AppRoutes.home);
       ref.read(chatsSearchTickProvider.notifier).request();
     },
     const SingleActivator(LogicalKeyboardKey.escape): () {
@@ -81,9 +82,9 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
         return;
       }
       final path = GoRouterState.of(context).uri.path;
-      if (path.startsWith('/chat/')) {
+      if (AppRoutes.isChat(path)) {
         if (kimIsWide(context) || !context.canPop()) {
-          context.go('/');
+          context.go(AppRoutes.home);
         } else {
           context.pop();
         }
@@ -94,7 +95,7 @@ Map<ShortcutActivator, VoidCallback> _desktopShortcuts(
         return;
       }
       if (kimIsOverlayPath(path)) {
-        context.go('/');
+        context.go(AppRoutes.home);
       }
     },
   };
@@ -116,7 +117,7 @@ class KimApp extends ConsumerWidget {
         theme: KimTheme.light(),
         darkTheme: KimTheme.dark(),
         themeMode: ref.watch(themeModeProvider),
-        locale: const Locale('zh'),
+        // Resolve against [supportedLocales]; do not hardcode zh.
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         routerConfig: router,

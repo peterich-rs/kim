@@ -13,6 +13,7 @@ import 'package:kim_mobile/router/open_chat.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
+import 'package:kim_mobile/router/app_routes.dart';
 
 Future<void> openNewChatSheet(BuildContext context) {
   return WoltModalSheet.show<void>(
@@ -49,7 +50,7 @@ class _NewChatBody extends ConsumerWidget {
         action: FilledButton.tonal(
           onPressed: () {
             Navigator.of(context).pop();
-            context.go('/contacts');
+            context.go(AppRoutes.contacts);
           },
           child: Text(Copy.addFriend),
         ),

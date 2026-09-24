@@ -6,9 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/features/session/providers.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 const kProviderAccountsPref = 'agent.provider_accounts';
 const kGooseAccountId = 'acct-goose';
@@ -46,7 +47,7 @@ class MissingProviderAccount implements Exception {
   final String accountId;
 
   @override
-  String toString() => '厂商账号已删除';
+  String toString() => Copy.providerAccountDeleted;
 }
 
 class ProviderAccount {
@@ -210,7 +211,7 @@ class ProviderAccountStore extends Notifier<List<ProviderAccount>> {
       return const [];
     }
     for (final a in accounts) {
-      await client.upsertProviderAccount(_toDto(a));
+      await client.upsertProviderAccount(_toRow(a));
     }
     await prefs.remove(kProviderAccountsPref);
     return accounts;
@@ -238,7 +239,7 @@ class ProviderAccountStore extends Notifier<List<ProviderAccount>> {
 
   Future<void> _upsertOne(ProviderAccount account) async {
     try {
-      await ref.read(clientPortProvider).upsertProviderAccount(_toDto(account));
+      await ref.read(clientPortProvider).upsertProviderAccount(_toRow(account));
     } catch (e, st) {
       KimLogger.warn('provider accounts persist', e, st);
     }
@@ -250,8 +251,8 @@ class ProviderAccountStore extends Notifier<List<ProviderAccount>> {
     ];
   }
 
-  ProviderAccountDto _toDto(ProviderAccount a) {
-    return ProviderAccountDto(
+  rust_types.ProviderAccount _toRow(ProviderAccount a) {
+    return rust_types.ProviderAccount(
       id: a.id,
       vendorId: a.vendorId,
       baseUrl: a.baseUrl,

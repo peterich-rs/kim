@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/chats/chat_page.dart';
+import 'package:kim_mobile/features/chats/views/chat_page.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/contacts/contacts.dart';

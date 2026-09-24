@@ -10,1119 +10,23 @@ import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/copy.dart';
+import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/settings.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
+import 'package:kim_mobile/features/agent/agent_catalog.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
 import 'package:kim_mobile/features/agent/context_window.dart';
-import 'package:kim_mobile/features/auth/auth.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
-const _kProfiles = 'agent.profiles';
-const _kActive = 'agent.active_profile_id';
-const _kGooseKey = 'agent.api_key.goose';
-const _kMulti = 'agent.multi_profile';
-const _kMultiMigrated = 'agent.multi_profile_migrated_on';
-const _kServerIdentity = 'agent.server_identity';
-const _kIdentityMigrated = 'agent.identity_migrated_on';
-
-/// Byte-identical to Rust `DEFAULT_IDENTITY_PROMPT`. Empty prompt injects this.
-const kDefaultSystemPrompt =
-    'You are a local desktop agent inside the KIM messenger. '
-    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. Be concise. '
-    'Only use tools that appear in your tool list; never claim tools you were not given.';
-
-/// Pre-B-KD 4 identity that enumerated every IM tool. Load as empty.
-const kLegacyToolLaundryIdentity =
-    'You are 助手, a local desktop agent inside the KIM messenger. '
-    'You run on the user\'s machine (not a cloud bot). Reply in the user\'s language. '
-    'Be concise. You can see the current conversation because the host pasted it into this session. '
-    'You have search_contacts, search_messages, get_conversation_context, list_profiles, '
-    'send_message, and read_clipboard. send_message and clipboard require user confirmation. '
-    'You do not have filesystem or shell access. Do not claim you have tools you were not given.';
-
-bool isLegacyToolLaundryIdentity(String prompt) {
-  final t = prompt.trim();
-  if (t.isEmpty) {
-    return false;
-  }
-  if (t == kLegacyToolLaundryIdentity) {
-    return true;
-  }
-  return t.contains('You are 助手') &&
-      t.contains('search_contacts') &&
-      t.contains('search_messages') &&
-      t.contains('get_conversation_context') &&
-      t.contains('list_profiles') &&
-      t.contains('send_message') &&
-      t.contains('read_clipboard') &&
-      t.contains('You do not have filesystem or shell access');
-}
-
-String migrateIdentityPrompt(String prompt) {
-  return isLegacyToolLaundryIdentity(prompt) ? '' : prompt;
-}
-
-/// Default capabilities for a new persona (B-KD create defaults).
-const kCreateDefaultCapabilities = <CapabilityRef>[
-  CapabilityRef(kind: CapabilityKinds.imSendMessage),
-  CapabilityRef(kind: CapabilityKinds.imReadClipboard),
-];
-
-/// Projection of [kCreateDefaultCapabilities] for one-release ToolSet compat.
-final kCreateDefaultTools = projectToolSet(kCreateDefaultCapabilities);
-
-/// Capability kind strings — keep in sync with host registry (B-KD 2).
-abstract final class CapabilityKinds {
-  static const imSendMessage = 'im.send_message';
-  static const imSearchContacts = 'im.search_contacts';
-  static const imSearchMessages = 'im.search_messages';
-  static const imGetConversationContext = 'im.get_conversation_context';
-  static const imReadClipboard = 'im.read_clipboard';
-  static const imListProfiles = 'im.list_profiles';
-  static const fs = 'fs';
-  static const bash = 'bash';
-  static const mcp = 'mcp';
-  static const subagent = 'subagent';
-}
-
-/// Persisted capability reference. Mirrors host `CapabilityRef` serde.
-class CapabilityRef {
-  const CapabilityRef({
-    required this.kind,
-    this.id = '',
-    this.params = const {},
-    this.enabled = true,
-  });
-
-  final String kind;
-  final String id;
-  final Map<String, Object?> params;
-  final bool enabled;
-
-  Map<String, Object?> toJson() => {
-    'kind': kind,
-    if (id.isNotEmpty) 'id': id,
-    if (params.isNotEmpty) 'params': params,
-    'enabled': enabled,
-  };
-
-  factory CapabilityRef.fromJson(Map<String, Object?> json) {
-    final rawParams = json['params'];
-    return CapabilityRef(
-      kind: '${json['kind'] ?? ''}',
-      id: '${json['id'] ?? ''}',
-      params: rawParams is Map
-          ? Map<String, Object?>.from(rawParams)
-          : const {},
-      enabled: json['enabled'] != false,
-    );
-  }
-
-  CapabilityRef copyWith({
-    String? kind,
-    String? id,
-    Map<String, Object?>? params,
-    bool? enabled,
-  }) {
-    return CapabilityRef(
-      kind: kind ?? this.kind,
-      id: id ?? this.id,
-      params: params ?? this.params,
-      enabled: enabled ?? this.enabled,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is CapabilityRef &&
-        other.kind == kind &&
-        other.id == id &&
-        other.enabled == enabled &&
-        jsonEncode(other.params) == jsonEncode(params);
-  }
-
-  @override
-  int get hashCode => Object.hash(kind, id, enabled, jsonEncode(params));
-}
-
-/// Appendix A / host `CapabilityRef::from_legacy`.
-List<CapabilityRef> capabilitiesFromLegacy(
-  AgentToolSet tools,
-  List<AgentExtension> extensions,
-) {
-  final out = <CapabilityRef>[];
-  if (tools.sendMessage) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.imSendMessage));
-  }
-  if (tools.searchContacts) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.imSearchContacts));
-  }
-  if (tools.searchMessages) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.imSearchMessages));
-  }
-  if (tools.getConversationContext) {
-    out.add(
-      const CapabilityRef(kind: CapabilityKinds.imGetConversationContext),
-    );
-  }
-  if (tools.readClipboard) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.imReadClipboard));
-  }
-  if (tools.listProfiles) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.imListProfiles));
-  }
-  if (tools.fsWrite) {
-    out.add(
-      const CapabilityRef(kind: CapabilityKinds.fs, params: {'writable': true}),
-    );
-  } else if (tools.fs) {
-    out.add(
-      const CapabilityRef(
-        kind: CapabilityKinds.fs,
-        params: {'writable': false},
-      ),
-    );
-  }
-  if (tools.bash) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.bash));
-  }
-  if (tools.subagent) {
-    out.add(const CapabilityRef(kind: CapabilityKinds.subagent));
-  }
-  for (final e in extensions) {
-    if (e.name.isEmpty) {
-      continue;
-    }
-    out.add(
-      CapabilityRef(
-        kind: CapabilityKinds.mcp,
-        id: 'mcp:${e.name}',
-        params: {
-          'name': e.name,
-          'command': e.command,
-          'transport': e.transport,
-          if (e.url.isNotEmpty) 'url': e.url,
-        },
-      ),
-    );
-  }
-  return out;
-}
-
-/// Host `ToolSet::from_capabilities` / `project_toolset`.
-AgentToolSet projectToolSet(List<CapabilityRef> capabilities) {
-  var sendMessage = false;
-  var searchContacts = false;
-  var searchMessages = false;
-  var getConversationContext = false;
-  var readClipboard = false;
-  var listProfiles = false;
-  var fs = false;
-  var fsWrite = false;
-  var bash = false;
-  var subagent = false;
-  for (final c in capabilities) {
-    if (!c.enabled) {
-      continue;
-    }
-    switch (c.kind) {
-      case CapabilityKinds.imSendMessage:
-        sendMessage = true;
-      case CapabilityKinds.imSearchContacts:
-        searchContacts = true;
-      case CapabilityKinds.imSearchMessages:
-        searchMessages = true;
-      case CapabilityKinds.imGetConversationContext:
-        getConversationContext = true;
-      case CapabilityKinds.imReadClipboard:
-        readClipboard = true;
-      case CapabilityKinds.imListProfiles:
-        listProfiles = true;
-      case CapabilityKinds.fs:
-        fs = true;
-        if (c.params['writable'] == true) {
-          fsWrite = true;
-        }
-      case CapabilityKinds.bash:
-        bash = true;
-      case CapabilityKinds.subagent:
-        subagent = true;
-      default:
-        break;
-    }
-  }
-  return AgentToolSet(
-    sendMessage: sendMessage,
-    searchContacts: searchContacts,
-    searchMessages: searchMessages,
-    getConversationContext: getConversationContext,
-    readClipboard: readClipboard,
-    listProfiles: listProfiles,
-    fs: fs,
-    fsWrite: fsWrite,
-    bash: bash,
-    subagent: subagent,
-  );
-}
-
-/// MCP capability refs → [AgentExtension] rows (one-release dual write).
-/// Empty input → empty output (clearing MCP must wipe leftover extensions).
-List<AgentExtension> projectExtensions(List<CapabilityRef> capabilities) {
-  final out = <AgentExtension>[];
-  for (final c in capabilities) {
-    if (!c.enabled || c.kind != CapabilityKinds.mcp) {
-      continue;
-    }
-    final name = '${c.params['name'] ?? ''}'.trim();
-    if (name.isEmpty) {
-      continue;
-    }
-    final cmd = c.params['command'];
-    out.add(
-      AgentExtension(
-        name: name,
-        transport: '${c.params['transport'] ?? 'stdio'}',
-        command: cmd is List ? [for (final x in cmd) '$x'] : const [],
-        url: '${c.params['url'] ?? ''}',
-      ),
-    );
-  }
-  return out;
-}
-
-/// Parse MCP textarea lines (`name argv0 argv1…`).
-List<CapabilityRef> mcpCapsFromText(String text) {
-  final mcp = <CapabilityRef>[];
-  for (final line in text.split('\n')) {
-    final parts = line
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((p) => p.isNotEmpty)
-        .toList();
-    if (parts.length < 2) {
-      continue;
-    }
-    final name = parts.first;
-    mcp.add(
-      CapabilityRef(
-        kind: CapabilityKinds.mcp,
-        id: 'mcp:$name',
-        params: {
-          'name': name,
-          'command': parts.sublist(1),
-          'transport': 'stdio',
-        },
-      ),
-    );
-  }
-  return mcp;
-}
-
-String mcpTextFromCaps(List<CapabilityRef> caps) {
-  final lines = <String>[];
-  for (final c in caps) {
-    if (!c.enabled || c.kind != CapabilityKinds.mcp) {
-      continue;
-    }
-    final name = '${c.params['name'] ?? ''}'.trim();
-    final cmd = c.params['command'];
-    final args = cmd is List ? [for (final x in cmd) '$x'] : const <String>[];
-    if (name.isEmpty || args.isEmpty) {
-      continue;
-    }
-    lines.add('$name ${args.join(' ')}');
-  }
-  return lines.join('\n');
-}
-
-/// Keep singleton caps, replace MCP from the textarea (autosave must not drop it).
-List<CapabilityRef> mergeCapsWithMcpLines(
-  List<CapabilityRef> caps,
-  String mcpText,
-) {
-  return [
-    for (final c in caps)
-      if (c.kind != CapabilityKinds.mcp) c,
-    ...mcpCapsFromText(mcpText),
-  ];
-}
-
-/// Local fallback tool names when host `preview_assembled` is unavailable.
-List<String> projectedToolNames(List<CapabilityRef> capabilities) {
-  final tools = projectToolSet(capabilities);
-  final names = <String>[
-    if (tools.sendMessage) 'send_message',
-    if (tools.searchContacts) 'search_contacts',
-    if (tools.searchMessages) 'search_messages',
-    if (tools.getConversationContext) 'get_conversation_context',
-    if (tools.readClipboard) 'read_clipboard',
-    if (tools.listProfiles) 'list_profiles',
-    if (tools.fs || tools.fsWrite) 'read_file',
-    if (tools.fs || tools.fsWrite) 'list_dir',
-    if (tools.fsWrite) 'write_file',
-    if (tools.bash) 'bash',
-    if (tools.subagent) 'delegate',
-  ];
-  for (final c in capabilities) {
-    if (c.enabled && c.kind == CapabilityKinds.mcp) {
-      final name = '${c.params['name'] ?? ''}'.trim();
-      if (name.isNotEmpty) {
-        names.add('mcp:$name');
-      }
-    }
-  }
-  return names;
-}
-
-/// Upsert/remove a singleton kind (IM / fs / bash / subagent).
-List<CapabilityRef> upsertCapability(
-  List<CapabilityRef> current, {
-  required String kind,
-  required bool enabled,
-  Map<String, Object?> params = const {},
-  String id = '',
-}) {
-  final without = [
-    for (final c in current)
-      if (c.kind != kind || (id.isNotEmpty && c.id != id)) c,
-  ];
-  if (!enabled) {
-    return without;
-  }
-  return [
-    ...without,
-    CapabilityRef(kind: kind, id: id, params: params, enabled: true),
-  ];
-}
-
-/// Enable capability kinds required by legacy tool-name requires lists.
-List<CapabilityRef> enableRequiredCapabilities(
-  List<CapabilityRef> caps,
-  List<String> missingToolNames,
-) {
-  var next = List<CapabilityRef>.from(caps);
-  for (final name in missingToolNames) {
-    switch (name) {
-      case 'send_message':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imSendMessage,
-          enabled: true,
-        );
-      case 'search_contacts':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imSearchContacts,
-          enabled: true,
-        );
-      case 'search_messages':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imSearchMessages,
-          enabled: true,
-        );
-      case 'get_conversation_context':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imGetConversationContext,
-          enabled: true,
-        );
-      case 'list_profiles':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imListProfiles,
-          enabled: true,
-        );
-      case 'read_clipboard':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.imReadClipboard,
-          enabled: true,
-        );
-      case 'fs':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.fs,
-          enabled: true,
-          params: const {'writable': false},
-        );
-      case 'fs_write':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.fs,
-          enabled: true,
-          params: const {'writable': true},
-        );
-      case 'bash':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.bash,
-          enabled: true,
-        );
-      case 'subagent':
-        next = upsertCapability(
-          next,
-          kind: CapabilityKinds.subagent,
-          enabled: true,
-        );
-      default:
-        break;
-    }
-  }
-  return next;
-}
-
-/// Aligns with Chat `BOT_MAX_PER_OWNER`.
-const kMaxBotsPerOwner = 20;
-
-class AgentProfileCapExceeded implements Exception {
-  @override
-  String toString() => Copy.agentCapReached;
-}
-
-/// Profiles that have or will have a cloud bot when [serverIdentity] is on,
-/// including disabled rows.
-int cloudIdentitySlots(
-  Iterable<AgentProfile> profiles, {
-  required bool serverIdentity,
-}) {
-  var n = 0;
-  for (final p in profiles) {
-    if (p.serverAccount.isNotEmpty || serverIdentity) {
-      n++;
-    }
-  }
-  return n;
-}
-
-bool isBotAlreadyGone(Object err) {
-  final msg = err.toString().toLowerCase();
-  return msg.contains('status 108') ||
-      msg.contains('not_owner') ||
-      msg.contains('not owner') ||
-      msg.contains(Copy.userNotFound.toLowerCase());
-}
-
-String agentRegisterError(Object err) {
-  final msg = err.toString();
-  if (msg.contains('status 2')) {
-    return Copy.agentRegisterFailed;
-  }
-  if (err is StateError && err.message.isNotEmpty) {
-    return err.message;
-  }
-  return Copy.agentRegisterFailed;
-}
-
-class AgentToolSet {
-  const AgentToolSet({
-    this.sendMessage = false,
-    this.searchContacts = false,
-    this.searchMessages = false,
-    this.getConversationContext = false,
-    this.readClipboard = false,
-    this.listProfiles = false,
-    this.fs = false,
-    this.fsWrite = false,
-    this.bash = false,
-    this.subagent = false,
-  });
-
-  final bool sendMessage;
-  final bool searchContacts;
-  final bool searchMessages;
-  final bool getConversationContext;
-  final bool readClipboard;
-  final bool listProfiles;
-  final bool fs;
-  final bool fsWrite;
-  final bool bash;
-  final bool subagent;
-
-  Map<String, Object?> toJson() => {
-    'send_message': sendMessage,
-    'search_contacts': searchContacts,
-    'search_messages': searchMessages,
-    'get_conversation_context': getConversationContext,
-    'read_clipboard': readClipboard,
-    'list_profiles': listProfiles,
-    'fs': fs,
-    'fs_write': fsWrite,
-    'bash': bash,
-    'subagent': subagent,
-  };
-
-  factory AgentToolSet.fromJson(Map<String, Object?> json) {
-    bool b(String k) => json[k] == true;
-    return AgentToolSet(
-      sendMessage: b('send_message'),
-      searchContacts: b('search_contacts'),
-      searchMessages: b('search_messages'),
-      getConversationContext: b('get_conversation_context'),
-      readClipboard: b('read_clipboard'),
-      listProfiles: b('list_profiles'),
-      fs: b('fs'),
-      fsWrite: b('fs_write'),
-      bash: b('bash'),
-      subagent: b('subagent'),
-    );
-  }
-
-  AgentToolSet copyWith({
-    bool? sendMessage,
-    bool? searchContacts,
-    bool? searchMessages,
-    bool? getConversationContext,
-    bool? readClipboard,
-    bool? listProfiles,
-    bool? fs,
-    bool? fsWrite,
-    bool? bash,
-    bool? subagent,
-  }) {
-    return AgentToolSet(
-      sendMessage: sendMessage ?? this.sendMessage,
-      searchContacts: searchContacts ?? this.searchContacts,
-      searchMessages: searchMessages ?? this.searchMessages,
-      getConversationContext:
-          getConversationContext ?? this.getConversationContext,
-      readClipboard: readClipboard ?? this.readClipboard,
-      listProfiles: listProfiles ?? this.listProfiles,
-      fs: fs ?? this.fs,
-      fsWrite: fsWrite ?? this.fsWrite,
-      bash: bash ?? this.bash,
-      subagent: subagent ?? this.subagent,
-    );
-  }
-}
-
-class AgentExtension {
-  const AgentExtension({
-    required this.name,
-    this.transport = 'stdio',
-    this.command = const [],
-    this.url = '',
-  });
-
-  final String name;
-  final String transport;
-  final List<String> command;
-  final String url;
-
-  Map<String, Object?> toJson() => {
-    'name': name,
-    'transport': transport,
-    'command': command,
-    'url': url,
-  };
-
-  factory AgentExtension.fromJson(Map<String, Object?> json) {
-    final cmd = json['command'];
-    return AgentExtension(
-      name: '${json['name'] ?? ''}',
-      transport: '${json['transport'] ?? 'stdio'}',
-      command: cmd is List ? [for (final c in cmd) '$c'] : const [],
-      url: '${json['url'] ?? ''}',
-    );
-  }
-}
-
-/// Per-agent cwd. Missing / unknown → sandbox (S-KD 4).
-class WorkspaceSpec {
-  const WorkspaceSpec({
-    this.kind = kindSandbox,
-    this.path = '',
-    this.bookmarkRef = '',
-  });
-
-  static const kindSandbox = 'sandbox';
-  static const kindRepo = 'repo';
-  static const sandbox = WorkspaceSpec();
-
-  final String kind;
-  final String path;
-
-  /// Keychain / support key for macOS security-scoped bookmark (PR2).
-  /// Persisted in prefs with the profile; stripped from [toHostJson].
-  final String bookmarkRef;
-
-  bool get isSandbox => kind != kindRepo;
-  bool get isRepo => kind == kindRepo;
-
-  Map<String, Object?> toJson() => {
-    'kind': isRepo ? kindRepo : kindSandbox,
-    if (path.isNotEmpty) 'path': path,
-    if (bookmarkRef.isNotEmpty) 'bookmark_ref': bookmarkRef,
-  };
-
-  /// Host only needs kind + path; bookmark stays on the Dart side.
-  Map<String, Object?> toHostJson() => {
-    'kind': isRepo ? kindRepo : kindSandbox,
-    if (path.isNotEmpty) 'path': path,
-  };
-
-  factory WorkspaceSpec.fromJson(Map<String, Object?>? json) {
-    if (json == null) {
-      return sandbox;
-    }
-    final kind = '${json['kind'] ?? ''}'.trim();
-    return WorkspaceSpec(
-      kind: kind == kindRepo ? kindRepo : kindSandbox,
-      path: '${json['path'] ?? ''}',
-      bookmarkRef: '${json['bookmark_ref'] ?? ''}',
-    );
-  }
-
-  WorkspaceSpec copyWith({String? kind, String? path, String? bookmarkRef}) {
-    return WorkspaceSpec(
-      kind: kind ?? this.kind,
-      path: path ?? this.path,
-      bookmarkRef: bookmarkRef ?? this.bookmarkRef,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is WorkspaceSpec &&
-        other.kind == kind &&
-        other.path == path &&
-        other.bookmarkRef == bookmarkRef;
-  }
-
-  @override
-  int get hashCode => Object.hash(kind, path, bookmarkRef);
-}
-
-/// App / built-in skill assignment (portable skills are discovered, not stored).
-class SkillRef {
-  const SkillRef({
-    required this.id,
-    this.className = classApp,
-    this.origin = 'bundled',
-    this.version = '',
-    this.enabled = true,
-  });
-
-  static const classApp = 'app';
-  static const classPortable = 'portable';
-
-  final String id;
-  final String className;
-  final String origin;
-  final String version;
-  final bool enabled;
-
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'class': className,
-    if (origin.isNotEmpty) 'origin': origin,
-    if (version.isNotEmpty) 'version': version,
-    'enabled': enabled,
-  };
-
-  factory SkillRef.fromJson(Map<String, Object?> json) {
-    return SkillRef(
-      id: '${json['id'] ?? ''}',
-      className: '${json['class'] ?? classApp}',
-      origin: '${json['origin'] ?? 'bundled'}',
-      version: '${json['version'] ?? ''}',
-      enabled: json['enabled'] != false,
-    );
-  }
-
-  SkillRef copyWith({
-    String? id,
-    String? className,
-    String? origin,
-    String? version,
-    bool? enabled,
-  }) {
-    return SkillRef(
-      id: id ?? this.id,
-      className: className ?? this.className,
-      origin: origin ?? this.origin,
-      version: version ?? this.version,
-      enabled: enabled ?? this.enabled,
-    );
-  }
-}
-
-class ReasoningChoice {
-  const ReasoningChoice({
-    this.v = 1,
-    required this.kind,
-    this.on,
-    this.value,
-    this.budget,
-    this.advanced,
-  });
-
-  final int v;
-  final String kind;
-  final bool? on;
-  final String? value;
-  final int? budget;
-  final Map<String, Object?>? advanced;
-
-  Map<String, Object?> toJson() => {
-    'v': v,
-    'kind': kind,
-    if (on != null) 'on': on,
-    if (value != null) 'value': value,
-    if (budget != null) 'value': budget,
-    if (advanced != null) 'json': advanced,
-  };
-
-  factory ReasoningChoice.fromJson(Map<String, Object?> json) {
-    final raw = json['value'];
-    return ReasoningChoice(
-      v: json['v'] is int ? json['v'] as int : 1,
-      kind: '${json['kind'] ?? 'none'}',
-      on: json['on'] as bool?,
-      value: raw is String ? raw : null,
-      budget: raw is int ? raw : null,
-      advanced: json['json'] is Map
-          ? Map<String, Object?>.from(json['json'] as Map)
-          : null,
-    );
-  }
-
-  static ReasoningChoice? fromThinkingEffort(String effort) {
-    final trimmed = effort.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    if (trimmed == 'off' || trimmed == 'none' || trimmed == 'disabled') {
-      return const ReasoningChoice(kind: 'none');
-    }
-    return ReasoningChoice(kind: 'effort_enum', value: trimmed);
-  }
-}
-
-class AgentProfile {
-  const AgentProfile({
-    required this.id,
-    required this.displayName,
-    this.aliases = const [],
-    required this.providerKind,
-    required this.baseUrl,
-    required this.model,
-    required this.keyRef,
-    required this.systemPrompt,
-    this.mode = 'smart_approve',
-    this.maxTurns,
-    this.thinkingEffort = '',
-    this.contextTokens,
-    this.accountId = '',
-    this.reasoning,
-    this.tools = const AgentToolSet(),
-    this.capabilities = const [],
-    this.permissionOverrides = const {},
-    this.extensions = const [],
-    this.workspace = WorkspaceSpec.sandbox,
-    this.skills = const [],
-    this.portableDenylist = const [],
-    this.enabled = true,
-    this.steer = '',
-    this.serverAccount = '',
-  });
-
-  final String id;
-  final String displayName;
-  final List<String> aliases;
-  final String providerKind;
-  final String baseUrl;
-  final String model;
-  final String keyRef;
-  final String systemPrompt;
-  final String mode;
-  final int? maxTurns;
-  final String thinkingEffort;
-  final int? contextTokens;
-  final String accountId;
-  final ReasoningChoice? reasoning;
-  final AgentToolSet tools;
-
-  /// Authoritative assembly units (B-KD 1). Empty only for chat-only personas.
-  final List<CapabilityRef> capabilities;
-  final Map<String, String> permissionOverrides;
-  final List<AgentExtension> extensions;
-  final WorkspaceSpec workspace;
-  final List<SkillRef> skills;
-  final List<String> portableDenylist;
-  final bool enabled;
-  final String steer;
-
-  /// Empty = unregistered. Not a secret. IM dest after `chat.bot.create`.
-  final String serverAccount;
-
-  String get dest => id == kGooseAgentId ? kGooseAgentId : 'agent:$id';
-
-  /// Resolve capabilities for UI / host; derive from legacy tools when empty.
-  List<CapabilityRef> resolveCapabilities() {
-    if (capabilities.isNotEmpty) {
-      return capabilities;
-    }
-    return capabilitiesFromLegacy(tools, extensions);
-  }
-
-  /// Copy with capabilities as source of truth; projects [tools] (+ MCP [extensions]).
-  AgentProfile withCapabilities(
-    List<CapabilityRef> next, {
-    List<AgentExtension>? extensionsOverride,
-  }) {
-    final projected = projectToolSet(next);
-    final mcp = projectExtensions(next);
-    return copyWith(
-      capabilities: next,
-      tools: projected,
-      extensions: extensionsOverride ?? mcp,
-    );
-  }
-
-  AgentProfile copyWith({
-    String? displayName,
-    List<String>? aliases,
-    String? providerKind,
-    String? baseUrl,
-    String? model,
-    String? systemPrompt,
-    String? mode,
-    int? maxTurns,
-    String? thinkingEffort,
-    int? contextTokens,
-    String? accountId,
-    ReasoningChoice? reasoning,
-    AgentToolSet? tools,
-    List<CapabilityRef>? capabilities,
-    Map<String, String>? permissionOverrides,
-    List<AgentExtension>? extensions,
-    WorkspaceSpec? workspace,
-    List<SkillRef>? skills,
-    List<String>? portableDenylist,
-    bool? enabled,
-    String? steer,
-    String? serverAccount,
-    String? keyRef,
-  }) {
-    return AgentProfile(
-      id: id,
-      displayName: displayName ?? this.displayName,
-      aliases: aliases ?? this.aliases,
-      providerKind: providerKind ?? this.providerKind,
-      baseUrl: baseUrl ?? this.baseUrl,
-      model: model ?? this.model,
-      keyRef: keyRef ?? this.keyRef,
-      systemPrompt: systemPrompt ?? this.systemPrompt,
-      mode: mode ?? this.mode,
-      maxTurns: maxTurns ?? this.maxTurns,
-      thinkingEffort: thinkingEffort ?? this.thinkingEffort,
-      contextTokens: contextTokens ?? this.contextTokens,
-      accountId: accountId ?? this.accountId,
-      reasoning: reasoning ?? this.reasoning,
-      tools: tools ?? this.tools,
-      capabilities: capabilities ?? this.capabilities,
-      permissionOverrides: permissionOverrides ?? this.permissionOverrides,
-      extensions: extensions ?? this.extensions,
-      workspace: workspace ?? this.workspace,
-      skills: skills ?? this.skills,
-      portableDenylist: portableDenylist ?? this.portableDenylist,
-      enabled: enabled ?? this.enabled,
-      steer: steer ?? this.steer,
-      serverAccount: serverAccount ?? this.serverAccount,
-    );
-  }
-
-  /// Disk JSON: no `provider` block (C-KD 1).
-  Map<String, Object?> toJson() {
-    final caps = resolveCapabilities();
-    final projectedTools = projectToolSet(caps);
-    final mcpExt = projectExtensions(caps);
-    return {
-      'id': id,
-      'display_name': displayName,
-      'aliases': aliases,
-      if (accountId.isNotEmpty) 'account_id': accountId,
-      'model': {
-        'name': model,
-        if (reasoning == null && thinkingEffort.isNotEmpty)
-          'thinking_effort': thinkingEffort,
-        if (contextTokens != null) 'context_tokens': contextTokens,
-      },
-      if (reasoning != null) 'reasoning': reasoning!.toJson(),
-      'system_prompt': systemPrompt,
-      'mode': mode,
-      'max_turns': maxTurns,
-      'capabilities': [for (final c in caps) c.toJson()],
-      // One-release ToolSet projection for old readers.
-      'tools': projectedTools.toJson(),
-      'permissions': {'tools': permissionOverrides},
-      'extensions': [for (final e in mcpExt) e.toJson()],
-      'workspace': workspace.toJson(),
-      'skills': [for (final s in skills) s.toJson()],
-      if (portableDenylist.isNotEmpty) 'portable_denylist': portableDenylist,
-      'enabled': enabled,
-      if (steer.isNotEmpty) 'steer': steer,
-      'server_account': serverAccount,
-    };
-  }
-
-  Map<String, Object?> toHostJson(
-    ProviderAccount account, {
-    String userAgentsSkills = '',
-  }) {
-    final json = toJson();
-    json['provider'] = {
-      'kind': canonicalizeVendorId(account.vendorId),
-      'base_url': account.baseUrl,
-      'key_ref': '',
-    };
-    json['workspace'] = workspace.toHostJson();
-    if (userAgentsSkills.isNotEmpty) {
-      json['user_agents_skills'] = userAgentsSkills;
-    }
-    return json;
-  }
-
-  factory AgentProfile.fromJson(Map<String, Object?> json) {
-    final provider = json['provider'];
-    final model = json['model'];
-    final providerMap = provider is Map
-        ? Map<String, Object?>.from(provider)
-        : <String, Object?>{};
-    final modelMap = model is Map
-        ? Map<String, Object?>.from(model)
-        : <String, Object?>{};
-    final toolsRaw = json['tools'];
-    final permRaw = json['permissions'];
-    final permMap = permRaw is Map
-        ? Map<String, Object?>.from(permRaw)
-        : <String, Object?>{};
-    final permTools = permMap['tools'];
-    final overrides = <String, String>{};
-    if (permTools is Map) {
-      for (final e in permTools.entries) {
-        overrides['${e.key}'] = '${e.value}';
-      }
-    }
-    final aliasesRaw = json['aliases'];
-    final reasoningRaw = json['reasoning'];
-    final workspaceRaw = json['workspace'];
-    final skillsRaw = json['skills'];
-    final denylistRaw = json['portable_denylist'];
-    final capsRaw = json['capabilities'];
-    final kind = canonicalizeVendorId(providerMap['kind'] as String? ?? '');
-    final tools = toolsRaw is Map
-        ? AgentToolSet.fromJson(Map<String, Object?>.from(toolsRaw))
-        : const AgentToolSet();
-    final extensions = () {
-      final raw = json['extensions'];
-      if (raw is! List) {
-        return const <AgentExtension>[];
-      }
-      return [
-        for (final item in raw)
-          if (item is Map)
-            AgentExtension.fromJson(Map<String, Object?>.from(item)),
-      ];
-    }();
-    var capabilities = <CapabilityRef>[];
-    if (capsRaw is List) {
-      for (final item in capsRaw) {
-        if (item is Map) {
-          capabilities.add(
-            CapabilityRef.fromJson(Map<String, Object?>.from(item)),
-          );
-        }
-      }
-    }
-    if (capabilities.isEmpty) {
-      capabilities = capabilitiesFromLegacy(tools, extensions);
-    }
-    final projectedTools = projectToolSet(capabilities);
-    final projectedExt = projectExtensions(capabilities);
-    return AgentProfile(
-      id: json['id'] as String? ?? kGooseAgentId,
-      displayName: json['display_name'] as String? ?? kGooseAgentName,
-      aliases: aliasesRaw is List
-          ? [for (final a in aliasesRaw) '$a']
-          : const [],
-      providerKind: kind,
-      baseUrl: providerMap['base_url'] as String? ?? '',
-      model: modelMap['name'] as String? ?? '',
-      keyRef: providerMap['key_ref'] as String? ?? '',
-      systemPrompt: migrateIdentityPrompt(
-        json['system_prompt'] as String? ?? '',
-      ),
-      mode: json['mode'] as String? ?? 'smart_approve',
-      maxTurns: json['max_turns'] is int ? json['max_turns'] as int : null,
-      thinkingEffort: modelMap['thinking_effort'] as String? ?? '',
-      contextTokens: modelMap['context_tokens'] is int
-          ? modelMap['context_tokens'] as int
-          : null,
-      accountId: json['account_id'] as String? ?? '',
-      reasoning: reasoningRaw is Map
-          ? ReasoningChoice.fromJson(Map<String, Object?>.from(reasoningRaw))
-          : ReasoningChoice.fromThinkingEffort(
-              modelMap['thinking_effort'] as String? ?? '',
-            ),
-      tools: projectedTools,
-      capabilities: capabilities,
-      permissionOverrides: overrides,
-      extensions: projectedExt,
-      workspace: WorkspaceSpec.fromJson(
-        workspaceRaw is Map ? Map<String, Object?>.from(workspaceRaw) : null,
-      ),
-      skills: () {
-        if (skillsRaw is! List) {
-          return const <SkillRef>[];
-        }
-        return [
-          for (final item in skillsRaw)
-            if (item is Map) SkillRef.fromJson(Map<String, Object?>.from(item)),
-        ];
-      }(),
-      portableDenylist: denylistRaw is List
-          ? [for (final d in denylistRaw) '$d']
-          : const [],
-      enabled: json['enabled'] != false,
-      steer: json['steer'] as String? ?? '',
-      serverAccount: json['server_account'] as String? ?? '',
-    );
-  }
-
-  static AgentProfile gooseFromSettings(AgentSettings s) {
-    const caps = <CapabilityRef>[
-      CapabilityRef(kind: CapabilityKinds.imSendMessage),
-      CapabilityRef(kind: CapabilityKinds.imSearchContacts),
-      CapabilityRef(kind: CapabilityKinds.imSearchMessages),
-      CapabilityRef(kind: CapabilityKinds.imGetConversationContext),
-      CapabilityRef(kind: CapabilityKinds.imReadClipboard),
-      CapabilityRef(kind: CapabilityKinds.imListProfiles),
-    ];
-    return AgentProfile(
-      id: kGooseAgentId,
-      displayName: kGooseAgentName,
-      aliases: const ['助手'],
-      providerKind: canonicalizeVendorId(s.llmBackend),
-      baseUrl: s.baseUrl,
-      model: s.model,
-      keyRef: _kGooseKey,
-      accountId: '',
-      systemPrompt: '',
-      mode: 'smart_approve',
-      maxTurns: 16,
-      thinkingEffort: s.thinkingEffort,
-      contextTokens: defaultContextTokens(s.model),
-      reasoning: ReasoningChoice.fromThinkingEffort(s.thinkingEffort),
-      capabilities: caps,
-      tools: projectToolSet(caps),
-    );
-  }
-}
+part 'agent_profile_defaults.dart';
+part 'agent_capability_kinds.dart';
+part 'agent_profile_types.dart';
+part 'agent_profile_model.dart';
 
 class AgentProfileStore extends Notifier<List<AgentProfile>> {
   final _secure = SettingsStore.productionSecureStorage();
@@ -1339,15 +243,16 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     var profiles = <AgentProfile>[];
     try {
       final client = ref.read(clientPortProvider);
-      var rows = await client.listAgentProfiles();
+      final catalog = AgentCatalog(client);
+      var rows = await catalog.profiles();
       if (rows.isEmpty) {
         final imported = await _importPrefsProfiles(client);
         if (imported.isNotEmpty) {
-          rows = await client.listAgentProfiles();
+          rows = await catalog.profiles();
         }
       }
       for (final row in rows) {
-        final profile = await _fromDto(row);
+        final profile = await _fromRow(row);
         if (profile != null) {
           profiles.add(profile);
         }
@@ -1366,10 +271,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     var flags = <String, Object?>{};
     try {
       final raw = await ref.read(clientPortProvider).agentFlags();
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        flags = Map<String, Object?>.from(decoded);
-      }
+      flags = {
+        'multi_profile': raw.multiProfile,
+        'server_identity': raw.serverIdentity,
+      };
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     if (flags.isEmpty) {
@@ -1396,10 +301,10 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       await ref
           .read(clientPortProvider)
           .setAgentFlags(
-            jsonEncode({
-              'multi_profile': multiProfile,
-              'server_identity': serverIdentity,
-            }),
+            rust_types.AgentFlags(
+              multiProfile: multiProfile,
+              serverIdentity: serverIdentity,
+            ),
           );
     } catch (e, st) {
       KimLogger.warn('agent flags persist', e, st);
@@ -1431,16 +336,16 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       return const [];
     }
     await client.importAgentProfiles([
-      for (final p in profiles) await _toDto(p),
+      for (final p in profiles) await _toRow(p),
     ]);
     await prefs.remove(_kProfiles);
     return profiles;
   }
 
-  Future<AgentProfileDto> _toDto(AgentProfile p) async {
+  Future<rust_types.AgentProfile> _toRow(AgentProfile p) async {
     final client = ref.read(clientPortProvider);
     final blob = await client.specJsonToBlob(jsonEncode(p.toJson()));
-    return AgentProfileDto(
+    return rust_types.AgentProfile(
       profileId: p.id,
       nickname: p.displayName,
       serverAccount: p.serverAccount,
@@ -1451,7 +356,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     );
   }
 
-  Future<AgentProfile?> _fromDto(AgentProfileDto row) async {
+  Future<AgentProfile?> _fromRow(rust_types.AgentProfile row) async {
     try {
       final client = ref.read(clientPortProvider);
       var rawJson = row.bodyJson;
@@ -1487,7 +392,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
         return profile;
       }
     } catch (e, st) {
-      final msg = e.toString();
+      final msg = apiFailureDetail(e);
       if (msg.contains('schema_version') || msg.contains('UnsupportedSchema')) {
         _opaqueUnsupported.add(row.profileId);
         identityError = 'Agent config requires an app upgrade';
@@ -1574,7 +479,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     try {
       final client = ref.read(clientPortProvider);
-      await client.upsertAgentProfile(await _toDto(p));
+      await AgentCatalog(client).upsert(await _toRow(p));
       String? live;
       try {
         live = await ref.read(workspaceAccessProvider).realUserAgentsSkills();
@@ -1583,7 +488,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       }
       final previous = await client.getDeviceOverlay(p.id);
       await client.upsertDeviceOverlay(
-        DeviceOverlayDto(
+        rust_types.DeviceOverlay(
           profileId: p.id,
           workspacePath: p.workspace.path,
           workspaceBookmark: p.workspace.bookmarkRef,
@@ -1606,7 +511,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
 
   Future<void> _removeOne(String id) async {
     try {
-      await ref.read(clientPortProvider).deleteAgentProfile(id);
+      await AgentCatalog(ref.read(clientPortProvider)).delete(id);
     } catch (e, st) {
       KimLogger.warn('agent profile delete', e, st);
     }
@@ -1676,6 +581,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       portableDenylist: source.portableDenylist,
       enabled: true,
       steer: source.steer,
+      runtime: source.runtime,
     );
     await _upsertOne(copy);
     await ensureBotIdentity(copy);
@@ -1697,6 +603,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       contextTokens: defaultContextTokens(model),
       capabilities: kCreateDefaultCapabilities,
       tools: kCreateDefaultTools,
+      runtime: 'goose',
     );
   }
 

@@ -6,6 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::error::SdkError;
 use crate::ids::SessionEpoch;
 use crate::session::lock;
+use tracing::{info, warn};
 
 #[derive(Clone, Debug)]
 pub struct AgentRunRequest {
@@ -89,6 +90,15 @@ impl FfiAgentRuntime {
     }
 
     pub fn submit(&self, result: AgentRunResult) {
+        info!(
+            dest = %result.dest,
+            profile_id = %result.profile_id,
+            epoch = result.epoch,
+            stop = %result.stop_reason,
+            replied = result.replied,
+            failed = result.error.is_some(),
+            "agent run result"
+        );
         if let Some(tx) = lock(&self.waiters).remove(&(result.dest.clone(), result.epoch)) {
             let _ = tx.send(result);
         }
@@ -112,6 +122,13 @@ impl AgentRuntime for FfiAgentRuntime {
         epoch: SessionEpoch,
     ) -> Result<AgentRunResult, SdkError> {
         let run_epoch = self.next_epoch(epoch);
+        info!(
+            dest,
+            profile_id,
+            in_reply_to,
+            epoch = run_epoch,
+            "agent run dispatch"
+        );
         let req = AgentRunRequest {
             dest: dest.to_string(),
             profile_id: profile_id.to_string(),
@@ -150,6 +167,7 @@ impl AgentRuntime for FfiAgentRuntime {
         };
         if let Some(err) = send_err {
             lock(&self.waiters).remove(&(dest.to_string(), run_epoch));
+            warn!(dest, error = %err, "agent run dispatch failed");
             return Err(err);
         }
         rx.await.map_err(|_| SdkError::Internal {

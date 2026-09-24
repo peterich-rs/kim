@@ -1,7 +1,10 @@
 /target
 **/*.rs.bk
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
 .DS_Store
 node_modules/
 /deploy/kim.env
@@ -18,7 +21,6 @@ node_modules/
 # Flutter
 /sdk/mobile/build/
 /sdk/mobile/.dart_tool/
-/sdk/mobile/rust/target/
 /sdk/mobile/plugins/**/.dart_tool/
 /sdk/mobile/plugins/**/build/
 

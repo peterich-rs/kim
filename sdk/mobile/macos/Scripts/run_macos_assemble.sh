@@ -54,10 +54,37 @@ mkdir -p "$EPHEMERAL"
 export SOURCE_ROOT="${SOURCE_ROOT:-$SRCROOT}"
 export CONFIGURATION="${CONFIGURATION:-Debug}"
 
+# The desktop hook (hook/build.dart) builds kim-codex-helper into the repo
+# target dir during Flutter Assemble. Embed then copies that binary next to
+# the app executable so a packaged .app does not depend on a manual cargo
+# step or on walking back to the repo. Xcode signs the bundle after this phase.
+install_codex_helper() {
+  case "${CONFIGURATION:-Debug}" in
+    Release|Profile) profile=release ;;
+    *) profile=debug ;;
+  esac
+  repo="$(cd "${SRCROOT}/../../.." && pwd)"
+  src="${repo}/target/${profile}/kim-codex-helper"
+  app_dir="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+  dest="${app_dir}/Contents/MacOS/kim-codex-helper"
+  if [ ! -f "$src" ]; then
+    echo "error: kim-codex-helper missing at $src. The desktop native-assets hook should have built it." >&2
+    exit 1
+  fi
+  if [ ! -d "${app_dir}/Contents/MacOS" ]; then
+    echo "error: app bundle MacOS directory missing: ${app_dir}/Contents/MacOS" >&2
+    exit 1
+  fi
+  cp -f "$src" "$dest"
+  chmod 755 "$dest"
+}
+
 MODE="${1:-build}"
 if [ "$MODE" = "embed" ]; then
   echo "$PRODUCT_NAME.app" > "${PROJECT_DIR:-$SRCROOT}"/Flutter/ephemeral/.app_filename
-  exec "$assemble" embed
+  "$assemble" embed
+  install_codex_helper
+  exit 0
 fi
 if [ "$MODE" = "prepare" ]; then
   # Unpack copies the Flutter.framework into BUILT_PRODUCTS_DIR. Without it,

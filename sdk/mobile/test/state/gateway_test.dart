@@ -16,8 +16,8 @@ void main() {
     );
     env.container.read(linkProvider);
     env.fake.pushSnapshot(
-      const SessionSnapshotDto(
-        link: LinkStateDto.offline(),
+      const SessionSnapshot(
+        link: LinkState.offline(),
         threads: [],
         unreadTotal: 0,
       ),
@@ -45,8 +45,8 @@ void main() {
     env.container.read(linkProvider);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     env.fake.pushSnapshot(
-      const SessionSnapshotDto(
-        link: LinkStateDto.offline(),
+      const SessionSnapshot(
+        link: LinkState.offline(),
         lastError: 'boom',
         threads: [],
         unreadTotal: 0,

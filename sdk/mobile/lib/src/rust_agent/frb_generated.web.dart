@@ -6,6 +6,8 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'api/catalog.dart';
+import 'api/failure.dart';
 import 'api/session.dart';
 
 import 'dart:async';
@@ -24,62 +26,62 @@ abstract class AgentRustLibApiImplPlatform
     required super.portManager,
   });
 
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_AgentSessionPtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession;
-
-  @protected
-  AnyhowException dco_decode_AnyhowException(dynamic raw);
-
-  @protected
-  AgentSession
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    dynamic raw,
-  );
-
-  @protected
-  AgentSession
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    dynamic raw,
-  );
-
-  @protected
-  AgentSession
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    dynamic raw,
-  );
-
-  @protected
-  RustStreamSink<AgentUiEvent> dco_decode_StreamSink_agent_ui_event_Sse(
-    dynamic raw,
-  );
-
   @protected
   String dco_decode_String(dynamic raw);
+
+  @protected
+  AgentFailure dco_decode_agent_failure(dynamic raw);
 
   @protected
   AgentUiEvent dco_decode_agent_ui_event(dynamic raw);
 
   @protected
+  AssembledPreview dco_decode_assembled_preview(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
-  SessionOpenOpts dco_decode_box_autoadd_session_open_opts(dynamic raw);
+  CapabilityEntry dco_decode_capability_entry(dynamic raw);
+
+  @protected
+  CatalogValidate dco_decode_catalog_validate(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  List<CapabilityEntry> dco_decode_list_capability_entry(dynamic raw);
+
+  @protected
+  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
-  ResumeReportDto dco_decode_resume_report_dto(dynamic raw);
+  List<Skill> dco_decode_list_skill(dynamic raw);
 
   @protected
-  SessionOpenOpts dco_decode_session_open_opts(dynamic raw);
+  List<Vendor> dco_decode_list_vendor(dynamic raw);
 
   @protected
-  SessionSnapshotDto dco_decode_session_snapshot_dto(dynamic raw);
+  PreviewTool dco_decode_preview_tool(dynamic raw);
+
+  @protected
+  ReasoningSurface dco_decode_reasoning_surface(dynamic raw);
+
+  @protected
+  ResumeReport dco_decode_resume_report(dynamic raw);
+
+  @protected
+  SessionSnapshot dco_decode_session_snapshot(dynamic raw);
+
+  @protected
+  Skill dco_decode_skill(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
 
   @protected
   BigInt dco_decode_u_64(dynamic raw);
@@ -91,64 +93,66 @@ abstract class AgentRustLibApiImplPlatform
   void dco_decode_unit(dynamic raw);
 
   @protected
-  BigInt dco_decode_usize(dynamic raw);
-
-  @protected
-  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
-
-  @protected
-  AgentSession
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  AgentSession
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  AgentSession
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  RustStreamSink<AgentUiEvent> sse_decode_StreamSink_agent_ui_event_Sse(
-    SseDeserializer deserializer,
-  );
+  Vendor dco_decode_vendor(dynamic raw);
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AgentFailure sse_decode_agent_failure(SseDeserializer deserializer);
+
+  @protected
   AgentUiEvent sse_decode_agent_ui_event(SseDeserializer deserializer);
+
+  @protected
+  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
-  SessionOpenOpts sse_decode_box_autoadd_session_open_opts(
-    SseDeserializer deserializer,
-  );
+  CapabilityEntry sse_decode_capability_entry(SseDeserializer deserializer);
+
+  @protected
+  CatalogValidate sse_decode_catalog_validate(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  List<CapabilityEntry> sse_decode_list_capability_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
-  ResumeReportDto sse_decode_resume_report_dto(SseDeserializer deserializer);
+  List<Skill> sse_decode_list_skill(SseDeserializer deserializer);
 
   @protected
-  SessionOpenOpts sse_decode_session_open_opts(SseDeserializer deserializer);
+  List<Vendor> sse_decode_list_vendor(SseDeserializer deserializer);
 
   @protected
-  SessionSnapshotDto sse_decode_session_snapshot_dto(
-    SseDeserializer deserializer,
-  );
+  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer);
+
+  @protected
+  ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer);
+
+  @protected
+  ResumeReport sse_decode_resume_report(SseDeserializer deserializer);
+
+  @protected
+  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer);
+
+  @protected
+  Skill sse_decode_skill(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer);
@@ -160,61 +164,55 @@ abstract class AgentRustLibApiImplPlatform
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  BigInt sse_decode_usize(SseDeserializer deserializer);
+  Vendor sse_decode_vendor(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
-  void sse_encode_AnyhowException(
-    AnyhowException self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    AgentSession self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    AgentSession self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    AgentSession self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_StreamSink_agent_ui_event_Sse(
-    RustStreamSink<AgentUiEvent> self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_agent_failure(AgentFailure self, SseSerializer serializer);
 
   @protected
   void sse_encode_agent_ui_event(AgentUiEvent self, SseSerializer serializer);
 
   @protected
+  void sse_encode_assembled_preview(
+    AssembledPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
-  void sse_encode_box_autoadd_session_open_opts(
-    SessionOpenOpts self,
+  void sse_encode_capability_entry(
+    CapabilityEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_catalog_validate(
+    CatalogValidate self,
     SseSerializer serializer,
   );
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_capability_entry(
+    List<CapabilityEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_tool(
+    List<PreviewTool> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -223,22 +221,34 @@ abstract class AgentRustLibApiImplPlatform
   );
 
   @protected
-  void sse_encode_resume_report_dto(
-    ResumeReportDto self,
+  void sse_encode_list_skill(List<Skill> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_vendor(List<Vendor> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reasoning_surface(
+    ReasoningSurface self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_session_open_opts(
-    SessionOpenOpts self,
+  void sse_encode_resume_report(ResumeReport self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_session_snapshot(
+    SessionSnapshot self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_session_snapshot_dto(
-    SessionSnapshotDto self,
-    SseSerializer serializer,
-  );
+  void sse_encode_skill(Skill self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer);
@@ -250,7 +260,7 @@ abstract class AgentRustLibApiImplPlatform
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
-  void sse_encode_usize(BigInt self, SseSerializer serializer);
+  void sse_encode_vendor(Vendor self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -260,22 +270,6 @@ abstract class AgentRustLibApiImplPlatform
 
 class AgentRustLibWire implements BaseWire {
   AgentRustLibWire.fromExternalLibrary(ExternalLibrary lib);
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-        ptr,
-      );
 }
 
 @JS('wasm_bindgen')
@@ -283,14 +277,4 @@ external AgentRustLibWasmModule get wasmModule;
 
 @JS()
 @anonymous
-extension type AgentRustLibWasmModule._(JSObject _) implements JSObject {
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentSession(
-    int ptr,
-  );
-}
+extension type AgentRustLibWasmModule._(JSObject _) implements JSObject {}

@@ -3,8 +3,8 @@
 节奏（已拍板）：
 
 1. **大盘点** — [production-gaps.md](../production-gaps.md) 列缺口与优先级，不写逐步补丁。
-2. **细化设计** — 本目录一份一切片。可编译、可测、文件清单齐。
-3. **执行** — 按该切片落地；合入后从 gaps 删对应 G-xx，形状写回专题文档。切片实施稿不长期保留。
+2. **细化设计** — 本目录一份一切片，只在实现它的分支上存在。
+3. **执行** — 按该切片落地。合入主干前删掉切片稿；仍要长期遵守的合同写回 `docs/` 专题文档，并关对应 G-xx。
 
 切片不要混：鉴权、ACK 模型、控制面密钥、`TcpConn<S>` 分属不同 PR。
 
@@ -19,52 +19,34 @@
 | Royal HTTP HMAC | 除 `/health`、`/api/v1/auth/*` 外内部口要签 | [group-royal.md](../group-royal.md) |
 | 控制面硬化 | Chat kick HMAC；nonce NX EX 121；Redis 密码 + `noeviction`；Consul mTLS+ACL；G-12 fail-fast | [group-royal.md](../group-royal.md)、[deploy.md](../deploy.md) |
 | 冻结单租户 `app=kim` | 原 G-05 / G-06：拒非 kim JWT；loc+session v2；Chat 拒非 kim session；account 灰度；loc cache opt-in | [gray.md](../gray.md)、[link-layer-login.md](../link-layer-login.md)、[deploy.md](../deploy.md) |
-| pending receipt | 代码已合入：ACK = id 集合；`acked_at` 不删行；`KIM_REQUIRE_JTI` 前置；Royal writer 先于 Chat reader。**G-03 / G-04 / G-10 仍开**，要等 [reliable-delivery.md](../reliable-delivery.md) rollout | [reliable-delivery.md](../reliable-delivery.md)、[web-sdk.md](../web-sdk.md)、[link-layer-login.md](../link-layer-login.md) |
-| SIGTERM + 先摘发现再 drain | G-07 / G-32：unix SIGTERM+SIGINT；Container 先 deregister 再 JoinSet drain；Royal/Router HTTP graceful | [deploy.md](../deploy.md) |
-| 心跳 Redis 有界宽限 | G-31：仅确认吊销立刻关；存储错误连续 3 次后断开；期内不续签 JWT；登录仍 fail-closed | [link-layer-login.md](../link-layer-login.md)、[observability.md](../observability.md) |
-| 串行 lane + 下行 try_send | G-29 / G-30：per-`channel_id` 串行 lane；网关 Disconnect + `kim_mailbox_full_total`。#66 合入后本行生效 | [communication-layer.md](../communication-layer.md) |
-| B1 改密吊销旧会话 | G-20 会话半边：`token_epoch` + `live_claims` + kick；改密不发新 token | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
-| B2 device credential 服务端半边 | 可选 proto 字段；仅 enroll/出示写 `did`；logout 仍全端踢；`target_id` 仍 jti | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
-| B3 `TcpConn<S>` + TGateway TLS | G-34：`FrontendState`、`try_acquire`、keepalive、进程内 rustls；明文 `new(stream)` 保留。reuseport / vectored 仍延后 | [communication-layer.md](../communication-layer.md)、[architecture.md](../architecture.md) |
-| B4 redis / sqlx / Royal deadline | G-33 热路径：ConnectionManager 3s 超时、sqlx `statement_timeout`、migrate 独立连接、目录 RPC 800ms。tower-http / tokio Builder 仍开 | [perf.md](../perf.md) |
-| B5 Royal 发现 + 熔断 + 短缓存 | G-16：`RoyalPool` RR + 5xx 熔断 + Consul `find`；好友/block/`exists` 30s 缓存；royal-2；生产 Snowflake 失败退出 | [group-royal.md](../group-royal.md) |
-| B6 可观测性剩余 | G-15：send→ack、Royal RPC、backlog gauge、royal `/metrics`、告警规则。跨进程 trace 仍延后 | [observability.md](../observability.md) |
-| B7 inbox 物化 | 群 `summaries` 批量、advisory lock、回填脚本、Memory 双索引。**G-17 仍开**：生产回填后 `KIM_INBOX_MATERIALIZED=1` | [user-social-inbox.md](../user-social-inbox.md)、[deploy.md](../deploy.md) |
-| Mobile 成熟化 Phase 3–7 | FFI supervisor / SQLite upsert / Dart outbox；自研 ChatList（去 flutter_chat_ui）；KimTheme v2 | [mobile-client.md](../mobile-client.md)、[06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
-| Web `isRetryable` | G-14：`ServiceUnavailable=3` 与 3xx 重试；99 / 1xx / 111 不重试。漏 Push 见 G-03 | [web-sdk.md](../web-sdk.md) |
+| pending receipt 代码 | ACK = id 集合；`acked_at` 不删行；`KIM_REQUIRE_JTI` 前置；Royal writer 先于 Chat reader。**G-03 / G-04 / G-10 仍开**，要等 rollout | [reliable-delivery.md](../reliable-delivery.md)、[web-sdk.md](../web-sdk.md)、[link-layer-login.md](../link-layer-login.md) |
+| SIGTERM + 先摘发现再 drain | G-07 / G-32 | [deploy.md](../deploy.md) |
+| 心跳 Redis 有界宽限 | G-31 | [link-layer-login.md](../link-layer-login.md)、[observability.md](../observability.md) |
+| 串行 lane + 下行 try_send | G-29 / G-30 | [communication-layer.md](../communication-layer.md) |
+| B1 改密吊销旧会话 | G-20 会话半边 | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
+| B2 device credential 服务端半边 | 可选 proto 字段；仅 enroll/出示写 `did` | [group-royal.md](../group-royal.md)、[link-layer-login.md](../link-layer-login.md) |
+| B3 `TcpConn<S>` + TGateway TLS | G-34 | [communication-layer.md](../communication-layer.md)、[architecture.md](../architecture.md) |
+| B4 redis / sqlx / Royal deadline | G-33 热路径 | [perf.md](../perf.md) |
+| B5 Royal 发现 + 熔断 + 短缓存 | G-16 | [group-royal.md](../group-royal.md) |
+| B6 可观测性剩余 | G-15。跨进程 trace 仍延后 | [observability.md](../observability.md) |
+| B7 inbox 物化 | **G-17 仍开**：生产回填后 `KIM_INBOX_MATERIALIZED=1` | [user-social-inbox.md](../user-social-inbox.md)、[deploy.md](../deploy.md) |
+| Mobile 成熟化、链接控制、kim-sdk 所有权、Flutter UI 壳 | Phase 3–7、链接保活、消息生命周期下沉、Flutter 只做 UI | [mobile-client.md](../mobile-client.md)、[flutter-layering.md](../flutter-layering.md)、[ffi-oo-contract.md](../ffi-oo-contract.md) |
+| Web `isRetryable` | G-14 | [web-sdk.md](../web-sdk.md) |
+| 密码信封 | X25519 + HTTPS | [auth-password-envelope.md](../auth-password-envelope.md) |
+| Presence 进房 | P1a / P1b | [presence-room-interest.md](../presence-room-interest.md) |
+| Android Logic SO OTA | arm64 `libapp.so` + `libkim_client_ffi.so` | [mobile-android-so-ota.md](../mobile-android-so-ota.md) |
+| 热路径并发 | Phase 1–7 | [communication-layer.md](../communication-layer.md)、[perf.md](../perf.md) |
+| 桌面 Agent（Goose 人设、bot、能力块、生产力、harness、未读同步） | 已合入主干的客户端切片 | [agent-goose.md](../agent-goose.md) |
 
-漏 Push 补偿仍是 G-03。G-03 要等 rollout，不是再写一套 ACK。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
+漏 Push 补偿仍是 G-03。G-20 后半（验证/找回/注销）与 G-13 客户端持久化仍开。
 
-Q1 **已拍板**：冻结 `app=kim`。Q2 **已拍板**：Consul 关明文 8500 + 私有 CA HTTPS/mTLS + ACL deny。
-
-剩余阶段合同：[next-stage.md](./next-stage.md)（后台轨与客户端轨分开，web / mobile 不挡后台）。
-
-## 进行中
+## 未合入
 
 | 切片 | 覆盖 |
 |---|---|
-| Mobile 数据流收敛 | [mobile-data-flow-convergence.md](./mobile-data-flow-convergence.md)：分支 `feat/mobile-data-flow-convergence`；ChangeLog→QueryPublisher；通讯录/窗口 SDK watch；命令仅回执。PR 1–7 已在分支落地，待合入 |
-| Agent 配置即数据 | [agent-config-as-data.md](./agent-config-as-data.md)：AgentSpec 定形 + ProfileStore trait + from_spec 单一装配；本地/远端存储与执行解耦，P3 云同步 / P4 云执行前置调研。**Draft，未排期** |
-| Rust 惯用法升级 | [rust-idiom-upgrade.md](./rust-idiom-upgrade.md)：对照陈天课五刀。worktree `refactor/rust-idiom-upgrade`。第 1 刀 [rust-idiom-p1-ids.md](./rust-idiom-p1-ids.md) |
-| Goose 个性化 Agent | [goose-personalized-agents.md](./goose-personalized-agents.md)：AgentProfile → MachineFactory；Dart IM 工具 + Rust 进程内工具；PR0–PR9 |
-| 端侧 Agent 的后台 bot 身份 | [goose-bot-first-class.md](./goose-bot-first-class.md)：Goose 仍本机跑；1:1 走 WGateway；`chat.bot.create` 自动成友；owner 代发 `chat.bot.reply` |
-| 人↔Agent IM 对齐人↔人 | [human-agent-im-parity.md](./human-agent-im-parity.md)：正文多端同一 `message_id`；输入中/Agent 忙碌上云；人↔人 typing 壳回归。**不做** Agent↔Agent |
-| Agent 生产力（工作区 / Skill / 广场） | [agent-productivity.md](./agent-productivity.md)：per-agent sandbox 与 repo cwd；Skill 显式分配 + `activate_skill`；本机广场。**待执行** |
-| Goose Agent Harness（运行时监督核） | [goose-agent-harness.md](./goose-agent-harness.md)：内嵌 Goose 的 idle/hard、类型化 TurnOutcome、cancel 配对、conversation 优先恢复、MCP `killpg`。**Draft，H-KD，PR0–8 未排期** |
-| Agent pet presence | [agent-pet-presence.md](./agent-pet-presence.md)：Codex 图集播在 1:1 顶栏 / typing 位。Dart-only，不上 `flutter_scene` |
+| pending receipt rollout | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md)：G-03 / G-04 / G-10。代码已合入，关 gaps 等运维三条同时成立 |
+| 服务端会话隐藏 | [chat-inbox-hide.md](./chat-inbox-hide.md)：Delete conversation for me。尚未合入 |
+| Codex harness 嵌入 | [codex-embed.md](./codex-embed.md)：分支 `feat/codex-agent-embed`。Goose 与 Codex 并列，`runtime` 选择 |
+| FFI 收进 workspace | [ffi-workspace.md](./ffi-workspace.md)：Phase 1–5 已落地。`KimBridge` 仍是一个类 |
 
-## 待写 / 待执行
-
-后台轨顺序与边界见 [next-stage.md](./next-stage.md)。不要把客户端优化写进后台 PR。
-
-| 序 | 轨 | 覆盖 | 依赖 | 规格 |
-|---:|---|---|---|---|
-| B0 | 后台 | pending receipt rollout（G-03 / G-04 / G-10） | SCAN fail-closed 已合入；**关 gaps 等运维三条同时成立** | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md) |
-| — | 运行时 | ChannelMap / 锁粒度 / 读写分离 / 通知缝 | **不挡 B0，也不插到 B0 前面**；不改 ACK、不改 `sdk/*` | [hot-path-concurrency.md](./hot-path-concurrency.md) |
-| — | 客户端 | Mobile Phase 8 手工走查 | 无服务端改动 | [06-mobile-client-maturity.md](./06-mobile-client-maturity.md) |
-| — | 客户端 | 链接控制域（keepalive / CODE_PING / 看门狗 / 退避复位） | 不改 gateway ACK | [07-mobile-link-control.md](./07-mobile-link-control.md) |
-| — | 客户端 | kim-sdk 所有权下沉：store / outbox / persist-then-ack | 不改服务端 ACK；先 PR 1 保护 pending；推翻 06 Decision 2/4 | [08-kim-sdk-ownership.md](./08-kim-sdk-ownership.md) |
-| — | 客户端 | Agent 生产力：工作区 / 能力 / Skill / 本机广场 | 不改 gateway；桌面 Goose；零后台 | [agent-productivity.md](./agent-productivity.md) |
-| — | 客户端 | Goose Agent Harness：监督核（超时 / 取消 / 恢复 / 杀树） | 不改 gateway；桌面 Goose；零后台；不重开 S-KD / B-KD | [goose-agent-harness.md](./goose-agent-harness.md) |
-
-G-03 关闭条件见 [reliable-delivery.md](../reliable-delivery.md)，不要在 gaps 里提前删条。G-17 关 gaps 等生产回填 + `KIM_INBOX_MATERIALIZED=1`。剩余后台不插到 B0 前面。
+没有对应分支、也不描述当前系统的稿子不放在这里。

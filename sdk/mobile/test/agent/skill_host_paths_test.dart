@@ -5,12 +5,15 @@ import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform
 // ignore: depend_on_referenced_packages
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide SessionSnapshotDto;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    show AgentRunRequest, DeviceOverlay;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
@@ -24,97 +27,17 @@ class _FakeAccess extends WorkspaceAccess {
   Future<String?> realUserAgentsSkills() async => skillsPath;
 }
 
-class _ImmediateSession implements AgentSessionPort {
-  @override
-  Stream<AgentUiEvent> listen() async* {
-    yield AgentUiEvent(
-      kind: 'assistant_finished',
-      operationId: '',
-      callId: '',
-      name: '',
-      delta: '',
-      argumentsJson: '',
-      outputPreview: '',
-      ok: true,
-      stopReason: '',
-      message: 'ok',
-      inputTokens: BigInt.zero,
-      outputTokens: BigInt.zero,
-      resumedOps: const [],
-      recentlyActive: false,
-    );
-  }
-
-  @override
-  Future<String> prompt({required String text}) async => '';
-
-  @override
-  Future<String> promptWithContext({
-    required String text,
-    required String contextJson,
-  }) async => '';
-
-  @override
-  Future<String> completeTool({
-    required String callId,
-    required String outputJson,
-  }) async => '';
-
-  @override
-  Future<String> respondPermission({
-    required String callId,
-    required String permission,
-  }) async => '';
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  Future<void> abort() async {}
-
-  @override
-  Future<void> steer({required String text}) async {}
-
-  @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
-
-  @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
-
-  @override
-  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
-    busy: false,
-    lastOperationId: '',
-    phase: '',
-    pendingCallIds: [],
-  );
-}
-
 class _RecordingBridge extends AgentBridge {
   String? lastProfileJson;
   String? lastSqlitePath;
   bool? lastResumeOnOpen;
-  String? lastHarnessJson;
+  var prepared = 0;
 
   @override
   Future<void> ensure() async {}
 
   @override
   bool get isReady => true;
-
-  @override
-  Future<AgentSessionPort> open({
-    required String sqlitePath,
-    required String projectRoot,
-    required SessionOpenOpts opts,
-  }) async {
-    lastProfileJson = opts.profileJson;
-    lastSqlitePath = sqlitePath;
-    lastResumeOnOpen = opts.resumeOnOpen;
-    lastHarnessJson = opts.harnessJson;
-    return _ImmediateSession();
-  }
 }
 
 const _account = ProviderAccount(
@@ -227,10 +150,17 @@ void main() {
         env.fake,
         bridge,
         access: _FakeAccess('/Users/me/.agents/skills'),
+        onPrepared: (profileJson, sqlitePath, resumeOnOpen) {
+          bridge.lastProfileJson = profileJson;
+          bridge.lastSqlitePath = sqlitePath;
+          bridge.lastResumeOnOpen = resumeOnOpen;
+          bridge.prepared += 1;
+        },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
-        AgentRunRequestDto(
+        AgentRunRequest(
           dest: 'agent:p-1',
           profileId: 'p-1',
           text: 'hi',
@@ -238,7 +168,10 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.lastProfileJson == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
 
@@ -269,7 +202,7 @@ void main() {
       await accounts.upsert(_account);
       await store.ensureLoaded();
       await store.saveEditor(_profile());
-      env.fake.overlays['p-1'] = DeviceOverlayDto(
+      env.fake.overlays['p-1'] = DeviceOverlay(
         profileId: 'p-1',
         workspacePath: '',
         workspaceBookmark: '',
@@ -277,10 +210,20 @@ void main() {
       );
 
       final bridge = _RecordingBridge();
-      final loop = AgentRunLoop(env.fake, bridge, access: _FakeAccess(null));
+      final loop = AgentRunLoop(
+        env.fake,
+        bridge,
+        access: _FakeAccess(null),
+        onPrepared: (profileJson, sqlitePath, resumeOnOpen) {
+          bridge.lastProfileJson = profileJson;
+          bridge.lastSqlitePath = sqlitePath;
+          bridge.lastResumeOnOpen = resumeOnOpen;
+        },
+      );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
-        AgentRunRequestDto(
+        AgentRunRequest(
           dest: 'agent:p-1',
           profileId: 'p-1',
           text: 'hi',
@@ -288,7 +231,10 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.lastProfileJson == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
 
@@ -324,10 +270,17 @@ void main() {
         env.fake,
         bridge,
         access: _FakeAccess('/Users/me/.agents/skills'),
+        onPrepared: (profileJson, sqlitePath, resumeOnOpen) {
+          bridge.lastProfileJson = profileJson;
+          bridge.lastSqlitePath = sqlitePath;
+          bridge.lastResumeOnOpen = resumeOnOpen;
+          bridge.prepared += 1;
+        },
       );
       final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       env.fake.agentRunCtrl.add(
-        AgentRunRequestDto(
+        AgentRunRequest(
           dest: 'agent:p-1',
           profileId: 'p-1',
           text: 'hi',
@@ -335,10 +288,76 @@ void main() {
           epoch: BigInt.one,
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      for (var i = 0; i < 50 && bridge.prepared < 1; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
       await env.fake.agentRunCtrl.close();
       await done;
-      expect(bridge.lastHarnessJson, '{"enabled":false}');
+      expect(bridge.prepared, 1);
+    });
+  });
+
+  test('second turn reuses the open agent session', () async {
+    await _withDesktopHost(() async {
+      final previous = FlutterSecureStoragePlatform.instance;
+      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
+        _account.keyRef: 'sk-test',
+      });
+      addTearDown(() {
+        FlutterSecureStoragePlatform.instance = previous;
+      });
+      final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+      addTearDown(env.container.dispose);
+      final store = env.container.read(agentProfilesProvider.notifier);
+      final accounts = env.container.read(providerAccountsProvider.notifier);
+      await accounts.ensureLoaded();
+      await accounts.upsert(_account);
+      await store.ensureLoaded();
+      await store.saveEditor(_profile());
+
+      final bridge = _RecordingBridge();
+      final loop = AgentRunLoop(
+        env.fake,
+        bridge,
+        access: _FakeAccess('/Users/me/.agents/skills'),
+        onPrepared: (profileJson, sqlitePath, resumeOnOpen) {
+          bridge.lastProfileJson = profileJson;
+          bridge.lastSqlitePath = sqlitePath;
+          bridge.lastResumeOnOpen = resumeOnOpen;
+          bridge.prepared += 1;
+        },
+      );
+      final done = loop.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      env.fake.agentRunCtrl.add(
+        AgentRunRequest(
+          dest: 'agent:p-1',
+          profileId: 'p-1',
+          text: 'hi',
+          inReplyTo: 1,
+          epoch: BigInt.one,
+        ),
+      );
+      for (var i = 0; i < 50 && bridge.prepared < 1; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      env.fake.agentRunCtrl.add(
+        AgentRunRequest(
+          dest: 'agent:p-1',
+          profileId: 'p-1',
+          text: 'again',
+          inReplyTo: 2,
+          epoch: BigInt.two,
+        ),
+      );
+      for (var i = 0; i < 50 && bridge.prepared < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await loop.stop();
+      await env.fake.agentRunCtrl.close();
+      await done;
+      expect(bridge.prepared, 2);
     });
   });
 }

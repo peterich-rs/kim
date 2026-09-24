@@ -1,0 +1,31 @@
+[package]
+name = "kim-codex-helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Sandbox re-exec target for the embedded Codex agent. Not a user-facing CLI."
+publish = false
+
+[[bin]]
+name = "kim-codex-helper"
+path = "src/main.rs"
+
+[dependencies]
+codex-apply-patch = { path = "../../third_party/codex/codex-rs/apply-patch" }
+codex-arg0 = { path = "../../third_party/codex/codex-rs/arg0" }
+codex-exec-server = { path = "../../third_party/codex/codex-rs/exec-server" }
+codex-sandboxing = { path = "../../third_party/codex/codex-rs/sandboxing" }
+# Keep rama on the Codex lock pin. 0.3.0 needs rustc 1.96.
+rama-error = "=0.3.0-alpha.4"
+rama-macros = "=0.3.0-alpha.4"
+rama-utils = "=0.3.0-alpha.4"
+
+[target.'cfg(windows)'.dependencies]
+codex-windows-sandbox = { path = "../../third_party/codex/codex-rs/windows-sandbox-rs" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

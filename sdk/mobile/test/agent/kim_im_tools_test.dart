@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+
+import '../support/legacy_agent_drive.dart';
+
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/features/agent/kim_im_tools.dart';
 import 'package:kim_mobile/models/models.dart';
@@ -90,17 +92,20 @@ class _ToolSession implements AgentSessionPort {
   Future<void> abort() async {}
 
   @override
+  Future<void> park() async {}
+
+  @override
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',
@@ -237,17 +242,20 @@ class _DeltaSession implements AgentSessionPort {
   Future<void> abort() async {}
 
   @override
+  Future<void> park() async {}
+
+  @override
   Future<void> steer({required String text}) async {}
 
   @override
-  Future<void> reconfigure({required SessionOpenOpts opts}) async {}
+  Future<void> reconfigure() async {}
 
   @override
-  Future<ResumeReportDto> resume() async =>
-      const ResumeReportDto(resumedOps: [], statuses: []);
+  Future<ResumeReport> resume() async =>
+      const ResumeReport(resumedOps: [], statuses: []);
 
   @override
-  SessionSnapshotDto snapshot() => const SessionSnapshotDto(
+  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
     busy: false,
     lastOperationId: '',
     phase: '',

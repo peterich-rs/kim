@@ -1,5 +1,5 @@
-/// Catalog DTOs from `catalog_vendors` / `catalog_surface`. Callers switch on
-/// [ReasoningSurfaceDto.kind] only — never on vendor id.
+/// Catalog rows from `catalog_vendors` / `catalog_surface`. Callers switch on
+/// [ReasoningSurface.kind] only — never on vendor id.
 library;
 
 import 'dart:convert';
@@ -41,7 +41,7 @@ List<String> unionAccountModels(
 /// Catalog default if it is on the account, else first model, else empty.
 String defaultModelForAccount(
   ProviderAccount account, [
-  VendorSummaryDto? vendor,
+  VendorSummary? vendor,
 ]) {
   final def = vendor?.defaultModel.trim() ?? '';
   if (def.isNotEmpty && account.models.contains(def)) {
@@ -108,8 +108,8 @@ Future<void> saveCatalogModelCache(String vendor, List<String> models) async {
   await prefs.setString('$kCatalogCachePrefix$vendor', jsonEncode(models));
 }
 
-class VendorSummaryDto {
-  const VendorSummaryDto({
+class VendorSummary {
+  const VendorSummary({
     required this.id,
     required this.displayName,
     required this.group,
@@ -135,10 +135,10 @@ class VendorSummaryDto {
   final String defaultModel;
   final List<String> models;
 
-  factory VendorSummaryDto.fromJson(Map<String, Object?> json) {
+  factory VendorSummary.fromJson(Map<String, Object?> json) {
     final alts = json['alt_base_urls'];
     final models = json['models'];
-    return VendorSummaryDto(
+    return VendorSummary(
       id: '${json['id'] ?? ''}',
       displayName: '${json['display_name'] ?? json['id'] ?? ''}',
       group: '${json['group'] ?? 'other'}',
@@ -152,7 +152,7 @@ class VendorSummaryDto {
     );
   }
 
-  static List<VendorSummaryDto> listFromJson(String raw) {
+  static List<VendorSummary> listFromJson(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! List) {
       return const [];
@@ -160,13 +160,13 @@ class VendorSummaryDto {
     return [
       for (final item in decoded)
         if (item is Map)
-          VendorSummaryDto.fromJson(Map<String, Object?>.from(item)),
+          VendorSummary.fromJson(Map<String, Object?>.from(item)),
     ];
   }
 }
 
-class ReasoningSurfaceDto {
-  const ReasoningSurfaceDto({
+class ReasoningSurface {
+  const ReasoningSurface({
     required this.kind,
     this.note,
     this.defaultOn,
@@ -187,9 +187,9 @@ class ReasoningSurfaceDto {
   final int? max;
   final int? defaultBudget;
 
-  factory ReasoningSurfaceDto.fromJson(Map<String, Object?> json) {
+  factory ReasoningSurface.fromJson(Map<String, Object?> json) {
     final allowed = json['allowed'];
-    return ReasoningSurfaceDto(
+    return ReasoningSurface(
       kind: '${json['kind'] ?? 'none'}',
       note: json['note'] is String ? json['note'] as String : null,
       defaultOn: json['default_on'] as bool?,
@@ -203,12 +203,12 @@ class ReasoningSurfaceDto {
     );
   }
 
-  static ReasoningSurfaceDto fromJsonString(String raw) {
+  static ReasoningSurface fromJsonString(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
-      return const ReasoningSurfaceDto(kind: 'none');
+      return const ReasoningSurface(kind: 'none');
     }
-    return ReasoningSurfaceDto.fromJson(Map<String, Object?>.from(decoded));
+    return ReasoningSurface.fromJson(Map<String, Object?>.from(decoded));
   }
 }
 
@@ -221,7 +221,7 @@ int vendorGroupRank(String group) {
 }
 
 /// Primary first, then gateway, then other. Within a group, [sortRank] only.
-List<VendorSummaryDto> sortVendors(Iterable<VendorSummaryDto> vendors) {
+List<VendorSummary> sortVendors(Iterable<VendorSummary> vendors) {
   final out = [...vendors];
   out.sort((a, b) {
     final g = vendorGroupRank(a.group).compareTo(vendorGroupRank(b.group));
@@ -233,8 +233,8 @@ List<VendorSummaryDto> sortVendors(Iterable<VendorSummaryDto> vendors) {
   return out;
 }
 
-List<VendorSummaryDto> vendorsInGroup(
-  Iterable<VendorSummaryDto> vendors,
+List<VendorSummary> vendorsInGroup(
+  Iterable<VendorSummary> vendors,
   String group,
 ) {
   return [
@@ -243,7 +243,7 @@ List<VendorSummaryDto> vendorsInGroup(
   ];
 }
 
-ReasoningChoice defaultChoiceFor(ReasoningSurfaceDto surface) {
+ReasoningChoice defaultChoiceFor(ReasoningSurface surface) {
   switch (surface.kind) {
     case 'always_on':
       return const ReasoningChoice(kind: 'always_on');
@@ -272,10 +272,7 @@ class AlignedChoice {
 }
 
 /// If [current] does not fit [surface], fall back to the surface default.
-AlignedChoice alignChoice(
-  ReasoningSurfaceDto surface,
-  ReasoningChoice? current,
-) {
+AlignedChoice alignChoice(ReasoningSurface surface, ReasoningChoice? current) {
   if (current == null) {
     return AlignedChoice(choice: defaultChoiceFor(surface), dropped: false);
   }
@@ -334,23 +331,46 @@ class CatalogRepository {
   CatalogRepository(this._bridge);
 
   final AgentBridge _bridge;
-  List<VendorSummaryDto> vendors = const [];
+  List<VendorSummary> vendors = const [];
 
-  Future<List<VendorSummaryDto>> ensureVendors() async {
+  Future<List<VendorSummary>> ensureVendors() async {
     if (vendors.isNotEmpty) {
       return vendors;
     }
-    final raw = await _bridge.catalogVendorsJson();
-    vendors = sortVendors(VendorSummaryDto.listFromJson(raw));
+    final rows = await _bridge.catalogVendors();
+    vendors = sortVendors([
+      for (final row in rows)
+        VendorSummary(
+          id: row.id,
+          displayName: row.displayName,
+          group: row.group,
+          sortRank: row.sortRank,
+          defaultBaseUrl: row.defaultBaseUrl,
+          altBaseUrls: row.altBaseUrls,
+          dynamicModels: row.dynamicModels,
+          customModel: row.customModel,
+          defaultModel: row.defaultModel,
+          models: row.models,
+        ),
+    ]);
     return vendors;
   }
 
-  Future<ReasoningSurfaceDto> surface({
+  Future<ReasoningSurface> surface({
     required String vendor,
     required String model,
   }) async {
-    final raw = await _bridge.catalogSurfaceJson(vendor: vendor, model: model);
-    return ReasoningSurfaceDto.fromJsonString(raw);
+    final row = await _bridge.catalogSurface(vendor: vendor, model: model);
+    return ReasoningSurface(
+      kind: row.kind,
+      note: row.note.isEmpty ? null : row.note,
+      defaultOn: row.kind == 'toggle' ? row.defaultOn : null,
+      allowed: row.allowed,
+      defaultValue: row.defaultValue.isEmpty ? null : row.defaultValue,
+      min: row.kind == 'budget_tokens' ? row.min : null,
+      max: row.kind == 'budget_tokens' ? row.max : null,
+      defaultBudget: row.kind == 'budget_tokens' ? row.defaultBudget : null,
+    );
   }
 
   Future<CatalogValidateResult> validate({
@@ -358,12 +378,23 @@ class CatalogRepository {
     required String model,
     required ReasoningChoice choice,
   }) async {
-    final raw = await _bridge.catalogValidateChoice(
+    final row = await _bridge.catalogValidateChoice(
       vendor: vendor,
       model: model,
-      choiceJson: jsonEncode(choice.toJson()),
+      kind: choice.kind,
+      on: choice.on ?? false,
+      value: choice.value ?? '',
+      budget: choice.budget ?? 0,
     );
-    return CatalogValidateResult.fromJsonString(raw);
+    return CatalogValidateResult(
+      choice: ReasoningChoice(
+        kind: row.kind,
+        on: row.kind == 'toggle' ? row.on_ : null,
+        value: row.value.isEmpty ? null : row.value,
+        budget: row.kind == 'budget_tokens' ? row.budget : null,
+      ),
+      dropped: row.dropped,
+    );
   }
 }
 

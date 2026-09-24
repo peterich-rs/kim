@@ -15,9 +15,9 @@ class _FakeCatalog extends CatalogRepository {
   _FakeCatalog() : super(AgentBridge());
 
   @override
-  Future<List<VendorSummaryDto>> ensureVendors() async {
+  Future<List<VendorSummary>> ensureVendors() async {
     vendors = const [
-      VendorSummaryDto(
+      VendorSummary(
         id: 'openai',
         displayName: 'OpenAI',
         group: 'primary',
@@ -26,7 +26,7 @@ class _FakeCatalog extends CatalogRepository {
         defaultModel: 'gpt-4o',
         models: ['gpt-4o', 'gpt-4.1'],
       ),
-      VendorSummaryDto(
+      VendorSummary(
         id: 'anthropic',
         displayName: 'Anthropic',
         group: 'primary',
@@ -40,11 +40,11 @@ class _FakeCatalog extends CatalogRepository {
   }
 
   @override
-  Future<ReasoningSurfaceDto> surface({
+  Future<ReasoningSurface> surface({
     required String vendor,
     required String model,
   }) async {
-    return const ReasoningSurfaceDto(kind: 'none');
+    return const ReasoningSurface(kind: 'none');
   }
 
   @override

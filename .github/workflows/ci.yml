@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
@@ -68,6 +70,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # kim-agent-host and kim-codex-helper path-depend on the Codex
+          # submodule. Cargo reads those manifests for every workspace command.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make postgresql-client
@@ -101,6 +107,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Same Codex path deps as the Rust jobs. `cargo build -p chat`
+          # still loads every workspace member manifest.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
@@ -143,6 +153,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Desktop Flutter tests compile kim-client-ffi, which enables the
+          # Codex feature. `cargo fmt --all` also needs those manifests.
+          submodules: true
 
       - name: Install protobuf-src build deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
@@ -156,7 +170,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: sdk/mobile/rust -> sdk/mobile/rust/target
+          workspaces: crates/kim-client-ffi -> crates/kim-client-ffi/target
 
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -173,6 +187,10 @@ jobs:
         working-directory: sdk/mobile
         run: dart format --output=none --set-exit-if-changed lib test hook plugins/kim_media_picker/lib plugins/kim_media_picker/test
 
+      - name: custom_lint
+        working-directory: sdk/mobile
+        run: dart run custom_lint
+
       - name: flutter analyze
         working-directory: sdk/mobile
         run: flutter analyze --fatal-infos --fatal-warnings
@@ -185,9 +203,7 @@ jobs:
           flutter test
 
       - name: cargo fmt
-        run: |
-          cargo fmt --manifest-path sdk/mobile/rust/Cargo.toml -- --check
-          cargo fmt --manifest-path sdk/mobile/rust_agent/Cargo.toml -- --check
+        run: cargo fmt --all -- --check
 
       - name: flutter test
         working-directory: sdk/mobile

@@ -185,6 +185,42 @@ pub struct ThreadView {
     pub unread: i32,
 }
 
+/// Sticky session fact. Watch the snapshot; do not rely on a one-shot event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SessionFault {
+    IdentityExpired { reason: String },
+    Kicked { channel_id: String },
+}
+
+impl SessionFault {
+    #[must_use]
+    pub fn from_sdk_error(err: &crate::SdkError) -> Option<Self> {
+        err.ends_identity().then(|| Self::IdentityExpired {
+            reason: err.to_string(),
+        })
+    }
+
+    #[must_use]
+    pub fn wire_kind(&self) -> &'static str {
+        match self {
+            Self::IdentityExpired { .. } => "auth_expired",
+            Self::Kicked { .. } => "kickout",
+        }
+    }
+
+    #[must_use]
+    pub fn to_update(&self) -> SessionUpdate {
+        match self {
+            Self::IdentityExpired { reason } => SessionUpdate::AuthExpired {
+                reason: reason.clone(),
+            },
+            Self::Kicked { channel_id } => SessionUpdate::Kickout {
+                channel_id: channel_id.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SessionSnapshot {
     pub link: LinkStateView,

@@ -2,83 +2,87 @@ library;
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/failures.dart';
+import 'package:kim_mobile/src/rust/api/failure.dart';
+
+bool _keychainEntitlement(Object err) {
+  final msg = err.toString();
+  return msg.contains('-34018') ||
+      msg.contains('entitlement isn\'t present') ||
+      msg.contains('Unexpected security result code');
+}
 
 /// Errors that must not trip Riverpod 3 automatic retry (auth, validation).
 bool isPermanentClientError(Object err) {
-  final kim = KimException.tryFrom(err);
-  if (kim != null) {
-    return !kim.retryable;
+  final failure = apiFailureOf(err);
+  if (failure != null) {
+    return !failure.retryable;
   }
-  final msg = err.toString();
-  return msg.contains('401') ||
-      msg.contains('409') ||
-      msg.contains('-34018') ||
-      msg.contains('entitlement isn\'t present') ||
-      msg.contains('账号或密码错误') ||
-      msg.contains('账号已存在') ||
-      msg.contains('invalid account') ||
-      msg.contains('invalid password') ||
-      msg.contains('unauthorized') ||
-      msg.contains('invalid token');
+  return _keychainEntitlement(err);
 }
 
 String mapUserError(Object err) {
-  final kim = KimException.tryFrom(err);
-  if (kim != null) {
-    return switch (kim.kind) {
-      KimErrorKind.unauthorized ||
-      KimErrorKind.authExpired => Copy.badCredentials,
-      KimErrorKind.invalidArgument => Copy.invalidAccount,
-      KimErrorKind.notConnected => Copy.network,
-      KimErrorKind.disk => Copy.sessionPersistFailed,
-      _ => Copy.unavailable,
-    };
-  }
-  final msg = err.toString();
-  if (msg.contains('-34018') ||
-      msg.contains('entitlement isn\'t present') ||
-      msg.contains('Unexpected security result code')) {
+  if (_keychainEntitlement(err)) {
     return Copy.sessionPersistFailed;
   }
-  if (msg.contains('401') || msg.contains('账号或密码错误')) {
-    return Copy.badCredentials;
-  }
-  if (msg.contains('409') || msg.contains('账号已存在')) {
-    return Copy.accountExists;
-  }
-  if (msg.contains('invalid account')) {
-    return Copy.invalidAccount;
-  }
-  if (msg.contains('invalid password')) {
-    return Copy.invalidPassword;
-  }
-  if (msg.contains('timeout') || msg.contains('timed out')) {
-    return Copy.timeout;
-  }
-  if (msg.contains('Failed to fetch') ||
-      msg.contains('NetworkError') ||
-      msg.contains('Connection refused') ||
-      msg.contains('network') ||
-      msg.contains('offline')) {
-    return Copy.network;
-  }
-  if (msg.contains('http 5') || msg.contains('status: 5')) {
-    return Copy.unavailable;
-  }
-  return Copy.unavailable;
+  return switch (apiFailureOf(err)) {
+    ApiFailure_Unauthorized() ||
+    ApiFailure_AuthExpired() => Copy.badCredentials,
+    ApiFailure_InvalidAccount() => Copy.invalidAccount,
+    ApiFailure_InvalidPassword() => Copy.invalidPassword,
+    ApiFailure_AccountExists() => Copy.accountExists,
+    ApiFailure_NotConnected() => Copy.network,
+    ApiFailure_Disk() || ApiFailure_PasswordSeal() => Copy.sessionPersistFailed,
+    ApiFailure_Http(:final status) when status >= 500 && status < 600 =>
+      Copy.unavailable,
+    _ => Copy.unavailable,
+  };
 }
 
 String mapTalkError(Object err) {
-  final kim = KimException.tryFrom(err);
-  if (kim == null) {
-    return Copy.sendFailed;
-  }
-  return switch (kim.kind) {
-    KimErrorKind.notFriends => Copy.notFriends,
-    KimErrorKind.blocked => Copy.blocked,
-    KimErrorKind.userNotFound => Copy.userNotFound,
-    KimErrorKind.cannotChatSelf => Copy.cannotAddSelf,
-    KimErrorKind.notConnected => Copy.notConnected,
+  return switch (apiFailureOf(err)) {
+    ApiFailure_NotFriends() => Copy.notFriends,
+    ApiFailure_Blocked() => Copy.blocked,
+    ApiFailure_UserNotFound() => Copy.userNotFound,
+    ApiFailure_CannotChatSelf() => Copy.cannotAddSelf,
+    ApiFailure_NotConnected() => Copy.notConnected,
     _ => Copy.sendFailed,
+  };
+}
+
+String socialFailureCopy(Object err) {
+  return switch (apiFailureOf(err)) {
+    ApiFailure_UserNotFound() => Copy.userNotFound,
+    ApiFailure_Blocked() => Copy.blocked,
+    ApiFailure_CannotChatSelf() => Copy.cannotAddSelf,
+    ApiFailure_NotFriends() => Copy.notFriends,
+    ApiFailure_Protocol(:final status) when status == 113 =>
+      Copy.botSocialDenied,
+    _ => Copy.sendFailed,
+  };
+}
+
+String agentRegisterFailureCopy(Object err) {
+  if (err is StateError && err.message.isNotEmpty) {
+    return err.message;
+  }
+  return Copy.agentRegisterFailed;
+}
+
+bool botAlreadyGone(Object err) {
+  return switch (apiFailureOf(err)) {
+    ApiFailure_UserNotFound() => true,
+    _ => false,
+  };
+}
+
+String avatarFailureCopy(Object err) {
+  if (err.toString().contains(Copy.avatarExportFailed)) {
+    return Copy.avatarExportFailed;
+  }
+  return switch (apiFailureOf(err)) {
+    ApiFailure_UnsupportedMedia() => Copy.avatarUnsupportedType,
+    ApiFailure_Unauthorized() || ApiFailure_AuthExpired() => Copy.avatarRelogin,
+    ApiFailure_NotConnected() => Copy.notConnected,
+    _ => Copy.avatarFailed,
   };
 }

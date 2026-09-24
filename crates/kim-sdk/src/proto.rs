@@ -1,5 +1,7 @@
 //! Protocol client trait. Impl for `KimClient` lives here (orphan rule).
 
+use std::sync::Arc;
+
 use kim_client::{KimClient, OutgoingContent};
 
 use crate::error::{map_client, SdkError};
@@ -243,7 +245,7 @@ impl ProtocolClient for KimClient {
 }
 
 #[async_trait::async_trait]
-impl ProtocolClient for std::sync::Arc<KimClient> {
+impl ProtocolClient for Arc<KimClient> {
     async fn send_message(
         &self,
         dest: &str,
@@ -343,5 +345,161 @@ impl ProtocolClient for std::sync::Arc<KimClient> {
 
     async fn friend_incoming(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
         ProtocolClient::friend_incoming(&**self).await
+    }
+}
+
+pub(crate) struct ObservingProtocol {
+    pub inner: Arc<dyn ProtocolClient>,
+    pub sdk: std::sync::Weak<crate::Inner>,
+}
+
+fn note<T>(sdk: &std::sync::Weak<crate::Inner>, r: Result<T, SdkError>) -> Result<T, SdkError> {
+    if let Err(err) = &r {
+        if let Some(inner) = sdk.upgrade() {
+            crate::KimSdk::from_inner(inner).observe_error(err);
+        }
+    }
+    r
+}
+
+fn note_client<T>(
+    sdk: &std::sync::Weak<crate::Inner>,
+    r: Result<T, kim_client::ClientError>,
+) -> Result<T, kim_client::ClientError> {
+    if let Err(err) = &r {
+        if err.is_fatal_auth() {
+            if let Some(inner) = sdk.upgrade() {
+                crate::KimSdk::from_inner(inner).observe_error(&SdkError::Unauthorized);
+            }
+        }
+    }
+    r
+}
+
+#[async_trait::async_trait]
+impl ProtocolClient for ObservingProtocol {
+    async fn send_message(
+        &self,
+        dest: &str,
+        kind: i32,
+        body: &str,
+        extra: &str,
+        payload_type: i32,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        note(
+            &self.sdk,
+            self.inner
+                .send_message(dest, kind, body, extra, payload_type, client_id)
+                .await,
+        )
+    }
+
+    async fn ack(&self, message_id: i64) -> Result<(), SdkError> {
+        note(&self.sdk, self.inner.ack(message_id).await)
+    }
+
+    async fn ack_batch(&self, ids: &[i64]) -> Result<(), SdkError> {
+        note(&self.sdk, self.inner.ack_batch(ids).await)
+    }
+
+    async fn mark_read(&self, dest: &str, kind: i32, message_id: i64) -> Result<(), SdkError> {
+        note(
+            &self.sdk,
+            self.inner.mark_read(dest, kind, message_id).await,
+        )
+    }
+
+    async fn mark_read_state(
+        &self,
+        dest: &str,
+        kind: i32,
+        message_id: i64,
+    ) -> Result<Option<kim_client::ConversationReadState>, SdkError> {
+        note(
+            &self.sdk,
+            self.inner.mark_read_state(dest, kind, message_id).await,
+        )
+    }
+
+    async fn conversation_states(
+        &self,
+        conversations: &[(String, i32)],
+    ) -> Result<Vec<kim_client::ConversationReadState>, SdkError> {
+        note(
+            &self.sdk,
+            self.inner.conversation_states(conversations).await,
+        )
+    }
+
+    async fn history(
+        &self,
+        dest: &str,
+        kind: i32,
+        before_id: i64,
+        limit: i32,
+    ) -> Result<Vec<kim_client::HistoryItem>, SdkError> {
+        note(
+            &self.sdk,
+            self.inner.history(dest, kind, before_id, limit).await,
+        )
+    }
+
+    async fn bot_pending(
+        &self,
+        dest: &str,
+        limit: i32,
+    ) -> Result<Vec<kim_client::BotPendingItem>, SdkError> {
+        note(&self.sdk, self.inner.bot_pending(dest, limit).await)
+    }
+
+    async fn bot_reply(
+        &self,
+        dest: &str,
+        body: &str,
+        in_reply_to: i64,
+        client_id: &str,
+    ) -> Result<(i64, i64), SdkError> {
+        note(
+            &self.sdk,
+            self.inner
+                .bot_reply(dest, body, in_reply_to, client_id)
+                .await,
+        )
+    }
+
+    async fn bot_typing(&self, dest: &str, kind: i32, active: bool) -> Result<(), SdkError> {
+        note(&self.sdk, self.inner.bot_typing(dest, kind, active).await)
+    }
+
+    async fn agent_spec_sync(
+        &self,
+    ) -> Result<
+        (
+            Vec<kim_client::AgentSpecRecord>,
+            Vec<kim_client::AgentProviderAccount>,
+        ),
+        SdkError,
+    > {
+        note(&self.sdk, self.inner.agent_spec_sync().await)
+    }
+
+    async fn agent_spec_upsert(
+        &self,
+        record: Option<&kim_client::AgentSpecRecord>,
+        account: Option<&kim_client::AgentProviderAccount>,
+    ) -> Result<kim_client::AgentSpecRecord, SdkError> {
+        note(
+            &self.sdk,
+            self.inner.agent_spec_upsert(record, account).await,
+        )
+    }
+
+    async fn friend_list(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        note_client(&self.sdk, self.inner.friend_list().await)
+    }
+
+    async fn friend_incoming(&self) -> Result<Vec<kim_client::Profile>, kim_client::ClientError> {
+        note_client(&self.sdk, self.inner.friend_incoming().await)
     }
 }

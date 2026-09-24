@@ -12,11 +12,12 @@ import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
+import 'package:kim_mobile/src/rust/api/failure.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/conversation_tile.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/design/status_chip.dart';
-import 'package:kim_mobile/features/chats/chat_chrome.dart';
+import 'package:kim_mobile/features/chats/providers/chat_chrome.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -97,6 +98,7 @@ void main() {
     await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
+    expect(tester.takeException(), isNull);
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.byKey(const Key('auth-submit')), findsOneWidget);
     expect(find.text(Copy.conversations), findsNothing);
@@ -247,9 +249,9 @@ void main() {
     expect(find.text(Copy.badCredentials), findsNothing);
   });
 
-  testWidgets('http 401 maps to bad credentials', (tester) async {
+  testWidgets('unauthorized maps to bad credentials', (tester) async {
     final env = await testRuntime();
-    final fake = FakeKim(error: Exception('http 401: 账号或密码错误'));
+    final fake = FakeKim(error: const ApiFailure.unauthorized());
     await tester.pumpWidget(host(env.runtime, fake));
     await pumpUi(tester);
 
@@ -480,21 +482,30 @@ void main() {
   });
 
   testWidgets('long-pressing a message offers copy', (tester) async {
-    final env = await testRuntime(token: 'tok.jwt', account: 'alice');
-    final fake = FakeKim();
-    fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
-    await tester.pumpWidget(host(env.runtime, fake));
-    await pumpUi(tester);
+    // Desktop selects text instead of opening the copy sheet. CI is Linux
+    // with an en_US locale; this gesture is the phone sheet in zh.
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.platformDispatcher.localesTestValue = const [Locale('zh')];
+    try {
+      final env = await testRuntime(token: 'tok.jwt', account: 'alice');
+      final fake = FakeKim();
+      fake.friends = const [KimPerson(account: 'bob', nickname: 'Bobby')];
+      await tester.pumpWidget(host(env.runtime, fake));
+      await pumpUi(tester);
 
-    fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
-    await pumpUi(tester);
-    await tester.tap(find.text('hello from bob'));
-    await pumpUi(tester);
+      fake.fakeIncomingText(dest: 'bob', body: 'hello from bob');
+      await pumpUi(tester);
+      await tester.tap(find.text('hello from bob'));
+      await pumpUi(tester);
 
-    await tester.longPress(find.text('hello from bob'));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text(Copy.copy), findsOneWidget);
-    expect(find.text(Copy.quote), findsOneWidget);
+      await tester.longPress(find.text('hello from bob'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(Copy.copy), findsOneWidget);
+      expect(find.text(Copy.quote), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      tester.platformDispatcher.clearLocalesTestValue();
+    }
   });
 
   testWidgets('auth toggle keeps typed account without swapping routes', (

@@ -168,8 +168,19 @@ Future<List<CatalogSkill>> loadAppSkillCatalog({
 }) async {
   await bridge.ensure();
   final cache = (paths ?? KimPaths.instance).appSkillCache;
-  final raw = await bridge.skillAppCatalogJson(cacheRoot: cache.path);
-  return parseSkillsJson(raw);
+  final rows = await bridge.skillAppCatalog(cacheRoot: cache.path);
+  return [
+    for (final row in rows)
+      CatalogSkill(
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        version: row.version,
+        origin: row.origin,
+        className: row.className,
+        dir: row.dir,
+      ),
+  ];
 }
 
 Future<List<CatalogSkill>> loadPortableSkills({
@@ -181,11 +192,22 @@ Future<List<CatalogSkill>> loadPortableSkills({
     return const [];
   }
   await bridge.ensure();
-  final raw = await bridge.skillPortableListJson(
+  final rows = await bridge.skillPortableList(
     userRoot: userRoot,
     projectRoot: projectRoot,
   );
-  return parseSkillsJson(raw);
+  return [
+    for (final row in rows)
+      CatalogSkill(
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        version: row.version,
+        origin: row.origin,
+        className: row.className,
+        dir: row.dir,
+      ),
+  ];
 }
 
 Future<List<CatalogSkill>> loadPortableSkillCatalog({

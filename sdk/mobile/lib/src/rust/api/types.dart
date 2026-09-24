@@ -9,11 +9,11 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `from_profile`, `from_str`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePageDto`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `from_profile`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePage`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
-class AgentCardDto {
+class AgentCard {
   final int v;
   final String cardType;
   final String callId;
@@ -22,7 +22,7 @@ class AgentCardDto {
   final String preview;
   final bool ok;
 
-  const AgentCardDto({
+  const AgentCard({
     required this.v,
     required this.cardType,
     required this.callId,
@@ -45,7 +45,7 @@ class AgentCardDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentCardDto &&
+      other is AgentCard &&
           runtimeType == other.runtimeType &&
           v == other.v &&
           cardType == other.cardType &&
@@ -56,7 +56,25 @@ class AgentCardDto {
           ok == other.ok;
 }
 
-class AgentProfileDto {
+class AgentFlags {
+  final bool multiProfile;
+  final bool serverIdentity;
+
+  const AgentFlags({required this.multiProfile, required this.serverIdentity});
+
+  @override
+  int get hashCode => multiProfile.hashCode ^ serverIdentity.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AgentFlags &&
+          runtimeType == other.runtimeType &&
+          multiProfile == other.multiProfile &&
+          serverIdentity == other.serverIdentity;
+}
+
+class AgentProfile {
   final String profileId;
   final String nickname;
   final String serverAccount;
@@ -65,7 +83,7 @@ class AgentProfileDto {
   final String placement;
   final PlatformInt64 updatedAt;
 
-  const AgentProfileDto({
+  const AgentProfile({
     required this.profileId,
     required this.nickname,
     required this.serverAccount,
@@ -88,7 +106,7 @@ class AgentProfileDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentProfileDto &&
+      other is AgentProfile &&
           runtimeType == other.runtimeType &&
           profileId == other.profileId &&
           nickname == other.nickname &&
@@ -99,14 +117,14 @@ class AgentProfileDto {
           updatedAt == other.updatedAt;
 }
 
-class AgentRunRequestDto {
+class AgentRunRequest {
   final String dest;
   final String profileId;
   final String text;
   final PlatformInt64 inReplyTo;
   final BigInt epoch;
 
-  const AgentRunRequestDto({
+  const AgentRunRequest({
     required this.dest,
     required this.profileId,
     required this.text,
@@ -125,7 +143,7 @@ class AgentRunRequestDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentRunRequestDto &&
+      other is AgentRunRequest &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           profileId == other.profileId &&
@@ -134,7 +152,7 @@ class AgentRunRequestDto {
           epoch == other.epoch;
 }
 
-class AgentRunResultDto {
+class AgentRunResult {
   final String dest;
   final String profileId;
   final BigInt epoch;
@@ -145,7 +163,7 @@ class AgentRunResultDto {
   final bool visible;
   final bool recentlyActive;
 
-  const AgentRunResultDto({
+  const AgentRunResult({
     required this.dest,
     required this.profileId,
     required this.epoch,
@@ -172,7 +190,7 @@ class AgentRunResultDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AgentRunResultDto &&
+      other is AgentRunResult &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           profileId == other.profileId &&
@@ -185,16 +203,9 @@ class AgentRunResultDto {
           recentlyActive == other.recentlyActive;
 }
 
-enum AgentTurnStateDto {
-  queued,
-  running,
-  waitingPermission,
-  done,
-  error,
-  empty,
-}
+enum AgentTurnState { queued, running, waitingPermission, done, error, empty }
 
-class BotDto {
+class Bot {
   final String dest;
   final String nickname;
   final String avatar;
@@ -204,7 +215,7 @@ class BotDto {
   final int contextTokens;
   final String visibility;
 
-  const BotDto({
+  const Bot({
     required this.dest,
     required this.nickname,
     required this.avatar,
@@ -229,7 +240,7 @@ class BotDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BotDto &&
+      other is Bot &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           nickname == other.nickname &&
@@ -241,14 +252,14 @@ class BotDto {
           visibility == other.visibility;
 }
 
-class CommandAckDto {
+class CommandAck {
   final String requestId;
   final String clientId;
   final String dest;
   final PlatformInt64 acceptedAt;
-  final SendStatusDto sendStatus;
+  final SendStatus sendStatus;
 
-  const CommandAckDto({
+  const CommandAck({
     required this.requestId,
     required this.clientId,
     required this.dest,
@@ -267,7 +278,7 @@ class CommandAckDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is CommandAckDto &&
+      other is CommandAck &&
           runtimeType == other.runtimeType &&
           requestId == other.requestId &&
           clientId == other.clientId &&
@@ -276,12 +287,12 @@ class CommandAckDto {
           sendStatus == other.sendStatus;
 }
 
-class ContactsSnapshotDto {
+class ContactsSnapshot {
   final BigInt version;
-  final List<PersonDto> contacts;
+  final List<Person> contacts;
   final String? syncError;
 
-  const ContactsSnapshotDto({
+  const ContactsSnapshot({
     required this.version,
     required this.contacts,
     this.syncError,
@@ -293,20 +304,20 @@ class ContactsSnapshotDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ContactsSnapshotDto &&
+      other is ContactsSnapshot &&
           runtimeType == other.runtimeType &&
           version == other.version &&
           contacts == other.contacts &&
           syncError == other.syncError;
 }
 
-class DeviceOverlayDto {
+class DeviceOverlay {
   final String profileId;
   final String workspacePath;
   final String workspaceBookmark;
   final String userAgentsSkills;
 
-  const DeviceOverlayDto({
+  const DeviceOverlay({
     required this.profileId,
     required this.workspacePath,
     required this.workspaceBookmark,
@@ -323,7 +334,7 @@ class DeviceOverlayDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is DeviceOverlayDto &&
+      other is DeviceOverlay &&
           runtimeType == other.runtimeType &&
           profileId == other.profileId &&
           workspacePath == other.workspacePath &&
@@ -332,23 +343,23 @@ class DeviceOverlayDto {
 }
 
 @freezed
-sealed class LinkStateDto with _$LinkStateDto {
-  const LinkStateDto._();
+sealed class LinkState with _$LinkState {
+  const LinkState._();
 
-  const factory LinkStateDto.connecting() = LinkStateDto_Connecting;
-  const factory LinkStateDto.online() = LinkStateDto_Online;
-  const factory LinkStateDto.reconnecting({required int attempt}) =
-      LinkStateDto_Reconnecting;
-  const factory LinkStateDto.offline() = LinkStateDto_Offline;
+  const factory LinkState.connecting() = LinkState_Connecting;
+  const factory LinkState.online() = LinkState_Online;
+  const factory LinkState.reconnecting({required int attempt}) =
+      LinkState_Reconnecting;
+  const factory LinkState.offline() = LinkState_Offline;
 }
 
-class LocalMediaDto {
+class LocalMedia {
   final String localPath;
   final PlatformInt64 byteSize;
   final int width;
   final int height;
 
-  const LocalMediaDto({
+  const LocalMedia({
     required this.localPath,
     required this.byteSize,
     required this.width,
@@ -362,7 +373,7 @@ class LocalMediaDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is LocalMediaDto &&
+      other is LocalMedia &&
           runtimeType == other.runtimeType &&
           localPath == other.localPath &&
           byteSize == other.byteSize &&
@@ -370,7 +381,7 @@ class LocalMediaDto {
           height == other.height;
 }
 
-class MessageViewDto {
+class MessageView {
   final String key;
   final String dest;
   final String sender;
@@ -383,9 +394,9 @@ class MessageViewDto {
   final int height;
   final PlatformInt64 messageId;
   final String? batchId;
-  final SendStatusDto sendStatus;
+  final SendStatus sendStatus;
 
-  const MessageViewDto({
+  const MessageView({
     required this.key,
     required this.dest,
     required this.sender,
@@ -420,7 +431,7 @@ class MessageViewDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is MessageViewDto &&
+      other is MessageView &&
           runtimeType == other.runtimeType &&
           key == other.key &&
           dest == other.dest &&
@@ -437,13 +448,13 @@ class MessageViewDto {
           sendStatus == other.sendStatus;
 }
 
-class MetricsDto {
+class Metrics {
   final BigInt enqueueTotal;
   final BigInt persistTalkTotal;
   final BigInt epochDropTotal;
   final BigInt storeWipeTotal;
 
-  const MetricsDto({
+  const Metrics({
     required this.enqueueTotal,
     required this.persistTalkTotal,
     required this.epochDropTotal,
@@ -460,7 +471,7 @@ class MetricsDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is MetricsDto &&
+      other is Metrics &&
           runtimeType == other.runtimeType &&
           enqueueTotal == other.enqueueTotal &&
           persistTalkTotal == other.persistTalkTotal &&
@@ -468,7 +479,7 @@ class MetricsDto {
           storeWipeTotal == other.storeWipeTotal;
 }
 
-class PersonDto {
+class Person {
   final String account;
   final String nickname;
   final String avatar;
@@ -476,7 +487,7 @@ class PersonDto {
   final String relation;
   final int kind;
 
-  const PersonDto({
+  const Person({
     required this.account,
     required this.nickname,
     required this.avatar,
@@ -497,7 +508,7 @@ class PersonDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PersonDto &&
+      other is Person &&
           runtimeType == other.runtimeType &&
           account == other.account &&
           nickname == other.nickname &&
@@ -507,14 +518,14 @@ class PersonDto {
           kind == other.kind;
 }
 
-class ProfileDto {
+class Profile {
   final String account;
   final String nickname;
   final String avatar;
   final String bio;
   final int kind;
 
-  const ProfileDto({
+  const Profile({
     required this.account,
     required this.nickname,
     required this.avatar,
@@ -533,7 +544,7 @@ class ProfileDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ProfileDto &&
+      other is Profile &&
           runtimeType == other.runtimeType &&
           account == other.account &&
           nickname == other.nickname &&
@@ -542,7 +553,7 @@ class ProfileDto {
           kind == other.kind;
 }
 
-class ProviderAccountDto {
+class ProviderAccount {
   final String id;
   final String vendorId;
   final String baseUrl;
@@ -552,7 +563,7 @@ class ProviderAccountDto {
   final PlatformInt64 updatedAt;
   final PlatformInt64 deletedAt;
 
-  const ProviderAccountDto({
+  const ProviderAccount({
     required this.id,
     required this.vendorId,
     required this.baseUrl,
@@ -577,7 +588,7 @@ class ProviderAccountDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ProviderAccountDto &&
+      other is ProviderAccount &&
           runtimeType == other.runtimeType &&
           id == other.id &&
           vendorId == other.vendorId &&
@@ -589,12 +600,12 @@ class ProviderAccountDto {
           deletedAt == other.deletedAt;
 }
 
-class RoomMemberDto {
+class RoomMember {
   final String account;
   final int status;
   final PlatformInt64 lastSeen;
 
-  const RoomMemberDto({
+  const RoomMember({
     required this.account,
     required this.status,
     required this.lastSeen,
@@ -606,40 +617,22 @@ class RoomMemberDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RoomMemberDto &&
+      other is RoomMember &&
           runtimeType == other.runtimeType &&
           account == other.account &&
           status == other.status &&
           lastSeen == other.lastSeen;
 }
 
-class SdkErrorDto implements FrbException {
-  final String kind;
-  final String message;
+enum SendStatus { pending, uploading, sending, sent, failed, cancelled }
 
-  const SdkErrorDto({required this.kind, required this.message});
-
-  @override
-  int get hashCode => kind.hashCode ^ message.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SdkErrorDto &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          message == other.message;
-}
-
-enum SendStatusDto { pending, uploading, sending, sent, failed, cancelled }
-
-class SessionSnapshotDto {
-  final LinkStateDto link;
+class SessionSnapshot {
+  final LinkState link;
   final String? lastError;
-  final List<ThreadViewDto> threads;
+  final List<ThreadView> threads;
   final int unreadTotal;
 
-  const SessionSnapshotDto({
+  const SessionSnapshot({
     required this.link,
     this.lastError,
     required this.threads,
@@ -656,7 +649,7 @@ class SessionSnapshotDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is SessionSnapshotDto &&
+      other is SessionSnapshot &&
           runtimeType == other.runtimeType &&
           link == other.link &&
           lastError == other.lastError &&
@@ -665,87 +658,87 @@ class SessionSnapshotDto {
 }
 
 @freezed
-sealed class SessionUpdateDto with _$SessionUpdateDto {
-  const SessionUpdateDto._();
+sealed class SessionUpdate with _$SessionUpdate {
+  const SessionUpdate._();
 
-  const factory SessionUpdateDto.link({
-    required LinkStateDto state,
+  const factory SessionUpdate.link({
+    required LinkState state,
     String? lastError,
-  }) = SessionUpdateDto_Link;
-  const factory SessionUpdateDto.inbox({required List<ThreadViewDto> threads}) =
-      SessionUpdateDto_Inbox;
-  const factory SessionUpdateDto.threadUpsert({required ThreadViewDto thread}) =
-      SessionUpdateDto_ThreadUpsert;
-  const factory SessionUpdateDto.syncProgress({
+  }) = SessionUpdate_Link;
+  const factory SessionUpdate.inbox({required List<ThreadView> threads}) =
+      SessionUpdate_Inbox;
+  const factory SessionUpdate.threadUpsert({required ThreadView thread}) =
+      SessionUpdate_ThreadUpsert;
+  const factory SessionUpdate.syncProgress({
     required BigInt pulled,
     required bool catchingUp,
-  }) = SessionUpdateDto_SyncProgress;
-  const factory SessionUpdateDto.kickout({required String channelId}) =
-      SessionUpdateDto_Kickout;
-  const factory SessionUpdateDto.authExpired({required String reason}) =
-      SessionUpdateDto_AuthExpired;
-  const factory SessionUpdateDto.tokenRenew({
+  }) = SessionUpdate_SyncProgress;
+  const factory SessionUpdate.kickout({required String channelId}) =
+      SessionUpdate_Kickout;
+  const factory SessionUpdate.authExpired({required String reason}) =
+      SessionUpdate_AuthExpired;
+  const factory SessionUpdate.tokenRenew({
     required String token,
     required PlatformInt64 exp,
-  }) = SessionUpdateDto_TokenRenew;
-  const factory SessionUpdateDto.friendRequest({
+  }) = SessionUpdate_TokenRenew;
+  const factory SessionUpdate.friendRequest({
     required String from,
     required String nickname,
-  }) = SessionUpdateDto_FriendRequest;
-  const factory SessionUpdateDto.friendAccepted({
+  }) = SessionUpdate_FriendRequest;
+  const factory SessionUpdate.friendAccepted({
     required String from,
     required String nickname,
-  }) = SessionUpdateDto_FriendAccepted;
-  const factory SessionUpdateDto.profileUpdated({
+  }) = SessionUpdate_FriendAccepted;
+  const factory SessionUpdate.profileUpdated({
     required String account,
     required String nickname,
     required String avatar,
-  }) = SessionUpdateDto_ProfileUpdated;
-  const factory SessionUpdateDto.presence({
+  }) = SessionUpdate_ProfileUpdated;
+  const factory SessionUpdate.presence({
     required String account,
     required int status,
     required PlatformInt64 lastSeen,
-  }) = SessionUpdateDto_Presence;
-  const factory SessionUpdateDto.typing({
+  }) = SessionUpdate_Presence;
+  const factory SessionUpdate.typing({
     required String typer,
     required String dest,
     required int kind,
     required bool active,
-  }) = SessionUpdateDto_Typing;
-  const factory SessionUpdateDto.receiptRead({
+  }) = SessionUpdate_Typing;
+  const factory SessionUpdate.receiptRead({
     required String reader,
     required String dest,
     required int kind,
     required PlatformInt64 messageId,
-  }) = SessionUpdateDto_ReceiptRead;
-  const factory SessionUpdateDto.groupCreate({
+  }) = SessionUpdate_ReceiptRead;
+  const factory SessionUpdate.groupCreate({
     required String groupId,
     required List<String> members,
-  }) = SessionUpdateDto_GroupCreate;
-  const factory SessionUpdateDto.contactsChanged({
-    required List<PersonDto> contacts,
-  }) = SessionUpdateDto_ContactsChanged;
-  const factory SessionUpdateDto.agentTurn({
+  }) = SessionUpdate_GroupCreate;
+  const factory SessionUpdate.contactsChanged({
+    required List<Person> contacts,
+  }) = SessionUpdate_ContactsChanged;
+  const factory SessionUpdate.agentTurn({
     required String dest,
-    required AgentTurnStateDto state,
+    required AgentTurnState state,
     required String text,
-  }) = SessionUpdateDto_AgentTurn;
-  const factory SessionUpdateDto.agentCard({
+  }) = SessionUpdate_AgentTurn;
+  const factory SessionUpdate.agentCard({
     required String dest,
-    required AgentCardDto card,
-  }) = SessionUpdateDto_AgentCard;
-  const factory SessionUpdateDto.rustPanic({required String message}) =
-      SessionUpdateDto_RustPanic;
+    required AgentCard card,
+  }) = SessionUpdate_AgentCard;
+  const factory SessionUpdate.rustPanic({required String message}) =
+      SessionUpdate_RustPanic;
 }
 
-class SettingsDto {
+class Settings {
   final String wsUrl;
   final String httpOrigin;
   final String env;
   final String locale;
   final String account;
 
-  const SettingsDto({
+  const Settings({
     required this.wsUrl,
     required this.httpOrigin,
     required this.env,
@@ -764,7 +757,7 @@ class SettingsDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is SettingsDto &&
+      other is Settings &&
           runtimeType == other.runtimeType &&
           wsUrl == other.wsUrl &&
           httpOrigin == other.httpOrigin &&
@@ -773,7 +766,7 @@ class SettingsDto {
           account == other.account;
 }
 
-class ThreadViewDto {
+class ThreadView {
   final String id;
   final int kind;
   final String title;
@@ -782,7 +775,7 @@ class ThreadViewDto {
   final PlatformInt64 lastAt;
   final int unread;
 
-  const ThreadViewDto({
+  const ThreadView({
     required this.id,
     required this.kind,
     required this.title,
@@ -805,7 +798,7 @@ class ThreadViewDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ThreadViewDto &&
+      other is ThreadView &&
           runtimeType == other.runtimeType &&
           id == other.id &&
           kind == other.kind &&
@@ -816,16 +809,16 @@ class ThreadViewDto {
           unread == other.unread;
 }
 
-class TimelineDeltaDto {
+class TimelineDelta {
   final String dest;
   final BigInt fromVersion;
   final BigInt toVersion;
-  final List<MessageViewDto> upserts;
+  final List<MessageView> upserts;
   final List<String> deletedKeys;
   final int? unread;
   final PlatformInt64? lastReadMessageId;
 
-  const TimelineDeltaDto({
+  const TimelineDelta({
     required this.dest,
     required this.fromVersion,
     required this.toVersion,
@@ -848,7 +841,7 @@ class TimelineDeltaDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TimelineDeltaDto &&
+      other is TimelineDelta &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           fromVersion == other.fromVersion &&
@@ -859,18 +852,18 @@ class TimelineDeltaDto {
           lastReadMessageId == other.lastReadMessageId;
 }
 
-class TimelineSnapshotDto {
+class TimelineSnapshot {
   final String dest;
   final BigInt version;
-  final List<MessageViewDto> messages;
-  final List<MessageViewDto> pending;
+  final List<MessageView> messages;
+  final List<MessageView> pending;
   final int unread;
   final PlatformInt64 lastReadMessageId;
   final bool hasMore;
   final bool loadingOlder;
   final String? historyError;
 
-  const TimelineSnapshotDto({
+  const TimelineSnapshot({
     required this.dest,
     required this.version,
     required this.messages,
@@ -897,7 +890,7 @@ class TimelineSnapshotDto {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TimelineSnapshotDto &&
+      other is TimelineSnapshot &&
           runtimeType == other.runtimeType &&
           dest == other.dest &&
           version == other.version &&
@@ -911,39 +904,38 @@ class TimelineSnapshotDto {
 }
 
 @freezed
-sealed class TimelineUpdateDto with _$TimelineUpdateDto {
-  const TimelineUpdateDto._();
+sealed class TimelineUpdate with _$TimelineUpdate {
+  const TimelineUpdate._();
 
-  const factory TimelineUpdateDto.snapshot({
-    required TimelineSnapshotDto snapshot,
-  }) = TimelineUpdateDto_Snapshot;
-  const factory TimelineUpdateDto.delta({required TimelineDeltaDto delta}) =
-      TimelineUpdateDto_Delta;
-  const factory TimelineUpdateDto.resync({
+  const factory TimelineUpdate.snapshot({required TimelineSnapshot snapshot}) =
+      TimelineUpdate_Snapshot;
+  const factory TimelineUpdate.delta({required TimelineDelta delta}) =
+      TimelineUpdate_Delta;
+  const factory TimelineUpdate.resync({
     required String dest,
     required String reason,
-  }) = TimelineUpdateDto_Resync;
+  }) = TimelineUpdate_Resync;
 }
 
 @freezed
-sealed class TokenPersistDto with _$TokenPersistDto {
-  const TokenPersistDto._();
+sealed class TokenPersist with _$TokenPersist {
+  const TokenPersist._();
 
-  const factory TokenPersistDto.write({required String token}) =
-      TokenPersistDto_Write;
-  const factory TokenPersistDto.clear() = TokenPersistDto_Clear;
+  const factory TokenPersist.write({required String token}) =
+      TokenPersist_Write;
+  const factory TokenPersist.clear() = TokenPersist_Clear;
 }
 
 @freezed
-sealed class UiCommandDto with _$UiCommandDto {
-  const UiCommandDto._();
+sealed class UiCommand with _$UiCommand {
+  const UiCommand._();
 
-  const factory UiCommandDto.sendText({
+  const factory UiCommand.sendText({
     required String dest,
     required String text,
     required int kind,
-  }) = UiCommandDto_SendText;
-  const factory UiCommandDto.sendMedia({
+  }) = UiCommand_SendText;
+  const factory UiCommand.sendMedia({
     required String dest,
     required String path,
     required String mime,
@@ -951,48 +943,48 @@ sealed class UiCommandDto with _$UiCommandDto {
     required int height,
     required PlatformInt64 byteSize,
     required int kind,
-  }) = UiCommandDto_SendMedia;
-  const factory UiCommandDto.retrySend({required String clientId}) =
-      UiCommandDto_RetrySend;
-  const factory UiCommandDto.cancelSend({required String clientId}) =
-      UiCommandDto_CancelSend;
-  const factory UiCommandDto.markThreadRead({
+  }) = UiCommand_SendMedia;
+  const factory UiCommand.retrySend({required String clientId}) =
+      UiCommand_RetrySend;
+  const factory UiCommand.cancelSend({required String clientId}) =
+      UiCommand_CancelSend;
+  const factory UiCommand.markThreadRead({
     required String dest,
     required int kind,
     required PlatformInt64 visibleMessageId,
-  }) = UiCommandDto_MarkThreadRead;
-  const factory UiCommandDto.deleteThread({required String dest}) =
-      UiCommandDto_DeleteThread;
-  const factory UiCommandDto.friendRequest({required String dest}) =
-      UiCommandDto_FriendRequest;
-  const factory UiCommandDto.friendAccept({required String dest}) =
-      UiCommandDto_FriendAccept;
-  const factory UiCommandDto.friendReject({required String dest}) =
-      UiCommandDto_FriendReject;
-  const factory UiCommandDto.friendRemove({required String dest}) =
-      UiCommandDto_FriendRemove;
-  const factory UiCommandDto.agentEnqueueTurn({
+  }) = UiCommand_MarkThreadRead;
+  const factory UiCommand.deleteThread({required String dest}) =
+      UiCommand_DeleteThread;
+  const factory UiCommand.friendRequest({required String dest}) =
+      UiCommand_FriendRequest;
+  const factory UiCommand.friendAccept({required String dest}) =
+      UiCommand_FriendAccept;
+  const factory UiCommand.friendReject({required String dest}) =
+      UiCommand_FriendReject;
+  const factory UiCommand.friendRemove({required String dest}) =
+      UiCommand_FriendRemove;
+  const factory UiCommand.agentEnqueueTurn({
     required String dest,
     required String text,
     required PlatformInt64 inReplyTo,
-  }) = UiCommandDto_AgentEnqueueTurn;
-  const factory UiCommandDto.agentRespondPermission({
+  }) = UiCommand_AgentEnqueueTurn;
+  const factory UiCommand.agentRespondPermission({
     required String dest,
     required String callId,
     required String permission,
-  }) = UiCommandDto_AgentRespondPermission;
-  const factory UiCommandDto.agentAbortTurn({required String dest}) =
-      UiCommandDto_AgentAbortTurn;
-  const factory UiCommandDto.agentRunResult({
+  }) = UiCommand_AgentRespondPermission;
+  const factory UiCommand.agentAbortTurn({required String dest}) =
+      UiCommand_AgentAbortTurn;
+  const factory UiCommand.agentRunResult({
     required String dest,
     required String profileId,
     required BigInt epoch,
     required String output,
     String? error,
-  }) = UiCommandDto_AgentRunResult;
-  const factory UiCommandDto.settingsPatch({
+  }) = UiCommand_AgentRunResult;
+  const factory UiCommand.settingsPatch({
     String? wsUrl,
     String? httpOrigin,
     String? env,
-  }) = UiCommandDto_SettingsPatch;
+  }) = UiCommand_SettingsPatch;
 }

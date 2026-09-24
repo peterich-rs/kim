@@ -12,8 +12,7 @@ import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_presence.dart';
 import 'package:kim_mobile/features/agent/host_support.dart';
-import 'package:kim_mobile/bridge/goose_bridge.dart';
-import 'package:kim_mobile/bridge/agent_bridge.dart';
+import 'package:kim_mobile/bridge/agent_host.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/features/session/providers.dart';
@@ -56,7 +55,7 @@ class _KimBootState extends State<KimBoot> {
   Widget? _app;
   ProviderContainer? _container;
   DetachableAgentRunSink? _sink;
-  AgentRunLoop? _loop;
+  AgentHostController? _host;
 
   @override
   void initState() {
@@ -67,7 +66,7 @@ class _KimBootState extends State<KimBoot> {
   @override
   void dispose() {
     _sink?.detach();
-    unawaited(_loop?.stop());
+    unawaited(_host?.stop());
     _container?.dispose();
     super.dispose();
   }
@@ -76,6 +75,7 @@ class _KimBootState extends State<KimBoot> {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
     await bridge.attachStore('${runtime.paths.support.path}/kim-cache.db');
+    KimLogger.info('boot store attached');
     final imported = await bridge.importDeviceSettings(
       wsUrl: runtime.settings.url,
       httpOrigin: runtime.settings.httpOrigin,
@@ -89,9 +89,9 @@ class _KimBootState extends State<KimBoot> {
     await runtime.settings.dropImportedPrefs();
     bridge.watchTokenPersist().listen((event) {
       switch (event) {
-        case rust_types.TokenPersistDto_Write(:final token):
+        case rust_types.TokenPersist_Write(:final token):
           unawaited(runtime.settings.saveToken(token));
-        case rust_types.TokenPersistDto_Clear():
+        case rust_types.TokenPersist_Clear():
           unawaited(runtime.settings.saveToken(''));
       }
     });
@@ -113,14 +113,14 @@ class _KimBootState extends State<KimBoot> {
         container.read(agentRunStatusProvider.notifier),
       );
       _sink = sink;
-      final loop = AgentRunLoop(
+      final host = AgentHostController(
         bridge,
-        AgentBridge(),
-        sink: sink,
         permissions: container.read(agentPermissionHubProvider.notifier),
+        runs: sink,
       );
-      _loop = loop;
-      unawaited(loop.start());
+      _host = host;
+      KimLogger.info('boot agent host');
+      unawaited(host.start());
     }
     setState(() {
       _app = UncontrolledProviderScope(
