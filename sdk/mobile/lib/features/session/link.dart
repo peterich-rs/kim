@@ -325,8 +325,7 @@ String _linkLabel(LinkState state) {
   return switch (state) {
     LinkState_Connecting() => 'connecting',
     LinkState_Online() => 'online',
-    LinkState_Reconnecting(:final attempt) =>
-      'reconnecting attempt=$attempt',
+    LinkState_Reconnecting(:final attempt) => 'reconnecting attempt=$attempt',
     LinkState_Offline() => 'offline',
   };
 }

@@ -1,5 +1,5 @@
-use kim_sdk::{AgentProfileRow, CommandReceipt, LinkStateView};
 use kim_sdk as sdk;
+use kim_sdk::{AgentProfileRow, CommandReceipt, LinkStateView};
 
 pub enum SendStatus {
     Pending,

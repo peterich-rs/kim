@@ -4,8 +4,8 @@
 use super::client::{KimCommandReceipt, KimOutgoingContent, KimUiHandle};
 use super::failure::ApiFailure;
 use super::types::{
-    AgentProfile, ContactsSnapshot, LocalMedia, Person, Profile, ProviderAccount,
-    RoomMember, TimelineUpdate,
+    AgentProfile, ContactsSnapshot, LocalMedia, Person, Profile, ProviderAccount, RoomMember,
+    TimelineUpdate,
 };
 use crate::frb_generated::StreamSink;
 

@@ -163,10 +163,7 @@ pub struct CapabilityEntry {
 }
 
 pub fn catalog_vendors() -> Result<Vec<Vendor>, AgentFailure> {
-    Ok(vendor_summaries()?
-        .into_iter()
-        .map(Vendor::from)
-        .collect())
+    Ok(vendor_summaries()?.into_iter().map(Vendor::from).collect())
 }
 
 pub fn catalog_surface(vendor: String, model: String) -> Result<ReasoningSurface, AgentFailure> {

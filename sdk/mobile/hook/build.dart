@@ -78,12 +78,7 @@ Future<void> _buildCodexHelper(
   await _sanitizeAppleCargoEnv(env, input);
   final proc = await Process.start(
     'cargo',
-    [
-      'build',
-      '-p',
-      'kim-codex-helper',
-      if (release) '--release',
-    ],
+    ['build', '-p', 'kim-codex-helper', if (release) '--release'],
     workingDirectory: root.path,
     environment: env,
     mode: ProcessStartMode.inheritStdio,
@@ -169,7 +164,5 @@ Directory _repoRoot() {
     }
     dir = parent;
   }
-  throw StateError(
-    'kim repo root not found from ${Directory.current.path}',
-  );
+  throw StateError('kim repo root not found from ${Directory.current.path}');
 }

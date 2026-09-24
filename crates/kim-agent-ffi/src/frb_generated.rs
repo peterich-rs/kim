@@ -614,9 +614,7 @@ impl SseDecode for Vec<crate::api::catalog::PreviewTool> {
         let mut len_ = <i32>::sse_decode(deserializer);
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
-            ans_.push(<crate::api::catalog::PreviewTool>::sse_decode(
-                deserializer,
-            ));
+            ans_.push(<crate::api::catalog::PreviewTool>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -1107,9 +1105,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::catalog::Skill {
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::catalog::Skill {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::Skill>
-    for crate::api::catalog::Skill
-{
+impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::Skill> for crate::api::catalog::Skill {
     fn into_into_dart(self) -> crate::api::catalog::Skill {
         self
     }
@@ -1132,10 +1128,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::catalog::Vendor {
         .into_dart()
     }
 }
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::catalog::Vendor
-{
-}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::catalog::Vendor {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::Vendor>
     for crate::api::catalog::Vendor
 {

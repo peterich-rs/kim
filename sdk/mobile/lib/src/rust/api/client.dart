@@ -174,10 +174,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
-  Future<List<RoomMember>> roomEnter({
-    required String dest,
-    required int kind,
-  });
+  Future<List<RoomMember>> roomEnter({required String dest, required int kind});
 
   Future<String> roomLeave({required String dest, required int kind});
 

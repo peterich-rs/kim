@@ -741,8 +741,9 @@ class _AgentEditorPageState extends ConsumerState<AgentEditorPage> {
                           agentCapabilitiesSubtitle(l10n, overview),
                         ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () =>
-                            context.push(AppRoutes.agentCapabilities(overview.id)),
+                        onTap: () => context.push(
+                          AppRoutes.agentCapabilities(overview.id),
+                        ),
                       ),
                     ],
                   ),

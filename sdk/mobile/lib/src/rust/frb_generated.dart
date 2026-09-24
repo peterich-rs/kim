@@ -91,8 +91,7 @@ abstract class RustLibApi extends BaseApi {
     required String id,
   });
 
-  Future<List<ProviderAccount>>
-  crateApiHandlesAgentCatalogHandleListAccounts({
+  Future<List<ProviderAccount>> crateApiHandlesAgentCatalogHandleListAccounts({
     required AgentCatalogHandle that,
   });
 
@@ -364,8 +363,9 @@ abstract class RustLibApi extends BaseApi {
     required KimUiHandle that,
   });
 
-  Future<List<ProviderAccount>>
-  crateApiClientKimUiHandleListProviderAccounts({required KimUiHandle that});
+  Future<List<ProviderAccount>> crateApiClientKimUiHandleListProviderAccounts({
+    required KimUiHandle that,
+  });
 
   Future<void> crateApiClientKimUiHandleLoadOlder({
     required KimUiHandle that,
@@ -410,9 +410,7 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 byteSize,
   });
 
-  Metrics crateApiClientKimUiHandleMetricsSnapshot({
-    required KimUiHandle that,
-  });
+  Metrics crateApiClientKimUiHandleMetricsSnapshot({required KimUiHandle that});
 
   Future<void> crateApiClientKimUiHandleNotifyForeground({
     required KimUiHandle that,
@@ -539,8 +537,9 @@ abstract class RustLibApi extends BaseApi {
     required ProviderAccount row,
   });
 
-  Stream<AgentPermissionEvent>
-  crateApiClientKimUiHandleWatchAgentPermission({required KimUiHandle that});
+  Stream<AgentPermissionEvent> crateApiClientKimUiHandleWatchAgentPermission({
+    required KimUiHandle that,
+  });
 
   Stream<AgentRunRequest> crateApiClientKimUiHandleWatchAgentRun({
     required KimUiHandle that,
@@ -699,8 +698,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<ProviderAccount>>
-  crateApiHandlesAgentCatalogHandleListAccounts({
+  Future<List<ProviderAccount>> crateApiHandlesAgentCatalogHandleListAccounts({
     required AgentCatalogHandle that,
   }) {
     return handler.executeNormal(
@@ -2724,8 +2722,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<ProviderAccount>>
-  crateApiClientKimUiHandleListProviderAccounts({required KimUiHandle that}) {
+  Future<List<ProviderAccount>> crateApiClientKimUiHandleListProviderAccounts({
+    required KimUiHandle that,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -3989,8 +3988,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Stream<AgentPermissionEvent>
-  crateApiClientKimUiHandleWatchAgentPermission({required KimUiHandle that}) {
+  Stream<AgentPermissionEvent> crateApiClientKimUiHandleWatchAgentPermission({
+    required KimUiHandle that,
+  }) {
     final sink = RustStreamSink<AgentPermissionEvent>();
     unawaited(
       handler.executeNormal(
@@ -4001,10 +4001,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
               that,
               serializer,
             );
-            sse_encode_StreamSink_agent_permission_event_Sse(
-              sink,
-              serializer,
-            );
+            sse_encode_StreamSink_agent_permission_event_Sse(sink, serializer);
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
@@ -4735,29 +4732,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<AgentRunRequest>
-  dco_decode_StreamSink_agent_run_request_Sse(dynamic raw) {
+  RustStreamSink<AgentRunRequest> dco_decode_StreamSink_agent_run_request_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
 
   @protected
-  RustStreamSink<AgentUiStatus>
-  dco_decode_StreamSink_agent_ui_status_Sse(dynamic raw) {
+  RustStreamSink<AgentUiStatus> dco_decode_StreamSink_agent_ui_status_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
 
   @protected
-  RustStreamSink<ContactsSnapshot>
-  dco_decode_StreamSink_contacts_snapshot_Sse(dynamic raw) {
+  RustStreamSink<ContactsSnapshot> dco_decode_StreamSink_contacts_snapshot_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
 
   @protected
-  RustStreamSink<SessionSnapshot>
-  dco_decode_StreamSink_session_snapshot_Sse(dynamic raw) {
+  RustStreamSink<SessionSnapshot> dco_decode_StreamSink_session_snapshot_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -4771,8 +4772,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<TimelineUpdate>
-  dco_decode_StreamSink_timeline_update_Sse(dynamic raw) {
+  RustStreamSink<TimelineUpdate> dco_decode_StreamSink_timeline_update_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -5082,9 +5084,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  TimelineSnapshot dco_decode_box_autoadd_timeline_snapshot(
-    dynamic raw,
-  ) {
+  TimelineSnapshot dco_decode_box_autoadd_timeline_snapshot(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_timeline_snapshot(raw);
   }
@@ -6011,8 +6011,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<AgentRunRequest>
-  sse_decode_StreamSink_agent_run_request_Sse(
+  RustStreamSink<AgentRunRequest> sse_decode_StreamSink_agent_run_request_Sse(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -6020,15 +6019,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<AgentUiStatus>
-  sse_decode_StreamSink_agent_ui_status_Sse(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    throw UnimplementedError('Unreachable ()');
-  }
-
-  @protected
-  RustStreamSink<ContactsSnapshot>
-  sse_decode_StreamSink_contacts_snapshot_Sse(
+  RustStreamSink<AgentUiStatus> sse_decode_StreamSink_agent_ui_status_Sse(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -6036,8 +6027,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<SessionSnapshot>
-  sse_decode_StreamSink_session_snapshot_Sse(SseDeserializer deserializer) {
+  RustStreamSink<ContactsSnapshot> sse_decode_StreamSink_contacts_snapshot_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<SessionSnapshot> sse_decode_StreamSink_session_snapshot_Sse(
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -6051,8 +6051,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  RustStreamSink<TimelineUpdate>
-  sse_decode_StreamSink_timeline_update_Sse(SseDeserializer deserializer) {
+  RustStreamSink<TimelineUpdate> sse_decode_StreamSink_timeline_update_Sse(
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -6143,9 +6144,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AgentRunRequest sse_decode_agent_run_request(
-    SseDeserializer deserializer,
-  ) {
+  AgentRunRequest sse_decode_agent_run_request(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_dest = sse_decode_String(deserializer);
     var var_profileId = sse_decode_String(deserializer);
@@ -6162,9 +6161,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AgentRunResult sse_decode_agent_run_result(
-    SseDeserializer deserializer,
-  ) {
+  AgentRunResult sse_decode_agent_run_result(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_dest = sse_decode_String(deserializer);
     var var_profileId = sse_decode_String(deserializer);
@@ -6189,18 +6186,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AgentTurnState sse_decode_agent_turn_state(
-    SseDeserializer deserializer,
-  ) {
+  AgentTurnState sse_decode_agent_turn_state(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return AgentTurnState.values[inner];
   }
 
   @protected
-  AgentUiStatus sse_decode_agent_ui_status(
-    SseDeserializer deserializer,
-  ) {
+  AgentUiStatus sse_decode_agent_ui_status(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_dest = sse_decode_String(deserializer);
     var var_phase = sse_decode_String(deserializer);
@@ -6331,17 +6324,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AgentCard sse_decode_box_autoadd_agent_card(
-    SseDeserializer deserializer,
-  ) {
+  AgentCard sse_decode_box_autoadd_agent_card(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_agent_card(deserializer));
   }
 
   @protected
-  AgentFlags sse_decode_box_autoadd_agent_flags(
-    SseDeserializer deserializer,
-  ) {
+  AgentFlags sse_decode_box_autoadd_agent_flags(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_agent_flags(deserializer));
   }
@@ -6391,9 +6380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  LinkState sse_decode_box_autoadd_link_state(
-    SseDeserializer deserializer,
-  ) {
+  LinkState sse_decode_box_autoadd_link_state(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_link_state(deserializer));
   }
@@ -6407,9 +6394,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  ThreadView sse_decode_box_autoadd_thread_view(
-    SseDeserializer deserializer,
-  ) {
+  ThreadView sse_decode_box_autoadd_thread_view(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_thread_view(deserializer));
   }
@@ -6431,9 +6416,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  UiCommand sse_decode_box_autoadd_ui_command(
-    SseDeserializer deserializer,
-  ) {
+  UiCommand sse_decode_box_autoadd_ui_command(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_ui_command(deserializer));
   }
@@ -6456,9 +6439,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  ContactsSnapshot sse_decode_contacts_snapshot(
-    SseDeserializer deserializer,
-  ) {
+  ContactsSnapshot sse_decode_contacts_snapshot(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_version = sse_decode_u_64(deserializer);
     var var_contacts = sse_decode_list_person(deserializer);
@@ -6611,9 +6592,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  List<MessageView> sse_decode_list_message_view(
-    SseDeserializer deserializer,
-  ) {
+  List<MessageView> sse_decode_list_message_view(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -6665,9 +6644,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  List<RoomMember> sse_decode_list_room_member(
-    SseDeserializer deserializer,
-  ) {
+  List<RoomMember> sse_decode_list_room_member(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -6679,9 +6656,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  List<ThreadView> sse_decode_list_thread_view(
-    SseDeserializer deserializer,
-  ) {
+  List<ThreadView> sse_decode_list_thread_view(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -6838,9 +6813,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  ProviderAccount sse_decode_provider_account(
-    SseDeserializer deserializer,
-  ) {
+  ProviderAccount sse_decode_provider_account(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
     var var_vendorId = sse_decode_String(deserializer);
@@ -6883,9 +6856,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  SessionSnapshot sse_decode_session_snapshot(
-    SseDeserializer deserializer,
-  ) {
+  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_link = sse_decode_link_state(deserializer);
     var var_lastError = sse_decode_opt_String(deserializer);
@@ -6908,10 +6879,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 0:
         var var_state = sse_decode_box_autoadd_link_state(deserializer);
         var var_lastError = sse_decode_opt_String(deserializer);
-        return SessionUpdate_Link(
-          state: var_state,
-          lastError: var_lastError,
-        );
+        return SessionUpdate_Link(state: var_state, lastError: var_lastError);
       case 1:
         var var_threads = sse_decode_list_thread_view(deserializer);
         return SessionUpdate_Inbox(threads: var_threads);
@@ -7080,9 +7048,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  TimelineSnapshot sse_decode_timeline_snapshot(
-    SseDeserializer deserializer,
-  ) {
+  TimelineSnapshot sse_decode_timeline_snapshot(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_dest = sse_decode_String(deserializer);
     var var_version = sse_decode_u_64(deserializer);
@@ -7107,9 +7073,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  TimelineUpdate sse_decode_timeline_update(
-    SseDeserializer deserializer,
-  ) {
+  TimelineUpdate sse_decode_timeline_update(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var tag_ = sse_decode_i_32(deserializer);
@@ -7729,10 +7693,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_agent_flags(
-    AgentFlags self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_agent_flags(AgentFlags self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.multiProfile, serializer);
     sse_encode_bool(self.serverIdentity, serializer);
@@ -7751,10 +7712,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_agent_profile(
-    AgentProfile self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_agent_profile(AgentProfile self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.profileId, serializer);
     sse_encode_String(self.nickname, serializer);
@@ -8046,10 +8004,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_command_ack(
-    CommandAck self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_command_ack(CommandAck self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.requestId, serializer);
     sse_encode_String(self.clientId, serializer);
@@ -8070,10 +8025,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_device_overlay(
-    DeviceOverlay self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_device_overlay(DeviceOverlay self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.profileId, serializer);
     sse_encode_String(self.workspacePath, serializer);
@@ -8200,10 +8152,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_list_person(
-    List<Person> self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_list_person(List<Person> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -8270,10 +8219,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_local_media(
-    LocalMedia self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_local_media(LocalMedia self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.localPath, serializer);
     sse_encode_i_64(self.byteSize, serializer);
@@ -8282,10 +8228,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_message_view(
-    MessageView self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_message_view(MessageView self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.key, serializer);
     sse_encode_String(self.dest, serializer);
@@ -8395,10 +8338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_room_member(
-    RoomMember self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_room_member(RoomMember self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.account, serializer);
     sse_encode_i_32(self.status, serializer);
@@ -8406,10 +8346,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_send_status(
-    SendStatus self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_send_status(SendStatus self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
   }
@@ -8427,16 +8364,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_session_update(
-    SessionUpdate self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_session_update(SessionUpdate self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
-      case SessionUpdate_Link(
-        state: final state,
-        lastError: final lastError,
-      ):
+      case SessionUpdate_Link(state: final state, lastError: final lastError):
         sse_encode_i_32(0, serializer);
         sse_encode_box_autoadd_link_state(state, serializer);
         sse_encode_opt_String(lastError, serializer);
@@ -8557,10 +8488,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_thread_view(
-    ThreadView self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_thread_view(ThreadView self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
     sse_encode_i_32(self.kind, serializer);
@@ -8572,10 +8500,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_timeline_delta(
-    TimelineDelta self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_timeline_delta(TimelineDelta self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.dest, serializer);
     sse_encode_u_64(self.fromVersion, serializer);
@@ -8624,10 +8549,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_token_persist(
-    TokenPersist self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_token_persist(TokenPersist self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
       case TokenPersist_Write(token: final token):
@@ -8843,9 +8765,7 @@ class ContactsHandleImpl extends RustOpaque implements ContactsHandle {
   Future<Profile> profile({required String dest}) => RustLib.instance.api
       .crateApiHandlesContactsHandleProfile(that: this, dest: dest);
 
-  Future<List<Person>> search({required String query}) => RustLib
-      .instance
-      .api
+  Future<List<Person>> search({required String query}) => RustLib.instance.api
       .crateApiHandlesContactsHandleSearch(that: this, query: query);
 
   Stream<ContactsSnapshot> watch() =>
@@ -9104,9 +9024,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Future<void> cancelSend({required String clientId}) => RustLib.instance.api
       .crateApiClientKimUiHandleCancelSend(that: this, clientId: clientId);
 
-  Future<CommandAck> command({required UiCommand cmd}) => RustLib
-      .instance
-      .api
+  Future<CommandAck> command({required UiCommand cmd}) => RustLib.instance.api
       .crateApiClientKimUiHandleCommand(that: this, cmd: cmd);
 
   Future<ContactsHandle> contacts() =>
@@ -9203,9 +9121,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Future<List<AgentProfile>> listAgentProfiles() => RustLib.instance.api
       .crateApiClientKimUiHandleListAgentProfiles(that: this);
 
-  Future<List<ProviderAccount>> listProviderAccounts() => RustLib
-      .instance
-      .api
+  Future<List<ProviderAccount>> listProviderAccounts() => RustLib.instance.api
       .crateApiClientKimUiHandleListProviderAccounts(that: this);
 
   Future<void> loadOlder({required String dest}) => RustLib.instance.api
@@ -9245,9 +9161,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Future<MediaHandle> media() =>
       RustLib.instance.api.crateApiClientKimUiHandleMedia(that: this);
 
-  Future<LocalMedia> mediaFetch({required String url}) => RustLib
-      .instance
-      .api
+  Future<LocalMedia> mediaFetch({required String url}) => RustLib.instance.api
       .crateApiClientKimUiHandleMediaFetch(that: this, url: url);
 
   Future<LocalMedia> mediaUpload({
@@ -9413,11 +9327,10 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
       .api
       .crateApiClientKimUiHandleUpsertDeviceOverlay(that: this, row: row);
 
-  Future<void> upsertProviderAccount({required ProviderAccount row}) =>
-      RustLib.instance.api.crateApiClientKimUiHandleUpsertProviderAccount(
-        that: this,
-        row: row,
-      );
+  Future<void> upsertProviderAccount({required ProviderAccount row}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimUiHandleUpsertProviderAccount(that: this, row: row);
 
   /// Desktop permission cards. Phone returns an idle stream.
   Stream<AgentPermissionEvent> watchAgentPermission() => RustLib.instance.api

@@ -34,10 +34,7 @@ void agentCreateToastError(BuildContext context, String message) {
   );
 }
 
-VendorSummary? agentCreateVendorById(
-  String id,
-  List<VendorSummary> vendors,
-) {
+VendorSummary? agentCreateVendorById(String id, List<VendorSummary> vendors) {
   for (final v in vendors) {
     if (v.id == id) {
       return v;

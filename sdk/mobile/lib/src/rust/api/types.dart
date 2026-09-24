@@ -60,10 +60,7 @@ class AgentFlags {
   final bool multiProfile;
   final bool serverIdentity;
 
-  const AgentFlags({
-    required this.multiProfile,
-    required this.serverIdentity,
-  });
+  const AgentFlags({required this.multiProfile, required this.serverIdentity});
 
   @override
   int get hashCode => multiProfile.hashCode ^ serverIdentity.hashCode;
@@ -206,14 +203,7 @@ class AgentRunResult {
           recentlyActive == other.recentlyActive;
 }
 
-enum AgentTurnState {
-  queued,
-  running,
-  waitingPermission,
-  done,
-  error,
-  empty,
-}
+enum AgentTurnState { queued, running, waitingPermission, done, error, empty }
 
 class Bot {
   final String dest;
@@ -917,9 +907,8 @@ class TimelineSnapshot {
 sealed class TimelineUpdate with _$TimelineUpdate {
   const TimelineUpdate._();
 
-  const factory TimelineUpdate.snapshot({
-    required TimelineSnapshot snapshot,
-  }) = TimelineUpdate_Snapshot;
+  const factory TimelineUpdate.snapshot({required TimelineSnapshot snapshot}) =
+      TimelineUpdate_Snapshot;
   const factory TimelineUpdate.delta({required TimelineDelta delta}) =
       TimelineUpdate_Delta;
   const factory TimelineUpdate.resync({

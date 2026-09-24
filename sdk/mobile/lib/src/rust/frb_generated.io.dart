@@ -188,20 +188,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_agent_permission_event_Sse(dynamic raw);
 
   @protected
-  RustStreamSink<AgentRunRequest>
-  dco_decode_StreamSink_agent_run_request_Sse(dynamic raw);
+  RustStreamSink<AgentRunRequest> dco_decode_StreamSink_agent_run_request_Sse(
+    dynamic raw,
+  );
 
   @protected
-  RustStreamSink<AgentUiStatus>
-  dco_decode_StreamSink_agent_ui_status_Sse(dynamic raw);
+  RustStreamSink<AgentUiStatus> dco_decode_StreamSink_agent_ui_status_Sse(
+    dynamic raw,
+  );
 
   @protected
-  RustStreamSink<ContactsSnapshot>
-  dco_decode_StreamSink_contacts_snapshot_Sse(dynamic raw);
+  RustStreamSink<ContactsSnapshot> dco_decode_StreamSink_contacts_snapshot_Sse(
+    dynamic raw,
+  );
 
   @protected
-  RustStreamSink<SessionSnapshot>
-  dco_decode_StreamSink_session_snapshot_Sse(dynamic raw);
+  RustStreamSink<SessionSnapshot> dco_decode_StreamSink_session_snapshot_Sse(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<SessionUpdate> dco_decode_StreamSink_session_update_Sse(
@@ -209,8 +213,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<TimelineUpdate>
-  dco_decode_StreamSink_timeline_update_Sse(dynamic raw);
+  RustStreamSink<TimelineUpdate> dco_decode_StreamSink_timeline_update_Sse(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<TokenPersist> dco_decode_StreamSink_token_persist_Sse(
@@ -575,20 +580,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<AgentRunRequest>
-  sse_decode_StreamSink_agent_run_request_Sse(SseDeserializer deserializer);
+  RustStreamSink<AgentRunRequest> sse_decode_StreamSink_agent_run_request_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
-  RustStreamSink<AgentUiStatus>
-  sse_decode_StreamSink_agent_ui_status_Sse(SseDeserializer deserializer);
+  RustStreamSink<AgentUiStatus> sse_decode_StreamSink_agent_ui_status_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
-  RustStreamSink<ContactsSnapshot>
-  sse_decode_StreamSink_contacts_snapshot_Sse(SseDeserializer deserializer);
+  RustStreamSink<ContactsSnapshot> sse_decode_StreamSink_contacts_snapshot_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
-  RustStreamSink<SessionSnapshot>
-  sse_decode_StreamSink_session_snapshot_Sse(SseDeserializer deserializer);
+  RustStreamSink<SessionSnapshot> sse_decode_StreamSink_session_snapshot_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<SessionUpdate> sse_decode_StreamSink_session_update_Sse(
@@ -596,8 +605,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<TimelineUpdate>
-  sse_decode_StreamSink_timeline_update_Sse(SseDeserializer deserializer);
+  RustStreamSink<TimelineUpdate> sse_decode_StreamSink_timeline_update_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<TokenPersist> sse_decode_StreamSink_token_persist_Sse(
@@ -622,19 +632,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentProfile sse_decode_agent_profile(SseDeserializer deserializer);
 
   @protected
-  AgentRunRequest sse_decode_agent_run_request(
-    SseDeserializer deserializer,
-  );
+  AgentRunRequest sse_decode_agent_run_request(SseDeserializer deserializer);
 
   @protected
-  AgentRunResult sse_decode_agent_run_result(
-    SseDeserializer deserializer,
-  );
+  AgentRunResult sse_decode_agent_run_result(SseDeserializer deserializer);
 
   @protected
-  AgentTurnState sse_decode_agent_turn_state(
-    SseDeserializer deserializer,
-  );
+  AgentTurnState sse_decode_agent_turn_state(SseDeserializer deserializer);
 
   @protected
   AgentUiStatus sse_decode_agent_ui_status(SseDeserializer deserializer);
@@ -652,14 +656,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Bot sse_decode_bot(SseDeserializer deserializer);
 
   @protected
-  AgentCard sse_decode_box_autoadd_agent_card(
-    SseDeserializer deserializer,
-  );
+  AgentCard sse_decode_box_autoadd_agent_card(SseDeserializer deserializer);
 
   @protected
-  AgentFlags sse_decode_box_autoadd_agent_flags(
-    SseDeserializer deserializer,
-  );
+  AgentFlags sse_decode_box_autoadd_agent_flags(SseDeserializer deserializer);
 
   @protected
   AgentProfile sse_decode_box_autoadd_agent_profile(
@@ -688,9 +688,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  LinkState sse_decode_box_autoadd_link_state(
-    SseDeserializer deserializer,
-  );
+  LinkState sse_decode_box_autoadd_link_state(SseDeserializer deserializer);
 
   @protected
   ProviderAccount sse_decode_box_autoadd_provider_account(
@@ -698,9 +696,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  ThreadView sse_decode_box_autoadd_thread_view(
-    SseDeserializer deserializer,
-  );
+  ThreadView sse_decode_box_autoadd_thread_view(SseDeserializer deserializer);
 
   @protected
   TimelineDelta sse_decode_box_autoadd_timeline_delta(
@@ -713,17 +709,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  UiCommand sse_decode_box_autoadd_ui_command(
-    SseDeserializer deserializer,
-  );
+  UiCommand sse_decode_box_autoadd_ui_command(SseDeserializer deserializer);
 
   @protected
   CommandAck sse_decode_command_ack(SseDeserializer deserializer);
 
   @protected
-  ContactsSnapshot sse_decode_contacts_snapshot(
-    SseDeserializer deserializer,
-  );
+  ContactsSnapshot sse_decode_contacts_snapshot(SseDeserializer deserializer);
 
   @protected
   DeviceOverlay sse_decode_device_overlay(SseDeserializer deserializer);
@@ -769,9 +761,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  List<MessageView> sse_decode_list_message_view(
-    SseDeserializer deserializer,
-  );
+  List<MessageView> sse_decode_list_message_view(SseDeserializer deserializer);
 
   @protected
   List<Person> sse_decode_list_person(SseDeserializer deserializer);
@@ -788,14 +778,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  List<RoomMember> sse_decode_list_room_member(
-    SseDeserializer deserializer,
-  );
+  List<RoomMember> sse_decode_list_room_member(SseDeserializer deserializer);
 
   @protected
-  List<ThreadView> sse_decode_list_thread_view(
-    SseDeserializer deserializer,
-  );
+  List<ThreadView> sse_decode_list_thread_view(SseDeserializer deserializer);
 
   @protected
   LocalMedia sse_decode_local_media(SseDeserializer deserializer);
@@ -827,9 +813,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Profile sse_decode_profile(SseDeserializer deserializer);
 
   @protected
-  ProviderAccount sse_decode_provider_account(
-    SseDeserializer deserializer,
-  );
+  ProviderAccount sse_decode_provider_account(SseDeserializer deserializer);
 
   @protected
   RoomMember sse_decode_room_member(SseDeserializer deserializer);
@@ -838,9 +822,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SendStatus sse_decode_send_status(SseDeserializer deserializer);
 
   @protected
-  SessionSnapshot sse_decode_session_snapshot(
-    SseDeserializer deserializer,
-  );
+  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer);
 
   @protected
   SessionUpdate sse_decode_session_update(SseDeserializer deserializer);
@@ -855,14 +837,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TimelineDelta sse_decode_timeline_delta(SseDeserializer deserializer);
 
   @protected
-  TimelineSnapshot sse_decode_timeline_snapshot(
-    SseDeserializer deserializer,
-  );
+  TimelineSnapshot sse_decode_timeline_snapshot(SseDeserializer deserializer);
 
   @protected
-  TimelineUpdate sse_decode_timeline_update(
-    SseDeserializer deserializer,
-  );
+  TimelineUpdate sse_decode_timeline_update(SseDeserializer deserializer);
 
   @protected
   TokenPersist sse_decode_token_persist(SseDeserializer deserializer);
@@ -1105,10 +1083,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_agent_profile(
-    AgentProfile self,
-    SseSerializer serializer,
-  );
+  void sse_encode_agent_profile(AgentProfile self, SseSerializer serializer);
 
   @protected
   void sse_encode_agent_run_request(
@@ -1129,10 +1104,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_agent_ui_status(
-    AgentUiStatus self,
-    SseSerializer serializer,
-  );
+  void sse_encode_agent_ui_status(AgentUiStatus self, SseSerializer serializer);
 
   @protected
   void sse_encode_api_failure(ApiFailure self, SseSerializer serializer);
@@ -1237,10 +1209,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_device_overlay(
-    DeviceOverlay self,
-    SseSerializer serializer,
-  );
+  void sse_encode_device_overlay(DeviceOverlay self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -1294,10 +1263,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_person(
-    List<Person> self,
-    SseSerializer serializer,
-  );
+  void sse_encode_list_person(List<Person> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -1330,10 +1296,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_local_media(LocalMedia self, SseSerializer serializer);
 
   @protected
-  void sse_encode_message_view(
-    MessageView self,
-    SseSerializer serializer,
-  );
+  void sse_encode_message_view(MessageView self, SseSerializer serializer);
 
   @protected
   void sse_encode_metrics(Metrics self, SseSerializer serializer);
@@ -1381,10 +1344,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_session_update(
-    SessionUpdate self,
-    SseSerializer serializer,
-  );
+  void sse_encode_session_update(SessionUpdate self, SseSerializer serializer);
 
   @protected
   void sse_encode_settings(Settings self, SseSerializer serializer);
@@ -1393,10 +1353,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_thread_view(ThreadView self, SseSerializer serializer);
 
   @protected
-  void sse_encode_timeline_delta(
-    TimelineDelta self,
-    SseSerializer serializer,
-  );
+  void sse_encode_timeline_delta(TimelineDelta self, SseSerializer serializer);
 
   @protected
   void sse_encode_timeline_snapshot(
@@ -1411,10 +1368,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_token_persist(
-    TokenPersist self,
-    SseSerializer serializer,
-  );
+  void sse_encode_token_persist(TokenPersist self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);

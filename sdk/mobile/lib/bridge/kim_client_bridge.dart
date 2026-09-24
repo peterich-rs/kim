@@ -59,10 +59,7 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Stream<rust_types.TimelineUpdate> watchThread(
-    String dest, {
-    int limit = 50,
-  }) {
+  Stream<rust_types.TimelineUpdate> watchThread(String dest, {int limit = 50}) {
     return requireApi().watchTimeline(dest: dest, limit: limit);
   }
 
@@ -244,7 +241,9 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
 
   @override
   Future<List<KimPerson>> friendIncoming() async {
-    return [for (final p in await requireApi().friendIncoming()) _fromPerson(p)];
+    return [
+      for (final p in await requireApi().friendIncoming()) _fromPerson(p),
+    ];
   }
 
   @override
@@ -629,5 +628,4 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   Future<rust_types.Metrics> metricsSnapshot() async {
     return requireApi().metricsSnapshot();
   }
-
 }

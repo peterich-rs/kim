@@ -272,10 +272,7 @@ class AlignedChoice {
 }
 
 /// If [current] does not fit [surface], fall back to the surface default.
-AlignedChoice alignChoice(
-  ReasoningSurface surface,
-  ReasoningChoice? current,
-) {
+AlignedChoice alignChoice(ReasoningSurface surface, ReasoningChoice? current) {
   if (current == null) {
     return AlignedChoice(choice: defaultChoiceFor(surface), dropped: false);
   }

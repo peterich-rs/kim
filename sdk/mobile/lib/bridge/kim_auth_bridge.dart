@@ -6,7 +6,6 @@ import 'package:kim_mobile/bridge/kim_ports.dart';
 import 'package:kim_mobile/src/rust/api/auth.dart' as rust_auth;
 
 mixin KimAuthBridge on KimBridgeBase implements KimAuthPort {
-
   KimAuthSession authSession(rust_auth.AuthSession s) {
     return KimAuthSession(
       token: s.token,
@@ -77,6 +76,4 @@ mixin KimAuthBridge on KimBridgeBase implements KimAuthPort {
   String httpOriginFromWs(String wsUrl) {
     return rust_auth.httpOriginFromWs(wsUrl: wsUrl);
   }
-
-
 }

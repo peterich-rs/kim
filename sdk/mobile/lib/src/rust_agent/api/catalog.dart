@@ -46,10 +46,10 @@ Future<List<Skill>> skillPortableList({
   projectRoot: projectRoot,
 );
 
-Future<List<Skill>> skillAppCatalog({required String cacheRoot}) =>
-    AgentRustLib.instance.api.crateApiCatalogSkillAppCatalog(
-      cacheRoot: cacheRoot,
-    );
+Future<List<Skill>> skillAppCatalog({required String cacheRoot}) => AgentRustLib
+    .instance
+    .api
+    .crateApiCatalogSkillAppCatalog(cacheRoot: cacheRoot);
 
 Future<AssembledPreview> previewAssembled({
   required String profileJson,

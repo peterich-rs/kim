@@ -394,9 +394,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
     bool accepted = false,
   }) {
     if (accepted) {
-      pushEvent(
-        SessionUpdate.friendAccepted(from: from, nickname: nickname),
-      );
+      pushEvent(SessionUpdate.friendAccepted(from: from, nickname: nickname));
     } else {
       pushEvent(SessionUpdate.friendRequest(from: from, nickname: nickname));
     }
@@ -707,9 +705,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
                 width: width,
                 height: height,
                 messageId: 0,
-                sendStatus: failed
-                    ? SendStatus.failed
-                    : SendStatus.pending,
+                sendStatus: failed ? SendStatus.failed : SendStatus.pending,
                 localPath: localPath.isEmpty ? null : localPath,
               ),
             ],
@@ -923,10 +919,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<List<MessageView>> searchMessages(
-    String query, {
-    String? dest,
-  }) async {
+  Future<List<MessageView>> searchMessages(String query, {String? dest}) async {
     return const [];
   }
 
@@ -974,8 +967,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }) async {}
 
   @override
-  Stream<AgentPermissionEvent> watchAgentPermission() =>
-      const Stream.empty();
+  Stream<AgentPermissionEvent> watchAgentPermission() => const Stream.empty();
 
   @override
   Stream<AgentUiStatus> watchAgentUi() => const Stream.empty();

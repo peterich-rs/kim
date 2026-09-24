@@ -250,13 +250,13 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
               if (warning.trim().isNotEmpty) warning.trim(),
           ];
           if (names.isNotEmpty || warnTexts.isNotEmpty) {
-              summary = names.join(' · ');
-              if (warnTexts.isNotEmpty) {
-                final warn = warnTexts.join(' · ');
-                summary = summary.isEmpty ? warn : '$summary · $warn';
-              }
-              fromHost = true;
+            summary = names.join(' · ');
+            if (warnTexts.isNotEmpty) {
+              final warn = warnTexts.join(' · ');
+              summary = summary.isEmpty ? warn : '$summary · $warn';
             }
+            fromHost = true;
+          }
         }
       } catch (_) {
         // Keep local fallback.

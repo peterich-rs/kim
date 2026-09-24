@@ -7,6 +7,7 @@ import 'package:kim_mobile/features/profile/profile.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' hide AgentProfile;
+
 import '../support/harness.dart';
 
 Future<void> _online(dynamic env) async {

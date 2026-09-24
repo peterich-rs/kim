@@ -114,7 +114,9 @@ class AgentBridge {
     );
   }
 
-  Future<List<catalog.Skill>> skillAppCatalog({required String cacheRoot}) async {
+  Future<List<catalog.Skill>> skillAppCatalog({
+    required String cacheRoot,
+  }) async {
     await ensure();
     return catalog.skillAppCatalog(cacheRoot: cacheRoot);
   }

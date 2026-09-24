@@ -42,10 +42,7 @@ abstract class KimClientPort {
 
   Stream<rust_types.SessionUpdate> watchSessionEvents();
 
-  Stream<rust_types.TimelineUpdate> watchThread(
-    String dest, {
-    int limit = 50,
-  });
+  Stream<rust_types.TimelineUpdate> watchThread(String dest, {int limit = 50});
 
   Future<void> startSession(
     String url,

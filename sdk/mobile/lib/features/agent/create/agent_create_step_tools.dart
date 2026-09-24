@@ -192,8 +192,7 @@ class AgentCreateStepTools extends ConsumerWidget {
               title: Text(l10n.agentFsWrite),
               subtitle: Text(l10n.agentFsWriteHint),
               value: fsWriteOn,
-              onChanged: (next) =>
-                  _setFs(ref, read: next || fsOn, write: next),
+              onChanged: (next) => _setFs(ref, read: next || fsOn, write: next),
             ),
             if (fsWriteOn) ...[
               const Divider(height: 1),
@@ -309,7 +308,9 @@ void _setCap(
   if (kind == CapabilityKinds.fs && params['writable'] != true) {
     perms = setPermissionAskBefore(perms, kAskBeforeWriteFile, ask: false);
   }
-  ref.read(agentCreateFormProvider.notifier).applyCaps(caps: caps, perms: perms);
+  ref
+      .read(agentCreateFormProvider.notifier)
+      .applyCaps(caps: caps, perms: perms);
 }
 
 void _setFs(WidgetRef ref, {required bool read, required bool write}) {

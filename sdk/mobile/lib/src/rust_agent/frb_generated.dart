@@ -828,9 +828,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  AssembledPreview sse_decode_assembled_preview(
-    SseDeserializer deserializer,
-  ) {
+  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_tools = sse_decode_list_preview_tool(deserializer);
     var var_warnings = sse_decode_list_String(deserializer);
@@ -844,9 +842,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  CapabilityEntry sse_decode_capability_entry(
-    SseDeserializer deserializer,
-  ) {
+  CapabilityEntry sse_decode_capability_entry(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_String(deserializer);
     var var_risk = sse_decode_String(deserializer);
@@ -854,9 +850,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  CatalogValidate sse_decode_catalog_validate(
-    SseDeserializer deserializer,
-  ) {
+  CatalogValidate sse_decode_catalog_validate(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_String(deserializer);
     var var_on_ = sse_decode_bool(deserializer);
@@ -899,9 +893,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  List<PreviewTool> sse_decode_list_preview_tool(
-    SseDeserializer deserializer,
-  ) {
+  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -957,9 +949,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  ReasoningSurface sse_decode_reasoning_surface(
-    SseDeserializer deserializer,
-  ) {
+  ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_String(deserializer);
     var var_note = sse_decode_String(deserializer);
@@ -992,9 +982,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  SessionSnapshot sse_decode_session_snapshot(
-    SseDeserializer deserializer,
-  ) {
+  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_busy = sse_decode_bool(deserializer);
     var var_lastOperationId = sse_decode_String(deserializer);
@@ -1223,10 +1211,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_list_skill(
-    List<Skill> self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_list_skill(List<Skill> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -1235,10 +1220,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_list_vendor(
-    List<Vendor> self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_list_vendor(List<Vendor> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -1247,10 +1229,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_preview_tool(
-    PreviewTool self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.name, serializer);
     sse_encode_String(self.source, serializer);
@@ -1275,10 +1254,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_resume_report(
-    ResumeReport self,
-    SseSerializer serializer,
-  ) {
+  void sse_encode_resume_report(ResumeReport self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_String(self.resumedOps, serializer);
     sse_encode_list_String(self.statuses, serializer);

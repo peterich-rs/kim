@@ -1,6 +1,5 @@
 part of 'agent_profiles.dart';
 
-
 const _kProfiles = 'agent.profiles';
 const _kActive = 'agent.active_profile_id';
 const _kGooseKey = 'agent.api_key.goose';

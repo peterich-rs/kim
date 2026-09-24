@@ -108,7 +108,8 @@ class AgentListPage extends ConsumerWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          onTap: () => context.push(AppRoutes.agentProfile(profile.id)),
+                          onTap: () =>
+                              context.push(AppRoutes.agentProfile(profile.id)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

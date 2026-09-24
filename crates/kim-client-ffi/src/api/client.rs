@@ -9,10 +9,9 @@ use kim_sdk::{
 use super::failure::ApiFailure;
 use super::rt;
 use super::types::{
-    AgentFlags, AgentProfile, AgentRunRequest, AgentRunResult, CommandAck,
-    ContactsSnapshot, DeviceOverlay, LocalMedia, MessageView, Metrics, Person,
-    Profile, ProviderAccount, RoomMember, SendStatus, SessionSnapshot,
-    SessionUpdate, Settings, TimelineUpdate, TokenPersist, UiCommand,
+    AgentFlags, AgentProfile, AgentRunRequest, AgentRunResult, CommandAck, ContactsSnapshot,
+    DeviceOverlay, LocalMedia, MessageView, Metrics, Person, Profile, ProviderAccount, RoomMember,
+    SendStatus, SessionSnapshot, SessionUpdate, Settings, TimelineUpdate, TokenPersist, UiCommand,
 };
 use crate::frb_generated::StreamSink;
 
@@ -659,10 +658,7 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)
     }
 
-    pub async fn import_agent_profiles(
-        &self,
-        rows: Vec<AgentProfile>,
-    ) -> Result<(), ApiFailure> {
+    pub async fn import_agent_profiles(&self, rows: Vec<AgentProfile>) -> Result<(), ApiFailure> {
         self.inner
             .import_agent_profiles(rows.into_iter().map(Into::into).collect())
             .await
@@ -884,11 +880,7 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub async fn room_enter(
-        &self,
-        dest: String,
-        kind: i32,
-    ) -> Result<Vec<RoomMember>, ApiFailure> {
+    pub async fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMember>, ApiFailure> {
         let client = self.supervisor()?.client();
         let rows = client
             .room_enter(&dest, kind)
