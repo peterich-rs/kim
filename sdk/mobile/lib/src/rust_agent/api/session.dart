@@ -14,16 +14,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `reconfigure`, `session_open`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `abort`, `close`, `complete_tool`, `default`, `listen`, `park`, `prompt_with_context`, `prompt`, `respond_permission`, `resume`, `snapshot`, `steer`
 
-Future<List<String>> fetchSupportedModels({
-  required String llmBackend,
-  required String baseUrl,
-  required String apiKey,
-}) => AgentRustLib.instance.api.crateApiSessionFetchSupportedModels(
-  llmBackend: llmBackend,
-  baseUrl: baseUrl,
-  apiKey: apiKey,
-);
-
 Future<List<String>> listBuiltinProfiles() =>
     AgentRustLib.instance.api.crateApiSessionListBuiltinProfiles();
 

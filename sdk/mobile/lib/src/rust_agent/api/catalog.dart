@@ -8,8 +8,16 @@ import 'failure.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `choice`, `empty`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `catalog_validate_from_choice`, `empty`, `support_root`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `from`, `from`, `from`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `user_agents_skills`
+
+/// Same platform fact `platform_bootstrap` hands to `kim_client_ffi`: the
+/// app support root. Layout conventions below it are Rust-owned.
+Future<void> setPlatformSupportRoot({required String support}) => AgentRustLib
+    .instance
+    .api
+    .crateApiCatalogSetPlatformSupportRoot(support: support);
 
 Future<List<Vendor>> catalogVendors() =>
     AgentRustLib.instance.api.crateApiCatalogCatalogVendors();
@@ -38,47 +46,19 @@ Future<CatalogValidate> catalogValidate({
   budget: budget,
 );
 
-Future<List<Skill>> skillPortableList({
-  required String userRoot,
-  required String projectRoot,
-}) => AgentRustLib.instance.api.crateApiCatalogSkillPortableList(
-  userRoot: userRoot,
-  projectRoot: projectRoot,
-);
+/// Portable skills: global root is Rust-derived (`$HOME/.agents/skills`);
+/// `project_root` comes from the workspace grant, not a per-call path.
+Future<List<Skill>> skillPortableList({required String projectRoot}) =>
+    AgentRustLib.instance.api.crateApiCatalogSkillPortableList(
+      projectRoot: projectRoot,
+    );
 
-Future<List<Skill>> skillAppCatalog({required String cacheRoot}) => AgentRustLib
-    .instance
-    .api
-    .crateApiCatalogSkillAppCatalog(cacheRoot: cacheRoot);
-
-Future<AssembledPreview> previewAssembled({
-  required String profileJson,
-  required String projectRoot,
-}) => AgentRustLib.instance.api.crateApiCatalogPreviewAssembled(
-  profileJson: profileJson,
-  projectRoot: projectRoot,
-);
+/// App skill catalog at the layout-derived cache root.
+Future<List<Skill>> skillAppCatalog() =>
+    AgentRustLib.instance.api.crateApiCatalogSkillAppCatalog();
 
 Future<List<CapabilityEntry>> capabilityCatalog() =>
     AgentRustLib.instance.api.crateApiCatalogCapabilityCatalog();
-
-class AssembledPreview {
-  final List<PreviewTool> tools;
-  final List<String> warnings;
-
-  const AssembledPreview({required this.tools, required this.warnings});
-
-  @override
-  int get hashCode => tools.hashCode ^ warnings.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AssembledPreview &&
-          runtimeType == other.runtimeType &&
-          tools == other.tools &&
-          warnings == other.warnings;
-}
 
 class CapabilityEntry {
   final String kind;
@@ -131,30 +111,6 @@ class CatalogValidate {
           value == other.value &&
           budget == other.budget &&
           dropped == other.dropped;
-}
-
-class PreviewTool {
-  final String name;
-  final String source;
-  final String executor;
-
-  const PreviewTool({
-    required this.name,
-    required this.source,
-    required this.executor,
-  });
-
-  @override
-  int get hashCode => name.hashCode ^ source.hashCode ^ executor.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PreviewTool &&
-          runtimeType == other.runtimeType &&
-          name == other.name &&
-          source == other.source &&
-          executor == other.executor;
 }
 
 class ReasoningSurface {

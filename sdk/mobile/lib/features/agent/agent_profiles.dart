@@ -13,7 +13,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 import 'package:kim_mobile/features/agent/agent_catalog.dart';
 import 'package:kim_mobile/features/agent/agent_settings.dart';
@@ -29,7 +29,7 @@ part 'agent_profile_types.dart';
 part 'agent_profile_model.dart';
 
 class AgentProfileStore extends Notifier<List<AgentProfile>> {
-  final _secure = SettingsStore.productionSecureStorage();
+  final _secure = productionSecureStorage();
   Future<void>? _load;
   final _ensureInFlight = <String, Future<AgentProfile>>{};
   var multiProfile = false;

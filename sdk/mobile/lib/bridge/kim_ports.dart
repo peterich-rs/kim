@@ -44,13 +44,27 @@ abstract class KimClientPort {
 
   Stream<rust_types.TimelineUpdate> watchThread(String dest, {int limit = 50});
 
-  Future<void> startSession(
-    String url,
-    String token, {
-    required String userAgent,
-  });
+  /// Intent only: Rust reads URL (settings table), token (secure store),
+  /// account (JWT), UA (bootstrap) on its own.
+  Future<void> startSession();
 
   Future<void> stopSession();
+
+  Future<bool> hasStoredToken();
+
+  Future<String> storedAccount();
+
+  Future<void> storeAuth({required String token, required String account});
+
+  Future<void> clearAuth();
+
+  /// Server logout with the stored credential; token stays in Rust.
+  Future<void> authLogout();
+
+  Future<void> authChangePassword({
+    required String oldPassword,
+    required String newPassword,
+  });
 
   Future<void> notifyRadioUp();
 
@@ -153,21 +167,19 @@ abstract class KimClientPort {
   /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
   Future<void> botTyping(String dest, {int kind = 0, bool active = true});
 
-  Stream<rust_types.TokenPersist> watchTokenPersist();
-
   Future<rust_types.Settings> settingsGet();
 
-  Future<rust_types.Settings> settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  });
+  Future<rust_types.Settings> settingsPatch({String? wsUrl, String? env});
 
-  Future<rust_types.Settings> importDeviceSettings({
+  Future<rust_types.Settings> settingsPreset(rust_types.SettingsPreset preset);
+
+  Future<bool> settingsImported();
+
+  Future<rust_types.Settings> importLegacyPrefs({
     required String wsUrl,
     required String httpOrigin,
-    String env = 'prod',
-    String locale = '',
+    String env,
+    String locale,
   });
 
   Future<void> refreshContacts();
@@ -215,21 +227,38 @@ abstract class KimClientPort {
 
   Future<rust_types.LocalMedia> mediaFetch(String url);
 
-  Future<rust_types.LocalMedia> mediaUpload({
-    required String path,
+  Future<rust_types.LocalMedia> mediaUploadBytes({
+    required Uint8List bytes,
     required String mime,
     int width = 0,
     int height = 0,
-    int byteSize = 0,
   });
 
   Future<rust_types.Metrics> metricsSnapshot();
 
-  /// One-shot handoff into the desktop secret vault.
-  Future<void> cacheAgentSecret({
+  /// One-shot secret handoff into the Rust-owned vault + Keychain.
+  Future<void> storeAgentSecret({
     required String keyRef,
     required String secret,
   });
+
+  Future<List<String>> fetchModels({
+    required String vendorId,
+    required String baseUrl,
+    required String keyRef,
+  });
+
+  Future<rust_handles.CapabilityPreview> previewProfile(String profileId);
+
+  Future<void> workspaceGrantRegister({
+    required String profileId,
+    required String path,
+  });
+
+  Future<String?> workspaceGrant(String profileId);
+
+  /// Rust-owned sandbox (`support/agent/workspaces/<id>`), created + seeded.
+  Future<String> ensureAgentSandbox(String profileId);
 
   Future<void> respondAgentPermission({
     required String callId,
@@ -241,35 +270,17 @@ abstract class KimClientPort {
   Stream<rust_handles.AgentUiStatus> watchAgentUi();
 }
 
-/// Royal account HTTP. Tests inject a fake; the app uses [KimBridge].
+/// Royal account HTTP login/register. Origin/UA are Rust-derived; Dart
+/// passes credentials only. Logout / change-password use the stored
+/// credential and live on [KimClientPort]. Tests inject a fake.
 abstract class KimAuthPort {
   Future<KimAuthSession> login({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   });
 
   Future<KimAuthSession> register({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   });
-
-  Future<void> logout({
-    required String origin,
-    required String userAgent,
-    required String token,
-  });
-
-  Future<void> changePassword({
-    required String origin,
-    required String userAgent,
-    required String token,
-    required String oldPassword,
-    required String newPassword,
-  });
-
-  String httpOriginFromWs(String wsUrl);
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kim_client::{BotPendingItem, SessionSupervisor, TalkResult};
 use kim_sdk::{
     ConversationKey, ConversationVisibility, KimSdk, MediaRef, OutgoingPayload, ReadMarker,
-    SendMessageCommand, StartSession,
+    SendMessageCommand,
 };
 
 use super::failure::ApiFailure;
@@ -11,7 +11,8 @@ use super::rt;
 use super::types::{
     AgentFlags, AgentProfile, AgentRunRequest, AgentRunResult, CommandAck, ContactsSnapshot,
     DeviceOverlay, LocalMedia, MessageView, Metrics, Person, Profile, ProviderAccount, RoomMember,
-    SendStatus, SessionSnapshot, SessionUpdate, Settings, TimelineUpdate, TokenPersist, UiCommand,
+    SendStatus, SessionSnapshot, SessionUpdate, Settings, SettingsPreset, TimelineUpdate,
+    UiCommand,
 };
 use crate::frb_generated::StreamSink;
 
@@ -56,10 +57,14 @@ impl KimUiHandle {
         Self { inner }
     }
 
-    pub async fn attach_store(&self, db_path: String) -> Result<(), ApiFailure> {
-        kim_log::init_beside(&db_path, "kim.log");
+    /// Attach the store at the layout-derived default path. Requires a prior
+    /// `platform_bootstrap` call; the path convention is Rust-owned.
+    pub async fn attach_store(&self) -> Result<(), ApiFailure> {
+        let layout = kim_sdk::Layout::current().map_err(ApiFailure::from)?;
+        let db_path = layout.db_path();
+        kim_log::init_beside(db_path.to_string_lossy().as_ref(), "kim.log");
         self.inner
-            .attach_store(db_path)
+            .attach_store(db_path.to_string_lossy().into_owned())
             .await
             .map_err(ApiFailure::from)?;
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -209,7 +214,8 @@ impl KimUiHandle {
                 http_origin,
                 env,
             } => {
-                self.settings_patch(ws_url, http_origin, env).await?;
+                let _ = http_origin; // origin derives from ws_url inside Rust
+                self.settings_patch(ws_url, env).await?;
                 Ok(empty_ack())
             }
         }
@@ -263,6 +269,29 @@ impl KimUiHandle {
                 height,
                 byte_size,
             })
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(LocalMedia {
+            local_path: url,
+            byte_size,
+            width,
+            height,
+        })
+    }
+
+    /// Bytes straight from the picker plugin. Rust owns the temp file; no
+    /// Dart `Directory.systemTemp` round-trip.
+    pub async fn media_upload_bytes(
+        &self,
+        bytes: Vec<u8>,
+        mime: String,
+        width: i32,
+        height: i32,
+    ) -> Result<LocalMedia, ApiFailure> {
+        let byte_size = i64::try_from(bytes.len()).unwrap_or(0);
+        let url = self
+            .inner
+            .upload_media_bytes(bytes, mime, width, height)
             .await
             .map_err(ApiFailure::from)?;
         Ok(LocalMedia {
@@ -371,27 +400,102 @@ impl KimUiHandle {
         Ok(())
     }
 
-    pub async fn start_session(
+    /// Per-agent sandbox path (created + seeded). Layout rules are Rust-owned
+    /// (`support/agent/workspaces/<id>`, `AGENTS.md` / `MEMORY.md` / `notes/`).
+    pub async fn ensure_agent_sandbox(&self, profile_id: String) -> Result<String, ApiFailure> {
+        let layout = kim_sdk::Layout::current().map_err(ApiFailure::from)?;
+        layout.ensure_agent_dirs().map_err(ApiFailure::from)?;
+        let dir = layout
+            .ensure_sandbox(&profile_id)
+            .map_err(ApiFailure::from)?;
+        Ok(dir.to_string_lossy().into_owned())
+    }
+
+    /// Session JSON file for one dest x profile (host persist target).
+    pub async fn agent_session_file(
         &self,
-        url: String,
-        token: String,
-        user_agent: String,
-        account: String,
-    ) -> Result<(), ApiFailure> {
-        let account = if account.is_empty() {
-            kim_client::account_from_token(&token).unwrap_or_default()
+        dest: String,
+        profile_id: String,
+    ) -> Result<String, ApiFailure> {
+        let layout = kim_sdk::Layout::current().map_err(ApiFailure::from)?;
+        Ok(layout
+            .session_file(&dest, &profile_id)
+            .to_string_lossy()
+            .into_owned())
+    }
+
+    /// Royal auth client with the origin derived from the settings-table
+    /// WGateway URL (falls back to the production default).
+    pub async fn auth(&self) -> Result<super::auth::KimAuth, ApiFailure> {
+        let settings = self.inner.settings_get().await.map_err(ApiFailure::from)?;
+        let ws = settings.ws_url.trim();
+        let origin = if ws.is_empty() {
+            kim_client::DEFAULT_PROD_HTTP_ORIGIN.to_string()
         } else {
-            account
+            kim_client::http_origin_from_ws(ws)
         };
+        super::auth::KimAuth::with_origin(origin)
+    }
+
+    /// Server-side logout with the stored credential. Dart never sees the
+    /// token; empty stored token is a local no-op success.
+    pub async fn auth_logout(&self) -> Result<(), ApiFailure> {
+        let token = kim_sdk::read_secret(kim_sdk::KEY_JWT)
+            .await
+            .map_err(ApiFailure::from)?;
+        if token.trim().is_empty() {
+            return Ok(());
+        }
+        self.auth().await?.logout(token).await
+    }
+
+    /// Change password with the stored credential.
+    pub async fn auth_change_password(
+        &self,
+        old_password: String,
+        new_password: String,
+    ) -> Result<(), ApiFailure> {
+        let token = kim_sdk::read_secret(kim_sdk::KEY_JWT)
+            .await
+            .map_err(ApiFailure::from)?;
+        self.auth()
+            .await?
+            .change_password(token, old_password, new_password)
+            .await
+    }
+
+    /// Connect from stored state: settings-table URL, Keychain token via the
+    /// executor channel, account from the JWT, UA from the bootstrap.
+    /// Dart expresses intent only.
+    pub async fn start_session(&self) -> Result<(), ApiFailure> {
         self.inner
-            .start_session(StartSession {
-                url,
-                token,
-                user_agent,
-                account,
-            })
+            .start_session_stored()
             .await
             .map_err(ApiFailure::from)
+    }
+
+    /// Signed-in gate for the Dart auth state: usable JWT in the store?
+    pub async fn has_stored_token(&self) -> bool {
+        self.inner.has_stored_token().await
+    }
+
+    /// Signed-in account from the secure store (projection for the shell).
+    pub async fn stored_account(&self) -> String {
+        self.inner.stored_account().await
+    }
+
+    /// Persist a fresh login. Account is derived from the JWT.
+    pub async fn store_auth(&self, token: String, account: String) -> Result<(), ApiFailure> {
+        self.inner
+            .store_token(&token, &account)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// Drop credentials and stop. The sign-out path.
+    pub async fn clear_auth(&self) -> Result<(), ApiFailure> {
+        self.inner.discard_stored_token().await;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -750,24 +854,6 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)
     }
 
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_token_persist(&self, sink: StreamSink<TokenPersist>) -> Result<(), ApiFailure> {
-        let mut rx = self.inner.subscribe_token_persist();
-        let _guard = rt().enter();
-        rt().spawn(async move {
-            while let Some(ev) = rx.recv().await {
-                let dto = match ev {
-                    kim_sdk::TokenPersistEvent::Write { token } => TokenPersist::Write { token },
-                    kim_sdk::TokenPersistEvent::Clear => TokenPersist::Clear,
-                };
-                if sink.add(dto).is_err() {
-                    break;
-                }
-            }
-        });
-        Ok(())
-    }
-
     pub async fn settings_get(&self) -> Result<Settings, ApiFailure> {
         let row = self.inner.settings_get().await.map_err(ApiFailure::from)?;
         Ok(Settings {
@@ -782,24 +868,36 @@ impl KimUiHandle {
     pub async fn settings_patch(
         &self,
         ws_url: Option<String>,
-        http_origin: Option<String>,
         env: Option<String>,
     ) -> Result<Settings, ApiFailure> {
         let row = self
             .inner
-            .settings_patch(ws_url, http_origin, env, None)
+            .settings_patch(ws_url, None, env, None)
             .await
             .map_err(ApiFailure::from)?;
-        Ok(Settings {
-            ws_url: row.ws_url,
-            http_origin: row.http_origin,
-            env: row.env,
-            locale: row.locale,
-            account: row.account,
-        })
+        Ok(Settings::from(row))
     }
 
-    pub async fn import_device_settings(
+    /// Env switch. URL/origin constants are Rust-owned; no Dart mirrors.
+    pub async fn settings_preset(&self, preset: SettingsPreset) -> Result<Settings, ApiFailure> {
+        let row = self
+            .inner
+            .settings_preset(preset.into())
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(Settings::from(row))
+    }
+
+    /// Whether the one-shot prefs handoff already ran.
+    pub async fn settings_imported(&self) -> Result<bool, ApiFailure> {
+        self.inner
+            .settings_imported()
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// One-shot legacy SharedPreferences handoff (存量设备 only).
+    pub async fn import_legacy_prefs(
         &self,
         ws_url: String,
         http_origin: String,
@@ -808,16 +906,39 @@ impl KimUiHandle {
     ) -> Result<Settings, ApiFailure> {
         let row = self
             .inner
-            .import_device_settings(ws_url, http_origin, env, locale)
+            .import_legacy_prefs(ws_url, http_origin, env, locale)
             .await
             .map_err(ApiFailure::from)?;
-        Ok(Settings {
-            ws_url: row.ws_url,
-            http_origin: row.http_origin,
-            env: row.env,
-            locale: row.locale,
-            account: row.account,
-        })
+        Ok(Settings::from(row))
+    }
+
+    /// Register a resolved workspace directory. The picker/bookmark stayed
+    /// platform-side; the granted path becomes Rust-owned state.
+    pub async fn workspace_grant_register(
+        &self,
+        profile_id: String,
+        path: String,
+    ) -> Result<(), ApiFailure> {
+        self.inner
+            .workspace_grant_register(profile_id, path)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    pub async fn workspace_grant_revoke(&self, profile_id: String) -> Result<(), ApiFailure> {
+        self.inner
+            .workspace_grant_revoke(profile_id)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    pub async fn workspace_grant(&self, profile_id: String) -> Result<Option<String>, ApiFailure> {
+        let row = self
+            .inner
+            .workspace_grant(profile_id)
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(row.map(|g| g.path))
     }
 
     pub async fn refresh_contacts(&self) -> Result<(), ApiFailure> {

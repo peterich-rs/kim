@@ -298,10 +298,30 @@ pub struct Settings {
     pub account: String,
 }
 
-#[flutter_rust_bridge::frb(unignore)]
-pub enum TokenPersist {
-    Write { token: String },
-    Clear,
+impl From<kim_sdk::DeviceSettings> for Settings {
+    fn from(row: kim_sdk::DeviceSettings) -> Self {
+        Self {
+            ws_url: row.ws_url,
+            http_origin: row.http_origin,
+            env: row.env,
+            locale: row.locale,
+            account: row.account,
+        }
+    }
+}
+
+pub enum SettingsPreset {
+    Local,
+    Prod,
+}
+
+impl From<SettingsPreset> for kim_sdk::SettingsPreset {
+    fn from(p: SettingsPreset) -> Self {
+        match p {
+            SettingsPreset::Local => Self::Local,
+            SettingsPreset::Prod => Self::Prod,
+        }
+    }
 }
 
 #[flutter_rust_bridge::frb(unignore)]

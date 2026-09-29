@@ -48,5 +48,6 @@
 | 服务端会话隐藏 | [chat-inbox-hide.md](./chat-inbox-hide.md)：Delete conversation for me。尚未合入 |
 | Codex harness 嵌入 | [codex-embed.md](./codex-embed.md)：分支 `feat/codex-agent-embed`。Goose 与 Codex 并列，`runtime` 选择 |
 | FFI 收进 workspace | [ffi-workspace.md](./ffi-workspace.md)：Phase 1–5 已落地。`KimBridge` 仍是一个类 |
+| FFI 所有权反转 | [ffi-ownership.md](./ffi-ownership.md)：分支 `refactor/ffi-ownership`。一次 bootstrap，布局 / 密钥 / 会话由 Rust 持有 |
 
 没有对应分支、也不描述当前系统的稿子不放在这里。

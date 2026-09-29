@@ -28,19 +28,16 @@ abstract class KimAuth implements RustOpaqueInterface {
 
   Future<void> logout({required String token});
 
-  factory KimAuth({required String baseUrl, required String userAgent}) =>
-      RustLib.instance.api.crateApiAuthKimAuthNew(
-        baseUrl: baseUrl,
-        userAgent: userAgent,
-      );
-
   Future<AuthSession> register({
     required String account,
     required String password,
   });
+
+  static Future<KimAuth> withOrigin({required String origin}) =>
+      RustLib.instance.api.crateApiAuthKimAuthWithOrigin(origin: origin);
 }
 
-/// JWT issued by Royal. UI stores it in Keychain / Keystore.
+/// JWT issued by Royal. Rust persists it via the secret-store channel.
 class AuthSession {
   final String token;
   final PlatformInt64 exp;

@@ -120,3 +120,45 @@ class AgentUiStatus {
           dest == other.dest &&
           phase == other.phase;
 }
+
+class CapabilityPreview {
+  final List<PreviewTool> tools;
+  final List<String> warnings;
+
+  const CapabilityPreview({required this.tools, required this.warnings});
+
+  @override
+  int get hashCode => tools.hashCode ^ warnings.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CapabilityPreview &&
+          runtimeType == other.runtimeType &&
+          tools == other.tools &&
+          warnings == other.warnings;
+}
+
+class PreviewTool {
+  final String name;
+  final String source;
+  final String executor;
+
+  const PreviewTool({
+    required this.name,
+    required this.source,
+    required this.executor,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ source.hashCode ^ executor.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewTool &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          source == other.source &&
+          executor == other.executor;
+}

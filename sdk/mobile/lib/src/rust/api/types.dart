@@ -11,7 +11,7 @@ part 'types.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_profile`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePage`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCard {
   final int v;
@@ -766,6 +766,8 @@ class Settings {
           account == other.account;
 }
 
+enum SettingsPreset { local, prod }
+
 class ThreadView {
   final String id;
   final int kind;
@@ -915,15 +917,6 @@ sealed class TimelineUpdate with _$TimelineUpdate {
     required String dest,
     required String reason,
   }) = TimelineUpdate_Resync;
-}
-
-@freezed
-sealed class TokenPersist with _$TokenPersist {
-  const TokenPersist._();
-
-  const factory TokenPersist.write({required String token}) =
-      TokenPersist_Write;
-  const factory TokenPersist.clear() = TokenPersist_Clear;
 }
 
 @freezed

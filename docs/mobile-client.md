@@ -74,10 +74,10 @@ FFI：`crates/kim-client-ffi`（`kim_client_ffi`）用 **flutter_rust_bridge 2.1
 
 ### Flutter 壳现在有什么
 
-- `path_provider` → `KimPaths`（documents / support / cache / temp）。`support/kim-cache.db` 是会话 + 消息 SQLite（`package:sqlite3` 3.x 自带 native lib）。第一次打开会把旧的 `shared_preferences` JSON 导进去。**没有**把 data-dir 传进 FFI。
-- 登录后 `KimSdkHandle.create` + `startSession` 拉起 `SessionSupervisor`（connect → login → sync ∥ recv，断线退避）。`Live` 每 30s fire-and-forget `CODE_PING`；90s 读空闲看门狗；`notify_radio_up` / `notify_foreground` 探测活连接。`connect_ws*` 设 `TCP_NODELAY` + TCP keepalive。Dart `linkProvider` 镜像 `LinkState`，电台只做横幅。分层见 [flutter-layering.md](flutter-layering.md)。句柄边界见 [ffi-oo-contract.md](ffi-oo-contract.md)。
+- `path_provider` → `KimPaths` 只保留四个目录根（documents / support / cache / temp）。文件名和子目录（`kim-cache.db`、`kim-media`、agent sandbox）由 Rust `Layout` 从这一次 `platformBootstrap` 派生。Web 构建不调用 bootstrap。
+- 登录后 `startSession()` 无参：URL 在 settings 表，token 经 Keychain 执行器，account 从 JWT 推导，UA 用 bootstrap 的版本号。`Live` 每 30s fire-and-forget `CODE_PING`；90s 读空闲看门狗；`notify_radio_up` / `notify_foreground` 探测活连接。`connect_ws*` 设 `TCP_NODELAY` + TCP keepalive。Dart `linkProvider` 镜像 `LinkState`，电台只做横幅。分层见 [flutter-layering.md](flutter-layering.md)。句柄边界见 [ffi-oo-contract.md](ffi-oo-contract.md)。
 - 登录 / 注册 / 退出 / 改密：Rust `kim_client::AuthClient` 发 uncompressed protobuf，`User-Agent` / `Accept` / `Content-Type` / `Accept-Language` 由客户端设置。reqwest `gzip` 只解压响应（`Accept-Encoding: gzip`）；**不**给请求体加 `Content-Encoding`。Caddy `encode gzip zstd` 压的是响应；Royal/axum 没有 `CompressionLayer`，也不解压请求 gzip。
-- `flutter_secure_storage`：JWT 只进 Keychain / Android Keystore（v11 RSA-OAEP+AES-GCM，替代已弃用的 EncryptedSharedPreferences）。`shared_preferences` 存 WGateway URL、Royal HTTP origin、account、dest；token 不进 prefs。
+- `flutter_secure_storage`：Keychain / Android Keystore 的平台选项只在 `secret_store_executor.dart`（macOS Data Protection、Android RSA-OAEP+AES-GCM）。键名（`kim.jwt`、`account.<keyRef>` 等）由 Rust 定义，Dart 只执行读写。`shared_preferences` 只留 UI 状态：theme、dest、avatar、notificationsAsked。WGateway URL / HTTP origin / env 在 Rust settings 表；存量设备用一次性 `importLegacyPrefs` 移交。token 不进 prefs，也不再由 Dart 拼进 `startSession`。
 - `connectivity_plus`：离线横幅。不是 Dart socket。
 - `permission_handler`：通知权限在登录成功后问一次，不挡 `runApp` splash；相机 / 麦克风 / 相册 **不**在启动时请求。拍照 / 选相册走自研插件 `sdk/mobile/plugins/kim_media_picker`（Android CameraX + MediaStore，iOS AVFoundation + PhotoKit）。相册 API：`pickSingle` / `pickMultiple`。拍摄 API：`takePhoto` / `takeVideo` / `capture`（默认 mixed：点按拍照、长按录像，录像模式点击开停）。权限在打开拍摄 / 相册时由原生页申请。头像：点「我」页头像 → 拍照或相册 → `POST upload.kim.ainexc.com/v1/objects` → `chat.user.update` 写 avatar URL，会话 / 通讯录 / 聊天都读这个 URL。
 - `package_info_plus` / `intl`：版本号、时间格式。

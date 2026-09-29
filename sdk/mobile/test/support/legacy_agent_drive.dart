@@ -17,8 +17,7 @@ import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/core/paths.dart';
-import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
@@ -121,7 +120,6 @@ class AgentRunLoop {
     // hot restart / port closed). Rust then drops the watch task and never
     // delivers turns again unless we re-subscribe.
     while (!_stopped) {
-      await _seedSecrets();
       permissions?.bindClient(client);
       await _permSub?.cancel();
       _permSub = client.watchAgentPermission().listen((event) {
@@ -313,19 +311,14 @@ class AgentRunLoop {
     if (apiKey.trim().isEmpty) {
       throw StateError('api key missing for ${profile.id}');
     }
-    final paths = KimPaths.instance;
-    await paths.ensureAgentDirs();
-    final sessionFile = paths.agentSessionFile(
-      dest: req.dest,
-      profileId: profile.id,
-    );
+    final sessionFile = _legacySessionFile(req.dest, profile.id);
     final profileJson = jsonEncode(
       profile.toHostJson(
         account,
         userAgentsSkills: skillPaths.userAgentsSkills,
       ),
     );
-    onPrepared?.call(profileJson, sessionFile.path, true);
+    onPrepared?.call(profileJson, sessionFile, true);
     throw StateError(
       'Dart no longer opens a harness session; HostAgentRuntime owns the turn',
     );
@@ -442,42 +435,11 @@ class AgentRunLoop {
     }
   }
 
-  Future<void> _seedSecrets() async {
-    try {
-      final accounts = await client.listProviderAccounts();
-      for (final account in accounts) {
-        final secret = await _readStoredKey(account.keyRef);
-        if (secret.isEmpty) {
-          continue;
-        }
-        await client.cacheAgentSecret(keyRef: account.keyRef, secret: secret);
-      }
-      final goose = await _readStoredKey('agent.api_key.goose');
-      if (goose.isNotEmpty) {
-        await client.cacheAgentSecret(
-          keyRef: 'agent.api_key.goose',
-          secret: goose,
-        );
-      }
-    } catch (err, stack) {
-      KimLogger.warn('agent secret seed', err, stack);
-    }
-  }
-
-  Future<String> _readStoredKey(String key) async {
-    try {
-      final secure = SettingsStore.productionSecureStorage();
-      return await secure.read(key: key) ?? '';
-    } catch (_) {
-      return '';
-    }
-  }
-
   Future<String> _readApiKey(
     ProviderAccount account,
     AgentProfile profile,
   ) async {
-    final secure = SettingsStore.productionSecureStorage();
+    final secure = productionSecureStorage();
     Future<String> read(String key) async {
       try {
         return await secure.read(key: key) ?? '';
@@ -500,6 +462,20 @@ class AgentRunLoop {
     }
     return '';
   }
+}
+
+String _sessionSegment(String raw) {
+  final cleaned = raw.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  final bounded = cleaned.isEmpty
+      ? 'unknown'
+      : (cleaned.length > 80 ? cleaned.substring(0, 80) : cleaned);
+  return bounded;
+}
+
+/// Mirrors `Layout::session_file` for the test seam that records the path
+/// before refusing to open a Dart-owned harness session.
+String _legacySessionFile(String dest, String profileId) {
+  return 'agent/sessions/${_sessionSegment(dest)}__${_sessionSegment(profileId)}.json';
 }
 
 String _runErrorText(Object error) {

@@ -17,7 +17,6 @@ class UploadedObject {
 
 abstract class KimMediaPort {
   Future<UploadedObject> uploadImage({
-    required String token,
     required List<int> bytes,
     required String contentType,
   });
@@ -29,7 +28,6 @@ class UnsupportedKimMedia implements KimMediaPort {
 
   @override
   Future<UploadedObject> uploadImage({
-    required String token,
     required List<int> bytes,
     required String contentType,
   }) async {

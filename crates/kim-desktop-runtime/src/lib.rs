@@ -107,6 +107,31 @@ impl HostAgentRuntime {
             .insert(key_ref.to_string(), secret.to_string());
     }
 
+    /// Vault lookup with Keychain fallback: in-memory first, then the global
+    /// channel store (`account.<keyRef>` keys), then the shared goose key.
+    pub async fn resolve_secret(&self, key_ref: &str) -> String {
+        let vault = self.secret(key_ref);
+        if !vault.is_empty() {
+            return vault;
+        }
+        if key_ref != "agent.api_key.goose" {
+            let via_keychain = kim_sdk::read_secret(&kim_sdk::account_key(key_ref))
+                .await
+                .unwrap_or_default();
+            if !via_keychain.is_empty() {
+                return via_keychain;
+            }
+        } else {
+            let goose = kim_sdk::read_secret("agent.api_key.goose")
+                .await
+                .unwrap_or_default();
+            if !goose.is_empty() {
+                return goose;
+            }
+        }
+        String::new()
+    }
+
     pub fn respond_permission(&self, call_id: &str, allow: bool) {
         self.permissions.respond(call_id, allow);
     }
@@ -153,7 +178,7 @@ impl HostAgentRuntime {
                 message: format!("provider account {account_id} has no vendor or base url"),
             });
         }
-        let mut api_key = self.secret(&account.key_ref);
+        let mut api_key = self.resolve_secret(&account.key_ref).await;
         if api_key.is_empty() {
             api_key = self.secret("agent.api_key.goose");
         }
@@ -163,7 +188,9 @@ impl HostAgentRuntime {
             });
         }
         let overlay = self.sdk.get_device_overlay(profile_id.to_string()).await?;
-        let project_root = project_root(dest, overlay.as_ref());
+        let project_root = self
+            .resolve_project_root(profile_id, dest, overlay.as_ref())
+            .await;
         Ok(PreparedTurn {
             dest: dest.to_string(),
             profile_id: profile_id.to_string(),
@@ -179,8 +206,125 @@ impl HostAgentRuntime {
     }
 }
 
+impl HostAgentRuntime {
+    /// Provider model inventory. The key resolves through the vault by
+    /// `key_ref`; plaintext never crosses the FFI edge.
+    pub async fn fetch_models(
+        &self,
+        vendor_id: &str,
+        base_url: &str,
+        key_ref: &str,
+    ) -> Result<Vec<String>, SdkError> {
+        let mut api_key = self.resolve_secret(key_ref).await;
+        if api_key.is_empty() {
+            api_key = self.secret("agent.api_key.goose");
+        }
+        if api_key.trim().is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: format!("api key missing for {key_ref}"),
+            });
+        }
+        let spec = kim_agent_host::ProviderSpec {
+            kind: vendor_id.to_string(),
+            base_url: base_url.to_string(),
+            key_ref: key_ref.to_string(),
+        };
+        kim_agent_host::fetch_models(&spec, &api_key)
+            .await
+            .map_err(|err| SdkError::InvalidArgument {
+                message: err.to_string(),
+            })
+    }
+}
+
 fn find_profile<'a>(rows: &'a [AgentProfileRow], profile_id: &str) -> Option<&'a AgentProfileRow> {
     rows.iter().find(|row| row.profile_id == profile_id)
+}
+
+fn bind_account_provider(
+    profile: &mut kim_agent_host::AgentProfile,
+    vendor_id: &str,
+    base_url: &str,
+) {
+    if profile.provider.kind.trim().is_empty() {
+        profile.provider.kind = vendor_id.trim().to_string();
+    }
+    if profile.provider.base_url.trim().is_empty() {
+        profile.provider.base_url = base_url.trim().to_string();
+    }
+}
+
+/// Preview projection: tool names + warnings.
+#[derive(Clone, Debug)]
+pub struct CapabilityPreview {
+    pub tools: Vec<PreviewTool>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreviewTool {
+    pub name: String,
+    pub source: String,
+    pub executor: String,
+}
+
+impl HostAgentRuntime {
+    /// Assemble the capability preview from store rows only: profile,
+    /// overlay, provider account. Dart passes an id, never JSON.
+    pub async fn preview_profile(&self, profile_id: &str) -> Result<CapabilityPreview, SdkError> {
+        let profiles = self.sdk.list_agent_profiles().await?;
+        let row = find_profile(&profiles, profile_id).ok_or_else(|| SdkError::NotFound {
+            what: format!("agent profile {profile_id}"),
+        })?;
+        let mut profile: kim_agent_host::AgentProfile =
+            serde_json::from_str(&profile_body(row)?).map_err(|err| SdkError::InvalidArgument {
+                message: format!("profile json: {err}"),
+            })?;
+        let account_id = account_id_from_json(&profile_body(row)?);
+        if !account_id.is_empty() {
+            if let Some(account) = self
+                .sdk
+                .list_provider_accounts()
+                .await?
+                .into_iter()
+                .find(|a| a.id == account_id)
+            {
+                bind_account_provider(&mut profile, &account.vendor_id, &account.base_url);
+            }
+        }
+        let overlay = self.sdk.get_device_overlay(profile_id.to_string()).await?;
+        let project_root = self
+            .resolve_project_root(profile_id, "", overlay.as_ref())
+            .await;
+        if !overlay
+            .as_ref()
+            .map(|o| o.user_agents_skills.trim())
+            .unwrap_or("")
+            .is_empty()
+        {
+            profile.user_agents_skills = overlay
+                .as_ref()
+                .map(|o| o.user_agents_skills.clone())
+                .unwrap_or_default();
+        }
+        let preview =
+            kim_agent_host::preview_assembled(&profile, std::path::Path::new(&project_root))
+                .map_err(|err| SdkError::InvalidArgument {
+                    message: err.to_string(),
+                })?;
+        Ok(CapabilityPreview {
+            tools: preview
+                .tools
+                .into_iter()
+                .map(|tool| PreviewTool {
+                    name: tool.name,
+                    source: tool.source,
+                    executor: tool.executor,
+                })
+                .collect(),
+            warnings: preview.warnings,
+        })
+    }
 }
 
 fn profile_body(row: &AgentProfileRow) -> Result<String, SdkError> {
@@ -209,18 +353,47 @@ fn account_id_from_json(profile_json: &str) -> String {
         .unwrap_or_default()
 }
 
-fn project_root(dest: &str, overlay: Option<&DeviceOverlayRow>) -> String {
-    if let Some(path) = overlay
-        .map(|row| row.workspace_path.trim())
-        .filter(|p| !p.is_empty())
-    {
-        return path.to_string();
+impl HostAgentRuntime {
+    /// Workspace cwd: registered grant, then the overlay path, then the
+    /// layout sandbox. Dart no longer computes the directory convention.
+    async fn resolve_project_root(
+        &self,
+        profile_id: &str,
+        dest: &str,
+        overlay: Option<&DeviceOverlayRow>,
+    ) -> String {
+        if !profile_id.is_empty() {
+            if let Ok(Some(grant)) = self.sdk.workspace_grant(profile_id.to_string()).await {
+                let path = grant.path.trim();
+                if !path.is_empty() {
+                    return path.to_string();
+                }
+            }
+        }
+        if let Some(path) = overlay
+            .map(|row| row.workspace_path.trim())
+            .filter(|p| !p.is_empty())
+        {
+            return path.to_string();
+        }
+        if !profile_id.is_empty() {
+            if let Ok(layout) = kim_sdk::Layout::current() {
+                if let Ok(dir) = layout.ensure_sandbox(profile_id) {
+                    return dir.to_string_lossy().into_owned();
+                }
+            }
+        }
+        let leaf = if profile_id.is_empty() {
+            dest
+        } else {
+            profile_id
+        };
+        std::env::temp_dir()
+            .join("kim-agent")
+            .join(leaf)
+            .display()
+            .to_string()
     }
-    std::env::temp_dir()
-        .join("kim-agent")
-        .join(dest)
-        .display()
-        .to_string()
 }
 
 #[async_trait]

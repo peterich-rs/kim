@@ -34,9 +34,6 @@ abstract class AgentRustLibApiImplPlatform
   AgentUiEvent dco_decode_agent_ui_event(dynamic raw);
 
   @protected
-  AssembledPreview dco_decode_assembled_preview(dynamic raw);
-
-  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -52,9 +49,6 @@ abstract class AgentRustLibApiImplPlatform
   List<CapabilityEntry> dco_decode_list_capability_entry(dynamic raw);
 
   @protected
-  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw);
-
-  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
@@ -62,9 +56,6 @@ abstract class AgentRustLibApiImplPlatform
 
   @protected
   List<Vendor> dco_decode_list_vendor(dynamic raw);
-
-  @protected
-  PreviewTool dco_decode_preview_tool(dynamic raw);
 
   @protected
   ReasoningSurface dco_decode_reasoning_surface(dynamic raw);
@@ -103,9 +94,6 @@ abstract class AgentRustLibApiImplPlatform
   AgentUiEvent sse_decode_agent_ui_event(SseDeserializer deserializer);
 
   @protected
-  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer);
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -123,9 +111,6 @@ abstract class AgentRustLibApiImplPlatform
   );
 
   @protected
-  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer);
-
-  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
@@ -133,9 +118,6 @@ abstract class AgentRustLibApiImplPlatform
 
   @protected
   List<Vendor> sse_decode_list_vendor(SseDeserializer deserializer);
-
-  @protected
-  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer);
 
   @protected
   ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer);
@@ -177,12 +159,6 @@ abstract class AgentRustLibApiImplPlatform
   void sse_encode_agent_ui_event(AgentUiEvent self, SseSerializer serializer);
 
   @protected
-  void sse_encode_assembled_preview(
-    AssembledPreview self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -207,12 +183,6 @@ abstract class AgentRustLibApiImplPlatform
   );
 
   @protected
-  void sse_encode_list_preview_tool(
-    List<PreviewTool> self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -223,9 +193,6 @@ abstract class AgentRustLibApiImplPlatform
 
   @protected
   void sse_encode_list_vendor(List<Vendor> self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer);
 
   @protected
   void sse_encode_reasoning_surface(

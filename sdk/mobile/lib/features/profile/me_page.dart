@@ -268,7 +268,6 @@ class _AvatarButton extends ConsumerWidget {
         final uploaded = await tsx
             .get(mediaPortProvider)
             .uploadImage(
-              token: tsx.get(runtimeProvider).settings.token,
               bytes: bytes,
               contentType: asset.mimeType.isEmpty
                   ? 'image/jpeg'

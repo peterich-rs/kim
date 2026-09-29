@@ -72,6 +72,10 @@ async fn run(tx: &mut SqliteConnection) -> Result<(), SdkError> {
         migrate_v8(tx).await?;
         set_schema_version(tx, 8).await?;
     }
+    if version < 9 {
+        migrate_v9(tx).await?;
+        set_schema_version(tx, 9).await?;
+    }
     Ok(())
 }
 
@@ -201,6 +205,13 @@ async fn migrate_v8(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     )
     .await?;
     tx.execute(schema::CREATE_CONVERSATION_READ_STATE)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+async fn migrate_v9(tx: &mut SqliteConnection) -> Result<(), SdkError> {
+    tx.execute(schema::CREATE_WORKSPACE_GRANTS)
         .await
         .map_err(map_sqlx)?;
     Ok(())

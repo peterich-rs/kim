@@ -810,6 +810,31 @@ impl Store {
         settings::imported_prefs(&self.pool).await
     }
 
+    pub(crate) async fn upsert_workspace_grant(
+        &self,
+        profile_id: &str,
+        path: &str,
+    ) -> Result<(), SdkError> {
+        settings::upsert_grant(&self.pool, profile_id, path).await
+    }
+
+    pub(crate) async fn delete_workspace_grant(&self, profile_id: &str) -> Result<(), SdkError> {
+        settings::delete_grant(&self.pool, profile_id).await
+    }
+
+    pub(crate) async fn load_workspace_grant(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<settings::WorkspaceGrant>, SdkError> {
+        settings::load_grant(&self.pool, profile_id).await
+    }
+
+    pub(crate) async fn load_workspace_grants(
+        &self,
+    ) -> Result<Vec<settings::WorkspaceGrant>, SdkError> {
+        settings::load_grants(&self.pool).await
+    }
+
     pub(crate) async fn agent_profile_id_for_dest(
         &self,
         account: &str,

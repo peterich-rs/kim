@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
 
 const _kChannel = 'kim.workspace';
 const _kBookmarkPrefix = 'agent.workspace_bookmark.';
@@ -28,7 +28,7 @@ class WorkspaceAccess {
     FlutterSecureStorage? secure,
     this._pickDirectoryFallback,
   }) : _channel = channel ?? const MethodChannel(_kChannel),
-       _secure = secure ?? SettingsStore.productionSecureStorage();
+       _secure = secure ?? productionSecureStorage();
 
   final MethodChannel _channel;
   final FlutterSecureStorage _secure;

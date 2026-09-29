@@ -1,4 +1,5 @@
 /// Desktop catalog and skill queries. Turns run in `HostAgentRuntime`.
+/// Model fetch / preview live on the client FFI (vault-backed).
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,13 +10,7 @@ import 'package:kim_mobile/src/rust_agent/api/session.dart' as session;
 import 'package:kim_mobile/src/rust_agent/frb_generated.dart';
 
 export 'package:kim_mobile/src/rust_agent/api/catalog.dart'
-    show
-        AssembledPreview,
-        CapabilityEntry,
-        CatalogValidate,
-        PreviewTool,
-        Skill,
-        Vendor;
+    show CapabilityEntry, CatalogValidate, Skill, Vendor;
 export 'package:kim_mobile/src/rust_agent/api/session.dart'
     show AgentUiEvent, ResumeReport, SessionSnapshot;
 
@@ -59,19 +54,6 @@ class AgentBridge {
 
   bool get isReady => _inited;
 
-  Future<List<String>> fetchModels({
-    required String vendor,
-    required String baseUrl,
-    required String apiKey,
-  }) async {
-    await ensure();
-    return session.fetchSupportedModels(
-      llmBackend: vendor,
-      baseUrl: baseUrl,
-      apiKey: apiKey,
-    );
-  }
-
   Future<List<String>> builtinProfiles() async {
     await ensure();
     return session.listBuiltinProfiles();
@@ -114,32 +96,15 @@ class AgentBridge {
     );
   }
 
-  Future<List<catalog.Skill>> skillAppCatalog({
-    required String cacheRoot,
-  }) async {
+  Future<List<catalog.Skill>> skillAppCatalog() async {
     await ensure();
-    return catalog.skillAppCatalog(cacheRoot: cacheRoot);
+    return catalog.skillAppCatalog();
   }
 
   Future<List<catalog.Skill>> skillPortableList({
-    required String userRoot,
     required String projectRoot,
   }) async {
     await ensure();
-    return catalog.skillPortableList(
-      userRoot: userRoot,
-      projectRoot: projectRoot,
-    );
-  }
-
-  Future<catalog.AssembledPreview> previewAssembled({
-    required String profileJson,
-    required String projectRoot,
-  }) async {
-    await ensure();
-    return catalog.previewAssembled(
-      profileJson: profileJson,
-      projectRoot: projectRoot,
-    );
+    return catalog.skillPortableList(projectRoot: projectRoot);
   }
 }

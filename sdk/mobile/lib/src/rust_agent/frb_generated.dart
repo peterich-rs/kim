@@ -73,7 +73,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1511956223;
+  int get rustContentHash => 1551379351;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -103,29 +103,17 @@ abstract class AgentRustLibApi extends BaseApi {
 
   Future<List<Vendor>> crateApiCatalogCatalogVendors();
 
-  Future<List<String>> crateApiSessionFetchSupportedModels({
-    required String llmBackend,
-    required String baseUrl,
-    required String apiKey,
-  });
-
   Future<void> crateApiSimpleInitApp();
 
   Future<List<String>> crateApiSessionListBuiltinProfiles();
 
   Future<List<String>> crateApiSessionListBundledProviders();
 
-  Future<AssembledPreview> crateApiCatalogPreviewAssembled({
-    required String profileJson,
-    required String projectRoot,
-  });
+  Future<void> crateApiCatalogSetPlatformSupportRoot({required String support});
 
-  Future<List<Skill>> crateApiCatalogSkillAppCatalog({
-    required String cacheRoot,
-  });
+  Future<List<Skill>> crateApiCatalogSkillAppCatalog();
 
   Future<List<Skill>> crateApiCatalogSkillPortableList({
-    required String userRoot,
     required String projectRoot,
   });
 }
@@ -272,43 +260,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "catalog_vendors", argNames: []);
 
   @override
-  Future<List<String>> crateApiSessionFetchSupportedModels({
-    required String llmBackend,
-    required String baseUrl,
-    required String apiKey,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(llmBackend, serializer);
-          sse_encode_String(baseUrl, serializer);
-          sse_encode_String(apiKey, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 5,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_String,
-          decodeErrorData: sse_decode_agent_failure,
-        ),
-        constMeta: kCrateApiSessionFetchSupportedModelsConstMeta,
-        argValues: [llmBackend, baseUrl, apiKey],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiSessionFetchSupportedModelsConstMeta =>
-      const TaskConstMeta(
-        debugName: "fetch_supported_models",
-        argNames: ["llmBackend", "baseUrl", "apiKey"],
-      );
-
-  @override
   Future<void> crateApiSimpleInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -317,7 +268,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 5,
             port: port_,
           );
         },
@@ -344,7 +295,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 6,
             port: port_,
           );
         },
@@ -371,7 +322,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 7,
             port: port_,
           );
         },
@@ -390,16 +341,44 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_bundled_providers", argNames: []);
 
   @override
-  Future<AssembledPreview> crateApiCatalogPreviewAssembled({
-    required String profileJson,
-    required String projectRoot,
+  Future<void> crateApiCatalogSetPlatformSupportRoot({
+    required String support,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(profileJson, serializer);
-          sse_encode_String(projectRoot, serializer);
+          sse_encode_String(support, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_agent_failure,
+        ),
+        constMeta: kCrateApiCatalogSetPlatformSupportRootConstMeta,
+        argValues: [support],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCatalogSetPlatformSupportRootConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_platform_support_root",
+        argNames: ["support"],
+      );
+
+  @override
+  Future<List<Skill>> crateApiCatalogSkillAppCatalog() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -408,31 +387,28 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_assembled_preview,
+          decodeSuccessData: sse_decode_list_skill,
           decodeErrorData: sse_decode_agent_failure,
         ),
-        constMeta: kCrateApiCatalogPreviewAssembledConstMeta,
-        argValues: [profileJson, projectRoot],
+        constMeta: kCrateApiCatalogSkillAppCatalogConstMeta,
+        argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCatalogPreviewAssembledConstMeta =>
-      const TaskConstMeta(
-        debugName: "preview_assembled",
-        argNames: ["profileJson", "projectRoot"],
-      );
+  TaskConstMeta get kCrateApiCatalogSkillAppCatalogConstMeta =>
+      const TaskConstMeta(debugName: "skill_app_catalog", argNames: []);
 
   @override
-  Future<List<Skill>> crateApiCatalogSkillAppCatalog({
-    required String cacheRoot,
+  Future<List<Skill>> crateApiCatalogSkillPortableList({
+    required String projectRoot,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(cacheRoot, serializer);
+          sse_encode_String(projectRoot, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -444,43 +420,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_skill,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiCatalogSkillAppCatalogConstMeta,
-        argValues: [cacheRoot],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiCatalogSkillAppCatalogConstMeta =>
-      const TaskConstMeta(
-        debugName: "skill_app_catalog",
-        argNames: ["cacheRoot"],
-      );
-
-  @override
-  Future<List<Skill>> crateApiCatalogSkillPortableList({
-    required String userRoot,
-    required String projectRoot,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(userRoot, serializer);
-          sse_encode_String(projectRoot, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 11,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_skill,
-          decodeErrorData: null,
-        ),
         constMeta: kCrateApiCatalogSkillPortableListConstMeta,
-        argValues: [userRoot, projectRoot],
+        argValues: [projectRoot],
         apiImpl: this,
       ),
     );
@@ -489,7 +430,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   TaskConstMeta get kCrateApiCatalogSkillPortableListConstMeta =>
       const TaskConstMeta(
         debugName: "skill_portable_list",
-        argNames: ["userRoot", "projectRoot"],
+        argNames: ["projectRoot"],
       );
 
   @protected
@@ -552,18 +493,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  AssembledPreview dco_decode_assembled_preview(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return AssembledPreview(
-      tools: dco_decode_list_preview_tool(arr[0]),
-      warnings: dco_decode_list_String(arr[1]),
-    );
-  }
-
-  @protected
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
@@ -609,12 +538,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_preview_tool).toList();
-  }
-
-  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
@@ -630,19 +553,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   List<Vendor> dco_decode_list_vendor(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_vendor).toList();
-  }
-
-  @protected
-  PreviewTool dco_decode_preview_tool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-    return PreviewTool(
-      name: dco_decode_String(arr[0]),
-      source: dco_decode_String(arr[1]),
-      executor: dco_decode_String(arr[2]),
-    );
   }
 
   @protected
@@ -828,14 +738,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_tools = sse_decode_list_preview_tool(deserializer);
-    var var_warnings = sse_decode_list_String(deserializer);
-    return AssembledPreview(tools: var_tools, warnings: var_warnings);
-  }
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
@@ -893,18 +795,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <PreviewTool>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_preview_tool(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -933,19 +823,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       ans_.add(sse_decode_vendor(deserializer));
     }
     return ans_;
-  }
-
-  @protected
-  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_name = sse_decode_String(deserializer);
-    var var_source = sse_decode_String(deserializer);
-    var var_executor = sse_decode_String(deserializer);
-    return PreviewTool(
-      name: var_name,
-      source: var_source,
-      executor: var_executor,
-    );
   }
 
   @protected
@@ -1129,16 +1006,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_assembled_preview(
-    AssembledPreview self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_preview_tool(self.tools, serializer);
-    sse_encode_list_String(self.warnings, serializer);
-  }
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
@@ -1189,18 +1056,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_list_preview_tool(
-    List<PreviewTool> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_preview_tool(item, serializer);
-    }
-  }
-
-  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -1226,14 +1081,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     for (final item in self) {
       sse_encode_vendor(item, serializer);
     }
-  }
-
-  @protected
-  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.name, serializer);
-    sse_encode_String(self.source, serializer);
-    sse_encode_String(self.executor, serializer);
   }
 
   @protected

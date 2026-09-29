@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use kim_agent_host::{
     parse_permission, resolve_limits, AgentHost, AgentProfile, CancelReason, HostError, HostEvent,
-    ProviderSpec, ResolvedProfile, TimeoutKind, TurnOutcome, YieldKind,
+    ResolvedProfile, TimeoutKind, TurnOutcome, YieldKind,
 };
 
 use kim_agent_host::{phase_stale, phase_transition, OpenRequest, PhaseInput, SessionPhase};
@@ -1000,23 +1000,6 @@ async fn finish_turn(
             let _ = inner.events.send(ev);
         }
     }
-}
-
-pub async fn fetch_supported_models(
-    llm_backend: String,
-    base_url: String,
-    api_key: String,
-) -> Result<Vec<String>, super::failure::AgentFailure> {
-    let spec = ProviderSpec {
-        kind: llm_backend,
-        base_url,
-        key_ref: String::new(),
-    };
-    kim_agent_host::fetch_models(&spec, &api_key)
-        .await
-        .map_err(|err| super::failure::AgentFailure::Failed {
-            message: err.to_string(),
-        })
 }
 
 pub fn list_builtin_profiles() -> Result<Vec<String>, super::failure::AgentFailure> {

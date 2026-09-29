@@ -7,6 +7,7 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api/auth.dart';
+import 'api/bootstrap.dart';
 import 'api/client.dart';
 import 'api/failure.dart';
 import 'api/handles.dart';
@@ -205,6 +206,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SecretRequest> dco_decode_StreamSink_secret_request_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<SessionSnapshot> dco_decode_StreamSink_session_snapshot_Sse(
     dynamic raw,
   );
@@ -216,11 +222,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RustStreamSink<TimelineUpdate> dco_decode_StreamSink_timeline_update_Sse(
-    dynamic raw,
-  );
-
-  @protected
-  RustStreamSink<TokenPersist> dco_decode_StreamSink_token_persist_Sse(
     dynamic raw,
   );
 
@@ -306,6 +307,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiCommand dco_decode_box_autoadd_ui_command(dynamic raw);
 
   @protected
+  CapabilityPreview dco_decode_capability_preview(dynamic raw);
+
+  @protected
   CommandAck dco_decode_command_ack(dynamic raw);
 
   @protected
@@ -351,6 +355,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Person> dco_decode_list_person(dynamic raw);
 
   @protected
+  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -390,6 +397,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Person dco_decode_person(dynamic raw);
 
   @protected
+  PreviewTool dco_decode_preview_tool(dynamic raw);
+
+  @protected
   Profile dco_decode_profile(dynamic raw);
 
   @protected
@@ -397,6 +407,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomMember dco_decode_room_member(dynamic raw);
+
+  @protected
+  SecretRequest dco_decode_secret_request(dynamic raw);
 
   @protected
   SendStatus dco_decode_send_status(dynamic raw);
@@ -411,6 +424,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Settings dco_decode_settings(dynamic raw);
 
   @protected
+  SettingsPreset dco_decode_settings_preset(dynamic raw);
+
+  @protected
   ThreadView dco_decode_thread_view(dynamic raw);
 
   @protected
@@ -421,9 +437,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TimelineUpdate dco_decode_timeline_update(dynamic raw);
-
-  @protected
-  TokenPersist dco_decode_token_persist(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
@@ -597,6 +610,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SecretRequest> sse_decode_StreamSink_secret_request_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<SessionSnapshot> sse_decode_StreamSink_session_snapshot_Sse(
     SseDeserializer deserializer,
   );
@@ -608,11 +626,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RustStreamSink<TimelineUpdate> sse_decode_StreamSink_timeline_update_Sse(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  RustStreamSink<TokenPersist> sse_decode_StreamSink_token_persist_Sse(
     SseDeserializer deserializer,
   );
 
@@ -714,6 +727,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiCommand sse_decode_box_autoadd_ui_command(SseDeserializer deserializer);
 
   @protected
+  CapabilityPreview sse_decode_capability_preview(SseDeserializer deserializer);
+
+  @protected
   CommandAck sse_decode_command_ack(SseDeserializer deserializer);
 
   @protected
@@ -769,6 +785,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Person> sse_decode_list_person(SseDeserializer deserializer);
 
   @protected
+  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -812,6 +831,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Person sse_decode_person(SseDeserializer deserializer);
 
   @protected
+  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer);
+
+  @protected
   Profile sse_decode_profile(SseDeserializer deserializer);
 
   @protected
@@ -819,6 +841,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RoomMember sse_decode_room_member(SseDeserializer deserializer);
+
+  @protected
+  SecretRequest sse_decode_secret_request(SseDeserializer deserializer);
 
   @protected
   SendStatus sse_decode_send_status(SseDeserializer deserializer);
@@ -833,6 +858,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Settings sse_decode_settings(SseDeserializer deserializer);
 
   @protected
+  SettingsPreset sse_decode_settings_preset(SseDeserializer deserializer);
+
+  @protected
   ThreadView sse_decode_thread_view(SseDeserializer deserializer);
 
   @protected
@@ -843,9 +871,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TimelineUpdate sse_decode_timeline_update(SseDeserializer deserializer);
-
-  @protected
-  TokenPersist sse_decode_token_persist(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
@@ -1046,6 +1071,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_secret_request_Sse(
+    RustStreamSink<SecretRequest> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_session_snapshot_Sse(
     RustStreamSink<SessionSnapshot> self,
     SseSerializer serializer,
@@ -1060,12 +1091,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_timeline_update_Sse(
     RustStreamSink<TimelineUpdate> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_StreamSink_token_persist_Sse(
-    RustStreamSink<TokenPersist> self,
     SseSerializer serializer,
   );
 
@@ -1202,6 +1227,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_capability_preview(
+    CapabilityPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_command_ack(CommandAck self, SseSerializer serializer);
 
   @protected
@@ -1268,6 +1299,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_person(List<Person> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_preview_tool(
+    List<PreviewTool> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -1325,6 +1362,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_person(Person self, SseSerializer serializer);
 
   @protected
+  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer);
+
+  @protected
   void sse_encode_profile(Profile self, SseSerializer serializer);
 
   @protected
@@ -1335,6 +1375,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_room_member(RoomMember self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_secret_request(SecretRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_send_status(SendStatus self, SseSerializer serializer);
@@ -1350,6 +1393,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_settings(Settings self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_settings_preset(
+    SettingsPreset self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_thread_view(ThreadView self, SseSerializer serializer);
@@ -1368,9 +1417,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     TimelineUpdate self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_token_persist(TokenPersist self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);

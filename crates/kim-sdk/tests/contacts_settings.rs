@@ -303,7 +303,7 @@ async fn import_device_settings_is_once() {
         .await
         .unwrap();
     let first = sdk
-        .import_device_settings(
+        .import_legacy_prefs(
             "wss://a.example/".into(),
             "https://a.example".into(),
             "prod".into(),
@@ -313,7 +313,7 @@ async fn import_device_settings_is_once() {
         .unwrap();
     assert_eq!(first.ws_url, "wss://a.example/");
     let second = sdk
-        .import_device_settings(
+        .import_legacy_prefs(
             "wss://b.example/".into(),
             "https://b.example".into(),
             "dev".into(),

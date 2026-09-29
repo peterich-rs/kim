@@ -1,7 +1,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,13 +16,11 @@ import 'package:kim_mobile/features/agent/workspace_access.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
-import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/agent_capabilities_form.dart';
 import 'package:kim_mobile/features/agent/agent_runtime_switch.dart';
 import 'package:kim_mobile/features/agent/ask_before_switch.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/agent/skill_picker.dart';
 import 'package:kim_mobile/design/kim_group.dart';
@@ -106,8 +103,6 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       }
       return;
     }
-    final paths = KimPaths.instance;
-    await paths.ensureAgentDirs();
     var storedBookmark = profile.workspace.bookmarkRef;
     if (storedBookmark.isEmpty) {
       try {
@@ -118,7 +113,7 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     }
     final resolved = await resolveAgentProjectRoot(
       profile: profile,
-      paths: paths,
+      client: ref.read(clientPortProvider),
     );
 
     var app = const <CatalogSkill>[];
@@ -215,34 +210,10 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
     var fromHost = false;
     if (agentHostSupported) {
       try {
-        final bridge = ref.read(agentBridgeProvider);
-        final overlay = await ref
-            .read(clientPortProvider)
-            .getDeviceOverlay(profile.id);
-        final paths = await skillHostPaths(
-          access: ref.read(workspaceAccessProvider),
-          overlay: overlay?.userAgentsSkills ?? '',
-        );
-        final account = ref
-            .read(providerAccountsProvider.notifier)
-            .byId(draft.accountId);
-        // Prefs JSON only — never inject API keys into preview helpers.
-        final Map<String, Object?> previewJson;
-        if (account == null) {
-          previewJson = Map<String, Object?>.from(draft.toJson());
-          if (paths.userAgentsSkills.isNotEmpty) {
-            previewJson['user_agents_skills'] = paths.userAgentsSkills;
-          }
-        } else {
-          previewJson = draft.toHostJson(
-            account,
-            userAgentsSkills: paths.userAgentsSkills,
-          );
-        }
-        final preview = await bridge.previewAssembled(
-          profileJson: jsonEncode(previewJson),
-          projectRoot: _cwd,
-        );
+        final client = ref.read(clientPortProvider);
+        // Preview assembles from store rows (saved profile + overlay +
+        // account). Unsaved drafts fall back to the local projection above.
+        final preview = await client.previewProfile(profile.id);
         if (preview.tools.isNotEmpty || preview.warnings.isNotEmpty) {
           final names = [for (final tool in preview.tools) tool.name];
           final warnTexts = [
@@ -465,10 +436,11 @@ class _AgentCapabilitiesPageState extends ConsumerState<AgentCapabilitiesPage> {
       cwd: _cwd,
       invalidRepo: false,
     );
-    final paths = KimPaths.instance;
-    final sandbox = await paths.ensureSandbox(widget.profileId);
+    final sandbox = await ref
+        .read(clientPortProvider)
+        .ensureAgentSandbox(widget.profileId);
     if (mounted) {
-      _form.setCwd(sandbox.path);
+      _form.setCwd(sandbox);
     }
     await _persist(workspace: WorkspaceSpec.sandbox);
   }

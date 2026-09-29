@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
-import 'package:kim_mobile/core/paths.dart';
+import 'package:kim_mobile/bridge/kim_ports.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/workspace.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
@@ -164,11 +164,9 @@ List<CatalogSkill> parseSkillsJson(String raw) {
 
 Future<List<CatalogSkill>> loadAppSkillCatalog({
   required AgentBridge bridge,
-  KimPaths? paths,
 }) async {
   await bridge.ensure();
-  final cache = (paths ?? KimPaths.instance).appSkillCache;
-  final rows = await bridge.skillAppCatalog(cacheRoot: cache.path);
+  final rows = await bridge.skillAppCatalog();
   return [
     for (final row in rows)
       CatalogSkill(
@@ -185,17 +183,10 @@ Future<List<CatalogSkill>> loadAppSkillCatalog({
 
 Future<List<CatalogSkill>> loadPortableSkills({
   required AgentBridge bridge,
-  String userRoot = '',
   String projectRoot = '',
 }) async {
-  if (userRoot.trim().isEmpty && projectRoot.trim().isEmpty) {
-    return const [];
-  }
   await bridge.ensure();
-  final rows = await bridge.skillPortableList(
-    userRoot: userRoot,
-    projectRoot: projectRoot,
-  );
+  final rows = await bridge.skillPortableList(projectRoot: projectRoot);
   return [
     for (final row in rows)
       CatalogSkill(
@@ -213,28 +204,22 @@ Future<List<CatalogSkill>> loadPortableSkills({
 Future<List<CatalogSkill>> loadPortableSkillCatalog({
   required AgentBridge bridge,
   required AgentProfile profile,
-  KimPaths? paths,
   WorkspaceAccess? access,
+  KimClientPort? client,
 }) async {
-  final p = paths ?? KimPaths.instance;
   final acc = access ?? workspaceAccess;
-  final userRoot = await acc.realUserAgentsSkills() ?? '';
   var projectRoot = '';
   if (profile.workspace.isRepo) {
     final resolved = await resolveAgentProjectRoot(
       profile: profile,
-      paths: p,
       access: acc,
+      client: client,
     );
     if (!resolved.invalidRepo) {
       projectRoot = resolved.path;
     }
   }
-  return loadPortableSkills(
-    bridge: bridge,
-    userRoot: userRoot,
-    projectRoot: projectRoot,
-  );
+  return loadPortableSkills(bridge: bridge, projectRoot: projectRoot);
 }
 
 /// App catalog first; portable fills remaining ids. Sorted by name.

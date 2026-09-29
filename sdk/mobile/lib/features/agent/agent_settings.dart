@@ -3,7 +3,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
 
 const _kMode = 'agent.llm_backend';
 const _kBaseUrl = 'agent.base_url';
@@ -74,7 +74,7 @@ class AgentSettings {
 }
 
 class AgentSettingsNotifier extends Notifier<AgentSettings> {
-  final _secure = SettingsStore.productionSecureStorage();
+  final _secure = productionSecureStorage();
   Future<void>? _load;
 
   @override

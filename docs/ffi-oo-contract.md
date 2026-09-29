@@ -18,16 +18,22 @@
 
 ## 允许跨边界
 
-- 用户意图：发消息、改设置、批准/拒绝权限（`callId` + decision）
-- UI 投影：消息气泡、列表行、typing、permission 预览、连接状态、toast 文案
+跨 FFI 的只有四类：意图（intent）、投影（projection）、句柄（handle）、平台事实（fact）。
+
+- 用户意图：发消息、`startSession()`、改设置、批准/拒绝权限（`callId` + decision）
+- UI 投影：消息气泡、列表行、typing、`CapabilityPreview`、连接状态、toast 文案
 - 句柄本身（FRB opaque）
+- 平台事实，且只在 `platformBootstrap` 交一次：四个目录根、版本号、模拟器标记。Keychain 读写是执行器回调，不是每次调用的参数
+
+纯 UI 状态（theme / dest / avatar / notificationsAsked）留在 SharedPreferences，不进 Rust。
 
 ## 禁止跨边界
 
 - `profile_json` / `SessionOpenOpts` 由 Dart 拼好再 `session_open`
 - 为一次 turn `listAgentProfiles` → decode → overlay → accounts → reopen
 - timeline 全表拉到 Dart 再过滤
-- api key 明文经 Dart 再塞进 open opts
+- api key 明文。模型列表走 `fetchModels(vendor, baseUrl, keyRef)`，密钥经 vault / SecretStore
+- `dbPath`、`userAgent`、`httpOrigin`、skill 缓存路径、sandbox 路径作为每次调用的参数。这些惯例在 Rust `Layout`
 
 ## `HostAgentRuntime`
 
@@ -44,7 +50,7 @@ MobileAgent worker
   → AgentRunResult
 ```
 
-Dart `AgentHostController` 只做三件事：一次性 `cache_agent_secret`、订阅 permission、把 presence 交给 `AgentRunSink`。`test/support/legacy_agent_drive.dart` 保留旧的 session 端口驱动，仅供单测。
+Dart `AgentHostController` 只订阅 permission，并把 presence 交给 `AgentRunSink`。密钥由 `HostAgentRuntime` 按 keyRef 经 SecretStore 读取，不再做启动种子循环。`test/support/legacy_agent_drive.dart` 保留旧的 session 端口驱动，仅供单测。
 
 手机不链接 agent host，继续 `NoopAgent`。
 

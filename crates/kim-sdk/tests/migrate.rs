@@ -60,7 +60,7 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
         .unwrap()
         .try_get("value")
         .unwrap();
-    assert_eq!(version, "8");
+    assert_eq!(version, "9");
 
     let thread_cols = column_names(&pool, "threads").await;
     assert!(
@@ -74,6 +74,7 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
     assert!(cols.iter().any(|c| c == "deleted_at"), "{cols:?}");
     assert!(table_exists(&pool, "provider_accounts").await);
     assert!(table_exists(&pool, "agent_device_overlay").await);
+    assert!(table_exists(&pool, "workspace_grants").await);
 }
 
 async fn column_names(pool: &sqlx::SqlitePool, table: &str) -> Vec<String> {

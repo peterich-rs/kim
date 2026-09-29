@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1511956223;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1551379351;
 
 // Section: executor
 
@@ -190,49 +190,6 @@ fn wire__crate__api__catalog__catalog_vendors_impl(
         },
     )
 }
-fn wire__crate__api__session__fetch_supported_models_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "fetch_supported_models",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_llm_backend = <String>::sse_decode(&mut deserializer);
-            let api_base_url = <String>::sse_decode(&mut deserializer);
-            let api_api_key = <String>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, crate::api::failure::AgentFailure>(
-                    (move || async move {
-                        let output_ok = crate::api::session::fetch_supported_models(
-                            api_llm_backend,
-                            api_base_url,
-                            api_api_key,
-                        )
-                        .await?;
-                        std::result::Result::Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
 fn wire__crate__api__simple__init_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -331,7 +288,7 @@ fn wire__crate__api__session__list_bundled_providers_impl(
         },
     )
 }
-fn wire__crate__api__catalog__preview_assembled_impl(
+fn wire__crate__api__catalog__set_platform_support_root_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -339,7 +296,7 @@ fn wire__crate__api__catalog__preview_assembled_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "preview_assembled",
+            debug_name: "set_platform_support_root",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -353,13 +310,11 @@ fn wire__crate__api__catalog__preview_assembled_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_profile_json = <String>::sse_decode(&mut deserializer);
-            let api_project_root = <String>::sse_decode(&mut deserializer);
+            let api_support = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, crate::api::failure::AgentFailure>((move || {
-                    let output_ok =
-                        crate::api::catalog::preview_assembled(api_profile_json, api_project_root)?;
+                    let output_ok = crate::api::catalog::set_platform_support_root(api_support)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -388,12 +343,10 @@ fn wire__crate__api__catalog__skill_app_catalog_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_cache_root = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, ()>((move || {
-                    let output_ok =
-                        Ok::<_, ()>(crate::api::catalog::skill_app_catalog(api_cache_root))?;
+                transform_result_sse::<_, crate::api::failure::AgentFailure>((move || {
+                    let output_ok = crate::api::catalog::skill_app_catalog()?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -422,15 +375,12 @@ fn wire__crate__api__catalog__skill_portable_list_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_user_root = <String>::sse_decode(&mut deserializer);
             let api_project_root = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok = Ok::<_, ()>(crate::api::catalog::skill_portable_list(
-                        api_user_root,
-                        api_project_root,
-                    ))?;
+                    let output_ok =
+                        Ok::<_, ()>(crate::api::catalog::skill_portable_list(api_project_root))?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -533,18 +483,6 @@ impl SseDecode for crate::api::session::AgentUiEvent {
     }
 }
 
-impl SseDecode for crate::api::catalog::AssembledPreview {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_tools = <Vec<crate::api::catalog::PreviewTool>>::sse_decode(deserializer);
-        let mut var_warnings = <Vec<String>>::sse_decode(deserializer);
-        return crate::api::catalog::AssembledPreview {
-            tools: var_tools,
-            warnings: var_warnings,
-        };
-    }
-}
-
 impl SseDecode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -608,18 +546,6 @@ impl SseDecode for Vec<crate::api::catalog::CapabilityEntry> {
     }
 }
 
-impl SseDecode for Vec<crate::api::catalog::PreviewTool> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut len_ = <i32>::sse_decode(deserializer);
-        let mut ans_ = Vec::with_capacity(len_ as usize);
-        for idx_ in 0..len_ {
-            ans_.push(<crate::api::catalog::PreviewTool>::sse_decode(deserializer));
-        }
-        return ans_;
-    }
-}
-
 impl SseDecode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -653,20 +579,6 @@ impl SseDecode for Vec<crate::api::catalog::Vendor> {
             ans_.push(<crate::api::catalog::Vendor>::sse_decode(deserializer));
         }
         return ans_;
-    }
-}
-
-impl SseDecode for crate::api::catalog::PreviewTool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_name = <String>::sse_decode(deserializer);
-        let mut var_source = <String>::sse_decode(deserializer);
-        let mut var_executor = <String>::sse_decode(deserializer);
-        return crate::api::catalog::PreviewTool {
-            name: var_name,
-            source: var_source,
-            executor: var_executor,
-        };
     }
 }
 
@@ -820,25 +732,24 @@ fn pde_ffi_dispatcher_primary_impl(
         2 => wire__crate__api__catalog__catalog_surface_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__catalog__catalog_validate_impl(port, ptr, rust_vec_len, data_len),
         4 => wire__crate__api__catalog__catalog_vendors_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__session__fetch_supported_models_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        6 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        7 => {
+        5 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        6 => {
             wire__crate__api__session__list_builtin_profiles_impl(port, ptr, rust_vec_len, data_len)
         }
-        8 => wire__crate__api__session__list_bundled_providers_impl(
+        7 => wire__crate__api__session__list_bundled_providers_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        9 => wire__crate__api__catalog__preview_assembled_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__catalog__skill_app_catalog_impl(port, ptr, rust_vec_len, data_len),
-        11 => {
+        8 => wire__crate__api__catalog__set_platform_support_root_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        9 => wire__crate__api__catalog__skill_app_catalog_impl(port, ptr, rust_vec_len, data_len),
+        10 => {
             wire__crate__api__catalog__skill_portable_list_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -930,27 +841,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::session::AgentUiEvent>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::catalog::AssembledPreview {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.tools.into_into_dart().into_dart(),
-            self.warnings.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::catalog::AssembledPreview
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::AssembledPreview>
-    for crate::api::catalog::AssembledPreview
-{
-    fn into_into_dart(self) -> crate::api::catalog::AssembledPreview {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::catalog::CapabilityEntry {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -992,28 +882,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::CatalogValidate>
     for crate::api::catalog::CatalogValidate
 {
     fn into_into_dart(self) -> crate::api::catalog::CatalogValidate {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::catalog::PreviewTool {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.name.into_into_dart().into_dart(),
-            self.source.into_into_dart().into_dart(),
-            self.executor.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::catalog::PreviewTool
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::PreviewTool>
-    for crate::api::catalog::PreviewTool
-{
-    fn into_into_dart(self) -> crate::api::catalog::PreviewTool {
         self
     }
 }
@@ -1208,14 +1076,6 @@ impl SseEncode for crate::api::session::AgentUiEvent {
     }
 }
 
-impl SseEncode for crate::api::catalog::AssembledPreview {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <Vec<crate::api::catalog::PreviewTool>>::sse_encode(self.tools, serializer);
-        <Vec<String>>::sse_encode(self.warnings, serializer);
-    }
-}
-
 impl SseEncode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1262,16 +1122,6 @@ impl SseEncode for Vec<crate::api::catalog::CapabilityEntry> {
     }
 }
 
-impl SseEncode for Vec<crate::api::catalog::PreviewTool> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <i32>::sse_encode(self.len() as _, serializer);
-        for item in self {
-            <crate::api::catalog::PreviewTool>::sse_encode(item, serializer);
-        }
-    }
-}
-
 impl SseEncode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1299,15 +1149,6 @@ impl SseEncode for Vec<crate::api::catalog::Vendor> {
         for item in self {
             <crate::api::catalog::Vendor>::sse_encode(item, serializer);
         }
-    }
-}
-
-impl SseEncode for crate::api::catalog::PreviewTool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.name, serializer);
-        <String>::sse_encode(self.source, serializer);
-        <String>::sse_encode(self.executor, serializer);
     }
 }
 

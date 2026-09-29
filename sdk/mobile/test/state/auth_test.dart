@@ -33,6 +33,7 @@ void main() {
 
   test('signIn mutation stores JWT and marks signed-in', () async {
     final env = await kimHarness();
+    await env.container.read(storedAuthProvider.future);
     await signInMutation.run(env.container, (tsx) {
       return tsx
           .get(authProvider.notifier)
@@ -41,7 +42,7 @@ void main() {
     expect(env.fake.logins, 1);
     expect(env.container.read(authProvider).signedIn, isTrue);
     expect(env.container.read(authProvider).account, 'alice');
-    expect(env.runtime.settings.token, 'tok.jwt');
+    expect(env.fake.storedToken, 'tok.jwt');
     expect(env.container.read(signInMutation), isA<MutationSuccess<void>>());
   });
 
@@ -62,21 +63,23 @@ void main() {
 
   test('signOut clears token and identity', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await env.container.read(storedAuthProvider.future);
     expect(env.container.read(authProvider).signedIn, isTrue);
     await env.container.read(authProvider.notifier).signOut();
     expect(env.fake.logouts, 1);
     expect(env.container.read(authProvider).signedIn, isFalse);
     expect(env.container.read(authProvider).notice, isNull);
-    expect(env.runtime.settings.token, isEmpty);
+    expect(env.fake.storedToken, isEmpty);
   });
 
   test('signOut(notice) keeps the kicked copy on the login screen', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
+    await env.container.read(storedAuthProvider.future);
     await env.container
         .read(authProvider.notifier)
         .signOut(notice: Copy.kicked);
     expect(env.container.read(authProvider).signedIn, isFalse);
     expect(env.container.read(authProvider).notice, Copy.kicked);
-    expect(env.runtime.settings.token, isEmpty);
+    expect(env.fake.storedToken, isEmpty);
   });
 }

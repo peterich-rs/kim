@@ -7,9 +7,11 @@ mod error;
 mod ids;
 mod media;
 mod metrics;
+mod platform;
 mod proto;
 mod query;
 mod read_sync;
+mod secrets;
 mod session;
 mod store;
 mod timeline;
@@ -41,9 +43,19 @@ pub use ids::{
 };
 pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
 pub use metrics::SdkMetrics;
+pub use platform::{bootstrap, set_bootstrap, user_agent, Layout, PlatformBootstrap};
 pub use proto::ProtocolClient;
+pub use secrets::delete_global as delete_secret;
+pub use secrets::set_global as set_global_secret_store;
+pub use secrets::{
+    account_key, global as global_secret_store,
+    install_global_channel as install_global_secret_channel, read_global as read_secret,
+    take_parked_receiver as take_parked_secret_receiver, write_global as write_secret,
+    ChannelSecretStore, SecretOp, SecretStore, KEY_ACCOUNT, KEY_AGENT_GOOSE, KEY_AGENT_WRAP,
+    KEY_JWT,
+};
 pub use store::prepare::{prepare_store_file, PrepareOutcome};
-pub use store::settings::DeviceSettings;
+pub use store::settings::{DeviceSettings, WorkspaceGrant};
 pub use sync::UnreadPolicy;
 pub use timeline::{
     AgentCard, AgentTurnState, ContactsSnapshot, LinkStateView, MessageView, PersonRef,
@@ -58,14 +70,15 @@ enum HydrateOutcome {
     Applied,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TokenPersistEvent {
-    Write { token: String },
-    Clear,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsPreset {
+    Local,
+    Prod,
 }
 
 use crate::contacts::ContactsErrorOp;
 use crate::query::{spawn_query_publisher, TimelineSub};
+use crate::secrets::{delete_global, read_global, write_global};
 use crate::session::lock;
 use crate::store::changes::{ChangeLog, CommitEffect};
 use crate::store::Store;
@@ -100,7 +113,6 @@ pub(crate) struct Inner {
     outbox_kick: Mutex<Option<mpsc::Sender<()>>>,
     outbox_run: Mutex<CancellationToken>,
     read_sync_kick: Mutex<Option<mpsc::Sender<()>>>,
-    token_persist: Mutex<Vec<mpsc::Sender<TokenPersistEvent>>>,
     /// Identity is over. Latched from the link loop *and* any protocol call.
     /// The session snapshot is the control plane; events are notifications.
     session_fault: Mutex<Option<SessionFault>>,
@@ -155,7 +167,6 @@ impl KimSdk {
                 outbox_kick: Mutex::new(None),
                 outbox_run: Mutex::new(CancellationToken::new()),
                 read_sync_kick: Mutex::new(None),
-                token_persist: Mutex::new(Vec::new()),
                 session_fault: Mutex::new(None),
                 ffi_runtime: FfiAgentRuntime::new(),
                 media_dir: Mutex::new(None),
@@ -182,6 +193,13 @@ impl KimSdk {
     #[cfg(test)]
     pub(crate) fn debug_inner_strong_count(&self) -> usize {
         Arc::strong_count(&self.inner)
+    }
+
+    /// Open `kim-cache.db` at the layout-derived default path. Requires
+    /// `set_bootstrap`; production Flutter always bootstraps before attach.
+    pub async fn attach_store_default(&self) -> Result<(), SdkError> {
+        let path = Layout::current()?.db_path();
+        self.attach_store(path.to_string_lossy().into_owned()).await
     }
 
     /// Open `kim-cache.db`. Migration runs on a blocking thread.
@@ -216,15 +234,52 @@ impl KimSdk {
         *lock(&self.inner.store) = Some(store);
         *lock(&self.inner.changes) = Some(changes.clone());
         spawn_query_publisher(self.clone(), changes, self.inner.store_life.clone());
-        if let Some(parent) = path.parent() {
-            *lock(&self.inner.media_dir) = Some(parent.join("kim-media"));
-        }
+        let media_dir = if let Some(b) = bootstrap() {
+            Some(Layout::from_bootstrap(b).media_dir())
+        } else {
+            path.parent().map(|parent| parent.join("kim-media"))
+        };
+        *lock(&self.inner.media_dir) = media_dir;
         tracing::info!(path = %path.display(), wiped, "store attached");
         Ok(())
     }
 
     pub fn store_wipe_total(&self) -> u64 {
         self.inner.metrics.store_wipe_total()
+    }
+
+    /// Start from stored state: URL from the settings table, token from the
+    /// secret store, account derived from the JWT. The Dart shell calls
+    /// this with no arguments — it only expresses the intent "connect".
+    pub async fn start_session_stored(&self) -> Result<(), SdkError> {
+        let settings = self.settings_get().await?;
+        let ws_url = if settings.ws_url.trim().is_empty() {
+            kim_client::DEFAULT_PROD_URL.to_string()
+        } else {
+            settings.ws_url.trim().to_string()
+        };
+        let token = read_global(KEY_JWT).await?.trim().to_string();
+        if token.is_empty() {
+            return Err(SdkError::Unauthorized);
+        }
+        if let Some(_err) = kim_client::token_unusable(&token) {
+            let _ = delete_global(KEY_JWT).await;
+            return Err(SdkError::Unauthorized);
+        }
+        let account = kim_client::account_from_token(&token)
+            .map_err(|e| map_client(e, ""))?
+            .trim()
+            .to_string();
+        if account.is_empty() {
+            return Err(SdkError::Unauthorized);
+        }
+        self.start_session(StartSession {
+            url: ws_url,
+            token,
+            user_agent: user_agent(),
+            account,
+        })
+        .await
     }
 
     pub async fn start_session(&self, s: StartSession) -> Result<(), SdkError> {
@@ -843,6 +898,46 @@ impl KimSdk {
         self.uploader()?.upload_image(&session.token, &media).await
     }
 
+    /// Bytes variant: Rust owns the temp-file dance inside the bootstrap
+    /// layout. Dart no longer writes `Directory.systemTemp` files.
+    pub async fn upload_media_bytes(
+        &self,
+        bytes: Vec<u8>,
+        mime: String,
+        width: i32,
+        height: i32,
+    ) -> Result<String, SdkError> {
+        if bytes.is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: "media bytes are required".into(),
+            });
+        }
+        let size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+        if size > MAX_IMAGE_BYTES {
+            return Err(SdkError::PayloadTooLarge {
+                bytes: size,
+                max: MAX_IMAGE_BYTES,
+            });
+        }
+        let layout = Layout::current()?;
+        let path = layout.temp_file("kim-up");
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| SdkError::Disk {
+                message: e.to_string(),
+            })?;
+        let media = MediaRef {
+            path: path.to_string_lossy().into_owned(),
+            mime,
+            width,
+            height,
+            byte_size: size,
+        };
+        let result = self.upload_media(media).await;
+        let _ = tokio::fs::remove_file(&path).await;
+        result
+    }
+
     pub async fn fetch_media(&self, url: String) -> Result<String, SdkError> {
         if url.trim().is_empty() {
             return Err(SdkError::InvalidArgument {
@@ -1447,22 +1542,54 @@ impl KimSdk {
         let store = self.store()?;
         let mut row = store.load_device_settings().await?;
         if let Some(v) = ws_url {
-            row.ws_url = v;
+            row.ws_url = v.trim().to_string();
         }
-        if let Some(v) = http_origin {
-            row.http_origin = v;
-        }
+        // Origin is derived from the WGateway URL. A caller-supplied origin
+        // is not a second source of truth.
+        let _ = http_origin;
         if let Some(v) = env {
             row.env = v;
         }
         if let Some(v) = locale {
             row.locale = v;
         }
+        if !row.ws_url.is_empty() {
+            row.http_origin = kim_client::http_origin_from_ws(&row.ws_url);
+        }
         let ((), _seq) = store.upsert_device_settings(row, false).await?;
         self.settings_get().await
     }
 
-    pub async fn import_device_settings(
+    /// Env preset switch (DevPanel). URL and origin constants are the
+    /// `kim-client` single source; Dart no longer mirrors them.
+    pub async fn settings_preset(
+        &self,
+        preset: SettingsPreset,
+    ) -> Result<DeviceSettings, SdkError> {
+        let row = match preset {
+            SettingsPreset::Local => DeviceSettings {
+                ws_url: kim_client::DEFAULT_LOCAL_URL.to_string(),
+                http_origin: kim_client::DEFAULT_LOCAL_HTTP_ORIGIN.to_string(),
+                env: "dev".into(),
+                locale: String::new(),
+                account: String::new(),
+            },
+            SettingsPreset::Prod => DeviceSettings {
+                ws_url: kim_client::DEFAULT_PROD_URL.to_string(),
+                http_origin: kim_client::DEFAULT_PROD_HTTP_ORIGIN.to_string(),
+                env: "prod".into(),
+                locale: String::new(),
+                account: String::new(),
+            },
+        };
+        let store = self.store()?;
+        let ((), _seq) = store.upsert_device_settings(row, false).await?;
+        self.settings_get().await
+    }
+
+    /// One-shot legacy SharedPreferences handoff. Values are platform
+    /// storage reads; dedup + defaults are Rust-owned.
+    pub async fn import_legacy_prefs(
         &self,
         ws_url: String,
         http_origin: String,
@@ -1473,6 +1600,12 @@ impl KimSdk {
         if store.prefs_imported().await? {
             return self.settings_get().await;
         }
+        let ws_url = ws_url.trim().to_string();
+        let http_origin = if ws_url.is_empty() {
+            http_origin.trim().to_string()
+        } else {
+            kim_client::http_origin_from_ws(&ws_url)
+        };
         let row = DeviceSettings {
             ws_url,
             http_origin,
@@ -1484,18 +1617,47 @@ impl KimSdk {
         self.settings_get().await
     }
 
-    pub fn subscribe_token_persist(&self) -> mpsc::Receiver<TokenPersistEvent> {
-        let (tx, rx) = mpsc::channel(8);
-        lock(&self.inner.token_persist).push(tx);
-        rx
+    /// Whether the legacy handoff already ran. Dart skips its import call
+    /// (and drops its prefs mirror) once this is true.
+    pub async fn settings_imported(&self) -> Result<bool, SdkError> {
+        let store = self.store()?;
+        store.prefs_imported().await
     }
 
-    async fn publish_token_persist(&self, event: TokenPersistEvent) {
-        let subs = lock(&self.inner.token_persist).clone();
-        for tx in subs {
-            let _ = tx.send(event.clone()).await;
+    /// Register a resolved workspace directory as an authorization. The
+    /// platform resolves the picker + security-scoped bookmark; after this
+    /// call Rust owns the path.
+    pub async fn workspace_grant_register(
+        &self,
+        profile_id: String,
+        path: String,
+    ) -> Result<(), SdkError> {
+        let path = path.trim().to_string();
+        if path.is_empty() || !std::path::Path::new(&path).is_absolute() {
+            return Err(SdkError::InvalidArgument {
+                message: "workspace grant path must be absolute".into(),
+            });
         }
-        lock(&self.inner.token_persist).retain(|tx| !tx.is_closed());
+        let store = self.store()?;
+        store.upsert_workspace_grant(&profile_id, &path).await
+    }
+
+    pub async fn workspace_grant_revoke(&self, profile_id: String) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store.delete_workspace_grant(&profile_id).await
+    }
+
+    pub async fn workspace_grant(
+        &self,
+        profile_id: String,
+    ) -> Result<Option<WorkspaceGrant>, SdkError> {
+        let store = self.store()?;
+        store.load_workspace_grant(&profile_id).await
+    }
+
+    pub async fn workspace_grants(&self) -> Result<Vec<WorkspaceGrant>, SdkError> {
+        let store = self.store()?;
+        store.load_workspace_grants().await
     }
 
     /// Discrete session events: bounded mpsc, every Kickout/token/friend is delivered.
@@ -1536,11 +1698,50 @@ impl KimSdk {
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
                 if matches!(fault, SessionFault::IdentityExpired { .. }) {
-                    sdk.publish_token_persist(TokenPersistEvent::Clear).await;
+                    sdk.discard_stored_token().await;
                 }
                 sdk.refresh_session_snapshot().await;
             });
         }
+    }
+
+    /// Drop the credential that ended identity. Rust owns the lifecycle;
+    /// the Keychain write happens through the executor channel.
+    pub async fn discard_stored_token(&self) {
+        if let Err(err) = delete_global(KEY_JWT).await {
+            tracing::warn!(error = %err, "discarding stored token failed");
+        }
+    }
+
+    /// Whether a usable JWT is in the secure store. Dart's signed-in gate.
+    pub async fn has_stored_token(&self) -> bool {
+        match read_global(KEY_JWT).await {
+            Ok(token) => kim_client::token_unusable(token.trim()).is_none(),
+            Err(_) => false,
+        }
+    }
+
+    /// Persist a fresh login / renewed token. Rust decides when tokens
+    /// change; the platform only executes the write.
+    pub async fn store_token(&self, token: &str, account: &str) -> Result<(), SdkError> {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(SdkError::InvalidArgument {
+                message: "token is required".into(),
+            });
+        }
+        write_global(KEY_JWT, token).await?;
+        write_global(KEY_ACCOUNT, account.trim()).await?;
+        Ok(())
+    }
+
+    /// Signed-in account from the secure store, empty when signed out.
+    pub async fn stored_account(&self) -> String {
+        read_global(KEY_ACCOUNT)
+            .await
+            .unwrap_or_default()
+            .trim()
+            .to_string()
     }
 
     fn spawn_session_bridge(&self, sup: &kim_client::SessionSupervisor) {
@@ -1569,10 +1770,14 @@ impl KimSdk {
                                     }
                                     match &update {
                                         SessionUpdate::TokenRenew { token, .. } => {
-                                            sdk.publish_token_persist(TokenPersistEvent::Write {
-                                                token: token.clone(),
-                                            })
-                                            .await;
+                                            if let Err(err) =
+                                                write_global(KEY_JWT, token).await
+                                            {
+                                                tracing::warn!(
+                                                    error = %err,
+                                                    "persisting renewed token failed"
+                                                );
+                                            }
                                         }
                                         SessionUpdate::AuthExpired { reason } => {
                                             sdk.latch_session_fault(SessionFault::IdentityExpired {

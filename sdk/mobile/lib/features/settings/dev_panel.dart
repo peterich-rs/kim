@@ -13,6 +13,7 @@ import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/settings/dev_panel_state.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 class DevPanelPage extends ConsumerStatefulWidget {
   const DevPanelPage({super.key});
@@ -55,22 +56,16 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
   }
 
   Future<void> _switchEnv(bool local) async {
-    final settings = ref.read(runtimeProvider).settings;
-    if (local) {
-      await settings.useLocal();
-    } else {
-      await settings.useProd();
-    }
     try {
       await ref
           .read(clientPortProvider)
-          .settingsPatch(
-            wsUrl: settings.url,
-            httpOrigin: settings.httpOrigin,
-            env: settings.env,
+          .settingsPreset(
+            local
+                ? rust_types.SettingsPreset.local
+                : rust_types.SettingsPreset.prod,
           );
     } catch (e, st) {
-      KimLogger.warn('settingsPatch env', e, st);
+      KimLogger.warn('settingsPreset env', e, st);
     }
     ref.read(linkProvider.notifier).retry();
     ref.read(devPanelProvider.notifier).bump();
@@ -78,17 +73,17 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
 
   Future<void> _export() async {
     final m = ref.read(devPanelProvider).metrics;
-    final settings = ref.read(runtimeProvider).settings;
+    final settings = await ref.read(clientPortProvider).settingsGet();
     final panic = ref.read(rustPanicProvider);
     final text = [
       'KIM_ENV=${kimEnv.name}',
-      'ws=${settings.url}',
+      'ws=${settings.wsUrl}',
       'http=${settings.httpOrigin}',
       'env=${settings.env}',
       'enqueue=${m?.enqueueTotal ?? 0}',
       'persist=${m?.persistTalkTotal ?? 0}',
       'epoch_drop=${m?.epochDropTotal ?? 0}',
-      'store_wipe=${m?.storeWipeTotal ?? 0}',
+      'store_wipe=${m?.storeWipeTotal.toInt() ?? 0}',
       if (panic != null) 'panic=$panic',
     ].join('\n');
     await Clipboard.setData(ClipboardData(text: text));
@@ -97,13 +92,13 @@ class _DevPanelPageState extends ConsumerState<DevPanelPage> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(runtimeProvider).settings;
     final panel = ref.watch(devPanelProvider);
-    final local = settings.httpOrigin.contains('127.0.0.1');
     final m = panel.metrics;
     final wipe = m?.storeWipeTotal.toInt() ?? 0;
     final showWipe = wipe > panel.wipeSeen;
     final panic = ref.watch(rustPanicProvider);
+    final envSnapshot = ref.watch(envSettingsProvider);
+    final local = envSnapshot.value?.httpOrigin.contains('127.0.0.1') ?? false;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,

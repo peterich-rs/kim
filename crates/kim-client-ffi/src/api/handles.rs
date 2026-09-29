@@ -181,12 +181,87 @@ impl KimUiHandle {
         AgentCatalogHandle { app: self.clone() }
     }
 
-    /// Seeds the desktop secret vault once. Not part of a turn payload.
-    pub fn cache_agent_secret(&self, key_ref: String, secret: String) {
+    /// One-shot secret handoff (form save). Persists under a Rust-owned
+    /// keyRef: Keychain via the executor channel + in-memory vault mirror.
+    /// After this call plaintext keys never cross the boundary again.
+    pub async fn store_agent_secret(
+        &self,
+        key_ref: String,
+        secret: String,
+    ) -> Result<(), ApiFailure> {
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-        kim_desktop_runtime::cache_secret(&key_ref, &secret);
+        {
+            if key_ref.is_empty() || secret.is_empty() {
+                return Ok(());
+            }
+            kim_sdk::write_secret(&kim_sdk::account_key(&key_ref), &secret)
+                .await
+                .map_err(ApiFailure::from)?;
+            kim_desktop_runtime::cache_secret(&key_ref, &secret);
+            Ok(())
+        }
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-        let _ = (key_ref, secret);
+        {
+            let _ = (key_ref, secret);
+            Ok(())
+        }
+    }
+
+    /// Provider model inventory by keyRef. Desktop only; key resolves
+    /// through the vault / Keychain channel.
+    pub async fn fetch_models(
+        &self,
+        vendor_id: String,
+        base_url: String,
+        key_ref: String,
+    ) -> Result<Vec<String>, ApiFailure> {
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        {
+            let runtime = kim_desktop_runtime::installed()
+                .ok_or_else(|| ApiFailure::unavailable("host agent runtime"))?;
+            runtime
+                .fetch_models(&vendor_id, &base_url, &key_ref)
+                .await
+                .map_err(ApiFailure::from)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            let _ = (vendor_id, base_url, key_ref);
+            Err(ApiFailure::unavailable("host agent runtime"))
+        }
+    }
+
+    /// Capability preview assembled from store rows. Dart passes an id.
+    pub async fn preview_profile(
+        &self,
+        profile_id: String,
+    ) -> Result<CapabilityPreview, ApiFailure> {
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        {
+            let runtime = kim_desktop_runtime::installed()
+                .ok_or_else(|| ApiFailure::unavailable("host agent runtime"))?;
+            let preview = runtime
+                .preview_profile(&profile_id)
+                .await
+                .map_err(ApiFailure::from)?;
+            Ok(CapabilityPreview {
+                tools: preview
+                    .tools
+                    .into_iter()
+                    .map(|tool| PreviewTool {
+                        name: tool.name,
+                        source: tool.source,
+                        executor: tool.executor,
+                    })
+                    .collect(),
+                warnings: preview.warnings,
+            })
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            let _ = profile_id;
+            Err(ApiFailure::unavailable("host agent runtime"))
+        }
     }
 
     pub fn respond_agent_permission(&self, call_id: String, allow: bool) {
@@ -274,4 +349,15 @@ pub struct AgentPermissionEvent {
 pub struct AgentUiStatus {
     pub dest: String,
     pub phase: String,
+}
+
+pub struct PreviewTool {
+    pub name: String,
+    pub source: String,
+    pub executor: String,
+}
+
+pub struct CapabilityPreview {
+    pub tools: Vec<PreviewTool>,
+    pub warnings: Vec<String>,
 }

@@ -8,7 +8,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
 
 import 'package:kim_mobile/core/ota_info.dart';
-import 'package:kim_mobile/src/rust/api/auth.dart' as rust_auth;
 import 'package:kim_mobile/src/rust/api/client.dart' as rust;
 import 'package:kim_mobile/src/rust/frb_generated.dart';
 
@@ -18,9 +17,6 @@ class KimBridgeBase {
   static bool inited = false;
   rust.KimUiHandle? api;
   String? account;
-
-  /// Last WGateway URL passed to [KimClientPort.startSession].
-  String? lastUrl;
 
   String get ffiStatus => 'FFI: kim-client via flutter_rust_bridge 2.13';
 
@@ -45,10 +41,6 @@ class KimBridgeBase {
     }
   }
 
-  rust_auth.KimAuth authClient(String origin, String userAgent) {
-    return rust_auth.KimAuth(baseUrl: origin, userAgent: userAgent);
-  }
-
   rust.KimUiHandle requireApi() {
     final handle = api;
     if (handle == null) {
@@ -57,9 +49,10 @@ class KimBridgeBase {
     return handle;
   }
 
-  Future<void> attachStore(String dbPath) async {
+  /// Rust derives the store path from the platform bootstrap.
+  Future<void> attachStore() async {
     await ensure();
     api ??= rust.KimUiHandle.create();
-    await api!.attachStore(dbPath: dbPath);
+    await api!.attachStore();
   }
 }

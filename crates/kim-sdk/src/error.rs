@@ -36,6 +36,8 @@ pub enum SdkError {
     NotFound { what: String },
     #[error("invalid argument: {message}")]
     InvalidArgument { message: String },
+    #[error("platform bootstrap missing: call set_bootstrap before this operation")]
+    BootstrapMissing,
     #[error("protocol status {status}")]
     Protocol { status: i32 },
     #[error("internal error")]

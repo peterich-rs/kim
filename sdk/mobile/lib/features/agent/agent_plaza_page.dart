@@ -58,11 +58,8 @@ class _AgentPlazaPageState extends ConsumerState<AgentPlazaPage> {
       try {
         final bridge = ref.read(agentBridgeProvider);
         app = await loadAppSkillCatalog(bridge: bridge);
-        // Ecosystem shelf: always scan real ~/.agents (S-KD 9 / 23).
-        final userRoot = await workspaceAccess.realUserAgentsSkills() ?? '';
-        if (userRoot.isNotEmpty) {
-          eco = await loadPortableSkills(bridge: bridge, userRoot: userRoot);
-        }
+        // Ecosystem shelf: Rust reads `$HOME/.agents/skills` itself.
+        eco = await loadPortableSkills(bridge: bridge);
         // Also merge project shelf when assigning to a coding profile.
         if (assign != null) {
           final project = await loadPortableSkillCatalog(

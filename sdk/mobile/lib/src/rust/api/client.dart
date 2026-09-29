@@ -4,6 +4,7 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'auth.dart';
 import 'failure.dart';
 import 'handles.dart';
 
@@ -20,7 +21,29 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<AgentFlags> agentFlags();
 
-  Future<void> attachStore({required String dbPath});
+  /// Session JSON file for one dest x profile (host persist target).
+  Future<String> agentSessionFile({
+    required String dest,
+    required String profileId,
+  });
+
+  /// Attach the store at the layout-derived default path. Requires a prior
+  /// `platform_bootstrap` call; the path convention is Rust-owned.
+  Future<void> attachStore();
+
+  /// Royal auth client with the origin derived from the settings-table
+  /// WGateway URL (falls back to the production default).
+  Future<KimAuth> auth();
+
+  /// Change password with the stored credential.
+  Future<void> authChangePassword({
+    required String oldPassword,
+    required String newPassword,
+  });
+
+  /// Server-side logout with the stored credential. Dart never sees the
+  /// token; empty stored token is a local no-op success.
+  Future<void> authLogout();
 
   Future<Person> botCreate({
     required String clientProfileId,
@@ -64,13 +87,10 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required String visibility,
   });
 
-  /// Seeds the desktop secret vault once. Not part of a turn payload.
-  Future<void> cacheAgentSecret({
-    required String keyRef,
-    required String secret,
-  });
-
   Future<void> cancelSend({required String clientId});
+
+  /// Drop credentials and stop. The sign-out path.
+  Future<void> clearAuth();
 
   Future<CommandAck> command({required UiCommand cmd});
 
@@ -100,6 +120,18 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
+  /// Per-agent sandbox path (created + seeded). Layout rules are Rust-owned
+  /// (`support/agent/workspaces/<id>`, `AGENTS.md` / `MEMORY.md` / `notes/`).
+  Future<String> ensureAgentSandbox({required String profileId});
+
+  /// Provider model inventory by keyRef. Desktop only; key resolves
+  /// through the vault / Keychain channel.
+  Future<List<String>> fetchModels({
+    required String vendorId,
+    required String baseUrl,
+    required String keyRef,
+  });
+
   Future<void> friendAccept({required String dest});
 
   Future<List<Person>> friendIncoming();
@@ -114,9 +146,13 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<DeviceOverlay?> getDeviceOverlay({required String profileId});
 
+  /// Signed-in gate for the Dart auth state: usable JWT in the store?
+  Future<bool> hasStoredToken();
+
   Future<void> importAgentProfiles({required List<AgentProfile> rows});
 
-  Future<Settings> importDeviceSettings({
+  /// One-shot legacy SharedPreferences handoff (存量设备 only).
+  Future<Settings> importLegacyPrefs({
     required String wsUrl,
     required String httpOrigin,
     required String env,
@@ -157,11 +193,23 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required PlatformInt64 byteSize,
   });
 
+  /// Bytes straight from the picker plugin. Rust owns the temp file; no
+  /// Dart `Directory.systemTemp` round-trip.
+  Future<LocalMedia> mediaUploadBytes({
+    required List<int> bytes,
+    required String mime,
+    required int width,
+    required int height,
+  });
+
   Metrics metricsSnapshot();
 
   Future<void> notifyForeground();
 
   Future<void> notifyRadioUp();
+
+  /// Capability preview assembled from store rows. Dart passes an id.
+  Future<CapabilityPreview> previewProfile({required String profileId});
 
   Future<Profile> profile({required String dest});
 
@@ -202,22 +250,36 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<Settings> settingsGet();
 
-  Future<Settings> settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  });
+  /// Whether the one-shot prefs handoff already ran.
+  Future<bool> settingsImported();
 
-  Future<void> startSession({
-    required String url,
-    required String token,
-    required String userAgent,
-    required String account,
-  });
+  Future<Settings> settingsPatch({String? wsUrl, String? env});
+
+  /// Env switch. URL/origin constants are Rust-owned; no Dart mirrors.
+  Future<Settings> settingsPreset({required SettingsPreset preset});
+
+  /// Connect from stored state: settings-table URL, Keychain token via the
+  /// executor channel, account from the JWT, UA from the bootstrap.
+  /// Dart expresses intent only.
+  Future<void> startSession();
 
   Future<void> stop();
 
+  /// One-shot secret handoff (form save). Persists under a Rust-owned
+  /// keyRef: Keychain via the executor channel + in-memory vault mirror.
+  /// After this call plaintext keys never cross the boundary again.
+  Future<void> storeAgentSecret({
+    required String keyRef,
+    required String secret,
+  });
+
   bool storeAttached();
+
+  /// Persist a fresh login. Account is derived from the JWT.
+  Future<void> storeAuth({required String token, required String account});
+
+  /// Signed-in account from the secure store (projection for the shell).
+  Future<String> storedAccount();
 
   Future<void> submitAgentRun({required AgentRunResult result});
 
@@ -255,7 +317,16 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required int limit,
   });
 
-  Stream<TokenPersist> watchTokenPersist();
+  Future<String?> workspaceGrant({required String profileId});
+
+  /// Register a resolved workspace directory. The picker/bookmark stayed
+  /// platform-side; the granted path becomes Rust-owned state.
+  Future<void> workspaceGrantRegister({
+    required String profileId,
+    required String path,
+  });
+
+  Future<void> workspaceGrantRevoke({required String profileId});
 }
 
 class KimBotPendingItem {

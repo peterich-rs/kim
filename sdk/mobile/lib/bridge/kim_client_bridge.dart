@@ -16,19 +16,8 @@ import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   @override
-  Future<void> startSession(
-    String url,
-    String token, {
-    required String userAgent,
-  }) async {
-    if (token.trim().isEmpty) {
-      throw StateError('JWT required (Royal /login). Do not mint in the app.');
-    }
-    if (!(url.startsWith('ws://') || url.startsWith('wss://'))) {
-      throw StateError('url must be ws:// or wss:// (WGateway only)');
-    }
+  Future<void> startSession() async {
     await ensure();
-    lastUrl = url;
     final handle = api ?? rust.KimUiHandle.create();
     api = handle;
     if (account != null && account!.isNotEmpty) {
@@ -39,13 +28,44 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
       }
       return;
     }
-    await handle.startSession(
-      url: url,
-      token: token,
-      userAgent: userAgent,
-      account: '',
-    );
+    await handle.startSession();
     account = 'session';
+  }
+
+  @override
+  Future<bool> hasStoredToken() {
+    return requireApi().hasStoredToken();
+  }
+
+  @override
+  Future<String> storedAccount() {
+    return requireApi().storedAccount();
+  }
+
+  @override
+  Future<void> storeAuth({required String token, required String account}) {
+    return requireApi().storeAuth(token: token, account: account);
+  }
+
+  @override
+  Future<void> clearAuth() {
+    return requireApi().clearAuth();
+  }
+
+  @override
+  Future<void> authLogout() {
+    return requireApi().authLogout();
+  }
+
+  @override
+  Future<void> authChangePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) {
+    return requireApi().authChangePassword(
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+    );
   }
 
   @override
@@ -436,36 +456,33 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Stream<rust_types.TokenPersist> watchTokenPersist() {
-    return requireApi().watchTokenPersist();
-  }
-
-  @override
   Future<rust_types.Settings> settingsGet() {
     return requireApi().settingsGet();
   }
 
   @override
-  Future<rust_types.Settings> settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  }) {
-    return requireApi().settingsPatch(
-      wsUrl: wsUrl,
-      httpOrigin: httpOrigin,
-      env: env,
-    );
+  Future<rust_types.Settings> settingsPatch({String? wsUrl, String? env}) {
+    return requireApi().settingsPatch(wsUrl: wsUrl, env: env);
   }
 
   @override
-  Future<rust_types.Settings> importDeviceSettings({
+  Future<rust_types.Settings> settingsPreset(rust_types.SettingsPreset preset) {
+    return requireApi().settingsPreset(preset: preset);
+  }
+
+  @override
+  Future<bool> settingsImported() {
+    return requireApi().settingsImported();
+  }
+
+  @override
+  Future<rust_types.Settings> importLegacyPrefs({
     required String wsUrl,
     required String httpOrigin,
     String env = 'prod',
     String locale = '',
   }) {
-    return requireApi().importDeviceSettings(
+    return requireApi().importLegacyPrefs(
       wsUrl: wsUrl,
       httpOrigin: httpOrigin,
       env: env,
@@ -489,11 +506,50 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<void> cacheAgentSecret({
+  Future<void> storeAgentSecret({
     required String keyRef,
     required String secret,
   }) {
-    return requireApi().cacheAgentSecret(keyRef: keyRef, secret: secret);
+    return requireApi().storeAgentSecret(keyRef: keyRef, secret: secret);
+  }
+
+  @override
+  Future<List<String>> fetchModels({
+    required String vendorId,
+    required String baseUrl,
+    required String keyRef,
+  }) {
+    return requireApi().fetchModels(
+      vendorId: vendorId,
+      baseUrl: baseUrl,
+      keyRef: keyRef,
+    );
+  }
+
+  @override
+  Future<rust_handles.CapabilityPreview> previewProfile(String profileId) {
+    return requireApi().previewProfile(profileId: profileId);
+  }
+
+  @override
+  Future<void> workspaceGrantRegister({
+    required String profileId,
+    required String path,
+  }) {
+    return requireApi().workspaceGrantRegister(
+      profileId: profileId,
+      path: path,
+    );
+  }
+
+  @override
+  Future<String?> workspaceGrant(String profileId) {
+    return requireApi().workspaceGrant(profileId: profileId);
+  }
+
+  @override
+  Future<String> ensureAgentSandbox(String profileId) {
+    return requireApi().ensureAgentSandbox(profileId: profileId);
   }
 
   @override
@@ -608,19 +664,17 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<rust_types.LocalMedia> mediaUpload({
-    required String path,
+  Future<rust_types.LocalMedia> mediaUploadBytes({
+    required Uint8List bytes,
     required String mime,
     int width = 0,
     int height = 0,
-    int byteSize = 0,
   }) {
-    return requireApi().mediaUpload(
-      path: path,
+    return requireApi().mediaUploadBytes(
+      bytes: bytes,
       mime: mime,
       width: width,
       height: height,
-      byteSize: byteSize,
     );
   }
 

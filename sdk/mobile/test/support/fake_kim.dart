@@ -9,7 +9,19 @@ import 'package:kim_mobile/src/rust/api/handles.dart';
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 class FakeKim implements KimAuthPort, KimClientPort {
-  FakeKim({this.session, this.error, this.connectError});
+  /// Widget tests build a fresh [FakeKim] after [testRuntime] recorded the
+  /// signed-in session. Empty constructor args inherit that session.
+  static String inheritToken = '';
+  static String inheritAccount = '';
+
+  FakeKim({
+    this.session,
+    this.error,
+    this.connectError,
+    String token = '',
+    String account = '',
+  }) : storedToken = token.isNotEmpty ? token : inheritToken,
+       signedInAccount = account.isNotEmpty ? account : inheritAccount;
 
   KimAuthSession? session;
   Object? error;
@@ -38,8 +50,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int foregrounds = 0;
   int friendRequests = 0;
   int friendRemoves = 0;
-  String lastUserAgent = '';
-  String lastOrigin = '';
+  String storedToken;
+  String signedInAccount;
   String lastAccount = '';
   String lastPassword = '';
   String lastTalkDest = '';
@@ -175,14 +187,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimAuthSession> login({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
     logins += 1;
-    lastOrigin = origin;
-    lastUserAgent = userAgent;
     lastAccount = account;
     lastPassword = password;
     return _run();
@@ -190,49 +198,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimAuthSession> register({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
     registers += 1;
-    lastOrigin = origin;
-    lastUserAgent = userAgent;
     lastAccount = account;
     lastPassword = password;
     return _run();
   }
 
   @override
-  Future<void> logout({
-    required String origin,
-    required String userAgent,
-    required String token,
-  }) async {
-    logouts += 1;
-    lastUserAgent = userAgent;
-  }
-
-  @override
-  Future<void> changePassword({
-    required String origin,
-    required String userAgent,
-    required String token,
-    required String oldPassword,
-    required String newPassword,
-  }) async {}
-
-  @override
-  String httpOriginFromWs(String wsUrl) => 'http://127.0.0.1:8080';
-
-  @override
-  Future<void> startSession(
-    String url,
-    String token, {
-    required String userAgent,
-  }) async {
+  Future<void> startSession() async {
     connects += 1;
-    lastUserAgent = userAgent;
     if (snapshotErrorOnConnect != null) {
       pushSnapshot(
         SessionSnapshot(
@@ -748,7 +725,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastTalkDest = dest;
   }
 
-  final tokenPersistCtrl = StreamController<TokenPersist>.broadcast();
   Settings settings = const Settings(
     wsUrl: 'wss://kim.ainexc.com/',
     httpOrigin: 'https://kim.ainexc.com',
@@ -756,22 +732,51 @@ class FakeKim implements KimAuthPort, KimClientPort {
     locale: '',
     account: '',
   );
+  bool prefsImported = false;
 
   @override
-  Stream<TokenPersist> watchTokenPersist() => tokenPersistCtrl.stream;
+  Future<bool> hasStoredToken() async => storedToken.trim().isNotEmpty;
+
+  @override
+  Future<String> storedAccount() async => signedInAccount;
+
+  @override
+  Future<void> storeAuth({
+    required String token,
+    required String account,
+  }) async {
+    storedToken = token;
+    signedInAccount = account;
+  }
+
+  @override
+  Future<void> clearAuth() async {
+    storedToken = '';
+    signedInAccount = '';
+  }
+
+  @override
+  Future<void> authLogout() async {
+    logouts += 1;
+  }
+
+  @override
+  Future<void> authChangePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {}
 
   @override
   Future<Settings> settingsGet() async => settings;
 
   @override
-  Future<Settings> settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  }) async {
+  Future<Settings> settingsPatch({String? wsUrl, String? env}) async {
+    final nextUrl = wsUrl ?? settings.wsUrl;
     settings = Settings(
-      wsUrl: wsUrl ?? settings.wsUrl,
-      httpOrigin: httpOrigin ?? settings.httpOrigin,
+      wsUrl: nextUrl,
+      httpOrigin: nextUrl.contains('127.0.0.1')
+          ? 'http://127.0.0.1:8080'
+          : 'https://kim.ainexc.com',
       env: env ?? settings.env,
       locale: settings.locale,
       account: settings.account,
@@ -780,13 +785,29 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<Settings> importDeviceSettings({
+  Future<Settings> settingsPreset(SettingsPreset preset) async {
+    final local = preset == SettingsPreset.local;
+    settings = Settings(
+      wsUrl: local ? 'ws://127.0.0.1:8001/ws' : 'wss://kim.ainexc.com/',
+      httpOrigin: local ? 'http://127.0.0.1:8080' : 'https://kim.ainexc.com',
+      env: local ? 'dev' : 'prod',
+      locale: settings.locale,
+      account: settings.account,
+    );
+    return settings;
+  }
+
+  @override
+  Future<bool> settingsImported() async => prefsImported;
+
+  @override
+  Future<Settings> importLegacyPrefs({
     required String wsUrl,
     required String httpOrigin,
     String env = 'prod',
     String locale = '',
   }) async {
-    if (settings.wsUrl.isEmpty || settings.wsUrl == 'wss://kim.ainexc.com/') {
+    if (!prefsImported && wsUrl.isNotEmpty) {
       settings = Settings(
         wsUrl: wsUrl,
         httpOrigin: httpOrigin,
@@ -795,6 +816,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
         account: settings.account,
       );
     }
+    prefsImported = true;
     return settings;
   }
 
@@ -929,16 +951,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<LocalMedia> mediaUpload({
-    required String path,
+  Future<LocalMedia> mediaUploadBytes({
+    required Uint8List bytes,
     required String mime,
     int width = 0,
     int height = 0,
-    int byteSize = 0,
   }) async {
     return LocalMedia(
-      localPath: path,
-      byteSize: byteSize,
+      localPath: 'mem',
+      byteSize: bytes.length,
       width: width,
       height: height,
     );
@@ -955,10 +976,40 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<void> cacheAgentSecret({
+  Future<void> storeAgentSecret({
     required String keyRef,
     required String secret,
   }) async {}
+
+  @override
+  Future<List<String>> fetchModels({
+    required String vendorId,
+    required String baseUrl,
+    required String keyRef,
+  }) async => const [];
+
+  @override
+  Future<CapabilityPreview> previewProfile(String profileId) async {
+    return const CapabilityPreview(tools: [], warnings: []);
+  }
+
+  final grants = <String, String>{};
+
+  @override
+  Future<void> workspaceGrantRegister({
+    required String profileId,
+    required String path,
+  }) async {
+    grants[profileId] = path;
+  }
+
+  @override
+  Future<String?> workspaceGrant(String profileId) async => grants[profileId];
+
+  @override
+  Future<String> ensureAgentSandbox(String profileId) async {
+    return '/tmp/kim-agent/$profileId';
+  }
 
   @override
   Future<void> respondAgentPermission({
@@ -1018,7 +1069,6 @@ class FakeKimMedia implements KimMediaPort {
 
   @override
   Future<UploadedObject> uploadImage({
-    required String token,
     required List<int> bytes,
     required String contentType,
   }) async {

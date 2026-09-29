@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS media_cache (
   local_path TEXT NOT NULL,
   byte_size INTEGER NOT NULL,
   last_access INTEGER NOT NULL
+)
+";
+
+pub const CREATE_WORKSPACE_GRANTS: &str = r"
+CREATE TABLE IF NOT EXISTS workspace_grants (
+  profile_id TEXT PRIMARY KEY NOT NULL,
+  path TEXT NOT NULL,
+  granted_at INTEGER NOT NULL
 )
 ";
 

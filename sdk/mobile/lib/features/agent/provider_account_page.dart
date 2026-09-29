@@ -10,11 +10,12 @@ import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/features/agent/catalog.dart';
 import 'package:kim_mobile/features/agent/provider_account_form.dart';
-import 'package:kim_mobile/bridge/goose_bridge.dart';
+
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
-import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
+import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/design/kim_group.dart';
 import 'package:kim_mobile/design/kim_header.dart';
 import 'package:kim_mobile/design/kim_pinned_footer.dart';
@@ -55,7 +56,13 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
   late final TextEditingController _name;
   late final TextEditingController _url;
   late final TextEditingController _key;
-  final _secure = SettingsStore.productionSecureStorage();
+  final _secure = productionSecureStorage();
+
+  /// Stable id + keyRef for a brand-new account, computed once so a staged
+  /// key (fetch-models) and the saved row point at the same vault entry.
+  late final String _pendingId =
+      'acct-${DateTime.now().microsecondsSinceEpoch}';
+  late final String _pendingKeyRef = '$kAccountKeyPrefix$_pendingId';
 
   ProviderAccountDraft get _draft => ref.read(providerAccountFormProvider);
 
@@ -164,7 +171,7 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
       _toast(Copy.agentInvalidUrl, error: true);
       return;
     }
-    if (_key.text.trim().isEmpty) {
+    if (_key.text.trim().isEmpty && (_existing?.keyRef.isEmpty ?? true)) {
       _toast(Copy.agentKeyMissing, error: true);
       return;
     }
@@ -172,12 +179,21 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     final draft = _draft;
     final original = List<String>.from(draft.models);
     try {
-      final bridge = ref.read(agentBridgeProvider);
-      await bridge.ensure();
-      final list = await bridge.fetchModels(
-        vendor: canonicalizeVendorId(draft.vendor),
+      final client = ref.read(clientPortProvider);
+      // keyRef the fetch will resolve through the Rust vault. For a new
+      // account (not yet saved) stage the typed key under the would-be ref.
+      final existing = _existing;
+      final keyRef = existing?.keyRef.isNotEmpty == true
+          ? existing!.keyRef
+          : _pendingKeyRef;
+      final typed = _key.text.trim();
+      if (typed.isNotEmpty) {
+        await client.storeAgentSecret(keyRef: keyRef, secret: typed);
+      }
+      final list = await client.fetchModels(
+        vendorId: canonicalizeVendorId(draft.vendor),
         baseUrl: _url.text.trim(),
-        apiKey: _key.text.trim(),
+        keyRef: keyRef,
       );
       if (!mounted) {
         return;
@@ -187,7 +203,6 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
         throw StateError(Copy.agentFetchModelsFailed('empty'));
       }
       _form.setModels(models);
-      final existing = _existing;
       if (existing != null) {
         await ref
             .read(providerAccountsProvider.notifier)
@@ -247,15 +262,17 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     final vendor = _vendorSummaryOf(draft);
     final existingId = widget.accountId;
     final id = widget.isCreate || existingId == null || existingId.isEmpty
-        ? 'acct-${DateTime.now().microsecondsSinceEpoch}'
+        ? _pendingId
         : existingId;
+    final existingKeyRef = _existing?.keyRef ?? '';
+    // A staged fetch (before save) may have written under _pendingKeyRef;
+    // adopt it when the row is new. Otherwise reuse the row's ref.
+    final keyRef = existingKeyRef.isNotEmpty ? existingKeyRef : _pendingKeyRef;
     final account = ProviderAccount(
       id: id,
       vendorId: vendorId,
       baseUrl: _url.text.trim(),
-      keyRef: widget.isCreate
-          ? '$kAccountKeyPrefix$id'
-          : (_existing?.keyRef ?? '$kAccountKeyPrefix$id'),
+      keyRef: keyRef,
       displayName: _name.text.trim().isEmpty
           ? (vendor?.displayName ?? vendorId)
           : _name.text.trim(),
@@ -265,7 +282,10 @@ class _ProviderAccountPageState extends ConsumerState<ProviderAccountPage> {
     final key = _key.text.trim();
     try {
       if (key.isNotEmpty) {
-        await _secure.write(key: account.keyRef, value: key);
+        // Rust-owned persistence: Keychain via the executor + vault mirror.
+        await ref
+            .read(clientPortProvider)
+            .storeAgentSecret(keyRef: keyRef, secret: key);
       }
     } catch (_) {}
     if (!mounted) {

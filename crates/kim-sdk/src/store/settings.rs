@@ -112,6 +112,84 @@ pub(crate) async fn imported_prefs(pool: &SqlitePool) -> Result<bool, SdkError> 
     Ok(row.is_some())
 }
 
+/// A resolved directory grant. Picker + security-scoped bookmark resolution
+/// stay platform; the granted path itself is Rust-owned state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceGrant {
+    pub profile_id: String,
+    pub path: String,
+    pub granted_at: i64,
+}
+
+pub(crate) async fn upsert_grant(
+    pool: &SqlitePool,
+    profile_id: &str,
+    path: &str,
+) -> Result<(), SdkError> {
+    sqlx::query(
+        r"
+        INSERT INTO workspace_grants (profile_id, path, granted_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(profile_id) DO UPDATE SET
+          path = excluded.path,
+          granted_at = excluded.granted_at
+        ",
+    )
+    .bind(profile_id)
+    .bind(path)
+    .bind(crate::store::now_ms())
+    .execute(pool)
+    .await
+    .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn delete_grant(pool: &SqlitePool, profile_id: &str) -> Result<(), SdkError> {
+    sqlx::query("DELETE FROM workspace_grants WHERE profile_id = ?")
+        .bind(profile_id)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
+pub(crate) async fn load_grant(
+    pool: &SqlitePool,
+    profile_id: &str,
+) -> Result<Option<WorkspaceGrant>, SdkError> {
+    let row = sqlx::query(
+        "SELECT profile_id, path, granted_at FROM workspace_grants WHERE profile_id = ?",
+    )
+    .bind(profile_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx)?;
+    match row {
+        Some(r) => Ok(Some(WorkspaceGrant {
+            profile_id: r.try_get("profile_id").map_err(map_sqlx)?,
+            path: r.try_get("path").map_err(map_sqlx)?,
+            granted_at: r.try_get("granted_at").map_err(map_sqlx)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+pub(crate) async fn load_grants(pool: &SqlitePool) -> Result<Vec<WorkspaceGrant>, SdkError> {
+    let rows = sqlx::query("SELECT profile_id, path, granted_at FROM workspace_grants")
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        out.push(WorkspaceGrant {
+            profile_id: r.try_get("profile_id").map_err(map_sqlx)?,
+            path: r.try_get("path").map_err(map_sqlx)?,
+            granted_at: r.try_get("granted_at").map_err(map_sqlx)?,
+        });
+    }
+    Ok(out)
+}
+
 pub(crate) async fn mark_imported(tx: &mut SqliteConnection) -> Result<(), SdkError> {
     sqlx::query("INSERT OR REPLACE INTO meta (key, value) VALUES ('imported_prefs', '1')")
         .execute(&mut *tx)
