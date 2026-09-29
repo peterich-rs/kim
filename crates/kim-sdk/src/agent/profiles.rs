@@ -1,4 +1,5 @@
 use crate::error::SdkError;
+use crate::model::ProfilePlacement;
 use crate::store::Store;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -6,9 +7,10 @@ pub struct AgentProfileRow {
     pub profile_id: String,
     pub nickname: String,
     pub server_account: String,
-    pub body_json: String,
+    /// Filled by `list_agent_profiles` via `blob_to_json`. Empty on write.
+    pub document_json: String,
     pub body_blob: Vec<u8>,
-    pub placement: String,
+    pub placement: ProfilePlacement,
     pub updated_at: i64,
     pub deleted_at: i64,
 }
@@ -19,40 +21,25 @@ impl Default for AgentProfileRow {
             profile_id: String::new(),
             nickname: String::new(),
             server_account: String::new(),
-            body_json: String::new(),
+            document_json: String::new(),
             body_blob: Vec::new(),
-            placement: "local".into(),
+            placement: ProfilePlacement::Local,
             updated_at: 0,
             deleted_at: 0,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProviderAccountRow {
     pub id: String,
     pub vendor_id: String,
     pub base_url: String,
     pub key_ref: String,
     pub display_name: String,
-    pub models_json: String,
+    pub models: Vec<String>,
     pub updated_at: i64,
     pub deleted_at: i64,
-}
-
-impl Default for ProviderAccountRow {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            vendor_id: String::new(),
-            base_url: String::new(),
-            key_ref: String::new(),
-            display_name: String::new(),
-            models_json: "[]".into(),
-            updated_at: 0,
-            deleted_at: 0,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -7568,6 +7568,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "kim-agent-codec",
  "kim-client",
  "kim-protocol",
  "libsqlite3-sys",
@@ -7639,19 +7640,12 @@ dependencies = [
 name = "kim_agent_ffi"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "flutter_rust_bridge",
- "futures",
+ "kim-agent-codec",
  "kim-agent-host",
- "kim-log",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -7659,13 +7653,11 @@ name = "kim_client_ffi"
 version = "0.1.0"
 dependencies = [
  "flutter_rust_bridge",
- "kim-agent-codec",
  "kim-client",
  "kim-desktop-runtime",
  "kim-log",
  "kim-sdk",
  "libc",
- "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tracing",

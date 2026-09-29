@@ -7,7 +7,6 @@ import 'dart:io';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/bridge/kim_ports.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/workspace.dart';
 import 'package:kim_mobile/features/agent/workspace_access.dart';
 
 class CatalogSkill {
@@ -183,10 +182,9 @@ Future<List<CatalogSkill>> loadAppSkillCatalog({
 
 Future<List<CatalogSkill>> loadPortableSkills({
   required AgentBridge bridge,
-  String projectRoot = '',
 }) async {
   await bridge.ensure();
-  final rows = await bridge.skillPortableList(projectRoot: projectRoot);
+  final rows = await bridge.skillPortableList();
   return [
     for (final row in rows)
       CatalogSkill(
@@ -207,19 +205,7 @@ Future<List<CatalogSkill>> loadPortableSkillCatalog({
   WorkspaceAccess? access,
   KimClientPort? client,
 }) async {
-  final acc = access ?? workspaceAccess;
-  var projectRoot = '';
-  if (profile.workspace.isRepo) {
-    final resolved = await resolveAgentProjectRoot(
-      profile: profile,
-      access: acc,
-      client: client,
-    );
-    if (!resolved.invalidRepo) {
-      projectRoot = resolved.path;
-    }
-  }
-  return loadPortableSkills(bridge: bridge, projectRoot: projectRoot);
+  return loadPortableSkills(bridge: bridge);
 }
 
 /// App catalog first; portable fills remaining ids. Sorted by name.

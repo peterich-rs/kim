@@ -11,7 +11,8 @@ import 'package:kim_mobile/core/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/permissions.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_kind show ThreadKind;
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/features/session/panic.dart';
@@ -208,8 +209,6 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
         case SessionUpdate_AuthExpired():
           KimLogger.warn('auth expired');
           unawaited(ref.read(authProvider.notifier).signOut(expired: true));
-        case SessionUpdate_TokenRenew():
-        // Rust already wrote the renewed JWT through the secret store.
         case SessionUpdate_FriendRequest():
           unawaited(KimHaptics.light());
         case SessionUpdate_FriendAccepted():
@@ -271,7 +270,9 @@ class LinkNotifier extends Notifier<KimLinkState> with WidgetsBindingObserver {
               .applyPush(
                 reader: reader,
                 dest: dest,
-                kind: kind,
+                kind: kind == rust_kind.ThreadKind.group
+                    ? ThreadKind.group
+                    : ThreadKind.user,
                 messageId: messageId.toInt(),
               );
         case SessionUpdate_RustPanic(:final message):

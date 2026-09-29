@@ -11,7 +11,6 @@ import 'api/bootstrap.dart';
 import 'api/client.dart';
 import 'api/failure.dart';
 import 'api/handles.dart';
-import 'api/simple.dart';
 import 'api/types.dart';
 
 import 'dart:async';
@@ -30,22 +29,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_AgentCatalogHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle;
-
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_ContactsHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle;
-
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_ConversationHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle;
-
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_InboxHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle;
-
-  CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_KimAuthPtr => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth;
 
@@ -53,36 +36,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   get rust_arc_decrement_strong_count_KimUiHandlePtr => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle;
 
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_MediaHandlePtr => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle;
-
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
-
-  @protected
-  AgentCatalogHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ContactsHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ConversationHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    dynamic raw,
-  );
-
-  @protected
-  InboxHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    dynamic raw,
-  );
 
   @protected
   KimAuth
@@ -93,36 +48,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   KimUiHandle
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
-    dynamic raw,
-  );
-
-  @protected
-  MediaHandle
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    dynamic raw,
-  );
-
-  @protected
-  AgentCatalogHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ContactsHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ConversationHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    dynamic raw,
-  );
-
-  @protected
-  InboxHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
     dynamic raw,
   );
 
@@ -139,36 +64,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  MediaHandle
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    dynamic raw,
-  );
-
-  @protected
-  AgentCatalogHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ContactsHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    dynamic raw,
-  );
-
-  @protected
-  ConversationHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    dynamic raw,
-  );
-
-  @protected
-  InboxHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    dynamic raw,
-  );
-
-  @protected
   KimAuth
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     dynamic raw,
@@ -181,19 +76,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  MediaHandle
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    dynamic raw,
-  );
-
-  @protected
   RustStreamSink<AgentPermissionEvent>
   dco_decode_StreamSink_agent_permission_event_Sse(dynamic raw);
-
-  @protected
-  RustStreamSink<AgentRunRequest> dco_decode_StreamSink_agent_run_request_Sse(
-    dynamic raw,
-  );
 
   @protected
   RustStreamSink<AgentUiStatus> dco_decode_StreamSink_agent_ui_status_Sse(
@@ -232,6 +116,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentCard dco_decode_agent_card(dynamic raw);
 
   @protected
+  AgentCardState dco_decode_agent_card_state(dynamic raw);
+
+  @protected
+  AgentCardType dco_decode_agent_card_type(dynamic raw);
+
+  @protected
   AgentFlags dco_decode_agent_flags(dynamic raw);
 
   @protected
@@ -239,12 +129,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AgentProfile dco_decode_agent_profile(dynamic raw);
-
-  @protected
-  AgentRunRequest dco_decode_agent_run_request(dynamic raw);
-
-  @protected
-  AgentRunResult dco_decode_agent_run_result(dynamic raw);
 
   @protected
   AgentTurnState dco_decode_agent_turn_state(dynamic raw);
@@ -262,19 +146,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
-  Bot dco_decode_bot(dynamic raw);
-
-  @protected
   AgentCard dco_decode_box_autoadd_agent_card(dynamic raw);
 
   @protected
   AgentFlags dco_decode_box_autoadd_agent_flags(dynamic raw);
-
-  @protected
-  AgentProfile dco_decode_box_autoadd_agent_profile(dynamic raw);
-
-  @protected
-  AgentRunResult dco_decode_box_autoadd_agent_run_result(dynamic raw);
 
   @protected
   DeviceOverlay dco_decode_box_autoadd_device_overlay(dynamic raw);
@@ -286,10 +161,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
   @protected
-  KimOutgoingContent dco_decode_box_autoadd_kim_outgoing_content(dynamic raw);
+  LinkState dco_decode_box_autoadd_link_state(dynamic raw);
 
   @protected
-  LinkState dco_decode_box_autoadd_link_state(dynamic raw);
+  OutgoingContent dco_decode_box_autoadd_outgoing_content(dynamic raw);
 
   @protected
   ProviderAccount dco_decode_box_autoadd_provider_account(dynamic raw);
@@ -304,13 +179,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TimelineSnapshot dco_decode_box_autoadd_timeline_snapshot(dynamic raw);
 
   @protected
-  UiCommand dco_decode_box_autoadd_ui_command(dynamic raw);
-
-  @protected
   CapabilityPreview dco_decode_capability_preview(dynamic raw);
-
-  @protected
-  CommandAck dco_decode_command_ack(dynamic raw);
 
   @protected
   ContactsSnapshot dco_decode_contacts_snapshot(dynamic raw);
@@ -325,16 +194,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
-  KimBotPendingItem dco_decode_kim_bot_pending_item(dynamic raw);
-
-  @protected
   KimCommandReceipt dco_decode_kim_command_receipt(dynamic raw);
-
-  @protected
-  KimOutgoingContent dco_decode_kim_outgoing_content(dynamic raw);
-
-  @protected
-  KimTalkResult dco_decode_kim_talk_result(dynamic raw);
 
   @protected
   LinkState dco_decode_link_state(dynamic raw);
@@ -344,9 +204,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AgentProfile> dco_decode_list_agent_profile(dynamic raw);
-
-  @protected
-  List<KimBotPendingItem> dco_decode_list_kim_bot_pending_item(dynamic raw);
 
   @protected
   List<MessageView> dco_decode_list_message_view(dynamic raw);
@@ -376,6 +233,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LocalMedia dco_decode_local_media(dynamic raw);
 
   @protected
+  MediaKind dco_decode_media_kind(dynamic raw);
+
+  @protected
   MessageView dco_decode_message_view(dynamic raw);
 
   @protected
@@ -383,6 +243,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  AgentCard? dco_decode_opt_box_autoadd_agent_card(dynamic raw);
 
   @protected
   DeviceOverlay? dco_decode_opt_box_autoadd_device_overlay(dynamic raw);
@@ -394,6 +257,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
   @protected
+  OutgoingContent dco_decode_outgoing_content(dynamic raw);
+
+  @protected
   Person dco_decode_person(dynamic raw);
 
   @protected
@@ -403,7 +269,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Profile dco_decode_profile(dynamic raw);
 
   @protected
+  ProfileKind dco_decode_profile_kind(dynamic raw);
+
+  @protected
+  ProfilePlacement dco_decode_profile_placement(dynamic raw);
+
+  @protected
   ProviderAccount dco_decode_provider_account(dynamic raw);
+
+  @protected
+  Relation dco_decode_relation(dynamic raw);
 
   @protected
   RoomMember dco_decode_room_member(dynamic raw);
@@ -425,6 +300,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SettingsPreset dco_decode_settings_preset(dynamic raw);
+
+  @protected
+  ThreadKind dco_decode_thread_kind(dynamic raw);
+
+  @protected
+  ThreadPreview dco_decode_thread_preview(dynamic raw);
 
   @protected
   ThreadView dco_decode_thread_view(dynamic raw);
@@ -451,9 +332,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_u_8(dynamic raw);
 
   @protected
-  UiCommand dco_decode_ui_command(dynamic raw);
-
-  @protected
   void dco_decode_unit(dynamic raw);
 
   @protected
@@ -461,30 +339,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
-
-  @protected
-  AgentCatalogHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ContactsHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ConversationHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  InboxHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    SseDeserializer deserializer,
-  );
 
   @protected
   KimAuth
@@ -495,36 +349,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   KimUiHandle
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  MediaHandle
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  AgentCatalogHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ContactsHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ConversationHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  InboxHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
     SseDeserializer deserializer,
   );
 
@@ -541,36 +365,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  MediaHandle
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  AgentCatalogHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ContactsHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  ConversationHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  InboxHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   KimAuth
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     SseDeserializer deserializer,
@@ -583,19 +377,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  MediaHandle
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   RustStreamSink<AgentPermissionEvent>
   sse_decode_StreamSink_agent_permission_event_Sse(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  RustStreamSink<AgentRunRequest> sse_decode_StreamSink_agent_run_request_Sse(
     SseDeserializer deserializer,
   );
 
@@ -636,6 +419,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AgentCard sse_decode_agent_card(SseDeserializer deserializer);
 
   @protected
+  AgentCardState sse_decode_agent_card_state(SseDeserializer deserializer);
+
+  @protected
+  AgentCardType sse_decode_agent_card_type(SseDeserializer deserializer);
+
+  @protected
   AgentFlags sse_decode_agent_flags(SseDeserializer deserializer);
 
   @protected
@@ -645,12 +434,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AgentProfile sse_decode_agent_profile(SseDeserializer deserializer);
-
-  @protected
-  AgentRunRequest sse_decode_agent_run_request(SseDeserializer deserializer);
-
-  @protected
-  AgentRunResult sse_decode_agent_run_result(SseDeserializer deserializer);
 
   @protected
   AgentTurnState sse_decode_agent_turn_state(SseDeserializer deserializer);
@@ -668,23 +451,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
-  Bot sse_decode_bot(SseDeserializer deserializer);
-
-  @protected
   AgentCard sse_decode_box_autoadd_agent_card(SseDeserializer deserializer);
 
   @protected
   AgentFlags sse_decode_box_autoadd_agent_flags(SseDeserializer deserializer);
-
-  @protected
-  AgentProfile sse_decode_box_autoadd_agent_profile(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  AgentRunResult sse_decode_box_autoadd_agent_run_result(
-    SseDeserializer deserializer,
-  );
 
   @protected
   DeviceOverlay sse_decode_box_autoadd_device_overlay(
@@ -698,12 +468,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
-  KimOutgoingContent sse_decode_box_autoadd_kim_outgoing_content(
-    SseDeserializer deserializer,
-  );
+  LinkState sse_decode_box_autoadd_link_state(SseDeserializer deserializer);
 
   @protected
-  LinkState sse_decode_box_autoadd_link_state(SseDeserializer deserializer);
+  OutgoingContent sse_decode_box_autoadd_outgoing_content(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ProviderAccount sse_decode_box_autoadd_provider_account(
@@ -724,13 +494,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  UiCommand sse_decode_box_autoadd_ui_command(SseDeserializer deserializer);
-
-  @protected
   CapabilityPreview sse_decode_capability_preview(SseDeserializer deserializer);
-
-  @protected
-  CommandAck sse_decode_command_ack(SseDeserializer deserializer);
 
   @protected
   ContactsSnapshot sse_decode_contacts_snapshot(SseDeserializer deserializer);
@@ -745,22 +509,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
-  KimBotPendingItem sse_decode_kim_bot_pending_item(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   KimCommandReceipt sse_decode_kim_command_receipt(
     SseDeserializer deserializer,
   );
-
-  @protected
-  KimOutgoingContent sse_decode_kim_outgoing_content(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  KimTalkResult sse_decode_kim_talk_result(SseDeserializer deserializer);
 
   @protected
   LinkState sse_decode_link_state(SseDeserializer deserializer);
@@ -770,11 +521,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AgentProfile> sse_decode_list_agent_profile(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  List<KimBotPendingItem> sse_decode_list_kim_bot_pending_item(
     SseDeserializer deserializer,
   );
 
@@ -808,6 +554,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LocalMedia sse_decode_local_media(SseDeserializer deserializer);
 
   @protected
+  MediaKind sse_decode_media_kind(SseDeserializer deserializer);
+
+  @protected
   MessageView sse_decode_message_view(SseDeserializer deserializer);
 
   @protected
@@ -815,6 +564,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  AgentCard? sse_decode_opt_box_autoadd_agent_card(
+    SseDeserializer deserializer,
+  );
 
   @protected
   DeviceOverlay? sse_decode_opt_box_autoadd_device_overlay(
@@ -828,6 +582,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
+  OutgoingContent sse_decode_outgoing_content(SseDeserializer deserializer);
+
+  @protected
   Person sse_decode_person(SseDeserializer deserializer);
 
   @protected
@@ -837,7 +594,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Profile sse_decode_profile(SseDeserializer deserializer);
 
   @protected
+  ProfileKind sse_decode_profile_kind(SseDeserializer deserializer);
+
+  @protected
+  ProfilePlacement sse_decode_profile_placement(SseDeserializer deserializer);
+
+  @protected
   ProviderAccount sse_decode_provider_account(SseDeserializer deserializer);
+
+  @protected
+  Relation sse_decode_relation(SseDeserializer deserializer);
 
   @protected
   RoomMember sse_decode_room_member(SseDeserializer deserializer);
@@ -859,6 +625,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SettingsPreset sse_decode_settings_preset(SseDeserializer deserializer);
+
+  @protected
+  ThreadKind sse_decode_thread_kind(SseDeserializer deserializer);
+
+  @protected
+  ThreadPreview sse_decode_thread_preview(SseDeserializer deserializer);
 
   @protected
   ThreadView sse_decode_thread_view(SseDeserializer deserializer);
@@ -885,9 +657,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
-  UiCommand sse_decode_ui_command(SseDeserializer deserializer);
-
-  @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
@@ -896,34 +665,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    AgentCatalogHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    ContactsHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    ConversationHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    InboxHandle self,
     SseSerializer serializer,
   );
 
@@ -943,41 +684,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    MediaHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    AgentCatalogHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    ContactsHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    ConversationHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    InboxHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     KimAuth self,
     SseSerializer serializer,
@@ -987,41 +693,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
     KimUiHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    MediaHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    AgentCatalogHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    ContactsHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    ConversationHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    InboxHandle self,
     SseSerializer serializer,
   );
 
@@ -1040,21 +711,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    MediaHandle self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_StreamSink_agent_permission_event_Sse(
     RustStreamSink<AgentPermissionEvent> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_StreamSink_agent_run_request_Sse(
-    RustStreamSink<AgentRunRequest> self,
     SseSerializer serializer,
   );
 
@@ -1101,6 +759,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_agent_card(AgentCard self, SseSerializer serializer);
 
   @protected
+  void sse_encode_agent_card_state(
+    AgentCardState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_agent_card_type(AgentCardType self, SseSerializer serializer);
+
+  @protected
   void sse_encode_agent_flags(AgentFlags self, SseSerializer serializer);
 
   @protected
@@ -1111,18 +778,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_agent_profile(AgentProfile self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_agent_run_request(
-    AgentRunRequest self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_agent_run_result(
-    AgentRunResult self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_agent_turn_state(
@@ -1143,9 +798,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
-  void sse_encode_bot(Bot self, SseSerializer serializer);
-
-  @protected
   void sse_encode_box_autoadd_agent_card(
     AgentCard self,
     SseSerializer serializer,
@@ -1154,18 +806,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_agent_flags(
     AgentFlags self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_box_autoadd_agent_profile(
-    AgentProfile self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_box_autoadd_agent_run_result(
-    AgentRunResult self,
     SseSerializer serializer,
   );
 
@@ -1185,14 +825,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_kim_outgoing_content(
-    KimOutgoingContent self,
+  void sse_encode_box_autoadd_link_state(
+    LinkState self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_link_state(
-    LinkState self,
+  void sse_encode_box_autoadd_outgoing_content(
+    OutgoingContent self,
     SseSerializer serializer,
   );
 
@@ -1221,19 +861,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_ui_command(
-    UiCommand self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_capability_preview(
     CapabilityPreview self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_command_ack(CommandAck self, SseSerializer serializer);
 
   @protected
   void sse_encode_contacts_snapshot(
@@ -1251,25 +882,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
-  void sse_encode_kim_bot_pending_item(
-    KimBotPendingItem self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_kim_command_receipt(
     KimCommandReceipt self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_kim_outgoing_content(
-    KimOutgoingContent self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_kim_talk_result(KimTalkResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_link_state(LinkState self, SseSerializer serializer);
@@ -1280,12 +896,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_agent_profile(
     List<AgentProfile> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_kim_bot_pending_item(
-    List<KimBotPendingItem> self,
     SseSerializer serializer,
   );
 
@@ -1335,6 +945,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_local_media(LocalMedia self, SseSerializer serializer);
 
   @protected
+  void sse_encode_media_kind(MediaKind self, SseSerializer serializer);
+
+  @protected
   void sse_encode_message_view(MessageView self, SseSerializer serializer);
 
   @protected
@@ -1342,6 +955,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_agent_card(
+    AgentCard? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_device_overlay(
@@ -1359,6 +978,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_outgoing_content(
+    OutgoingContent self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_person(Person self, SseSerializer serializer);
 
   @protected
@@ -1368,10 +993,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_profile(Profile self, SseSerializer serializer);
 
   @protected
+  void sse_encode_profile_kind(ProfileKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_profile_placement(
+    ProfilePlacement self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_provider_account(
     ProviderAccount self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_relation(Relation self, SseSerializer serializer);
 
   @protected
   void sse_encode_room_member(RoomMember self, SseSerializer serializer);
@@ -1399,6 +1036,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     SettingsPreset self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_thread_kind(ThreadKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_thread_preview(ThreadPreview self, SseSerializer serializer);
 
   @protected
   void sse_encode_thread_view(ThreadView self, SseSerializer serializer);
@@ -1431,9 +1074,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
-  void sse_encode_ui_command(UiCommand self, SseSerializer serializer);
-
-  @protected
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
@@ -1444,70 +1084,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
 class RustLibWire implements BaseWire {
   RustLibWire.fromExternalLibrary(ExternalLibrary lib);
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-        ptr,
-      );
 
   void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
@@ -1540,22 +1116,6 @@ class RustLibWire implements BaseWire {
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
         ptr,
       );
-
-  void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-        ptr,
-      );
-
-  void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    int ptr,
-  ) => wasmModule
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-        ptr,
-      );
 }
 
 @JS('wasm_bindgen')
@@ -1564,46 +1124,6 @@ external RustLibWasmModule get wasmModule;
 @JS()
 @anonymous
 extension type RustLibWasmModule._(JSObject _) implements JSObject {
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAgentCatalogHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContactsHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerConversationHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerInboxHandle(
-    int ptr,
-  );
-
   external void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimAuth(
     int ptr,
@@ -1621,16 +1141,6 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void
   rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
-    int ptr,
-  );
-
-  external void
-  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMediaHandle(
     int ptr,
   );
 }

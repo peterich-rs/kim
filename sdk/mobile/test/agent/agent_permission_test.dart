@@ -1,67 +1,23 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/session/providers.dart';
 
-class _FakeSession implements AgentSessionPort {
-  String? permission;
+import '../support/fake_kim.dart';
+
+class _RecordingClient extends FakeKim {
   String? callId;
+  bool? allow;
 
   @override
-  Stream<AgentUiEvent> listen() => const Stream.empty();
-
-  @override
-  Future<String> prompt({required String text}) async => '';
-
-  @override
-  Future<String> promptWithContext({
-    required String text,
-    required String contextJson,
-  }) async => '';
-
-  @override
-  Future<String> completeTool({
+  Future<void> respondAgentPermission({
     required String callId,
-    required String outputJson,
-  }) async => '';
-
-  @override
-  Future<String> respondPermission({
-    required String callId,
-    required String permission,
+    required bool allow,
   }) async {
     this.callId = callId;
-    this.permission = permission;
-    return '';
+    this.allow = allow;
   }
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  Future<void> abort() async {}
-
-  @override
-  Future<void> park() async {}
-
-  @override
-  Future<void> steer({required String text}) async {}
-
-  @override
-  Future<void> reconfigure() async {}
-
-  @override
-  Future<ResumeReport> resume() async =>
-      const ResumeReport(resumedOps: [], statuses: []);
-
-  @override
-  Future<SessionSnapshot> snapshot() async => const SessionSnapshot(
-    busy: false,
-    lastOperationId: '',
-    phase: '',
-    pendingCallIds: [],
-  );
 }
 
 void main() {
@@ -74,32 +30,28 @@ void main() {
     expect(cleared.containsKey(kAskBeforeBash), isFalse);
   });
 
-  test(
-    'hub surfaces a prompt and routes respond to the live session',
-    () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final hub = container.read(agentPermissionHubProvider.notifier);
-      final session = _FakeSession();
-      hub.attach('b_bot', session);
-      hub.prompt(
-        'b_bot',
-        const AgentPermissionPrompt(
-          callId: 'c1',
-          name: 'bash',
-          preview: 'Allow bash?',
-        ),
-      );
-      expect(
-        container.read(agentPermissionHubProvider).of('b_bot'),
-        hasLength(1),
-      );
-      await hub.respond(dest: 'b_bot', callId: 'c1', permission: 'allow_once');
-      expect(session.callId, 'c1');
-      expect(session.permission, 'allow_once');
-      expect(container.read(agentPermissionHubProvider).of('b_bot'), isEmpty);
-    },
-  );
+  test('hub clears the prompt and answers through the client port', () async {
+    final client = _RecordingClient();
+    final container = ProviderContainer(
+      overrides: [clientPortProvider.overrideWithValue(client)],
+    );
+    addTearDown(container.dispose);
+    final hub = container.read(agentPermissionHubProvider.notifier)
+      ..bindClient(client);
+    hub.prompt(
+      'b_bot',
+      const AgentPermissionPrompt(
+        callId: 'c1',
+        name: 'bash',
+        preview: 'Allow bash?',
+      ),
+    );
+    expect(container.read(agentPermissionHubProvider).of('b_bot'), hasLength(1));
+    await hub.respond(dest: 'b_bot', callId: 'c1', permission: 'allow_once');
+    expect(client.callId, 'c1');
+    expect(client.allow, isTrue);
+    expect(container.read(agentPermissionHubProvider).of('b_bot'), isEmpty);
+  });
 
   test('profile JSON keeps ask-before overrides', () {
     final profile = AgentProfile(

@@ -17,13 +17,14 @@ fn production_migrate_does_not_import_messages_into_outbox() {
 }
 
 #[tokio::test]
-async fn v4_db_gains_spec_blob_accounts_and_overlay() {
+async fn older_user_version_is_rebuilt_without_body_json() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("kim-cache.db");
     let opts = SqliteConnectOptions::new()
         .filename(&path)
         .create_if_missing(true);
     let pool = sqlx::SqlitePool::connect_with(opts).await.unwrap();
+    pool.execute("PRAGMA user_version = 4").await.unwrap();
     pool.execute("CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)")
         .await
         .unwrap();
@@ -46,6 +47,9 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
     )
     .await
     .unwrap();
+    pool.execute("INSERT INTO agent_profiles (account, profile_id, nickname, body_json, updated_at) VALUES ('a','p','n','{}',1)")
+        .await
+        .unwrap();
     pool.close().await;
 
     let _sdk = kim_sdk::KimSdk::open(path.to_string_lossy().into_owned())
@@ -60,7 +64,17 @@ async fn v4_db_gains_spec_blob_accounts_and_overlay() {
         .unwrap()
         .try_get("value")
         .unwrap();
-    assert_eq!(version, "9");
+    assert_eq!(version, "10");
+    let user_version: i64 = sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(user_version, 10);
+    let cols = column_names(&pool, "agent_profiles").await;
+    assert!(
+        !cols.iter().any(|c| c == "body_json"),
+        "rebuilt schema must drop body_json: {cols:?}"
+    );
 
     let thread_cols = column_names(&pool, "threads").await;
     assert!(

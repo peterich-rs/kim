@@ -12,6 +12,7 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/bridge/conversation_port.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' show OutgoingContent;
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 
@@ -66,7 +67,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
   }
 
   Future<void> _start() async {
-    _room = ref.read(clientPortProvider).conversation(dest);
+    _room = ref.read(clientPortProvider).conversation(dest, kind);
     final unread = ref.read(threadsProvider).thread(dest)?.unread ?? 0;
     final messages = ref.read(threadMessagesProvider(dest).notifier);
     messages.captureUnreadAnchor(
@@ -125,7 +126,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     }
     final KimClientPort client = ref.read(clientPortProvider);
     final id = dest;
-    final port = client.conversation(id);
+    final port = client.conversation(id, kind);
     _room = port;
     try {
       final rows = await port.enter();
@@ -314,8 +315,8 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     final id = const Uuid().v4();
     KimLogger.info('enqueue text dest=$dest clientId=$id kind=$kind');
     return client
-        .conversation(dest)
-        .sendText(kind: kind, text: body, clientId: id);
+        .conversation(dest, kind)
+        .sendText(text: body, clientId: id);
   }
 
   Future<List<KimCommandReceipt>> _enqueueImages(
@@ -333,11 +334,16 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
         'enqueue media dest=$dest clientId=$id kind=$kind video=${asset.isVideo}',
       );
       final content = asset.isVideo
-          ? KimOutgoingContent.video(url: asset.path)
-          : KimOutgoingContent.image(
-              url: asset.path,
+          ? OutgoingContent.video(
+              path: asset.path,
+              byteSize: asset.size,
+            )
+          : OutgoingContent.image(
+              path: asset.path,
+              mime: asset.mimeType,
               width: asset.width,
               height: asset.height,
+              byteSize: asset.size,
             );
       out.add(
         await client.enqueueMessage(
@@ -345,9 +351,6 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
           kind: kind,
           content: content,
           clientId: id,
-          localPath: asset.path,
-          width: asset.width,
-          height: asset.height,
         ),
       );
     }

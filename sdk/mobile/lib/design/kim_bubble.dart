@@ -31,8 +31,8 @@ bool kimIsGroupEnd(KimChatMsg msg, KimChatMsg? next) {
   return !_sameGroup(msg, next);
 }
 
-/// Consecutive grouping is millisecond-based on every platform. Wire
-/// `sendTime` may be ns/µs/s; [dateTimeFromEpoch] normalizes first.
+/// Both timestamps are milliseconds from the store. Out-of-range values
+/// do not group.
 bool _sameGroup(KimChatMsg? earlier, KimChatMsg? later) {
   if (earlier == null || later == null || earlier.sys || later.sys) {
     return false;
@@ -91,12 +91,18 @@ class KimMessageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (message.isAgentCard) {
-      final card = AgentToolCard.parse(message.body);
-      // Hide tool execution traces; keep permission prompts only.
-      if (!card.isConfirmation) {
+      final card = message.card;
+      if (card == null || !card.actionRequired) {
         return const SizedBox.shrink();
       }
-      return AgentActionBubble.fromMessage(message);
+      return AgentActionBubble(
+        dest: message.dest,
+        callId: card.callId,
+        name: card.name,
+        preview: card.preview,
+        pending: card.pending,
+        confirmation: card.actionRequired,
+      );
     }
     if (message.sys) {
       return Padding(

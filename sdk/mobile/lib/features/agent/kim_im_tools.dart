@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/features/agent/mention.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' show OutgoingContent;
 
 /// Executes deferred KIM tools the Goose host yields to Dart.
 class KimImTools {
@@ -166,7 +167,7 @@ class KimImTools {
     await client.enqueueMessage(
       dest: to,
       kind: ThreadKind.user,
-      content: KimOutgoingContent.text(body),
+      content: OutgoingContent.text(body: body),
       clientId: const Uuid().v4(),
     );
     return jsonEncode({'ok': true, 'dest': to});

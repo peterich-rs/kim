@@ -12,7 +12,8 @@ class AgentCatalog {
 
   Future<List<AgentProfile>> profiles() => client.listAgentProfiles();
 
-  Future<void> upsert(AgentProfile row) => client.upsertAgentProfile(row);
+  Future<void> upsert(String documentJson) =>
+      client.upsertAgentProfile(documentJson);
 
   Future<void> delete(String id) => client.deleteAgentProfile(id);
 

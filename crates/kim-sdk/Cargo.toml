@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 async-trait.workspace = true
+kim-agent-codec.workspace = true
 kim-client.workspace = true
 kim-protocol.workspace = true
 reqwest = { workspace = true }

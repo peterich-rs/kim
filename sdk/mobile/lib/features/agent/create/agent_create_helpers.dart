@@ -117,14 +117,10 @@ Future<void> reloadAgentCreateSkills({
   if (!agentHostSupported) {
     return;
   }
-  final draft = ref.read(agentCreateFormProvider);
   try {
     final bridge = ref.read(agentBridgeProvider);
     final app = await loadAppSkillCatalog(bridge: bridge);
-    final portable = await loadPortableSkills(
-      bridge: bridge,
-      projectRoot: draft.kindRepo ? draft.repoPath : '',
-    );
+    final portable = await loadPortableSkills(bridge: bridge);
     if (!mounted()) {
       return;
     }

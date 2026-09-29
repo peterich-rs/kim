@@ -22,7 +22,8 @@ void main() {
         threads: const [
           ThreadView(
             id: 'G1',
-            kind: 1,
+            kind: ThreadKind.group,
+            preview: ThreadPreview.text(snippet: ''),
             title: 'G1',
             avatar: '',
             lastBody: '',
@@ -57,7 +58,8 @@ void main() {
         threads: const [
           ThreadView(
             id: 'bob',
-            kind: 0,
+            kind: ThreadKind.user,
+            preview: ThreadPreview.text(snippet: ''),
             title: 'bob',
             avatar: '',
             lastBody: '',

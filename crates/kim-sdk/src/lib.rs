@@ -7,6 +7,7 @@ mod error;
 mod ids;
 mod media;
 mod metrics;
+mod model;
 mod platform;
 mod proto;
 mod query;
@@ -29,8 +30,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::proto::ObservingProtocol;
 pub use agent::{
-    AgentPort, AgentProfileRow, AgentRunRequest, AgentRunResult, AgentRuntime, DeviceOverlayRow,
-    FfiAgentRuntime, MobileAgent, NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
+    AgentPort, AgentProfileRow, AgentRunResult, AgentRuntime, DeviceOverlayRow, MobileAgent,
+    NoopAgent, ProviderAccountRow, ScriptedRuntime, QUEUE_CAP,
 };
 pub use command::{
     CommandReceipt, ConversationKey, ConversationVisibility, MessagePage, OutgoingPayload,
@@ -43,6 +44,10 @@ pub use ids::{
 };
 pub use media::{image_mime_ok, validate_media_path, MediaRef, MediaUploader, MAX_IMAGE_BYTES};
 pub use metrics::SdkMetrics;
+pub use model::{
+    AgentCardState, AgentCardType, AgentFlagRow, MediaKind, OutgoingContent, ProfileKind,
+    ProfilePlacement, Relation, ThreadKind, ThreadPreview,
+};
 pub use platform::{bootstrap, set_bootstrap, user_agent, Layout, PlatformBootstrap};
 pub use proto::ProtocolClient;
 pub use secrets::delete_global as delete_secret;
@@ -116,7 +121,6 @@ pub(crate) struct Inner {
     /// Identity is over. Latched from the link loop *and* any protocol call.
     /// The session snapshot is the control plane; events are notifications.
     session_fault: Mutex<Option<SessionFault>>,
-    ffi_runtime: Arc<FfiAgentRuntime>,
     media_dir: Mutex<Option<PathBuf>>,
     /// Profiles that permanently failed `agent_spec_upsert` this process.
     /// Prevents a bad local row from hammering the wire on every sync.
@@ -168,7 +172,6 @@ impl KimSdk {
                 outbox_run: Mutex::new(CancellationToken::new()),
                 read_sync_kick: Mutex::new(None),
                 session_fault: Mutex::new(None),
-                ffi_runtime: FfiAgentRuntime::new(),
                 media_dir: Mutex::new(None),
                 agent_spec_push_skip: Mutex::new(HashSet::new()),
             }),
@@ -513,7 +516,7 @@ impl KimSdk {
         Ok(())
     }
 
-    pub async fn mark_thread_read(&self, dest: String, kind: i32) -> Result<(), SdkError> {
+    pub async fn mark_thread_read(&self, dest: String, kind: ThreadKind) -> Result<(), SdkError> {
         if dest.is_empty() {
             return Ok(());
         }
@@ -521,7 +524,7 @@ impl KimSdk {
         let session = self.session_snapshot()?;
         let epoch = self.current_epoch().0;
         let ((), sequence) = store
-            .mark_thread_read_local(epoch, session.account, dest, kind)
+            .mark_thread_read_local(epoch, session.account, dest, kind.as_wire())
             .await?;
         self.after_command(sequence).await;
         self.kick_read_sync();
@@ -552,8 +555,8 @@ impl KimSdk {
         let kind = visibility
             .conversation
             .as_ref()
-            .map(|c| c.kind)
-            .unwrap_or(0);
+            .map(|c| c.kind.as_wire())
+            .unwrap_or(kim_protocol::INBOX_KIND_USER);
         let ((), sequence) = store
             .set_visibility(
                 epoch,
@@ -613,27 +616,54 @@ impl KimSdk {
         *lock(&self.inner.agent) = agent;
     }
 
-    /// Desktop only. Phone leaves [`NoopAgent`].
-    pub fn install_mobile_agent(&self) {
-        let runtime = self.inner.ffi_runtime.clone();
-        self.set_agent(Arc::new(MobileAgent::new(self.clone(), runtime)));
-    }
-
-    pub fn subscribe_agent_run(&self) -> mpsc::Receiver<AgentRunRequest> {
-        self.inner.ffi_runtime.subscribe()
-    }
-
-    pub fn submit_agent_run(&self, result: AgentRunResult) {
-        self.inner.ffi_runtime.submit(result);
-    }
-
     fn agent_account_key(&self) -> String {
         self.session_snapshot()
             .map(|s| s.account)
             .unwrap_or_default()
     }
 
-    pub async fn upsert_agent_profile(&self, row: AgentProfileRow) -> Result<(), SdkError> {
+    /// Validate a codec document and store only the blob.
+    pub async fn upsert_agent_profile(&self, document_json: String) -> Result<(), SdkError> {
+        let value: serde_json::Value =
+            serde_json::from_str(&document_json).map_err(|err| SdkError::InvalidArgument {
+                message: err.to_string(),
+            })?;
+        let placement = value
+            .get("placement")
+            .and_then(|item| item.as_str())
+            .map(ProfilePlacement::from_db)
+            .unwrap_or(ProfilePlacement::Local);
+        let blob = kim_agent_codec::json_to_blob(&document_json).map_err(|err| {
+            SdkError::InvalidArgument {
+                message: err.to_string(),
+            }
+        })?;
+        let decoded =
+            kim_agent_codec::decode_spec(&blob).map_err(|err| SdkError::InvalidArgument {
+                message: err.to_string(),
+            })?;
+        let row = AgentProfileRow {
+            profile_id: decoded.profile.id,
+            nickname: decoded.profile.display_name,
+            server_account: if decoded.server_account.is_empty() {
+                value
+                    .get("server_account")
+                    .and_then(|item| item.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                decoded.server_account
+            },
+            document_json: String::new(),
+            body_blob: blob,
+            placement,
+            updated_at: 0,
+            deleted_at: 0,
+        };
+        self.store_agent_profile_row(row).await
+    }
+
+    pub async fn store_agent_profile_row(&self, row: AgentProfileRow) -> Result<(), SdkError> {
         let store = self.store()?;
         let ((), _seq) = store
             .upsert_agent_profile(self.agent_account_key(), row)
@@ -652,7 +682,23 @@ impl KimSdk {
     pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfileRow>, SdkError> {
         let store = self.store()?;
         let rows = store.load_agent_profiles(&self.agent_account_key()).await?;
-        Ok(rows.into_iter().filter(|r| r.deleted_at == 0).collect())
+        let mut out = Vec::new();
+        for mut row in rows {
+            if row.deleted_at != 0 {
+                continue;
+            }
+            row.document_json = if row.body_blob.is_empty() {
+                String::new()
+            } else {
+                kim_agent_codec::blob_to_json(&row.body_blob).map_err(|err| {
+                    SdkError::InvalidArgument {
+                        message: err.to_string(),
+                    }
+                })?
+            };
+            out.push(row);
+        }
+        Ok(out)
     }
 
     pub async fn import_agent_profiles(&self, rows: Vec<AgentProfileRow>) -> Result<(), SdkError> {
@@ -704,14 +750,14 @@ impl KimSdk {
         Ok(())
     }
 
-    pub async fn agent_flags(&self) -> Result<String, SdkError> {
+    pub async fn agent_flags(&self) -> Result<AgentFlagRow, SdkError> {
         let store = self.store()?;
         store.load_agent_flags().await
     }
 
-    pub async fn set_agent_flags(&self, flags_json: String) -> Result<(), SdkError> {
+    pub async fn set_agent_flags(&self, flags: AgentFlagRow) -> Result<(), SdkError> {
         let store = self.store()?;
-        let ((), _seq) = store.upsert_agent_flags(flags_json).await?;
+        let ((), _seq) = store.upsert_agent_flags(flags).await?;
         Ok(())
     }
 
@@ -738,13 +784,13 @@ impl KimSdk {
                 .map(|r| r.updated_at)
                 .unwrap_or(0);
             if rec.updated_at >= local_ts {
-                self.upsert_agent_profile(AgentProfileRow {
+                self.store_agent_profile_row(AgentProfileRow {
                     profile_id: rec.profile_id.clone(),
                     nickname: rec.nickname,
                     server_account: rec.server_account,
-                    body_json: String::new(),
+                    document_json: String::new(),
                     body_blob: rec.spec,
-                    placement: "local".into(),
+                    placement: ProfilePlacement::Local,
                     updated_at: rec.updated_at,
                     deleted_at: rec.deleted_at,
                 })
@@ -834,7 +880,7 @@ impl KimSdk {
                     base_url: acc.base_url.clone(),
                     key_ref: acc.key_ref.clone(),
                     display_name: acc.display_name.clone(),
-                    models_json: serde_json::to_string(&acc.models).unwrap_or_else(|_| "[]".into()),
+                    models: acc.models.clone(),
                     updated_at: acc.updated_at,
                     deleted_at: acc.deleted_at,
                 })
@@ -869,24 +915,32 @@ impl KimSdk {
         let rows = store
             .search_messages(&session.account, q, dest.as_deref())
             .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(d, key, sender, body, at, message_id)| MessageView {
-                key,
-                dest: d,
-                sender,
-                body,
-                local_path: None,
-                at,
-                sys: false,
-                kind: 1,
-                width: 0,
-                height: 0,
-                message_id,
-                batch_id: None,
-                send_status: SendStatus::Sent,
+        rows.into_iter()
+            .map(|(d, key, sender, body, at, message_id, kind_raw)| {
+                let kind = MediaKind::from_db(&kind_raw)?;
+                let card = if kind == MediaKind::Card {
+                    model::parse_agent_card(&body)
+                } else {
+                    None
+                };
+                Ok(MessageView {
+                    key,
+                    dest: d,
+                    sender,
+                    body,
+                    local_path: None,
+                    at,
+                    sys: false,
+                    kind,
+                    card,
+                    width: 0,
+                    height: 0,
+                    message_id,
+                    batch_id: None,
+                    send_status: SendStatus::Sent,
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub fn current_session(&self) -> Result<StartSession, SdkError> {
@@ -1152,8 +1206,8 @@ impl KimSdk {
                             .await?
                             .into_iter()
                             .find(|thread| thread.id == dest)
-                            .map(|thread| thread.kind)
-                            .unwrap_or(0);
+                            .map(|thread| thread.kind.as_wire())
+                            .unwrap_or(kim_protocol::INBOX_KIND_USER);
                         let remote = proto.history(&dest, kind, before_id, fetch_limit).await?;
                         let remote_full = remote.len() as i32 >= fetch_limit;
                         let talks: Vec<kim_client::IncomingTalk> = remote
@@ -1398,15 +1452,16 @@ impl KimSdk {
             .get(dest)
             .map(|sub| sub.limit)
             .unwrap_or(50);
-        let command = if kind == kim_protocol::INBOX_KIND_GROUP {
+        let command = if kind == ThreadKind::Group {
             kim_protocol::CMD_CHAT_GROUP_TALK
         } else {
             kim_protocol::CMD_CHAT_USER_TALK
         };
+        let wire_kind = kind.as_wire();
         let mut before_id = 0i64;
         let mut last_full;
         loop {
-            let remote = match proto.history(dest, kind, before_id, limit).await {
+            let remote = match proto.history(dest, wire_kind, before_id, limit).await {
                 Ok(rows) => rows,
                 Err(error) => {
                     self.finish_timeline_load(
@@ -1587,38 +1642,8 @@ impl KimSdk {
         self.settings_get().await
     }
 
-    /// One-shot legacy SharedPreferences handoff. Values are platform
-    /// storage reads; dedup + defaults are Rust-owned.
-    pub async fn import_legacy_prefs(
-        &self,
-        ws_url: String,
-        http_origin: String,
-        env: String,
-        locale: String,
-    ) -> Result<DeviceSettings, SdkError> {
-        let store = self.store()?;
-        if store.prefs_imported().await? {
-            return self.settings_get().await;
-        }
-        let ws_url = ws_url.trim().to_string();
-        let http_origin = if ws_url.is_empty() {
-            http_origin.trim().to_string()
-        } else {
-            kim_client::http_origin_from_ws(&ws_url)
-        };
-        let row = DeviceSettings {
-            ws_url,
-            http_origin,
-            env: if env.is_empty() { "prod".into() } else { env },
-            locale,
-            account: String::new(),
-        };
-        let ((), _seq) = store.upsert_device_settings(row, true).await?;
-        self.settings_get().await
-    }
-
-    /// Whether the legacy handoff already ran. Dart skips its import call
-    /// (and drops its prefs mirror) once this is true.
+    /// Whether device settings were marked imported. There is no legacy
+    /// handoff; Dart drops leftover UI keys without reading this flag.
     pub async fn settings_imported(&self) -> Result<bool, SdkError> {
         let store = self.store()?;
         store.prefs_imported().await
@@ -1764,21 +1789,19 @@ impl KimSdk {
                                         "persisting contact session event failed"
                                     );
                                 }
+                                if let kim_client::SessionEvent::TokenRenew { token, .. } = &ev {
+                                    if let Err(err) = write_global(KEY_JWT, token).await {
+                                        tracing::warn!(
+                                            error = %err,
+                                            "persisting renewed token failed"
+                                        );
+                                    }
+                                }
                                 if let Some(update) = session_update_from_event(ev) {
                                     if matches!(update, SessionUpdate::Link { .. }) {
                                         sdk.refresh_session_snapshot().await;
                                     }
                                     match &update {
-                                        SessionUpdate::TokenRenew { token, .. } => {
-                                            if let Err(err) =
-                                                write_global(KEY_JWT, token).await
-                                            {
-                                                tracing::warn!(
-                                                    error = %err,
-                                                    "persisting renewed token failed"
-                                                );
-                                            }
-                                        }
                                         SessionUpdate::AuthExpired { reason } => {
                                             sdk.latch_session_fault(SessionFault::IdentityExpired {
                                                 reason: reason.clone(),
@@ -2358,9 +2381,7 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
         kim_client::SessionEvent::Kickout { channel_id } => {
             Some(SessionUpdate::Kickout { channel_id })
         }
-        kim_client::SessionEvent::TokenRenew { token, exp } => {
-            Some(SessionUpdate::TokenRenew { token, exp })
-        }
+        kim_client::SessionEvent::TokenRenew { .. } => None,
         kim_client::SessionEvent::FriendRequest { from, nickname } => {
             Some(SessionUpdate::FriendRequest { from, nickname })
         }
@@ -2413,7 +2434,7 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
         } => Some(SessionUpdate::Typing {
             typer,
             dest,
-            kind,
+            kind: ThreadKind::from_wire(kind),
             active,
             phase,
         }),
@@ -2425,7 +2446,7 @@ fn session_update_from_event(ev: kim_client::SessionEvent) -> Option<SessionUpda
         } => Some(SessionUpdate::ReceiptRead {
             reader,
             dest,
-            kind,
+            kind: ThreadKind::from_wire(kind),
             message_id,
         }),
         kim_client::SessionEvent::GroupCreate { group_id, members } => {
@@ -2460,14 +2481,13 @@ fn row_to_spec_record(row: &AgentProfileRow) -> kim_client::AgentSpecRecord {
 }
 
 fn row_to_provider_account(row: &ProviderAccountRow) -> kim_client::AgentProviderAccount {
-    let models: Vec<String> = serde_json::from_str(&row.models_json).unwrap_or_default();
     kim_client::AgentProviderAccount {
         id: row.id.clone(),
         vendor_id: row.vendor_id.clone(),
         base_url: row.base_url.clone(),
         key_ref: row.key_ref.clone(),
         display_name: row.display_name.clone(),
-        models,
+        models: row.models.clone(),
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
     }

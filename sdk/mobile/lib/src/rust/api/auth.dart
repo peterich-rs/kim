@@ -10,9 +10,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 
-String httpOriginFromWs({required String wsUrl}) =>
-    RustLib.instance.api.crateApiAuthHttpOriginFromWs(wsUrl: wsUrl);
-
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimAuth>>
 abstract class KimAuth implements RustOpaqueInterface {
   Future<void> changePassword({

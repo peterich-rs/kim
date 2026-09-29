@@ -2,7 +2,7 @@
 use std::sync::{Arc, Mutex};
 
 use kim_sdk::{
-    KimSdk, MediaRef, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SessionUpdate,
+    KimSdk, OutgoingPayload, ProtocolClient, SdkError, SendMessageCommand, SessionUpdate,
     StartSession, TimelineQuery, TimelineUpdate,
 };
 
@@ -106,7 +106,7 @@ fn session(account: &str) -> StartSession {
 fn text(dest: &str, body: &str, client_id: &str) -> SendMessageCommand {
     SendMessageCommand {
         dest: dest.into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: body.into() },
         client_id: Some(client_id.into()),
         batch_id: None,
@@ -263,13 +263,13 @@ async fn emit_session_full_does_not_drop_subscriber() {
             channel_id: format!("ch-{i}"),
         });
     }
-    sdk.emit_session(SessionUpdate::TokenRenew {
-        token: "n".into(),
-        exp: 1,
+    sdk.emit_session(SessionUpdate::FriendRequest {
+        from: "n".into(),
+        nickname: "n".into(),
     });
     let mut saw_token = false;
     while let Ok(ev) = rx.try_recv() {
-        if matches!(ev, SessionUpdate::TokenRenew { .. }) {
+        if matches!(ev, SessionUpdate::FriendRequest { .. }) {
             saw_token = true;
         }
     }
@@ -324,15 +324,13 @@ async fn pump_sends_image_extra_from_outbox_row() {
     sdk.install_protocol(proto.clone());
     sdk.enqueue_message(SendMessageCommand {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Image {
-            media: MediaRef {
-                path: path.to_string_lossy().into_owned(),
-                mime: "image/jpeg".into(),
-                width: 12,
-                height: 8,
-                byte_size: 4,
-            },
+            path: path.to_string_lossy().into_owned(),
+            mime: "image/jpeg".into(),
+            width: 12,
+            height: 8,
+            byte_size: 4,
         },
         client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
         batch_id: None,
@@ -383,7 +381,7 @@ async fn mark_read_returns_without_protocol() {
         std::time::Duration::from_millis(200),
         sdk.mark_read(kim_sdk::ReadMarker {
             dest: "bob".into(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
             visible_message_id: 9,
         }),
     )
@@ -435,7 +433,7 @@ async fn mark_read_does_not_wait_for_hanging_protocol() {
         std::time::Duration::from_millis(200),
         sdk.mark_read(kim_sdk::ReadMarker {
             dest: "bob".into(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
             visible_message_id: 10,
         }),
     )

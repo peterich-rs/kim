@@ -2,6 +2,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:kim_mobile/models/models.dart';
+
 /// Peer read watermark for DM threads. Key = peer account.
 class ReceiptsState {
   const ReceiptsState({this.readUpToByDest = const {}});
@@ -22,10 +24,10 @@ class ReceiptsNotifier extends Notifier<ReceiptsState> {
   void applyPush({
     required String reader,
     required String dest,
-    required int kind,
+    required ThreadKind kind,
     required int messageId,
   }) {
-    if (kind != 0 || messageId <= 0) {
+    if (kind != ThreadKind.user || messageId <= 0) {
       return; // DM only
     }
     // Viewer is the sender; thread id is the reader (peer who read).

@@ -70,26 +70,27 @@ pub(crate) async fn upsert_device(
     Ok(())
 }
 
-pub(crate) async fn load_agent_flags(pool: &SqlitePool) -> Result<String, SdkError> {
+pub(crate) async fn load_agent_flags(
+    pool: &SqlitePool,
+) -> Result<crate::model::AgentFlagRow, SdkError> {
     let row = sqlx::query("SELECT agent_flags FROM settings WHERE account = ''")
         .fetch_optional(pool)
         .await
         .map_err(map_sqlx)?;
     match row {
-        Some(r) => Ok(r.try_get("agent_flags").map_err(map_sqlx)?),
-        None => Ok("{}".into()),
+        Some(r) => {
+            let raw: String = r.try_get("agent_flags").map_err(map_sqlx)?;
+            Ok(crate::model::AgentFlagRow::from_json(&raw))
+        }
+        None => Ok(crate::model::AgentFlagRow::default()),
     }
 }
 
 pub(crate) async fn upsert_agent_flags(
     tx: &mut SqliteConnection,
-    flags_json: &str,
+    flags: &crate::model::AgentFlagRow,
 ) -> Result<(), SdkError> {
-    let flags = if flags_json.trim().is_empty() {
-        "{}"
-    } else {
-        flags_json
-    };
+    let flags = flags.to_json();
     sqlx::query(
         r"
         INSERT INTO settings (account, ws_url, http_origin, env, locale, agent_flags)
@@ -188,6 +189,32 @@ pub(crate) async fn load_grants(pool: &SqlitePool) -> Result<Vec<WorkspaceGrant>
         });
     }
     Ok(out)
+}
+
+pub(crate) fn write_grant_index(
+    db_path: &std::path::Path,
+    grants: &[WorkspaceGrant],
+) -> Result<(), SdkError> {
+    let Some(parent) = db_path.parent() else {
+        return Ok(());
+    };
+    let dir = parent.join("agent");
+    std::fs::create_dir_all(&dir).map_err(|err| SdkError::Disk {
+        message: err.to_string(),
+    })?;
+    let mut body = String::new();
+    for grant in grants {
+        if grant.profile_id.contains(['\t', '\n']) || grant.path.contains(['\t', '\n']) {
+            continue;
+        }
+        body.push_str(&grant.profile_id);
+        body.push('\t');
+        body.push_str(&grant.path);
+        body.push('\n');
+    }
+    std::fs::write(dir.join("workspace-grants.txt"), body).map_err(|err| SdkError::Disk {
+        message: err.to_string(),
+    })
 }
 
 pub(crate) async fn mark_imported(tx: &mut SqliteConnection) -> Result<(), SdkError> {

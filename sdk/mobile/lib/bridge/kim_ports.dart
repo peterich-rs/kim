@@ -21,7 +21,7 @@ class KimCommandReceipt {
   final String clientId;
   final String dest;
   final int acceptedAt;
-  final String sendStatus;
+  final rust_types.SendStatus sendStatus;
 }
 
 class KimAuthSession {
@@ -73,13 +73,8 @@ abstract class KimClientPort {
   Future<KimCommandReceipt> enqueueMessage({
     required String dest,
     required ThreadKind kind,
-    required KimOutgoingContent content,
+    required rust_types.OutgoingContent content,
     required String clientId,
-    String localPath = '',
-    String mime = '',
-    int width = 0,
-    int height = 0,
-    int byteSize = 0,
   });
 
   Future<void> cancelSend(String clientId);
@@ -103,8 +98,6 @@ abstract class KimClientPort {
 
   Future<List<KimPerson>> friendList();
 
-  Future<List<KimPerson>> friendIncoming();
-
   Future<List<KimPerson>> searchUsers(String query);
 
   Future<void> friendRequest(String dest);
@@ -123,13 +116,12 @@ abstract class KimClientPort {
     String bio = '',
   });
 
-  /// Room interest enter; returns snapshot entries `{account,status,lastSeen}`.
-  Future<List<Map<String, dynamic>>> roomEnter(String dest, {int kind = 0});
+  Future<List<rust_types.RoomMember>> roomEnter(String dest, ThreadKind kind);
 
-  Future<void> roomLeave(String dest, {int kind = 0});
+  Future<void> roomLeave(String dest, ThreadKind kind);
 
-  /// Fire-and-forget typing indicator for a DM thread.
-  Future<void> sendTyping(String dest, {int kind = 0, bool active = true});
+  /// Fire-and-forget typing indicator.
+  Future<void> sendTyping(String dest, ThreadKind kind, {bool active = true});
 
   Future<KimPerson> botCreate({
     required String clientProfileId,
@@ -155,18 +147,6 @@ abstract class KimClientPort {
     String visibility = '',
   });
 
-  Future<KimTalkResult> botReply({
-    required String dest,
-    required String body,
-    required int inReplyTo,
-    required String clientId,
-  });
-
-  Future<List<KimBotPendingItem>> botPending(String dest, {int limit = 20});
-
-  /// Owner-sent bot typing for a registered 1:1 (S-KD 26).
-  Future<void> botTyping(String dest, {int kind = 0, bool active = true});
-
   Future<rust_types.Settings> settingsGet();
 
   Future<rust_types.Settings> settingsPatch({String? wsUrl, String? env});
@@ -175,28 +155,17 @@ abstract class KimClientPort {
 
   Future<bool> settingsImported();
 
-  Future<rust_types.Settings> importLegacyPrefs({
-    required String wsUrl,
-    required String httpOrigin,
-    String env,
-    String locale,
-  });
-
   Future<void> refreshContacts();
 
   Stream<rust_types.ContactsSnapshot> watchContacts();
 
-  Stream<rust_types.AgentRunRequest> watchAgentRun();
-
-  Future<void> submitAgentRun(rust_types.AgentRunResult result);
-
   Future<List<rust_types.AgentProfile>> listAgentProfiles();
 
-  Future<void> upsertAgentProfile(rust_types.AgentProfile row);
+  Future<void> upsertAgentProfile(String documentJson);
 
   Future<void> deleteAgentProfile(String profileId);
 
-  Future<void> importAgentProfiles(List<rust_types.AgentProfile> rows);
+  Future<void> importAgentProfiles(List<String> documents);
 
   Future<List<rust_types.ProviderAccount>> listProviderAccounts();
 
@@ -213,12 +182,6 @@ abstract class KimClientPort {
   Future<void> setAgentFlags(rust_types.AgentFlags flags);
 
   Future<void> syncAgentSpecs();
-
-  Future<Uint8List> specJsonToBlob(String bodyJson);
-
-  Future<String> specBlobToJson(List<int> blob);
-
-  Future<rust_types.CommandAck> command(rust_types.UiCommand cmd);
 
   Future<List<rust_types.MessageView>> searchMessages(
     String query, {

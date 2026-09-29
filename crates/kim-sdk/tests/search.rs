@@ -61,7 +61,7 @@ async fn search_like_is_capped_and_can_scope_dest() {
     sdk.install_protocol(std::sync::Arc::new(OkProto));
     sdk.enqueue_message(SendMessageCommand {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text {
             body: "hello world".into(),
         },
@@ -72,7 +72,7 @@ async fn search_like_is_capped_and_can_scope_dest() {
     .unwrap();
     sdk.enqueue_message(SendMessageCommand {
         dest: "carol".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text {
             body: "hello carol".into(),
         },

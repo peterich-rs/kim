@@ -1,5 +1,7 @@
 library;
 
+import 'package:kim_mobile/src/rust/api/types.dart' show ThreadPreview;
+
 enum ThreadKind { user, group }
 
 /// `UserProfile.kind`: 1 human, 2 bot. Missing/0 on the wire is human.
@@ -226,6 +228,7 @@ class KimThread {
     required this.kind,
     required this.title,
     this.lastBody = '',
+    this.preview = const ThreadPreview.text(snippet: ''),
     this.lastAt = 0,
     this.unread = 0,
     this.avatar = '',
@@ -235,6 +238,7 @@ class KimThread {
   final ThreadKind kind;
   final String title;
   final String lastBody;
+  final ThreadPreview preview;
   final int lastAt;
   final int unread;
   final String avatar;
@@ -244,6 +248,7 @@ class KimThread {
     ThreadKind? kind,
     String? title,
     String? lastBody,
+    ThreadPreview? preview,
     int? lastAt,
     int? unread,
     String? avatar,
@@ -253,6 +258,7 @@ class KimThread {
       kind: kind ?? this.kind,
       title: title ?? this.title,
       lastBody: lastBody ?? this.lastBody,
+      preview: preview ?? this.preview,
       lastAt: lastAt ?? this.lastAt,
       unread: unread ?? this.unread,
       avatar: avatar ?? this.avatar,
@@ -298,19 +304,36 @@ class KimThread {
   }
 }
 
-enum KimMsgKind { text, image, video, agentCard }
+enum KimMsgKind { text, image, video, voice, agentCard }
 
 KimMsgKind kimMsgKindFromName(String? raw) {
-  switch (raw) {
-    case 'video':
-      return KimMsgKind.video;
-    case 'image':
-      return KimMsgKind.image;
-    case 'agentCard':
-      return KimMsgKind.agentCard;
-    default:
-      return KimMsgKind.text;
+  if (raw == null || raw.isEmpty) {
+    return KimMsgKind.text;
   }
+  for (final kind in KimMsgKind.values) {
+    if (kind.name == raw) {
+      return kind;
+    }
+  }
+  return KimMsgKind.text;
+}
+
+class KimAgentCard {
+  const KimAgentCard({
+    required this.callId,
+    required this.name,
+    required this.actionRequired,
+    required this.pending,
+    required this.preview,
+    required this.ok,
+  });
+
+  final String callId;
+  final String name;
+  final bool actionRequired;
+  final bool pending;
+  final String preview;
+  final bool ok;
 }
 
 enum KimSendStatus { sending, sent, failed }
@@ -331,6 +354,7 @@ class KimChatMsg {
     this.batchId,
     this.status = KimSendStatus.sent,
     this.localPath,
+    this.card,
   });
 
   final String key;
@@ -347,6 +371,7 @@ class KimChatMsg {
   final String? batchId;
   final KimSendStatus status;
   final String? localPath;
+  final KimAgentCard? card;
 
   bool get isText => kind == KimMsgKind.text;
 
@@ -363,7 +388,9 @@ class KimChatMsg {
 
   bool get isVideo => kind == KimMsgKind.video;
 
-  bool get isAgentCard => kind == KimMsgKind.agentCard;
+  bool get isVoice => kind == KimMsgKind.voice;
+
+  bool get isAgentCard => kind == KimMsgKind.agentCard && card != null;
 
   bool get isFailed => failed || status == KimSendStatus.failed;
 

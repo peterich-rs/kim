@@ -1,10 +1,8 @@
 use std::path::Path;
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::Row;
-
 use super::schema::SCHEMA_VERSION;
 use crate::error::{map_sqlx, SdkError};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrepareOutcome {
@@ -12,7 +10,8 @@ pub enum PrepareOutcome {
     Keep,
 }
 
-/// Wipe Dart-shaped or unreadable files. Keep kim-sdk v1+. Newer than SDK is a hard error.
+/// Wipe a client file whose `user_version` is older than this SDK. There is
+/// no column-compat migration. Newer than the SDK is a hard error.
 pub fn prepare_store_file(path: &Path) -> Result<PrepareOutcome, SdkError> {
     if !path.exists() {
         return Ok(PrepareOutcome::CreateEmpty { wiped: false });
@@ -23,15 +22,15 @@ pub fn prepare_store_file(path: &Path) -> Result<PrepareOutcome, SdkError> {
         .map_err(|e| SdkError::Internal {
             message: format!("runtime: {e}"),
         })?;
-    match rt.block_on(read_schema_version(path)) {
-        Ok(v) if v < 1 => {
+    match rt.block_on(read_user_version(path)) {
+        Ok(v) if v == SCHEMA_VERSION => Ok(PrepareOutcome::Keep),
+        Ok(v) if v > SCHEMA_VERSION => Err(SdkError::InvalidArgument {
+            message: "store newer than sdk".into(),
+        }),
+        Ok(_) => {
             wipe_store_files(path)?;
             Ok(PrepareOutcome::CreateEmpty { wiped: true })
         }
-        Ok(v) if v <= SCHEMA_VERSION => Ok(PrepareOutcome::Keep),
-        Ok(_) => Err(SdkError::InvalidArgument {
-            message: "store newer than sdk".into(),
-        }),
         Err(_) => {
             wipe_store_files(path)?;
             Ok(PrepareOutcome::CreateEmpty { wiped: true })
@@ -67,7 +66,7 @@ pub(crate) fn wipe_store_files(path: &Path) -> Result<(), SdkError> {
     Ok(())
 }
 
-async fn read_schema_version(path: &Path) -> Result<i64, SdkError> {
+async fn read_user_version(path: &Path) -> Result<i64, SdkError> {
     let opts = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(false)
@@ -78,18 +77,9 @@ async fn read_schema_version(path: &Path) -> Result<i64, SdkError> {
         .connect_with(opts)
         .await
         .map_err(map_sqlx)?;
-    let row = sqlx::query("SELECT value FROM meta WHERE key = 'schema_version'")
-        .fetch_optional(&pool)
+    let version = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+        .fetch_one(&pool)
         .await;
     pool.close().await;
-    let row = row.map_err(map_sqlx)?;
-    match row {
-        Some(r) => {
-            let raw: String = r.try_get("value").map_err(map_sqlx)?;
-            raw.parse::<i64>().map_err(|_| SdkError::InvalidArgument {
-                message: "schema_version unparseable".into(),
-            })
-        }
-        None => Ok(0),
-    }
+    version.map_err(map_sqlx)
 }

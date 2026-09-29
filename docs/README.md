@@ -20,7 +20,7 @@
 10. [user-social-inbox.md](user-social-inbox.md) — 资料 / 好友 / 服务端会话
 11. [mobile-client.md](mobile-client.md) — kim-client + Flutter 壳（WSS / WGateway）
 12. [flutter-layering.md](flutter-layering.md) — Flutter 分层、Riverpod、`setState` 边界
-13. [ffi-oo-contract.md](ffi-oo-contract.md) — 桌面 FFI 句柄：Dart 只订投影，编排在 Rust
+13. [ffi-oo-contract.md](ffi-oo-contract.md) — Flutter FFI：一个 `KimUiHandle`，编排在 Rust
 14. [mobile-android-so-ota.md](mobile-android-so-ota.md) — Android Logic SO 热修通道
 15. [agent-goose.md](agent-goose.md) — 桌面 IM 本机 Agent（1:1 bot）
 16. [media.md](media.md) — R2 图床（upload Worker + 自定义域读）

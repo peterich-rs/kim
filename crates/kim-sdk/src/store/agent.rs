@@ -2,6 +2,15 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use crate::agent::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
 use crate::error::{map_sqlx, SdkError};
+use crate::model::ProfilePlacement;
+
+fn models_json(models: &[String]) -> String {
+    serde_json::to_string(models).unwrap_or_else(|_| "[]".to_string())
+}
+
+fn parse_models(raw: &str) -> Vec<String> {
+    serde_json::from_str(raw).unwrap_or_default()
+}
 
 pub(crate) async fn upsert_profile(
     tx: &mut SqliteConnection,
@@ -14,21 +23,15 @@ pub(crate) async fn upsert_profile(
     } else {
         now
     };
-    let placement = if row.placement.trim().is_empty() {
-        "local"
-    } else {
-        row.placement.trim()
-    };
     sqlx::query(
         r"
         INSERT INTO agent_profiles (
-          account, profile_id, nickname, server_account, body_json, body_blob, placement,
+          account, profile_id, nickname, server_account, body_blob, placement,
           key_ciphertext, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
         ON CONFLICT(account, profile_id) DO UPDATE SET
           nickname = excluded.nickname,
           server_account = excluded.server_account,
-          body_json = excluded.body_json,
           body_blob = excluded.body_blob,
           placement = excluded.placement,
           updated_at = excluded.updated_at,
@@ -39,9 +42,8 @@ pub(crate) async fn upsert_profile(
     .bind(&row.profile_id)
     .bind(&row.nickname)
     .bind(&row.server_account)
-    .bind(&row.body_json)
     .bind(&row.body_blob)
-    .bind(placement)
+    .bind(row.placement.as_db())
     .bind(updated_at)
     .bind(if row.deleted_at > 0 {
         Some(row.deleted_at)
@@ -83,7 +85,7 @@ pub(crate) async fn load_all(
 ) -> Result<Vec<AgentProfileRow>, SdkError> {
     let rows = sqlx::query(
         r"
-        SELECT profile_id, nickname, server_account, body_json, body_blob, placement,
+        SELECT profile_id, nickname, server_account, body_blob, placement,
                updated_at, deleted_at
         FROM agent_profiles WHERE account = ?
         ORDER BY nickname, profile_id
@@ -96,20 +98,14 @@ pub(crate) async fn load_all(
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let blob: Option<Vec<u8>> = row.try_get("body_blob").map_err(map_sqlx)?;
+        let placement: String = row.try_get("placement").map_err(map_sqlx)?;
         out.push(AgentProfileRow {
             profile_id: row.try_get("profile_id").map_err(map_sqlx)?,
             nickname: row.try_get("nickname").map_err(map_sqlx)?,
             server_account: row.try_get("server_account").map_err(map_sqlx)?,
-            body_json: row.try_get("body_json").map_err(map_sqlx)?,
+            document_json: String::new(),
             body_blob: blob.unwrap_or_default(),
-            placement: {
-                let raw: String = row.try_get("placement").map_err(map_sqlx)?;
-                if raw.trim().is_empty() {
-                    "local".into()
-                } else {
-                    raw
-                }
-            },
+            placement: ProfilePlacement::from_db(&placement),
             updated_at: row.try_get("updated_at").map_err(map_sqlx)?,
             deleted_at: row
                 .try_get::<Option<i64>, _>("deleted_at")
@@ -178,10 +174,10 @@ pub(crate) async fn rekey(tx: &mut SqliteConnection, from: &str, to: &str) -> Re
     sqlx::query(
         r"
         INSERT OR IGNORE INTO agent_profiles (
-          account, profile_id, nickname, server_account, body_json, body_blob, placement,
+          account, profile_id, nickname, server_account, body_blob, placement,
           key_ciphertext, updated_at, deleted_at
         )
-        SELECT ?, profile_id, nickname, server_account, body_json, body_blob, placement,
+        SELECT ?, profile_id, nickname, server_account, body_blob, placement,
                key_ciphertext, updated_at, deleted_at
         FROM agent_profiles WHERE account = ?
         ",
@@ -304,7 +300,7 @@ pub(crate) async fn upsert_provider_account(
     .bind(&row.base_url)
     .bind(&row.key_ref)
     .bind(&row.display_name)
-    .bind(&row.models_json)
+    .bind(models_json(&row.models))
     .bind(updated_at)
     .bind(deleted_at)
     .execute(&mut *tx)
@@ -360,7 +356,7 @@ pub(crate) async fn load_provider_accounts(
             base_url: row.try_get("base_url").map_err(map_sqlx)?,
             key_ref: row.try_get("key_ref").map_err(map_sqlx)?,
             display_name: row.try_get("display_name").map_err(map_sqlx)?,
-            models_json: row.try_get("models_json").map_err(map_sqlx)?,
+            models: parse_models(&row.try_get::<String, _>("models_json").map_err(map_sqlx)?),
             updated_at: row.try_get("updated_at").map_err(map_sqlx)?,
             deleted_at: deleted.unwrap_or(0),
         });
@@ -392,7 +388,7 @@ pub(crate) async fn load_provider_accounts_all(
             base_url: row.try_get("base_url").map_err(map_sqlx)?,
             key_ref: row.try_get("key_ref").map_err(map_sqlx)?,
             display_name: row.try_get("display_name").map_err(map_sqlx)?,
-            models_json: row.try_get("models_json").map_err(map_sqlx)?,
+            models: parse_models(&row.try_get::<String, _>("models_json").map_err(map_sqlx)?),
             updated_at: row.try_get("updated_at").map_err(map_sqlx)?,
             deleted_at: deleted.unwrap_or(0),
         });

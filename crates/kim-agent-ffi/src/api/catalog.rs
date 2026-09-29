@@ -6,8 +6,8 @@ use std::sync::OnceLock;
 use kim_agent_host::{
     catalog_entries, catalog_validate as host_validate, skill_app_catalog as host_app,
     skill_portable_list as host_portable, surface_for, vendor_summaries, ListedSkill,
-    ReasoningChoice, ReasoningChoiceBody, ReasoningSurface as HostReasoningSurface, VendorGroup,
-    VendorSummary,
+    ReasoningChoice, ReasoningChoiceBody, ReasoningSurface as HostReasoningSurface,
+    VendorGroup as HostVendorGroup, VendorSummary,
 };
 
 use super::failure::AgentFailure;
@@ -47,10 +47,17 @@ pub fn user_agents_skills() -> Option<PathBuf> {
 }
 
 #[derive(Clone)]
+pub enum VendorGroup {
+    Primary,
+    Gateway,
+    Other,
+}
+
+#[derive(Clone)]
 pub struct Vendor {
     pub id: String,
     pub display_name: String,
-    pub group: String,
+    pub group: VendorGroup,
     pub sort_rank: u32,
     pub default_base_url: String,
     pub alt_base_urls: Vec<String>,
@@ -66,11 +73,10 @@ impl From<VendorSummary> for Vendor {
             id: row.id,
             display_name: row.display_name,
             group: match row.group {
-                VendorGroup::Primary => "primary",
-                VendorGroup::Gateway => "gateway",
-                VendorGroup::Other => "other",
-            }
-            .into(),
+                HostVendorGroup::Primary => VendorGroup::Primary,
+                HostVendorGroup::Gateway => VendorGroup::Gateway,
+                HostVendorGroup::Other => VendorGroup::Other,
+            },
             sort_rank: row.sort_rank,
             default_base_url: row.default_base_url,
             alt_base_urls: row.alt_base_urls,
@@ -261,21 +267,77 @@ fn catalog_validate_from_choice(choice: ReasoningChoice, dropped: Vec<String>) -
     }
 }
 
-/// Portable skills: global root is Rust-derived (`$HOME/.agents/skills`);
-/// `project_root` comes from the workspace grant, not a per-call path.
-pub fn skill_portable_list(project_root: String) -> Vec<Skill> {
+/// Portable skills. The user shelf is `$HOME/.agents/skills`. Project shelves
+/// come from workspace grants registered by `KimUiHandle`, projected to
+/// `{support}/agent/workspace-grants.txt` because this crate is a separate dylib.
+pub fn skill_portable_list() -> Vec<Skill> {
     let user_root = user_agents_skills()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
-    host_portable(&user_root, &project_root)
+    let mut by_id = std::collections::BTreeMap::new();
+    for skill in host_portable(&user_root, "") {
+        by_id.insert(skill.id.clone(), Skill::from(skill));
+    }
+    for project in granted_project_roots() {
+        for skill in host_portable("", &project) {
+            by_id.insert(skill.id.clone(), Skill::from(skill));
+        }
+    }
+    by_id.into_values().collect()
+}
+
+fn granted_project_roots() -> Vec<String> {
+    let Ok(root) = support_root() else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(root.join("agent").join("workspace-grants.txt")) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let (_, path) = line.split_once('\t')?;
+            let path = path.trim();
+            if path.is_empty() {
+                None
+            } else {
+                Some(path.to_string())
+            }
+        })
+        .collect()
+}
+
+/// Builtin persona documents. A template that `kim-agent-codec` rejects is omitted.
+pub fn list_builtin_profiles() -> Vec<String> {
+    kim_agent_host::builtin_templates()
         .into_iter()
-        .map(Skill::from)
+        .filter_map(|profile| {
+            let json = serde_json::to_string(&profile).ok()?;
+            let blob = kim_agent_codec::json_to_blob(&json).ok()?;
+            kim_agent_codec::blob_to_json(&blob).ok()
+        })
+        .collect()
+}
+
+pub fn list_bundled_providers() -> Vec<String> {
+    kim_agent_host::bundled_provider_summaries()
+        .into_iter()
+        .map(|summary| {
+            serde_json::json!({
+                "name": summary.name,
+                "display_name": summary.display_name,
+                "mobile": summary.mobile,
+            })
+            .to_string()
+        })
         .collect()
 }
 
 /// App skill catalog at the layout-derived cache root.
 pub fn skill_app_catalog() -> Result<Vec<Skill>, AgentFailure> {
-    let path = support_root()?.join("agent").join("app-skills").join("cache");
+    let path = support_root()?
+        .join("agent")
+        .join("app-skills")
+        .join("cache");
     Ok(host_app(Some(&path)).into_iter().map(Skill::from).collect())
 }
 

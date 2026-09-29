@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1551379351;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1767182533;
 
 // Section: executor
 
@@ -224,7 +224,7 @@ fn wire__crate__api__simple__init_app_impl(
         },
     )
 }
-fn wire__crate__api__session__list_builtin_profiles_impl(
+fn wire__crate__api__catalog__list_builtin_profiles_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -248,15 +248,15 @@ fn wire__crate__api__session__list_builtin_profiles_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             move |context| {
-                transform_result_sse::<_, crate::api::failure::AgentFailure>((move || {
-                    let output_ok = crate::api::session::list_builtin_profiles()?;
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::catalog::list_builtin_profiles())?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__crate__api__session__list_bundled_providers_impl(
+fn wire__crate__api__catalog__list_bundled_providers_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -281,7 +281,7 @@ fn wire__crate__api__session__list_bundled_providers_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok = Ok::<_, ()>(crate::api::session::list_bundled_providers())?;
+                    let output_ok = Ok::<_, ()>(crate::api::catalog::list_bundled_providers())?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -375,12 +375,10 @@ fn wire__crate__api__catalog__skill_portable_list_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_project_root = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok =
-                        Ok::<_, ()>(crate::api::catalog::skill_portable_list(api_project_root))?;
+                    let output_ok = Ok::<_, ()>(crate::api::catalog::skill_portable_list())?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -447,42 +445,6 @@ impl SseDecode for crate::api::failure::AgentFailure {
     }
 }
 
-impl SseDecode for crate::api::session::AgentUiEvent {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_kind = <String>::sse_decode(deserializer);
-        let mut var_operationId = <String>::sse_decode(deserializer);
-        let mut var_callId = <String>::sse_decode(deserializer);
-        let mut var_name = <String>::sse_decode(deserializer);
-        let mut var_delta = <String>::sse_decode(deserializer);
-        let mut var_argumentsJson = <String>::sse_decode(deserializer);
-        let mut var_outputPreview = <String>::sse_decode(deserializer);
-        let mut var_ok = <bool>::sse_decode(deserializer);
-        let mut var_stopReason = <String>::sse_decode(deserializer);
-        let mut var_message = <String>::sse_decode(deserializer);
-        let mut var_inputTokens = <u64>::sse_decode(deserializer);
-        let mut var_outputTokens = <u64>::sse_decode(deserializer);
-        let mut var_resumedOps = <Vec<String>>::sse_decode(deserializer);
-        let mut var_recentlyActive = <bool>::sse_decode(deserializer);
-        return crate::api::session::AgentUiEvent {
-            kind: var_kind,
-            operation_id: var_operationId,
-            call_id: var_callId,
-            name: var_name,
-            delta: var_delta,
-            arguments_json: var_argumentsJson,
-            output_preview: var_outputPreview,
-            ok: var_ok,
-            stop_reason: var_stopReason,
-            message: var_message,
-            input_tokens: var_inputTokens,
-            output_tokens: var_outputTokens,
-            resumed_ops: var_resumedOps,
-            recently_active: var_recentlyActive,
-        };
-    }
-}
-
 impl SseDecode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -517,6 +479,13 @@ impl SseDecode for crate::api::catalog::CatalogValidate {
             budget: var_budget,
             dropped: var_dropped,
         };
+    }
+}
+
+impl SseDecode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -608,34 +577,6 @@ impl SseDecode for crate::api::catalog::ReasoningSurface {
     }
 }
 
-impl SseDecode for crate::api::session::ResumeReport {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_resumedOps = <Vec<String>>::sse_decode(deserializer);
-        let mut var_statuses = <Vec<String>>::sse_decode(deserializer);
-        return crate::api::session::ResumeReport {
-            resumed_ops: var_resumedOps,
-            statuses: var_statuses,
-        };
-    }
-}
-
-impl SseDecode for crate::api::session::SessionSnapshot {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_busy = <bool>::sse_decode(deserializer);
-        let mut var_lastOperationId = <String>::sse_decode(deserializer);
-        let mut var_phase = <String>::sse_decode(deserializer);
-        let mut var_pendingCallIds = <Vec<String>>::sse_decode(deserializer);
-        return crate::api::session::SessionSnapshot {
-            busy: var_busy,
-            last_operation_id: var_lastOperationId,
-            phase: var_phase,
-            pending_call_ids: var_pendingCallIds,
-        };
-    }
-}
-
 impl SseDecode for crate::api::catalog::Skill {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -665,13 +606,6 @@ impl SseDecode for u32 {
     }
 }
 
-impl SseDecode for u64 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_u64::<NativeEndian>().unwrap()
-    }
-}
-
 impl SseDecode for u8 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -689,7 +623,7 @@ impl SseDecode for crate::api::catalog::Vendor {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_displayName = <String>::sse_decode(deserializer);
-        let mut var_group = <String>::sse_decode(deserializer);
+        let mut var_group = <crate::api::catalog::VendorGroup>::sse_decode(deserializer);
         let mut var_sortRank = <u32>::sse_decode(deserializer);
         let mut var_defaultBaseUrl = <String>::sse_decode(deserializer);
         let mut var_altBaseUrls = <Vec<String>>::sse_decode(deserializer);
@@ -712,10 +646,16 @@ impl SseDecode for crate::api::catalog::Vendor {
     }
 }
 
-impl SseDecode for i32 {
+impl SseDecode for crate::api::catalog::VendorGroup {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::catalog::VendorGroup::Primary,
+            1 => crate::api::catalog::VendorGroup::Gateway,
+            2 => crate::api::catalog::VendorGroup::Other,
+            _ => unreachable!("Invalid variant for VendorGroup: {}", inner),
+        };
     }
 }
 
@@ -734,9 +674,9 @@ fn pde_ffi_dispatcher_primary_impl(
         4 => wire__crate__api__catalog__catalog_vendors_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
         6 => {
-            wire__crate__api__session__list_builtin_profiles_impl(port, ptr, rust_vec_len, data_len)
+            wire__crate__api__catalog__list_builtin_profiles_impl(port, ptr, rust_vec_len, data_len)
         }
-        7 => wire__crate__api__session__list_bundled_providers_impl(
+        7 => wire__crate__api__catalog__list_bundled_providers_impl(
             port,
             ptr,
             rust_vec_len,
@@ -804,39 +744,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::failure::AgentFailure>
     for crate::api::failure::AgentFailure
 {
     fn into_into_dart(self) -> crate::api::failure::AgentFailure {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::session::AgentUiEvent {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.kind.into_into_dart().into_dart(),
-            self.operation_id.into_into_dart().into_dart(),
-            self.call_id.into_into_dart().into_dart(),
-            self.name.into_into_dart().into_dart(),
-            self.delta.into_into_dart().into_dart(),
-            self.arguments_json.into_into_dart().into_dart(),
-            self.output_preview.into_into_dart().into_dart(),
-            self.ok.into_into_dart().into_dart(),
-            self.stop_reason.into_into_dart().into_dart(),
-            self.message.into_into_dart().into_dart(),
-            self.input_tokens.into_into_dart().into_dart(),
-            self.output_tokens.into_into_dart().into_dart(),
-            self.resumed_ops.into_into_dart().into_dart(),
-            self.recently_active.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::session::AgentUiEvent
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::session::AgentUiEvent>
-    for crate::api::session::AgentUiEvent
-{
-    fn into_into_dart(self) -> crate::api::session::AgentUiEvent {
         self
     }
 }
@@ -914,50 +821,6 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::ReasoningSurface>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::session::ResumeReport {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.resumed_ops.into_into_dart().into_dart(),
-            self.statuses.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::session::ResumeReport
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::session::ResumeReport>
-    for crate::api::session::ResumeReport
-{
-    fn into_into_dart(self) -> crate::api::session::ResumeReport {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::session::SessionSnapshot {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.busy.into_into_dart().into_dart(),
-            self.last_operation_id.into_into_dart().into_dart(),
-            self.phase.into_into_dart().into_dart(),
-            self.pending_call_ids.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::session::SessionSnapshot
-{
-}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::session::SessionSnapshot>
-    for crate::api::session::SessionSnapshot
-{
-    fn into_into_dart(self) -> crate::api::session::SessionSnapshot {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::catalog::Skill {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -1001,6 +864,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::Vendor>
     for crate::api::catalog::Vendor
 {
     fn into_into_dart(self) -> crate::api::catalog::Vendor {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::catalog::VendorGroup {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Primary => 0.into_dart(),
+            Self::Gateway => 1.into_dart(),
+            Self::Other => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::catalog::VendorGroup
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::catalog::VendorGroup>
+    for crate::api::catalog::VendorGroup
+{
+    fn into_into_dart(self) -> crate::api::catalog::VendorGroup {
         self
     }
 }
@@ -1056,26 +941,6 @@ impl SseEncode for crate::api::failure::AgentFailure {
     }
 }
 
-impl SseEncode for crate::api::session::AgentUiEvent {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.kind, serializer);
-        <String>::sse_encode(self.operation_id, serializer);
-        <String>::sse_encode(self.call_id, serializer);
-        <String>::sse_encode(self.name, serializer);
-        <String>::sse_encode(self.delta, serializer);
-        <String>::sse_encode(self.arguments_json, serializer);
-        <String>::sse_encode(self.output_preview, serializer);
-        <bool>::sse_encode(self.ok, serializer);
-        <String>::sse_encode(self.stop_reason, serializer);
-        <String>::sse_encode(self.message, serializer);
-        <u64>::sse_encode(self.input_tokens, serializer);
-        <u64>::sse_encode(self.output_tokens, serializer);
-        <Vec<String>>::sse_encode(self.resumed_ops, serializer);
-        <bool>::sse_encode(self.recently_active, serializer);
-    }
-}
-
 impl SseEncode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1099,6 +964,13 @@ impl SseEncode for crate::api::catalog::CatalogValidate {
         <String>::sse_encode(self.value, serializer);
         <u32>::sse_encode(self.budget, serializer);
         <Vec<String>>::sse_encode(self.dropped, serializer);
+    }
+}
+
+impl SseEncode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
     }
 }
 
@@ -1167,24 +1039,6 @@ impl SseEncode for crate::api::catalog::ReasoningSurface {
     }
 }
 
-impl SseEncode for crate::api::session::ResumeReport {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <Vec<String>>::sse_encode(self.resumed_ops, serializer);
-        <Vec<String>>::sse_encode(self.statuses, serializer);
-    }
-}
-
-impl SseEncode for crate::api::session::SessionSnapshot {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.busy, serializer);
-        <String>::sse_encode(self.last_operation_id, serializer);
-        <String>::sse_encode(self.phase, serializer);
-        <Vec<String>>::sse_encode(self.pending_call_ids, serializer);
-    }
-}
-
 impl SseEncode for crate::api::catalog::Skill {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1205,13 +1059,6 @@ impl SseEncode for u32 {
     }
 }
 
-impl SseEncode for u64 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_u64::<NativeEndian>(self).unwrap();
-    }
-}
-
 impl SseEncode for u8 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1229,7 +1076,7 @@ impl SseEncode for crate::api::catalog::Vendor {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.id, serializer);
         <String>::sse_encode(self.display_name, serializer);
-        <String>::sse_encode(self.group, serializer);
+        <crate::api::catalog::VendorGroup>::sse_encode(self.group, serializer);
         <u32>::sse_encode(self.sort_rank, serializer);
         <String>::sse_encode(self.default_base_url, serializer);
         <Vec<String>>::sse_encode(self.alt_base_urls, serializer);
@@ -1240,10 +1087,20 @@ impl SseEncode for crate::api::catalog::Vendor {
     }
 }
 
-impl SseEncode for i32 {
+impl SseEncode for crate::api::catalog::VendorGroup {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
+        <i32>::sse_encode(
+            match self {
+                crate::api::catalog::VendorGroup::Primary => 0,
+                crate::api::catalog::VendorGroup::Gateway => 1,
+                crate::api::catalog::VendorGroup::Other => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 

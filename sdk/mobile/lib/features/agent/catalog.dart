@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
+import 'package:kim_mobile/src/rust_agent/api/catalog.dart' show VendorGroup;
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/provider_accounts.dart';
 
@@ -343,7 +344,11 @@ class CatalogRepository {
         VendorSummary(
           id: row.id,
           displayName: row.displayName,
-          group: row.group,
+          group: switch (row.group) {
+            VendorGroup.primary => 'primary',
+            VendorGroup.gateway => 'gateway',
+            VendorGroup.other => 'other',
+          },
           sortRank: row.sortRank,
           defaultBaseUrl: row.defaultBaseUrl,
           altBaseUrls: row.altBaseUrls,

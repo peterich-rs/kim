@@ -1,5 +1,5 @@
 use super::failure::ApiFailure;
-use kim_client::{http_origin_from_ws as map_origin, AuthClient};
+use kim_client::AuthClient;
 
 /// JWT issued by Royal. Rust persists it via the secret-store channel.
 pub struct AuthSession {
@@ -71,9 +71,4 @@ impl From<kim_client::AuthSession> for AuthSession {
             account: s.account,
         }
     }
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn http_origin_from_ws(ws_url: String) -> String {
-    map_origin(&ws_url)
 }

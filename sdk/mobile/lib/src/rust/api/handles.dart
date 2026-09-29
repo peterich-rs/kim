@@ -4,76 +4,8 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
-import 'client.dart';
-import 'failure.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
-
-import 'types.dart';
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<AgentCatalogHandle>>
-abstract class AgentCatalogHandle implements RustOpaqueInterface {
-  Future<void> deleteProfile({required String id});
-
-  Future<List<ProviderAccount>> listAccounts();
-
-  Future<List<AgentProfile>> listProfiles();
-
-  Future<void> upsertProfile({required AgentProfile row});
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ContactsHandle>>
-abstract class ContactsHandle implements RustOpaqueInterface {
-  Future<List<Person>> friends();
-
-  Future<Profile> profile({required String dest});
-
-  Future<List<Person>> search({required String query});
-
-  Stream<ContactsSnapshot> watch();
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ConversationHandle>>
-abstract class ConversationHandle implements RustOpaqueInterface {
-  Future<String> dest();
-
-  Future<List<RoomMember>> enter();
-
-  Future<String> leave();
-
-  Future<void> loadOlder();
-
-  Future<void> markRead();
-
-  Future<KimCommandReceipt> sendText({
-    required String text,
-    required String clientId,
-  });
-
-  Future<void> setTyping({required bool active});
-
-  Stream<TimelineUpdate> watchTimeline({required int limit});
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<InboxHandle>>
-abstract class InboxHandle implements RustOpaqueInterface {
-  /// Session snapshot still carries the thread list. The handle is the object
-  /// boundary; splitting the projection type is a later cut.
-  Future<KimUiHandle> app();
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MediaHandle>>
-abstract class MediaHandle implements RustOpaqueInterface {
-  Future<LocalMedia> fetch({required String url});
-
-  Future<LocalMedia> upload({
-    required String path,
-    required String mime,
-    required int width,
-    required int height,
-    required PlatformInt64 byteSize,
-  });
-}
 
 class AgentPermissionEvent {
   final String dest;

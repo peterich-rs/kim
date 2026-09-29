@@ -336,32 +336,18 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
       return const [];
     }
     await client.importAgentProfiles([
-      for (final p in profiles) await _toRow(p),
+      for (final p in profiles) jsonEncode(p.toJson()),
     ]);
     await prefs.remove(_kProfiles);
     return profiles;
   }
 
-  Future<rust_types.AgentProfile> _toRow(AgentProfile p) async {
-    final client = ref.read(clientPortProvider);
-    final blob = await client.specJsonToBlob(jsonEncode(p.toJson()));
-    return rust_types.AgentProfile(
-      profileId: p.id,
-      nickname: p.displayName,
-      serverAccount: p.serverAccount,
-      bodyJson: '',
-      bodyBlob: blob,
-      placement: 'local',
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    );
-  }
-
   Future<AgentProfile?> _fromRow(rust_types.AgentProfile row) async {
     try {
       final client = ref.read(clientPortProvider);
-      var rawJson = row.bodyJson;
-      if (row.bodyBlob.isNotEmpty) {
-        rawJson = await client.specBlobToJson(row.bodyBlob);
+      final rawJson = row.documentJson;
+      if (rawJson.isEmpty) {
+        return null;
       }
       final raw = jsonDecode(rawJson);
       if (raw is Map) {
@@ -479,7 +465,7 @@ class AgentProfileStore extends Notifier<List<AgentProfile>> {
     }
     try {
       final client = ref.read(clientPortProvider);
-      await AgentCatalog(client).upsert(await _toRow(p));
+      await AgentCatalog(client).upsert(jsonEncode(p.toJson()));
       String? live;
       try {
         live = await ref.read(workspaceAccessProvider).realUserAgentsSkills();

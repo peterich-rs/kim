@@ -12,20 +12,12 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import 'types.dart';
 
-// These functions are ignored because they are not marked as `pub`: `ack_from_receipt`, `empty_ack`, `supervisor`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `supervisor`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimUiHandle>>
 abstract class KimUiHandle implements RustOpaqueInterface {
-  Future<AgentCatalogHandle> agentCatalog();
-
   Future<AgentFlags> agentFlags();
-
-  /// Session JSON file for one dest x profile (host persist target).
-  Future<String> agentSessionFile({
-    required String dest,
-    required String profileId,
-  });
 
   /// Attach the store at the layout-derived default path. Requires a prior
   /// `platform_bootstrap` call; the path convention is Rust-owned.
@@ -58,24 +50,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<String> botDelete({required String dest});
 
-  Future<List<KimBotPendingItem>> botPending({
-    required String dest,
-    required int limit,
-  });
-
-  Future<KimTalkResult> botReply({
-    required String dest,
-    required String body,
-    required PlatformInt64 inReplyTo,
-    required String clientId,
-  });
-
-  Future<void> botTyping({
-    required String dest,
-    required int kind,
-    required bool active,
-  });
-
   Future<Person> botUpdate({
     required String dest,
     required String nickname,
@@ -92,12 +66,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   /// Drop credentials and stop. The sign-out path.
   Future<void> clearAuth();
 
-  Future<CommandAck> command({required UiCommand cmd});
-
-  Future<ContactsHandle> contacts();
-
-  Future<ConversationHandle> conversation({required String dest});
-
   /// Always callable. Does not open SQLite.
   static KimUiHandle create() =>
       RustLib.instance.api.crateApiClientKimUiHandleCreate();
@@ -110,14 +78,9 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<KimCommandReceipt> enqueueMessage({
     required String dest,
-    required int kind,
-    required KimOutgoingContent content,
+    required ThreadKind kind,
+    required OutgoingContent content,
     required String clientId,
-    required String localPath,
-    required String mime,
-    required int width,
-    required int height,
-    required PlatformInt64 byteSize,
   });
 
   /// Per-agent sandbox path (created + seeded). Layout rules are Rust-owned
@@ -134,8 +97,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> friendAccept({required String dest});
 
-  Future<List<Person>> friendIncoming();
-
   Future<List<Person>> friendList();
 
   Future<void> friendReject({required String dest});
@@ -149,17 +110,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   /// Signed-in gate for the Dart auth state: usable JWT in the store?
   Future<bool> hasStoredToken();
 
-  Future<void> importAgentProfiles({required List<AgentProfile> rows});
-
-  /// One-shot legacy SharedPreferences handoff (存量设备 only).
-  Future<Settings> importLegacyPrefs({
-    required String wsUrl,
-    required String httpOrigin,
-    required String env,
-    required String locale,
-  });
-
-  Future<InboxHandle> inbox();
+  Future<void> importAgentProfiles({required List<String> documents});
 
   Future<List<AgentProfile>> listAgentProfiles();
 
@@ -167,31 +118,18 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> loadOlder({required String dest});
 
-  Future<void> markConversationRead({required String dest, required int kind});
-
-  Future<void> markRead({
+  Future<void> markConversationRead({
     required String dest,
-    required int kind,
-    required PlatformInt64 messageId,
+    required ThreadKind kind,
   });
 
   Future<void> markThreadRead({
     required String dest,
-    required int kind,
+    required ThreadKind kind,
     required PlatformInt64 messageId,
   });
 
-  Future<MediaHandle> media();
-
   Future<LocalMedia> mediaFetch({required String url});
-
-  Future<LocalMedia> mediaUpload({
-    required String path,
-    required String mime,
-    required int width,
-    required int height,
-    required PlatformInt64 byteSize,
-  });
 
   /// Bytes straight from the picker plugin. Rust owns the temp file; no
   /// Dart `Directory.systemTemp` round-trip.
@@ -222,9 +160,12 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<KimCommandReceipt> retrySend({required String clientId});
 
-  Future<List<RoomMember>> roomEnter({required String dest, required int kind});
+  Future<List<RoomMember>> roomEnter({
+    required String dest,
+    required ThreadKind kind,
+  });
 
-  Future<String> roomLeave({required String dest, required int kind});
+  Future<String> roomLeave({required String dest, required ThreadKind kind});
 
   Future<List<MessageView>> searchMessages({
     required String query,
@@ -235,7 +176,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> sendTyping({
     required String dest,
-    required int kind,
+    required ThreadKind kind,
     required bool active,
   });
 
@@ -245,12 +186,12 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required BigInt generation,
     required bool foreground,
     required String dest,
-    required int kind,
+    required ThreadKind kind,
   });
 
   Future<Settings> settingsGet();
 
-  /// Whether the one-shot prefs handoff already ran.
+  /// Whether device settings were stored. There is no legacy prefs import.
   Future<bool> settingsImported();
 
   Future<Settings> settingsPatch({String? wsUrl, String? env});
@@ -281,8 +222,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   /// Signed-in account from the secure store (projection for the shell).
   Future<String> storedAccount();
 
-  Future<void> submitAgentRun({required AgentRunResult result});
-
   Future<void> syncAgentSpecs();
 
   Future<Profile> updateProfile({
@@ -291,7 +230,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required String bio,
   });
 
-  Future<void> upsertAgentProfile({required AgentProfile row});
+  Future<void> upsertAgentProfile({required String documentJson});
 
   Future<void> upsertDeviceOverlay({required DeviceOverlay row});
 
@@ -299,8 +238,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   /// Desktop permission cards. Phone returns an idle stream.
   Stream<AgentPermissionEvent> watchAgentPermission();
-
-  Stream<AgentRunRequest> watchAgentRun();
 
   /// Desktop pet presence (`running` / `done` / `failed`). Phone is idle.
   Stream<AgentUiStatus> watchAgentUi();
@@ -327,30 +264,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   });
 
   Future<void> workspaceGrantRevoke({required String profileId});
-}
-
-class KimBotPendingItem {
-  final PlatformInt64 messageId;
-  final String body;
-  final PlatformInt64 sendTime;
-
-  const KimBotPendingItem({
-    required this.messageId,
-    required this.body,
-    required this.sendTime,
-  });
-
-  @override
-  int get hashCode => messageId.hashCode ^ body.hashCode ^ sendTime.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimBotPendingItem &&
-          runtimeType == other.runtimeType &&
-          messageId == other.messageId &&
-          body == other.body &&
-          sendTime == other.sendTime;
 }
 
 class KimCommandReceipt {
@@ -386,47 +299,4 @@ class KimCommandReceipt {
           dest == other.dest &&
           acceptedAt == other.acceptedAt &&
           sendStatus == other.sendStatus;
-}
-
-/// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
-class KimOutgoingContent {
-  final int kind;
-  final String body;
-  final String extra;
-
-  const KimOutgoingContent({
-    required this.kind,
-    required this.body,
-    required this.extra,
-  });
-
-  @override
-  int get hashCode => kind.hashCode ^ body.hashCode ^ extra.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimOutgoingContent &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          body == other.body &&
-          extra == other.extra;
-}
-
-class KimTalkResult {
-  final PlatformInt64 messageId;
-  final PlatformInt64 sendTime;
-
-  const KimTalkResult({required this.messageId, required this.sendTime});
-
-  @override
-  int get hashCode => messageId.hashCode ^ sendTime.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is KimTalkResult &&
-          runtimeType == other.runtimeType &&
-          messageId == other.messageId &&
-          sendTime == other.sendTime;
 }

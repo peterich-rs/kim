@@ -5,13 +5,10 @@ import 'dart:typed_data';
 
 import 'package:kim_mobile/bridge/kim_bridge_base.dart';
 import 'package:kim_mobile/bridge/kim_ports.dart';
-import 'package:kim_mobile/core/format.dart';
-import 'package:kim_mobile/core/image_extra.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/client.dart' as rust;
 import 'package:kim_mobile/src/rust/api/handles.dart' as rust_handles;
-import 'package:kim_mobile/src/rust/api/simple.dart' as rust_simple;
 import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 mixin KimClientBridge on KimBridgeBase implements KimClientPort {
@@ -112,24 +109,10 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
     await requireApi().notifyForeground();
   }
 
-  rust.KimOutgoingContent _wire(KimOutgoingContent content) {
-    return switch (content) {
-      KimTextContent(:final text) => rust.KimOutgoingContent(
-        kind: 1,
-        body: text,
-        extra: '',
-      ),
-      KimImageContent(:final url, :final width, :final height) =>
-        rust.KimOutgoingContent(
-          kind: 2,
-          body: url,
-          extra: encodeImageExtra(width: width, height: height),
-        ),
-      KimVideoContent(:final url) => rust.KimOutgoingContent(
-        kind: 4,
-        body: url,
-        extra: '',
-      ),
+  rust_types.ThreadKind _kind(ThreadKind kind) {
+    return switch (kind) {
+      ThreadKind.group => rust_types.ThreadKind.group,
+      ThreadKind.user => rust_types.ThreadKind.user,
     };
   }
 
@@ -141,17 +124,14 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
     }
     await requireApi().markThreadRead(
       dest: dest,
-      kind: kind == ThreadKind.group ? 1 : 0,
+      kind: _kind(kind),
       messageId: messageId,
     );
   }
 
   @override
   Future<void> markConversationRead(String dest, ThreadKind kind) async {
-    await requireApi().markConversationRead(
-      dest: dest,
-      kind: kind == ThreadKind.group ? 1 : 0,
-    );
+    await requireApi().markConversationRead(dest: dest, kind: _kind(kind));
   }
 
   @override
@@ -165,7 +145,7 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
       generation: BigInt.from(generation),
       foreground: foreground,
       dest: dest,
-      kind: kind == ThreadKind.group ? 1 : 0,
+      kind: _kind(kind),
     );
   }
 
@@ -173,31 +153,21 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   Future<KimCommandReceipt> enqueueMessage({
     required String dest,
     required ThreadKind kind,
-    required KimOutgoingContent content,
+    required rust_types.OutgoingContent content,
     required String clientId,
-    String localPath = '',
-    String mime = '',
-    int width = 0,
-    int height = 0,
-    int byteSize = 0,
   }) async {
     final receipt = await requireApi().enqueueMessage(
       dest: dest,
-      kind: kind == ThreadKind.group ? 1 : 0,
-      content: _wire(content),
+      kind: _kind(kind),
+      content: content,
       clientId: clientId,
-      localPath: localPath,
-      mime: mime,
-      width: width,
-      height: height,
-      byteSize: byteSize,
     );
     return KimCommandReceipt(
       requestId: receipt.requestId,
       clientId: receipt.clientId,
       dest: receipt.dest,
       acceptedAt: receipt.acceptedAt.toInt(),
-      sendStatus: _sendStatusLabel(receipt.sendStatus),
+      sendStatus: receipt.sendStatus,
     );
   }
 
@@ -214,7 +184,7 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
       clientId: receipt.clientId,
       dest: receipt.dest,
       acceptedAt: receipt.acceptedAt.toInt(),
-      sendStatus: _sendStatusLabel(receipt.sendStatus),
+      sendStatus: receipt.sendStatus,
     );
   }
 
@@ -243,27 +213,16 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
     );
   }
 
-  String _sendStatusLabel(rust_types.SendStatus status) {
-    return switch (status) {
-      rust_types.SendStatus.pending => 'pending',
-      rust_types.SendStatus.uploading => 'uploading',
-      rust_types.SendStatus.sending => 'sending',
-      rust_types.SendStatus.sent => 'sent',
-      rust_types.SendStatus.failed => 'failed',
-      rust_types.SendStatus.cancelled => 'cancelled',
+  int _profileKind(rust_types.ProfileKind kind) {
+    return switch (kind) {
+      rust_types.ProfileKind.bot => ProfileKind.bot,
+      rust_types.ProfileKind.user => ProfileKind.user,
     };
   }
 
   @override
   Future<List<KimPerson>> friendList() async {
     return [for (final p in await requireApi().friendList()) _fromPerson(p)];
-  }
-
-  @override
-  Future<List<KimPerson>> friendIncoming() async {
-    return [
-      for (final p in await requireApi().friendIncoming()) _fromPerson(p),
-    ];
   }
 
   @override
@@ -294,18 +253,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
     await requireApi().friendRemove(dest: dest);
   }
 
-  int _profileKind(Object? raw) {
-    if (raw == 'bot' || raw == '2') {
-      return ProfileKind.bot;
-    }
-    final n = raw is int
-        ? raw
-        : raw is num
-        ? raw.toInt()
-        : ProfileKind.user;
-    return n == ProfileKind.bot ? ProfileKind.bot : ProfileKind.user;
-  }
-
   @override
   Future<KimPerson> profile({String dest = ''}) async {
     return _fromProfile(await requireApi().profile(dest: dest));
@@ -327,33 +274,29 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> roomEnter(
-    String dest, {
-    int kind = 0,
-  }) async {
-    final rows = await requireApi().roomEnter(dest: dest, kind: kind);
-    return [
-      for (final row in rows)
-        {
-          'account': row.account,
-          'status': row.status,
-          'lastSeen': row.lastSeen.toInt(),
-        },
-    ];
+  Future<List<rust_types.RoomMember>> roomEnter(
+    String dest,
+    ThreadKind kind,
+  ) async {
+    return requireApi().roomEnter(dest: dest, kind: _kind(kind));
   }
 
   @override
   Future<void> sendTyping(
-    String dest, {
-    int kind = 0,
+    String dest,
+    ThreadKind kind, {
     bool active = true,
   }) async {
-    await requireApi().sendTyping(dest: dest, kind: kind, active: active);
+    await requireApi().sendTyping(
+      dest: dest,
+      kind: _kind(kind),
+      active: active,
+    );
   }
 
   @override
-  Future<void> roomLeave(String dest, {int kind = 0}) async {
-    await requireApi().roomLeave(dest: dest, kind: kind);
+  Future<void> roomLeave(String dest, ThreadKind kind) async {
+    await requireApi().roomLeave(dest: dest, kind: _kind(kind));
   }
 
   @override
@@ -412,50 +355,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<KimTalkResult> botReply({
-    required String dest,
-    required String body,
-    required int inReplyTo,
-    required String clientId,
-  }) async {
-    final result = await requireApi().botReply(
-      dest: dest,
-      body: body,
-      inReplyTo: inReplyTo,
-      clientId: clientId,
-    );
-    return KimTalkResult(
-      messageId: result.messageId.toInt(),
-      sendTime: sendTimeMs(result.sendTime.toInt()),
-    );
-  }
-
-  @override
-  Future<List<KimBotPendingItem>> botPending(
-    String dest, {
-    int limit = 20,
-  }) async {
-    final items = await requireApi().botPending(dest: dest, limit: limit);
-    return [
-      for (final item in items)
-        KimBotPendingItem(
-          messageId: item.messageId.toInt(),
-          body: item.body,
-          sendTime: item.sendTime.toInt(),
-        ),
-    ];
-  }
-
-  @override
-  Future<void> botTyping(
-    String dest, {
-    int kind = 0,
-    bool active = true,
-  }) async {
-    await requireApi().botTyping(dest: dest, kind: kind, active: active);
-  }
-
-  @override
   Future<rust_types.Settings> settingsGet() {
     return requireApi().settingsGet();
   }
@@ -476,21 +375,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<rust_types.Settings> importLegacyPrefs({
-    required String wsUrl,
-    required String httpOrigin,
-    String env = 'prod',
-    String locale = '',
-  }) {
-    return requireApi().importLegacyPrefs(
-      wsUrl: wsUrl,
-      httpOrigin: httpOrigin,
-      env: env,
-      locale: locale,
-    );
-  }
-
-  @override
   Future<void> refreshContacts() {
     return requireApi().refreshContacts();
   }
@@ -498,11 +382,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   @override
   Stream<rust_types.ContactsSnapshot> watchContacts() {
     return requireApi().watchContacts();
-  }
-
-  @override
-  Stream<rust_types.AgentRunRequest> watchAgentRun() {
-    return requireApi().watchAgentRun();
   }
 
   @override
@@ -571,18 +450,13 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<void> submitAgentRun(rust_types.AgentRunResult result) {
-    return requireApi().submitAgentRun(result: result);
-  }
-
-  @override
   Future<List<rust_types.AgentProfile>> listAgentProfiles() {
     return requireApi().listAgentProfiles();
   }
 
   @override
-  Future<void> upsertAgentProfile(rust_types.AgentProfile row) {
-    return requireApi().upsertAgentProfile(row: row);
+  Future<void> upsertAgentProfile(String documentJson) {
+    return requireApi().upsertAgentProfile(documentJson: documentJson);
   }
 
   @override
@@ -591,8 +465,8 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
-  Future<void> importAgentProfiles(List<rust_types.AgentProfile> rows) {
-    return requireApi().importAgentProfiles(rows: rows);
+  Future<void> importAgentProfiles(List<String> documents) {
+    return requireApi().importAgentProfiles(documents: documents);
   }
 
   @override
@@ -633,21 +507,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   @override
   Future<void> syncAgentSpecs() {
     return requireApi().syncAgentSpecs();
-  }
-
-  @override
-  Future<Uint8List> specJsonToBlob(String bodyJson) {
-    return rust_simple.specJsonToBlob(bodyJson: bodyJson);
-  }
-
-  @override
-  Future<String> specBlobToJson(List<int> blob) {
-    return rust_simple.specBlobToJson(blob: blob);
-  }
-
-  @override
-  Future<rust_types.CommandAck> command(rust_types.UiCommand cmd) {
-    return requireApi().command(cmd: cmd);
   }
 
   @override

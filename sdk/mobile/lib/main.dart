@@ -99,10 +99,6 @@ class _KimBootState extends State<KimBoot> {
       await secrets.attach();
       await bridge.attachStore();
       KimLogger.info('boot store attached');
-      if (!await bridge.settingsImported()) {
-        final (wsUrl, httpOrigin) = await readLegacyDevicePrefs(runtime);
-        await bridge.importLegacyPrefs(wsUrl: wsUrl, httpOrigin: httpOrigin);
-      }
       await runtime.settings.dropImportedPrefs();
     }
     if (!mounted) {

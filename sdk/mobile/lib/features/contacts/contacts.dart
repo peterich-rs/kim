@@ -10,7 +10,9 @@ import 'package:kim_mobile/core/errors.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ProfileKind, Relation;
+import 'package:kim_mobile/src/rust/api/types.dart' as rust_kind
+    show ProfileKind, Relation;
 import 'package:kim_mobile/features/agent/agent_profiles.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
@@ -254,14 +256,16 @@ class ContactsNotifier extends Notifier<ContactsState> {
         nickname: p.nickname.isEmpty ? p.account : p.nickname,
         avatar: p.avatar,
         bio: p.bio,
-        kind: p.kind == ProfileKind.bot ? ProfileKind.bot : ProfileKind.user,
+        kind: p.kind == rust_kind.ProfileKind.bot
+            ? ProfileKind.bot
+            : ProfileKind.user,
       );
       switch (p.relation) {
-        case 'incoming':
+        case rust_kind.Relation.incoming:
           incoming.add(person);
-        case 'outgoing':
+        case rust_kind.Relation.outgoing:
           outgoing.add(p.account);
-        default:
+        case rust_kind.Relation.friend:
           friends.add(person);
       }
     }

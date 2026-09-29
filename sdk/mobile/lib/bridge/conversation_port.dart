@@ -2,40 +2,39 @@ library;
 
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
 
-/// One conversation. Production and tests share this port; the opaque
-/// `ConversationHandle` is what [KimBridge] uses underneath.
+/// One conversation. The thread kind is fixed at construction.
 class ConversationPort {
-  ConversationPort(this.client, this.dest);
+  ConversationPort(this.client, this.dest, this.kind);
 
   final KimClientPort client;
   final String dest;
+  final ThreadKind kind;
 
-  Future<List<Map<String, dynamic>>> enter() => client.roomEnter(dest, kind: 0);
+  Future<List<RoomMember>> enter() => client.roomEnter(dest, kind);
 
-  Future<void> leave() async {
-    await client.roomLeave(dest, kind: 0);
-  }
+  Future<void> leave() => client.roomLeave(dest, kind);
 
   Future<void> setTyping(bool active) =>
-      client.sendTyping(dest, kind: 0, active: active);
+      client.sendTyping(dest, kind, active: active);
 
-  Future<void> markRead() => client.markConversationRead(dest, ThreadKind.user);
+  Future<void> markRead() => client.markConversationRead(dest, kind);
 
   Future<KimCommandReceipt> sendText({
-    required ThreadKind kind,
     required String text,
     required String clientId,
   }) {
     return client.enqueueMessage(
       dest: dest,
       kind: kind,
-      content: KimOutgoingContent.text(text),
+      content: OutgoingContent.text(body: text),
       clientId: clientId,
     );
   }
 }
 
 extension KimClientConversation on KimClientPort {
-  ConversationPort conversation(String dest) => ConversationPort(this, dest);
+  ConversationPort conversation(String dest, ThreadKind kind) =>
+      ConversationPort(this, dest, kind);
 }

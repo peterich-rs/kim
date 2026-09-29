@@ -2,6 +2,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:kim_mobile/src/rust/api/types.dart';
+
 import 'package:kim_mobile/models/models.dart';
 
 class PresenceState {
@@ -28,25 +30,18 @@ class PresenceNotifier extends Notifier<PresenceState> {
   @override
   PresenceState build() => const PresenceState();
 
-  void applySnapshot(List<Map<String, dynamic>> entries) {
+  void applySnapshot(List<RoomMember> entries) {
     if (entries.isEmpty) {
       return;
     }
     final by = Map<String, PeerPresenceStatus>.from(state.byAccount);
     final seen = Map<String, int?>.from(state.lastSeenMs);
     for (final row in entries) {
-      final account = '${row['account'] ?? ''}';
-      if (account.isEmpty) {
+      if (row.account.isEmpty) {
         continue;
       }
-      final status = peerPresenceFromWire(
-        row['status'] is int
-            ? row['status'] as int
-            : int.tryParse('${row['status']}') ?? 0,
-      );
-      by[account] = status;
-      final last = row['lastSeen'] ?? row['last_seen'];
-      seen[account] = last is int ? last : int.tryParse('$last');
+      by[row.account] = peerPresenceFromWire(row.status);
+      seen[row.account] = row.lastSeen.toInt();
     }
     state = state.copyWith(byAccount: by, lastSeenMs: seen);
   }

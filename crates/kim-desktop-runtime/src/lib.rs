@@ -22,7 +22,7 @@ pub use ui::{AgentUiStatus, UiBus};
 
 static INSTALLED: OnceLock<Arc<HostAgentRuntime>> = OnceLock::new();
 
-/// Replaces [`kim_sdk::FfiAgentRuntime`] on desktop. Phone never calls this.
+/// Installs the in-process host runtime. Phone never calls this.
 pub fn install(sdk: KimSdk) -> Arc<HostAgentRuntime> {
     let runtime = HostAgentRuntime::host(sdk.clone());
     sdk.set_agent(Arc::new(MobileAgent::new(sdk.clone(), runtime.clone())));
@@ -328,17 +328,12 @@ impl HostAgentRuntime {
 }
 
 fn profile_body(row: &AgentProfileRow) -> Result<String, SdkError> {
-    if !row.body_json.trim().is_empty() {
-        return Ok(row.body_json.clone());
-    }
-    if row.body_blob.is_empty() {
+    if row.document_json.trim().is_empty() {
         return Err(SdkError::InvalidArgument {
             message: format!("agent profile {} has empty spec", row.profile_id),
         });
     }
-    kim_agent_codec::blob_to_json(&row.body_blob).map_err(|err| SdkError::InvalidArgument {
-        message: err.to_string(),
-    })
+    Ok(row.document_json.clone())
 }
 
 fn account_id_from_json(profile_json: &str) -> String {

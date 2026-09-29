@@ -7,11 +7,25 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/format.dart';
-import 'package:kim_mobile/core/image_extra.dart';
 import 'package:kim_mobile/models/models.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/status_chip.dart';
+
+String _previewLabel(ThreadPreview preview) {
+  return switch (preview) {
+    ThreadPreview_Text(:final snippet) => snippet,
+    ThreadPreview_Media(:final kind) => switch (kind) {
+      MediaKind.image => Copy.imageMessage,
+      MediaKind.video => Copy.videoMessage,
+      MediaKind.voice => Copy.voiceMessage,
+      MediaKind.card => Copy.cardMessage,
+      MediaKind.text => '',
+    },
+    ThreadPreview_System(:final text) => text,
+  };
+}
 
 class ConversationTile extends StatelessWidget {
   const ConversationTile({
@@ -39,7 +53,7 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final snippet = previewSnippet(thread.lastBody);
+    final snippet = _previewLabel(thread.preview);
     final preview = snippet.isEmpty ? Copy.noMessages : snippet;
     final time = formatListTime(thread.lastAt);
 

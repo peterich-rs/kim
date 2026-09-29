@@ -8,8 +8,8 @@ import 'failure.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `catalog_validate_from_choice`, `empty`, `support_root`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `catalog_validate_from_choice`, `empty`, `granted_project_roots`, `support_root`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `from`, `from`, `from`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `user_agents_skills`
 
 /// Same platform fact `platform_bootstrap` hands to `kim_client_ffi`: the
@@ -46,12 +46,18 @@ Future<CatalogValidate> catalogValidate({
   budget: budget,
 );
 
-/// Portable skills: global root is Rust-derived (`$HOME/.agents/skills`);
-/// `project_root` comes from the workspace grant, not a per-call path.
-Future<List<Skill>> skillPortableList({required String projectRoot}) =>
-    AgentRustLib.instance.api.crateApiCatalogSkillPortableList(
-      projectRoot: projectRoot,
-    );
+/// Portable skills. The user shelf is `$HOME/.agents/skills`. Project shelves
+/// come from workspace grants registered by `KimUiHandle`, projected to
+/// `{support}/agent/workspace-grants.txt` because this crate is a separate dylib.
+Future<List<Skill>> skillPortableList() =>
+    AgentRustLib.instance.api.crateApiCatalogSkillPortableList();
+
+/// Builtin persona documents. A template that `kim-agent-codec` rejects is omitted.
+Future<List<String>> listBuiltinProfiles() =>
+    AgentRustLib.instance.api.crateApiCatalogListBuiltinProfiles();
+
+Future<List<String>> listBundledProviders() =>
+    AgentRustLib.instance.api.crateApiCatalogListBundledProviders();
 
 /// App skill catalog at the layout-derived cache root.
 Future<List<Skill>> skillAppCatalog() =>
@@ -210,7 +216,7 @@ class Skill {
 class Vendor {
   final String id;
   final String displayName;
-  final String group;
+  final VendorGroup group;
   final int sortRank;
   final String defaultBaseUrl;
   final List<String> altBaseUrls;
@@ -261,3 +267,5 @@ class Vendor {
           defaultModel == other.defaultModel &&
           models == other.models;
 }
+
+enum VendorGroup { primary, gateway, other }

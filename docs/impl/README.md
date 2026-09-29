@@ -31,6 +31,8 @@
 | B6 可观测性剩余 | G-15。跨进程 trace 仍延后 | [observability.md](../observability.md) |
 | B7 inbox 物化 | **G-17 仍开**：生产回填后 `KIM_INBOX_MATERIALIZED=1` | [user-social-inbox.md](../user-social-inbox.md)、[deploy.md](../deploy.md) |
 | Mobile 成熟化、链接控制、kim-sdk 所有权、Flutter UI 壳 | Phase 3–7、链接保活、消息生命周期下沉、Flutter 只做 UI | [mobile-client.md](../mobile-client.md)、[flutter-layering.md](../flutter-layering.md)、[ffi-oo-contract.md](../ffi-oo-contract.md) |
+| FFI crate 收进 workspace | `kim-client-ffi` / `kim-agent-ffi` 在 `crates/`。句柄拆分与 `KimBridge` 三拆不再做 | [mobile-client.md](../mobile-client.md)、[ffi-oo-contract.md](../ffi-oo-contract.md) |
+| FFI 所有权反转 | `platformBootstrap`、SecretStore、无参 `startSession`。本分支 `8c46a6b` | [mobile-client.md](../mobile-client.md)、[ffi-oo-contract.md](../ffi-oo-contract.md) |
 | Web `isRetryable` | G-14 | [web-sdk.md](../web-sdk.md) |
 | 密码信封 | X25519 + HTTPS | [auth-password-envelope.md](../auth-password-envelope.md) |
 | Presence 进房 | P1a / P1b | [presence-room-interest.md](../presence-room-interest.md) |
@@ -47,7 +49,6 @@
 | pending receipt rollout | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md)：G-03 / G-04 / G-10。代码已合入，关 gaps 等运维三条同时成立 |
 | 服务端会话隐藏 | [chat-inbox-hide.md](./chat-inbox-hide.md)：Delete conversation for me。尚未合入 |
 | Codex harness 嵌入 | [codex-embed.md](./codex-embed.md)：分支 `feat/codex-agent-embed`。Goose 与 Codex 并列，`runtime` 选择 |
-| FFI 收进 workspace | [ffi-workspace.md](./ffi-workspace.md)：Phase 1–5 已落地。`KimBridge` 仍是一个类 |
-| FFI 所有权反转 | [ffi-ownership.md](./ffi-ownership.md)：分支 `refactor/ffi-ownership`。一次 bootstrap，布局 / 密钥 / 会话由 Rust 持有 |
+| FFI 按第一版重切边界 | [ffi-dead-surface-cleanup.md](./ffi-dead-surface-cleanup.md)：分支 `refactor/ffi-ownership`。本地已实现，尚未合入主干。删死面与 agent session；闭集替换整型哨兵；人设只走 codec；本地库无升级路径 |
 
 没有对应分支、也不描述当前系统的稿子不放在这里。

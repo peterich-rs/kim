@@ -172,9 +172,9 @@ class ProviderAccountStore extends Notifier<List<ProviderAccount>> {
               baseUrl: row.baseUrl,
               keyRef: row.keyRef,
               displayName: row.displayName,
-              models: _modelsFromJson(row.modelsJson),
+              models: row.models,
               updatedAt: row.updatedAt.toInt(),
-              deletedAt: row.deletedAt.toInt(),
+              deletedAt: 0,
             ),
       ];
       if (accounts.isEmpty) {
@@ -258,25 +258,13 @@ class ProviderAccountStore extends Notifier<List<ProviderAccount>> {
       baseUrl: a.baseUrl,
       keyRef: a.keyRef,
       displayName: a.displayName,
-      modelsJson: jsonEncode(a.models),
+      models: a.models,
       updatedAt: a.updatedAt,
-      deletedAt: a.deletedAt,
     );
   }
 }
 
-List<String> _modelsFromJson(String raw) {
-  if (raw.trim().isEmpty) {
-    return const [];
-  }
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is List) {
-      return [for (final m in decoded) '$m'];
-    }
-  } catch (_) {}
-  return const [];
-}
+
 
 final providerAccountsProvider =
     NotifierProvider<ProviderAccountStore, List<ProviderAccount>>(

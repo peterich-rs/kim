@@ -6,38 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/features/agent/host_support.dart';
 import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as catalog;
-import 'package:kim_mobile/src/rust_agent/api/session.dart' as session;
 import 'package:kim_mobile/src/rust_agent/frb_generated.dart';
 
 export 'package:kim_mobile/src/rust_agent/api/catalog.dart'
     show CapabilityEntry, CatalogValidate, Skill, Vendor;
-export 'package:kim_mobile/src/rust_agent/api/session.dart'
-    show AgentUiEvent, ResumeReport, SessionSnapshot;
-
-/// Test double for the old session loop. Production does not open one.
-abstract class AgentSessionPort {
-  Stream<session.AgentUiEvent> listen();
-  Future<String> prompt({required String text});
-  Future<String> promptWithContext({
-    required String text,
-    required String contextJson,
-  });
-  Future<String> completeTool({
-    required String callId,
-    required String outputJson,
-  });
-  Future<String> respondPermission({
-    required String callId,
-    required String permission,
-  });
-  Future<void> close();
-  Future<void> abort();
-  Future<void> park();
-  Future<void> steer({required String text});
-  Future<void> reconfigure();
-  Future<session.ResumeReport> resume();
-  Future<session.SessionSnapshot> snapshot();
-}
 
 final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
 
@@ -56,12 +28,12 @@ class AgentBridge {
 
   Future<List<String>> builtinProfiles() async {
     await ensure();
-    return session.listBuiltinProfiles();
+    return catalog.listBuiltinProfiles();
   }
 
   Future<List<String>> bundledProviders() async {
     await ensure();
-    return session.listBundledProviders();
+    return catalog.listBundledProviders();
   }
 
   Future<List<catalog.Vendor>> catalogVendors() async {
@@ -101,10 +73,8 @@ class AgentBridge {
     return catalog.skillAppCatalog();
   }
 
-  Future<List<catalog.Skill>> skillPortableList({
-    required String projectRoot,
-  }) async {
+  Future<List<catalog.Skill>> skillPortableList() async {
     await ensure();
-    return catalog.skillPortableList(projectRoot: projectRoot);
+    return catalog.skillPortableList();
   }
 }

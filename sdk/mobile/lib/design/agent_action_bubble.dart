@@ -1,7 +1,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +8,6 @@ import 'package:gap/gap.dart';
 
 import 'package:kim_mobile/features/agent/agent_permission.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 
 class AgentActionBubble extends ConsumerWidget {
@@ -22,18 +20,6 @@ class AgentActionBubble extends ConsumerWidget {
     this.pending = true,
     this.confirmation = true,
   });
-
-  factory AgentActionBubble.fromMessage(KimChatMsg message) {
-    final card = AgentToolCard.parse(message.body);
-    return AgentActionBubble(
-      dest: message.dest,
-      callId: card.callId,
-      name: card.name,
-      preview: card.preview,
-      pending: card.state == 'pending' || card.state == 'running',
-      confirmation: card.isConfirmation,
-    );
-  }
 
   final String dest;
   final String callId;
@@ -149,61 +135,5 @@ class AgentActionBubble extends ConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-class AgentToolCard {
-  const AgentToolCard({
-    required this.callId,
-    required this.name,
-    required this.state,
-    required this.preview,
-    required this.ok,
-    this.type = 'tool',
-  });
-
-  final String callId;
-  final String name;
-  final String state;
-  final String preview;
-  final bool ok;
-  final String type;
-
-  bool get isConfirmation => type == 'action_required';
-
-  factory AgentToolCard.parse(String body) {
-    try {
-      final raw = jsonDecode(body);
-      if (raw is Map) {
-        final state = '${raw['state'] ?? 'pending'}';
-        return AgentToolCard(
-          callId: '${raw['call_id'] ?? ''}',
-          name: '${raw['name'] ?? ''}',
-          state: state,
-          preview: '${raw['preview'] ?? ''}',
-          ok: raw['ok'] == true || state == 'ok',
-          type: '${raw['type'] ?? 'tool'}',
-        );
-      }
-    } catch (_) {}
-    return const AgentToolCard(
-      callId: '',
-      name: '',
-      state: 'error',
-      preview: '',
-      ok: false,
-    );
-  }
-
-  String encode() {
-    return jsonEncode({
-      'v': 1,
-      'type': type,
-      'call_id': callId,
-      'name': name,
-      'state': state,
-      'preview': preview,
-      'ok': ok,
-    });
   }
 }

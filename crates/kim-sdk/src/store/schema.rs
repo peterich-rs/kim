@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS threads (
   kind TEXT NOT NULL,
   title TEXT NOT NULL,
   last_body TEXT NOT NULL DEFAULT '',
+  last_kind TEXT NOT NULL DEFAULT 'text',
+  last_sys INTEGER NOT NULL DEFAULT 0,
   last_at INTEGER NOT NULL DEFAULT 0,
   unread INTEGER NOT NULL DEFAULT 0,
   avatar TEXT NOT NULL DEFAULT '',
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS messages (
   batch_id TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'sent',
   local_path TEXT NOT NULL DEFAULT '',
+  thread_kind INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (account, dest, key)
 )
 ";
@@ -162,7 +165,6 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
   profile_id TEXT NOT NULL,
   nickname TEXT NOT NULL,
   server_account TEXT NOT NULL DEFAULT '',
-  body_json TEXT NOT NULL,
   body_blob BLOB,
   placement TEXT NOT NULL DEFAULT 'local',
   key_ciphertext BLOB,
