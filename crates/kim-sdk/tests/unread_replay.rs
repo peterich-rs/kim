@@ -86,7 +86,7 @@ async fn inbox_local_read_wins() {
         .expect("talk");
     sdk.mark_read(kim_sdk::ReadMarker {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         visible_message_id: 9,
     })
     .await

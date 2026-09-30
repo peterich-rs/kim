@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_plaza_page.dart';
+import 'package:kim_mobile/features/agent/views/agent_plaza_page.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
 
 import '../support/harness.dart';

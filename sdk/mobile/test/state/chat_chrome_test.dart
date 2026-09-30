@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/features/chats/providers/chat_view.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/models/models.dart';
 
 void main() {

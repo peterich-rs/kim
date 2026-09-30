@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use tokio::sync::watch;
 
+use crate::model::{ProfileKind, Relation};
 use crate::session::lock;
 use crate::store::changes::CommitEffect;
 use crate::{map_client, ContactsSnapshot, KimSdk, PersonRef, SdkError};
@@ -23,7 +24,7 @@ impl KimSdk {
             .ensure_thread(
                 session.account,
                 group_id.to_string(),
-                kim_protocol::INBOX_KIND_GROUP,
+                crate::model::ThreadKind::Group.as_wire(),
             )
             .await?;
         self.after_command(sequence).await;
@@ -82,7 +83,7 @@ impl KimSdk {
         }
         self.upsert_contact(
             peer.clone(),
-            Some("outgoing".into()),
+            Some(Relation::Outgoing),
             peer,
             String::new(),
             None,
@@ -139,7 +140,7 @@ impl KimSdk {
             kim_client::SessionEvent::FriendRequest { from, nickname } => {
                 self.upsert_contact(
                     from.clone(),
-                    Some("incoming".into()),
+                    Some(Relation::Incoming),
                     nickname.clone(),
                     String::new(),
                     None,
@@ -153,7 +154,7 @@ impl KimSdk {
                 // a second incoming entry to delete.
                 self.upsert_contact(
                     from.clone(),
-                    Some("friend".into()),
+                    Some(Relation::Friend),
                     nickname.clone(),
                     String::new(),
                     None,
@@ -223,11 +224,11 @@ impl KimSdk {
     async fn upsert_contact(
         &self,
         peer: String,
-        relation: Option<String>,
+        relation: Option<Relation>,
         nickname: String,
         avatar: String,
         bio: Option<String>,
-        kind: Option<i32>,
+        kind: Option<ProfileKind>,
     ) -> Result<(), SdkError> {
         let store = self.store()?;
         let session = self.session_snapshot()?;
@@ -237,11 +238,11 @@ impl KimSdk {
                 epoch,
                 session.account,
                 peer,
-                relation,
+                relation.map(|rel| rel.as_db().to_string()),
                 nickname,
                 avatar,
                 bio,
-                kind,
+                kind.map(ProfileKind::as_wire),
             )
             .await?;
         Ok(())
@@ -254,21 +255,27 @@ fn map_person_refs(
 ) -> Vec<PersonRef> {
     let mut rows = BTreeMap::new();
     for profile in incoming {
-        rows.insert(profile.account.clone(), person_ref(profile, "incoming"));
+        rows.insert(
+            profile.account.clone(),
+            person_ref(profile, Relation::Incoming),
+        );
     }
     for profile in friends {
-        rows.insert(profile.account.clone(), person_ref(profile, "friend"));
+        rows.insert(
+            profile.account.clone(),
+            person_ref(profile, Relation::Friend),
+        );
     }
     rows.into_values().collect()
 }
 
-fn person_ref(profile: kim_client::Profile, relation: &str) -> PersonRef {
+fn person_ref(profile: kim_client::Profile, relation: Relation) -> PersonRef {
     PersonRef {
         account: profile.account,
         nickname: profile.nickname,
         avatar: profile.avatar,
         bio: profile.bio,
-        relation: relation.into(),
-        kind: profile.kind,
+        relation,
+        kind: ProfileKind::from_wire(profile.kind),
     }
 }

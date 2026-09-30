@@ -1,5 +1,10 @@
 use kim_sdk as sdk;
-use kim_sdk::{AgentProfileRow, CommandReceipt, LinkStateView};
+use kim_sdk::{AgentProfileRow, LinkStateView};
+
+pub use kim_sdk::{
+    AgentCard, AgentCardState, AgentCardType, MediaKind, OutgoingContent, ProfileKind,
+    ProfilePlacement, Relation, ThreadKind, ThreadPreview,
+};
 
 pub enum SendStatus {
     Pending,
@@ -25,7 +30,8 @@ pub struct MessageView {
     pub local_path: Option<String>,
     pub at: i64,
     pub sys: bool,
-    pub kind: i32,
+    pub kind: MediaKind,
+    pub card: Option<AgentCard>,
     pub width: i32,
     pub height: i32,
     pub message_id: i64,
@@ -35,10 +41,11 @@ pub struct MessageView {
 
 pub struct ThreadView {
     pub id: String,
-    pub kind: i32,
+    pub kind: ThreadKind,
     pub title: String,
     pub avatar: String,
     pub last_body: String,
+    pub preview: ThreadPreview,
     pub last_at: i64,
     pub unread: i32,
 }
@@ -76,8 +83,8 @@ pub struct Person {
     pub nickname: String,
     pub avatar: String,
     pub bio: String,
-    pub relation: String,
-    pub kind: i32,
+    pub relation: Relation,
+    pub kind: ProfileKind,
 }
 
 pub struct ContactsSnapshot {
@@ -92,39 +99,12 @@ pub struct RoomMember {
     pub last_seen: i64,
 }
 
-#[flutter_rust_bridge::frb(unignore)]
-pub struct Bot {
-    pub dest: String,
-    pub nickname: String,
-    pub avatar: String,
-    pub bio: String,
-    pub model: String,
-    pub thinking_effort: String,
-    pub context_tokens: i32,
-    pub visibility: String,
-}
-
 pub struct Profile {
     pub account: String,
     pub nickname: String,
     pub avatar: String,
     pub bio: String,
-    pub kind: i32,
-}
-
-pub struct MessagePage {
-    pub dest: String,
-    pub messages: Vec<MessageView>,
-    pub has_more: bool,
-}
-
-#[flutter_rust_bridge::frb(unignore)]
-pub struct CommandAck {
-    pub request_id: String,
-    pub client_id: String,
-    pub dest: String,
-    pub accepted_at: i64,
-    pub send_status: SendStatus,
+    pub kind: ProfileKind,
 }
 
 pub struct SessionSnapshot {
@@ -155,10 +135,6 @@ pub enum SessionUpdate {
     AuthExpired {
         reason: String,
     },
-    TokenRenew {
-        token: String,
-        exp: i64,
-    },
     FriendRequest {
         from: String,
         nickname: String,
@@ -180,13 +156,13 @@ pub enum SessionUpdate {
     Typing {
         typer: String,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         active: bool,
     },
     ReceiptRead {
         reader: String,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         message_id: i64,
     },
     GroupCreate {
@@ -220,46 +196,12 @@ pub enum AgentTurnState {
 }
 
 #[flutter_rust_bridge::frb(unignore)]
-pub struct AgentCard {
-    pub v: i32,
-    pub card_type: String,
-    pub call_id: String,
-    pub name: String,
-    pub state: String,
-    pub preview: String,
-    pub ok: bool,
-}
-
-#[flutter_rust_bridge::frb(unignore)]
-pub struct AgentRunRequest {
-    pub dest: String,
-    pub profile_id: String,
-    pub text: String,
-    pub in_reply_to: i64,
-    pub epoch: u64,
-}
-
-#[flutter_rust_bridge::frb(unignore)]
-pub struct AgentRunResult {
-    pub dest: String,
-    pub profile_id: String,
-    pub epoch: u64,
-    pub output: String,
-    pub error: Option<String>,
-    pub stop_reason: String,
-    pub replied: bool,
-    pub visible: bool,
-    pub recently_active: bool,
-}
-
-#[flutter_rust_bridge::frb(unignore)]
 pub struct AgentProfile {
     pub profile_id: String,
     pub nickname: String,
     pub server_account: String,
-    pub body_json: String,
-    pub body_blob: Vec<u8>,
-    pub placement: String,
+    pub document_json: String,
+    pub placement: ProfilePlacement,
     pub updated_at: i64,
 }
 
@@ -270,9 +212,8 @@ pub struct ProviderAccount {
     pub base_url: String,
     pub key_ref: String,
     pub display_name: String,
-    pub models_json: String,
+    pub models: Vec<String>,
     pub updated_at: i64,
-    pub deleted_at: i64,
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -298,10 +239,30 @@ pub struct Settings {
     pub account: String,
 }
 
-#[flutter_rust_bridge::frb(unignore)]
-pub enum TokenPersist {
-    Write { token: String },
-    Clear,
+impl From<kim_sdk::DeviceSettings> for Settings {
+    fn from(row: kim_sdk::DeviceSettings) -> Self {
+        Self {
+            ws_url: row.ws_url,
+            http_origin: row.http_origin,
+            env: row.env,
+            locale: row.locale,
+            account: row.account,
+        }
+    }
+}
+
+pub enum SettingsPreset {
+    Local,
+    Prod,
+}
+
+impl From<SettingsPreset> for kim_sdk::SettingsPreset {
+    fn from(p: SettingsPreset) -> Self {
+        match p {
+            SettingsPreset::Local => Self::Local,
+            SettingsPreset::Prod => Self::Prod,
+        }
+    }
 }
 
 #[flutter_rust_bridge::frb(unignore)]
@@ -318,74 +279,6 @@ pub struct Metrics {
     pub persist_talk_total: u64,
     pub epoch_drop_total: u64,
     pub store_wipe_total: u64,
-}
-
-pub enum UiCommand {
-    SendText {
-        dest: String,
-        text: String,
-        kind: i32,
-    },
-    SendMedia {
-        dest: String,
-        path: String,
-        mime: String,
-        width: i32,
-        height: i32,
-        byte_size: i64,
-        kind: i32,
-    },
-    RetrySend {
-        client_id: String,
-    },
-    CancelSend {
-        client_id: String,
-    },
-    MarkThreadRead {
-        dest: String,
-        kind: i32,
-        visible_message_id: i64,
-    },
-    DeleteThread {
-        dest: String,
-    },
-    FriendRequest {
-        dest: String,
-    },
-    FriendAccept {
-        dest: String,
-    },
-    FriendReject {
-        dest: String,
-    },
-    FriendRemove {
-        dest: String,
-    },
-    AgentEnqueueTurn {
-        dest: String,
-        text: String,
-        in_reply_to: i64,
-    },
-    AgentRespondPermission {
-        dest: String,
-        call_id: String,
-        permission: String,
-    },
-    AgentAbortTurn {
-        dest: String,
-    },
-    AgentRunResult {
-        dest: String,
-        profile_id: String,
-        epoch: u64,
-        output: String,
-        error: Option<String>,
-    },
-    SettingsPatch {
-        ws_url: Option<String>,
-        http_origin: Option<String>,
-        env: Option<String>,
-    },
 }
 
 impl From<sdk::SendStatus> for SendStatus {
@@ -423,6 +316,7 @@ impl From<sdk::MessageView> for MessageView {
             at: v.at,
             sys: v.sys,
             kind: v.kind,
+            card: v.card,
             width: v.width,
             height: v.height,
             message_id: v.message_id,
@@ -440,6 +334,7 @@ impl From<sdk::ThreadView> for ThreadView {
             title: v.title,
             avatar: v.avatar,
             last_body: v.last_body,
+            preview: v.preview,
             last_at: v.last_at,
             unread: v.unread,
         }
@@ -490,28 +385,6 @@ impl From<sdk::TimelineUpdate> for TimelineUpdate {
     }
 }
 
-impl From<sdk::MessagePage> for MessagePage {
-    fn from(v: sdk::MessagePage) -> Self {
-        Self {
-            dest: v.dest,
-            messages: v.messages.into_iter().map(Into::into).collect(),
-            has_more: v.has_more,
-        }
-    }
-}
-
-impl From<CommandReceipt> for CommandAck {
-    fn from(v: CommandReceipt) -> Self {
-        Self {
-            request_id: v.request_id,
-            client_id: v.client_id,
-            dest: v.dest,
-            accepted_at: v.accepted_at,
-            send_status: v.send_status.into(),
-        }
-    }
-}
-
 impl From<sdk::SessionSnapshot> for SessionSnapshot {
     fn from(v: sdk::SessionSnapshot) -> Self {
         Self {
@@ -545,7 +418,6 @@ impl From<sdk::SessionUpdate> for SessionUpdate {
             },
             sdk::SessionUpdate::Kickout { channel_id } => Self::Kickout { channel_id },
             sdk::SessionUpdate::AuthExpired { reason } => Self::AuthExpired { reason },
-            sdk::SessionUpdate::TokenRenew { token, exp } => Self::TokenRenew { token, exp },
             sdk::SessionUpdate::FriendRequest { from, nickname } => {
                 Self::FriendRequest { from, nickname }
             }
@@ -614,10 +486,7 @@ impl From<sdk::SessionUpdate> for SessionUpdate {
                 state: state.into(),
                 text,
             },
-            sdk::SessionUpdate::AgentCard { dest, card } => Self::AgentCard {
-                dest,
-                card: card.into(),
-            },
+            sdk::SessionUpdate::AgentCard { dest, card } => Self::AgentCard { dest, card },
             sdk::SessionUpdate::RustPanic { message } => Self::RustPanic { message },
         }
     }
@@ -636,89 +505,15 @@ impl From<sdk::AgentTurnState> for AgentTurnState {
     }
 }
 
-impl From<sdk::AgentCard> for AgentCard {
-    fn from(c: sdk::AgentCard) -> Self {
-        Self {
-            v: c.v,
-            card_type: c.card_type,
-            call_id: c.call_id,
-            name: c.name,
-            state: c.state,
-            preview: c.preview,
-            ok: c.ok,
-        }
-    }
-}
-
-impl From<sdk::AgentRunRequest> for AgentRunRequest {
-    fn from(r: sdk::AgentRunRequest) -> Self {
-        Self {
-            dest: r.dest,
-            profile_id: r.profile_id,
-            text: r.text,
-            in_reply_to: r.in_reply_to,
-            epoch: r.epoch,
-        }
-    }
-}
-
-impl From<AgentRunResult> for sdk::AgentRunResult {
-    fn from(r: AgentRunResult) -> Self {
-        let replied = r.replied;
-        let stop_reason = if r.stop_reason.is_empty() {
-            if r.error.is_some() {
-                "failed".into()
-            } else if replied {
-                "completed".into()
-            } else {
-                "empty".into()
-            }
-        } else {
-            r.stop_reason
-        };
-        Self {
-            dest: r.dest,
-            profile_id: r.profile_id,
-            epoch: r.epoch,
-            output: r.output,
-            error: r.error,
-            stop_reason,
-            replied,
-            visible: r.visible,
-            recently_active: r.recently_active,
-        }
-    }
-}
-
 impl From<AgentProfileRow> for AgentProfile {
     fn from(r: AgentProfileRow) -> Self {
         Self {
             profile_id: r.profile_id,
             nickname: r.nickname,
             server_account: r.server_account,
-            body_json: r.body_json,
-            body_blob: r.body_blob,
+            document_json: r.document_json,
             placement: r.placement,
             updated_at: r.updated_at,
-        }
-    }
-}
-
-impl From<AgentProfile> for AgentProfileRow {
-    fn from(r: AgentProfile) -> Self {
-        Self {
-            profile_id: r.profile_id,
-            nickname: r.nickname,
-            server_account: r.server_account,
-            body_json: r.body_json,
-            body_blob: r.body_blob,
-            placement: if r.placement.trim().is_empty() {
-                "local".into()
-            } else {
-                r.placement
-            },
-            updated_at: r.updated_at,
-            deleted_at: 0,
         }
     }
 }
@@ -731,9 +526,8 @@ impl From<kim_sdk::ProviderAccountRow> for ProviderAccount {
             base_url: r.base_url,
             key_ref: r.key_ref,
             display_name: r.display_name,
-            models_json: r.models_json,
+            models: r.models,
             updated_at: r.updated_at,
-            deleted_at: r.deleted_at,
         }
     }
 }
@@ -746,9 +540,9 @@ impl From<ProviderAccount> for kim_sdk::ProviderAccountRow {
             base_url: r.base_url,
             key_ref: r.key_ref,
             display_name: r.display_name,
-            models_json: r.models_json,
+            models: r.models,
             updated_at: r.updated_at,
-            deleted_at: r.deleted_at,
+            deleted_at: 0,
         }
     }
 }
@@ -812,14 +606,14 @@ impl From<Person> for kim_sdk::PersonRef {
 }
 
 impl Person {
-    pub(crate) fn from_profile(p: kim_client::Profile, relation: &str) -> Self {
+    pub(crate) fn from_profile(p: kim_client::Profile, relation: Relation) -> Self {
         Self {
             account: p.account,
             nickname: p.nickname,
             avatar: p.avatar,
             bio: p.bio,
-            relation: relation.into(),
-            kind: p.kind,
+            relation,
+            kind: ProfileKind::from_wire(p.kind),
         }
     }
 }
@@ -831,13 +625,109 @@ impl From<kim_client::Profile> for Profile {
             nickname: p.nickname,
             avatar: p.avatar,
             bio: p.bio,
-            kind: p.kind,
+            kind: ProfileKind::from_wire(p.kind),
         }
     }
 }
 
 impl From<kim_client::Profile> for Person {
     fn from(p: kim_client::Profile) -> Self {
-        Self::from_profile(p, "none")
+        Self::from_profile(p, Relation::Friend)
     }
+}
+
+#[flutter_rust_bridge::frb(mirror(ThreadKind))]
+#[allow(dead_code)]
+pub enum _ThreadKind {
+    User,
+    Group,
+}
+
+#[flutter_rust_bridge::frb(mirror(MediaKind))]
+#[allow(dead_code)]
+pub enum _MediaKind {
+    Text,
+    Image,
+    Video,
+    Voice,
+    Card,
+}
+
+#[flutter_rust_bridge::frb(mirror(Relation))]
+#[allow(dead_code)]
+pub enum _Relation {
+    Friend,
+    Incoming,
+    Outgoing,
+}
+
+#[flutter_rust_bridge::frb(mirror(ProfileKind))]
+#[allow(dead_code)]
+pub enum _ProfileKind {
+    User,
+    Bot,
+}
+
+#[flutter_rust_bridge::frb(mirror(ProfilePlacement))]
+#[allow(dead_code)]
+pub enum _ProfilePlacement {
+    Local,
+    Cloud,
+}
+
+#[flutter_rust_bridge::frb(mirror(AgentCardType))]
+#[allow(dead_code)]
+pub enum _AgentCardType {
+    Tool,
+    ActionRequired,
+}
+
+#[flutter_rust_bridge::frb(mirror(AgentCardState))]
+#[allow(dead_code)]
+pub enum _AgentCardState {
+    Pending,
+    Ok,
+    Error,
+}
+
+#[flutter_rust_bridge::frb(mirror(AgentCard))]
+#[allow(dead_code)]
+pub struct _AgentCard {
+    pub call_id: String,
+    pub name: String,
+    pub card_type: AgentCardType,
+    pub state: AgentCardState,
+    pub preview: String,
+    pub ok: bool,
+}
+
+#[flutter_rust_bridge::frb(mirror(ThreadPreview))]
+#[allow(dead_code)]
+pub enum _ThreadPreview {
+    Text { snippet: String },
+    Media { kind: MediaKind },
+    System { text: String },
+}
+
+#[flutter_rust_bridge::frb(mirror(OutgoingContent))]
+#[allow(dead_code)]
+pub enum _OutgoingContent {
+    Text {
+        body: String,
+    },
+    Image {
+        path: String,
+        mime: String,
+        width: i32,
+        height: i32,
+        byte_size: i64,
+    },
+    Video {
+        path: String,
+        byte_size: i64,
+    },
+    Voice {
+        path: String,
+        byte_size: i64,
+    },
 }

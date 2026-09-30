@@ -3,9 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use kim_sdk::{
-    DeviceSettings, KimSdk, PersonRef, ProtocolClient, SdkError, SessionUpdate, StartSession,
-};
+use kim_sdk::{KimSdk, PersonRef, ProtocolClient, SdkError, SessionUpdate, StartSession};
 
 struct FailingContactsProto;
 
@@ -73,8 +71,8 @@ async fn replace_contacts_emits_contacts_changed() {
         nickname: "Bob".into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: 1,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }])
     .await
     .unwrap();
@@ -90,7 +88,7 @@ async fn replace_contacts_emits_contacts_changed() {
     .await
     .expect("ContactsChanged must be delivered");
     assert_eq!(contacts[0].account, "bob");
-    assert_eq!(contacts[0].relation, "friend");
+    assert_eq!(contacts[0].relation, kim_sdk::Relation::Friend);
     let loaded = sdk.load_contacts().await.unwrap();
     assert_eq!(loaded[0].account, "bob");
 }
@@ -108,8 +106,8 @@ async fn contacts_offline_first() {
         nickname: "Bob".into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: 1,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }])
     .await
     .unwrap();
@@ -148,8 +146,8 @@ async fn contacts_refresh_error_keeps_cache() {
         nickname: "Bob".into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: 1,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }])
     .await
     .unwrap();
@@ -227,18 +225,18 @@ async fn replace_contacts_keeps_unmatched_outgoing() {
         nickname: "Erin".into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: 1,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }])
     .await
     .unwrap();
     let contacts = sdk.load_contacts().await.unwrap();
     assert!(contacts
         .iter()
-        .any(|person| person.account == "bob" && person.relation == "outgoing"));
+        .any(|person| person.account == "bob" && person.relation == kim_sdk::Relation::Outgoing));
     assert!(contacts
         .iter()
-        .any(|person| person.account == "erin" && person.relation == "friend"));
+        .any(|person| person.account == "erin" && person.relation == kim_sdk::Relation::Friend));
 }
 
 #[tokio::test]
@@ -255,8 +253,8 @@ async fn contacts_switch_account_does_not_show_previous_account() {
         nickname: "Bob".into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: 1,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }])
     .await
     .unwrap();
@@ -296,41 +294,6 @@ async fn contacts_switch_account_does_not_show_previous_account() {
 }
 
 #[tokio::test]
-async fn import_device_settings_is_once() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("kim-cache.db");
-    let sdk = KimSdk::open(path.to_string_lossy().into_owned())
-        .await
-        .unwrap();
-    let first = sdk
-        .import_device_settings(
-            "wss://a.example/".into(),
-            "https://a.example".into(),
-            "prod".into(),
-            "zh".into(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(first.ws_url, "wss://a.example/");
-    let second = sdk
-        .import_device_settings(
-            "wss://b.example/".into(),
-            "https://b.example".into(),
-            "dev".into(),
-            "en".into(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(second.ws_url, "wss://a.example/");
-    let patched = sdk
-        .settings_patch(Some("wss://c.example/".into()), None, None, None)
-        .await
-        .unwrap();
-    assert_eq!(patched.ws_url, "wss://c.example/");
-    let _ = DeviceSettings::default();
-}
-
-#[tokio::test]
 async fn agent_profiles_imported_before_login_are_visible_after_start() {
     use kim_sdk::AgentProfileRow;
     let dir = tempfile::tempdir().unwrap();
@@ -342,7 +305,6 @@ async fn agent_profiles_imported_before_login_are_visible_after_start() {
         profile_id: "goose".into(),
         nickname: "助手".into(),
         server_account: "b_bot".into(),
-        body_json: "{}".into(),
         ..Default::default()
     }])
     .await
@@ -358,35 +320,31 @@ async fn agent_profiles_imported_before_login_are_visible_after_start() {
 
 #[tokio::test]
 async fn agent_blob_and_provider_account_roundtrip() {
-    use kim_sdk::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
+    use kim_sdk::{DeviceOverlayRow, ProviderAccountRow};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("kim-cache.db");
     let sdk = KimSdk::open(path.to_string_lossy().into_owned())
         .await
         .unwrap();
     sdk.start_session(session()).await.unwrap();
-    sdk.upsert_agent_profile(AgentProfileRow {
-        profile_id: "goose".into(),
-        nickname: "助手".into(),
-        server_account: "b_bot".into(),
-        body_json: "".into(),
-        body_blob: vec![1, 2, 3],
-        placement: "cloud".into(),
-        updated_at: 9,
-        deleted_at: 0,
-    })
+    sdk.upsert_agent_profile(
+        r#"{"id":"goose","display_name":"助手","server_account":"b_bot","placement":"cloud","model":{"name":"gpt-4o"},"system_prompt":"be concise"}"#
+            .into(),
+    )
     .await
     .unwrap();
     let rows = sdk.list_agent_profiles().await.unwrap();
-    assert_eq!(rows[0].body_blob, vec![1, 2, 3]);
-    assert_eq!(rows[0].placement, "cloud");
+    assert!(!rows[0].body_blob.is_empty());
+    assert!(rows[0].document_json.contains("goose"));
+    assert_eq!(rows[0].placement, kim_sdk::ProfilePlacement::Cloud);
+    assert_eq!(rows[0].server_account, "b_bot");
     sdk.upsert_provider_account(ProviderAccountRow {
         id: "acct-goose".into(),
         vendor_id: "openai".into(),
         base_url: "https://api.openai.com/v1".into(),
         key_ref: "agent.api_key.goose".into(),
         display_name: "openai".into(),
-        models_json: "[\"gpt-4o\"]".into(),
+        models: vec!["gpt-4o".into()],
         ..Default::default()
     })
     .await
@@ -394,6 +352,8 @@ async fn agent_blob_and_provider_account_roundtrip() {
     let accts = sdk.list_provider_accounts().await.unwrap();
     assert_eq!(accts.len(), 1);
     assert_eq!(accts[0].id, "acct-goose");
+    let rejected = sdk.upsert_agent_profile("not-json".into()).await;
+    assert!(matches!(rejected, Err(SdkError::InvalidArgument { .. })));
     sdk.upsert_device_overlay(DeviceOverlayRow {
         profile_id: "goose".into(),
         workspace_path: "/tmp/ws".into(),

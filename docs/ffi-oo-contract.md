@@ -1,65 +1,50 @@
-# FFI 面向对象契约
+# FFI 边界
 
-桌面编排在 Rust。Dart 只持有句柄、发意图、订阅 UI 投影。禁止为跑一轮 Agent 把 profile JSON、账号、overlay 在 Dart 与两条 FFI 之间来回搬运。
+Dart 的会话句柄只有 `KimUiHandle`（账号 HTTP 仍是 `KimAuth`）。桌面 turn 在 `kim-desktop-runtime` 里跑完，不经过 Dart 驱动。手机不编 `kim-agent-ffi`。手机 `.so` 经 `kim-agent-codec` 链上的 `kim-agent-host` 不带 `codex`；带 `codex` 的 host 只从桌面 catalog crate 进来。
 
-## 句柄
+## 可以跨边界
 
-| Opaque | 职责 | Dart 可见 |
-|---|---|---|
-| `KimUiHandle`（`KimApp`） | 根：attach store、session、子句柄工厂 | 连接态、账号、全局事件 |
-| `InboxHandle` | 会话列表投影 | `Inbox` 已有 watch；命令 `delete` |
-| `ConversationHandle` | 单会话：进房、发送、已读、typing | timeline 增量、成员快照 |
-| `ContactsHandle` | 好友 / 搜索 / 请求 | `PersonView` |
-| `MediaHandle` | 上传 / 拉取 | 本地媒体引用 |
-| `AgentCatalogHandle` | profile / account 的列表与编辑命令 | 行视图 + ack，不回传整份 host JSON |
-| `HostAgentRuntime` | 进程内消费 `AgentRuntime::run_turn` | UI 事件流 + `respond` 权限 |
+- 意图：发消息、进房、改设置、`respond(call_id, allow|deny)`
+- 投影：时间线、会话列表、联系人、连接状态、权限卡片
+- 这一个句柄
+- 一次 `platformBootstrap`：四个目录根、版本号、模拟器标记
 
-资源跟随句柄。`close` / drop 释放 native 会话与订阅。Dart 不保存 transcript、SQLite 行或 api key。
+Keychain / Keystore 是执行器回调。Rust 定义键名（`kim.jwt`、`account.<keyRef>`），Dart 只执行读写。
 
-## 允许跨边界
+theme、dest、avatar、`notificationsAsked` 留在 SharedPreferences。
 
-- 用户意图：发消息、改设置、批准/拒绝权限（`callId` + decision）
-- UI 投影：消息气泡、列表行、typing、permission 预览、连接状态、toast 文案
-- 句柄本身（FRB opaque）
+## 不跨边界
 
-## 禁止跨边界
+- api key 明文。模型列表走 `fetchModels(vendor, baseUrl, keyRef)`
+- profile blob。人设文档的 schema 在 `kim-agent-codec`；存储格式不出 FFI
+- SQLite 路径、user agent、HTTP origin、skill 缓存路径。这些由 `Layout` 从 bootstrap 派生
+- 为跑一轮 agent 把 profile、账号、overlay 在 Dart 与两条 FFI 之间搬来搬去
+- 续签后的 JWT。`TokenRenew` 在投影之前写入 SecretStore
 
-- `profile_json` / `SessionOpenOpts` 由 Dart 拼好再 `session_open`
-- 为一次 turn `listAgentProfiles` → decode → overlay → accounts → reopen
-- timeline 全表拉到 Dart 再过滤
-- api key 明文经 Dart 再塞进 open opts
+## 两个 crate
 
-## `HostAgentRuntime`
+`kim-client-ffi` 是手机和桌面都链的 IM 边界。
 
-实现 `kim_sdk::AgentRuntime`。桌面 `attach_store` 调用 `kim_desktop_runtime::install`，不再走 `FfiAgentRuntime` → Dart 编排循环。
+`kim-agent-ffi` 只在桌面编。它依赖带 `codex` feature 的 `kim-agent-host`，所以不能并进手机 `.so`。它只提供 catalog（厂商、技能、内置人设）。它不依赖 `kim-client`。编排 crate 是 `kim-desktop-runtime`。
 
-```text
-MobileAgent worker
-  → HostAgentRuntime::run_turn
-      load profile / overlay / account from KimSdk
-      drive kim-agent-host
-      IM tools on KimSdk
-      action_required → oneshot, Dart respond_agent_permission
-      publish AgentUiStatus (running / done / failed)
-  → AgentRunResult
-```
+## 闭集
 
-Dart `AgentHostController` 只做三件事：一次性 `cache_agent_secret`、订阅 permission、把 presence 交给 `AgentRunSink`。`test/support/legacy_agent_drive.dart` 保留旧的 session 端口驱动，仅供单测。
+闭集定义在 `kim-sdk`（`crates/kim-sdk/src/model.rs`）。`kim-client-ffi` `pub use` 它们。Dart 用生成的枚举，不再把种类收成 `i32` 或关系字符串。协议整数（`MESSAGE_TYPE_*`、`INBOX_KIND_*`）只留在 `kim-client` 编解码和 sqlite 绑定。
 
-手机不链接 agent host，继续 `NoopAgent`。
+- `ThreadKind`：`User` / `Group`
+- `MediaKind`：`Text` / `Image` / `Video` / `Voice` / `Card`。`MessageView.kind` 就是这个枚举。`classify_message` 在入库时写定；读路径信任存储的种类。`search_messages` 填真实 `MediaKind`
+- `Relation`：`Friend` / `Incoming` / `Outgoing`
+- `ProfileKind`：`User` / `Bot`。`ProfilePlacement`：`Local` / `Cloud`
+- `ThreadPreview`：`Text { snippet }` / `Media { kind }` / `System { text }`。列表不在 Dart 里嗅探 URL。本地化媒体标签仍由 Dart `Copy` 负责
+- `OutgoingContent`：`Text` / `Image` / `Video` / `Voice`
+- `AgentCard`：类型 `Tool` / `ActionRequired`，状态 `Pending` / `Ok` / `Error`。气泡读投影，不 `jsonDecode` 正文
 
-`kim-agent-host` 不依赖 `kim-client`。编排 crate `kim-desktop-runtime` 同时依赖 `kim-sdk` 与 `kim-agent-host`。
+## 人设与 token
 
-## 唯一保留的 Agent 往返
+人设 schema 只在 `kim-agent-codec`。FFI upsert 收校验过的 JSON，表里只存 blob。`list` 用 `blob_to_json` 填 `document_json`。FFI 结构体没有 `body_blob`，也没有 `deleted_at`。`ProviderAccount.models` 是 `Vec<String>`。
 
-```text
-Rust action_required → StreamSink
-Dart permission card → respond(call_id, allow|deny)
-Rust oneshot → continue turn
-```
+续签发生在投影之前：`spawn_session_bridge` 收到 `SessionEvent::TokenRenew` 时先 `write_global(KEY_JWT, token)`，然后丢弃该事件。`SessionUpdate` 没有 `TokenRenew`。JWT 字符串不出 FFI。键名仍是 `kim.jwt`、`account.<keyRef>`。没有 `import_legacy_prefs`。
 
-## 生命周期
+`kim-agent-ffi` 保持桌面 catalog。它依赖带 `codex` feature 的 `kim-agent-host`，并进 `kim-client-ffi` 会把该 host 链进手机 `.so`。手机 hook（`sdk/mobile/hook/build.dart`）跳过它。它不提供 session API，也不依赖 `kim-client`。
 
-- `KimUiHandle::create` 不打开 SQLite；`attach_store` 后才有 store 与桌面 agent。
-- `ConversationHandle` 不拥有进程级连接；`enter` / `leave` 成对。
-- `HostAgentRuntime` 按 `dest:profile` 持有 session；`park` 保留，进程退出 `close`。
+本地 sqlite：`user_version` 低于当前 schema 时删除该客户端库文件并按新 `CREATE` 重建。没有第二条 `ensure_column` 兼容迁移。服务端 Postgres 不在这条路径上。时间只在协议边界用现有的 `store::send_time_ms`。

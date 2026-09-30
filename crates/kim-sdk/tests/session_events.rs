@@ -34,10 +34,13 @@ async fn kickout_is_delivered_before_inbox_when_enqueued_first() {
     sdk.emit_session(SessionUpdate::Inbox {
         threads: vec![ThreadView {
             id: "bob".into(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
             title: "bob".into(),
             avatar: String::new(),
             last_body: "hi".into(),
+            preview: kim_sdk::ThreadPreview::Text {
+                snippet: "hi".into(),
+            },
             last_at: 1,
             unread: 1,
         }],

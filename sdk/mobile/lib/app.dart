@@ -20,7 +20,7 @@ import 'package:kim_mobile/router/kim_page.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/chats/providers/chats_search.dart';
 import 'package:kim_mobile/features/session/link.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 import 'package:kim_mobile/design/kim_theme.dart';

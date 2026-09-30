@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/features/agent/agent_create_form.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/agent_create_form.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/create/agent_create_helpers.dart';
-import 'package:kim_mobile/features/agent/skill_picker.dart';
-import 'package:kim_mobile/features/agent/skills_catalog.dart';
+import 'package:kim_mobile/features/agent/widgets/skill_picker.dart';
+import 'package:kim_mobile/features/agent/data/skills_catalog.dart';
 
 /// Step 2: app + portable skill picker.
 class AgentCreateStepSkills extends ConsumerWidget {

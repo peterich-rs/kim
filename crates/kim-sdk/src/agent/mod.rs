@@ -19,9 +19,7 @@ use crate::timeline::{AgentTurnState, SessionUpdate};
 use crate::KimSdk;
 
 pub use profiles::{AgentProfileRow, DeviceOverlayRow, ProviderAccountRow};
-pub use runtime::{
-    AgentRunRequest, AgentRunResult, AgentRuntime, FfiAgentRuntime, ScriptedRuntime,
-};
+pub use runtime::{AgentRunResult, AgentRuntime, ScriptedRuntime};
 pub use sessions::SessionLru;
 
 pub const QUEUE_CAP: usize = queue::QUEUE_CAP;

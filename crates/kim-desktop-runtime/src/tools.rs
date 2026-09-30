@@ -65,7 +65,7 @@ async fn send_message(sdk: &KimSdk, args: &serde_json::Value) -> Result<String, 
     let receipt = sdk
         .enqueue_message(SendMessageCommand {
             dest: dest.to_string(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
             payload: OutgoingPayload::Text {
                 body: text.to_string(),
             },

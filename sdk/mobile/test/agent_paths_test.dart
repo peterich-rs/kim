@@ -1,14 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/workspace.dart';
-import 'package:kim_mobile/features/agent/workspace_access.dart';
-import 'package:kim_mobile/core/paths.dart';
+import 'package:kim_mobile/features/agent/data/workspace.dart';
+import 'package:kim_mobile/features/agent/data/workspace_access.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/agent/agent_overview_status.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/widgets/agent_overview_status.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 AgentProfile _profile(
@@ -36,44 +34,15 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    FlutterSecureStorage.setMockInitialValues({});
-  });
-
-  test('ensureAgentDirs no longer seeds shared .agents/skills', () async {
-    final root = await Directory.systemTemp.createTemp('kim-agent-paths');
-    addTearDown(() => root.delete(recursive: true));
-    final paths = KimPaths.forTest(root);
-    await paths.ensureAgentDirs();
-    expect(paths.agentSessions.existsSync(), isTrue);
-    expect(
-      paths.agentSessionFile(dest: 'b_bot', profileId: 'p-1').path,
-      '${paths.agentSessions.path}/b_bot__p-1.json',
-    );
-    expect(
-      paths.agentSessionFile(dest: 'agent:p-1', profileId: 'p-1').path,
-      '${paths.agentSessions.path}/agent_p-1__p-1.json',
-    );
-    expect(paths.agentWorkspaces.existsSync(), isTrue);
-    expect(
-      Directory('${paths.agentWorkspace.path}/.agents/skills').existsSync(),
-      isFalse,
-    );
   });
 
   test('two profiles get isolated sandbox directories', () async {
-    final root = await Directory.systemTemp.createTemp('kim-agent-iso');
-    addTearDown(() => root.delete(recursive: true));
-    final paths = KimPaths.forTest(root);
-    final a = await resolveAgentProjectRoot(
-      profile: _profile('p-a'),
-      paths: paths,
-    );
-    final b = await resolveAgentProjectRoot(
-      profile: _profile('p-b'),
-      paths: paths,
-    );
+    final a = await resolveAgentProjectRoot(profile: _profile('p-a'));
+    final b = await resolveAgentProjectRoot(profile: _profile('p-b'));
     expect(a.path, isNot(b.path));
-    expect(a.path, isNot(paths.agentWorkspace.path));
+    expect(a.path, contains('p-a'));
+    expect(b.path, contains('p-b'));
+    await Directory(a.path).create(recursive: true);
     await File('${a.path}/secret-a.txt').writeAsString('a');
     expect(File('${b.path}/secret-a.txt').existsSync(), isFalse);
   });
@@ -81,10 +50,8 @@ void main() {
   test('repo workspace uses existing path when present', () async {
     final root = await Directory.systemTemp.createTemp('kim-agent-repo');
     addTearDown(() => root.delete(recursive: true));
-    final paths = KimPaths.forTest(root);
     final repo = Directory('${root.path}/repo')..createSync();
     final access = WorkspaceAccess(
-      secure: const FlutterSecureStorage(),
       pickDirectoryFallback: () async => repo.path,
     );
     final resolved = await resolveAgentProjectRoot(
@@ -92,7 +59,6 @@ void main() {
         'p-r',
         workspace: WorkspaceSpec(kind: WorkspaceSpec.kindRepo, path: repo.path),
       ),
-      paths: paths,
       access: access,
     );
     expect(resolved.path, repo.absolute.path);
@@ -100,9 +66,6 @@ void main() {
   });
 
   test('missing repo path falls back with invalidRepo', () async {
-    final root = await Directory.systemTemp.createTemp('kim-agent-miss');
-    addTearDown(() => root.delete(recursive: true));
-    final paths = KimPaths.forTest(root);
     final resolved = await resolveAgentProjectRoot(
       profile: _profile(
         'p-miss',
@@ -111,10 +74,9 @@ void main() {
           path: '/no/such/repo/path',
         ),
       ),
-      paths: paths,
-      access: WorkspaceAccess(secure: const FlutterSecureStorage()),
+      access: WorkspaceAccess(),
     );
-    expect(resolved.path, paths.sandboxFor('p-miss').path);
+    expect(resolved.path, contains('p-miss'));
     expect(resolved.invalidRepo, isTrue);
   });
 

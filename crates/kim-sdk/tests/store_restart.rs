@@ -16,7 +16,7 @@ fn session(account: &str) -> StartSession {
 fn text(dest: &str, body: &str, client_id: Option<&str>) -> SendMessageCommand {
     SendMessageCommand {
         dest: dest.into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: body.into() },
         client_id: client_id.map(str::to_string),
         batch_id: None,

@@ -1,4 +1,4 @@
-use crate::media::MediaRef;
+use crate::model::{OutgoingContent, ThreadKind};
 
 #[derive(Clone, Debug)]
 pub struct StartSession {
@@ -8,17 +8,12 @@ pub struct StartSession {
     pub account: String,
 }
 
-#[derive(Clone, Debug)]
-pub enum OutgoingPayload {
-    Text { body: String },
-    Image { media: MediaRef },
-    Video { url: String, extra: String },
-}
+pub type OutgoingPayload = OutgoingContent;
 
 #[derive(Clone, Debug)]
 pub struct SendMessageCommand {
     pub dest: String,
-    pub kind: i32,
+    pub kind: ThreadKind,
     pub payload: OutgoingPayload,
     pub client_id: Option<String>,
     pub batch_id: Option<String>,
@@ -82,14 +77,14 @@ impl SendStatus {
 #[derive(Clone, Debug)]
 pub struct ReadMarker {
     pub dest: String,
-    pub kind: i32,
+    pub kind: ThreadKind,
     pub visible_message_id: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConversationKey {
     pub dest: String,
-    pub kind: i32,
+    pub kind: ThreadKind,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -119,24 +114,4 @@ pub struct MessagePage {
     pub dest: String,
     pub messages: Vec<crate::timeline::MessageView>,
     pub has_more: bool,
-}
-
-impl OutgoingPayload {
-    #[must_use]
-    pub fn payload_type(&self) -> i32 {
-        match self {
-            Self::Text { .. } => kim_protocol::MESSAGE_TYPE_TEXT,
-            Self::Image { .. } => kim_protocol::MESSAGE_TYPE_IMAGE,
-            Self::Video { .. } => kim_protocol::MESSAGE_TYPE_VIDEO,
-        }
-    }
-
-    #[must_use]
-    pub fn kind_name(&self) -> &'static str {
-        match self {
-            Self::Text { .. } => "text",
-            Self::Image { .. } => "image",
-            Self::Video { .. } => "video",
-        }
-    }
 }

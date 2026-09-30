@@ -1,7 +1,7 @@
-/// Media port adapter; requires [KimClientBridge] for `mediaUpload`.
+/// Media port adapter; requires [KimClientBridge] for `mediaUploadBytes`.
 library;
 
-import 'dart:io' show Directory, File;
+import 'dart:typed_data';
 
 import 'package:kim_mobile/bridge/kim_client_bridge.dart';
 import 'package:kim_mobile/core/media.dart';
@@ -9,31 +9,20 @@ import 'package:kim_mobile/core/media.dart';
 mixin KimMediaBridge on KimClientBridge implements KimMediaPort {
   @override
   Future<UploadedObject> uploadImage({
-    required String token,
     required List<int> bytes,
     required String contentType,
   }) async {
-    final _ = token;
-    final file = File(
-      '${Directory.systemTemp.path}/kim-up-${DateTime.now().microsecondsSinceEpoch}',
+    final dto = await mediaUploadBytes(
+      bytes: Uint8List.fromList(bytes),
+      mime: contentType,
+      width: 0,
+      height: 0,
     );
-    await file.writeAsBytes(bytes, flush: true);
-    try {
-      final dto = await mediaUpload(
-        path: file.path,
-        mime: contentType,
-        byteSize: bytes.length,
-      );
-      return UploadedObject(
-        key: '',
-        url: dto.localPath,
-        contentType: contentType,
-        bytes: bytes.length,
-      );
-    } finally {
-      if (file.existsSync()) {
-        await file.delete();
-      }
-    }
+    return UploadedObject(
+      key: '',
+      url: dto.localPath,
+      contentType: contentType,
+      bytes: bytes.length,
+    );
   }
 }

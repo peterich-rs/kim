@@ -64,7 +64,7 @@ async fn kill_mid_send_keeps_same_client_id() {
     sdk.start_session(session()).await.expect("session");
     sdk.enqueue_message(SendMessageCommand {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: "hi".into() },
         client_id: Some(client_id.into()),
         batch_id: None,

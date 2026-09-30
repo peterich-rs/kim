@@ -137,9 +137,9 @@ void main() {
   });
 
   test('groups consecutive messages using millisecond windows', () {
-    const nano = 1788077118498491646;
-    const twoSecondsLater = nano + 2 * 1000 * 1000 * 1000;
-    final first = _msg('a', 'one', at: nano);
+    const firstAt = 1788077118498;
+    const twoSecondsLater = firstAt + 2 * 1000;
+    final first = _msg('a', 'one', at: firstAt);
     final second = _msg('b', 'two', at: twoSecondsLater);
     expect(kimIsGroupStart(first, null), isTrue);
     expect(kimIsGroupStart(second, first), isFalse);

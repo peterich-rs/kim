@@ -10,9 +10,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 
-String httpOriginFromWs({required String wsUrl}) =>
-    RustLib.instance.api.crateApiAuthHttpOriginFromWs(wsUrl: wsUrl);
-
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KimAuth>>
 abstract class KimAuth implements RustOpaqueInterface {
   Future<void> changePassword({
@@ -28,19 +25,16 @@ abstract class KimAuth implements RustOpaqueInterface {
 
   Future<void> logout({required String token});
 
-  factory KimAuth({required String baseUrl, required String userAgent}) =>
-      RustLib.instance.api.crateApiAuthKimAuthNew(
-        baseUrl: baseUrl,
-        userAgent: userAgent,
-      );
-
   Future<AuthSession> register({
     required String account,
     required String password,
   });
+
+  static Future<KimAuth> withOrigin({required String origin}) =>
+      RustLib.instance.api.crateApiAuthKimAuthWithOrigin(origin: origin);
 }
 
-/// JWT issued by Royal. UI stores it in Keychain / Keystore.
+/// JWT issued by Royal. Rust persists it via the secret-store channel.
 class AuthSession {
   final String token;
   final PlatformInt64 exp;

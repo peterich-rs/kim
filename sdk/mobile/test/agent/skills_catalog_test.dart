@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/skills_catalog.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/data/skills_catalog.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 
 void main() {
   test('kim-memory requires fs write tools', () {

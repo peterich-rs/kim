@@ -60,7 +60,7 @@ async fn group_kind_survives_restart() {
     .expect("session");
     sdk.enqueue_message(SendMessageCommand {
         dest: "g1".into(),
-        kind: kim_protocol::INBOX_KIND_GROUP,
+        kind: kim_sdk::ThreadKind::Group,
         payload: OutgoingPayload::Text { body: "hi".into() },
         client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
         batch_id: None,

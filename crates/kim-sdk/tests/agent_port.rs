@@ -114,18 +114,17 @@ async fn sent_text_enqueues_agent_turn() {
     });
     sdk.set_agent(agent.clone());
     sdk.install_protocol(Arc::new(OkProto));
-    sdk.upsert_agent_profile(AgentProfileRow {
+    sdk.store_agent_profile_row(AgentProfileRow {
         profile_id: "bot".into(),
         nickname: "bot".into(),
         server_account: "b_bot".into(),
-        body_json: "{}".into(),
         ..Default::default()
     })
     .await
     .expect("profile");
     sdk.enqueue_message(SendMessageCommand {
         dest: "b_bot".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: "hi".into() },
         client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
         batch_id: None,
@@ -161,11 +160,10 @@ async fn open_sdk() -> (Arc<KimSdk>, tempfile::TempDir) {
 }
 
 async fn put_bot(sdk: &KimSdk, dest: &str, profile_id: &str) {
-    sdk.upsert_agent_profile(AgentProfileRow {
+    sdk.store_agent_profile_row(AgentProfileRow {
         profile_id: profile_id.into(),
         nickname: profile_id.into(),
         server_account: dest.into(),
-        body_json: "{}".into(),
         ..Default::default()
     })
     .await
@@ -182,7 +180,7 @@ async fn pump_skips_non_bot_dest() {
     sdk.install_protocol(Arc::new(OkProto));
     sdk.enqueue_message(SendMessageCommand {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: "hi".into() },
         client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee1".into()),
         batch_id: None,

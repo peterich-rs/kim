@@ -187,6 +187,11 @@ jobs:
         working-directory: sdk/mobile
         run: dart format --output=none --set-exit-if-changed lib test hook plugins/kim_media_picker/lib plugins/kim_media_picker/test
 
+      - name: flutter boundary gate
+        run: |
+          tools/check_flutter_boundaries.sh
+          tools/check_page_size.sh
+
       - name: custom_lint
         working-directory: sdk/mobile
         run: dart run custom_lint

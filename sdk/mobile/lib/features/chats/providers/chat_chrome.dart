@@ -17,9 +17,9 @@ import 'package:kim_mobile/design/kim_composer.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/status_chip.dart';

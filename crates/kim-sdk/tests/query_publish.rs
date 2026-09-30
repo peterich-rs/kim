@@ -95,7 +95,7 @@ fn talk(message_id: i64, body: &str) -> IncomingTalk {
 fn command(client_id: &str, body: &str) -> SendMessageCommand {
     SendMessageCommand {
         dest: "bob".into(),
-        kind: kim_protocol::INBOX_KIND_USER,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: body.into() },
         client_id: Some(client_id.into()),
         batch_id: None,
@@ -108,8 +108,8 @@ fn contact(account: &str) -> PersonRef {
         nickname: account.into(),
         avatar: String::new(),
         bio: String::new(),
-        relation: "friend".into(),
-        kind: kim_protocol::INBOX_KIND_USER,
+        relation: kim_sdk::Relation::Friend,
+        kind: kim_sdk::ProfileKind::User,
     }
 }
 

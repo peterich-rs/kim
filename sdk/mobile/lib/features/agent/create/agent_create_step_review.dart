@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/kim_group.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 
 /// Step 3: system prompt / review.
 class AgentCreateStepReview extends StatelessWidget {

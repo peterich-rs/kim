@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/catalog.dart';
+import 'package:kim_mobile/features/agent/data/catalog.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/agent/reasoning_controls.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/widgets/reasoning_controls.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 
 Future<void> _pump(
   WidgetTester tester, {

@@ -1,23 +1,24 @@
 use super::failure::ApiFailure;
-use kim_client::{http_origin_from_ws as map_origin, AuthClient};
+use kim_client::AuthClient;
 
-/// JWT issued by Royal. UI stores it in Keychain / Keystore.
+/// JWT issued by Royal. Rust persists it via the secret-store channel.
 pub struct AuthSession {
     pub token: String,
     pub exp: i64,
     pub account: String,
 }
 
-/// Royal `/api/v1/auth/*`. Protobuf HTTP; User-Agent is required.
+/// Royal `/api/v1/auth/*`. The origin is supplied by [`KimUiHandle::auth`]
+/// from the settings table; UA comes from the bootstrap; secure-origin
+/// enforcement happens at construction.
 pub struct KimAuth {
     inner: AuthClient,
 }
 
 impl KimAuth {
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn new(base_url: String, user_agent: String) -> Result<Self, ApiFailure> {
+    pub fn with_origin(origin: String) -> Result<Self, ApiFailure> {
         Ok(Self {
-            inner: AuthClient::new(base_url, user_agent).map_err(ApiFailure::from)?,
+            inner: AuthClient::new(origin, kim_sdk::user_agent()).map_err(ApiFailure::from)?,
         })
     }
 
@@ -70,9 +71,4 @@ impl From<kim_client::AuthSession> for AuthSession {
             account: s.account,
         }
     }
-}
-
-#[flutter_rust_bridge::frb(sync)]
-pub fn http_origin_from_ws(ws_url: String) -> String {
-    map_origin(&ws_url)
 }
