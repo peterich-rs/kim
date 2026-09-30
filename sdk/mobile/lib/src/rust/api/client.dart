@@ -63,6 +63,10 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<void> cancelSend({required String clientId});
 
+  /// Vendor model cache under the Rust store (`meta` table). Seeds a new
+  /// provider account; written by `fetch_models` on success.
+  Future<List<String>> catalogModelCache({required String vendor});
+
   /// Drop credentials and stop. The sign-out path.
   Future<void> clearAuth();
 
@@ -80,7 +84,7 @@ abstract class KimUiHandle implements RustOpaqueInterface {
     required String dest,
     required ThreadKind kind,
     required OutgoingContent content,
-    required String clientId,
+    String? clientId,
   });
 
   /// Per-agent sandbox path (created + seeded). Layout rules are Rust-owned
@@ -88,7 +92,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   Future<String> ensureAgentSandbox({required String profileId});
 
   /// Provider model inventory by keyRef. Desktop only; key resolves
-  /// through the vault / Keychain channel.
+  /// through the vault / Keychain channel. A successful fetch seeds the
+  /// per-vendor catalog cache.
   Future<List<String>> fetchModels({
     required String vendorId,
     required String baseUrl,
@@ -109,8 +114,6 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   /// Signed-in gate for the Dart auth state: usable JWT in the store?
   Future<bool> hasStoredToken();
-
-  Future<void> importAgentProfiles({required List<String> documents});
 
   Future<List<AgentProfile>> listAgentProfiles();
 
@@ -192,6 +195,8 @@ abstract class KimUiHandle implements RustOpaqueInterface {
   Future<Settings> settingsGet();
 
   /// Whether device settings were stored. There is no legacy prefs import.
+  /// Whether device settings were marked imported. There is no legacy
+  /// handoff; Dart drops leftover UI keys without reading this flag.
   Future<bool> settingsImported();
 
   Future<Settings> settingsPatch({String? wsUrl, String? env});
@@ -256,11 +261,16 @@ abstract class KimUiHandle implements RustOpaqueInterface {
 
   Future<String?> workspaceGrant({required String profileId});
 
+  /// macOS security-scoped bookmark bytes stored beside the grant. Empty
+  /// when none was registered. Platform payload; Rust never interprets it.
+  Future<String> workspaceGrantBookmark({required String profileId});
+
   /// Register a resolved workspace directory. The picker/bookmark stayed
   /// platform-side; the granted path becomes Rust-owned state.
   Future<void> workspaceGrantRegister({
     required String profileId,
     required String path,
+    String? bookmark,
   });
 
   Future<void> workspaceGrantRevoke({required String profileId});

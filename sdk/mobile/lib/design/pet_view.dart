@@ -8,8 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/pet_atlas_painter.dart';
-import 'package:kim_mobile/features/agent/agent_presence.dart';
-import 'package:kim_mobile/features/agent/pet_pack.dart';
+import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
+import 'package:kim_mobile/features/agent/providers/pet_pack.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 
 class PetPackScope extends InheritedWidget {

@@ -816,12 +816,25 @@ impl Store {
         settings::imported_prefs(&self.pool).await
     }
 
+    pub(crate) async fn load_catalog_cache(&self, vendor: &str) -> Result<Vec<String>, SdkError> {
+        settings::load_catalog_cache(&self.pool, vendor).await
+    }
+
+    pub(crate) async fn save_catalog_cache(
+        &self,
+        vendor: &str,
+        models: &[String],
+    ) -> Result<(), SdkError> {
+        settings::save_catalog_cache(&self.pool, vendor, models).await
+    }
+
     pub(crate) async fn upsert_workspace_grant(
         &self,
         profile_id: &str,
         path: &str,
+        bookmark: &str,
     ) -> Result<(), SdkError> {
-        settings::upsert_grant(&self.pool, profile_id, path).await?;
+        settings::upsert_grant(&self.pool, profile_id, path, bookmark).await?;
         let grants = settings::load_grants(&self.pool).await?;
         settings::write_grant_index(&self.db_path, &grants)
     }

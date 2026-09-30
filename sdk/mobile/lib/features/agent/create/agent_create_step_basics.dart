@@ -10,15 +10,15 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_group.dart';
-import 'package:kim_mobile/features/agent/agent_create_form.dart';
-import 'package:kim_mobile/features/agent/agent_runtime_switch.dart';
-import 'package:kim_mobile/features/agent/catalog.dart';
-import 'package:kim_mobile/features/agent/context_window.dart';
-import 'package:kim_mobile/features/agent/context_window_controls.dart';
+import 'package:kim_mobile/features/agent/providers/agent_create_form.dart';
+import 'package:kim_mobile/features/agent/widgets/agent_runtime_switch.dart';
+import 'package:kim_mobile/features/agent/data/catalog.dart';
+import 'package:kim_mobile/features/agent/widgets/context_window.dart';
+import 'package:kim_mobile/features/agent/widgets/context_window_controls.dart';
 import 'package:kim_mobile/features/agent/create/agent_create_helpers.dart';
-import 'package:kim_mobile/features/agent/provider_account_page.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/agent/reasoning_controls.dart';
+import 'package:kim_mobile/features/agent/views/provider_account_page.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/widgets/reasoning_controls.dart';
 
 /// Step 0: display name, runtime, provider, model, context, reasoning.
 class AgentCreateStepBasics extends ConsumerWidget {

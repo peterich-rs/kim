@@ -4,7 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 
 /// Per-thread peer typing (ephemeral). Key = peer account / thread dest.
 class TypingState {

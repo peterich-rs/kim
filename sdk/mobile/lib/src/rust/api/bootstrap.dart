@@ -32,7 +32,7 @@ Future<void> platformBootstrap({
 );
 
 /// Dart subscribes once at boot; each event is a Keychain/Keystore action to
-/// execute via `flutter_secure_storage`. Answer with `secret_store_respond`.
+/// execute via the `kim.keystore` platform channel. Answer with `secret_store_respond`.
 Stream<SecretRequest> watchSecretRequests() =>
     RustLib.instance.api.crateApiBootstrapWatchSecretRequests();
 

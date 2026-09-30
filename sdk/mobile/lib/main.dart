@@ -11,9 +11,9 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/secret_store_executor.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/agent/agent_presence.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/bridge/agent_host.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/src/rust/api/bootstrap.dart';
@@ -26,7 +26,6 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (details) {
     KimLogger.error('flutter', details.exception, details.stack);
-    FlutterError.presentError(details);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     KimLogger.error('platform', error, stack);
@@ -170,13 +169,4 @@ bool get platformIsSimulator {
         Platform.environment['SIMULATOR_UDID'] != null;
   }
   return false;
-}
-
-/// Read the pre-migration device prefs from SharedPreferences. The storage is
-/// platform; after the handoff Rust owns the values and these keys die.
-Future<(String, String)> readLegacyDevicePrefs(KimRuntime runtime) async {
-  final prefs = runtime.settings.prefs;
-  final wsUrl = prefs.getString('kim.wgateway_url')?.trim() ?? '';
-  final httpOrigin = prefs.getString('kim.http_origin')?.trim() ?? '';
-  return (wsUrl, httpOrigin);
 }

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/agent/workspace_access.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/data/workspace_access.dart';
 
 import '../support/harness.dart';
 

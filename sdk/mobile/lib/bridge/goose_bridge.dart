@@ -4,7 +4,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as catalog;
 import 'package:kim_mobile/src/rust_agent/frb_generated.dart';
 

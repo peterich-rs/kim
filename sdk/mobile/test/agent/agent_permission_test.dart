@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
 import '../support/fake_kim.dart';
@@ -46,7 +46,10 @@ void main() {
         preview: 'Allow bash?',
       ),
     );
-    expect(container.read(agentPermissionHubProvider).of('b_bot'), hasLength(1));
+    expect(
+      container.read(agentPermissionHubProvider).of('b_bot'),
+      hasLength(1),
+    );
     await hub.respond(dest: 'b_bot', callId: 'c1', permission: 'allow_once');
     expect(client.callId, 'c1');
     expect(client.allow, isTrue);

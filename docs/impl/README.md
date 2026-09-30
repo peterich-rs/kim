@@ -50,5 +50,6 @@
 | 服务端会话隐藏 | [chat-inbox-hide.md](./chat-inbox-hide.md)：Delete conversation for me。尚未合入 |
 | Codex harness 嵌入 | [codex-embed.md](./codex-embed.md)：分支 `feat/codex-agent-embed`。Goose 与 Codex 并列，`runtime` 选择 |
 | FFI 按第一版重切边界 | [ffi-dead-surface-cleanup.md](./ffi-dead-surface-cleanup.md)：分支 `refactor/ffi-ownership`。本地已实现，尚未合入主干。删死面与 agent session；闭集替换整型哨兵；人设只走 codec；本地库无升级路径 |
+| 移动壳升级 | [mobile-shell-upgrade.md](./mobile-shell-upgrade.md)：分支 `refactor/ffi-ownership`（同分支续切）。`flutter_secure_storage` / `uuid` / `flutter_animate` / `cupertino_icons` 移除；`kim.keystore` 平台 channel；clientId / catalog 缓存 / macOS 书签下沉 Rust；FFI import 边界门 + 页面尺寸门进 CI；`features/agent` 目录化；大文件拆分 |
 
 没有对应分支、也不描述当前系统的稿子不放在这里。

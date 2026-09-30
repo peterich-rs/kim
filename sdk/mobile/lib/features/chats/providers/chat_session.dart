@@ -5,18 +5,17 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_media_picker/kim_media_picker.dart';
-import 'package:uuid/uuid.dart';
 
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/bridge/conversation_port.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' show OutgoingContent;
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 
-import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/chats/providers/messages.dart';
 import 'package:kim_mobile/features/session/mutations.dart';
@@ -312,11 +311,8 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
     if (body.isEmpty) {
       throw StateError(Copy.required);
     }
-    final id = const Uuid().v4();
-    KimLogger.info('enqueue text dest=$dest clientId=$id kind=$kind');
-    return client
-        .conversation(dest, kind)
-        .sendText(text: body, clientId: id);
+    KimLogger.info('enqueue text dest=$dest kind=$kind');
+    return client.conversation(dest, kind).sendText(text: body);
   }
 
   Future<List<KimCommandReceipt>> _enqueueImages(
@@ -329,15 +325,11 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
       if (asset.path.isEmpty) {
         continue;
       }
-      final id = const Uuid().v4();
       KimLogger.info(
-        'enqueue media dest=$dest clientId=$id kind=$kind video=${asset.isVideo}',
+        'enqueue media dest=$dest kind=$kind video=${asset.isVideo}',
       );
       final content = asset.isVideo
-          ? OutgoingContent.video(
-              path: asset.path,
-              byteSize: asset.size,
-            )
+          ? OutgoingContent.video(path: asset.path, byteSize: asset.size)
           : OutgoingContent.image(
               path: asset.path,
               mime: asset.mimeType,
@@ -346,12 +338,7 @@ class ChatSessionNotifier extends Notifier<ChatSessionState> {
               byteSize: asset.size,
             );
       out.add(
-        await client.enqueueMessage(
-          dest: dest,
-          kind: kind,
-          content: content,
-          clientId: id,
-        ),
+        await client.enqueueMessage(dest: dest, kind: kind, content: content),
       );
     }
     if (out.isEmpty) {

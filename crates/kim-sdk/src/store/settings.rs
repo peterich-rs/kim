@@ -113,12 +113,56 @@ pub(crate) async fn imported_prefs(pool: &SqlitePool) -> Result<bool, SdkError> 
     Ok(row.is_some())
 }
 
+/// Vendor model cache under `meta` (`catalog_cache.<vendor>`): seeds a new
+/// provider account from the last successful `/v1/models` fetch. Dart keeps
+/// no copy.
+pub(crate) async fn load_catalog_cache(
+    pool: &SqlitePool,
+    vendor: &str,
+) -> Result<Vec<String>, SdkError> {
+    let key = format!("catalog_cache.{vendor}");
+    let row = sqlx::query("SELECT value FROM meta WHERE key = ?")
+        .bind(&key)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx)?;
+    let Some(row) = row else {
+        return Ok(Vec::new());
+    };
+    let raw: String = row.try_get("value").map_err(map_sqlx)?;
+    match serde_json::from_str::<Vec<String>>(&raw) {
+        Ok(models) => Ok(models),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+pub(crate) async fn save_catalog_cache(
+    pool: &SqlitePool,
+    vendor: &str,
+    models: &[String],
+) -> Result<(), SdkError> {
+    let key = format!("catalog_cache.{vendor}");
+    let raw = serde_json::to_string(models).map_err(|err| SdkError::Internal {
+        message: err.to_string(),
+    })?;
+    sqlx::query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+        .bind(&key)
+        .bind(&raw)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx)?;
+    Ok(())
+}
+
 /// A resolved directory grant. Picker + security-scoped bookmark resolution
 /// stay platform; the granted path itself is Rust-owned state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceGrant {
     pub profile_id: String,
     pub path: String,
+    /// macOS security-scoped bookmark bytes (base64). Platform payload;
+    /// Rust stores and hands it back, never interprets it.
+    pub bookmark: String,
     pub granted_at: i64,
 }
 
@@ -126,18 +170,21 @@ pub(crate) async fn upsert_grant(
     pool: &SqlitePool,
     profile_id: &str,
     path: &str,
+    bookmark: &str,
 ) -> Result<(), SdkError> {
     sqlx::query(
         r"
-        INSERT INTO workspace_grants (profile_id, path, granted_at)
-        VALUES (?, ?, ?)
+        INSERT INTO workspace_grants (profile_id, path, bookmark, granted_at)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(profile_id) DO UPDATE SET
           path = excluded.path,
+          bookmark = excluded.bookmark,
           granted_at = excluded.granted_at
         ",
     )
     .bind(profile_id)
     .bind(path)
+    .bind(bookmark)
     .bind(crate::store::now_ms())
     .execute(pool)
     .await
@@ -159,7 +206,7 @@ pub(crate) async fn load_grant(
     profile_id: &str,
 ) -> Result<Option<WorkspaceGrant>, SdkError> {
     let row = sqlx::query(
-        "SELECT profile_id, path, granted_at FROM workspace_grants WHERE profile_id = ?",
+        "SELECT profile_id, path, bookmark, granted_at FROM workspace_grants WHERE profile_id = ?",
     )
     .bind(profile_id)
     .fetch_optional(pool)
@@ -169,6 +216,7 @@ pub(crate) async fn load_grant(
         Some(r) => Ok(Some(WorkspaceGrant {
             profile_id: r.try_get("profile_id").map_err(map_sqlx)?,
             path: r.try_get("path").map_err(map_sqlx)?,
+            bookmark: r.try_get("bookmark").map_err(map_sqlx)?,
             granted_at: r.try_get("granted_at").map_err(map_sqlx)?,
         })),
         None => Ok(None),
@@ -176,7 +224,7 @@ pub(crate) async fn load_grant(
 }
 
 pub(crate) async fn load_grants(pool: &SqlitePool) -> Result<Vec<WorkspaceGrant>, SdkError> {
-    let rows = sqlx::query("SELECT profile_id, path, granted_at FROM workspace_grants")
+    let rows = sqlx::query("SELECT profile_id, path, bookmark, granted_at FROM workspace_grants")
         .fetch_all(pool)
         .await
         .map_err(map_sqlx)?;
@@ -185,6 +233,7 @@ pub(crate) async fn load_grants(pool: &SqlitePool) -> Result<Vec<WorkspaceGrant>
         out.push(WorkspaceGrant {
             profile_id: r.try_get("profile_id").map_err(map_sqlx)?,
             path: r.try_get("path").map_err(map_sqlx)?,
+            bookmark: r.try_get("bookmark").map_err(map_sqlx)?,
             granted_at: r.try_get("granted_at").map_err(map_sqlx)?,
         });
     }

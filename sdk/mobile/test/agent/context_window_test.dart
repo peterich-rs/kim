@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/context_window.dart';
-import 'package:kim_mobile/features/agent/context_window_controls.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/widgets/context_window.dart';
+import 'package:kim_mobile/features/agent/widgets/context_window_controls.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
 
 void main() {

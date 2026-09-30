@@ -48,11 +48,26 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final n = container.read(receiptsProvider.notifier);
-    n.applyPush(reader: 'bob', dest: 'alice', kind: ThreadKind.user, messageId: 10);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'alice',
+      kind: ThreadKind.user,
+      messageId: 10,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
-    n.applyPush(reader: 'bob', dest: 'alice', kind: ThreadKind.user, messageId: 8);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'alice',
+      kind: ThreadKind.user,
+      messageId: 8,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
-    n.applyPush(reader: 'bob', dest: 'g1', kind: ThreadKind.group, messageId: 99);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'g1',
+      kind: ThreadKind.group,
+      messageId: 99,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
   });
 }

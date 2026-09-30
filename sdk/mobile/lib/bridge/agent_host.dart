@@ -7,9 +7,9 @@ import 'dart:async';
 
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/agent/agent_presence.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
 
 class AgentHostController {
   AgentHostController(this.client, {this.permissions, this.runs});

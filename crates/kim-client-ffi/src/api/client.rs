@@ -26,7 +26,7 @@ pub struct KimCommandReceipt {
 /// Opaque handle. Protocol plus optional store attach (production always attaches).
 #[derive(Clone)]
 pub struct KimUiHandle {
-    inner: Arc<KimSdk>,
+    pub(crate) inner: Arc<KimSdk>,
 }
 
 impl KimUiHandle {
@@ -295,7 +295,7 @@ impl KimUiHandle {
         dest: String,
         kind: ThreadKind,
         content: OutgoingContent,
-        client_id: String,
+        client_id: Option<String>,
     ) -> Result<KimCommandReceipt, ApiFailure> {
         let receipt = self
             .inner
@@ -303,11 +303,7 @@ impl KimUiHandle {
                 dest,
                 kind,
                 payload: content,
-                client_id: if client_id.is_empty() {
-                    None
-                } else {
-                    Some(client_id)
-                },
+                client_id: client_id.filter(|id| !id.is_empty()),
                 batch_id: None,
             })
             .await
@@ -495,13 +491,6 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)
     }
 
-    pub async fn import_agent_profiles(&self, documents: Vec<String>) -> Result<(), ApiFailure> {
-        for document in documents {
-            self.upsert_agent_profile(document).await?;
-        }
-        Ok(())
-    }
-
     pub async fn list_provider_accounts(&self) -> Result<Vec<ProviderAccount>, ApiFailure> {
         let rows = self
             .inner
@@ -604,9 +593,20 @@ impl KimUiHandle {
     }
 
     /// Whether device settings were stored. There is no legacy prefs import.
+    /// Whether device settings were marked imported. There is no legacy
+    /// handoff; Dart drops leftover UI keys without reading this flag.
     pub async fn settings_imported(&self) -> Result<bool, ApiFailure> {
         self.inner
             .settings_imported()
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// Vendor model cache under the Rust store (`meta` table). Seeds a new
+    /// provider account; written by `fetch_models` on success.
+    pub async fn catalog_model_cache(&self, vendor: String) -> Result<Vec<String>, ApiFailure> {
+        self.inner
+            .catalog_model_cache(&vendor)
             .await
             .map_err(ApiFailure::from)
     }
@@ -617,11 +617,23 @@ impl KimUiHandle {
         &self,
         profile_id: String,
         path: String,
+        bookmark: Option<String>,
     ) -> Result<(), ApiFailure> {
         self.inner
-            .workspace_grant_register(profile_id, path)
+            .workspace_grant_register(profile_id, path, bookmark)
             .await
             .map_err(ApiFailure::from)
+    }
+
+    /// macOS security-scoped bookmark bytes stored beside the grant. Empty
+    /// when none was registered. Platform payload; Rust never interprets it.
+    pub async fn workspace_grant_bookmark(&self, profile_id: String) -> Result<String, ApiFailure> {
+        let row = self
+            .inner
+            .workspace_grant(profile_id)
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(row.map(|g| g.bookmark).unwrap_or_default())
     }
 
     pub async fn workspace_grant_revoke(&self, profile_id: String) -> Result<(), ApiFailure> {

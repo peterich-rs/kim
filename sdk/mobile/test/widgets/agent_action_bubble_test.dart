@@ -5,7 +5,7 @@ import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/design/agent_action_bubble.dart';
 import 'package:kim_mobile/design/kim_bubble.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
 import 'package:kim_mobile/models/models.dart';
 
 import '../support/fake_kim.dart';

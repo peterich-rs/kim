@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 pub const MAX_MESSAGES: i32 = 400;
 
 pub const CREATE_META: &str = r"
@@ -225,6 +225,7 @@ pub const CREATE_WORKSPACE_GRANTS: &str = r"
 CREATE TABLE IF NOT EXISTS workspace_grants (
   profile_id TEXT PRIMARY KEY NOT NULL,
   path TEXT NOT NULL,
+  bookmark TEXT NOT NULL DEFAULT '',
   granted_at INTEGER NOT NULL
 )
 ";

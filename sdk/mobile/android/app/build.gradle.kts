@@ -25,9 +25,9 @@ android {
     buildFeatures {
         buildConfig = true
     }
-    // Flutter 3.47 still defaults compileSdk to 36. flutter_secure_storage 11
-    // and permission_handler 13 compile against 37; Flutter's Android build
-    // guide says bump compileSdk when a plugin needs a newer API:
+    // Flutter 3.47 still defaults compileSdk to 36. permission_handler 13
+    // compiles against 37; Flutter's Android build guide says bump
+    // compileSdk when a plugin needs a newer API:
     // https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration
     compileSdk = 37
     ndkVersion = flutter.ndkVersion

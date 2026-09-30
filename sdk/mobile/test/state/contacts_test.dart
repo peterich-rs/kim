@@ -1,14 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart'
     hide AgentProfile, ProfileKind, Relation, ThreadKind;
-import 'package:kim_mobile/src/rust/api/types.dart' as wire
+import 'package:kim_mobile/src/rust/api/types.dart'
+    as wire
     show ProfileKind, Relation;
 
 import '../support/harness.dart';

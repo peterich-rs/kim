@@ -81,7 +81,7 @@ impl From<&SecretOp> for SecretRequest {
 }
 
 /// Dart subscribes once at boot; each event is a Keychain/Keystore action to
-/// execute via `flutter_secure_storage`. Answer with `secret_store_respond`.
+/// execute via the `kim.keystore` platform channel. Answer with `secret_store_respond`.
 pub fn watch_secret_requests(sink: StreamSink<SecretRequest>) -> Result<(), ApiFailure> {
     if kim_sdk::global_secret_store().is_none() {
         kim_sdk::install_global_secret_channel(16);

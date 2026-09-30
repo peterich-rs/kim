@@ -10,6 +10,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     WorkspaceBookmarkPlugin.register(with: flutterViewController.registrar(forPlugin: "WorkspaceBookmarkPlugin"))
+    KimKeystoreCore.register(with: flutterViewController.registrar(forPlugin: "KimKeystorePlugin"))
 
     super.awakeFromNib()
     minSize = NSSize(width: 420, height: 560)

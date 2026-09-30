@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
-import 'package:kim_mobile/features/agent/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 

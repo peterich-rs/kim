@@ -32,7 +32,8 @@ impl KimUiHandle {
     }
 
     /// Provider model inventory by keyRef. Desktop only; key resolves
-    /// through the vault / Keychain channel.
+    /// through the vault / Keychain channel. A successful fetch seeds the
+    /// per-vendor catalog cache.
     pub async fn fetch_models(
         &self,
         vendor_id: String,
@@ -43,10 +44,18 @@ impl KimUiHandle {
         {
             let runtime = kim_desktop_runtime::installed()
                 .ok_or_else(|| ApiFailure::unavailable("host agent runtime"))?;
-            runtime
+            let models = runtime
                 .fetch_models(&vendor_id, &base_url, &key_ref)
                 .await
-                .map_err(ApiFailure::from)
+                .map_err(ApiFailure::from)?;
+            let vendor = vendor_id.trim().to_string();
+            if !vendor.is_empty() {
+                let _ = self
+                    .inner
+                    .set_catalog_model_cache(&vendor, models.clone())
+                    .await;
+            }
+            Ok(models)
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {

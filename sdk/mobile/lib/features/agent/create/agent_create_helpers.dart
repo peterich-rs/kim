@@ -6,11 +6,11 @@ import 'package:toastification/toastification.dart';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/features/agent/agent_create_form.dart';
-import 'package:kim_mobile/features/agent/catalog.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/agent/skills_catalog.dart';
+import 'package:kim_mobile/features/agent/providers/agent_create_form.dart';
+import 'package:kim_mobile/features/agent/data/catalog.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/data/skills_catalog.dart';
 
 const kAgentCreateNewProvider = '__new__';
 const kAgentCreateStepCount = 4;

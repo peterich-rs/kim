@@ -21,15 +21,11 @@ class ConversationPort {
 
   Future<void> markRead() => client.markConversationRead(dest, kind);
 
-  Future<KimCommandReceipt> sendText({
-    required String text,
-    required String clientId,
-  }) {
+  Future<KimCommandReceipt> sendText({required String text}) {
     return client.enqueueMessage(
       dest: dest,
       kind: kind,
       content: OutgoingContent.text(body: text),
-      clientId: clientId,
     );
   }
 }

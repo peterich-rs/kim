@@ -74,7 +74,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 519340094;
+  int get rustContentHash => -1093635569;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -164,6 +164,11 @@ abstract class RustLibApi extends BaseApi {
     required String clientId,
   });
 
+  Future<List<String>> crateApiClientKimUiHandleCatalogModelCache({
+    required KimUiHandle that,
+    required String vendor,
+  });
+
   Future<void> crateApiClientKimUiHandleClearAuth({required KimUiHandle that});
 
   KimUiHandle crateApiClientKimUiHandleCreate();
@@ -188,7 +193,7 @@ abstract class RustLibApi extends BaseApi {
     required String dest,
     required ThreadKind kind,
     required OutgoingContent content,
-    required String clientId,
+    String? clientId,
   });
 
   Future<String> crateApiClientKimUiHandleEnsureAgentSandbox({
@@ -234,11 +239,6 @@ abstract class RustLibApi extends BaseApi {
 
   Future<bool> crateApiClientKimUiHandleHasStoredToken({
     required KimUiHandle that,
-  });
-
-  Future<void> crateApiClientKimUiHandleImportAgentProfiles({
-    required KimUiHandle that,
-    required List<String> documents,
   });
 
   Future<List<AgentProfile>> crateApiClientKimUiHandleListAgentProfiles({
@@ -458,10 +458,16 @@ abstract class RustLibApi extends BaseApi {
     required String profileId,
   });
 
+  Future<String> crateApiClientKimUiHandleWorkspaceGrantBookmark({
+    required KimUiHandle that,
+    required String profileId,
+  });
+
   Future<void> crateApiClientKimUiHandleWorkspaceGrantRegister({
     required KimUiHandle that,
     required String profileId,
     required String path,
+    String? bookmark,
   });
 
   Future<void> crateApiClientKimUiHandleWorkspaceGrantRevoke({
@@ -1103,6 +1109,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<String>> crateApiClientKimUiHandleCatalogModelCache({
+    required KimUiHandle that,
+    required String vendor,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(vendor, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_api_failure,
+        ),
+        constMeta: kCrateApiClientKimUiHandleCatalogModelCacheConstMeta,
+        argValues: [that, vendor],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleCatalogModelCacheConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_catalog_model_cache",
+        argNames: ["that", "vendor"],
+      );
+
+  @override
   Future<void> crateApiClientKimUiHandleClearAuth({required KimUiHandle that}) {
     return handler.executeNormal(
       NormalTask(
@@ -1115,7 +1159,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -1142,7 +1186,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -1176,7 +1220,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1214,7 +1258,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1252,7 +1296,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1279,7 +1323,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String dest,
     required ThreadKind kind,
     required OutgoingContent content,
-    required String clientId,
+    String? clientId,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1292,11 +1336,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(dest, serializer);
           sse_encode_thread_kind(kind, serializer);
           sse_encode_box_autoadd_outgoing_content(content, serializer);
-          sse_encode_String(clientId, serializer);
+          sse_encode_opt_String(clientId, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1334,7 +1378,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1376,7 +1420,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1414,7 +1458,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1450,7 +1494,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1488,7 +1532,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1526,7 +1570,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1564,7 +1608,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1602,7 +1646,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1638,7 +1682,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1657,44 +1701,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "KimUiHandle_has_stored_token",
         argNames: ["that"],
-      );
-
-  @override
-  Future<void> crateApiClientKimUiHandleImportAgentProfiles({
-    required KimUiHandle that,
-    required List<String> documents,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
-            that,
-            serializer,
-          );
-          sse_encode_list_String(documents, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 30,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_api_failure,
-        ),
-        constMeta: kCrateApiClientKimUiHandleImportAgentProfilesConstMeta,
-        argValues: [that, documents],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiClientKimUiHandleImportAgentProfilesConstMeta =>
-      const TaskConstMeta(
-        debugName: "KimUiHandle_import_agent_profiles",
-        argNames: ["that", "documents"],
       );
 
   @override
@@ -3362,10 +3368,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiClientKimUiHandleWorkspaceGrantBookmark({
+    required KimUiHandle that,
+    required String profileId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKimUiHandle(
+            that,
+            serializer,
+          );
+          sse_encode_String(profileId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 75,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_api_failure,
+        ),
+        constMeta: kCrateApiClientKimUiHandleWorkspaceGrantBookmarkConstMeta,
+        argValues: [that, profileId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClientKimUiHandleWorkspaceGrantBookmarkConstMeta =>
+      const TaskConstMeta(
+        debugName: "KimUiHandle_workspace_grant_bookmark",
+        argNames: ["that", "profileId"],
+      );
+
+  @override
   Future<void> crateApiClientKimUiHandleWorkspaceGrantRegister({
     required KimUiHandle that,
     required String profileId,
     required String path,
+    String? bookmark,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -3377,10 +3422,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
           sse_encode_String(profileId, serializer);
           sse_encode_String(path, serializer);
+          sse_encode_opt_String(bookmark, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 75,
+            funcId: 76,
             port: port_,
           );
         },
@@ -3389,7 +3435,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_api_failure,
         ),
         constMeta: kCrateApiClientKimUiHandleWorkspaceGrantRegisterConstMeta,
-        argValues: [that, profileId, path],
+        argValues: [that, profileId, path, bookmark],
         apiImpl: this,
       ),
     );
@@ -3398,7 +3444,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiClientKimUiHandleWorkspaceGrantRegisterConstMeta =>
       const TaskConstMeta(
         debugName: "KimUiHandle_workspace_grant_register",
-        argNames: ["that", "profileId", "path"],
+        argNames: ["that", "profileId", "path", "bookmark"],
       );
 
   @override
@@ -3418,7 +3464,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 76,
+            funcId: 77,
             port: port_,
           );
         },
@@ -3448,7 +3494,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 77,
+            funcId: 78,
             port: port_,
           );
         },
@@ -3490,7 +3536,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 78,
+            funcId: 79,
             port: port_,
           );
         },
@@ -3543,7 +3589,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 79,
+            funcId: 80,
             port: port_,
           );
         },
@@ -3576,7 +3622,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 80,
+              funcId: 81,
               port: port_,
             );
           },
@@ -7119,6 +7165,13 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   Future<void> cancelSend({required String clientId}) => RustLib.instance.api
       .crateApiClientKimUiHandleCancelSend(that: this, clientId: clientId);
 
+  /// Vendor model cache under the Rust store (`meta` table). Seeds a new
+  /// provider account; written by `fetch_models` on success.
+  Future<List<String>> catalogModelCache({required String vendor}) => RustLib
+      .instance
+      .api
+      .crateApiClientKimUiHandleCatalogModelCache(that: this, vendor: vendor);
+
   /// Drop credentials and stop. The sign-out path.
   Future<void> clearAuth() =>
       RustLib.instance.api.crateApiClientKimUiHandleClearAuth(that: this);
@@ -7141,7 +7194,7 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
     required String dest,
     required ThreadKind kind,
     required OutgoingContent content,
-    required String clientId,
+    String? clientId,
   }) => RustLib.instance.api.crateApiClientKimUiHandleEnqueueMessage(
     that: this,
     dest: dest,
@@ -7159,7 +7212,8 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
       );
 
   /// Provider model inventory by keyRef. Desktop only; key resolves
-  /// through the vault / Keychain channel.
+  /// through the vault / Keychain channel. A successful fetch seeds the
+  /// per-vendor catalog cache.
   Future<List<String>> fetchModels({
     required String vendorId,
     required String baseUrl,
@@ -7195,12 +7249,6 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
   /// Signed-in gate for the Dart auth state: usable JWT in the store?
   Future<bool> hasStoredToken() =>
       RustLib.instance.api.crateApiClientKimUiHandleHasStoredToken(that: this);
-
-  Future<void> importAgentProfiles({required List<String> documents}) =>
-      RustLib.instance.api.crateApiClientKimUiHandleImportAgentProfiles(
-        that: this,
-        documents: documents,
-      );
 
   Future<List<AgentProfile>> listAgentProfiles() => RustLib.instance.api
       .crateApiClientKimUiHandleListAgentProfiles(that: this);
@@ -7348,6 +7396,8 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
       RustLib.instance.api.crateApiClientKimUiHandleSettingsGet(that: this);
 
   /// Whether device settings were stored. There is no legacy prefs import.
+  /// Whether device settings were marked imported. There is no legacy
+  /// handoff; Dart drops leftover UI keys without reading this flag.
   Future<bool> settingsImported() => RustLib.instance.api
       .crateApiClientKimUiHandleSettingsImported(that: this);
 
@@ -7463,15 +7513,25 @@ class KimUiHandleImpl extends RustOpaque implements KimUiHandle {
         profileId: profileId,
       );
 
+  /// macOS security-scoped bookmark bytes stored beside the grant. Empty
+  /// when none was registered. Platform payload; Rust never interprets it.
+  Future<String> workspaceGrantBookmark({required String profileId}) =>
+      RustLib.instance.api.crateApiClientKimUiHandleWorkspaceGrantBookmark(
+        that: this,
+        profileId: profileId,
+      );
+
   /// Register a resolved workspace directory. The picker/bookmark stayed
   /// platform-side; the granted path becomes Rust-owned state.
   Future<void> workspaceGrantRegister({
     required String profileId,
     required String path,
+    String? bookmark,
   }) => RustLib.instance.api.crateApiClientKimUiHandleWorkspaceGrantRegister(
     that: this,
     profileId: profileId,
     path: path,
+    bookmark: bookmark,
   );
 
   Future<void> workspaceGrantRevoke({required String profileId}) =>

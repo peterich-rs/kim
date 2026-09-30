@@ -2,12 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
 import 'package:kim_mobile/features/chats/views/chat_page.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/models/models.dart';
 
 import '../support/harness.dart';

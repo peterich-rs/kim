@@ -154,7 +154,7 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
     required String dest,
     required ThreadKind kind,
     required rust_types.OutgoingContent content,
-    required String clientId,
+    String? clientId,
   }) async {
     final receipt = await requireApi().enqueueMessage(
       dest: dest,
@@ -406,6 +406,11 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   }
 
   @override
+  Future<List<String>> catalogModelCache(String vendor) {
+    return requireApi().catalogModelCache(vendor: vendor);
+  }
+
+  @override
   Future<rust_handles.CapabilityPreview> previewProfile(String profileId) {
     return requireApi().previewProfile(profileId: profileId);
   }
@@ -414,16 +419,23 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   Future<void> workspaceGrantRegister({
     required String profileId,
     required String path,
+    String? bookmark,
   }) {
     return requireApi().workspaceGrantRegister(
       profileId: profileId,
       path: path,
+      bookmark: bookmark,
     );
   }
 
   @override
   Future<String?> workspaceGrant(String profileId) {
     return requireApi().workspaceGrant(profileId: profileId);
+  }
+
+  @override
+  Future<String> workspaceGrantBookmark(String profileId) {
+    return requireApi().workspaceGrantBookmark(profileId: profileId);
   }
 
   @override
@@ -462,11 +474,6 @@ mixin KimClientBridge on KimBridgeBase implements KimClientPort {
   @override
   Future<void> deleteAgentProfile(String profileId) {
     return requireApi().deleteAgentProfile(profileId: profileId);
-  }
-
-  @override
-  Future<void> importAgentProfiles(List<String> documents) {
-    return requireApi().importAgentProfiles(documents: documents);
   }
 
   @override

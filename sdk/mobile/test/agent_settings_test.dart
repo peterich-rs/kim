@@ -1,23 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
-// ignore: depend_on_referenced_packages
-import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_settings.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/features/agent/providers/agent_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late FlutterSecureStoragePlatform previousPlatform;
-
   setUp(() {
-    previousPlatform = FlutterSecureStoragePlatform.instance;
     SharedPreferences.setMockInitialValues({});
-  });
-
-  tearDown(() {
-    FlutterSecureStoragePlatform.instance = previousPlatform;
   });
 
   test('settings keep the provider fields', () {
@@ -36,11 +27,14 @@ void main() {
   });
 
   test('thinking effort is written to prefs', () async {
-    SharedPreferences.setMockInitialValues({});
-    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
-      {},
+    final keystore = InMemoryKeystore();
+    final container = ProviderContainer.test(
+      overrides: [
+        agentSettingsProvider.overrideWith(
+          () => AgentSettingsNotifier(keystore: keystore),
+        ),
+      ],
     );
-    final container = ProviderContainer.test();
     addTearDown(container.dispose);
     await container
         .read(agentSettingsProvider.notifier)
@@ -69,10 +63,15 @@ void main() {
         'agent.base_url': 'https://api.anthropic.com',
         'agent.model': 'claude-sonnet-4-5',
       });
-      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform({
-        'agent.api_key': 'sk-live',
-      });
-      final container = ProviderContainer.test();
+      final keystore = InMemoryKeystore();
+      await keystore.write('agent.api_key', 'sk-live');
+      final container = ProviderContainer.test(
+        overrides: [
+          agentSettingsProvider.overrideWith(
+            () => AgentSettingsNotifier(keystore: keystore),
+          ),
+        ],
+      );
       addTearDown(container.dispose);
 
       expect(container.read(agentSettingsProvider).apiKey, isEmpty);
@@ -91,16 +90,20 @@ void main() {
     'ensureLoaded copies agent.api_key into agent.api_key.goose once',
     () async {
       SharedPreferences.setMockInitialValues({});
-      final data = <String, String>{'agent.api_key': 'sk-live'};
-      FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
-        data,
+      final keystore = InMemoryKeystore();
+      await keystore.write('agent.api_key', 'sk-live');
+      final container = ProviderContainer.test(
+        overrides: [
+          agentSettingsProvider.overrideWith(
+            () => AgentSettingsNotifier(keystore: keystore),
+          ),
+        ],
       );
-      final container = ProviderContainer.test();
       addTearDown(container.dispose);
       await container.read(agentSettingsProvider.notifier).ensureLoaded();
       expect(container.read(agentSettingsProvider).apiKey, 'sk-live');
-      expect(data['agent.api_key'], 'sk-live');
-      expect(data['agent.api_key.goose'], 'sk-live');
+      expect(await keystore.read('agent.api_key'), 'sk-live');
+      expect(await keystore.read('agent.api_key.goose'), 'sk-live');
     },
   );
 }

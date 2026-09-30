@@ -64,12 +64,12 @@ async fn older_user_version_is_rebuilt_without_body_json() {
         .unwrap()
         .try_get("value")
         .unwrap();
-    assert_eq!(version, "10");
+    assert_eq!(version, "11");
     let user_version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(user_version, 10);
+    assert_eq!(user_version, 11);
     let cols = column_names(&pool, "agent_profiles").await;
     assert!(
         !cols.iter().any(|c| c == "body_json"),

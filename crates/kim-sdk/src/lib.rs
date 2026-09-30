@@ -1649,6 +1649,22 @@ impl KimSdk {
         store.prefs_imported().await
     }
 
+    /// Last successful `/v1/models` list per vendor. Seeds new provider
+    /// accounts; Dart keeps no copy.
+    pub async fn catalog_model_cache(&self, vendor: &str) -> Result<Vec<String>, SdkError> {
+        let store = self.store()?;
+        store.load_catalog_cache(vendor).await
+    }
+
+    pub async fn set_catalog_model_cache(
+        &self,
+        vendor: &str,
+        models: Vec<String>,
+    ) -> Result<(), SdkError> {
+        let store = self.store()?;
+        store.save_catalog_cache(vendor, &models).await
+    }
+
     /// Register a resolved workspace directory as an authorization. The
     /// platform resolves the picker + security-scoped bookmark; after this
     /// call Rust owns the path.
@@ -1656,6 +1672,7 @@ impl KimSdk {
         &self,
         profile_id: String,
         path: String,
+        bookmark: Option<String>,
     ) -> Result<(), SdkError> {
         let path = path.trim().to_string();
         if path.is_empty() || !std::path::Path::new(&path).is_absolute() {
@@ -1663,8 +1680,19 @@ impl KimSdk {
                 message: "workspace grant path must be absolute".into(),
             });
         }
+        // None keeps the stored bookmark (path-only refresh); Some replaces it.
         let store = self.store()?;
-        store.upsert_workspace_grant(&profile_id, &path).await
+        let bookmark = match bookmark {
+            Some(b) => b,
+            None => store
+                .load_workspace_grant(&profile_id)
+                .await?
+                .map(|g| g.bookmark)
+                .unwrap_or_default(),
+        };
+        store
+            .upsert_workspace_grant(&profile_id, &path, &bookmark)
+            .await
     }
 
     pub async fn workspace_grant_revoke(&self, profile_id: String) -> Result<(), SdkError> {

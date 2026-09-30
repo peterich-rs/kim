@@ -1,4 +1,3 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/core/secret_store_executor.dart';
 import 'package:kim_mobile/core/settings.dart';
@@ -11,14 +10,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('macOS keychain is data-protection and never asks for a password', () {
-    const opts = macOsKeychain;
-    expect(opts.usesDataProtectionKeychain, isTrue);
-    expect(opts.useSecureEnclave, isFalse);
-    expect(opts.synchronizable, isFalse);
-    expect(opts.accessControlFlags, isEmpty);
-    expect(opts.accessibility, KeychainAccessibility.first_unlock_this_device);
-    expect(opts.authenticationUIBehavior, 'u_AuthUIF');
+  test('keystore channel name is stable', () {
+    // The platform side (AppDelegate.swift / KimKeystore.kt) registers this
+    // exact channel name; Rust key names ride as arguments.
+    expect(kimKeystoreChannel, 'kim.keystore');
   });
 
   test('load keeps UI prefs only', () async {

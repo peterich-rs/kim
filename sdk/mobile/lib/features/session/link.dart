@@ -12,7 +12,9 @@ import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/permissions.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
-import 'package:kim_mobile/src/rust/api/types.dart' as rust_kind show ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    as rust_kind
+    show ThreadKind;
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/features/session/panic.dart';
@@ -21,8 +23,8 @@ import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 import 'package:kim_mobile/features/chats/providers/conversation_visibility.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 
 final linkProvider = NotifierProvider<LinkNotifier, KimLinkState>(
   LinkNotifier.new,

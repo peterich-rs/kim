@@ -74,7 +74,7 @@ abstract class KimClientPort {
     required String dest,
     required ThreadKind kind,
     required rust_types.OutgoingContent content,
-    required String clientId,
+    String? clientId,
   });
 
   Future<void> cancelSend(String clientId);
@@ -165,8 +165,6 @@ abstract class KimClientPort {
 
   Future<void> deleteAgentProfile(String profileId);
 
-  Future<void> importAgentProfiles(List<String> documents);
-
   Future<List<rust_types.ProviderAccount>> listProviderAccounts();
 
   Future<void> upsertProviderAccount(rust_types.ProviderAccount row);
@@ -211,14 +209,23 @@ abstract class KimClientPort {
     required String keyRef,
   });
 
+  /// Vendor model cache (Rust `meta` table). Seeds new provider accounts;
+  /// written by `fetchModels` on success.
+  Future<List<String>> catalogModelCache(String vendor);
+
   Future<rust_handles.CapabilityPreview> previewProfile(String profileId);
 
   Future<void> workspaceGrantRegister({
     required String profileId,
     required String path,
+    String? bookmark,
   });
 
   Future<String?> workspaceGrant(String profileId);
+
+  /// macOS security-scoped bookmark bytes stored beside the grant. Rust
+  /// stores and hands back; never interprets.
+  Future<String> workspaceGrantBookmark(String profileId);
 
   /// Rust-owned sandbox (`support/agent/workspaces/<id>`), created + seeded.
   Future<String> ensureAgentSandbox(String profileId);

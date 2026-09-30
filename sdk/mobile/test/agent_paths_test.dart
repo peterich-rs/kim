@@ -1,13 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/workspace.dart';
-import 'package:kim_mobile/features/agent/workspace_access.dart';
+import 'package:kim_mobile/features/agent/data/workspace.dart';
+import 'package:kim_mobile/features/agent/data/workspace_access.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/agent/agent_overview_status.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/widgets/agent_overview_status.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 AgentProfile _profile(
@@ -35,7 +34,6 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    FlutterSecureStorage.setMockInitialValues({});
   });
 
   test('two profiles get isolated sandbox directories', () async {
@@ -54,7 +52,6 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final repo = Directory('${root.path}/repo')..createSync();
     final access = WorkspaceAccess(
-      secure: const FlutterSecureStorage(),
       pickDirectoryFallback: () async => repo.path,
     );
     final resolved = await resolveAgentProjectRoot(
@@ -77,7 +74,7 @@ void main() {
           path: '/no/such/repo/path',
         ),
       ),
-      access: WorkspaceAccess(secure: const FlutterSecureStorage()),
+      access: WorkspaceAccess(),
     );
     expect(resolved.path, contains('p-miss'));
     expect(resolved.invalidRepo, isTrue);
