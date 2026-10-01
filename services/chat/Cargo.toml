@@ -36,7 +36,7 @@ serde_json.workspace = true
 snowflake_me.workspace = true
 sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
 thiserror.workspace = true
-toml = "0.8"
+toml = "0.9"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
