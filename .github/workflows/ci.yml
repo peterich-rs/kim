@@ -42,6 +42,9 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all -- --check
 
+      - name: crate boundaries
+        run: python3 tools/check_crate_boundaries.py
+
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 

@@ -11,6 +11,7 @@
 | R07 | `kim-gateway-runtime` 持有 handler / revoke / hooks / run。`gateway` 只绑 WS，`tgateway` 只绑 TCP/TLS。runtime 不依赖 `kim-ws` |
 | R02 | `kim-agent-model` 持有配置数据与 `ApprovalMode`。codec 不再依赖 host / Goose。Host 在调用 Goose / Codex 时做引擎转换 |
 | R05a schema | `kim-server-schema` 嵌入 0001–0016。Chat 不再 `migrate!`。Compose `migrate` 与测试调用外部 runner |
+| R01 | `tools/check_crate_boundaries.py` 检查 normal/build 角色边界；schema 闭包包含 dev |
 
 ## 尚未落地
 
