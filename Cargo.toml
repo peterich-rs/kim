@@ -14,6 +14,7 @@ members = [
     "crates/kim-gateway-runtime",
     "crates/kim-client",
     "crates/kim-sdk",
+    "crates/kim-agent-model",
     "crates/kim-agent-host",
     "crates/kim-codex-helper",
     "crates/kim-agent-codec",
@@ -94,6 +95,7 @@ dashmap = "6"
 arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
 kim-agent-codec = { path = "crates/kim-agent-codec" }
+kim-agent-model = { path = "crates/kim-agent-model" }
 kim-agent-host = { path = "crates/kim-agent-host" }
 kim-desktop-runtime = { path = "crates/kim-desktop-runtime" }
 kim-log = { path = "crates/kim-log" }

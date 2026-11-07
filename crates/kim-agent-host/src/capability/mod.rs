@@ -16,38 +16,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ops::mcp::McpHub;
-use crate::profile::{
-    AgentProfile, ExtensionSpec, PermissionConfig, PermissionDefault, ToolSet, WorkspaceKind,
-};
+use crate::profile::{AgentProfile, PermissionConfig, ToolSet, WorkspaceKind};
 use crate::skills::{
     build_registry, catalog_prompt_block, read_agents_md, RegistryScan, SkillRegistry,
     SkillResolver,
 };
 use crate::{HostError, HostSession, DEFAULT_AGENT_NAME};
 
+pub use kim_agent_model::{
+    extensions_from_capabilities, CapabilityRef, PermissionMatch, PermissionRule,
+};
 pub use legacy::from_legacy;
 pub use preview::{preview_assembled, AssembledPreview, PreviewTool};
-
-pub(crate) fn extensions_from_capabilities(caps: &[CapabilityRef]) -> Vec<ExtensionSpec> {
-    legacy::extensions_from_capabilities(caps)
-}
-
-fn enabled_true() -> bool {
-    true
-}
-
-/// Persisted reference. `kind` selects the registered block.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CapabilityRef {
-    pub kind: String,
-    /// Optional instance id (`mcp:github`). Empty → kind is enough for singletons.
-    #[serde(default)]
-    pub id: String,
-    #[serde(default)]
-    pub params: Value,
-    #[serde(default = "enabled_true")]
-    pub enabled: bool,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,21 +36,6 @@ pub enum RiskTier {
     Write,
     External,
     Destructive,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "match", rename_all = "snake_case")]
-pub enum PermissionMatch {
-    Tool { name: String },
-    FsPath { prefix: String },
-    BashArgv { prefix: String },
-    McpTool { extension: String, name: String },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PermissionRule {
-    pub r#match: PermissionMatch,
-    pub effect: PermissionDefault,
 }
 
 /// What one enabled block contributes after `build`.
@@ -132,12 +97,6 @@ pub fn catalog_entries() -> Vec<Value> {
             })
         })
         .collect()
-}
-
-impl CapabilityRef {
-    pub fn from_legacy(tools: &ToolSet, extensions: &[ExtensionSpec]) -> Vec<Self> {
-        from_legacy(tools, extensions)
-    }
 }
 
 pub(crate) fn resolve_parts(

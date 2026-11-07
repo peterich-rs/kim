@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::truncate_chars;
@@ -37,10 +37,6 @@ const BUNDLED: &[(&str, &str)] = &[
     ),
 ];
 
-fn enabled_true() -> bool {
-    true
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum SkillError {
     #[error("skill {0} is not in this session's catalog")]
@@ -55,41 +51,7 @@ pub enum SkillError {
     Io(String),
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum SkillClass {
-    #[default]
-    Portable,
-    App,
-}
-
-/// What a profile persists. Portable skills are discovered, never listed here.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SkillRef {
-    pub id: String,
-    #[serde(default)]
-    pub class: SkillClass,
-    /// `bundled` | `cache` | `cloud` — app skills only.
-    #[serde(default)]
-    pub origin: String,
-    /// Empty means latest: the next activation may resolve newer text.
-    #[serde(default)]
-    pub version: String,
-    #[serde(default = "enabled_true")]
-    pub enabled: bool,
-}
-
-impl Default for SkillRef {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            class: SkillClass::App,
-            origin: "bundled".into(),
-            version: String::new(),
-            enabled: true,
-        }
-    }
-}
+pub use kim_agent_model::{SkillClass, SkillRef};
 
 /// Frontmatter fields KIM surfaces. Unknown YAML keys are ignored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

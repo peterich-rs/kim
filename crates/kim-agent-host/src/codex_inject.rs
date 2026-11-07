@@ -29,8 +29,8 @@ use codex_core_api::OPENAI_PROVIDER_ID;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_utils_redacted_string::RedactedString;
-use goose_provider_types::goose_mode::GooseMode;
 use goose_provider_types::thinking::ThinkingEffort;
+use kim_agent_model::{ApprovalMode, ReasoningEffort as ModelEffort};
 
 use crate::capability::interpolate_identity;
 use crate::events::HostError;
@@ -210,17 +210,17 @@ fn writable_shell(profile: &AgentProfile) -> bool {
     tools.bash || tools.fs_write
 }
 
-fn approval_policy(mode: GooseMode, writable: bool) -> AskForApproval {
+fn approval_policy(mode: ApprovalMode, writable: bool) -> AskForApproval {
     match mode {
-        GooseMode::Chat => AskForApproval::Never,
-        GooseMode::Auto => AskForApproval::Never,
-        GooseMode::Approve | GooseMode::SmartApprove if writable => AskForApproval::OnRequest,
-        GooseMode::Approve | GooseMode::SmartApprove => AskForApproval::Never,
+        ApprovalMode::Chat => AskForApproval::Never,
+        ApprovalMode::Auto => AskForApproval::Never,
+        ApprovalMode::Approve | ApprovalMode::SmartApprove if writable => AskForApproval::OnRequest,
+        ApprovalMode::Approve | ApprovalMode::SmartApprove => AskForApproval::Never,
     }
 }
 
-fn permission_profile(mode: GooseMode, writable: bool) -> PermissionProfile {
-    if mode == GooseMode::Chat || !writable {
+fn permission_profile(mode: ApprovalMode, writable: bool) -> PermissionProfile {
+    if mode == ApprovalMode::Chat || !writable {
         PermissionProfile::read_only()
     } else {
         PermissionProfile::workspace_write()
@@ -234,7 +234,7 @@ fn developer_instructions(profile: &AgentProfile, writable: bool) -> String {
         text.push_str("\n\n# Steer\n");
         text.push_str(steer);
     }
-    if profile.mode == GooseMode::Chat || !writable {
+    if profile.mode == ApprovalMode::Chat || !writable {
         text.push_str(
             "\n\nYou do not have permission to write files or run shell commands. 没有文件写入和 shell 权限。",
         );
@@ -242,13 +242,13 @@ fn developer_instructions(profile: &AgentProfile, writable: bool) -> String {
     text
 }
 
-fn map_effort(effort: ThinkingEffort) -> ReasoningEffort {
+fn map_effort(effort: ModelEffort) -> ReasoningEffort {
     match effort {
-        ThinkingEffort::Off => ReasoningEffort::None,
-        ThinkingEffort::Low => ReasoningEffort::Low,
-        ThinkingEffort::Medium => ReasoningEffort::Medium,
-        ThinkingEffort::High => ReasoningEffort::High,
-        ThinkingEffort::Max => ReasoningEffort::Max,
+        ModelEffort::Off => ReasoningEffort::None,
+        ModelEffort::Low => ReasoningEffort::Low,
+        ModelEffort::Medium => ReasoningEffort::Medium,
+        ModelEffort::High => ReasoningEffort::High,
+        ModelEffort::Max => ReasoningEffort::Max,
     }
 }
 
@@ -522,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn chat_profile_is_read_only_and_compacts_at_seventy_percent() {
         let mut profile = legacy("openai", "chat");
-        profile.mode = GooseMode::Chat;
+        profile.mode = ApprovalMode::Chat;
         profile.model.context_tokens = Some(1000);
         let config = config_for(&profile).await;
         assert_eq!(
@@ -555,7 +555,7 @@ mod tests {
     async fn custom_provider_keeps_the_key_on_the_bearer() {
         let mut profile = legacy("openai_compatible", "auto");
         profile.provider.base_url = "https://example.test/v1".into();
-        profile.mode = GooseMode::Auto;
+        profile.mode = ApprovalMode::Auto;
         profile.tools.bash = true;
         let config = config_for(&profile).await;
         assert_eq!(config.model_provider_id, "kim");
@@ -579,7 +579,7 @@ mod tests {
     #[tokio::test]
     async fn smart_approve_with_bash_asks_on_request() {
         let mut profile = legacy("openai", "smart_approve");
-        profile.mode = GooseMode::SmartApprove;
+        profile.mode = ApprovalMode::SmartApprove;
         profile.tools.bash = true;
         let config = config_for(&profile).await;
         assert_eq!(

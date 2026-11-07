@@ -1,6 +1,8 @@
 //! Open a host from the fields the FFI used to interpret itself.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+use kim_agent_model::RuntimeKind;
 
 use crate::{
     runtime_from_harness_json, AgentHost, AgentProfile, AgentRuntime, HostError, LegacyOpenOpts,
@@ -72,7 +74,7 @@ pub fn resolve_open(
         ..LegacyOpenOpts::default()
     });
     profile.normalize_mode();
-    profile.apply_reasoning()?;
+    crate::profile::apply_reasoning(&mut profile)?;
     tracing::info!(
         profile_id = %profile.id,
         provider = %profile.provider.kind,
@@ -95,7 +97,7 @@ pub async fn attach_codex_for_open(
     sqlite_path: &str,
     project_root: &str,
 ) -> Result<(), HostError> {
-    let from_profile = profile.agent_runtime() == AgentRuntime::Codex;
+    let from_profile = profile.runtime_kind() == RuntimeKind::Codex;
     let from_harness = runtime_from_harness_json(&opts.harness_json) == AgentRuntime::Codex;
     if !from_profile && !from_harness {
         return Ok(());
@@ -132,7 +134,7 @@ pub async fn attach_codex_for_open(
     _sqlite_path: &str,
     _project_root: &str,
 ) -> Result<(), HostError> {
-    let from_profile = profile.agent_runtime() == AgentRuntime::Codex;
+    let from_profile = profile.runtime_kind() == RuntimeKind::Codex;
     let from_harness = runtime_from_harness_json(&opts.harness_json) == AgentRuntime::Codex;
     if from_profile || from_harness {
         return Err(HostError::Failed(

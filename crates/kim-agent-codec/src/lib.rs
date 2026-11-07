@@ -4,12 +4,11 @@
 
 use std::collections::HashMap;
 
-use goose_provider_types::goose_mode::GooseMode;
-use kim_agent_host::{
-    parse_goose_mode, AgentProfile, CapabilityRef, ExtensionSpec, ModelSpec, PermissionConfig,
-    PermissionDefault, PermissionMatch, PermissionRule, ProviderSpec, ReasoningChoice,
-    ReasoningChoiceBody, SandboxPolicy, SkillClass, SkillRef, ToolSet, WorkspaceKind,
-    WorkspaceSpec,
+use kim_agent_model::{
+    parse_approval_mode, AgentProfile, ApprovalMode, CapabilityRef, ExtensionSpec, ModelSpec,
+    PermissionConfig, PermissionDefault, PermissionMatch, PermissionRule, ProviderSpec,
+    ReasoningChoice, ReasoningChoiceBody, SandboxPolicy, SkillClass, SkillRef, ToolSet,
+    WorkspaceKind, WorkspaceSpec,
 };
 use kim_protocol::agent;
 use prost::Message;
@@ -461,7 +460,7 @@ fn decode_workspace_kind(raw: i32) -> WorkspaceKind {
     }
 }
 
-fn encode_mode(mode: &GooseMode) -> i32 {
+fn encode_mode(mode: &ApprovalMode) -> i32 {
     let name = serde_json::to_value(mode)
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
@@ -474,7 +473,7 @@ fn encode_mode(mode: &GooseMode) -> i32 {
     }
 }
 
-fn decode_mode(raw: i32) -> GooseMode {
+fn decode_mode(raw: i32) -> ApprovalMode {
     let name = if raw == agent::GooseMode::Chat as i32 {
         "chat"
     } else if raw == agent::GooseMode::Auto as i32 {
@@ -484,7 +483,7 @@ fn decode_mode(raw: i32) -> GooseMode {
     } else {
         "smart_approve"
     };
-    parse_goose_mode(name).unwrap_or(GooseMode::SmartApprove)
+    parse_approval_mode(name).unwrap_or(ApprovalMode::SmartApprove)
 }
 
 fn encode_reasoning(r: &ReasoningChoice) -> agent::ReasoningChoice {

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
-use goose_provider_types::thinking::ThinkingEffort;
+use kim_agent_model::ReasoningEffort;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -178,41 +178,7 @@ pub struct VendorSummary {
     pub models: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReasoningChoice {
-    #[serde(default = "choice_version")]
-    pub v: u32,
-    #[serde(flatten)]
-    pub body: ReasoningChoiceBody,
-}
-
-fn choice_version() -> u32 {
-    1
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ReasoningChoiceBody {
-    None,
-    AlwaysOn,
-    Toggle { on: bool },
-    EffortEnum { value: String },
-    BudgetTokens { value: u32 },
-    Advanced { json: Value },
-}
-
-impl ReasoningChoice {
-    pub fn kind_name(&self) -> &'static str {
-        match self.body {
-            ReasoningChoiceBody::None => "none",
-            ReasoningChoiceBody::AlwaysOn => "always_on",
-            ReasoningChoiceBody::Toggle { .. } => "toggle",
-            ReasoningChoiceBody::EffortEnum { .. } => "effort_enum",
-            ReasoningChoiceBody::BudgetTokens { .. } => "budget_tokens",
-            ReasoningChoiceBody::Advanced { .. } => "advanced",
-        }
-    }
-}
+pub use kim_agent_model::{ReasoningChoice, ReasoningChoiceBody};
 
 /// Closed alias table: stored / Goose / old `llm_backend` → catalog vendor id.
 pub fn normalize_vendor_id(raw: &str) -> String {
@@ -713,7 +679,7 @@ const ADVANCED_ALLOWLIST: &[&str] = &[
 ];
 
 pub struct ModelApply {
-    pub thinking_effort: Option<ThinkingEffort>,
+    pub thinking_effort: Option<ReasoningEffort>,
     pub extra_params: HashMap<String, Value>,
     pub reasoning: Option<bool>,
 }
@@ -918,10 +884,10 @@ fn map_zhipu(choice: &ReasoningChoice) -> ModelApply {
 fn map_anthropic(choice: &ReasoningChoice) -> ModelApply {
     let mut apply = ModelApply::empty();
     if let ReasoningChoiceBody::EffortEnum { value } = &choice.body {
-        apply.thinking_effort = ThinkingEffort::from_str(value).ok().filter(|e| {
+        apply.thinking_effort = ReasoningEffort::from_str(value).ok().filter(|effort| {
             matches!(
-                e,
-                ThinkingEffort::Low | ThinkingEffort::High | ThinkingEffort::Max
+                effort,
+                ReasoningEffort::Low | ReasoningEffort::High | ReasoningEffort::Max
             )
         });
         if apply.thinking_effort.is_some() {
@@ -972,7 +938,7 @@ fn map_openai(model: &str, choice: &ReasoningChoice) -> ModelApply {
     if is_reasoning {
         match value.as_str() {
             "low" | "medium" | "high" | "max" => {
-                apply.thinking_effort = ThinkingEffort::from_str(value).ok();
+                apply.thinking_effort = ReasoningEffort::from_str(value).ok();
             }
             "minimal" | "none" | "xhigh" => {
                 apply
@@ -1037,6 +1003,7 @@ mod tests {
     use goose_provider_types::formats::openai;
     use goose_provider_types::images::ImageFormat;
     use goose_provider_types::model::ModelConfig;
+    use goose_provider_types::thinking::ThinkingEffort;
 
     fn surface_kind(vendor: &str, model: &str) -> String {
         let raw = catalog_surface_json(vendor, model).unwrap();
@@ -1300,7 +1267,7 @@ mod tests {
         let apply = to_model_spec(vendor, model, &choice).unwrap();
         let mut cfg = ModelConfig::new(model);
         if let Some(effort) = apply.thinking_effort {
-            cfg = cfg.with_thinking_effort(effort);
+            cfg = cfg.with_thinking_effort(crate::profile::to_goose_effort(effort));
         }
         if !apply.extra_params.is_empty() {
             cfg = cfg.with_merged_request_params(apply.extra_params);

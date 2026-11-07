@@ -8,8 +8,7 @@ description = "AgentProfile ↔ kim.agent.AgentSpec protobuf bytes"
 publish = false
 
 [dependencies]
-goose-provider-types = { version = "0.1.0-alpha.9", default-features = false }
-kim-agent-host.workspace = true
+kim-agent-model.workspace = true
 kim-protocol.workspace = true
 prost.workspace = true
 serde.workspace = true

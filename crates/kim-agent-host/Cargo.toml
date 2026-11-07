@@ -24,6 +24,7 @@ codex = [
 
 [dependencies]
 anyhow.workspace = true
+kim-agent-model.workspace = true
 async-trait.workspace = true
 codex-async-utils = { path = "../../third_party/codex/codex-rs/async-utils", optional = true }
 codex-config = { path = "../../third_party/codex/codex-rs/config", optional = true }

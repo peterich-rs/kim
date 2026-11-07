@@ -7341,8 +7341,7 @@ dependencies = [
 name = "kim-agent-codec"
 version = "0.1.0"
 dependencies = [
- "goose-provider-types",
- "kim-agent-host",
+ "kim-agent-model",
  "kim-protocol",
  "prost 0.13.5",
  "serde",
@@ -7366,6 +7365,7 @@ dependencies = [
  "goose-agent",
  "goose-provider-types",
  "goose-providers",
+ "kim-agent-model",
  "nix 0.29.0",
  "rama-error",
  "rama-macros",
@@ -7382,6 +7382,14 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "kim-agent-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

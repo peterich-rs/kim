@@ -7,8 +7,8 @@ use goose_agent::operation::{
 };
 use goose_provider_types::conversation::message::{ActionRequiredData, Message, MessageContent};
 use goose_provider_types::conversation::Conversation;
-use goose_provider_types::goose_mode::GooseMode;
 use goose_provider_types::permission::Permission;
+use kim_agent_model::ApprovalMode;
 use rmcp::model::{CallToolResult, ContentBlock, JsonObject};
 
 use crate::events::{HostEffect, PendingYield, YieldKind};
@@ -17,43 +17,8 @@ use crate::profile::{PermissionConfig, PermissionDefault};
 use crate::HostSession;
 
 pub struct PermissionOp {
-    pub mode: GooseMode,
+    pub mode: ApprovalMode,
     pub config: PermissionConfig,
-}
-
-fn force_ask(name: &str) -> bool {
-    name.contains("__")
-}
-
-impl PermissionConfig {
-    pub fn default_for(name: &str, mode: GooseMode) -> PermissionDefault {
-        // S-KD 15: `activate_skill` only reads text the user already assigned
-        // or that the workspace already exposes, so no mode asks for it.
-        if name == crate::ops::skill::ACTIVATE_SKILL {
-            return PermissionDefault::AlwaysAllow;
-        }
-        match mode {
-            GooseMode::Auto | GooseMode::SmartApprove => PermissionDefault::AlwaysAllow,
-            GooseMode::Approve | GooseMode::Chat => PermissionDefault::AskBefore,
-        }
-    }
-
-    pub fn resolve(&self, name: &str, mode: GooseMode) -> PermissionDefault {
-        if force_ask(name) {
-            if self.tools.get(name) == Some(&PermissionDefault::NeverAllow) {
-                return PermissionDefault::NeverAllow;
-            }
-            return self
-                .tools
-                .get(name)
-                .copied()
-                .unwrap_or(PermissionDefault::AskBefore);
-        }
-        self.tools
-            .get(name)
-            .copied()
-            .unwrap_or_else(|| Self::default_for(name, mode))
-    }
 }
 
 pub fn parse_permission(raw: &str) -> Result<Permission, String> {
@@ -117,7 +82,7 @@ fn confirmation_maps(conversation: &Conversation) -> ConfirmationMaps<'_> {
 
 fn policy_for(
     config: &PermissionConfig,
-    mode: GooseMode,
+    mode: ApprovalMode,
     name: &str,
     maps: &ConfirmationMaps<'_>,
 ) -> PermissionDefault {
@@ -267,7 +232,7 @@ impl Operation<HostSession, HostEffect> for PermissionOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use goose_provider_types::goose_mode::GooseMode;
+    use kim_agent_model::ApprovalMode;
 
     #[test]
     fn smart_approve_write_tools_auto_allow() {
@@ -281,7 +246,7 @@ mod tests {
             "read_file",
         ] {
             assert_eq!(
-                PermissionConfig::default_for(name, GooseMode::SmartApprove),
+                PermissionConfig::default_for(name, ApprovalMode::SmartApprove),
                 PermissionDefault::AlwaysAllow,
                 "{name}"
             );
@@ -294,7 +259,7 @@ mod tests {
         cfg.tools
             .insert("bash".into(), PermissionDefault::AskBefore);
         assert_eq!(
-            cfg.resolve("bash", GooseMode::SmartApprove),
+            cfg.resolve("bash", ApprovalMode::SmartApprove),
             PermissionDefault::AskBefore
         );
     }
@@ -303,10 +268,10 @@ mod tests {
     fn activate_skill_never_asks() {
         let cfg = PermissionConfig::default();
         for mode in [
-            GooseMode::Chat,
-            GooseMode::Approve,
-            GooseMode::SmartApprove,
-            GooseMode::Auto,
+            ApprovalMode::Chat,
+            ApprovalMode::Approve,
+            ApprovalMode::SmartApprove,
+            ApprovalMode::Auto,
         ] {
             assert_eq!(
                 cfg.resolve("activate_skill", mode),
@@ -320,11 +285,11 @@ mod tests {
     fn mcp_defaults_to_ask() {
         let cfg = PermissionConfig::default();
         assert_eq!(
-            cfg.resolve("ext__tool", GooseMode::Auto),
+            cfg.resolve("ext__tool", ApprovalMode::Auto),
             PermissionDefault::AskBefore
         );
         assert_eq!(
-            cfg.resolve("bash", GooseMode::Auto),
+            cfg.resolve("bash", ApprovalMode::Auto),
             PermissionDefault::AlwaysAllow
         );
     }

@@ -93,8 +93,7 @@ impl MachineFactory {
         })));
 
         let projected = profile.project_toolset();
-        if profile.mode == goose_provider_types::goose_mode::GooseMode::Chat && projected.has_any()
-        {
+        if profile.mode == kim_agent_model::ApprovalMode::Chat && projected.has_any() {
             tracing::warn!(
                 profile_id = %profile.id,
                 "GooseMode::Chat ignored because projected ToolSet is non-empty"
@@ -149,7 +148,7 @@ pub fn model_config(spec: &ModelSpec) -> Result<ModelConfig, HostError> {
     };
     let mut cfg = ModelConfig::new(name);
     if let Some(effort) = spec.thinking_effort {
-        cfg = cfg.with_thinking_effort(effort);
+        cfg = cfg.with_thinking_effort(crate::profile::to_goose_effort(effort));
     }
     if !spec.extra_params.is_empty() {
         cfg = cfg.with_merged_request_params(spec.extra_params.clone());
@@ -220,7 +219,7 @@ mod tests {
             },
             reasoning: None,
             system_prompt: DEFAULT_IDENTITY_PROMPT.into(),
-            mode: goose_provider_types::goose_mode::GooseMode::Chat,
+            mode: kim_agent_model::ApprovalMode::Chat,
             max_turns: Some(16),
             tools,
             capabilities: Vec::new(),

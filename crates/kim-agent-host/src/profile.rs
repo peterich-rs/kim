@@ -1,267 +1,60 @@
-use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use goose_provider_types::goose_mode::GooseMode;
 use goose_provider_types::thinking::ThinkingEffort;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+pub use kim_agent_model::{
+    parse_approval_mode, parse_reasoning_effort, AgentProfile, ApprovalMode, ExtensionSpec,
+    HarnessSpec, LegacyOpenOpts, ModelSpec, PermissionConfig, PermissionDefault, ProviderSpec,
+    ReasoningEffort, SandboxMode, SandboxPolicy, ToolSet, WorkspaceKind, WorkspaceSpec,
+    DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_IDENTITY_PROMPT,
+};
 
-use crate::capability::{CapabilityRef, PermissionRule};
-use crate::catalog::ReasoningChoice;
+#[cfg(test)]
+use kim_agent_model::{
+    is_legacy_tool_laundry_identity, CapabilityRef, LEGACY_TOOL_LAUNDRY_IDENTITY,
+};
+
 use crate::provider::ProviderConfig;
-use crate::skills::SkillRef;
-use crate::{HostError, DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, DEFAULT_IDENTITY_PROMPT};
+use crate::HostError;
 
-fn enabled_true() -> bool {
-    true
-}
-
-/// Optional supervision overrides. `enabled` defaults to false so a missing
-/// field does not turn the clocks on (`enabled_true` is the profile switch).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HarnessSpec {
-    pub idle_timeout_secs: Option<u64>,
-    pub hard_timeout_secs: Option<u64>,
-    pub bash_timeout_secs: Option<u64>,
-    pub mcp_tool_timeout_secs: Option<u64>,
-    pub yield_wait_secs: Option<u64>,
-    pub require_reply: Option<bool>,
-    #[serde(default)]
-    pub enabled: bool,
-}
-
-/// Pre-B-KD 4 identity that enumerated every IM tool. Treat as empty.
-const LEGACY_TOOL_LAUNDRY_IDENTITY: &str = concat!(
-    "You are 助手, a local desktop agent inside the KIM messenger. ",
-    "You run on the user's machine (not a cloud bot). Reply in the user's language. ",
-    "Be concise. You can see the current conversation because the host pasted it into this session. ",
-    "You have search_contacts, search_messages, get_conversation_context, list_profiles, ",
-    "send_message, and read_clipboard. send_message and clipboard require user confirmation. ",
-    "You do not have filesystem or shell access. Do not claim you have tools you were not given.",
-);
-
-fn is_legacy_tool_laundry_identity(prompt: &str) -> bool {
-    let t = prompt.trim();
-    t == LEGACY_TOOL_LAUNDRY_IDENTITY
-        || (t.contains("You are 助手")
-            && t.contains("search_contacts")
-            && t.contains("search_messages")
-            && t.contains("get_conversation_context")
-            && t.contains("list_profiles")
-            && t.contains("send_message")
-            && t.contains("read_clipboard")
-            && t.contains("You do not have filesystem or shell access"))
-}
-
-fn default_smart_approve() -> GooseMode {
-    GooseMode::SmartApprove
-}
-
-/// Stable id. Default persona is "goose" (IM dest alias too).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AgentProfile {
-    pub id: String,
-    pub display_name: String,
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    #[serde(default)]
-    pub provider: ProviderSpec,
-    pub model: ModelSpec,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<ReasoningChoice>,
-    #[serde(default)]
-    pub system_prompt: String,
-    /// Missing JSON → SmartApprove. Never GooseMode::Auto (enum Default).
-    #[serde(default = "default_smart_approve")]
-    pub mode: GooseMode,
-    #[serde(default)]
-    pub max_turns: Option<u32>,
-    #[serde(default)]
-    pub tools: ToolSet,
-    /// Authoritative capability list. Empty → derived from `tools` + `extensions`.
-    #[serde(default)]
-    pub capabilities: Vec<CapabilityRef>,
-    /// Ordered permission rules (Phase 3 engine). Phase 1 merges Tool matches into the map.
-    #[serde(default)]
-    pub permission_rules: Vec<PermissionRule>,
-    #[serde(default)]
-    pub permissions: PermissionConfig,
-    #[serde(default)]
-    pub sandbox: SandboxPolicy,
-    #[serde(default)]
-    pub extensions: Vec<ExtensionSpec>,
-    #[serde(default = "enabled_true")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub steer: String,
-    /// Missing JSON → sandbox (S-KD 4).
-    #[serde(default)]
-    pub workspace: WorkspaceSpec,
-    /// App-skill references only. Portable skills are discovered, not stored.
-    #[serde(default)]
-    pub skills: Vec<SkillRef>,
-    /// Portable ids the user muted for this profile.
-    #[serde(default)]
-    pub portable_denylist: Vec<String>,
-    /// Absolute path to the real `~/.agents/skills`. Empty disables the user
-    /// shelf; the host never guesses it, because a sandboxed macOS container
-    /// `$HOME` is not the ecosystem directory (S-KD 23).
-    #[serde(default)]
-    pub user_agents_skills: String,
-    /// Agent harness. Empty / missing / `"goose"` → Goose. `"codex"` → Codex.
-    /// Switching runtime starts a new session; it is not migrated in place.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub runtime: String,
-    /// Optional harness overrides. Missing → timers stay at MAX until a session
-    /// explicitly enables them.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub harness: Option<HarnessSpec>,
-}
-
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceKind {
-    #[default]
-    Sandbox,
-    Repo,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorkspaceSpec {
-    #[serde(default)]
-    pub kind: WorkspaceKind,
-    /// sandbox: empty. repo: absolute path, for display and validation only —
-    /// the security-scoped bookmark stays in Dart.
-    #[serde(default)]
-    pub path: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProviderSpec {
-    #[serde(default)]
-    pub kind: String,
-    #[serde(default)]
-    pub base_url: String,
-    #[serde(default)]
-    pub key_ref: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct ModelSpec {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub thinking_effort: Option<ThinkingEffort>,
-    #[serde(default)]
-    pub temperature: Option<String>,
-    #[serde(default)]
-    pub max_tokens: Option<i32>,
-    /// Input+output envelope. Missing → catalog default for `name`, else 256k.
-    #[serde(default)]
-    pub context_tokens: Option<i32>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub extra_params: HashMap<String, Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ToolSet {
-    #[serde(default)]
-    pub send_message: bool,
-    #[serde(default)]
-    pub search_contacts: bool,
-    #[serde(default)]
-    pub search_messages: bool,
-    #[serde(default)]
-    pub get_conversation_context: bool,
-    #[serde(default)]
-    pub read_clipboard: bool,
-    #[serde(default)]
-    pub list_profiles: bool,
-    #[serde(default)]
-    pub fs: bool,
-    #[serde(default)]
-    pub fs_write: bool,
-    #[serde(default)]
-    pub bash: bool,
-    /// Opt-in `delegate` tool. Default 助手 stays IM-only.
-    #[serde(default)]
-    pub subagent: bool,
-}
-
-impl ToolSet {
-    pub fn kim_world_names(&self) -> Vec<&'static str> {
-        let mut v = Vec::new();
-        if self.send_message {
-            v.push("send_message");
-        }
-        if self.search_contacts {
-            v.push("search_contacts");
-        }
-        if self.search_messages {
-            v.push("search_messages");
-        }
-        if self.get_conversation_context {
-            v.push("get_conversation_context");
-        }
-        if self.read_clipboard {
-            v.push("read_clipboard");
-        }
-        if self.list_profiles {
-            v.push("list_profiles");
-        }
-        v
-    }
-
-    pub fn has_in_process(&self) -> bool {
-        self.fs || self.fs_write || self.bash || self.subagent
-    }
-
-    pub fn has_any(&self) -> bool {
-        !self.kim_world_names().is_empty() || self.has_in_process()
+pub fn to_goose_mode(mode: ApprovalMode) -> GooseMode {
+    match mode {
+        ApprovalMode::Auto => GooseMode::Auto,
+        ApprovalMode::Approve => GooseMode::Approve,
+        ApprovalMode::SmartApprove => GooseMode::SmartApprove,
+        ApprovalMode::Chat => GooseMode::Chat,
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PermissionDefault {
-    AlwaysAllow,
-    AskBefore,
-    NeverAllow,
+pub fn to_goose_effort(effort: ReasoningEffort) -> ThinkingEffort {
+    match effort {
+        ReasoningEffort::Off => ThinkingEffort::Off,
+        ReasoningEffort::Low => ThinkingEffort::Low,
+        ReasoningEffort::Medium => ThinkingEffort::Medium,
+        ReasoningEffort::High => ThinkingEffort::High,
+        ReasoningEffort::Max => ThinkingEffort::Max,
+    }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PermissionConfig {
-    #[serde(default)]
-    pub tools: BTreeMap<String, PermissionDefault>,
+pub fn parse_goose_mode(raw: &str) -> Option<GooseMode> {
+    parse_approval_mode(raw).map(to_goose_mode)
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SandboxPolicy {
-    #[serde(default)]
-    pub mode: SandboxMode,
+pub fn parse_thinking_effort(raw: &str) -> Option<ThinkingEffort> {
+    parse_reasoning_effort(raw).map(to_goose_effort)
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum SandboxMode {
-    #[default]
-    None,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ExtensionSpec {
-    pub name: String,
-    pub transport: String,
-    pub command: Vec<String>,
-    #[serde(default)]
-    pub url: String,
-    /// Optional process env. v1 ignores caller-supplied values and uses the
-    /// shared allowlist instead.
-    #[serde(default)]
-    pub env: HashMap<String, String>,
+/// Map persisted `reasoning` onto the model effort fields. Engine conversion stays at the Goose boundary.
+pub fn apply_reasoning(profile: &mut AgentProfile) -> Result<(), HostError> {
+    let Some(choice) = profile.reasoning.clone() else {
+        return Ok(());
+    };
+    let apply =
+        crate::catalog::to_model_spec(&profile.provider.kind, &profile.model.name, &choice)?;
+    profile.model.thinking_effort = apply.thinking_effort;
+    profile.model.extra_params = apply.extra_params;
+    profile.model.reasoning = apply.reasoning;
+    Ok(())
 }
 
 /// Secrets travel beside the profile, never inside it.
@@ -285,171 +78,6 @@ impl std::fmt::Debug for ResolvedProfile {
 impl std::fmt::Display for ResolvedProfile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "profile {}", self.profile.id)
-    }
-}
-
-/// Fields `session_open` maps when `profile_json` is empty.
-#[derive(Debug, Clone, Default)]
-pub struct LegacyOpenOpts {
-    pub model: String,
-    pub llm_backend: String,
-    pub base_url: String,
-    pub enable_fs_tools: bool,
-    pub bash_enabled: bool,
-    pub enable_kim_tools: bool,
-    pub enable_approvals: bool,
-    pub thinking_effort: String,
-    pub goose_mode: String,
-    pub profile_id: String,
-}
-
-impl AgentProfile {
-    pub fn from_legacy(opts: &LegacyOpenOpts) -> Self {
-        let tools = ToolSet {
-            fs: opts.enable_fs_tools,
-            fs_write: false,
-            bash: opts.bash_enabled,
-            search_contacts: opts.enable_kim_tools,
-            search_messages: opts.enable_kim_tools,
-            get_conversation_context: opts.enable_kim_tools,
-            list_profiles: opts.enable_kim_tools,
-            send_message: opts.enable_kim_tools && opts.enable_approvals,
-            read_clipboard: opts.enable_kim_tools && opts.enable_approvals,
-            ..ToolSet::default()
-        };
-
-        let mode = if tools.has_any() {
-            match parse_goose_mode(&opts.goose_mode) {
-                Some(GooseMode::Chat) | Some(GooseMode::Auto) | None => GooseMode::SmartApprove,
-                Some(mode) => mode,
-            }
-        } else {
-            GooseMode::Chat
-        };
-
-        let id = if opts.profile_id.trim().is_empty() {
-            DEFAULT_AGENT_ID.to_string()
-        } else {
-            opts.profile_id.trim().to_string()
-        };
-        let key_ref = format!("agent.api_key.{id}");
-
-        Self {
-            id,
-            display_name: DEFAULT_AGENT_NAME.to_string(),
-            aliases: vec!["助手".into()],
-            provider: ProviderSpec {
-                kind: opts.llm_backend.clone(),
-                base_url: opts.base_url.clone(),
-                key_ref,
-            },
-            model: ModelSpec {
-                name: opts.model.clone(),
-                thinking_effort: parse_thinking_effort(&opts.thinking_effort),
-                ..Default::default()
-            },
-            reasoning: None,
-            system_prompt: String::new(),
-            mode,
-            max_turns: Some(16),
-            tools,
-            capabilities: Vec::new(),
-            permission_rules: Vec::new(),
-            permissions: PermissionConfig::default(),
-            sandbox: SandboxPolicy::default(),
-            extensions: Vec::new(),
-            enabled: true,
-            steer: String::new(),
-            workspace: WorkspaceSpec::default(),
-            skills: Vec::new(),
-            portable_denylist: Vec::new(),
-            user_agents_skills: String::new(),
-            runtime: String::new(),
-            harness: None,
-        }
-    }
-
-    /// Untrusted JSON / `auto` must not silently AlwaysAllow send_message.
-    pub fn normalize_mode(&mut self) {
-        if self.mode != GooseMode::Auto {
-            return;
-        }
-        let tools = self.project_toolset();
-        self.mode = if tools.has_any()
-            || !self.extensions.is_empty()
-            || !self.skills.is_empty()
-            || self
-                .resolve_capabilities()
-                .iter()
-                .any(|c| c.enabled && c.kind == "mcp")
-        {
-            GooseMode::SmartApprove
-        } else {
-            GooseMode::Chat
-        };
-    }
-
-    /// Map persisted `reasoning` onto Goose `ModelSpec` (effort + extra_params).
-    /// Old `model.thinking_effort` is left alone when `reasoning` is absent.
-    pub fn apply_reasoning(&mut self) -> Result<(), HostError> {
-        let Some(choice) = self.reasoning.clone() else {
-            return Ok(());
-        };
-        let apply = crate::catalog::to_model_spec(&self.provider.kind, &self.model.name, &choice)?;
-        self.model.thinking_effort = apply.thinking_effort;
-        self.model.extra_params = apply.extra_params;
-        self.model.reasoning = apply.reasoning;
-        Ok(())
-    }
-
-    pub fn fill_provider_from_legacy(&mut self, opts: &LegacyOpenOpts) {
-        if self.provider.kind.trim().is_empty() {
-            self.provider.kind = opts.llm_backend.clone();
-        }
-        if self.provider.base_url.trim().is_empty() {
-            self.provider.base_url = opts.base_url.clone();
-        }
-    }
-
-    /// Capabilities are authoritative when non-empty; otherwise derive from legacy tools.
-    pub fn resolve_capabilities(&self) -> Vec<CapabilityRef> {
-        if !self.capabilities.is_empty() {
-            return self.capabilities.clone();
-        }
-        CapabilityRef::from_legacy(&self.tools, &self.extensions)
-    }
-
-    /// Empty / missing / `"goose"` → Goose. `"codex"` → Codex.
-    pub fn agent_runtime(&self) -> crate::AgentRuntime {
-        match self.runtime.trim() {
-            "codex" => crate::AgentRuntime::Codex,
-            _ => crate::AgentRuntime::Goose,
-        }
-    }
-
-    /// Project resolved capabilities onto the legacy `ToolSet` surface.
-    pub fn project_toolset(&self) -> ToolSet {
-        ToolSet::from_capabilities(&self.resolve_capabilities())
-    }
-
-    /// MCP rows implied by resolved capabilities. Empty when MCP is off.
-    pub fn project_extensions(&self) -> Vec<ExtensionSpec> {
-        crate::capability::extensions_from_capabilities(&self.resolve_capabilities())
-    }
-
-    /// Identity text only — never lists tools (B-KD 4).
-    pub fn effective_identity_prompt(&self) -> &str {
-        let t = self.system_prompt.trim();
-        if t.is_empty() || is_legacy_tool_laundry_identity(t) {
-            DEFAULT_IDENTITY_PROMPT
-        } else {
-            t
-        }
-    }
-
-    /// Empty / whitespace prompt uses the identity-only default at assemble.
-    pub fn effective_system_prompt(&self) -> &str {
-        self.effective_identity_prompt()
     }
 }
 
@@ -478,7 +106,7 @@ impl ResolvedProfile {
                 },
                 reasoning: None,
                 system_prompt: DEFAULT_IDENTITY_PROMPT.to_string(),
-                mode: GooseMode::Chat,
+                mode: ApprovalMode::Chat,
                 max_turns: Some(16),
                 tools: ToolSet::default(),
                 capabilities: Vec::new(),
@@ -501,22 +129,6 @@ impl ResolvedProfile {
     }
 }
 
-pub fn parse_goose_mode(raw: &str) -> Option<GooseMode> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    GooseMode::from_str(trimmed).ok()
-}
-
-pub fn parse_thinking_effort(raw: &str) -> Option<ThinkingEffort> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    ThinkingEffort::from_str(trimmed).ok()
-}
-
 pub fn builtin_templates() -> Vec<AgentProfile> {
     vec![goose_template(), translator_template(), coder_template()]
 }
@@ -537,7 +149,7 @@ fn goose_template() -> AgentProfile {
         },
         reasoning: None,
         system_prompt: DEFAULT_IDENTITY_PROMPT.to_string(),
-        mode: GooseMode::SmartApprove,
+        mode: ApprovalMode::SmartApprove,
         max_turns: Some(16),
         tools: ToolSet {
             search_contacts: true,
@@ -587,7 +199,7 @@ Output only the translation unless the user asks for notes (register, alternativ
 If they ask for something outside translation — coding, sending messages, browsing files — say that is out of scope and suggest another agent or capability they could enable.
 Reply in the target language of the request."
             .into(),
-        mode: GooseMode::Chat,
+        mode: ApprovalMode::Chat,
         max_turns: Some(16),
         tools: ToolSet::default(),
         capabilities: Vec::new(),
@@ -629,7 +241,7 @@ Match the project's language, style, and tests. Prefer evidence from the workspa
 When you finish, lead with what changed, then a short list of files touched.
 If the user asks you to send messages or act outside this workspace, say that is out of scope and point them to an agent with that capability."
             .into(),
-        mode: GooseMode::Approve,
+        mode: ApprovalMode::Approve,
         max_turns: Some(32),
         tools: ToolSet {
             fs: true,
@@ -669,8 +281,8 @@ mod tests {
             "tools": {"fs": true}
         }"#;
         let profile: AgentProfile = serde_json::from_str(json).unwrap();
-        assert_eq!(profile.mode, GooseMode::SmartApprove);
-        assert_ne!(profile.mode, GooseMode::Auto);
+        assert_eq!(profile.mode, ApprovalMode::SmartApprove);
+        assert_ne!(profile.mode, ApprovalMode::Auto);
         assert!(profile.tools.fs);
     }
 
@@ -702,7 +314,7 @@ mod tests {
             llm_backend: "openai".into(),
             ..LegacyOpenOpts::default()
         });
-        assert_eq!(profile.mode, GooseMode::Chat);
+        assert_eq!(profile.mode, ApprovalMode::Chat);
         assert!(!profile.tools.has_any());
         assert_eq!(profile.max_turns, Some(16));
         assert_eq!(profile.id, DEFAULT_AGENT_ID);
@@ -717,7 +329,7 @@ mod tests {
         });
         assert!(profile.tools.fs);
         assert!(!profile.tools.bash);
-        assert_eq!(profile.mode, GooseMode::SmartApprove);
+        assert_eq!(profile.mode, ApprovalMode::SmartApprove);
     }
 
     #[test]
@@ -727,8 +339,8 @@ mod tests {
             goose_mode: "auto".into(),
             ..LegacyOpenOpts::default()
         });
-        assert_eq!(profile.mode, GooseMode::SmartApprove);
-        assert_ne!(profile.mode, GooseMode::Auto);
+        assert_eq!(profile.mode, ApprovalMode::SmartApprove);
+        assert_ne!(profile.mode, ApprovalMode::Auto);
     }
 
     #[test]
@@ -743,9 +355,9 @@ mod tests {
             "tools": {"send_message": true}
         }"#;
         let mut profile: AgentProfile = serde_json::from_str(json).unwrap();
-        assert_eq!(profile.mode, GooseMode::Auto);
+        assert_eq!(profile.mode, ApprovalMode::Auto);
         profile.normalize_mode();
-        assert_eq!(profile.mode, GooseMode::SmartApprove);
+        assert_eq!(profile.mode, ApprovalMode::SmartApprove);
     }
 
     #[test]
@@ -757,7 +369,7 @@ mod tests {
             ..LegacyOpenOpts::default()
         });
         assert!(on.tools.bash);
-        assert_eq!(on.mode, GooseMode::SmartApprove);
+        assert_eq!(on.mode, ApprovalMode::SmartApprove);
     }
 
     #[test]

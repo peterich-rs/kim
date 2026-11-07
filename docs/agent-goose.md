@@ -8,7 +8,8 @@ KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host*
 
 - Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine, assembled per `AgentProfile` by `MachineFactory`
 - Providers: [`goose-providers`](https://crates.io/crates/goose-providers) (OpenAI Completions/Responses, Anthropic Messages)
-- Host: `crates/kim-agent-host` (profile, vendor catalog, session map, @mention helper, system prompt)
+- Model: `crates/kim-agent-model` holds persisted profile data and `ApprovalMode`. It does not link Goose, Codex, or MCP. `kim-agent-codec` depends on this crate, not the host
+- Host: `crates/kim-agent-host` (engine conversion, vendor catalog, session map, @mention helper, system prompt)
 - Catalog: `catalog/vendors.json` + `catalog_surface` 投影。UI switches on `ReasoningSurface.kind`, not vendor id. Catalog URLs feed `build_openai` / `build_anthropic`.
 - FFI: `crates/kim-agent-ffi` (`kim_agent_ffi`) — still isolated from `kim_client_ffi`
 - Dest: a stored row with `id=goose` still uses local dest `goose` (alias of `agent:goose`). Other personas use `agent:<profile_id>`. After `chat.bot.create`, the IM dest is the server-assigned `serverAccount` (`b_…`). New installs have an empty agent list; goose is not synthesized.
