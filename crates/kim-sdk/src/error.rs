@@ -123,9 +123,15 @@ pub fn map_client(err: kim_client::ClientError, dest: &str) -> SdkError {
 
 pub(crate) fn map_sqlx(err: sqlx::Error) -> SdkError {
     match err {
-        sqlx::Error::Database(db) => match db.code().as_deref() {
-            Some("5" | "6") => SdkError::SqliteBusy,
-            Some("13") => SdkError::StorageFull,
+        // SQLite extended result codes retain the primary code in the low
+        // byte, e.g. BUSY_SNAPSHOT (517) is still a retryable BUSY (5).
+        sqlx::Error::Database(db) => match db
+            .code()
+            .and_then(|code| code.parse::<i32>().ok())
+            .map(|code| code & 0xff)
+        {
+            Some(5 | 6) => SdkError::SqliteBusy,
+            Some(13) => SdkError::StorageFull,
             _ => SdkError::Disk {
                 message: "sqlite error".into(),
             },
@@ -134,5 +140,45 @@ pub(crate) fn map_sqlx(err: sqlx::Error) -> SdkError {
         _ => SdkError::Disk {
             message: "sqlite error".into(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::{Connection, Executor};
+
+    #[tokio::test]
+    async fn stale_sqlite_snapshot_is_retryable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("kim-cache.db");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect_with(crate::store::connect_options(&path))
+            .await
+            .expect("pool");
+        pool.execute("CREATE TABLE test (value INTEGER)")
+            .await
+            .expect("table");
+        let mut conn = pool.acquire().await.expect("reader");
+        let mut tx = conn.begin().await.expect("snapshot transaction");
+        tx.execute("SELECT * FROM test").await.expect("read");
+        pool.execute("INSERT INTO test VALUES (1)")
+            .await
+            .expect("concurrent write");
+        let err = tx
+            .execute("INSERT INTO test VALUES (2)")
+            .await
+            .expect_err("stale snapshot cannot become a writer");
+        assert_eq!(
+            err.as_database_error().and_then(|db| db.code()).as_deref(),
+            Some("517")
+        );
+        let err = map_sqlx(err);
+        assert!(matches!(err, SdkError::SqliteBusy), "{err:?}");
+        assert!(err.retryable());
+        tx.rollback().await.expect("rollback snapshot");
+        drop(conn);
+        pool.close().await;
     }
 }

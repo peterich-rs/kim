@@ -6,7 +6,10 @@ use crate::error::{map_sqlx, SdkError};
 
 pub async fn migrate(pool: &SqlitePool) -> Result<(), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
-    let mut tx = conn.begin().await.map_err(map_sqlx)?;
+    // Reopening can overlap writes from the previous SDK instance. Reserve
+    // the writer before schema reads so their snapshot cannot become stale
+    // before set_schema_version upgrades the transaction to a write.
+    let mut tx = conn.begin_with("BEGIN IMMEDIATE").await.map_err(map_sqlx)?;
     run(&mut tx).await?;
     tx.commit().await.map_err(map_sqlx)?;
     Ok(())
@@ -83,4 +86,42 @@ async fn set_schema_version(tx: &mut SqliteConnection, version: i64) -> Result<(
         .await
         .map_err(map_sqlx)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::connect_options;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn migration_can_reopen_while_another_connection_writes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("kim-cache.db");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect_with(connect_options(&path))
+            .await
+            .expect("pool");
+        migrate(&pool).await.expect("initial schema");
+        let mut writer = pool.acquire().await.expect("writer");
+        let (stop, mut stopped) = tokio::sync::oneshot::channel();
+        let writes = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = &mut stopped => break,
+                    result = sqlx::query("INSERT INTO meta (key, value) VALUES ('writer', '0') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
+                        .execute(&mut *writer) => {
+                        result.expect("concurrent write");
+                    }
+                }
+            }
+        });
+        for _ in 0..100 {
+            migrate(&pool).await.expect("reopen during writes");
+        }
+        stop.send(()).expect("stop writer");
+        writes.await.expect("writer task");
+        pool.close().await;
+    }
 }
