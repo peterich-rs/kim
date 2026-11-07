@@ -8,7 +8,6 @@
 
 import 'api/catalog.dart';
 import 'api/failure.dart';
-import 'api/session.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -33,12 +32,6 @@ abstract class AgentRustLibApiImplPlatform
   AgentFailure dco_decode_agent_failure(dynamic raw);
 
   @protected
-  AgentUiEvent dco_decode_agent_ui_event(dynamic raw);
-
-  @protected
-  AssembledPreview dco_decode_assembled_preview(dynamic raw);
-
-  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -48,13 +41,13 @@ abstract class AgentRustLibApiImplPlatform
   CatalogValidate dco_decode_catalog_validate(dynamic raw);
 
   @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
   List<CapabilityEntry> dco_decode_list_capability_entry(dynamic raw);
-
-  @protected
-  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -66,25 +59,13 @@ abstract class AgentRustLibApiImplPlatform
   List<Vendor> dco_decode_list_vendor(dynamic raw);
 
   @protected
-  PreviewTool dco_decode_preview_tool(dynamic raw);
-
-  @protected
   ReasoningSurface dco_decode_reasoning_surface(dynamic raw);
-
-  @protected
-  ResumeReport dco_decode_resume_report(dynamic raw);
-
-  @protected
-  SessionSnapshot dco_decode_session_snapshot(dynamic raw);
 
   @protected
   Skill dco_decode_skill(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
-
-  @protected
-  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -96,16 +77,13 @@ abstract class AgentRustLibApiImplPlatform
   Vendor dco_decode_vendor(dynamic raw);
 
   @protected
+  VendorGroup dco_decode_vendor_group(dynamic raw);
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
   AgentFailure sse_decode_agent_failure(SseDeserializer deserializer);
-
-  @protected
-  AgentUiEvent sse_decode_agent_ui_event(SseDeserializer deserializer);
-
-  @protected
-  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -117,15 +95,15 @@ abstract class AgentRustLibApiImplPlatform
   CatalogValidate sse_decode_catalog_validate(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
   List<CapabilityEntry> sse_decode_list_capability_entry(
     SseDeserializer deserializer,
   );
-
-  @protected
-  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -137,25 +115,13 @@ abstract class AgentRustLibApiImplPlatform
   List<Vendor> sse_decode_list_vendor(SseDeserializer deserializer);
 
   @protected
-  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer);
-
-  @protected
   ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer);
-
-  @protected
-  ResumeReport sse_decode_resume_report(SseDeserializer deserializer);
-
-  @protected
-  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer);
 
   @protected
   Skill sse_decode_skill(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
-
-  @protected
-  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -167,22 +133,13 @@ abstract class AgentRustLibApiImplPlatform
   Vendor sse_decode_vendor(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+  VendorGroup sse_decode_vendor_group(SseDeserializer deserializer);
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
   void sse_encode_agent_failure(AgentFailure self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_agent_ui_event(AgentUiEvent self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_assembled_preview(
-    AssembledPreview self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
@@ -200,17 +157,14 @@ abstract class AgentRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_capability_entry(
     List<CapabilityEntry> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_preview_tool(
-    List<PreviewTool> self,
     SseSerializer serializer,
   );
 
@@ -227,20 +181,8 @@ abstract class AgentRustLibApiImplPlatform
   void sse_encode_list_vendor(List<Vendor> self, SseSerializer serializer);
 
   @protected
-  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer);
-
-  @protected
   void sse_encode_reasoning_surface(
     ReasoningSurface self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_resume_report(ResumeReport self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_session_snapshot(
-    SessionSnapshot self,
     SseSerializer serializer,
   );
 
@@ -249,9 +191,6 @@ abstract class AgentRustLibApiImplPlatform
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
@@ -263,7 +202,7 @@ abstract class AgentRustLibApiImplPlatform
   void sse_encode_vendor(Vendor self, SseSerializer serializer);
 
   @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
+  void sse_encode_vendor_group(VendorGroup self, SseSerializer serializer);
 }
 
 // Section: wire_class

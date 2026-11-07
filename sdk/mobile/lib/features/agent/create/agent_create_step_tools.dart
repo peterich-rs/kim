@@ -8,12 +8,12 @@ import 'package:gap/gap.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/design/kim_group.dart';
-import 'package:kim_mobile/features/agent/agent_create_form.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/ask_before_switch.dart';
+import 'package:kim_mobile/features/agent/providers/agent_create_form.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/widgets/ask_before_switch.dart';
 import 'package:kim_mobile/features/agent/create/agent_create_helpers.dart';
-import 'package:kim_mobile/features/agent/workspace_access.dart';
+import 'package:kim_mobile/features/agent/data/workspace_access.dart';
 
 /// Step 1: IM / FS / bash capabilities, workspace, MCP.
 class AgentCreateStepTools extends ConsumerWidget {

@@ -1,4 +1,5 @@
-/// Auth port adapter over [KimBridgeBase].
+/// Auth port adapter over [KimBridgeBase]. Origin and User-Agent are
+/// Rust-derived from the settings table + platform bootstrap.
 library;
 
 import 'package:kim_mobile/bridge/kim_bridge_base.dart';
@@ -14,66 +15,30 @@ mixin KimAuthBridge on KimBridgeBase implements KimAuthPort {
     );
   }
 
+  Future<rust_auth.KimAuth> _client() async {
+    await ensure();
+    return requireApi().auth();
+  }
+
   @override
   Future<KimAuthSession> login({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
-    await ensure();
+    final client = await _client();
     return authSession(
-      await authClient(
-        origin,
-        userAgent,
-      ).login(account: account, password: password),
+      await client.login(account: account, password: password),
     );
   }
 
   @override
   Future<KimAuthSession> register({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
-    await ensure();
+    final client = await _client();
     return authSession(
-      await authClient(
-        origin,
-        userAgent,
-      ).register(account: account, password: password),
+      await client.register(account: account, password: password),
     );
-  }
-
-  @override
-  Future<void> logout({
-    required String origin,
-    required String userAgent,
-    required String token,
-  }) async {
-    await ensure();
-    await authClient(origin, userAgent).logout(token: token);
-  }
-
-  @override
-  Future<void> changePassword({
-    required String origin,
-    required String userAgent,
-    required String token,
-    required String oldPassword,
-    required String newPassword,
-  }) async {
-    await ensure();
-    await authClient(origin, userAgent).changePassword(
-      token: token,
-      oldPassword: oldPassword,
-      newPassword: newPassword,
-    );
-  }
-
-  @override
-  String httpOriginFromWs(String wsUrl) {
-    return rust_auth.httpOriginFromWs(wsUrl: wsUrl);
   }
 }

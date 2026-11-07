@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/pet_atlas_painter.dart';
 import 'package:kim_mobile/design/pet_view.dart';
-import 'package:kim_mobile/features/agent/agent_presence.dart';
-import 'package:kim_mobile/features/agent/pet_pack.dart';
+import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
+import 'package:kim_mobile/features/agent/providers/pet_pack.dart';
 
 /// 16×18 indexed PNG, 8×9 cells of 2×2. Generated with zlib; not the
 /// production atlas.

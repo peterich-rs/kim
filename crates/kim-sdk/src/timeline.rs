@@ -1,4 +1,7 @@
 use crate::command::SendStatus;
+use crate::model::{MediaKind, ProfileKind, Relation, ThreadKind, ThreadPreview};
+
+pub use crate::model::AgentCard;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageView {
@@ -9,7 +12,8 @@ pub struct MessageView {
     pub local_path: Option<String>,
     pub at: i64,
     pub sys: bool,
-    pub kind: i32,
+    pub kind: MediaKind,
+    pub card: Option<AgentCard>,
     pub width: i32,
     pub height: i32,
     pub message_id: i64,
@@ -78,10 +82,6 @@ pub enum SessionUpdate {
     AuthExpired {
         reason: String,
     },
-    TokenRenew {
-        token: String,
-        exp: i64,
-    },
     FriendRequest {
         from: String,
         nickname: String,
@@ -103,14 +103,14 @@ pub enum SessionUpdate {
     Typing {
         typer: String,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         active: bool,
         phase: i32,
     },
     ReceiptRead {
         reader: String,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         message_id: i64,
     },
     GroupCreate {
@@ -145,17 +145,6 @@ pub enum AgentTurnState {
     Empty,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AgentCard {
-    pub v: i32,
-    pub card_type: String,
-    pub call_id: String,
-    pub name: String,
-    pub state: String,
-    pub preview: String,
-    pub ok: bool,
-}
-
 /// Lightweight contact row for `SessionUpdate::ContactsChanged` (P3 fills this).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersonRef {
@@ -163,8 +152,8 @@ pub struct PersonRef {
     pub nickname: String,
     pub avatar: String,
     pub bio: String,
-    pub relation: String,
-    pub kind: i32,
+    pub relation: Relation,
+    pub kind: ProfileKind,
 }
 
 #[derive(Clone, Debug)]
@@ -177,10 +166,11 @@ pub struct ContactsSnapshot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ThreadView {
     pub id: String,
-    pub kind: i32,
+    pub kind: ThreadKind,
     pub title: String,
     pub avatar: String,
     pub last_body: String,
+    pub preview: ThreadPreview,
     pub last_at: i64,
     pub unread: i32,
 }
@@ -237,41 +227,5 @@ impl Default for SessionSnapshot {
             threads: Vec::new(),
             unread_total: 0,
         }
-    }
-}
-
-#[must_use]
-pub fn kind_from_name(name: &str) -> i32 {
-    match name {
-        "image" => kim_protocol::MESSAGE_TYPE_IMAGE,
-        "video" => kim_protocol::MESSAGE_TYPE_VIDEO,
-        _ => kim_protocol::MESSAGE_TYPE_TEXT,
-    }
-}
-
-#[must_use]
-pub fn kind_name(kind: i32) -> &'static str {
-    match kind {
-        kim_protocol::MESSAGE_TYPE_IMAGE => "image",
-        kim_protocol::MESSAGE_TYPE_VIDEO => "video",
-        _ => "text",
-    }
-}
-
-#[must_use]
-pub fn thread_kind_name(kind: i32) -> &'static str {
-    if kind == kim_protocol::INBOX_KIND_GROUP {
-        "group"
-    } else {
-        "user"
-    }
-}
-
-#[must_use]
-pub fn thread_kind_from_name(name: &str) -> i32 {
-    if name == "group" {
-        kim_protocol::INBOX_KIND_GROUP
-    } else {
-        kim_protocol::INBOX_KIND_USER
     }
 }

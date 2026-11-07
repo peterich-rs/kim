@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/pet_pack.dart';
+import 'package:kim_mobile/features/agent/providers/pet_pack.dart';
 
 void main() {
   test('default grid is 8x9 / 192x208', () {

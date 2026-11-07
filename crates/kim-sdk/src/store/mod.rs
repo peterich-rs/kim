@@ -33,6 +33,7 @@ const WRITE_CAP: usize = 128;
 
 pub(crate) struct Store {
     pub pool: SqlitePool,
+    db_path: PathBuf,
     writes: mpsc::Sender<WriteOp>,
     changes: Arc<ChangeLog>,
 }
@@ -217,7 +218,7 @@ enum WriteOp {
         reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     UpsertAgentFlags {
-        flags_json: String,
+        flags: crate::model::AgentFlagRow,
         reply: oneshot::Sender<Result<((), u64), SdkError>>,
     },
     TouchMedia {
@@ -267,11 +268,16 @@ impl Store {
         tokio::spawn(async move {
             write_worker(worker_pool, epoch, worker_changes, rx).await;
         });
-        Ok(Arc::new(Self {
+        let store = Arc::new(Self {
             pool,
+            db_path: path,
             writes: tx,
             changes,
-        }))
+        });
+        if let Ok(grants) = settings::load_grants(&store.pool).await {
+            let _ = settings::write_grant_index(&store.db_path, &grants);
+        }
+        Ok(store)
     }
 
     pub(crate) fn changes(&self) -> Arc<ChangeLog> {
@@ -362,7 +368,7 @@ impl Store {
         &self,
         account: &str,
         dest: &str,
-    ) -> Result<Option<(i32, i64)>, SdkError> {
+    ) -> Result<Option<(crate::model::ThreadKind, i64)>, SdkError> {
         threads::server_tip(&self.pool, account, dest).await
     }
 
@@ -810,6 +816,48 @@ impl Store {
         settings::imported_prefs(&self.pool).await
     }
 
+    pub(crate) async fn load_catalog_cache(&self, vendor: &str) -> Result<Vec<String>, SdkError> {
+        settings::load_catalog_cache(&self.pool, vendor).await
+    }
+
+    pub(crate) async fn save_catalog_cache(
+        &self,
+        vendor: &str,
+        models: &[String],
+    ) -> Result<(), SdkError> {
+        settings::save_catalog_cache(&self.pool, vendor, models).await
+    }
+
+    pub(crate) async fn upsert_workspace_grant(
+        &self,
+        profile_id: &str,
+        path: &str,
+        bookmark: &str,
+    ) -> Result<(), SdkError> {
+        settings::upsert_grant(&self.pool, profile_id, path, bookmark).await?;
+        let grants = settings::load_grants(&self.pool).await?;
+        settings::write_grant_index(&self.db_path, &grants)
+    }
+
+    pub(crate) async fn delete_workspace_grant(&self, profile_id: &str) -> Result<(), SdkError> {
+        settings::delete_grant(&self.pool, profile_id).await?;
+        let grants = settings::load_grants(&self.pool).await?;
+        settings::write_grant_index(&self.db_path, &grants)
+    }
+
+    pub(crate) async fn load_workspace_grant(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<settings::WorkspaceGrant>, SdkError> {
+        settings::load_grant(&self.pool, profile_id).await
+    }
+
+    pub(crate) async fn load_workspace_grants(
+        &self,
+    ) -> Result<Vec<settings::WorkspaceGrant>, SdkError> {
+        settings::load_grants(&self.pool).await
+    }
+
     pub(crate) async fn agent_profile_id_for_dest(
         &self,
         account: &str,
@@ -919,7 +967,7 @@ impl Store {
         account: &str,
         query: &str,
         dest: Option<&str>,
-    ) -> Result<Vec<(String, String, String, String, i64, i64)>, SdkError> {
+    ) -> Result<Vec<(String, String, String, String, i64, i64, String)>, SdkError> {
         media::search_messages(&self.pool, account, query, dest, schema::SEARCH_CAP).await
     }
 
@@ -1024,17 +1072,17 @@ impl Store {
         })?
     }
 
-    pub(crate) async fn load_agent_flags(&self) -> Result<String, SdkError> {
+    pub(crate) async fn load_agent_flags(&self) -> Result<crate::model::AgentFlagRow, SdkError> {
         settings::load_agent_flags(&self.pool).await
     }
 
     pub(crate) async fn upsert_agent_flags(
         &self,
-        flags_json: String,
+        flags: crate::model::AgentFlagRow,
     ) -> Result<((), u64), SdkError> {
         let (reply, rx) = oneshot::channel();
         self.writes
-            .try_send(WriteOp::UpsertAgentFlags { flags_json, reply })
+            .try_send(WriteOp::UpsertAgentFlags { flags, reply })
             .map_err(|_| SdkError::Busy {
                 queue: "store".into(),
             })?;
@@ -1562,8 +1610,8 @@ async fn write_worker(
                 let result = upsert_overlay_tx(&pool, &account, &row).await;
                 let _ = reply.send(record_result(&changes, &account, 0, result));
             }
-            WriteOp::UpsertAgentFlags { flags_json, reply } => {
-                let result = upsert_agent_flags_tx(&pool, &flags_json).await;
+            WriteOp::UpsertAgentFlags { flags, reply } => {
+                let result = upsert_agent_flags_tx(&pool, &flags).await;
                 let _ = reply.send(record_result(&changes, "", 0, result));
             }
             WriteOp::TouchMedia { url, reply } => {
@@ -1684,17 +1732,15 @@ async fn ensure_thread_tx(
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let existed = threads::find(&mut conn, account, dest).await?.is_some();
-    let stored = threads::ensure(&mut conn, account, dest, kind).await;
+    let stored = threads::ensure(
+        &mut conn,
+        account,
+        dest,
+        crate::model::ThreadKind::from_wire(kind),
+    )
+    .await;
     finish_conn(&mut conn, stored).await.map(|stored| {
-        let view = ThreadView {
-            id: stored.id,
-            kind: stored.kind,
-            title: stored.title,
-            avatar: stored.avatar,
-            last_body: stored.last_body,
-            last_at: stored.last_at,
-            unread: stored.unread,
-        };
+        let view = stored.to_view();
         let effect = if existed {
             CommitEffect::empty()
         } else {
@@ -1834,11 +1880,11 @@ async fn upsert_overlay_tx(
 
 async fn upsert_agent_flags_tx(
     pool: &SqlitePool,
-    flags_json: &str,
+    flags: &crate::model::AgentFlagRow,
 ) -> Result<((), CommitEffect), SdkError> {
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
-    let result = settings::upsert_agent_flags(&mut conn, flags_json).await;
+    let result = settings::upsert_agent_flags(&mut conn, flags).await;
     finish_conn(&mut conn, result)
         .await
         .map(|_| ((), CommitEffect::empty()))
@@ -2137,27 +2183,36 @@ async fn persist_enqueue(
             0,
             0,
         ),
-        OutgoingPayload::Image { media } => (
-            media.path.clone(),
+        OutgoingPayload::Image {
+            path,
+            mime,
+            width,
+            height,
+            byte_size,
+        } => (
+            path.clone(),
             String::new(),
-            media.path.clone(),
-            media.mime.clone(),
-            media.width,
-            media.height,
-            media.byte_size,
+            path.clone(),
+            mime.clone(),
+            *width,
+            *height,
+            *byte_size,
         ),
-        OutgoingPayload::Video { url, extra } => (
-            url.clone(),
-            extra.clone(),
-            String::new(),
-            String::new(),
-            0,
-            0,
-            0,
-        ),
+        OutgoingPayload::Video { path, byte_size } | OutgoingPayload::Voice { path, byte_size } => {
+            (
+                path.clone(),
+                String::new(),
+                path.clone(),
+                String::new(),
+                0,
+                0,
+                *byte_size,
+            )
+        }
     };
     let payload_type = cmd.payload.payload_type();
-    let kind_i32 = payload_type;
+    let media_kind = cmd.payload.media_kind();
+    let thread_kind = cmd.kind.as_wire();
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -2170,7 +2225,7 @@ async fn persist_enqueue(
                 sender: account,
                 body: &body,
                 at: now,
-                kind: kind_i32,
+                kind: media_kind,
                 width,
                 height,
                 batch_id: &batch_id,
@@ -2186,7 +2241,7 @@ async fn persist_enqueue(
                 account,
                 client_id: &client_id,
                 dest: &cmd.dest,
-                kind: cmd.kind,
+                kind: thread_kind,
                 payload_type,
                 body: &body,
                 extra: &extra,
@@ -2201,7 +2256,19 @@ async fn persist_enqueue(
             },
         )
         .await?;
-        threads::upsert_on_send(&mut conn, account, &cmd.dest, cmd.kind, &body, now).await?;
+        threads::upsert_on_send(
+            &mut conn,
+            threads::SendThread {
+                account,
+                dest: &cmd.dest,
+                kind: cmd.kind,
+                last_body: &body,
+                last_at: now,
+                media: media_kind,
+                sys: false,
+            },
+        )
+        .await?;
         messages::bump_timeline_version(&mut conn, account, &cmd.dest).await?;
         messages::prune(&mut conn, account, &cmd.dest).await?;
         Ok::<(), SdkError>(())
@@ -2251,7 +2318,8 @@ async fn persist_enqueue_bot_reply(
     let extra = outbox::encode_bot_reply_extra(in_reply_to);
     let request_id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
-    let kind = kim_protocol::INBOX_KIND_USER;
+    let thread_kind = crate::model::ThreadKind::User;
+    let kind = thread_kind.as_wire();
     let mut conn = pool.acquire().await.map_err(map_sqlx)?;
     begin_immediate(&mut conn).await?;
     let result = async {
@@ -2264,13 +2332,13 @@ async fn persist_enqueue_bot_reply(
                 sender: &dest,
                 body: &body,
                 at: now,
-                kind: kim_protocol::MESSAGE_TYPE_TEXT,
+                kind: crate::model::MediaKind::Text,
                 width: 0,
                 height: 0,
                 batch_id: "",
                 status: SendStatus::Pending,
                 local_path: "",
-                thread_kind: kind,
+                thread_kind,
             },
         )
         .await?;
@@ -2295,7 +2363,19 @@ async fn persist_enqueue_bot_reply(
             },
         )
         .await?;
-        threads::upsert_on_send(&mut conn, account, &dest, kind, &body, now).await?;
+        threads::upsert_on_send(
+            &mut conn,
+            threads::SendThread {
+                account,
+                dest: &dest,
+                kind: thread_kind,
+                last_body: &body,
+                last_at: now,
+                media: crate::model::MediaKind::Text,
+                sys: false,
+            },
+        )
+        .await?;
         messages::bump_timeline_version(&mut conn, account, &dest).await?;
         messages::prune(&mut conn, account, &dest).await?;
         Ok::<(), SdkError>(())
@@ -2366,7 +2446,7 @@ async fn persist_talks_tx(
                         &mut conn,
                         account,
                         &out.dest,
-                        out.msg.thread_kind,
+                        out.msg.thread_kind.as_wire(),
                         out.msg.message_id,
                     )
                     .await?;
@@ -2377,7 +2457,7 @@ async fn persist_talks_tx(
                         &mut conn,
                         account,
                         &out.dest,
-                        out.msg.thread_kind,
+                        out.msg.thread_kind.as_wire(),
                         out.msg.message_id,
                         now,
                     )
@@ -2386,7 +2466,7 @@ async fn persist_talks_tx(
                         &mut conn,
                         account,
                         &out.dest,
-                        out.msg.thread_kind,
+                        out.msg.thread_kind.as_wire(),
                         watermark,
                         now,
                     )
@@ -2405,6 +2485,8 @@ async fn persist_talks_tx(
                         last_at: out.msg.at,
                         unread_delta: out.unread_delta,
                         thread_kind: out.msg.thread_kind,
+                        media_kind: out.msg.kind,
+                        sys: out.msg.sys,
                         last_message_id: out.msg.message_id,
                     },
                 )
@@ -2445,15 +2527,7 @@ async fn persist_inbox_tx(
                     .await?;
             }
             let t = threads::persist_inbox_item(&mut conn, account, item).await?;
-            views.push(ThreadView {
-                id: t.id,
-                kind: t.kind,
-                title: t.title,
-                avatar: t.avatar,
-                last_body: t.last_body,
-                last_at: t.last_at,
-                unread: t.unread,
-            });
+            views.push(t.to_view());
         }
         Ok::<_, SdkError>((views, CommitEffect::inbox()))
     }
@@ -2485,7 +2559,7 @@ mod tests {
                 "alice".into(),
                 SendMessageCommand {
                     dest: "bob".into(),
-                    kind: kim_protocol::INBOX_KIND_USER,
+                    kind: crate::model::ThreadKind::User,
                     payload: OutgoingPayload::Text {
                         body: "hello".into(),
                     },

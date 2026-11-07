@@ -7,8 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/core/secure_origin.dart';
-import 'package:kim_mobile/core/user_agent.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
 class AuthState {
@@ -22,16 +20,39 @@ class AuthState {
   final String? notice;
 }
 
+/// Rust-owned credential presence: usable JWT in the secure store.
+final storedAuthProvider = FutureProvider<AuthState>((ref) async {
+  final client = ref.watch(clientPortProvider);
+  final runtime = ref.watch(runtimeProvider);
+  try {
+    final hasToken = await client.hasStoredToken();
+    if (!hasToken) {
+      return AuthState.signedOut();
+    }
+    final account = await client.storedAccount();
+    runtime.settings.account = account;
+    return AuthState(signedIn: true, account: account);
+  } catch (e, st) {
+    KimLogger.warn('storedAuth', e, st);
+    return AuthState.signedOut();
+  }
+});
+
 class AuthNotifier extends Notifier<AuthState> {
+  String? _notice;
+
   @override
   AuthState build() {
-    final settings = ref.watch(runtimeProvider).settings;
-    if (settings.token.isEmpty) {
-      return AuthState.signedOut(
-        notice: settings.discardedExpiredToken ? Copy.sessionExpired : null,
-      );
+    // Token presence is Rust-owned; this is its projection.
+    final gated = ref.watch(storedAuthProvider);
+    final projected = gated.maybeWhen(
+      data: (v) => v,
+      orElse: () => AuthState.signedOut(),
+    );
+    if (!projected.signedIn && _notice != null) {
+      return AuthState.signedOut(notice: _notice);
     }
-    return AuthState(signedIn: true, account: settings.account);
+    return projected;
   }
 
   Future<void> signIn({
@@ -41,33 +62,15 @@ class AuthNotifier extends Notifier<AuthState> {
   }) async {
     final runtime = ref.read(runtimeProvider);
     final auth = ref.read(authPortProvider);
-    final ua = kimUserAgent(runtime);
-    final origin = runtime.settings.httpOrigin;
-    final insecure = insecureAuthOriginReason(origin);
-    if (insecure != null) {
-      throw StateError(Copy.insecureAuthOrigin);
-    }
+    final client = ref.read(clientPortProvider);
+    _notice = null;
     KimLogger.info(register ? 'register' : 'login');
     final session = register
-        ? await auth.register(
-            origin: origin,
-            userAgent: ua,
-            account: account,
-            password: password,
-          )
-        : await auth.login(
-            origin: origin,
-            userAgent: ua,
-            account: account,
-            password: password,
-          );
-    // Persist before any mounted check. saveToken writes memory first, so a
-    // rebuild of [build] during I/O can already see a live session. Bailing
-    // out before persist is the "server ok, UI stuck on /login" dead zone.
-    await runtime.settings.saveSession(
-      token: session.token,
-      account: session.account,
-    );
+        ? await auth.register(account: account, password: password)
+        : await auth.login(account: account, password: password);
+    // Rust owns persistence from here: Keychain write via the executor.
+    await client.storeAuth(token: session.token, account: session.account);
+    runtime.settings.account = session.account;
     if (!ref.mounted) {
       return;
     }
@@ -78,30 +81,30 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> signOut({bool expired = false, String? notice}) async {
     KimLogger.info('signOut expired=$expired');
+    _notice = notice ?? (expired ? Copy.sessionExpired : null);
     final runtime = ref.read(runtimeProvider);
-    final auth = ref.read(authPortProvider);
     final client = ref.read(clientPortProvider);
     try {
       await client.stopSession();
     } catch (e, st) {
       KimLogger.warn('signOut stopSession', e, st);
     }
-    if (!ref.mounted) {
-      return;
-    }
+    // Server logout with the stored credential; Rust reads its own token.
     try {
-      await auth.logout(
-        origin: runtime.settings.httpOrigin,
-        userAgent: kimUserAgent(runtime),
-        token: runtime.settings.token,
-      );
+      await client.authLogout();
     } catch (e, st) {
       KimLogger.warn('signOut logout', e, st);
     }
-    if (!ref.mounted) {
-      return;
+    await client.clearAuth();
+    runtime.settings.account = '';
+    ref.invalidate(storedAuthProvider);
+    // Settle the projection before publishing signed-out, so a stale
+    // in-flight read cannot paint the user back in.
+    try {
+      await ref.read(storedAuthProvider.future);
+    } catch (e, st) {
+      KimLogger.warn('signOut storedAuth', e, st);
     }
-    await runtime.settings.clearSession();
     if (!ref.mounted) {
       return;
     }
@@ -119,31 +122,13 @@ class AuthNotifier extends Notifier<AuthState> {
     required String oldPassword,
     required String newPassword,
   }) async {
-    final runtime = ref.read(runtimeProvider);
-    final insecure = insecureAuthOriginReason(runtime.settings.httpOrigin);
-    if (insecure != null) {
-      throw StateError(Copy.insecureAuthOrigin);
-    }
     await ref
-        .read(authPortProvider)
-        .changePassword(
-          origin: runtime.settings.httpOrigin,
-          userAgent: kimUserAgent(runtime),
-          token: runtime.settings.token,
-          oldPassword: oldPassword,
-          newPassword: newPassword,
-        );
+        .read(clientPortProvider)
+        .authChangePassword(oldPassword: oldPassword, newPassword: newPassword);
     if (!ref.mounted) {
       return;
     }
     await KimHaptics.success();
-  }
-
-  Future<void> savePushedToken(String token) async {
-    if (token.isEmpty) {
-      return;
-    }
-    await ref.read(runtimeProvider).settings.saveToken(token);
   }
 }
 

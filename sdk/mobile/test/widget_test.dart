@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/connectivity.dart';
@@ -34,9 +34,11 @@ Future<({KimRuntime runtime})> testRuntime({
       tmp.deleteSync(recursive: true);
     }
   });
-  final settings = await SettingsStore.load(useSecureStorage: false);
-  if (token.isNotEmpty) {
-    await settings.saveSession(token: token, account: account);
+  FakeKim.inheritToken = token;
+  FakeKim.inheritAccount = account;
+  final settings = await SettingsStore.load();
+  if (account.isNotEmpty) {
+    settings.account = account;
   }
   final runtime = await KimRuntime.bootstrap(
     requestNotifications: false,
@@ -165,11 +167,10 @@ void main() {
     await tapKey(tester, const Key('auth-submit'));
 
     expect(fake.logins, 1);
-    expect(fake.lastUserAgent, contains('KIM/1.0.0'));
     expect(find.byType(KimDock), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.text(kGooseAgentName), findsNothing);
-    expect(env.runtime.settings.token, 'tok.jwt');
+    expect(fake.storedToken, 'tok.jwt');
     expect(fake.connects, greaterThan(0));
   });
 
@@ -207,7 +208,7 @@ void main() {
     expect(find.text(Copy.loginTitle), findsWidgets);
     expect(find.text(Copy.kicked), findsOneWidget);
     expect(find.byType(KimDock), findsNothing);
-    expect(env.runtime.settings.token, isEmpty);
+    expect(fake.storedToken, isEmpty);
   });
 
   testWidgets('login IME done and button do not double-submit', (tester) async {
@@ -296,7 +297,7 @@ void main() {
     await pumpUi(tester);
     expect(fake.logouts, 1);
     expect(find.text(Copy.loginTitle), findsWidgets);
-    expect(env.runtime.settings.token, isEmpty);
+    expect(fake.storedToken, isEmpty);
   });
 
   testWidgets('offline banner appears when connectivity is down', (

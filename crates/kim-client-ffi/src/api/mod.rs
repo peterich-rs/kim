@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod bootstrap;
 pub mod client;
 pub mod failure;
 pub mod handles;

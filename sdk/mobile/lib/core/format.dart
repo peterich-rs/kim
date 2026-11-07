@@ -36,34 +36,11 @@ int avatarColor(String name) {
 const int kDateTimeMsMin = -8640000000000000;
 const int kDateTimeMsMax = 8640000000000000;
 
-/// Wire `sendTime` may be seconds, ms, µs, or ns. Same cutoffs as the web SDK.
-int sendTimeMs(int sendTime, {int? now}) {
-  final fallback = now ?? DateTime.now().millisecondsSinceEpoch;
-  if (sendTime <= 0) {
-    return fallback;
-  }
-  final int ms;
-  if (sendTime > 10000000000000000) {
-    ms = sendTime ~/ 1000000;
-  } else if (sendTime > 100000000000000) {
-    ms = sendTime ~/ 1000;
-  } else if (sendTime > 100000000000) {
-    ms = sendTime;
-  } else {
-    ms = sendTime * 1000;
-  }
-  if (ms < kDateTimeMsMin || ms > kDateTimeMsMax) {
-    return fallback;
-  }
-  return ms;
-}
-
 DateTime? dateTimeFromEpoch(int ts) {
-  final ms = sendTimeMs(ts);
-  if (ms < kDateTimeMsMin || ms > kDateTimeMsMax) {
+  if (ts < kDateTimeMsMin || ts > kDateTimeMsMax) {
     return null;
   }
-  return DateTime.fromMillisecondsSinceEpoch(ms);
+  return DateTime.fromMillisecondsSinceEpoch(ts);
 }
 
 String formatListTime(int ts) {

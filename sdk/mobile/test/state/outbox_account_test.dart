@@ -44,7 +44,7 @@ void main() {
               body: 'queued',
               at: 1,
               sys: false,
-              kind: 1,
+              kind: MediaKind.text,
               width: 0,
               height: 0,
               messageId: 0,

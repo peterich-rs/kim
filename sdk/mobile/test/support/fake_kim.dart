@@ -6,10 +6,26 @@ import 'package:kim_mobile/core/media.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/src/rust/api/handles.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart'
+    hide ProfileKind, Relation, ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    as wire
+    show ProfileKind, Relation, ThreadKind;
 
 class FakeKim implements KimAuthPort, KimClientPort {
-  FakeKim({this.session, this.error, this.connectError});
+  /// Widget tests build a fresh [FakeKim] after [testRuntime] recorded the
+  /// signed-in session. Empty constructor args inherit that session.
+  static String inheritToken = '';
+  static String inheritAccount = '';
+
+  FakeKim({
+    this.session,
+    this.error,
+    this.connectError,
+    String token = '',
+    String account = '',
+  }) : storedToken = token.isNotEmpty ? token : inheritToken,
+       signedInAccount = account.isNotEmpty ? account : inheritAccount;
 
   KimAuthSession? session;
   Object? error;
@@ -38,8 +54,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
   int foregrounds = 0;
   int friendRequests = 0;
   int friendRemoves = 0;
-  String lastUserAgent = '';
-  String lastOrigin = '';
+  String storedToken;
+  String signedInAccount;
   String lastAccount = '';
   String lastPassword = '';
   String lastTalkDest = '';
@@ -92,24 +108,28 @@ class FakeKim implements KimAuthPort, KimClientPort {
     contactsSnapshot = snapshot;
     friends = [
       for (final person in snapshot.contacts)
-        if (person.relation != 'incoming')
+        if (person.relation != wire.Relation.incoming)
           KimPerson(
             account: person.account,
             nickname: person.nickname,
             avatar: person.avatar,
             bio: person.bio,
-            kind: person.kind,
+            kind: person.kind == wire.ProfileKind.bot
+                ? ProfileKind.bot
+                : ProfileKind.user,
           ),
     ];
     incoming = [
       for (final person in snapshot.contacts)
-        if (person.relation == 'incoming')
+        if (person.relation == wire.Relation.incoming)
           KimPerson(
             account: person.account,
             nickname: person.nickname,
             avatar: person.avatar,
             bio: person.bio,
-            kind: person.kind,
+            kind: person.kind == wire.ProfileKind.bot
+                ? ProfileKind.bot
+                : ProfileKind.user,
           ),
     ];
     contactsCtrl.add(snapshot);
@@ -129,10 +149,11 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }) {
     final thread = ThreadView(
       id: dest,
-      kind: 0,
+      kind: wire.ThreadKind.user,
       title: dest,
       avatar: '',
       lastBody: body,
+      preview: ThreadPreview.text(snippet: body),
       lastAt: id,
       unread: 1,
     );
@@ -160,7 +181,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
               body: body,
               at: id,
               sys: false,
-              kind: 1,
+              kind: MediaKind.text,
               width: 0,
               height: 0,
               messageId: id,
@@ -175,14 +196,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimAuthSession> login({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
     logins += 1;
-    lastOrigin = origin;
-    lastUserAgent = userAgent;
     lastAccount = account;
     lastPassword = password;
     return _run();
@@ -190,49 +207,18 @@ class FakeKim implements KimAuthPort, KimClientPort {
 
   @override
   Future<KimAuthSession> register({
-    required String origin,
-    required String userAgent,
     required String account,
     required String password,
   }) async {
     registers += 1;
-    lastOrigin = origin;
-    lastUserAgent = userAgent;
     lastAccount = account;
     lastPassword = password;
     return _run();
   }
 
   @override
-  Future<void> logout({
-    required String origin,
-    required String userAgent,
-    required String token,
-  }) async {
-    logouts += 1;
-    lastUserAgent = userAgent;
-  }
-
-  @override
-  Future<void> changePassword({
-    required String origin,
-    required String userAgent,
-    required String token,
-    required String oldPassword,
-    required String newPassword,
-  }) async {}
-
-  @override
-  String httpOriginFromWs(String wsUrl) => 'http://127.0.0.1:8080';
-
-  @override
-  Future<void> startSession(
-    String url,
-    String token, {
-    required String userAgent,
-  }) async {
+  Future<void> startSession() async {
     connects += 1;
-    lastUserAgent = userAgent;
     if (snapshotErrorOnConnect != null) {
       pushSnapshot(
         SessionSnapshot(
@@ -403,7 +389,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
   @override
   Future<List<KimPerson>> friendList() async => friends;
 
-  @override
   Future<List<KimPerson>> friendIncoming() async => incoming;
 
   List<KimPerson> friends = const [];
@@ -426,8 +411,8 @@ class FakeKim implements KimAuthPort, KimClientPort {
         nickname: dest,
         avatar: '',
         bio: '',
-        relation: 'outgoing',
-        kind: ProfileKind.user,
+        relation: wire.Relation.outgoing,
+        kind: wire.ProfileKind.user,
       ),
     ];
     pushContacts(
@@ -473,22 +458,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> roomEnter(
-    String dest, {
-    int kind = 0,
-  }) async {
-    return [
-      {'account': dest, 'status': 2, 'lastSeen': 0},
-    ];
+  Future<List<RoomMember>> roomEnter(String dest, ThreadKind kind) async {
+    return [RoomMember(account: dest, status: 2, lastSeen: 0)];
   }
 
   @override
-  Future<void> roomLeave(String dest, {int kind = 0}) async {}
+  Future<void> roomLeave(String dest, ThreadKind kind) async {}
 
   @override
   Future<void> sendTyping(
-    String dest, {
-    int kind = 0,
+    String dest,
+    ThreadKind kind, {
     bool active = true,
   }) async {
     lastTypingDest = dest;
@@ -528,14 +508,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
   String lastBotDeleteDest = '';
   Object? botDeleteError;
   final botReplies = <({String dest, String body, int inReplyTo})>[];
-  var botReplyInFlight = 0;
-  var botReplyMaxInFlight = 0;
-  int botPendings = 0;
-  List<KimBotPendingItem> pendingItems = const [];
-  Duration? botReplyDelay;
-  int botTypings = 0;
-  bool? lastBotTypingActive;
-  String lastBotTypingDest = '';
 
   @override
   Future<KimPerson> botCreate({
@@ -606,46 +578,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     );
   }
 
-  @override
-  Future<KimTalkResult> botReply({
-    required String dest,
-    required String body,
-    required int inReplyTo,
-    required String clientId,
-  }) async {
-    botReplyInFlight += 1;
-    if (botReplyInFlight > botReplyMaxInFlight) {
-      botReplyMaxInFlight = botReplyInFlight;
-    }
-    final delay = botReplyDelay;
-    if (delay != null) {
-      await Future<void>.delayed(delay);
-    }
-    botReplies.add((dest: dest, body: body, inReplyTo: inReplyTo));
-    botReplyInFlight -= 1;
-    return KimTalkResult(messageId: 100 + botReplies.length, sendTime: 1);
-  }
-
-  @override
-  Future<List<KimBotPendingItem>> botPending(
-    String dest, {
-    int limit = 20,
-  }) async {
-    botPendings += 1;
-    return pendingItems.take(limit).toList();
-  }
-
-  @override
-  Future<void> botTyping(
-    String dest, {
-    int kind = 0,
-    bool active = true,
-  }) async {
-    botTypings += 1;
-    lastBotTypingDest = dest;
-    lastBotTypingActive = active;
-  }
-
   int enqueues = 0;
   int retries = 0;
   int deletes = 0;
@@ -660,24 +592,20 @@ class FakeKim implements KimAuthPort, KimClientPort {
   Future<KimCommandReceipt> enqueueMessage({
     required String dest,
     required ThreadKind kind,
-    required KimOutgoingContent content,
-    required String clientId,
-    String localPath = '',
-    String mime = '',
-    int width = 0,
-    int height = 0,
-    int byteSize = 0,
+    required OutgoingContent content,
+    String? clientId,
   }) async {
     enqueues += 1;
     lastEnqueueDest = dest;
     lastEnqueueKind = kind == ThreadKind.group ? 1 : 0;
-    lastEnqueueMime = mime;
-    lastClientId = clientId;
-    enqueueIds.add(clientId);
+    final id = clientId ?? 'fake-${enqueueIds.length + 1}';
+    lastClientId = id;
+    enqueueIds.add(id);
     lastEnqueueBody = switch (content) {
-      KimTextContent(:final text) => text,
-      KimImageContent(:final url) => url,
-      KimVideoContent(:final url) => url,
+      OutgoingContent_Text(:final body) => body,
+      OutgoingContent_Image(:final path) => path,
+      OutgoingContent_Video(:final path) => path,
+      OutgoingContent_Voice(:final path) => path,
     };
     final hold = sendHold;
     if (hold != null) {
@@ -695,18 +623,17 @@ class FakeKim implements KimAuthPort, KimClientPort {
             toVersion: BigInt.one,
             upserts: [
               MessageView(
-                key: clientId,
+                key: id,
                 dest: dest,
                 sender: 'alice',
                 body: body,
                 at: 1,
                 sys: false,
-                kind: 1,
-                width: width,
-                height: height,
+                kind: MediaKind.text,
+                width: 0,
+                height: 0,
                 messageId: 0,
                 sendStatus: failed ? SendStatus.failed : SendStatus.pending,
-                localPath: localPath.isEmpty ? null : localPath,
               ),
             ],
             deletedKeys: const [],
@@ -716,10 +643,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
     }
     return KimCommandReceipt(
       requestId: 'req-$enqueues',
-      clientId: clientId,
+      clientId: id,
       dest: dest,
       acceptedAt: 1,
-      sendStatus: 'pending',
+      sendStatus: SendStatus.pending,
     );
   }
 
@@ -738,7 +665,7 @@ class FakeKim implements KimAuthPort, KimClientPort {
       clientId: clientId,
       dest: lastEnqueueDest,
       acceptedAt: 1,
-      sendStatus: 'pending',
+      sendStatus: SendStatus.pending,
     );
   }
 
@@ -748,7 +675,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
     lastTalkDest = dest;
   }
 
-  final tokenPersistCtrl = StreamController<TokenPersist>.broadcast();
   Settings settings = const Settings(
     wsUrl: 'wss://kim.ainexc.com/',
     httpOrigin: 'https://kim.ainexc.com',
@@ -756,22 +682,51 @@ class FakeKim implements KimAuthPort, KimClientPort {
     locale: '',
     account: '',
   );
+  bool prefsImported = false;
 
   @override
-  Stream<TokenPersist> watchTokenPersist() => tokenPersistCtrl.stream;
+  Future<bool> hasStoredToken() async => storedToken.trim().isNotEmpty;
+
+  @override
+  Future<String> storedAccount() async => signedInAccount;
+
+  @override
+  Future<void> storeAuth({
+    required String token,
+    required String account,
+  }) async {
+    storedToken = token;
+    signedInAccount = account;
+  }
+
+  @override
+  Future<void> clearAuth() async {
+    storedToken = '';
+    signedInAccount = '';
+  }
+
+  @override
+  Future<void> authLogout() async {
+    logouts += 1;
+  }
+
+  @override
+  Future<void> authChangePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {}
 
   @override
   Future<Settings> settingsGet() async => settings;
 
   @override
-  Future<Settings> settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  }) async {
+  Future<Settings> settingsPatch({String? wsUrl, String? env}) async {
+    final nextUrl = wsUrl ?? settings.wsUrl;
     settings = Settings(
-      wsUrl: wsUrl ?? settings.wsUrl,
-      httpOrigin: httpOrigin ?? settings.httpOrigin,
+      wsUrl: nextUrl,
+      httpOrigin: nextUrl.contains('127.0.0.1')
+          ? 'http://127.0.0.1:8080'
+          : 'https://kim.ainexc.com',
       env: env ?? settings.env,
       locale: settings.locale,
       account: settings.account,
@@ -780,41 +735,37 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<Settings> importDeviceSettings({
-    required String wsUrl,
-    required String httpOrigin,
-    String env = 'prod',
-    String locale = '',
-  }) async {
-    if (settings.wsUrl.isEmpty || settings.wsUrl == 'wss://kim.ainexc.com/') {
-      settings = Settings(
-        wsUrl: wsUrl,
-        httpOrigin: httpOrigin,
-        env: env,
-        locale: locale,
-        account: settings.account,
-      );
-    }
+  Future<Settings> settingsPreset(SettingsPreset preset) async {
+    final local = preset == SettingsPreset.local;
+    settings = Settings(
+      wsUrl: local ? 'ws://127.0.0.1:8001/ws' : 'wss://kim.ainexc.com/',
+      httpOrigin: local ? 'http://127.0.0.1:8080' : 'https://kim.ainexc.com',
+      env: local ? 'dev' : 'prod',
+      locale: settings.locale,
+      account: settings.account,
+    );
     return settings;
   }
 
-  final agentRunCtrl = StreamController<AgentRunRequest>.broadcast();
-  final submittedAgentRuns = <AgentRunResult>[];
+  @override
+  Future<bool> settingsImported() async => prefsImported;
+
   List<AgentProfile> agentProfiles = const [];
-
-  @override
-  Stream<AgentRunRequest> watchAgentRun() => agentRunCtrl.stream;
-
-  @override
-  Future<void> submitAgentRun(AgentRunResult result) async {
-    submittedAgentRuns.add(result);
-  }
+  final sessionEvents = <SessionUpdate>[];
 
   @override
   Future<List<AgentProfile>> listAgentProfiles() async => agentProfiles;
 
   @override
-  Future<void> upsertAgentProfile(AgentProfile row) async {
+  Future<void> upsertAgentProfile(String documentJson) async {
+    final row = AgentProfile(
+      profileId: 'local',
+      nickname: '',
+      serverAccount: '',
+      documentJson: documentJson,
+      placement: ProfilePlacement.local,
+      updatedAt: 0,
+    );
     agentProfiles = [
       for (final p in agentProfiles)
         if (p.profileId != row.profileId) p,
@@ -828,13 +779,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
       for (final p in agentProfiles)
         if (p.profileId != profileId) p,
     ];
-  }
-
-  @override
-  Future<void> importAgentProfiles(List<AgentProfile> rows) async {
-    if (agentProfiles.isEmpty) {
-      agentProfiles = rows;
-    }
   }
 
   List<ProviderAccount> providerAccounts = const [];
@@ -898,27 +842,6 @@ class FakeKim implements KimAuthPort, KimClientPort {
   Future<void> syncAgentSpecs() async {}
 
   @override
-  Future<Uint8List> specJsonToBlob(String bodyJson) async {
-    return Uint8List.fromList(utf8.encode(bodyJson));
-  }
-
-  @override
-  Future<String> specBlobToJson(List<int> blob) async {
-    return utf8.decode(blob);
-  }
-
-  @override
-  Future<CommandAck> command(UiCommand cmd) async {
-    return const CommandAck(
-      requestId: '',
-      clientId: '',
-      dest: '',
-      acceptedAt: 0,
-      sendStatus: SendStatus.sent,
-    );
-  }
-
-  @override
   Future<List<MessageView>> searchMessages(String query, {String? dest}) async {
     return const [];
   }
@@ -929,16 +852,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<LocalMedia> mediaUpload({
-    required String path,
+  Future<LocalMedia> mediaUploadBytes({
+    required Uint8List bytes,
     required String mime,
     int width = 0,
     int height = 0,
-    int byteSize = 0,
   }) async {
     return LocalMedia(
-      localPath: path,
-      byteSize: byteSize,
+      localPath: 'mem',
+      byteSize: bytes.length,
       width: width,
       height: height,
     );
@@ -955,10 +877,57 @@ class FakeKim implements KimAuthPort, KimClientPort {
   }
 
   @override
-  Future<void> cacheAgentSecret({
+  Future<void> storeAgentSecret({
     required String keyRef,
     required String secret,
   }) async {}
+
+  @override
+  Future<List<String>> catalogModelCache(String vendor) async {
+    return vendorCache[vendor] ?? const [];
+  }
+
+  final vendorCache = <String, List<String>>{};
+
+  @override
+  Future<List<String>> fetchModels({
+    required String vendorId,
+    required String baseUrl,
+    required String keyRef,
+  }) async => const [];
+
+  @override
+  Future<CapabilityPreview> previewProfile(String profileId) async {
+    return const CapabilityPreview(tools: [], warnings: []);
+  }
+
+  final grants = <String, String>{};
+
+  @override
+  Future<void> workspaceGrantRegister({
+    required String profileId,
+    required String path,
+    String? bookmark,
+  }) async {
+    grants[profileId] = path;
+    if (bookmark != null) {
+      grantBookmarks[profileId] = bookmark;
+    }
+  }
+
+  final grantBookmarks = <String, String>{};
+
+  @override
+  Future<String?> workspaceGrant(String profileId) async => grants[profileId];
+
+  @override
+  Future<String> workspaceGrantBookmark(String profileId) async =>
+      grantBookmarks[profileId] ?? '';
+
+  @override
+  Future<String> ensureAgentSandbox(String profileId) async {
+    return '/tmp/kim-agent/$profileId';
+  }
 
   @override
   Future<void> respondAgentPermission({
@@ -982,8 +951,10 @@ class FakeKim implements KimAuthPort, KimClientPort {
           nickname: p.nickname,
           avatar: p.avatar,
           bio: p.bio,
-          relation: 'friend',
-          kind: p.kind,
+          relation: wire.Relation.friend,
+          kind: p.kind == ProfileKind.bot
+              ? wire.ProfileKind.bot
+              : wire.ProfileKind.user,
         ),
       for (final p in incoming)
         Person(
@@ -991,11 +962,15 @@ class FakeKim implements KimAuthPort, KimClientPort {
           nickname: p.nickname,
           avatar: p.avatar,
           bio: p.bio,
-          relation: 'incoming',
-          kind: p.kind,
+          relation: wire.Relation.incoming,
+          kind: p.kind == ProfileKind.bot
+              ? wire.ProfileKind.bot
+              : wire.ProfileKind.user,
         ),
       for (final p in contactsSnapshot.contacts)
-        if (p.relation == 'outgoing' && !friendIds.contains(p.account)) p,
+        if (p.relation == wire.Relation.outgoing &&
+            !friendIds.contains(p.account))
+          p,
     ];
     pushContacts(
       ContactsSnapshot(
@@ -1018,7 +993,6 @@ class FakeKimMedia implements KimMediaPort {
 
   @override
   Future<UploadedObject> uploadImage({
-    required String token,
     required List<int> bytes,
     required String contentType,
   }) async {

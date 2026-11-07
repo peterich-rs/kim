@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/catalog.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kim_mobile/bridge/kim_ports.dart';
+import 'package:kim_mobile/features/agent/data/catalog.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -155,18 +155,37 @@ void main() {
     expect(raw.contains('sk-'), isFalse);
   });
 
-  test('fetch model cache roundtrips under agent.catalog_cache', () async {
-    SharedPreferences.setMockInitialValues({});
-    await saveCatalogModelCache('deepseek', const [
-      'deepseek-flash',
-      'deepseek-v4-pro',
-    ]);
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('agent.catalog_cache.deepseek'), isNotEmpty);
-    expect(await loadCatalogModelCache('deepseek'), [
-      'deepseek-flash',
-      'deepseek-v4-pro',
-    ]);
+  test('migration seeds from the Rust vendor cache via the port', () async {
+    final cache = <String, List<String>>{
+      'deepseek': ['deepseek-flash', 'deepseek-v4-pro'],
+    };
+    final client = _CacheStub(cache);
+    final seeded = await migrateAccountModelIds(
+      client: client,
+      vendorId: 'deepseek',
+      existing: const [],
+      catalogModels: const [],
+    );
+    expect(seeded, ['deepseek-flash', 'deepseek-v4-pro']);
+    // Empty vendor or failing port degrades to catalog-only seeds.
+    expect(
+      await migrateAccountModelIds(
+        client: client,
+        vendorId: '',
+        existing: const [],
+        catalogModels: const ['m1'],
+      ),
+      ['m1'],
+    );
+    expect(
+      await migrateAccountModelIds(
+        client: _CacheStub(null),
+        vendorId: 'any',
+        existing: const [],
+        catalogModels: const ['m2'],
+      ),
+      ['m2'],
+    );
   });
 
   test('Dart kDefaultSystemPrompt matches the Rust DEFAULT_IDENTITY_PROMPT', () {
@@ -200,8 +219,9 @@ void main() {
   test(
     'ProviderAccount models roundtrip and migrate from catalog cache',
     () async {
-      SharedPreferences.setMockInitialValues({});
-      await saveCatalogModelCache('openai', const ['gpt-4o', 'hand-typed']);
+      final cache = <String, List<String>>{
+        'openai': ['gpt-4o', 'hand-typed'],
+      };
       const account = ProviderAccount(
         id: 'acct-1',
         vendorId: 'openai',
@@ -211,6 +231,7 @@ void main() {
       );
       expect(account.models, isEmpty);
       final seeded = await migrateAccountModelIds(
+        client: _CacheStub(cache),
         vendorId: account.vendorId,
         existing: account.models,
         catalogModels: const ['gpt-4o'],
@@ -222,6 +243,7 @@ void main() {
       final restored = ProviderAccount.fromJson(json);
       expect(restored.models, ['gpt-4o', 'hand-typed']);
       final again = await migrateAccountModelIds(
+        client: _CacheStub(cache),
         vendorId: restored.vendorId,
         existing: restored.models,
         catalogModels: const ['should-not-replace'],
@@ -239,4 +261,21 @@ void main() {
     expect(surface.allowed, ['low', 'high', 'max']);
     expect(defaultChoiceFor(surface).value, 'high');
   });
+}
+
+class _CacheStub implements KimClientPort {
+  _CacheStub(this.cache);
+
+  final Map<String, List<String>>? cache;
+
+  @override
+  Future<List<String>> catalogModelCache(String vendor) async {
+    if (cache == null) {
+      throw StateError('store not attached');
+    }
+    return cache![vendor] ?? const [];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

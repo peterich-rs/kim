@@ -7,6 +7,7 @@ import 'package:kim_mobile/core/connectivity.dart';
 import 'package:kim_mobile/core/paths.dart';
 import 'package:kim_mobile/core/runtime.dart';
 import 'package:kim_mobile/core/settings.dart';
+import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,10 +50,7 @@ Future<KimHarness> kimHarness({
       tmp.deleteSync(recursive: true);
     }
   });
-  final settings = await SettingsStore.load(useSecureStorage: false);
-  if (token.isNotEmpty) {
-    await settings.saveSession(token: token, account: account);
-  }
+  final settings = await SettingsStore.load();
   final runtime = await KimRuntime.bootstrap(
     requestNotifications: false,
     paths: KimPaths.forTest(tmp),
@@ -62,7 +60,10 @@ Future<KimHarness> kimHarness({
     version: '1.0.0',
     buildNumber: '1',
   );
-  final fake = FakeKim();
+  final fake = FakeKim(token: token, account: account);
+  if (account.isNotEmpty) {
+    settings.account = account;
+  }
   final media = FakeKimMedia();
   final container = ProviderContainer.test(
     retry: kimRetry,
@@ -77,6 +78,9 @@ Future<KimHarness> kimHarness({
     ],
   );
   addTearDown(container.dispose);
+  if (token.isNotEmpty) {
+    await container.read(storedAuthProvider.future);
+  }
   return KimHarness(
     container: container,
     fake: fake,

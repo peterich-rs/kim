@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/session/presence.dart';
+import 'package:kim_mobile/src/rust/api/types.dart';
 
 void main() {
   test('presenceProvider applies snapshot and push', () {
@@ -14,7 +15,7 @@ void main() {
     );
 
     container.read(presenceProvider.notifier).applySnapshot([
-      {'account': 'bob', 'status': 2, 'lastSeen': 0},
+      const RoomMember(account: 'bob', status: 2, lastSeen: 0),
     ]);
     expect(
       container.read(peerPresenceProvider('bob')),

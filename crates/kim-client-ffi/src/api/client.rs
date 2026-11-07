@@ -1,24 +1,19 @@
 use std::sync::Arc;
 
-use kim_client::{BotPendingItem, SessionSupervisor, TalkResult};
+use kim_client::SessionSupervisor;
 use kim_sdk::{
-    ConversationKey, ConversationVisibility, KimSdk, MediaRef, OutgoingPayload, ReadMarker,
-    SendMessageCommand, StartSession,
+    ConversationKey, ConversationVisibility, KimSdk, OutgoingContent, ReadMarker,
+    SendMessageCommand, ThreadKind,
 };
 
 use super::failure::ApiFailure;
 use super::rt;
 use super::types::{
-    AgentFlags, AgentProfile, AgentRunRequest, AgentRunResult, CommandAck, ContactsSnapshot,
-    DeviceOverlay, LocalMedia, MessageView, Metrics, Person, Profile, ProviderAccount, RoomMember,
-    SendStatus, SessionSnapshot, SessionUpdate, Settings, TimelineUpdate, TokenPersist, UiCommand,
+    AgentFlags, AgentProfile, ContactsSnapshot, DeviceOverlay, LocalMedia, MessageView, Metrics,
+    Person, Profile, ProviderAccount, Relation, RoomMember, SendStatus, SessionSnapshot,
+    SessionUpdate, Settings, SettingsPreset, TimelineUpdate,
 };
 use crate::frb_generated::StreamSink;
-
-pub struct KimTalkResult {
-    pub message_id: i64,
-    pub send_time: i64,
-}
 
 pub struct KimCommandReceipt {
     pub request_id: String,
@@ -28,23 +23,10 @@ pub struct KimCommandReceipt {
     pub send_status: SendStatus,
 }
 
-/// Wire content. `kind`: 1 text, 2 image, 3 voice, 4 video. `body` is text or URL.
-pub struct KimOutgoingContent {
-    pub kind: i32,
-    pub body: String,
-    pub extra: String,
-}
-
-pub struct KimBotPendingItem {
-    pub message_id: i64,
-    pub body: String,
-    pub send_time: i64,
-}
-
 /// Opaque handle. Protocol plus optional store attach (production always attaches).
 #[derive(Clone)]
 pub struct KimUiHandle {
-    inner: Arc<KimSdk>,
+    pub(crate) inner: Arc<KimSdk>,
 }
 
 impl KimUiHandle {
@@ -56,163 +38,19 @@ impl KimUiHandle {
         Self { inner }
     }
 
-    pub async fn attach_store(&self, db_path: String) -> Result<(), ApiFailure> {
-        kim_log::init_beside(&db_path, "kim.log");
+    /// Attach the store at the layout-derived default path. Requires a prior
+    /// `platform_bootstrap` call; the path convention is Rust-owned.
+    pub async fn attach_store(&self) -> Result<(), ApiFailure> {
+        let layout = kim_sdk::Layout::current().map_err(ApiFailure::from)?;
+        let db_path = layout.db_path();
+        kim_log::init_beside(db_path.to_string_lossy().as_ref(), "kim.log");
         self.inner
-            .attach_store(db_path)
+            .attach_store(db_path.to_string_lossy().into_owned())
             .await
             .map_err(ApiFailure::from)?;
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         kim_desktop_runtime::install(self.inner.as_ref().clone());
         Ok(())
-    }
-
-    pub async fn command(&self, cmd: UiCommand) -> Result<CommandAck, ApiFailure> {
-        match cmd {
-            UiCommand::SendText { dest, text, kind } => {
-                let receipt = self
-                    .enqueue_message(
-                        dest,
-                        kind,
-                        KimOutgoingContent {
-                            kind: 1,
-                            body: text,
-                            extra: String::new(),
-                        },
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        0,
-                        0,
-                        0,
-                    )
-                    .await?;
-                Ok(ack_from_receipt(receipt))
-            }
-            UiCommand::SendMedia {
-                dest,
-                path,
-                mime,
-                width,
-                height,
-                byte_size,
-                kind,
-            } => {
-                let receipt = self
-                    .enqueue_message(
-                        dest,
-                        kind,
-                        KimOutgoingContent {
-                            kind: if kind == 0 { 2 } else { kind },
-                            body: path.clone(),
-                            extra: String::new(),
-                        },
-                        String::new(),
-                        path,
-                        mime,
-                        width,
-                        height,
-                        byte_size,
-                    )
-                    .await?;
-                Ok(ack_from_receipt(receipt))
-            }
-            UiCommand::RetrySend { client_id } => {
-                let receipt = self.retry_send(client_id).await?;
-                Ok(ack_from_receipt(receipt))
-            }
-            UiCommand::CancelSend { client_id } => {
-                self.cancel_send(client_id).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::MarkThreadRead {
-                dest,
-                kind,
-                visible_message_id,
-            } => {
-                self.mark_thread_read(dest, kind, visible_message_id)
-                    .await?;
-                Ok(empty_ack())
-            }
-            UiCommand::DeleteThread { dest } => {
-                self.delete_thread(dest).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::FriendRequest { dest } => {
-                self.friend_request(dest).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::FriendAccept { dest } => {
-                self.friend_accept(dest).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::FriendReject { dest } => {
-                self.friend_reject(dest).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::FriendRemove { dest } => {
-                self.friend_remove(dest).await?;
-                Ok(empty_ack())
-            }
-            UiCommand::AgentEnqueueTurn {
-                dest,
-                text,
-                in_reply_to,
-            } => {
-                self.inner
-                    .enqueue_agent_turn(dest, text, in_reply_to)
-                    .await
-                    .map_err(ApiFailure::from)?;
-                Ok(empty_ack())
-            }
-            UiCommand::AgentRespondPermission { .. } => {
-                Err(ApiFailure::from(kim_sdk::SdkError::InvalidArgument {
-                    message: "respond permission via rust_agent session".into(),
-                }))
-            }
-            UiCommand::AgentAbortTurn { .. } => {
-                Err(ApiFailure::from(kim_sdk::SdkError::InvalidArgument {
-                    message: "abort turn via rust_agent session".into(),
-                }))
-            }
-            UiCommand::AgentRunResult {
-                dest,
-                profile_id,
-                epoch,
-                output,
-                error,
-            } => {
-                let failed = error.is_some();
-                let replied = !failed && !output.trim().is_empty();
-                self.submit_agent_run(AgentRunResult {
-                    dest,
-                    profile_id,
-                    epoch,
-                    output,
-                    error,
-                    stop_reason: if failed {
-                        "failed".into()
-                    } else if replied {
-                        "completed".into()
-                    } else {
-                        "empty".into()
-                    },
-                    replied,
-                    visible: replied,
-                    recently_active: false,
-                })
-                .await?;
-                Ok(empty_ack())
-            }
-            UiCommand::SettingsPatch {
-                ws_url,
-                http_origin,
-                env,
-            } => {
-                self.settings_patch(ws_url, http_origin, env).await?;
-                Ok(empty_ack())
-            }
-        }
     }
 
     pub async fn search_messages(
@@ -246,23 +84,19 @@ impl KimUiHandle {
         })
     }
 
-    pub async fn media_upload(
+    /// Bytes straight from the picker plugin. Rust owns the temp file; no
+    /// Dart `Directory.systemTemp` round-trip.
+    pub async fn media_upload_bytes(
         &self,
-        path: String,
+        bytes: Vec<u8>,
         mime: String,
         width: i32,
         height: i32,
-        byte_size: i64,
     ) -> Result<LocalMedia, ApiFailure> {
+        let byte_size = i64::try_from(bytes.len()).unwrap_or(0);
         let url = self
             .inner
-            .upload_media(MediaRef {
-                path: path.clone(),
-                mime,
-                width,
-                height,
-                byte_size,
-            })
+            .upload_media_bytes(bytes, mime, width, height)
             .await
             .map_err(ApiFailure::from)?;
         Ok(LocalMedia {
@@ -371,73 +205,105 @@ impl KimUiHandle {
         Ok(())
     }
 
-    pub async fn start_session(
-        &self,
-        url: String,
-        token: String,
-        user_agent: String,
-        account: String,
-    ) -> Result<(), ApiFailure> {
-        let account = if account.is_empty() {
-            kim_client::account_from_token(&token).unwrap_or_default()
+    /// Per-agent sandbox path (created + seeded). Layout rules are Rust-owned
+    /// (`support/agent/workspaces/<id>`, `AGENTS.md` / `MEMORY.md` / `notes/`).
+    pub async fn ensure_agent_sandbox(&self, profile_id: String) -> Result<String, ApiFailure> {
+        let layout = kim_sdk::Layout::current().map_err(ApiFailure::from)?;
+        layout.ensure_agent_dirs().map_err(ApiFailure::from)?;
+        let dir = layout
+            .ensure_sandbox(&profile_id)
+            .map_err(ApiFailure::from)?;
+        Ok(dir.to_string_lossy().into_owned())
+    }
+
+    /// Royal auth client with the origin derived from the settings-table
+    /// WGateway URL (falls back to the production default).
+    pub async fn auth(&self) -> Result<super::auth::KimAuth, ApiFailure> {
+        let settings = self.inner.settings_get().await.map_err(ApiFailure::from)?;
+        let ws = settings.ws_url.trim();
+        let origin = if ws.is_empty() {
+            kim_client::DEFAULT_PROD_HTTP_ORIGIN.to_string()
         } else {
-            account
+            kim_client::http_origin_from_ws(ws)
         };
+        super::auth::KimAuth::with_origin(origin)
+    }
+
+    /// Server-side logout with the stored credential. Dart never sees the
+    /// token; empty stored token is a local no-op success.
+    pub async fn auth_logout(&self) -> Result<(), ApiFailure> {
+        let token = kim_sdk::read_secret(kim_sdk::KEY_JWT)
+            .await
+            .map_err(ApiFailure::from)?;
+        if token.trim().is_empty() {
+            return Ok(());
+        }
+        self.auth().await?.logout(token).await
+    }
+
+    /// Change password with the stored credential.
+    pub async fn auth_change_password(
+        &self,
+        old_password: String,
+        new_password: String,
+    ) -> Result<(), ApiFailure> {
+        let token = kim_sdk::read_secret(kim_sdk::KEY_JWT)
+            .await
+            .map_err(ApiFailure::from)?;
+        self.auth()
+            .await?
+            .change_password(token, old_password, new_password)
+            .await
+    }
+
+    /// Connect from stored state: settings-table URL, Keychain token via the
+    /// executor channel, account from the JWT, UA from the bootstrap.
+    /// Dart expresses intent only.
+    pub async fn start_session(&self) -> Result<(), ApiFailure> {
         self.inner
-            .start_session(StartSession {
-                url,
-                token,
-                user_agent,
-                account,
-            })
+            .start_session_stored()
             .await
             .map_err(ApiFailure::from)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Signed-in gate for the Dart auth state: usable JWT in the store?
+    pub async fn has_stored_token(&self) -> bool {
+        self.inner.has_stored_token().await
+    }
+
+    /// Signed-in account from the secure store (projection for the shell).
+    pub async fn stored_account(&self) -> String {
+        self.inner.stored_account().await
+    }
+
+    /// Persist a fresh login. Account is derived from the JWT.
+    pub async fn store_auth(&self, token: String, account: String) -> Result<(), ApiFailure> {
+        self.inner
+            .store_token(&token, &account)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// Drop credentials and stop. The sign-out path.
+    pub async fn clear_auth(&self) -> Result<(), ApiFailure> {
+        self.inner.discard_stored_token().await;
+        Ok(())
+    }
+
     pub async fn enqueue_message(
         &self,
         dest: String,
-        kind: i32,
-        content: KimOutgoingContent,
-        client_id: String,
-        local_path: String,
-        mime: String,
-        width: i32,
-        height: i32,
-        byte_size: i64,
+        kind: ThreadKind,
+        content: OutgoingContent,
+        client_id: Option<String>,
     ) -> Result<KimCommandReceipt, ApiFailure> {
-        let payload = match content.kind {
-            2 => OutgoingPayload::Image {
-                media: MediaRef {
-                    path: if local_path.is_empty() {
-                        content.body
-                    } else {
-                        local_path
-                    },
-                    mime,
-                    width,
-                    height,
-                    byte_size,
-                },
-            },
-            4 => OutgoingPayload::Video {
-                url: content.body,
-                extra: content.extra,
-            },
-            _ => OutgoingPayload::Text { body: content.body },
-        };
         let receipt = self
             .inner
             .enqueue_message(SendMessageCommand {
                 dest,
                 kind,
-                payload,
-                client_id: if client_id.is_empty() {
-                    None
-                } else {
-                    Some(client_id)
-                },
+                payload: content,
+                client_id: client_id.filter(|id| !id.is_empty()),
                 batch_id: None,
             })
             .await
@@ -487,7 +353,7 @@ impl KimUiHandle {
     pub async fn mark_thread_read(
         &self,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         message_id: i64,
     ) -> Result<(), ApiFailure> {
         if message_id <= 0 {
@@ -507,7 +373,11 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)
     }
 
-    pub async fn mark_conversation_read(&self, dest: String, kind: i32) -> Result<(), ApiFailure> {
+    pub async fn mark_conversation_read(
+        &self,
+        dest: String,
+        kind: ThreadKind,
+    ) -> Result<(), ApiFailure> {
         self.inner
             .mark_thread_read(dest, kind)
             .await
@@ -519,7 +389,7 @@ impl KimUiHandle {
         generation: u64,
         foreground: bool,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
     ) -> Result<(), ApiFailure> {
         self.inner
             .set_conversation_visibility(ConversationVisibility {
@@ -556,15 +426,6 @@ impl KimUiHandle {
             .notify_foreground()
             .await
             .map_err(ApiFailure::from)
-    }
-
-    pub async fn mark_read(
-        &self,
-        dest: String,
-        kind: i32,
-        message_id: i64,
-    ) -> Result<(), ApiFailure> {
-        self.mark_thread_read(dest, kind, message_id).await
     }
 
     pub async fn friend_request(&self, dest: String) -> Result<(), ApiFailure> {
@@ -607,34 +468,6 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)
     }
 
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_agent_run(&self, sink: StreamSink<AgentRunRequest>) -> Result<(), ApiFailure> {
-        let mut rx = self.inner.subscribe_agent_run();
-        let _guard = rt().enter();
-        rt().spawn(async move {
-            while let Some(req) = rx.recv().await {
-                let dest = req.dest.clone();
-                let profile_id = req.profile_id.clone();
-                if sink.add(AgentRunRequest::from(req)).is_err() {
-                    // Dart port closed ("Fail to post message to Dart"). Drop
-                    // this watch; AgentRunLoop must re-subscribe.
-                    tracing::warn!(
-                        %dest,
-                        %profile_id,
-                        "agent_run StreamSink closed; dart watch ended"
-                    );
-                    break;
-                }
-            }
-        });
-        Ok(())
-    }
-
-    pub async fn submit_agent_run(&self, result: AgentRunResult) -> Result<(), ApiFailure> {
-        self.inner.submit_agent_run(result.into());
-        Ok(())
-    }
-
     pub async fn list_agent_profiles(&self) -> Result<Vec<AgentProfile>, ApiFailure> {
         let rows = self
             .inner
@@ -644,9 +477,9 @@ impl KimUiHandle {
         Ok(rows.into_iter().map(AgentProfile::from).collect())
     }
 
-    pub async fn upsert_agent_profile(&self, row: AgentProfile) -> Result<(), ApiFailure> {
+    pub async fn upsert_agent_profile(&self, document_json: String) -> Result<(), ApiFailure> {
         self.inner
-            .upsert_agent_profile(row.into())
+            .upsert_agent_profile(document_json)
             .await
             .map_err(ApiFailure::from)
     }
@@ -654,13 +487,6 @@ impl KimUiHandle {
     pub async fn delete_agent_profile(&self, profile_id: String) -> Result<(), ApiFailure> {
         self.inner
             .delete_agent_profile(profile_id)
-            .await
-            .map_err(ApiFailure::from)
-    }
-
-    pub async fn import_agent_profiles(&self, rows: Vec<AgentProfile>) -> Result<(), ApiFailure> {
-        self.inner
-            .import_agent_profiles(rows.into_iter().map(Into::into).collect())
             .await
             .map_err(ApiFailure::from)
     }
@@ -708,37 +534,19 @@ impl KimUiHandle {
     }
 
     pub async fn agent_flags(&self) -> Result<AgentFlags, ApiFailure> {
-        let raw = self.inner.agent_flags().await.map_err(ApiFailure::from)?;
-        if raw.trim().is_empty() {
-            return Ok(AgentFlags {
-                multi_profile: false,
-                server_identity: false,
-            });
-        }
-        let value: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|err| ApiFailure::InvalidArgument {
-                message: err.to_string(),
-            })?;
+        let row = self.inner.agent_flags().await.map_err(ApiFailure::from)?;
         Ok(AgentFlags {
-            multi_profile: value
-                .get("multi_profile")
-                .and_then(|item| item.as_bool())
-                .unwrap_or(false),
-            server_identity: value
-                .get("server_identity")
-                .and_then(|item| item.as_bool())
-                .unwrap_or(false),
+            multi_profile: row.multi_profile,
+            server_identity: row.server_identity,
         })
     }
 
     pub async fn set_agent_flags(&self, flags: AgentFlags) -> Result<(), ApiFailure> {
-        let raw = serde_json::json!({
-            "multi_profile": flags.multi_profile,
-            "server_identity": flags.server_identity,
-        })
-        .to_string();
         self.inner
-            .set_agent_flags(raw)
+            .set_agent_flags(kim_sdk::AgentFlagRow {
+                multi_profile: flags.multi_profile,
+                server_identity: flags.server_identity,
+            })
             .await
             .map_err(ApiFailure::from)
     }
@@ -748,24 +556,6 @@ impl KimUiHandle {
             .sync_agent_specs()
             .await
             .map_err(ApiFailure::from)
-    }
-
-    #[flutter_rust_bridge::frb(sync)]
-    pub fn watch_token_persist(&self, sink: StreamSink<TokenPersist>) -> Result<(), ApiFailure> {
-        let mut rx = self.inner.subscribe_token_persist();
-        let _guard = rt().enter();
-        rt().spawn(async move {
-            while let Some(ev) = rx.recv().await {
-                let dto = match ev {
-                    kim_sdk::TokenPersistEvent::Write { token } => TokenPersist::Write { token },
-                    kim_sdk::TokenPersistEvent::Clear => TokenPersist::Clear,
-                };
-                if sink.add(dto).is_err() {
-                    break;
-                }
-            }
-        });
-        Ok(())
     }
 
     pub async fn settings_get(&self) -> Result<Settings, ApiFailure> {
@@ -782,42 +572,84 @@ impl KimUiHandle {
     pub async fn settings_patch(
         &self,
         ws_url: Option<String>,
-        http_origin: Option<String>,
         env: Option<String>,
     ) -> Result<Settings, ApiFailure> {
         let row = self
             .inner
-            .settings_patch(ws_url, http_origin, env, None)
+            .settings_patch(ws_url, None, env, None)
             .await
             .map_err(ApiFailure::from)?;
-        Ok(Settings {
-            ws_url: row.ws_url,
-            http_origin: row.http_origin,
-            env: row.env,
-            locale: row.locale,
-            account: row.account,
-        })
+        Ok(Settings::from(row))
     }
 
-    pub async fn import_device_settings(
-        &self,
-        ws_url: String,
-        http_origin: String,
-        env: String,
-        locale: String,
-    ) -> Result<Settings, ApiFailure> {
+    /// Env switch. URL/origin constants are Rust-owned; no Dart mirrors.
+    pub async fn settings_preset(&self, preset: SettingsPreset) -> Result<Settings, ApiFailure> {
         let row = self
             .inner
-            .import_device_settings(ws_url, http_origin, env, locale)
+            .settings_preset(preset.into())
             .await
             .map_err(ApiFailure::from)?;
-        Ok(Settings {
-            ws_url: row.ws_url,
-            http_origin: row.http_origin,
-            env: row.env,
-            locale: row.locale,
-            account: row.account,
-        })
+        Ok(Settings::from(row))
+    }
+
+    /// Whether device settings were stored. There is no legacy prefs import.
+    /// Whether device settings were marked imported. There is no legacy
+    /// handoff; Dart drops leftover UI keys without reading this flag.
+    pub async fn settings_imported(&self) -> Result<bool, ApiFailure> {
+        self.inner
+            .settings_imported()
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// Vendor model cache under the Rust store (`meta` table). Seeds a new
+    /// provider account; written by `fetch_models` on success.
+    pub async fn catalog_model_cache(&self, vendor: String) -> Result<Vec<String>, ApiFailure> {
+        self.inner
+            .catalog_model_cache(&vendor)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// Register a resolved workspace directory. The picker/bookmark stayed
+    /// platform-side; the granted path becomes Rust-owned state.
+    pub async fn workspace_grant_register(
+        &self,
+        profile_id: String,
+        path: String,
+        bookmark: Option<String>,
+    ) -> Result<(), ApiFailure> {
+        self.inner
+            .workspace_grant_register(profile_id, path, bookmark)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    /// macOS security-scoped bookmark bytes stored beside the grant. Empty
+    /// when none was registered. Platform payload; Rust never interprets it.
+    pub async fn workspace_grant_bookmark(&self, profile_id: String) -> Result<String, ApiFailure> {
+        let row = self
+            .inner
+            .workspace_grant(profile_id)
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(row.map(|g| g.bookmark).unwrap_or_default())
+    }
+
+    pub async fn workspace_grant_revoke(&self, profile_id: String) -> Result<(), ApiFailure> {
+        self.inner
+            .workspace_grant_revoke(profile_id)
+            .await
+            .map_err(ApiFailure::from)
+    }
+
+    pub async fn workspace_grant(&self, profile_id: String) -> Result<Option<String>, ApiFailure> {
+        let row = self
+            .inner
+            .workspace_grant(profile_id)
+            .await
+            .map_err(ApiFailure::from)?;
+        Ok(row.map(|g| g.path))
     }
 
     pub async fn refresh_contacts(&self) -> Result<(), ApiFailure> {
@@ -832,16 +664,7 @@ impl KimUiHandle {
         let users = client.friend_list().await.map_err(ApiFailure::from)?;
         Ok(users
             .into_iter()
-            .map(|p| Person::from_profile(p, "friend"))
-            .collect())
-    }
-
-    pub async fn friend_incoming(&self) -> Result<Vec<Person>, ApiFailure> {
-        let client = self.supervisor()?.client();
-        let users = client.friend_incoming().await.map_err(ApiFailure::from)?;
-        Ok(users
-            .into_iter()
-            .map(|p| Person::from_profile(p, "incoming"))
+            .map(|p| Person::from_profile(p, Relation::Friend))
             .collect())
     }
 
@@ -876,14 +699,18 @@ impl KimUiHandle {
             .map_err(ApiFailure::from)?;
         Ok(users
             .into_iter()
-            .map(|p| Person::from_profile(p, "none"))
+            .map(|p| Person::from_profile(p, Relation::Friend))
             .collect())
     }
 
-    pub async fn room_enter(&self, dest: String, kind: i32) -> Result<Vec<RoomMember>, ApiFailure> {
+    pub async fn room_enter(
+        &self,
+        dest: String,
+        kind: ThreadKind,
+    ) -> Result<Vec<RoomMember>, ApiFailure> {
         let client = self.supervisor()?.client();
         let rows = client
-            .room_enter(&dest, kind)
+            .room_enter(&dest, kind.as_wire())
             .await
             .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok(rows
@@ -896,10 +723,10 @@ impl KimUiHandle {
             .collect())
     }
 
-    pub async fn room_leave(&self, dest: String, kind: i32) -> Result<String, ApiFailure> {
+    pub async fn room_leave(&self, dest: String, kind: ThreadKind) -> Result<String, ApiFailure> {
         let client = self.supervisor()?.client();
         client
-            .room_leave(&dest, kind)
+            .room_leave(&dest, kind.as_wire())
             .await
             .map_err(|e| ApiFailure::from_client(e, &dest))?;
         Ok("ok".into())
@@ -908,12 +735,12 @@ impl KimUiHandle {
     pub async fn send_typing(
         &self,
         dest: String,
-        kind: i32,
+        kind: ThreadKind,
         active: bool,
     ) -> Result<(), ApiFailure> {
         let client = self.supervisor()?.client();
         client
-            .send_typing(&dest, kind, active)
+            .send_typing(&dest, kind.as_wire(), active)
             .await
             .map_err(|e| ApiFailure::from_client(e, &dest))
     }
@@ -945,7 +772,7 @@ impl KimUiHandle {
             .bot_create(&client_profile_id, &nickname, &avatar, &bio, &config)
             .await
             .map_err(ApiFailure::from)?;
-        Ok(Person::from_profile(p, "none"))
+        Ok(Person::from_profile(p, Relation::Friend))
     }
 
     pub async fn bot_delete(&self, dest: String) -> Result<String, ApiFailure> {
@@ -988,86 +815,6 @@ impl KimUiHandle {
             .bot_update(&dest, &nickname, &avatar, &bio, &config)
             .await
             .map_err(|e| ApiFailure::from_client(e, &dest))?;
-        Ok(Person::from_profile(p, "none"))
-    }
-
-    pub async fn bot_reply(
-        &self,
-        dest: String,
-        body: String,
-        in_reply_to: i64,
-        client_id: String,
-    ) -> Result<KimTalkResult, ApiFailure> {
-        let client = self.supervisor()?.client();
-        let result = client
-            .bot_reply(&dest, &body, in_reply_to, &client_id)
-            .await
-            .map_err(|e| ApiFailure::from_client(e, &dest))?;
-        Ok(KimTalkResult::from(result))
-    }
-
-    pub async fn bot_pending(
-        &self,
-        dest: String,
-        limit: i32,
-    ) -> Result<Vec<KimBotPendingItem>, ApiFailure> {
-        let client = self.supervisor()?.client();
-        let items = client
-            .bot_pending(&dest, limit)
-            .await
-            .map_err(|e| ApiFailure::from_client(e, &dest))?;
-        Ok(items.into_iter().map(KimBotPendingItem::from).collect())
-    }
-
-    pub async fn bot_typing(
-        &self,
-        dest: String,
-        kind: i32,
-        active: bool,
-    ) -> Result<(), ApiFailure> {
-        let client = self.supervisor()?.client();
-        client
-            .bot_typing(&dest, kind, active)
-            .await
-            .map_err(|e| ApiFailure::from_client(e, &dest))
-    }
-}
-
-fn empty_ack() -> CommandAck {
-    CommandAck {
-        request_id: String::new(),
-        client_id: String::new(),
-        dest: String::new(),
-        accepted_at: 0,
-        send_status: SendStatus::Sent,
-    }
-}
-
-fn ack_from_receipt(r: KimCommandReceipt) -> CommandAck {
-    CommandAck {
-        request_id: r.request_id,
-        client_id: r.client_id,
-        dest: r.dest,
-        accepted_at: r.accepted_at,
-        send_status: r.send_status,
-    }
-}
-
-impl From<TalkResult> for KimTalkResult {
-    fn from(r: TalkResult) -> Self {
-        Self {
-            message_id: r.message_id,
-            send_time: r.send_time,
-        }
-    }
-}
-
-impl From<BotPendingItem> for KimBotPendingItem {
-    fn from(i: BotPendingItem) -> Self {
-        Self {
-            message_id: i.message_id,
-            body: i.body,
-            send_time: i.send_time,
-        }
+        Ok(Person::from_profile(p, Relation::Friend))
     }
 }

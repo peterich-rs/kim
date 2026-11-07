@@ -10,23 +10,20 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_profile`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `MessagePage`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 class AgentCard {
-  final int v;
-  final String cardType;
   final String callId;
   final String name;
-  final String state;
+  final AgentCardType cardType;
+  final AgentCardState state;
   final String preview;
   final bool ok;
 
   const AgentCard({
-    required this.v,
-    required this.cardType,
     required this.callId,
     required this.name,
+    required this.cardType,
     required this.state,
     required this.preview,
     required this.ok,
@@ -34,10 +31,9 @@ class AgentCard {
 
   @override
   int get hashCode =>
-      v.hashCode ^
-      cardType.hashCode ^
       callId.hashCode ^
       name.hashCode ^
+      cardType.hashCode ^
       state.hashCode ^
       preview.hashCode ^
       ok.hashCode;
@@ -47,14 +43,17 @@ class AgentCard {
       identical(this, other) ||
       other is AgentCard &&
           runtimeType == other.runtimeType &&
-          v == other.v &&
-          cardType == other.cardType &&
           callId == other.callId &&
           name == other.name &&
+          cardType == other.cardType &&
           state == other.state &&
           preview == other.preview &&
           ok == other.ok;
 }
+
+enum AgentCardState { pending, ok, error }
+
+enum AgentCardType { tool, actionRequired }
 
 class AgentFlags {
   final bool multiProfile;
@@ -78,17 +77,15 @@ class AgentProfile {
   final String profileId;
   final String nickname;
   final String serverAccount;
-  final String bodyJson;
-  final Uint8List bodyBlob;
-  final String placement;
+  final String documentJson;
+  final ProfilePlacement placement;
   final PlatformInt64 updatedAt;
 
   const AgentProfile({
     required this.profileId,
     required this.nickname,
     required this.serverAccount,
-    required this.bodyJson,
-    required this.bodyBlob,
+    required this.documentJson,
     required this.placement,
     required this.updatedAt,
   });
@@ -98,8 +95,7 @@ class AgentProfile {
       profileId.hashCode ^
       nickname.hashCode ^
       serverAccount.hashCode ^
-      bodyJson.hashCode ^
-      bodyBlob.hashCode ^
+      documentJson.hashCode ^
       placement.hashCode ^
       updatedAt.hashCode;
 
@@ -111,181 +107,12 @@ class AgentProfile {
           profileId == other.profileId &&
           nickname == other.nickname &&
           serverAccount == other.serverAccount &&
-          bodyJson == other.bodyJson &&
-          bodyBlob == other.bodyBlob &&
+          documentJson == other.documentJson &&
           placement == other.placement &&
           updatedAt == other.updatedAt;
 }
 
-class AgentRunRequest {
-  final String dest;
-  final String profileId;
-  final String text;
-  final PlatformInt64 inReplyTo;
-  final BigInt epoch;
-
-  const AgentRunRequest({
-    required this.dest,
-    required this.profileId,
-    required this.text,
-    required this.inReplyTo,
-    required this.epoch,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      profileId.hashCode ^
-      text.hashCode ^
-      inReplyTo.hashCode ^
-      epoch.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AgentRunRequest &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          profileId == other.profileId &&
-          text == other.text &&
-          inReplyTo == other.inReplyTo &&
-          epoch == other.epoch;
-}
-
-class AgentRunResult {
-  final String dest;
-  final String profileId;
-  final BigInt epoch;
-  final String output;
-  final String? error;
-  final String stopReason;
-  final bool replied;
-  final bool visible;
-  final bool recentlyActive;
-
-  const AgentRunResult({
-    required this.dest,
-    required this.profileId,
-    required this.epoch,
-    required this.output,
-    this.error,
-    required this.stopReason,
-    required this.replied,
-    required this.visible,
-    required this.recentlyActive,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      profileId.hashCode ^
-      epoch.hashCode ^
-      output.hashCode ^
-      error.hashCode ^
-      stopReason.hashCode ^
-      replied.hashCode ^
-      visible.hashCode ^
-      recentlyActive.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AgentRunResult &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          profileId == other.profileId &&
-          epoch == other.epoch &&
-          output == other.output &&
-          error == other.error &&
-          stopReason == other.stopReason &&
-          replied == other.replied &&
-          visible == other.visible &&
-          recentlyActive == other.recentlyActive;
-}
-
 enum AgentTurnState { queued, running, waitingPermission, done, error, empty }
-
-class Bot {
-  final String dest;
-  final String nickname;
-  final String avatar;
-  final String bio;
-  final String model;
-  final String thinkingEffort;
-  final int contextTokens;
-  final String visibility;
-
-  const Bot({
-    required this.dest,
-    required this.nickname,
-    required this.avatar,
-    required this.bio,
-    required this.model,
-    required this.thinkingEffort,
-    required this.contextTokens,
-    required this.visibility,
-  });
-
-  @override
-  int get hashCode =>
-      dest.hashCode ^
-      nickname.hashCode ^
-      avatar.hashCode ^
-      bio.hashCode ^
-      model.hashCode ^
-      thinkingEffort.hashCode ^
-      contextTokens.hashCode ^
-      visibility.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Bot &&
-          runtimeType == other.runtimeType &&
-          dest == other.dest &&
-          nickname == other.nickname &&
-          avatar == other.avatar &&
-          bio == other.bio &&
-          model == other.model &&
-          thinkingEffort == other.thinkingEffort &&
-          contextTokens == other.contextTokens &&
-          visibility == other.visibility;
-}
-
-class CommandAck {
-  final String requestId;
-  final String clientId;
-  final String dest;
-  final PlatformInt64 acceptedAt;
-  final SendStatus sendStatus;
-
-  const CommandAck({
-    required this.requestId,
-    required this.clientId,
-    required this.dest,
-    required this.acceptedAt,
-    required this.sendStatus,
-  });
-
-  @override
-  int get hashCode =>
-      requestId.hashCode ^
-      clientId.hashCode ^
-      dest.hashCode ^
-      acceptedAt.hashCode ^
-      sendStatus.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CommandAck &&
-          runtimeType == other.runtimeType &&
-          requestId == other.requestId &&
-          clientId == other.clientId &&
-          dest == other.dest &&
-          acceptedAt == other.acceptedAt &&
-          sendStatus == other.sendStatus;
-}
 
 class ContactsSnapshot {
   final BigInt version;
@@ -381,6 +208,8 @@ class LocalMedia {
           height == other.height;
 }
 
+enum MediaKind { text, image, video, voice, card }
+
 class MessageView {
   final String key;
   final String dest;
@@ -389,7 +218,8 @@ class MessageView {
   final String? localPath;
   final PlatformInt64 at;
   final bool sys;
-  final int kind;
+  final MediaKind kind;
+  final AgentCard? card;
   final int width;
   final int height;
   final PlatformInt64 messageId;
@@ -405,6 +235,7 @@ class MessageView {
     required this.at,
     required this.sys,
     required this.kind,
+    this.card,
     required this.width,
     required this.height,
     required this.messageId,
@@ -422,6 +253,7 @@ class MessageView {
       at.hashCode ^
       sys.hashCode ^
       kind.hashCode ^
+      card.hashCode ^
       width.hashCode ^
       height.hashCode ^
       messageId.hashCode ^
@@ -441,6 +273,7 @@ class MessageView {
           at == other.at &&
           sys == other.sys &&
           kind == other.kind &&
+          card == other.card &&
           width == other.width &&
           height == other.height &&
           messageId == other.messageId &&
@@ -479,13 +312,36 @@ class Metrics {
           storeWipeTotal == other.storeWipeTotal;
 }
 
+@freezed
+sealed class OutgoingContent with _$OutgoingContent {
+  const OutgoingContent._();
+
+  const factory OutgoingContent.text({required String body}) =
+      OutgoingContent_Text;
+  const factory OutgoingContent.image({
+    required String path,
+    required String mime,
+    required int width,
+    required int height,
+    required PlatformInt64 byteSize,
+  }) = OutgoingContent_Image;
+  const factory OutgoingContent.video({
+    required String path,
+    required PlatformInt64 byteSize,
+  }) = OutgoingContent_Video;
+  const factory OutgoingContent.voice({
+    required String path,
+    required PlatformInt64 byteSize,
+  }) = OutgoingContent_Voice;
+}
+
 class Person {
   final String account;
   final String nickname;
   final String avatar;
   final String bio;
-  final String relation;
-  final int kind;
+  final Relation relation;
+  final ProfileKind kind;
 
   const Person({
     required this.account,
@@ -523,7 +379,7 @@ class Profile {
   final String nickname;
   final String avatar;
   final String bio;
-  final int kind;
+  final ProfileKind kind;
 
   const Profile({
     required this.account,
@@ -553,15 +409,18 @@ class Profile {
           kind == other.kind;
 }
 
+enum ProfileKind { user, bot }
+
+enum ProfilePlacement { local, cloud }
+
 class ProviderAccount {
   final String id;
   final String vendorId;
   final String baseUrl;
   final String keyRef;
   final String displayName;
-  final String modelsJson;
+  final List<String> models;
   final PlatformInt64 updatedAt;
-  final PlatformInt64 deletedAt;
 
   const ProviderAccount({
     required this.id,
@@ -569,9 +428,8 @@ class ProviderAccount {
     required this.baseUrl,
     required this.keyRef,
     required this.displayName,
-    required this.modelsJson,
+    required this.models,
     required this.updatedAt,
-    required this.deletedAt,
   });
 
   @override
@@ -581,9 +439,8 @@ class ProviderAccount {
       baseUrl.hashCode ^
       keyRef.hashCode ^
       displayName.hashCode ^
-      modelsJson.hashCode ^
-      updatedAt.hashCode ^
-      deletedAt.hashCode;
+      models.hashCode ^
+      updatedAt.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -595,10 +452,11 @@ class ProviderAccount {
           baseUrl == other.baseUrl &&
           keyRef == other.keyRef &&
           displayName == other.displayName &&
-          modelsJson == other.modelsJson &&
-          updatedAt == other.updatedAt &&
-          deletedAt == other.deletedAt;
+          models == other.models &&
+          updatedAt == other.updatedAt;
 }
+
+enum Relation { friend, incoming, outgoing }
 
 class RoomMember {
   final String account;
@@ -677,10 +535,6 @@ sealed class SessionUpdate with _$SessionUpdate {
       SessionUpdate_Kickout;
   const factory SessionUpdate.authExpired({required String reason}) =
       SessionUpdate_AuthExpired;
-  const factory SessionUpdate.tokenRenew({
-    required String token,
-    required PlatformInt64 exp,
-  }) = SessionUpdate_TokenRenew;
   const factory SessionUpdate.friendRequest({
     required String from,
     required String nickname,
@@ -702,13 +556,13 @@ sealed class SessionUpdate with _$SessionUpdate {
   const factory SessionUpdate.typing({
     required String typer,
     required String dest,
-    required int kind,
+    required ThreadKind kind,
     required bool active,
   }) = SessionUpdate_Typing;
   const factory SessionUpdate.receiptRead({
     required String reader,
     required String dest,
-    required int kind,
+    required ThreadKind kind,
     required PlatformInt64 messageId,
   }) = SessionUpdate_ReceiptRead;
   const factory SessionUpdate.groupCreate({
@@ -766,12 +620,29 @@ class Settings {
           account == other.account;
 }
 
+enum SettingsPreset { local, prod }
+
+enum ThreadKind { user, group }
+
+@freezed
+sealed class ThreadPreview with _$ThreadPreview {
+  const ThreadPreview._();
+
+  const factory ThreadPreview.text({required String snippet}) =
+      ThreadPreview_Text;
+  const factory ThreadPreview.media({required MediaKind kind}) =
+      ThreadPreview_Media;
+  const factory ThreadPreview.system({required String text}) =
+      ThreadPreview_System;
+}
+
 class ThreadView {
   final String id;
-  final int kind;
+  final ThreadKind kind;
   final String title;
   final String avatar;
   final String lastBody;
+  final ThreadPreview preview;
   final PlatformInt64 lastAt;
   final int unread;
 
@@ -781,6 +652,7 @@ class ThreadView {
     required this.title,
     required this.avatar,
     required this.lastBody,
+    required this.preview,
     required this.lastAt,
     required this.unread,
   });
@@ -792,6 +664,7 @@ class ThreadView {
       title.hashCode ^
       avatar.hashCode ^
       lastBody.hashCode ^
+      preview.hashCode ^
       lastAt.hashCode ^
       unread.hashCode;
 
@@ -805,6 +678,7 @@ class ThreadView {
           title == other.title &&
           avatar == other.avatar &&
           lastBody == other.lastBody &&
+          preview == other.preview &&
           lastAt == other.lastAt &&
           unread == other.unread;
 }
@@ -915,76 +789,4 @@ sealed class TimelineUpdate with _$TimelineUpdate {
     required String dest,
     required String reason,
   }) = TimelineUpdate_Resync;
-}
-
-@freezed
-sealed class TokenPersist with _$TokenPersist {
-  const TokenPersist._();
-
-  const factory TokenPersist.write({required String token}) =
-      TokenPersist_Write;
-  const factory TokenPersist.clear() = TokenPersist_Clear;
-}
-
-@freezed
-sealed class UiCommand with _$UiCommand {
-  const UiCommand._();
-
-  const factory UiCommand.sendText({
-    required String dest,
-    required String text,
-    required int kind,
-  }) = UiCommand_SendText;
-  const factory UiCommand.sendMedia({
-    required String dest,
-    required String path,
-    required String mime,
-    required int width,
-    required int height,
-    required PlatformInt64 byteSize,
-    required int kind,
-  }) = UiCommand_SendMedia;
-  const factory UiCommand.retrySend({required String clientId}) =
-      UiCommand_RetrySend;
-  const factory UiCommand.cancelSend({required String clientId}) =
-      UiCommand_CancelSend;
-  const factory UiCommand.markThreadRead({
-    required String dest,
-    required int kind,
-    required PlatformInt64 visibleMessageId,
-  }) = UiCommand_MarkThreadRead;
-  const factory UiCommand.deleteThread({required String dest}) =
-      UiCommand_DeleteThread;
-  const factory UiCommand.friendRequest({required String dest}) =
-      UiCommand_FriendRequest;
-  const factory UiCommand.friendAccept({required String dest}) =
-      UiCommand_FriendAccept;
-  const factory UiCommand.friendReject({required String dest}) =
-      UiCommand_FriendReject;
-  const factory UiCommand.friendRemove({required String dest}) =
-      UiCommand_FriendRemove;
-  const factory UiCommand.agentEnqueueTurn({
-    required String dest,
-    required String text,
-    required PlatformInt64 inReplyTo,
-  }) = UiCommand_AgentEnqueueTurn;
-  const factory UiCommand.agentRespondPermission({
-    required String dest,
-    required String callId,
-    required String permission,
-  }) = UiCommand_AgentRespondPermission;
-  const factory UiCommand.agentAbortTurn({required String dest}) =
-      UiCommand_AgentAbortTurn;
-  const factory UiCommand.agentRunResult({
-    required String dest,
-    required String profileId,
-    required BigInt epoch,
-    required String output,
-    String? error,
-  }) = UiCommand_AgentRunResult;
-  const factory UiCommand.settingsPatch({
-    String? wsUrl,
-    String? httpOrigin,
-    String? env,
-  }) = UiCommand_SettingsPatch;
 }

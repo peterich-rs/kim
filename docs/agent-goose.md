@@ -65,7 +65,7 @@ Desktop Rust HostAgentRuntime
 Phone stays NoopAgent (no agent host linked)
 ```
 
-Desktop Rust orchestrates IM and the agent host. Dart is a UI subscriber: handles, intents, and snapshots. Do not merge the `kim-agent-host` crate into `kim-client`. `kim_agent_ffi` must not depend on `kim-client`. The orchestrator is `kim-desktop-runtime`. See [ffi-oo-contract.md](ffi-oo-contract.md).
+Desktop Rust orchestrates IM and the agent host. Dart is a UI subscriber: one `KimUiHandle`, intents, and snapshots. Do not merge the `kim-agent-host` crate into `kim-client`. `kim_agent_ffi` must not depend on `kim-client`. The orchestrator is `kim-desktop-runtime`. See [ffi-oo-contract.md](ffi-oo-contract.md).
 
 ## Build / test
 

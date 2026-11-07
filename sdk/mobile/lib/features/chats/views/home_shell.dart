@@ -8,7 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_dock.dart';
 import 'package:kim_mobile/router/app_routes.dart';

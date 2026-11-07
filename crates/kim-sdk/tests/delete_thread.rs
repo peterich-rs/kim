@@ -61,7 +61,7 @@ async fn delete_thread_drops_outbox_so_restart_does_not_send() {
     .expect("session");
     sdk.enqueue_message(SendMessageCommand {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         payload: OutgoingPayload::Text { body: "hi".into() },
         client_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
         batch_id: None,

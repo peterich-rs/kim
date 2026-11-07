@@ -55,6 +55,8 @@
   "camera": "Camera",
   "imageMessage": "[Image]",
   "videoMessage": "[Video]",
+  "voiceMessage": "[Voice]",
+  "cardMessage": "[Card]",
   "viewImage": "View image",
   "closeViewer": "Close",
   "imageFailed": "Image failed to send",

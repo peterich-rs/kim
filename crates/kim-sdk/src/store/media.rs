@@ -103,13 +103,13 @@ pub(crate) async fn search_messages(
     query: &str,
     dest: Option<&str>,
     cap: i32,
-) -> Result<Vec<(String, String, String, String, i64, i64)>, SdkError> {
+) -> Result<Vec<(String, String, String, String, i64, i64, String)>, SdkError> {
     let like = format!("%{}%", query.replace('%', r"\%").replace('_', r"\_"));
     let limit = cap.max(1);
     let rows = if let Some(dest) = dest {
         sqlx::query(
             r"
-            SELECT dest, key, sender, body, at, message_id
+            SELECT dest, key, sender, body, at, message_id, kind
             FROM messages
             WHERE account = ? AND dest = ? AND body LIKE ? ESCAPE '\'
             ORDER BY at DESC
@@ -126,7 +126,7 @@ pub(crate) async fn search_messages(
     } else {
         sqlx::query(
             r"
-            SELECT dest, key, sender, body, at, message_id
+            SELECT dest, key, sender, body, at, message_id, kind
             FROM messages
             WHERE account = ? AND body LIKE ? ESCAPE '\'
             ORDER BY at DESC
@@ -149,6 +149,7 @@ pub(crate) async fn search_messages(
             row.try_get("body").map_err(map_sqlx)?,
             row.try_get("at").map_err(map_sqlx)?,
             row.try_get("message_id").map_err(map_sqlx)?,
+            row.try_get("kind").map_err(map_sqlx)?,
         ));
     }
     Ok(out)

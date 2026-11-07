@@ -10,7 +10,7 @@ import 'package:wolt_modal_sheet/wolt_modal_sheet.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/router/open_chat.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/design/empty_state.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/router/app_routes.dart';

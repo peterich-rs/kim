@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide AgentProfile;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    hide AgentProfile, ProfileKind, Relation, ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    as wire
+    show ProfileKind, Relation;
 
 import '../support/harness.dart';
 
@@ -32,8 +36,8 @@ Person _person({
   required String account,
   required String nickname,
   String avatar = '',
-  String relation = 'friend',
-  int kind = ProfileKind.user,
+  wire.Relation relation = wire.Relation.friend,
+  wire.ProfileKind kind = wire.ProfileKind.user,
 }) {
   return Person(
     account: account,
@@ -77,7 +81,11 @@ void main() {
 
     env.fake.pushContacts(
       _contacts([
-        _person(account: 'bob', nickname: 'Bobby', relation: 'incoming'),
+        _person(
+          account: 'bob',
+          nickname: 'Bobby',
+          relation: wire.Relation.incoming,
+        ),
       ]),
     );
     await Future<void>.delayed(Duration.zero);
@@ -198,7 +206,7 @@ void main() {
     env.container.read(contactsProvider);
     env.fake.pushContacts(
       _contacts([
-        _person(account: 'b_bot', nickname: '助手', kind: ProfileKind.bot),
+        _person(account: 'b_bot', nickname: '助手', kind: wire.ProfileKind.bot),
       ]),
     );
     await Future<void>.delayed(Duration.zero);

@@ -135,6 +135,7 @@ impl From<SdkError> for ApiFailure {
             SdkError::InvalidArgument { message } => Self::InvalidArgument { message },
             SdkError::Protocol { status } => Self::Protocol { status },
             SdkError::Internal { message } => Self::Internal { message },
+            SdkError::BootstrapMissing => Self::unavailable("platform bootstrap missing"),
         }
     }
 }

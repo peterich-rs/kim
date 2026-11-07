@@ -2,12 +2,12 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/features/chats/providers/inbox.dart';
-import 'package:kim_mobile/features/contacts/contacts.dart';
-import 'package:kim_mobile/features/profile/profile.dart';
+import 'package:kim_mobile/features/contacts/providers/contacts.dart';
+import 'package:kim_mobile/features/profile/providers/profile.dart';
 import 'package:kim_mobile/models/models.dart';
 
 /// Derived chrome for one conversation. Widgets [select] fields so a title

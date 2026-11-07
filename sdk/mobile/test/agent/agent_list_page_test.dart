@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/mention.dart';
+import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/agent/agent_list_page.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/views/agent_list_page.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 
 import '../support/harness.dart';
 

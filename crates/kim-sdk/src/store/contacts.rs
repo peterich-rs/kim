@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use sqlx::{Row, SqliteConnection, SqlitePool};
 
 use crate::error::{map_sqlx, SdkError};
+use crate::model::{ProfileKind, Relation};
 use crate::timeline::PersonRef;
 
 pub(crate) async fn replace_all(
@@ -45,11 +46,11 @@ async fn insert_row(
     )
     .bind(account)
     .bind(&row.account)
-    .bind(&row.relation)
+    .bind(row.relation.as_db())
     .bind(&row.nickname)
     .bind(&row.avatar)
     .bind(&row.bio)
-    .bind(row.kind)
+    .bind(row.kind.as_wire())
     .bind(now)
     .execute(&mut *tx)
     .await
@@ -79,13 +80,15 @@ async fn load_outgoing(
 }
 
 fn person_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<PersonRef, SdkError> {
+    let relation: String = row.try_get("relation").map_err(map_sqlx)?;
+    let kind: i32 = row.try_get("kind").map_err(map_sqlx)?;
     Ok(PersonRef {
         account: row.try_get("peer").map_err(map_sqlx)?,
         nickname: row.try_get("nickname").map_err(map_sqlx)?,
         avatar: row.try_get("avatar").map_err(map_sqlx)?,
         bio: row.try_get("bio").map_err(map_sqlx)?,
-        relation: row.try_get("relation").map_err(map_sqlx)?,
-        kind: row.try_get("kind").map_err(map_sqlx)?,
+        relation: Relation::from_db(&relation)?,
+        kind: ProfileKind::from_wire(kind),
     })
 }
 

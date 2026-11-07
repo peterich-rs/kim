@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/features/agent/catalog.dart';
+import 'package:kim_mobile/features/agent/data/catalog.dart';
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/l10n/app_localizations.dart';
-import 'package:kim_mobile/features/agent/agent_settings_page.dart';
-import 'package:kim_mobile/features/agent/agent_profiles.dart';
-import 'package:kim_mobile/features/agent/provider_accounts.dart';
-import 'package:kim_mobile/features/agent/skill_picker.dart';
+import 'package:kim_mobile/features/agent/views/agent_settings_page.dart';
+import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
+import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
+import 'package:kim_mobile/features/agent/widgets/skill_picker.dart';
 
 import '../support/harness.dart';
 

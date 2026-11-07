@@ -179,6 +179,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoMessage => '[Video]';
 
   @override
+  String get voiceMessage => '[Voice]';
+
+  @override
+  String get cardMessage => '[Card]';
+
+  @override
   String get viewImage => 'View image';
 
   @override

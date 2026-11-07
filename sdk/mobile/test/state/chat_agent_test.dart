@@ -1,8 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/bridge/goose_bridge.dart';
-
-import '../support/legacy_agent_drive.dart';
-
 import 'package:kim_mobile/src/rust/api/types.dart';
 
 import '../support/harness.dart';
@@ -10,29 +6,22 @@ import '../support/harness.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('watch_agent_run stub prompt submits result', () async {
+  test('fake injects an agent turn stop into the session stream', () async {
     final env = await kimHarness(token: 'tok.jwt', account: 'alice');
-    final loop = AgentRunLoop(env.fake, AgentBridge())
-      ..promptOverride = (req) async => 'echo:${req.text}';
-    final done = loop.start();
-    // Broadcast drops events with no listeners — wait for watch to attach.
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    env.fake.agentRunCtrl.add(
-      AgentRunRequest(
+    final events = <SessionUpdate>[];
+    final sub = env.fake.watchSessionEvents().listen(events.add);
+    addTearDown(sub.cancel);
+    env.fake.pushEvent(
+      SessionUpdate.agentTurn(
         dest: 'b_bot',
-        profileId: 'bot',
-        text: 'hi',
-        inReplyTo: 1,
-        epoch: BigInt.one,
+        state: AgentTurnState.error,
+        text: 'provider',
       ),
     );
-    for (var i = 0; i < 50 && env.fake.submittedAgentRuns.isEmpty; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    expect(env.fake.submittedAgentRuns, isNotEmpty);
-    expect(env.fake.submittedAgentRuns.single.output, 'echo:hi');
-    await loop.stop();
-    await env.fake.agentRunCtrl.close();
-    await done;
+    await Future<void>.delayed(Duration.zero);
+    final turn = events.whereType<SessionUpdate_AgentTurn>().single;
+    expect(turn.state, AgentTurnState.error);
+    expect(turn.text, 'provider');
+    expect(turn.dest, 'b_bot');
   });
 }

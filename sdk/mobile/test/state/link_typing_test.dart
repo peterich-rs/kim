@@ -53,7 +53,7 @@ void main() {
         const SessionUpdate.typing(
           typer: 'b_bot',
           dest: 'alice',
-          kind: 0,
+          kind: ThreadKind.user,
           active: true,
         ),
       );
@@ -102,7 +102,7 @@ void main() {
         const SessionUpdate.typing(
           typer: 'b_bot',
           dest: 'alice',
-          kind: 0,
+          kind: ThreadKind.user,
           active: true,
         ),
       );
@@ -130,7 +130,7 @@ void main() {
       const SessionUpdate.typing(
         typer: 'b_bot',
         dest: 'alice',
-        kind: 0,
+        kind: ThreadKind.user,
         active: true,
       ),
     );

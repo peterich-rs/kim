@@ -99,6 +99,7 @@ async fn newer_than_sdk_is_hard_error() {
         .filename(&path)
         .create_if_missing(true);
     let pool = sqlx::SqlitePool::connect_with(opts).await.unwrap();
+    pool.execute("PRAGMA user_version = 99").await.unwrap();
     pool.execute("CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)")
         .await
         .unwrap();

@@ -175,6 +175,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get videoMessage => '[视频]';
 
   @override
+  String get voiceMessage => '[语音]';
+
+  @override
+  String get cardMessage => '[卡片]';
+
+  @override
   String get viewImage => '查看图片';
 
   @override

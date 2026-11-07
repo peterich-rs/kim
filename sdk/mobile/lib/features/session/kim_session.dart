@@ -7,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/session_fault.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart'
+    as rust_kind
+    show ThreadKind;
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 
@@ -40,9 +43,12 @@ KimLinkState kimLinkFrom(LinkState link, String? lastError) {
 KimThread kimThreadFrom(ThreadView t) {
   return KimThread(
     id: t.id,
-    kind: t.kind == 1 ? ThreadKind.group : ThreadKind.user,
+    kind: t.kind == rust_kind.ThreadKind.group
+        ? ThreadKind.group
+        : ThreadKind.user,
     title: t.title.isEmpty ? t.id : t.title,
     lastBody: t.lastBody,
+    preview: t.preview,
     lastAt: t.lastAt.toInt(),
     unread: t.unread,
     avatar: t.avatar,
@@ -56,10 +62,23 @@ KimChatMsg kimChatFrom(MessageView m) {
     _ => KimSendStatus.sending,
   };
   final kind = switch (m.kind) {
-    2 => KimMsgKind.image,
-    4 => KimMsgKind.video,
-    _ => KimMsgKind.text,
+    MediaKind.text => KimMsgKind.text,
+    MediaKind.image => KimMsgKind.image,
+    MediaKind.video => KimMsgKind.video,
+    MediaKind.voice => KimMsgKind.voice,
+    MediaKind.card => KimMsgKind.agentCard,
   };
+  final rustCard = m.card;
+  final card = rustCard == null
+      ? null
+      : KimAgentCard(
+          callId: rustCard.callId,
+          name: rustCard.name,
+          actionRequired: rustCard.cardType == AgentCardType.actionRequired,
+          pending: rustCard.state == AgentCardState.pending,
+          preview: rustCard.preview,
+          ok: rustCard.ok,
+        );
   return KimChatMsg(
     key: m.key,
     dest: m.dest,
@@ -75,6 +94,7 @@ KimChatMsg kimChatFrom(MessageView m) {
     batchId: m.batchId,
     status: status,
     localPath: m.localPath,
+    card: card,
   );
 }
 

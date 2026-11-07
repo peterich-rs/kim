@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
+import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
+import 'package:kim_mobile/src/rust/api/types.dart' as wire show ThreadKind;
 import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/features/chats/providers/messages.dart';
@@ -23,7 +24,8 @@ void main() {
         threads: [
           ThreadView(
             id: 'bob',
-            kind: 0,
+            kind: wire.ThreadKind.user,
+            preview: ThreadPreview.text(snippet: 'hi'),
             title: 'Bob',
             avatar: '',
             lastBody: 'hi',
@@ -81,7 +83,7 @@ void main() {
     await env.fake.enqueueMessage(
       dest: 'bob',
       kind: ThreadKind.user,
-      content: const KimOutgoingContent.text('hi'),
+      content: OutgoingContent.text(body: 'hi'),
       clientId: 'cid-1',
     );
     await Future<void>.delayed(Duration.zero);
@@ -111,7 +113,7 @@ void main() {
               body: 'newer',
               at: 2,
               sys: false,
-              kind: 1,
+              kind: MediaKind.text,
               width: 0,
               height: 0,
               messageId: 2,
@@ -135,7 +137,7 @@ void main() {
         body: 'older',
         at: 1,
         sys: false,
-        kind: 1,
+        kind: MediaKind.text,
         width: 0,
         height: 0,
         messageId: 1,
@@ -165,7 +167,8 @@ void main() {
         threads: [
           ThreadView(
             id: 'bob',
-            kind: 0,
+            kind: wire.ThreadKind.user,
+            preview: ThreadPreview.text(snippet: 'hi'),
             title: 'Bob',
             avatar: '',
             lastBody: '',
@@ -174,7 +177,8 @@ void main() {
           ),
           ThreadView(
             id: 'carol',
-            kind: 0,
+            kind: wire.ThreadKind.user,
+            preview: ThreadPreview.text(snippet: 'hi'),
             title: 'Carol',
             avatar: '',
             lastBody: '',

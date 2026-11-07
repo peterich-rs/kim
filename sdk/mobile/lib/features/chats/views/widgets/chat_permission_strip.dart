@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/design/agent_action_bubble.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/kim_typing_bars.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
 import 'package:kim_mobile/features/chats/providers/chat_view.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 

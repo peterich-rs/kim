@@ -41,7 +41,7 @@ async fn active_bot_reply_keeps_unread_zero() {
         foreground: true,
         conversation: Some(ConversationKey {
             dest: "b_bot".into(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
         }),
     })
     .await
@@ -65,7 +65,7 @@ async fn inactive_reply_increments_unread() {
         foreground: true,
         conversation: Some(ConversationKey {
             dest: "b_bot".into(),
-            kind: 0,
+            kind: kim_sdk::ThreadKind::User,
         }),
     })
     .await
@@ -94,7 +94,9 @@ async fn mark_thread_read_clears_known_unread() {
     sdk.persist_talks(vec![talk("bob", "bob", "hi", 21)], UnreadPolicy::IfInserted)
         .await
         .expect("talk");
-    sdk.mark_thread_read("bob".into(), 0).await.expect("read");
+    sdk.mark_thread_read("bob".into(), kim_sdk::ThreadKind::User)
+        .await
+        .expect("read");
     let threads = sdk.load_threads().await.expect("threads");
     assert_eq!(threads[0].unread, 0);
 }
@@ -107,7 +109,7 @@ async fn specified_zero_id_does_not_clear() {
         .expect("talk");
     sdk.mark_read(kim_sdk::ReadMarker {
         dest: "bob".into(),
-        kind: 0,
+        kind: kim_sdk::ThreadKind::User,
         visible_message_id: 0,
     })
     .await

@@ -10,11 +10,9 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 flutter_rust_bridge = { workspace = true }
-kim-agent-codec = { workspace = true }
 kim-client = { workspace = true }
 kim-log = { workspace = true }
 kim-sdk = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]

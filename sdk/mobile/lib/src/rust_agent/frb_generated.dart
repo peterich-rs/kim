@@ -5,7 +5,6 @@
 
 import 'api/catalog.dart';
 import 'api/failure.dart';
-import 'api/session.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -73,7 +72,7 @@ class AgentRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1511956223;
+  int get rustContentHash => 1767182533;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -103,31 +102,17 @@ abstract class AgentRustLibApi extends BaseApi {
 
   Future<List<Vendor>> crateApiCatalogCatalogVendors();
 
-  Future<List<String>> crateApiSessionFetchSupportedModels({
-    required String llmBackend,
-    required String baseUrl,
-    required String apiKey,
-  });
-
   Future<void> crateApiSimpleInitApp();
 
-  Future<List<String>> crateApiSessionListBuiltinProfiles();
+  Future<List<String>> crateApiCatalogListBuiltinProfiles();
 
-  Future<List<String>> crateApiSessionListBundledProviders();
+  Future<List<String>> crateApiCatalogListBundledProviders();
 
-  Future<AssembledPreview> crateApiCatalogPreviewAssembled({
-    required String profileJson,
-    required String projectRoot,
-  });
+  Future<void> crateApiCatalogSetPlatformSupportRoot({required String support});
 
-  Future<List<Skill>> crateApiCatalogSkillAppCatalog({
-    required String cacheRoot,
-  });
+  Future<List<Skill>> crateApiCatalogSkillAppCatalog();
 
-  Future<List<Skill>> crateApiCatalogSkillPortableList({
-    required String userRoot,
-    required String projectRoot,
-  });
+  Future<List<Skill>> crateApiCatalogSkillPortableList();
 }
 
 class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
@@ -272,43 +257,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "catalog_vendors", argNames: []);
 
   @override
-  Future<List<String>> crateApiSessionFetchSupportedModels({
-    required String llmBackend,
-    required String baseUrl,
-    required String apiKey,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(llmBackend, serializer);
-          sse_encode_String(baseUrl, serializer);
-          sse_encode_String(apiKey, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 5,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_String,
-          decodeErrorData: sse_decode_agent_failure,
-        ),
-        constMeta: kCrateApiSessionFetchSupportedModelsConstMeta,
-        argValues: [llmBackend, baseUrl, apiKey],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiSessionFetchSupportedModelsConstMeta =>
-      const TaskConstMeta(
-        debugName: "fetch_supported_models",
-        argNames: ["llmBackend", "baseUrl", "apiKey"],
-      );
-
-  @override
   Future<void> crateApiSimpleInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -317,7 +265,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 5,
             port: port_,
           );
         },
@@ -336,7 +284,34 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
-  Future<List<String>> crateApiSessionListBuiltinProfiles() {
+  Future<List<String>> crateApiCatalogListBuiltinProfiles() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCatalogListBuiltinProfilesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCatalogListBuiltinProfilesConstMeta =>
+      const TaskConstMeta(debugName: "list_builtin_profiles", argNames: []);
+
+  @override
+  Future<List<String>> crateApiCatalogListBundledProviders() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -350,24 +325,27 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
-          decodeErrorData: sse_decode_agent_failure,
+          decodeErrorData: null,
         ),
-        constMeta: kCrateApiSessionListBuiltinProfilesConstMeta,
+        constMeta: kCrateApiCatalogListBundledProvidersConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSessionListBuiltinProfilesConstMeta =>
-      const TaskConstMeta(debugName: "list_builtin_profiles", argNames: []);
+  TaskConstMeta get kCrateApiCatalogListBundledProvidersConstMeta =>
+      const TaskConstMeta(debugName: "list_bundled_providers", argNames: []);
 
   @override
-  Future<List<String>> crateApiSessionListBundledProviders() {
+  Future<void> crateApiCatalogSetPlatformSupportRoot({
+    required String support,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(support, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -376,30 +354,28 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_list_String,
-          decodeErrorData: null,
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_agent_failure,
         ),
-        constMeta: kCrateApiSessionListBundledProvidersConstMeta,
-        argValues: [],
+        constMeta: kCrateApiCatalogSetPlatformSupportRootConstMeta,
+        argValues: [support],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSessionListBundledProvidersConstMeta =>
-      const TaskConstMeta(debugName: "list_bundled_providers", argNames: []);
+  TaskConstMeta get kCrateApiCatalogSetPlatformSupportRootConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_platform_support_root",
+        argNames: ["support"],
+      );
 
   @override
-  Future<AssembledPreview> crateApiCatalogPreviewAssembled({
-    required String profileJson,
-    required String projectRoot,
-  }) {
+  Future<List<Skill>> crateApiCatalogSkillAppCatalog() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(profileJson, serializer);
-          sse_encode_String(projectRoot, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -408,31 +384,25 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_assembled_preview,
+          decodeSuccessData: sse_decode_list_skill,
           decodeErrorData: sse_decode_agent_failure,
         ),
-        constMeta: kCrateApiCatalogPreviewAssembledConstMeta,
-        argValues: [profileJson, projectRoot],
+        constMeta: kCrateApiCatalogSkillAppCatalogConstMeta,
+        argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCatalogPreviewAssembledConstMeta =>
-      const TaskConstMeta(
-        debugName: "preview_assembled",
-        argNames: ["profileJson", "projectRoot"],
-      );
+  TaskConstMeta get kCrateApiCatalogSkillAppCatalogConstMeta =>
+      const TaskConstMeta(debugName: "skill_app_catalog", argNames: []);
 
   @override
-  Future<List<Skill>> crateApiCatalogSkillAppCatalog({
-    required String cacheRoot,
-  }) {
+  Future<List<Skill>> crateApiCatalogSkillPortableList() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(cacheRoot, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -444,53 +414,15 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_skill,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiCatalogSkillAppCatalogConstMeta,
-        argValues: [cacheRoot],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiCatalogSkillAppCatalogConstMeta =>
-      const TaskConstMeta(
-        debugName: "skill_app_catalog",
-        argNames: ["cacheRoot"],
-      );
-
-  @override
-  Future<List<Skill>> crateApiCatalogSkillPortableList({
-    required String userRoot,
-    required String projectRoot,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(userRoot, serializer);
-          sse_encode_String(projectRoot, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 11,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_list_skill,
-          decodeErrorData: null,
-        ),
         constMeta: kCrateApiCatalogSkillPortableListConstMeta,
-        argValues: [userRoot, projectRoot],
+        argValues: [],
         apiImpl: this,
       ),
     );
   }
 
   TaskConstMeta get kCrateApiCatalogSkillPortableListConstMeta =>
-      const TaskConstMeta(
-        debugName: "skill_portable_list",
-        argNames: ["userRoot", "projectRoot"],
-      );
+      const TaskConstMeta(debugName: "skill_portable_list", argNames: []);
 
   @protected
   String dco_decode_String(dynamic raw) {
@@ -528,42 +460,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  AgentUiEvent dco_decode_agent_ui_event(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 14)
-      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
-    return AgentUiEvent(
-      kind: dco_decode_String(arr[0]),
-      operationId: dco_decode_String(arr[1]),
-      callId: dco_decode_String(arr[2]),
-      name: dco_decode_String(arr[3]),
-      delta: dco_decode_String(arr[4]),
-      argumentsJson: dco_decode_String(arr[5]),
-      outputPreview: dco_decode_String(arr[6]),
-      ok: dco_decode_bool(arr[7]),
-      stopReason: dco_decode_String(arr[8]),
-      message: dco_decode_String(arr[9]),
-      inputTokens: dco_decode_u_64(arr[10]),
-      outputTokens: dco_decode_u_64(arr[11]),
-      resumedOps: dco_decode_list_String(arr[12]),
-      recentlyActive: dco_decode_bool(arr[13]),
-    );
-  }
-
-  @protected
-  AssembledPreview dco_decode_assembled_preview(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return AssembledPreview(
-      tools: dco_decode_list_preview_tool(arr[0]),
-      warnings: dco_decode_list_String(arr[1]),
-    );
-  }
-
-  @protected
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
@@ -597,6 +493,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
@@ -606,12 +508,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   List<CapabilityEntry> dco_decode_list_capability_entry(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_capability_entry).toList();
-  }
-
-  @protected
-  List<PreviewTool> dco_decode_list_preview_tool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_preview_tool).toList();
   }
 
   @protected
@@ -633,19 +529,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  PreviewTool dco_decode_preview_tool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-    return PreviewTool(
-      name: dco_decode_String(arr[0]),
-      source: dco_decode_String(arr[1]),
-      executor: dco_decode_String(arr[2]),
-    );
-  }
-
-  @protected
   ReasoningSurface dco_decode_reasoning_surface(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -661,32 +544,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       min: dco_decode_u_32(arr[6]),
       max: dco_decode_u_32(arr[7]),
       defaultBudget: dco_decode_u_32(arr[8]),
-    );
-  }
-
-  @protected
-  ResumeReport dco_decode_resume_report(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return ResumeReport(
-      resumedOps: dco_decode_list_String(arr[0]),
-      statuses: dco_decode_list_String(arr[1]),
-    );
-  }
-
-  @protected
-  SessionSnapshot dco_decode_session_snapshot(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-    return SessionSnapshot(
-      busy: dco_decode_bool(arr[0]),
-      lastOperationId: dco_decode_String(arr[1]),
-      phase: dco_decode_String(arr[2]),
-      pendingCallIds: dco_decode_list_String(arr[3]),
     );
   }
 
@@ -714,12 +571,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  BigInt dco_decode_u_64(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dcoDecodeU64(raw);
-  }
-
-  @protected
   int dco_decode_u_8(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -740,7 +591,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     return Vendor(
       id: dco_decode_String(arr[0]),
       displayName: dco_decode_String(arr[1]),
-      group: dco_decode_String(arr[2]),
+      group: dco_decode_vendor_group(arr[2]),
       sortRank: dco_decode_u_32(arr[3]),
       defaultBaseUrl: dco_decode_String(arr[4]),
       altBaseUrls: dco_decode_list_String(arr[5]),
@@ -749,6 +600,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       defaultModel: dco_decode_String(arr[8]),
       models: dco_decode_list_String(arr[9]),
     );
+  }
+
+  @protected
+  VendorGroup dco_decode_vendor_group(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return VendorGroup.values[raw as int];
   }
 
   @protected
@@ -793,49 +650,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  AgentUiEvent sse_decode_agent_ui_event(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_kind = sse_decode_String(deserializer);
-    var var_operationId = sse_decode_String(deserializer);
-    var var_callId = sse_decode_String(deserializer);
-    var var_name = sse_decode_String(deserializer);
-    var var_delta = sse_decode_String(deserializer);
-    var var_argumentsJson = sse_decode_String(deserializer);
-    var var_outputPreview = sse_decode_String(deserializer);
-    var var_ok = sse_decode_bool(deserializer);
-    var var_stopReason = sse_decode_String(deserializer);
-    var var_message = sse_decode_String(deserializer);
-    var var_inputTokens = sse_decode_u_64(deserializer);
-    var var_outputTokens = sse_decode_u_64(deserializer);
-    var var_resumedOps = sse_decode_list_String(deserializer);
-    var var_recentlyActive = sse_decode_bool(deserializer);
-    return AgentUiEvent(
-      kind: var_kind,
-      operationId: var_operationId,
-      callId: var_callId,
-      name: var_name,
-      delta: var_delta,
-      argumentsJson: var_argumentsJson,
-      outputPreview: var_outputPreview,
-      ok: var_ok,
-      stopReason: var_stopReason,
-      message: var_message,
-      inputTokens: var_inputTokens,
-      outputTokens: var_outputTokens,
-      resumedOps: var_resumedOps,
-      recentlyActive: var_recentlyActive,
-    );
-  }
-
-  @protected
-  AssembledPreview sse_decode_assembled_preview(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_tools = sse_decode_list_preview_tool(deserializer);
-    var var_warnings = sse_decode_list_String(deserializer);
-    return AssembledPreview(tools: var_tools, warnings: var_warnings);
-  }
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
@@ -867,6 +681,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -888,18 +708,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     var ans_ = <CapabilityEntry>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_capability_entry(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
-  List<PreviewTool> sse_decode_list_preview_tool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <PreviewTool>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_preview_tool(deserializer));
     }
     return ans_;
   }
@@ -936,19 +744,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  PreviewTool sse_decode_preview_tool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_name = sse_decode_String(deserializer);
-    var var_source = sse_decode_String(deserializer);
-    var var_executor = sse_decode_String(deserializer);
-    return PreviewTool(
-      name: var_name,
-      source: var_source,
-      executor: var_executor,
-    );
-  }
-
-  @protected
   ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_String(deserializer);
@@ -970,29 +765,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
       min: var_min,
       max: var_max,
       defaultBudget: var_defaultBudget,
-    );
-  }
-
-  @protected
-  ResumeReport sse_decode_resume_report(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_resumedOps = sse_decode_list_String(deserializer);
-    var var_statuses = sse_decode_list_String(deserializer);
-    return ResumeReport(resumedOps: var_resumedOps, statuses: var_statuses);
-  }
-
-  @protected
-  SessionSnapshot sse_decode_session_snapshot(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_busy = sse_decode_bool(deserializer);
-    var var_lastOperationId = sse_decode_String(deserializer);
-    var var_phase = sse_decode_String(deserializer);
-    var var_pendingCallIds = sse_decode_list_String(deserializer);
-    return SessionSnapshot(
-      busy: var_busy,
-      lastOperationId: var_lastOperationId,
-      phase: var_phase,
-      pendingCallIds: var_pendingCallIds,
     );
   }
 
@@ -1024,12 +796,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  BigInt sse_decode_u_64(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getBigUint64();
-  }
-
-  @protected
   int sse_decode_u_8(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8();
@@ -1045,7 +811,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
     var var_displayName = sse_decode_String(deserializer);
-    var var_group = sse_decode_String(deserializer);
+    var var_group = sse_decode_vendor_group(deserializer);
     var var_sortRank = sse_decode_u_32(deserializer);
     var var_defaultBaseUrl = sse_decode_String(deserializer);
     var var_altBaseUrls = sse_decode_list_String(deserializer);
@@ -1068,9 +834,10 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
+  VendorGroup sse_decode_vendor_group(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
+    var inner = sse_decode_i_32(deserializer);
+    return VendorGroup.values[inner];
   }
 
   @protected
@@ -1110,35 +877,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_agent_ui_event(AgentUiEvent self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.kind, serializer);
-    sse_encode_String(self.operationId, serializer);
-    sse_encode_String(self.callId, serializer);
-    sse_encode_String(self.name, serializer);
-    sse_encode_String(self.delta, serializer);
-    sse_encode_String(self.argumentsJson, serializer);
-    sse_encode_String(self.outputPreview, serializer);
-    sse_encode_bool(self.ok, serializer);
-    sse_encode_String(self.stopReason, serializer);
-    sse_encode_String(self.message, serializer);
-    sse_encode_u_64(self.inputTokens, serializer);
-    sse_encode_u_64(self.outputTokens, serializer);
-    sse_encode_list_String(self.resumedOps, serializer);
-    sse_encode_bool(self.recentlyActive, serializer);
-  }
-
-  @protected
-  void sse_encode_assembled_preview(
-    AssembledPreview self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_preview_tool(self.tools, serializer);
-    sse_encode_list_String(self.warnings, serializer);
-  }
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
@@ -1168,6 +906,12 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
+  }
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -1185,18 +929,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_capability_entry(item, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_list_preview_tool(
-    List<PreviewTool> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_preview_tool(item, serializer);
     }
   }
 
@@ -1229,14 +961,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_preview_tool(PreviewTool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.name, serializer);
-    sse_encode_String(self.source, serializer);
-    sse_encode_String(self.executor, serializer);
-  }
-
-  @protected
   void sse_encode_reasoning_surface(
     ReasoningSurface self,
     SseSerializer serializer,
@@ -1251,25 +975,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     sse_encode_u_32(self.min, serializer);
     sse_encode_u_32(self.max, serializer);
     sse_encode_u_32(self.defaultBudget, serializer);
-  }
-
-  @protected
-  void sse_encode_resume_report(ResumeReport self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_String(self.resumedOps, serializer);
-    sse_encode_list_String(self.statuses, serializer);
-  }
-
-  @protected
-  void sse_encode_session_snapshot(
-    SessionSnapshot self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_bool(self.busy, serializer);
-    sse_encode_String(self.lastOperationId, serializer);
-    sse_encode_String(self.phase, serializer);
-    sse_encode_list_String(self.pendingCallIds, serializer);
   }
 
   @protected
@@ -1291,12 +996,6 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putBigUint64(self);
-  }
-
-  @protected
   void sse_encode_u_8(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self);
@@ -1312,7 +1011,7 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
     sse_encode_String(self.displayName, serializer);
-    sse_encode_String(self.group, serializer);
+    sse_encode_vendor_group(self.group, serializer);
     sse_encode_u_32(self.sortRank, serializer);
     sse_encode_String(self.defaultBaseUrl, serializer);
     sse_encode_list_String(self.altBaseUrls, serializer);
@@ -1323,8 +1022,8 @@ class AgentRustLibApiImpl extends AgentRustLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
+  void sse_encode_vendor_group(VendorGroup self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
+    sse_encode_i_32(self.index, serializer);
   }
 }

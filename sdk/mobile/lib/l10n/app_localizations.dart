@@ -428,6 +428,18 @@ abstract class AppLocalizations {
   /// **'[视频]'**
   String get videoMessage;
 
+  /// No description provided for @voiceMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'[语音]'**
+  String get voiceMessage;
+
+  /// No description provided for @cardMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'[卡片]'**
+  String get cardMessage;
+
   /// No description provided for @viewImage.
   ///
   /// In zh, this message translates to:

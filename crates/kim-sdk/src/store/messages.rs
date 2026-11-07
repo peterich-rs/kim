@@ -5,7 +5,8 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use super::schema::MAX_MESSAGES;
 use crate::command::{PageCursor, SendStatus};
 use crate::error::{map_sqlx, SdkError};
-use crate::timeline::{kind_from_name, kind_name, MessageView, TimelineSnapshot};
+use crate::model::{classify_message, parse_agent_card, MediaKind, ThreadKind};
+use crate::timeline::{MessageView, TimelineSnapshot};
 
 pub(crate) struct OwnInsert<'a> {
     pub account: &'a str,
@@ -14,13 +15,13 @@ pub(crate) struct OwnInsert<'a> {
     pub sender: &'a str,
     pub body: &'a str,
     pub at: i64,
-    pub kind: i32,
+    pub kind: MediaKind,
     pub width: i32,
     pub height: i32,
     pub batch_id: &'a str,
     pub status: SendStatus,
     pub local_path: &'a str,
-    pub thread_kind: i32,
+    pub thread_kind: ThreadKind,
 }
 
 pub(crate) async fn insert_own(
@@ -53,13 +54,13 @@ pub(crate) async fn insert_own(
     .bind(row.body)
     .bind(row.at)
     .bind(i32::from(row.status == SendStatus::Failed))
-    .bind(kind_name(row.kind))
+    .bind(row.kind.as_db())
     .bind(row.width)
     .bind(row.height)
     .bind(row.batch_id)
     .bind(row.status.message_status())
     .bind(row.local_path)
-    .bind(row.thread_kind)
+    .bind(row.thread_kind.as_wire())
     .execute(&mut *tx)
     .await
     .map_err(map_sqlx)?;
@@ -401,15 +402,23 @@ fn row_to_view(row: &sqlx::sqlite::SqliteRow) -> Result<MessageView, SdkError> {
     let batch: String = row.try_get("batch_id").map_err(map_sqlx)?;
     let local: String = row.try_get("local_path").map_err(map_sqlx)?;
     let sys: i64 = row.try_get("sys").map_err(map_sqlx)?;
+    let body: String = row.try_get("body").map_err(map_sqlx)?;
+    let kind = MediaKind::from_db(&kind_raw)?;
+    let card = if kind == MediaKind::Card {
+        parse_agent_card(&body)
+    } else {
+        None
+    };
     Ok(MessageView {
         key: row.try_get("key").map_err(map_sqlx)?,
         dest: row.try_get("dest").map_err(map_sqlx)?,
         sender: row.try_get("sender").map_err(map_sqlx)?,
-        body: row.try_get("body").map_err(map_sqlx)?,
+        body,
         local_path: if local.is_empty() { None } else { Some(local) },
         at: row.try_get("at").map_err(map_sqlx)?,
         sys: sys != 0,
-        kind: kind_from_name(&kind_raw),
+        kind,
+        card,
         width: row.try_get("width").map_err(map_sqlx)?,
         height: row.try_get("height").map_err(map_sqlx)?,
         message_id: row.try_get("message_id").map_err(map_sqlx)?,
@@ -426,14 +435,14 @@ pub(crate) struct StoredMsg {
     pub body: String,
     pub at: i64,
     pub sys: bool,
-    pub kind: String,
+    pub kind: MediaKind,
     pub width: i32,
     pub height: i32,
     pub message_id: i64,
     pub batch_id: String,
     pub status: String,
     pub local_path: String,
-    pub thread_kind: i32,
+    pub thread_kind: ThreadKind,
 }
 
 pub(crate) struct ApplyOutcome {
@@ -471,11 +480,7 @@ pub(crate) async fn apply_talk(
         talk.sender.clone()
     };
     let (width, height) = parse_image_extra(&talk.extra);
-    let kind = match talk.msg_type {
-        kim_protocol::MESSAGE_TYPE_IMAGE => "image",
-        kim_protocol::MESSAGE_TYPE_VIDEO => "video",
-        _ => "text",
-    };
+    let classified = classify_message(talk.msg_type, &talk.body);
     let key = crate::ids::incoming_message_key(talk.message_id, talk.send_time, &sender);
     let incoming = StoredMsg {
         key: key.clone(),
@@ -484,7 +489,7 @@ pub(crate) async fn apply_talk(
         body: talk.body.clone(),
         at: super::send_time_ms(talk.send_time),
         sys: false,
-        kind: kind.to_string(),
+        kind: classified.kind,
         width,
         height,
         message_id: talk.message_id,
@@ -492,9 +497,9 @@ pub(crate) async fn apply_talk(
         status: "sent".into(),
         local_path: String::new(),
         thread_kind: if talk.command.contains("group") {
-            kim_protocol::INBOX_KIND_GROUP
+            ThreadKind::Group
         } else {
-            kim_protocol::INBOX_KIND_USER
+            ThreadKind::User
         },
     };
     let by_mid = if incoming.message_id != 0 {
@@ -651,14 +656,14 @@ async fn put_msg(tx: &mut SqliteConnection, account: &str, m: &StoredMsg) -> Res
     .bind(&m.body)
     .bind(m.at)
     .bind(i32::from(m.sys))
-    .bind(&m.kind)
+    .bind(m.kind.as_db())
     .bind(m.width)
     .bind(m.height)
     .bind(m.message_id)
     .bind(&m.batch_id)
     .bind(&m.status)
     .bind(&m.local_path)
-    .bind(m.thread_kind)
+    .bind(m.thread_kind.as_wire())
     .execute(&mut *tx)
     .await
     .map_err(map_sqlx)?;
@@ -709,7 +714,7 @@ fn merge_stored(prev: StoredMsg, next: StoredMsg) -> StoredMsg {
         } else {
             next.local_path
         },
-        thread_kind: if next.thread_kind == 0 {
+        thread_kind: if next.thread_kind == ThreadKind::User {
             prev.thread_kind
         } else {
             next.thread_kind
@@ -726,14 +731,14 @@ fn stored_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<StoredMsg, SdkError>
         body: row.try_get("body").map_err(map_sqlx)?,
         at: row.try_get("at").map_err(map_sqlx)?,
         sys: sys != 0,
-        kind: row.try_get("kind").map_err(map_sqlx)?,
+        kind: MediaKind::from_db(&row.try_get::<String, _>("kind").map_err(map_sqlx)?)?,
         width: row.try_get("width").map_err(map_sqlx)?,
         height: row.try_get("height").map_err(map_sqlx)?,
         message_id: row.try_get("message_id").map_err(map_sqlx)?,
         batch_id: row.try_get("batch_id").map_err(map_sqlx)?,
         status: row.try_get("status").map_err(map_sqlx)?,
         local_path: row.try_get("local_path").map_err(map_sqlx)?,
-        thread_kind: row.try_get("thread_kind").map_err(map_sqlx)?,
+        thread_kind: ThreadKind::from_wire(row.try_get("thread_kind").map_err(map_sqlx)?),
     })
 }
 

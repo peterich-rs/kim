@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +10,14 @@ import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/runtime.dart';
-import 'package:kim_mobile/features/agent/agent_permission.dart';
-import 'package:kim_mobile/features/agent/agent_presence.dart';
-import 'package:kim_mobile/features/agent/host_support.dart';
+import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
+import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
+import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/bridge/agent_host.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
+import 'package:kim_mobile/src/rust/api/bootstrap.dart';
+import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as agent_catalog;
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
@@ -23,7 +26,6 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (details) {
     KimLogger.error('flutter', details.exception, details.stack);
-    FlutterError.presentError(details);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     KimLogger.error('platform', error, stack);
@@ -56,6 +58,7 @@ class _KimBootState extends State<KimBoot> {
   ProviderContainer? _container;
   DetachableAgentRunSink? _sink;
   AgentHostController? _host;
+  SecretStoreExecutor? _secrets;
 
   @override
   void initState() {
@@ -67,6 +70,7 @@ class _KimBootState extends State<KimBoot> {
   void dispose() {
     _sink?.detach();
     unawaited(_host?.stop());
+    unawaited(_secrets?.detach());
     _container?.dispose();
     super.dispose();
   }
@@ -74,27 +78,28 @@ class _KimBootState extends State<KimBoot> {
   Future<void> _start() async {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
-    await bridge.attachStore('${runtime.paths.support.path}/kim-cache.db');
-    KimLogger.info('boot store attached');
-    final imported = await bridge.importDeviceSettings(
-      wsUrl: runtime.settings.url,
-      httpOrigin: runtime.settings.httpOrigin,
-    );
-    runtime.settings.applyRemote(
-      wsUrl: imported.wsUrl,
-      httpOrigin: imported.httpOrigin,
-      account: imported.account,
-      env: imported.env,
-    );
-    await runtime.settings.dropImportedPrefs();
-    bridge.watchTokenPersist().listen((event) {
-      switch (event) {
-        case rust_types.TokenPersist_Write(:final token):
-          unawaited(runtime.settings.saveToken(token));
-        case rust_types.TokenPersist_Clear():
-          unawaited(runtime.settings.saveToken(''));
+    if (!kIsWeb) {
+      await platformBootstrap(
+        documents: runtime.paths.documents.path,
+        support: runtime.paths.support.path,
+        cache: runtime.paths.cache.path,
+        temp: runtime.paths.temp.path,
+        appVersion: runtime.version,
+        buildNumber: runtime.buildNumber,
+        simulator: platformIsSimulator,
+      );
+      if (agentHostSupported) {
+        await agent_catalog.setPlatformSupportRoot(
+          support: runtime.paths.support.path,
+        );
       }
-    });
+      final secrets = SecretStoreExecutor();
+      _secrets = secrets;
+      await secrets.attach();
+      await bridge.attachStore();
+      KimLogger.info('boot store attached');
+      await runtime.settings.dropImportedPrefs();
+    }
     if (!mounted) {
       return;
     }
@@ -150,4 +155,18 @@ class KimSplash extends StatelessWidget {
       home: const Scaffold(body: Center(child: CircularProgressIndicator())),
     );
   }
+}
+
+/// iOS simulator detection for the loopback warning: the env vars exist only
+/// in the simulator process. Android emulators reach host loopback via 10.0.2.2,
+/// so `127.0.0.1` there is the device itself.
+bool get platformIsSimulator {
+  if (kIsWeb) {
+    return false;
+  }
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    return Platform.environment['SIMULATOR_DEVICE_NAME'] != null ||
+        Platform.environment['SIMULATOR_UDID'] != null;
+  }
+  return false;
 }

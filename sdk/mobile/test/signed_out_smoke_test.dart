@@ -18,7 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final tmp = Directory.systemTemp.createTempSync('kim-smoke-');
     addTearDown(() => tmp.deleteSync(recursive: true));
-    final settings = await SettingsStore.load(useSecureStorage: false);
+    final settings = await SettingsStore.load();
     final runtime = await KimRuntime.bootstrap(
       requestNotifications: false,
       paths: KimPaths.forTest(tmp),

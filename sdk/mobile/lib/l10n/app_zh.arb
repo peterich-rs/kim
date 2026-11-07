@@ -55,6 +55,8 @@
   "camera": "拍摄",
   "imageMessage": "[图片]",
   "videoMessage": "[视频]",
+  "voiceMessage": "[语音]",
+  "cardMessage": "[卡片]",
   "viewImage": "查看图片",
   "closeViewer": "关闭",
   "imageFailed": "图片发送失败",

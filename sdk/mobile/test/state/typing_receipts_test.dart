@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kim_mobile/models/models.dart';
 import 'package:kim_mobile/features/session/receipts.dart';
 import 'package:kim_mobile/features/session/typing.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,11 +48,26 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final n = container.read(receiptsProvider.notifier);
-    n.applyPush(reader: 'bob', dest: 'alice', kind: 0, messageId: 10);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'alice',
+      kind: ThreadKind.user,
+      messageId: 10,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
-    n.applyPush(reader: 'bob', dest: 'alice', kind: 0, messageId: 8);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'alice',
+      kind: ThreadKind.user,
+      messageId: 8,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
-    n.applyPush(reader: 'bob', dest: 'g1', kind: 1, messageId: 99);
+    n.applyPush(
+      reader: 'bob',
+      dest: 'g1',
+      kind: ThreadKind.group,
+      messageId: 99,
+    );
     expect(container.read(peerReadUpToProvider('bob')), 10);
   });
 }
