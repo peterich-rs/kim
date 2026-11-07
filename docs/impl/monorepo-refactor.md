@@ -10,7 +10,8 @@
 |---|---|
 | R07 | `kim-gateway-runtime` 持有 handler / revoke / hooks / run。`gateway` 只绑 WS，`tgateway` 只绑 TCP/TLS。runtime 不依赖 `kim-ws` |
 | R02 | `kim-agent-model` 持有配置数据与 `ApprovalMode`。codec 不再依赖 host / Goose。Host 在调用 Goose / Codex 时做引擎转换 |
+| R05a schema | `kim-server-schema` 嵌入 0001–0016。Chat 不再 `migrate!`。Compose `migrate` 与测试调用外部 runner |
 
 ## 尚未落地
 
-R01 边界门、R03 调度所有权、R04 FFI 合库、R05 认证/BotControl/数据抽库、R06 Royal adapter、R08 Web、R09 Flutter 边界、R10 目录、R11 Docker、R12 协议清理。
+R03 调度所有权、R04 FFI 合库、R05a 认证/目录拆分、R05c BotControl、R05b 数据抽库、R06 Royal adapter、R08 Web、R09 Flutter 边界、R10 目录、R11 Docker 输入、R12 协议清理。

@@ -1,0 +1,14 @@
+[package]
+name = "kim-server-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Embedded PostgreSQL migrations 0001-0016. Only kim-server-migrate may link this crate."
+
+[dependencies]
+sqlx = { workspace = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate"] }
+
+[lints]
+workspace = true

@@ -90,6 +90,7 @@ im/
   crates/kim-metrics       Prometheus registry（仅进程，不进通信层）
   crates/kim-gateway-runtime  网关 handler / revoke / run；WS 只在 gateway 进程，TCP/TLS 只在 tgateway
   crates/kim-agent-model   Agent 配置数据；不链接 Goose / Codex / MCP
+  crates/kim-server-schema PostgreSQL 0001–0016；只有 tools/kim-server-migrate 链接它
   services/                gateway / tgateway / chat / royal / router
   examples/                pkt-client / kim-client-demo / kimbench
   sdk/web                  TypeScript Web SDK

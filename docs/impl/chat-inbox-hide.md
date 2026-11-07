@@ -137,7 +137,7 @@ last 的权威序是 `(send_time, message_id)`，不是单独 `MAX(message_id)`�
 ### 最小 schema：`hidden_until_id`，不加 mark 表
 
 ```sql
--- services/chat/migrations/0016_inbox_hide.sql
+-- crates/kim-server-schema/migrations/<next>_inbox_hide.sql
 ALTER TABLE conversation_inbox
   ADD COLUMN hidden_until_id BIGINT NOT NULL DEFAULT 0;
 ```
@@ -753,7 +753,7 @@ PR3：`withLocalThreads` 接收 SDK 暴露的 hidden dest 集合（snapshot 增 
 - `docs/control-layer-chat.md` — 命令、1xx、dest 规则。
 - `docs/production-gaps.md` — G-17 物化读；inbox 非全量。
 - `docs/mobile-client.md` — Dart 不持业务；threads 来自 SDK snapshot。
-- `services/chat/migrations/0010_conversation_inbox.sql`、`0006_user_social_inbox.sql`、`0001_messages.sql`。
+- `crates/kim-server-schema/migrations/0010_conversation_inbox.sql`、`0006_user_social_inbox.sql`、`0001_messages.sql`。
 - `services/chat/src/store/postgres.rs` — insert/list/history/mark_read/purge。
 - `services/chat/src/royal.rs` `HttpMessageStore::inbox` 只 map items。
 - `crates/kim-sdk/src/store/outbox.rs` `delete_thread`；`threads.rs` `persist_inbox_item`；`migrate.rs` v7；`schema.rs` `threads.kind` TEXT。
@@ -790,7 +790,7 @@ PR3：`withLocalThreads` 接收 SDK 暴露的 hidden dest 集合（snapshot 增 
 - **标题：** `chat: per-account inbox hide (hidden_until_id + chat.inbox.hide)`
 - **依赖：** 无
 - **文件：**
-  - `services/chat/migrations/0016_inbox_hide.sql`
+  - next `kim-server-schema` migration for inbox hide
   - `services/chat/src/store/mod.rs`（`InboxPage` + Memory 三方法）
   - `services/chat/src/store/postgres.rs`（hide/unhide、物化 WHERE、GROUP BY 后聚合 join、DISTINCT ON miss-fill、unread 重算）
   - `services/chat/src/inbox.rs`（`do_inbox_hide` / `do_inbox_unhide`；list 填 items+hidden；hide Success body；空操作仍 Push）

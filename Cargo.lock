@@ -7603,6 +7603,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-server-migrate"
+version = "0.1.0"
+dependencies = [
+ "kim-server-schema",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "kim-server-schema"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+]
+
+[[package]]
 name = "kim-session"
 version = "0.1.0"
 dependencies = [

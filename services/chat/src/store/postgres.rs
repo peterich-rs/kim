@@ -59,18 +59,34 @@ impl From<super::PoolConfig> for PoolOpts {
     }
 }
 
+/// Chat tests do not link `kim-server-schema`. Build the runner first:
+/// `cargo build -p kim-server-migrate`.
+#[cfg(test)]
+fn apply_external_test_schema(url: &str) {
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(profile)
+        .join("kim-server-migrate");
+    let status = std::process::Command::new(&bin)
+        .arg(url)
+        .status()
+        .unwrap_or_else(|err| {
+            panic!("start {bin:?}: {err}. Run cargo build -p kim-server-migrate")
+        });
+    assert!(
+        status.success(),
+        "kim-server-migrate exited {status} for the test database"
+    );
+}
+
 pub async fn connect_pool(url: &str, opts: PoolOpts) -> Result<PgPool, StoreError> {
-    let migrate = PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(opts.acquire_timeout)
-        .connect(url)
-        .await
-        .map_err(pg_err)?;
-    sqlx::migrate!("./migrations")
-        .run(&migrate)
-        .await
-        .map_err(|e| StoreError::Backend(e.to_string()))?;
-    migrate.close().await;
+    #[cfg(test)]
+    apply_external_test_schema(url);
 
     let stmt_ms = u64::try_from(opts.statement_timeout.as_millis()).unwrap_or(u64::MAX);
     let idle_tx_ms = u64::try_from(opts.idle_in_tx_timeout.as_millis()).unwrap_or(u64::MAX);

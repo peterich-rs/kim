@@ -22,7 +22,7 @@ docker compose -f deploy/compose.yml --env-file deploy/kim.env.example pull redi
 
 ## Docker 栈（一台干净的 VPS）
 
-`deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul HTTPS API `127.0.0.1:8501`（明文 8500 已关）。
+`deploy/compose.yml` 自带 chat、chat-gray、gateway、royal、router、Consul、Redis、Postgres。`migrate` 先跑 `kim-server-migrate`；Chat / Royal 进程不再内嵌 DDL。Redis / Postgres **不**映射到宿主机端口。网关映射 `127.0.0.1:8001`，lookup `127.0.0.1:8088`，token `127.0.0.1:8080`，Consul HTTPS API `127.0.0.1:8501`（明文 8500 已关）。
 
 从旧明文 Consul 切到 HTTPS + gossip `encrypt` + ACL 时，**不能**复用 `kim_consul_data`：旧 raft 没有这把 encrypt key，agent 起不来，健康检查失败，后面 `consul-acl` / Royal / Chat 全停。升级旧 VPS 时一次性执行以下人工迁移；自动部署不会删除任何数据卷：
 

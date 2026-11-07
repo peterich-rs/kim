@@ -11,6 +11,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY services ./services
 COPY examples ./examples
+COPY tools/kim-server-migrate ./tools/kim-server-migrate
 
 ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0
@@ -19,8 +20,10 @@ RUN cargo build --release -p gateway --features consul \
     && cargo build --release -p chat --features redis,postgres,consul \
     && cargo build --release -p royal --features postgres,redis,consul \
     && cargo build --release -p router --features consul \
+    && cargo build --release -p kim-server-migrate \
     && strip target/release/gateway target/release/chat \
-         target/release/royal target/release/router
+         target/release/royal target/release/router \
+         target/release/kim-server-migrate
 
 FROM debian:bookworm-slim
 
@@ -33,6 +36,7 @@ COPY --from=builder /src/target/release/gateway /usr/local/bin/gateway
 COPY --from=builder /src/target/release/chat /usr/local/bin/chat
 COPY --from=builder /src/target/release/royal /usr/local/bin/royal
 COPY --from=builder /src/target/release/router /usr/local/bin/router
+COPY --from=builder /src/target/release/kim-server-migrate /usr/local/bin/kim-server-migrate
 COPY deploy/chat.toml deploy/gateway.toml deploy/royal.toml deploy/router.toml /etc/kim/
 
 USER kim

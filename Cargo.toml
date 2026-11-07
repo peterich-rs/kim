@@ -12,6 +12,7 @@ members = [
     "crates/kim-session",
     "crates/kim-metrics",
     "crates/kim-gateway-runtime",
+    "crates/kim-server-schema",
     "crates/kim-client",
     "crates/kim-sdk",
     "crates/kim-agent-model",
@@ -30,6 +31,7 @@ members = [
     "examples/pkt-client",
     "examples/kim-client-demo",
     "examples/kimbench",
+    "tools/kim-server-migrate",
 ]
 
 [workspace.package]

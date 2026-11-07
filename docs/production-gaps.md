@@ -133,7 +133,7 @@ Snowflake `message_id` **不能**当无洞 ACK 游标。G-03、G-04、G-10 必�
 
 - `services/chat/src/ack.rs` — `do_talk_ack`：`store.ack(app, account, message_id)`，不用 `session.device`
 - `services/chat/src/store/redis_ack.rs` — `chat:ack:{account}`
-- `services/chat/migrations/0006_user_social_inbox.sql` — `conversation_reads` 主键 `(app, account, peer, group_id)`
+- `crates/kim-server-schema/migrations/0006_user_social_inbox.sql` — `conversation_reads` 主键 `(app, account, peer, group_id)`
 - `crates/kim-session/src/lib.rs` — `exclusive_device`（约 24–29 行）
 - `crates/kim-router/src/context.rs` — `dispatch` 跳过发送方自己的 `channel_id`（约 101–103 行）
 

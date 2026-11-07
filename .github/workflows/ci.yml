@@ -87,7 +87,9 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: chat postgres tests
-        run: cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
+        run: |
+          cargo build -p kim-server-migrate
+          cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
 
       - name: backfill and tuple diff (empty and after tests)
         run: |

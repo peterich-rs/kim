@@ -34,7 +34,7 @@ reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 snowflake_me.workspace = true
-sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
+sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
 thiserror.workspace = true
 toml = "0.8"
 tokio.workspace = true
