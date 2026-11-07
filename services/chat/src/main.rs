@@ -305,6 +305,7 @@ async fn main() -> anyhow::Result<()> {
         chat::store::pending_receipt_enabled(),
         interest,
         agent_specs,
+        Arc::new(chat::bot_control::UnavailableBotControl),
     ));
     if let Some(m) = metrics.clone() {
         handler.with_metrics(m);

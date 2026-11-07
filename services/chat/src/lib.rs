@@ -4,6 +4,7 @@ mod ack;
 pub mod admin;
 mod agent_spec;
 mod bot;
+pub mod bot_control;
 pub mod directory;
 mod echo;
 pub mod filter;
@@ -101,6 +102,7 @@ pub(crate) struct ChatSvc {
     groups: Arc<dyn GroupDirectory>,
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
+    bots: Arc<dyn bot_control::BotControl>,
     social: Arc<dyn SocialDirectory>,
     agent_specs: Arc<dyn AgentSpecStore>,
     presence: Arc<PresenceHub>,
@@ -204,6 +206,9 @@ impl ChatHandler {
             pending_receipt_enabled(),
             Arc::new(MemoryRoomInterest::new()),
             agent_specs,
+            Arc::new(bot_control::DirectoryBotControl::new(Arc::new(
+                MemoryUserDirectory::new(),
+            ))),
         )
     }
 
@@ -325,11 +330,12 @@ impl ChatHandler {
             groups,
             zone,
             filter,
-            users,
+            users.clone(),
             social,
             pending_receipt,
             interest,
             Arc::new(MemoryAgentSpecStore::new()),
+            Arc::new(bot_control::DirectoryBotControl::new(users)),
         )
     }
 
@@ -346,6 +352,7 @@ impl ChatHandler {
         pending_receipt: bool,
         interest: Arc<dyn RoomInterestStore>,
         agent_specs: Arc<dyn AgentSpecStore>,
+        bots: Arc<dyn bot_control::BotControl>,
     ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let presence = Arc::new(PresenceHub::new(
@@ -391,6 +398,7 @@ impl ChatHandler {
             groups,
             filter,
             users,
+            bots,
             social,
             agent_specs,
             presence,
@@ -661,21 +669,21 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(Command::BotCreate, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_create(ctx, svc.users.as_ref()).await }
+                async move { do_bot_create(ctx, svc.bots.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(Command::BotDelete, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_delete(ctx, svc.users.as_ref(), svc.store.as_ref()).await }
+                async move { do_bot_delete(ctx, svc.bots.as_ref(), svc.store.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(Command::BotUpdate, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_update(ctx, svc.users.as_ref()).await }
+                async move { do_bot_update(ctx, svc.bots.as_ref()).await }
             });
         }
         {

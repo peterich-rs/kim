@@ -461,6 +461,52 @@ pub trait MessageStore: Send + Sync {
     ) -> Result<Vec<BotPendingItem>, StoreError>;
     /// Purge a 1:1 DM thread (both sides): indexes, content, inbox, reads.
     async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError>;
+
+    /// Identity of the message dataset this adapter actually writes.
+    fn store_scope(&self) -> StoreScope {
+        StoreScope::unscoped()
+    }
+
+    /// Reject a purge aimed at a different dataset, then run [`purge_peer_dm`].
+    async fn purge_peer_dm_scoped(
+        &self,
+        expected: &StoreScope,
+        app: &str,
+        actor: &str,
+        bot: &str,
+    ) -> Result<(), StoreError> {
+        let actual = self.store_scope();
+        if !expected.id.is_empty() && actual.id != expected.id {
+            return Err(StoreError::Backend(format!(
+                "store scope mismatch: expected {} got {}",
+                expected.id, actual.id
+            )));
+        }
+        self.purge_peer_dm(app, actor, bot).await
+    }
+}
+
+/// Proof that a purge hits the store that holds the messages, not a URL string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoreScope {
+    pub kind: String,
+    pub id: String,
+}
+
+impl StoreScope {
+    pub fn unscoped() -> Self {
+        Self {
+            kind: "unscoped".into(),
+            id: String::new(),
+        }
+    }
+
+    pub fn memory(id: impl Into<String>) -> Self {
+        Self {
+            kind: "memory".into(),
+            id: id.into(),
+        }
+    }
 }
 
 #[async_trait]
@@ -544,6 +590,7 @@ pub struct MemoryMessageStore {
     ack: Arc<dyn AckIndex>,
     pending_receipt: bool,
     ack_observer: Option<Arc<dyn AckObserver>>,
+    scope_id: String,
     inner: RwLock<Inner>,
 }
 
@@ -722,13 +769,23 @@ impl MemoryMessageStore {
         pending_receipt: bool,
         ack_observer: Option<Arc<dyn AckObserver>>,
     ) -> Self {
+        static NEXT_SCOPE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let scope_id = format!(
+            "memory-{}",
+            NEXT_SCOPE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
         Self {
             idgen,
             ack,
             pending_receipt,
             ack_observer,
+            scope_id,
             inner: RwLock::new(Inner::default()),
         }
+    }
+
+    pub fn scope_id(&self) -> &str {
+        &self.scope_id
     }
 
     #[cfg(test)]
@@ -975,6 +1032,10 @@ impl MemoryMessageStore {
 
 #[async_trait]
 impl MessageStore for MemoryMessageStore {
+    fn store_scope(&self) -> StoreScope {
+        StoreScope::memory(self.scope_id.clone())
+    }
+
     async fn insert_user(
         &self,
         app: &str,
