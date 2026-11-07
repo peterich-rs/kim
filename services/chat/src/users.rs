@@ -387,7 +387,11 @@ impl MemoryUserDirectory {
         Ok(())
     }
 
-    pub async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+    pub async fn password_hash(
+        &self,
+        app: &str,
+        account: &str,
+    ) -> Result<Option<String>, UserError> {
         Ok(self
             .read()
             .get(&(app.to_string(), account.to_string()))
