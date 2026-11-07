@@ -45,6 +45,9 @@ jobs:
       - name: crate boundaries
         run: python3 tools/check_crate_boundaries.py
 
+      - name: npm workspace links
+        run: python3 tools/check_npm_workspace.py
+
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 

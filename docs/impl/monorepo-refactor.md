@@ -13,6 +13,7 @@
 | R05a schema | `kim-server-schema` 嵌入 0001–0016。Chat 不再 `migrate!`。Compose `migrate` 与测试调用外部 runner |
 | R05a auth | `AccountAuthStore` 只在 Royal。公开 `UserDirectory` 没有 create/password/epoch 方法。认证 SQL 不在 Chat |
 | R05c | Chat 删除经 `BotControl` 协调器，purge 核对 `StoreScope`。生产 Chat 无 Royal endpoint 时 bot 写返回不可用。测试栈注入 directory control |
+| R08a | 根 npm workspace 登记 `@kim/web-sdk` 与 `@kim/media`，lock 记录本地 link |
 | R01 | `tools/check_crate_boundaries.py` 检查 normal/build 角色边界；schema 闭包包含 dev |
 
 ## 尚未落地
