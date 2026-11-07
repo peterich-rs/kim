@@ -10,9 +10,9 @@ use bytes::Bytes;
 use chat::directory::GroupDirectory;
 use chat::store::MessageStore;
 use chat::{AgentSpecStore, ChatHandler};
-use gateway::{GatewayHandler, KickHook};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, OpCode, Server};
+use kim_gateway_runtime::{GatewayHandler, KickHook};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::Flag;
 use kim_protocol::{
@@ -140,7 +140,7 @@ where
         "wg-1",
         DEMO_DEFAULT_SECRET,
     ));
-    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
+    gw_h.set_revoke(Arc::new(kim_gateway_runtime::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());
@@ -194,7 +194,7 @@ pub async fn spawn_gateway_only() -> (Arc<Container>, std::net::SocketAddr) {
         "wg-1",
         DEMO_DEFAULT_SECRET,
     ));
-    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
+    gw_h.set_revoke(Arc::new(kim_gateway_runtime::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());

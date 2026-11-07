@@ -1,0 +1,1618 @@
+{
+  "kind": "static dependency audit; not a resolved Cargo graph",
+  "date": "2026-11-07",
+  "head": "1f433bc391d74b5205f316345ffee3a12d771e35",
+  "branch": "refactor/ffi-ownership",
+  "cargo_metadata": {
+    "exit_code": 101,
+    "error": "kim-sdk/Cargo.toml has no [package] or [workspace]; full resolved dependency/feature graph unavailable"
+  },
+  "workspace_members": 26,
+  "zero_byte_tracked_files": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "README.md",
+    "crates/kim-client-ffi/src/api/auth.rs",
+    "crates/kim-client-ffi/src/api/bootstrap.rs",
+    "crates/kim-client-ffi/src/api/handles.rs",
+    "crates/kim-client-ffi/src/api/mod.rs",
+    "crates/kim-desktop-runtime/src/lib.rs",
+    "crates/kim-sdk/Cargo.toml",
+    "crates/kim-sdk/src/secrets.rs",
+    "docs/README.md",
+    "docs/ffi-oo-contract.md",
+    "docs/flutter-layering.md",
+    "docs/impl/ffi-dead-surface-cleanup.md",
+    "docs/impl/mobile-shell-upgrade.md",
+    "docs/mobile-client.md",
+    "tools/check_flutter_boundaries.sh"
+  ],
+  "rust_packages": [
+    {
+      "package": "kim-core",
+      "path": "crates/kim-core",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-tcp",
+      "path": "crates/kim-tcp",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-ws",
+      "path": "crates/kim-ws",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-protocol",
+      "path": "crates/kim-protocol",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": []
+    },
+    {
+      "package": "kim-naming",
+      "path": "crates/kim-naming",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "consul": [
+          "dep:reqwest",
+          "dep:serde",
+          "dep:serde_json"
+        ]
+      },
+      "local_and_vendored_dependencies": []
+    },
+    {
+      "package": "kim-container",
+      "path": "crates/kim-container",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-naming",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-naming"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-tcp",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-tcp"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-router",
+      "path": "crates/kim-router",
+      "manifest_source": "working-tree",
+      "features": {
+        "test-util": []
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-session",
+      "path": "crates/kim-session",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "redis": [
+          "dep:redis",
+          "dep:tokio",
+          "dep:prost",
+          "dep:futures"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-router",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-router"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-metrics",
+      "path": "crates/kim-metrics",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": []
+    },
+    {
+      "package": "kim-client",
+      "path": "crates/kim-client",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-sdk",
+      "path": "crates/kim-sdk",
+      "manifest_source": "HEAD reference only; working-tree manifest is empty",
+      "features": {
+        "default": [],
+        "agent": []
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-agent-codec",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-agent-codec"
+          }
+        },
+        {
+          "dependency": "kim-client",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-client"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-agent-host",
+      "path": "crates/kim-agent-host",
+      "manifest_source": "working-tree",
+      "features": {
+        "codex": [
+          "dep:codex-async-utils",
+          "dep:codex-config",
+          "dep:codex-core",
+          "dep:codex-core-api",
+          "dep:codex-protocol",
+          "dep:codex-utils-redacted-string",
+          "dep:rama-error",
+          "dep:rama-macros",
+          "dep:rama-utils",
+          "dep:toml"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "codex-async-utils",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/async-utils",
+            "optional": true
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-config",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/config",
+            "optional": true
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/core",
+            "optional": true
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-core-api",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/core-api",
+            "optional": true
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/protocol",
+            "optional": true
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-utils-redacted-string",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/utils/redacted-string",
+            "optional": true
+          },
+          "workspace_spec": null
+        }
+      ]
+    },
+    {
+      "package": "kim-codex-helper",
+      "path": "crates/kim-codex-helper",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "codex-apply-patch",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/apply-patch"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-arg0",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/arg0"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-exec-server",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/exec-server"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-sandboxing",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/sandboxing"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "codex-windows-sandbox",
+          "kind": "normal",
+          "target": "cfg(windows)",
+          "spec": {
+            "path": "../../third_party/codex/codex-rs/windows-sandbox-rs"
+          },
+          "workspace_spec": null
+        }
+      ]
+    },
+    {
+      "package": "kim-agent-codec",
+      "path": "crates/kim-agent-codec",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-agent-host",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-agent-host"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-log",
+      "path": "crates/kim-log",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": []
+    },
+    {
+      "package": "kim-desktop-runtime",
+      "path": "crates/kim-desktop-runtime",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-agent-codec",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../kim-agent-codec"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "kim-agent-host",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../kim-agent-host",
+            "features": [
+              "codex"
+            ]
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "kim-sdk",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../kim-sdk"
+          },
+          "workspace_spec": null
+        }
+      ]
+    },
+    {
+      "package": "kim_client_ffi",
+      "path": "crates/kim-client-ffi",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-client",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-client"
+          }
+        },
+        {
+          "dependency": "kim-log",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-log"
+          }
+        },
+        {
+          "dependency": "kim-sdk",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-sdk"
+          }
+        },
+        {
+          "dependency": "kim-desktop-runtime",
+          "kind": "normal",
+          "target": "cfg(any(target_os = \"macos\", target_os = \"windows\", target_os = \"linux\"))",
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-desktop-runtime"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim_agent_ffi",
+      "path": "crates/kim-agent-ffi",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-agent-codec",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-agent-codec"
+          }
+        },
+        {
+          "dependency": "kim-agent-host",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true,
+            "features": [
+              "codex"
+            ]
+          },
+          "workspace_spec": {
+            "path": "crates/kim-agent-host"
+          }
+        }
+      ]
+    },
+    {
+      "package": "gateway",
+      "path": "services/gateway",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "consul": [
+          "kim-naming/consul"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-container",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-container"
+          }
+        },
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-metrics",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-metrics"
+          }
+        },
+        {
+          "dependency": "kim-naming",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-naming"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-session",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true,
+            "features": [
+              "redis"
+            ]
+          },
+          "workspace_spec": {
+            "path": "crates/kim-session"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        }
+      ]
+    },
+    {
+      "package": "chat",
+      "path": "services/chat",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "redis": [
+          "kim-session/redis",
+          "dep:redis"
+        ],
+        "postgres": [
+          "dep:sqlx"
+        ],
+        "consul": [
+          "kim-naming/consul"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-container",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-container"
+          }
+        },
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-metrics",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-metrics"
+          }
+        },
+        {
+          "dependency": "kim-naming",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-naming"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-router",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-router"
+          }
+        },
+        {
+          "dependency": "kim-session",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-session"
+          }
+        },
+        {
+          "dependency": "kim-tcp",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-tcp"
+          }
+        },
+        {
+          "dependency": "gateway",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "path": "../gateway"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "royal",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "path": "../royal"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "kim-router",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "workspace": true,
+            "features": [
+              "test-util"
+            ]
+          },
+          "workspace_spec": {
+            "path": "crates/kim-router"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        },
+        {
+          "dependency": "kimbench",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "path": "../../examples/kimbench"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "pkt-client",
+          "kind": "dev",
+          "target": null,
+          "spec": {
+            "path": "../../examples/pkt-client"
+          },
+          "workspace_spec": null
+        }
+      ]
+    },
+    {
+      "package": "royal",
+      "path": "services/royal",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "postgres": [
+          "chat/postgres",
+          "dep:sqlx"
+        ],
+        "redis": [
+          "chat/redis",
+          "kim-session/redis",
+          "dep:redis"
+        ],
+        "consul": [
+          "kim-naming/consul"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "chat",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../chat"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-metrics",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-metrics"
+          }
+        },
+        {
+          "dependency": "kim-naming",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-naming"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-session",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-session"
+          }
+        }
+      ]
+    },
+    {
+      "package": "tgateway",
+      "path": "services/tgateway",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "gateway",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../gateway"
+          },
+          "workspace_spec": null
+        },
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-tcp",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-tcp"
+          }
+        }
+      ]
+    },
+    {
+      "package": "router",
+      "path": "services/router",
+      "manifest_source": "working-tree",
+      "features": {
+        "default": [],
+        "consul": [
+          "kim-naming/consul"
+        ]
+      },
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-metrics",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-metrics"
+          }
+        },
+        {
+          "dependency": "kim-naming",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-naming"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "pkt-client",
+      "path": "examples/pkt-client",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kim-client-demo",
+      "path": "examples/kim-client-demo",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-client",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-client"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        }
+      ]
+    },
+    {
+      "package": "kimbench",
+      "path": "examples/kimbench",
+      "manifest_source": "working-tree",
+      "features": {},
+      "local_and_vendored_dependencies": [
+        {
+          "dependency": "kim-core",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-core"
+          }
+        },
+        {
+          "dependency": "kim-protocol",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-protocol"
+          }
+        },
+        {
+          "dependency": "kim-tcp",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-tcp"
+          }
+        },
+        {
+          "dependency": "kim-ws",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "workspace": true
+          },
+          "workspace_spec": {
+            "path": "crates/kim-ws"
+          }
+        },
+        {
+          "dependency": "pkt-client",
+          "kind": "normal",
+          "target": null,
+          "spec": {
+            "path": "../pkt-client"
+          },
+          "workspace_spec": null
+        }
+      ]
+    }
+  ],
+  "javascript_packages": [
+    {
+      "path": "sdk/web/package.json",
+      "package": "@kim/web-sdk",
+      "scripts": {
+        "gen-proto": "node scripts/gen-proto.mjs",
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.app.json --noEmit",
+        "test": "vitest run --config vitest.config.ts",
+        "test:e2e": "KIM_SDK_E2E=1 vitest run --config vitest.config.ts tests/e2e.test.ts",
+        "demo": "vite --config vite.config.ts",
+        "app": "vite --config vite.app.config.ts",
+        "app:local": "vite --config vite.app.config.ts --mode loopback",
+        "build:app": "vite build --config vite.app.config.ts",
+        "deploy:app": "npm run build:app && wrangler deploy"
+      },
+      "dependencies": [
+        "@base-ui/react",
+        "@noble/hashes",
+        "class-variance-authority",
+        "clsx",
+        "long",
+        "lucide-react",
+        "motion",
+        "next-themes",
+        "protobufjs",
+        "react",
+        "react-dom",
+        "react-router-dom",
+        "react-virtuoso",
+        "sonner",
+        "tailwind-merge",
+        "tw-animate-css",
+        "tweetnacl",
+        "usehooks-ts"
+      ],
+      "dev_dependencies": [
+        "@tailwindcss/vite",
+        "@types/node",
+        "@types/react",
+        "@types/react-dom",
+        "@vitejs/plugin-react",
+        "tailwindcss",
+        "typescript",
+        "vite",
+        "vitest",
+        "wrangler"
+      ]
+    },
+    {
+      "path": "sdk/media/package.json",
+      "package": "@kim/media",
+      "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "deploy": "wrangler deploy"
+      },
+      "dependencies": [],
+      "dev_dependencies": [
+        "@cloudflare/workers-types",
+        "typescript",
+        "vitest",
+        "wrangler"
+      ]
+    }
+  ],
+  "flutter_generated_ffi_imports_outside_bridge": [
+    "app/lib/core/errors.dart",
+    "app/lib/core/failures.dart",
+    "app/lib/design/conversation_tile.dart",
+    "app/lib/features/agent/data/agent_catalog.dart",
+    "app/lib/features/agent/data/catalog.dart",
+    "app/lib/features/agent/data/kim_im_tools.dart",
+    "app/lib/features/agent/providers/agent_profiles.dart",
+    "app/lib/features/agent/providers/provider_accounts.dart",
+    "app/lib/features/chats/data/threads_repository.dart",
+    "app/lib/features/chats/providers/chat_session.dart",
+    "app/lib/features/chats/providers/messages.dart",
+    "app/lib/features/contacts/providers/contacts.dart",
+    "app/lib/features/session/kim_session.dart",
+    "app/lib/features/session/link.dart",
+    "app/lib/features/session/presence.dart",
+    "app/lib/features/settings/dev_panel.dart",
+    "app/lib/features/settings/dev_panel_state.dart",
+    "app/lib/main.dart",
+    "app/lib/models/thread.dart"
+  ],
+  "notes": [
+    "Current source was explored with CodeGraph and exact imports were inspected. Indexed caller counts were not used as dependency evidence.",
+    "HEAD is used only to annotate the empty kim-sdk manifest; this does not establish a buildable working tree.",
+    "No repository builds, deployment, dependency installation, source restoration, or source refactor were performed. Isolated npm/Cargo tool experiments are recorded separately in tool-behavior-checks.json."
+  ],
+  "flutter_generated_ffi_imports": {
+    "scope": "all handwritten app/lib/**/*.dart; generated lib/ffi excluded",
+    "file_count": 25,
+    "statement_count": 43,
+    "file_counts_by_area": {
+      "bridge": 6,
+      "core": 2,
+      "design": 1,
+      "features": 14,
+      "main.dart": 1,
+      "models": 1
+    },
+    "files": [
+      "app/lib/bridge/conversation_port.dart",
+      "app/lib/bridge/goose_bridge.dart",
+      "app/lib/bridge/kim_auth_bridge.dart",
+      "app/lib/bridge/kim_bridge_base.dart",
+      "app/lib/bridge/kim_client_bridge.dart",
+      "app/lib/bridge/kim_ports.dart",
+      "app/lib/core/errors.dart",
+      "app/lib/core/failures.dart",
+      "app/lib/design/conversation_tile.dart",
+      "app/lib/features/agent/data/agent_catalog.dart",
+      "app/lib/features/agent/data/catalog.dart",
+      "app/lib/features/agent/data/kim_im_tools.dart",
+      "app/lib/features/agent/providers/agent_profiles.dart",
+      "app/lib/features/agent/providers/provider_accounts.dart",
+      "app/lib/features/chats/data/threads_repository.dart",
+      "app/lib/features/chats/providers/chat_session.dart",
+      "app/lib/features/chats/providers/messages.dart",
+      "app/lib/features/contacts/providers/contacts.dart",
+      "app/lib/features/session/kim_session.dart",
+      "app/lib/features/session/link.dart",
+      "app/lib/features/session/presence.dart",
+      "app/lib/features/settings/dev_panel.dart",
+      "app/lib/features/settings/dev_panel_state.dart",
+      "app/lib/main.dart",
+      "app/lib/models/thread.dart"
+    ],
+    "statements": [
+      {
+        "file": "app/lib/bridge/conversation_port.dart",
+        "line": 5,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ThreadKind;"
+      },
+      {
+        "file": "app/lib/bridge/goose_bridge.dart",
+        "line": 8,
+        "statement": "import 'package:kim/ffi/agent/api/catalog.dart' as catalog;"
+      },
+      {
+        "file": "app/lib/bridge/goose_bridge.dart",
+        "line": 9,
+        "statement": "import 'package:kim/ffi/agent/frb_generated.dart';"
+      },
+      {
+        "file": "app/lib/bridge/goose_bridge.dart",
+        "line": 11,
+        "statement": "export 'package:kim/ffi/agent/api/catalog.dart'"
+      },
+      {
+        "file": "app/lib/bridge/kim_auth_bridge.dart",
+        "line": 7,
+        "statement": "import 'package:kim/ffi/client/api/auth.dart' as rust_auth;"
+      },
+      {
+        "file": "app/lib/bridge/kim_bridge_base.dart",
+        "line": 10,
+        "statement": "import 'package:kim/ffi/client/api/host.dart' as rust;"
+      },
+      {
+        "file": "app/lib/bridge/kim_bridge_base.dart",
+        "line": 11,
+        "statement": "import 'package:kim/ffi/client/frb_generated.dart';"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 8,
+        "statement": "import 'package:kim/ffi/client/api/agent.dart' as rust_agent;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 9,
+        "statement": "import 'package:kim/ffi/client/api/directory.dart' as rust_directory;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 10,
+        "statement": "import 'package:kim/ffi/client/api/handles.dart';"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 11,
+        "statement": "import 'package:kim/ffi/client/api/inbox.dart' as rust_inbox;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 12,
+        "statement": "import 'package:kim/ffi/client/api/media.dart' as rust_media;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 13,
+        "statement": "import 'package:kim/ffi/client/api/session.dart' as rust_session;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 14,
+        "statement": "import 'package:kim/ffi/client/api/settings.dart' as rust_settings;"
+      },
+      {
+        "file": "app/lib/bridge/kim_client_bridge.dart",
+        "line": 15,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' as wire;"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 6,
+        "statement": "import 'package:kim/ffi/client/api/auth.dart' show AuthPresence, SignedIn;"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 7,
+        "statement": "import 'package:kim/ffi/client/api/handles.dart';"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 8,
+        "statement": "import 'package:kim/ffi/client/api/inbox.dart' show KimCommandReceipt;"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 9,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' as wire;"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 12,
+        "statement": "export 'package:kim/ffi/client/api/auth.dart' show AuthPresence, SignedIn;"
+      },
+      {
+        "file": "app/lib/bridge/kim_ports.dart",
+        "line": 13,
+        "statement": "export 'package:kim/ffi/client/api/inbox.dart' show KimCommandReceipt;"
+      },
+      {
+        "file": "app/lib/core/errors.dart",
+        "line": 5,
+        "statement": "import 'package:kim/ffi/client/api/failure.dart';"
+      },
+      {
+        "file": "app/lib/core/failures.dart",
+        "line": 4,
+        "statement": "import 'package:kim/ffi/client/api/failure.dart';"
+      },
+      {
+        "file": "app/lib/design/conversation_tile.dart",
+        "line": 11,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ThreadKind;"
+      },
+      {
+        "file": "app/lib/features/agent/data/agent_catalog.dart",
+        "line": 4,
+        "statement": "import 'package:kim/ffi/client/api/types.dart';"
+      },
+      {
+        "file": "app/lib/features/agent/data/catalog.dart",
+        "line": 11,
+        "statement": "import 'package:kim/ffi/agent/api/catalog.dart' show VendorGroup;"
+      },
+      {
+        "file": "app/lib/features/agent/data/kim_im_tools.dart",
+        "line": 10,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' show OutgoingContent;"
+      },
+      {
+        "file": "app/lib/features/agent/providers/agent_profiles.dart",
+        "line": 15,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' as rust_types;"
+      },
+      {
+        "file": "app/lib/features/agent/providers/provider_accounts.dart",
+        "line": 12,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' as rust_types;"
+      },
+      {
+        "file": "app/lib/features/chats/data/threads_repository.dart",
+        "line": 10,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' show ThreadView;"
+      },
+      {
+        "file": "app/lib/features/chats/providers/chat_session.dart",
+        "line": 14,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' show OutgoingContent;"
+      },
+      {
+        "file": "app/lib/features/chats/providers/messages.dart",
+        "line": 9,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ThreadKind;"
+      },
+      {
+        "file": "app/lib/features/contacts/providers/contacts.dart",
+        "line": 13,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ProfileKind, Relation;"
+      },
+      {
+        "file": "app/lib/features/contacts/providers/contacts.dart",
+        "line": 14,
+        "statement": "import 'package:kim/ffi/client/api/types.dart'"
+      },
+      {
+        "file": "app/lib/features/session/kim_session.dart",
+        "line": 10,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ThreadKind;"
+      },
+      {
+        "file": "app/lib/features/session/kim_session.dart",
+        "line": 11,
+        "statement": "import 'package:kim/ffi/client/api/types.dart'"
+      },
+      {
+        "file": "app/lib/features/session/link.dart",
+        "line": 14,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' hide ThreadKind;"
+      },
+      {
+        "file": "app/lib/features/session/link.dart",
+        "line": 15,
+        "statement": "import 'package:kim/ffi/client/api/types.dart'"
+      },
+      {
+        "file": "app/lib/features/session/presence.dart",
+        "line": 5,
+        "statement": "import 'package:kim/ffi/client/api/types.dart';"
+      },
+      {
+        "file": "app/lib/features/settings/dev_panel.dart",
+        "line": 16,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' as rust_types;"
+      },
+      {
+        "file": "app/lib/features/settings/dev_panel_state.dart",
+        "line": 5,
+        "statement": "import 'package:kim/ffi/client/api/types.dart';"
+      },
+      {
+        "file": "app/lib/main.dart",
+        "line": 19,
+        "statement": "import 'package:kim/ffi/agent/api/catalog.dart' as agent_catalog;"
+      },
+      {
+        "file": "app/lib/models/thread.dart",
+        "line": 3,
+        "statement": "import 'package:kim/ffi/client/api/types.dart' show ThreadPreview;"
+      }
+    ],
+    "boundary_note": "bridge is not a blanket violation or exemption: adapters may import generated code; contracts/ports must be evaluated separately"
+  },
+  "server_boundary_findings": {
+    "bot": {
+      "current_shared_trait": "services/chat/src/users.rs::UserDirectory",
+      "chat_writer_calls": [
+        "services/chat/src/bot.rs:74 create_bot",
+        "services/chat/src/bot.rs:133 delete_bot"
+      ],
+      "royal_writer_calls": [
+        "services/royal/src/bot.rs:57 create_bot",
+        "services/royal/src/bot.rs:85 delete_bot"
+      ],
+      "http_private_placeholder": "services/chat/src/royal.rs:1100 count_bots is royal-only",
+      "existing_quota_checks": [
+        "Memory create_bot calls count_bots and checks BOT_MAX_PER_OWNER",
+        "Postgres create_bot queries owner count in its transaction"
+      ],
+      "planned_owner": "Royal private BotService/BotStore owns identity and quota; Chat BotDeletionCoordinator owns workflow and purges the actual selected MessageStore",
+      "planned_local_behavior": "No local bot identity writer; Royal endpoint required. Direct PG messages are purged by Chat PgPool, process-local Memory by the same Chat store instance; HTTP messages use a scope-checked Royal purge endpoint.",
+      "delete_evidence": {
+        "chat_steps": [
+          "services/chat/src/bot.rs:119 live lookup gates retry",
+          "services/chat/src/bot.rs:133 identity delete",
+          "services/chat/src/bot.rs:135 MessageStore purge"
+        ],
+        "royal_steps": [
+          "services/royal/src/bot.rs:84 identity delete",
+          "services/royal/src/bot.rs:88 st.store purge",
+          "services/royal/src/bot.rs:99 separate purge_dm endpoint"
+        ],
+        "http_message_store_purge": "services/chat/src/royal.rs:680 calls /api/v1/message/purge-dm",
+        "current_absent_identity": [
+          "Memory users.rs:739 returns NotFound",
+          "PG users.rs:1299 returns NotFound"
+        ],
+        "current_generic_cleanup_failure_mapping": "Royal backend -> HTTP500 -> user_err Backend -> Chat SystemException(99); direct Chat store_status Backend -> SystemException(99)",
+        "planned_retry": "Royal deletion receipt records original owner and actual cleanup scope atomically with identity deletion; retry resumes purge without live lookup; complete only after purge succeeds",
+        "planned_scope": "Persisted PG dataset identity / Memory instance identity / scope-checked HTTP target; never inferred from URL equality",
+        "planned_failure": "purge Backend/timeout/HTTP5xx or uncertain complete returns SystemException(99), keeps PendingCleanup; not Success and not an early identity NotFound",
+        "planned_schema_change": "additive migrations for deletion receipts and StoreScope metadata in R05c1; no historical migration rewrite",
+        "not_implemented": true
+      }
+    },
+    "schema": {
+      "current_embedded_migrations": [
+        "services/chat/src/store/postgres.rs:69"
+      ],
+      "query_macro_scan_scope": "services/chat/src/**/*.rs and services/royal/src/**/*.rs",
+      "query_macro_count": 0,
+      "query_api_observed": [
+        "sqlx::query",
+        "sqlx::query_as",
+        "sqlx::query_scalar"
+      ],
+      "planned_schema_consumer_allowlist": [
+        "tools/kim-server-migrate"
+      ],
+      "planned_online_schema_dependencies": "forbidden on normal/build/dev reachable graphs",
+      "auth_sql_identifiers": [
+        "password_hash",
+        "token_epoch",
+        "device_credentials"
+      ],
+      "planned_auth_sql_owners": [
+        "kim-server-schema historical DDL",
+        "services/royal private authentication adapters DML"
+      ],
+      "current_violations_to_remove": [
+        "Chat PG connect_pool embeds full migrations",
+        "Chat users.rs mixes public profile and authentication SQL"
+      ],
+      "note": "SQL ownership checks are distinct from database privileges and from query! compile-time validation"
+    }
+  }
+}

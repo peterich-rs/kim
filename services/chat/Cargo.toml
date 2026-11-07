@@ -43,7 +43,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 prometheus.workspace = true
-gateway = { path = "../gateway" }
+kim-gateway-runtime.workspace = true
 royal = { path = "../royal" }
 kim-router = { workspace = true, features = ["test-util"] }
 kim-ws.workspace = true

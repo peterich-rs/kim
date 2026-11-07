@@ -11,6 +11,7 @@ members = [
     "crates/kim-router",
     "crates/kim-session",
     "crates/kim-metrics",
+    "crates/kim-gateway-runtime",
     "crates/kim-client",
     "crates/kim-sdk",
     "crates/kim-agent-host",
@@ -80,6 +81,7 @@ clap = { version = "4", features = ["derive"] }
 humantime = "2"
 prometheus = { version = "0.14", default-features = false }
 kim-metrics = { path = "crates/kim-metrics" }
+kim-gateway-runtime = { path = "crates/kim-gateway-runtime" }
 kim-client = { path = "crates/kim-client" }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 hmac = "0.12"

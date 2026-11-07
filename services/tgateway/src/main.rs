@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use gateway::{load_config, run_gateway};
+use kim_gateway_runtime::{load_config, run_gateway};
 use kim_tcp::{SocketOpts, TcpServer};
 use serde::Deserialize;
 

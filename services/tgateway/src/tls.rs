@@ -203,7 +203,7 @@ mod tests {
         let deploy = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy");
         for name in ["tgateway.toml", "tgateway-tls-off.toml"] {
             let path = deploy.join(name);
-            gateway::load_config(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+            kim_gateway_runtime::load_config(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
             let extra: Extra = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             assert_eq!(extra.max_connections, Some(10000), "{name}");
             if name.contains("tls-off") {

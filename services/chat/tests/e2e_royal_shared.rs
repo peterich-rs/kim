@@ -10,10 +10,10 @@ use bytes::Bytes;
 use chat::idgen::SequenceIdGen;
 use chat::royal::http_backends;
 use chat::ChatHandler;
-use gateway::{GatewayHandler, KickHook};
 use harness::*;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::Server;
+use kim_gateway_runtime::{GatewayHandler, KickHook};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{GroupCreateReq, GroupCreateResp, GroupDetail, Status};
 use kim_protocol::{marshal, read, LogicPkt, Packet, CMD_GROUP_CREATE, CMD_GROUP_DETAIL};
@@ -99,7 +99,7 @@ async fn spawn_chat_gw(
         gw_id,
         kim_protocol::DEMO_DEFAULT_SECRET,
     ));
-    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
+    gw_h.set_revoke(Arc::new(kim_gateway_runtime::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());

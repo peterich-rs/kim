@@ -904,8 +904,8 @@ impl StateListener for GatewayHandler {
     }
 }
 
-/// Closes the channel after a Kickout Push is written. Attach the WsServer
-/// after two-phase assembly (`set_*` then `Arc::new`).
+/// Closes the channel after a Kickout Push is written. Attach the frontend
+/// `Server` after two-phase assembly (`set_*` then `Arc::new`).
 pub struct KickHook {
     server: OnceLock<Arc<dyn Server + Send + Sync>>,
 }

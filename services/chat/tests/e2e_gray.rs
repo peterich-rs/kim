@@ -8,10 +8,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use chat::store::MessageStore;
 use chat::ChatHandler;
-use gateway::{GatewayHandler, KickHook, Route, RouteFile, RouteSelector, ZoneFile};
 use harness::*;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, MessageListener, OpCode, Server};
+use kim_gateway_runtime::{GatewayHandler, KickHook, Route, RouteFile, RouteSelector, ZoneFile};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, MessageReq, Session, Status};
 use kim_protocol::{
@@ -161,7 +161,7 @@ async fn spawn_gray(whitelist: HashMap<String, String>, with_gray_chat: bool) ->
         after_downlink: vec![hook.clone()],
     });
     let gw_h = Arc::new(GatewayHandler::new(gw.clone(), "wg-1", DEMO_DEFAULT_SECRET));
-    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
+    gw_h.set_revoke(Arc::new(kim_gateway_runtime::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());

@@ -1,0 +1,101 @@
+{
+  "npm_workspace": {
+    "node": "v26.8.1",
+    "npm": "11.19.0",
+    "network": "offline; empty temporary cache per experiment",
+    "results": [
+      {
+        "spec": "0.1.0",
+        "exit_code": 0,
+        "symlink": true,
+        "symlink_target": "../../packages/sdk",
+        "errors": []
+      },
+      {
+        "spec": "workspace:*",
+        "exit_code": 1,
+        "symlink": false,
+        "symlink_target": null,
+        "errors": [
+          "npm error code EUNSUPPORTEDPROTOCOL",
+          "npm error Unsupported URL Type \"workspace:\": workspace:*"
+        ]
+      },
+      {
+        "spec": "workspace:^",
+        "exit_code": 1,
+        "symlink": false,
+        "symlink_target": null,
+        "errors": [
+          "npm error code EUNSUPPORTEDPROTOCOL",
+          "npm error Unsupported URL Type \"workspace:\": workspace:^"
+        ]
+      }
+    ],
+    "command": [
+      "npm",
+      "install",
+      "--offline",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--cache",
+      "<empty temporary cache>"
+    ],
+    "fixture": {
+      "root_workspaces": [
+        "packages/sdk",
+        "apps/web"
+      ],
+      "sdk": {
+        "name": "@kim/workspace-proof-sdk",
+        "version": "0.1.0",
+        "private": true
+      },
+      "consumer_dependency": "@kim/workspace-proof-sdk; one spec per result",
+      "verification": "node_modules/@kim/workspace-proof-sdk is a symlink to packages/sdk"
+    }
+  },
+  "cargo_manifest_only": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "scope": "synthetic offline workspace; not proof for real Codex manifests or Docker",
+    "results": [
+      {
+        "vendor_manifest": "auto-discovered lib target without lib source",
+        "exit_code": 101,
+        "output": "error: failed to get `proof-engine` as a dependency of package `proof-host v0.1.0 (<temporary-root>/host)`\n\nCaused by:\n  failed to load source for dependency `proof-engine`\n\nCaused by:\n  unable to update <temporary-root>/vendor/engine\n\nCaused by:\n  failed to parse manifest at `<temporary-root>/vendor/engine/Cargo.toml`\n\nCaused by:\n  no targets specified in the manifest\n  either src/lib.rs, src/main.rs, a [lib] section, or [[bin]] section must be present"
+      },
+      {
+        "vendor_manifest": "explicit lib target without lib source",
+        "exit_code": 0,
+        "output": "Locking 1 package to latest compatible version\n    Checking proof-server v0.1.0 (<temporary-root>/server)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s"
+      }
+    ],
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "proof-server",
+      "--offline"
+    ],
+    "fixture": {
+      "workspace_members": [
+        "server",
+        "host"
+      ],
+      "workspace_resolver": "2",
+      "workspace_exclude": [
+        "vendor/engine"
+      ],
+      "host_optional_path_dependency": "proof-engine = { path = \"../vendor/engine\", optional = true }",
+      "server_dependencies": [],
+      "vendor_base_manifest": "[package]\nname=\"proof-engine\"\nversion=\"0.1.0\"\nedition=\"2021\"\n",
+      "explicit_target_addition": "[lib]\npath=\"src/lib.rs\"\n",
+      "vendor_files": "Cargo.toml only; src/lib.rs does not exist"
+    }
+  },
+  "sources": {
+    "npm_workspaces": "https://docs.npmjs.com/cli/v11/using-npm/workspaces/",
+    "cargo_resolver": "https://doc.rust-lang.org/cargo/reference/resolver.html"
+  }
+}

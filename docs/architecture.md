@@ -88,6 +88,7 @@ im/
   crates/kim-router        指令 Router
   crates/kim-session       会话（Memory / 可选 Redis）
   crates/kim-metrics       Prometheus registry（仅进程，不进通信层）
+  crates/kim-gateway-runtime  网关 handler / revoke / run；WS 只在 gateway 进程，TCP/TLS 只在 tgateway
   services/                gateway / tgateway / chat / royal / router
   examples/                pkt-client / kim-client-demo / kimbench
   sdk/web                  TypeScript Web SDK

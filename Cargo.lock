@@ -1678,10 +1678,10 @@ dependencies = [
  "axum",
  "bytes",
  "dashmap 6.2.1",
- "gateway",
  "http-body-util",
  "kim-container",
  "kim-core",
+ "kim-gateway-runtime",
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
@@ -5155,22 +5155,9 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "bytes",
- "crc32fast",
- "kim-container",
- "kim-core",
- "kim-metrics",
- "kim-naming",
- "kim-protocol",
- "kim-session",
+ "kim-gateway-runtime",
  "kim-ws",
- "prost 0.13.5",
- "redis",
- "reqwest 0.12.28",
- "serde",
  "tokio",
- "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
 ]
@@ -7490,6 +7477,29 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "kim-gateway-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "crc32fast",
+ "kim-container",
+ "kim-core",
+ "kim-metrics",
+ "kim-naming",
+ "kim-protocol",
+ "kim-session",
+ "prost 0.13.5",
+ "redis",
+ "reqwest 0.12.28",
+ "serde",
+ "tokio",
+ "toml 0.8.23",
  "tracing",
 ]
 
@@ -12266,8 +12276,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
- "gateway",
  "kim-core",
+ "kim-gateway-runtime",
  "kim-tcp",
  "rustls",
  "rustls-pemfile",
