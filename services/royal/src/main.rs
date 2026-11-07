@@ -113,6 +113,21 @@ fn jwt_secret(cfg: &str) -> String {
     })
 }
 
+async fn open_accounts(url: &str) -> anyhow::Result<Arc<dyn royal::AccountAuthStore>> {
+    #[cfg(feature = "postgres")]
+    {
+        let store = royal::PostgresAccountAuth::connect(url)
+            .await
+            .map_err(|err| anyhow::anyhow!(err))?;
+        Ok(Arc::new(store))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = url;
+        anyhow::bail!("rebuild royal with --features postgres")
+    }
+}
+
 async fn open_devices(url: &str) -> anyhow::Result<Arc<dyn DeviceDirectory>> {
     #[cfg(feature = "postgres")]
     {
@@ -279,6 +294,7 @@ async fn main() -> anyhow::Result<()> {
             jwt,
             revoke,
         )
+        .with_accounts(open_accounts(&db).await?)
         .with_pending_receipt(pending_receipt)
         .with_agent_specs(
             chat::open_agent_spec_store(Some(&db))

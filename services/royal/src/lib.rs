@@ -1,5 +1,6 @@
 //! In-process Royal: protobuf HTTP over axum. Chat talks to this via `Http*` adapters.
 
+mod account;
 mod agent_spec;
 mod auth;
 mod bot;
@@ -42,6 +43,9 @@ use kim_protocol::{
 };
 use prost::Message;
 
+pub use account::{AccountAuthStore, MemoryAccountAuth};
+#[cfg(feature = "postgres")]
+pub use account::PostgresAccountAuth;
 #[cfg(feature = "postgres")]
 pub use device::PostgresDeviceDirectory;
 #[cfg(feature = "redis")]
@@ -71,6 +75,7 @@ pub struct RoyalState {
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
     pub(crate) users: Arc<dyn UserDirectory>,
+    pub(crate) accounts: Arc<dyn AccountAuthStore>,
     pub(crate) social: Arc<dyn SocialDirectory>,
     pub(crate) jwt: JwtConfig,
     pub(crate) revoke: Arc<dyn TokenRevocation>,
@@ -114,10 +119,12 @@ impl RoyalState {
                 .with_social(social.clone())
                 .with_idgen(idgen.clone()),
         );
+        let accounts = Arc::new(MemoryAccountAuth::new(users.clone()));
         Self {
             store,
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
             users,
+            accounts,
             social,
             jwt,
             revoke: Arc::new(MemoryRevocation::new()),
@@ -189,6 +196,7 @@ impl RoyalState {
             store,
             groups,
             users,
+            accounts: Arc::new(MemoryAccountAuth::new(Arc::new(MemoryUserDirectory::new()))),
             social,
             jwt,
             revoke,
@@ -207,6 +215,11 @@ impl RoyalState {
     }
 
     #[must_use]
+    pub fn with_accounts(mut self, accounts: Arc<dyn AccountAuthStore>) -> Self {
+        self.accounts = accounts;
+        self
+    }
+
     pub fn with_agent_specs(mut self, store: Arc<dyn AgentSpecStore>) -> Self {
         self.agent_specs = store;
         self
@@ -1462,7 +1475,7 @@ mod tests {
             ttl_secs: 60,
         };
         let state = RoyalState::memory_with_jwt(Arc::new(SequenceIdGen::default()), jwt);
-        let users = state.users.clone();
+        let accounts = state.accounts.clone();
         let revoke = state.revoke.clone();
         tokio::spawn(async move {
             let _ = serve(listener, state).await;
@@ -1487,7 +1500,7 @@ mod tests {
         let resp =
             kim_protocol::pkt::AuthResp::decode(created.bytes().await.unwrap().as_ref()).unwrap();
         assert_eq!(revoke.get_epoch("alice").await.unwrap(), 0);
-        users.bump_token_epoch("kim", "alice").await.unwrap();
+        accounts.bump_token_epoch("kim", "alice").await.unwrap();
         assert_eq!(revoke.get_epoch("alice").await.unwrap(), 0);
 
         let epoch_resp = signed_post(

@@ -401,14 +401,6 @@ impl UserDirectory for CachedUserDirectory {
         self.evict(app, account);
         Ok(())
     }
-    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
-        self.inner.create(app, account, password_hash).await?;
-        self.evict(app, account);
-        Ok(())
-    }
-    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
-        self.inner.password_hash(app, account).await
-    }
     async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
         Ok(self.cached_presence(app, account).await?.exists)
     }
@@ -439,31 +431,6 @@ impl UserDirectory for CachedUserDirectory {
     ) -> Result<Vec<UserProfile>, UserError> {
         self.inner.search(app, query, exclude, limit).await
     }
-    async fn set_password(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<(), UserError> {
-        self.inner.set_password(app, account, password_hash).await
-    }
-    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        self.inner.token_epoch(app, account).await
-    }
-    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        self.inner.bump_token_epoch(app, account).await
-    }
-    async fn set_password_and_bump_epoch(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<u32, UserError> {
-        self.inner
-            .set_password_and_bump_epoch(app, account, password_hash)
-            .await
-    }
-
     async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
         let record = self.inner.create_bot(app, req).await?;
         self.evict(app, &record.profile.account);
@@ -713,21 +680,6 @@ mod tests {
             async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
                 self.inner.upsert(app, account).await
             }
-            async fn create(
-                &self,
-                app: &str,
-                account: &str,
-                password_hash: &str,
-            ) -> Result<(), UserError> {
-                self.inner.create(app, account, password_hash).await
-            }
-            async fn password_hash(
-                &self,
-                app: &str,
-                account: &str,
-            ) -> Result<Option<String>, UserError> {
-                self.inner.password_hash(app, account).await
-            }
             async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
                 self.hits.fetch_add(1, Ordering::SeqCst);
                 self.inner.exists(app, account).await
@@ -762,30 +714,6 @@ mod tests {
                 limit: usize,
             ) -> Result<Vec<UserProfile>, UserError> {
                 self.inner.search(app, query, exclude, limit).await
-            }
-            async fn set_password(
-                &self,
-                app: &str,
-                account: &str,
-                password_hash: &str,
-            ) -> Result<(), UserError> {
-                self.inner.set_password(app, account, password_hash).await
-            }
-            async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-                self.inner.token_epoch(app, account).await
-            }
-            async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-                self.inner.bump_token_epoch(app, account).await
-            }
-            async fn set_password_and_bump_epoch(
-                &self,
-                app: &str,
-                account: &str,
-                password_hash: &str,
-            ) -> Result<u32, UserError> {
-                self.inner
-                    .set_password_and_bump_epoch(app, account, password_hash)
-                    .await
             }
             async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
                 self.inner.create_bot(app, req).await

@@ -190,8 +190,6 @@ pub struct ProfilePatch {
 #[async_trait]
 pub trait UserDirectory: Send + Sync {
     async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError>;
-    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError>;
-    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError>;
     async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError>;
     async fn profile(&self, app: &str, account: &str) -> Result<Option<UserProfile>, UserError>;
     async fn update_profile(
@@ -209,20 +207,6 @@ pub trait UserDirectory: Send + Sync {
         exclude: &[String],
         limit: usize,
     ) -> Result<Vec<UserProfile>, UserError>;
-    async fn set_password(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<(), UserError>;
-    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError>;
-    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError>;
-    async fn set_password_and_bump_epoch(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<u32, UserError>;
     async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError>;
     async fn update_bot(
         &self,
@@ -387,16 +371,13 @@ pub fn validate_patch(patch: &ProfilePatch) -> Result<ProfilePatch, UserError> {
     })
 }
 
-#[async_trait]
-impl UserDirectory for MemoryUserDirectory {
-    async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
-        self.write()
-            .entry((app.to_string(), account.to_string()))
-            .or_insert_with(|| human_record(account, None));
-        Ok(())
-    }
-
-    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
+impl MemoryUserDirectory {
+    pub async fn create(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<(), UserError> {
         let mut inner = self.write();
         let key = (app.to_string(), account.to_string());
         if inner.contains_key(&key) {
@@ -406,11 +387,67 @@ impl UserDirectory for MemoryUserDirectory {
         Ok(())
     }
 
-    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
+    pub async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
         Ok(self
             .read()
             .get(&(app.to_string(), account.to_string()))
             .and_then(|r| r.password_hash.clone()))
+    }
+
+    pub async fn set_password(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<(), UserError> {
+        let mut inner = self.write();
+        let rec = inner
+            .get_mut(&(app.to_string(), account.to_string()))
+            .ok_or(UserError::NotFound)?;
+        rec.password_hash = Some(password_hash.to_string());
+        Ok(())
+    }
+
+    pub async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        Ok(self
+            .read()
+            .get(&(app.to_string(), account.to_string()))
+            .map(|r| r.token_epoch)
+            .unwrap_or(0))
+    }
+
+    pub async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
+        let mut inner = self.write();
+        let rec = inner
+            .get_mut(&(app.to_string(), account.to_string()))
+            .ok_or(UserError::NotFound)?;
+        rec.token_epoch = rec.token_epoch.saturating_add(1);
+        Ok(rec.token_epoch)
+    }
+
+    pub async fn set_password_and_bump_epoch(
+        &self,
+        app: &str,
+        account: &str,
+        password_hash: &str,
+    ) -> Result<u32, UserError> {
+        let mut inner = self.write();
+        let rec = inner
+            .get_mut(&(app.to_string(), account.to_string()))
+            .ok_or(UserError::NotFound)?;
+        rec.password_hash = Some(password_hash.to_string());
+        rec.token_epoch = rec.token_epoch.saturating_add(1);
+        Ok(rec.token_epoch)
+    }
+}
+
+#[async_trait]
+impl UserDirectory for MemoryUserDirectory {
+    async fn upsert(&self, app: &str, account: &str) -> Result<(), UserError> {
+        self.write()
+            .entry((app.to_string(), account.to_string()))
+            .or_insert_with(|| human_record(account, None));
+        Ok(())
     }
 
     async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
@@ -497,52 +534,6 @@ impl UserDirectory for MemoryUserDirectory {
         }
         out.sort_by(|a, b| a.account.cmp(&b.account));
         Ok(out)
-    }
-
-    async fn set_password(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<(), UserError> {
-        let mut inner = self.write();
-        let rec = inner
-            .get_mut(&(app.to_string(), account.to_string()))
-            .ok_or(UserError::NotFound)?;
-        rec.password_hash = Some(password_hash.to_string());
-        Ok(())
-    }
-
-    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        Ok(self
-            .read()
-            .get(&(app.to_string(), account.to_string()))
-            .map(|r| r.token_epoch)
-            .unwrap_or(0))
-    }
-
-    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        let mut inner = self.write();
-        let rec = inner
-            .get_mut(&(app.to_string(), account.to_string()))
-            .ok_or(UserError::NotFound)?;
-        rec.token_epoch = rec.token_epoch.saturating_add(1);
-        Ok(rec.token_epoch)
-    }
-
-    async fn set_password_and_bump_epoch(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<u32, UserError> {
-        let mut inner = self.write();
-        let rec = inner
-            .get_mut(&(app.to_string(), account.to_string()))
-            .ok_or(UserError::NotFound)?;
-        rec.password_hash = Some(password_hash.to_string());
-        rec.token_epoch = rec.token_epoch.saturating_add(1);
-        Ok(rec.token_epoch)
     }
 
     async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
@@ -893,35 +884,6 @@ impl UserDirectory for PostgresUserDirectory {
         Ok(())
     }
 
-    async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
-        let res = sqlx::query(
-            "INSERT INTO users (app, account, password_hash, nickname)
-             VALUES ($1, $2, $3, $2)
-             ON CONFLICT (app, account) DO NOTHING",
-        )
-        .bind(app)
-        .bind(account)
-        .bind(password_hash)
-        .execute(&self.pool)
-        .await
-        .map_err(pg_err)?;
-        if res.rows_affected() == 0 {
-            return Err(UserError::Conflict);
-        }
-        Ok(())
-    }
-
-    async fn password_hash(&self, app: &str, account: &str) -> Result<Option<String>, UserError> {
-        let row: Option<Option<String>> =
-            sqlx::query_scalar("SELECT password_hash FROM users WHERE app = $1 AND account = $2")
-                .bind(app)
-                .bind(account)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(pg_err)?;
-        Ok(row.flatten())
-    }
-
     async fn exists(&self, app: &str, account: &str) -> Result<bool, UserError> {
         let found: Option<(i32,)> =
             sqlx::query_as("SELECT 1 FROM users WHERE app = $1 AND account = $2")
@@ -1037,73 +999,6 @@ impl UserDirectory for PostgresUserDirectory {
                 row_profile(account, nickname, avatar, bio, kind)
             })
             .collect())
-    }
-
-    async fn set_password(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<(), UserError> {
-        let res =
-            sqlx::query("UPDATE users SET password_hash = $3 WHERE app = $1 AND account = $2")
-                .bind(app)
-                .bind(account)
-                .bind(password_hash)
-                .execute(&self.pool)
-                .await
-                .map_err(pg_err)?;
-        if res.rows_affected() == 0 {
-            return Err(UserError::NotFound);
-        }
-        Ok(())
-    }
-
-    async fn token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        let row: Option<i32> =
-            sqlx::query_scalar("SELECT token_epoch FROM users WHERE app = $1 AND account = $2")
-                .bind(app)
-                .bind(account)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(pg_err)?;
-        Ok(row.and_then(|n| u32::try_from(n).ok()).unwrap_or(0))
-    }
-
-    async fn bump_token_epoch(&self, app: &str, account: &str) -> Result<u32, UserError> {
-        let row: Option<i32> = sqlx::query_scalar(
-            "UPDATE users SET token_epoch = token_epoch + 1
-             WHERE app = $1 AND account = $2
-             RETURNING token_epoch",
-        )
-        .bind(app)
-        .bind(account)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(pg_err)?;
-        let n = row.ok_or(UserError::NotFound)?;
-        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
-    }
-
-    async fn set_password_and_bump_epoch(
-        &self,
-        app: &str,
-        account: &str,
-        password_hash: &str,
-    ) -> Result<u32, UserError> {
-        let row: Option<i32> = sqlx::query_scalar(
-            "UPDATE users SET password_hash = $3, token_epoch = token_epoch + 1
-             WHERE app = $1 AND account = $2
-             RETURNING token_epoch",
-        )
-        .bind(app)
-        .bind(account)
-        .bind(password_hash)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(pg_err)?;
-        let n = row.ok_or(UserError::NotFound)?;
-        u32::try_from(n).map_err(|e| UserError::Backend(e.to_string()))
     }
 
     async fn create_bot(&self, app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {

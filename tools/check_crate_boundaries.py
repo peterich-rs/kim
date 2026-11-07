@@ -120,6 +120,21 @@ def main() -> int:
                 f"exception {src} -> {dst} is stale ({reason}); delete it"
             )
 
+    auth_sql = ("password_hash", "token_epoch", "device_credentials")
+    chat_root = ROOT / "services" / "chat"
+    for path in chat_root.rglob("*.rs"):
+        text = path.read_text(errors="replace")
+        # Public IM adapters must not compile auth DML/DDL. Protocol field names in
+        # comments are ignored by requiring a SQL keyword on the same line.
+        for lineno, line in enumerate(text.splitlines(), 1):
+            lower = line.lower()
+            if not any(token in lower for token in auth_sql):
+                continue
+            if '"' not in line and "'" not in line:
+                continue
+            if any(word in lower for word in ("select ", "insert ", "update ", "delete ", "returning ")):
+                failures.append(f"{path.relative_to(ROOT)}:{lineno} compiles auth SQL")
+
     if failures:
         print("crate boundary check failed:", file=sys.stderr)
         for item in failures:

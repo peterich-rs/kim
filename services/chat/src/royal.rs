@@ -868,19 +868,6 @@ impl UserDirectory for HttpUserDirectory {
             .map_err(user_err)
     }
 
-    async fn create(
-        &self,
-        _app: &str,
-        _account: &str,
-        _password_hash: &str,
-    ) -> Result<(), UserError> {
-        Err(UserError::Backend("create is royal-only".into()))
-    }
-
-    async fn password_hash(&self, _app: &str, _account: &str) -> Result<Option<String>, UserError> {
-        Err(UserError::Backend("password_hash is royal-only".into()))
-    }
-
     async fn exists(&self, _app: &str, account: &str) -> Result<bool, UserError> {
         let body = AccountQuery {
             account: account.to_string(),
@@ -965,34 +952,6 @@ impl UserDirectory for HttpUserDirectory {
             .await
             .map_err(user_err)?;
         Ok(resp.users.into_iter().map(from_pb_profile).collect())
-    }
-
-    async fn set_password(
-        &self,
-        _app: &str,
-        _account: &str,
-        _password_hash: &str,
-    ) -> Result<(), UserError> {
-        Err(UserError::Backend("set_password is royal-only".into()))
-    }
-
-    async fn token_epoch(&self, _app: &str, _account: &str) -> Result<u32, UserError> {
-        Err(UserError::Backend("token_epoch is royal-only".into()))
-    }
-
-    async fn bump_token_epoch(&self, _app: &str, _account: &str) -> Result<u32, UserError> {
-        Err(UserError::Backend("bump_token_epoch is royal-only".into()))
-    }
-
-    async fn set_password_and_bump_epoch(
-        &self,
-        _app: &str,
-        _account: &str,
-        _password_hash: &str,
-    ) -> Result<u32, UserError> {
-        Err(UserError::Backend(
-            "set_password_and_bump_epoch is royal-only".into(),
-        ))
     }
 
     async fn create_bot(&self, _app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
