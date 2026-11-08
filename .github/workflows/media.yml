@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "sdk/media/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
       - ".github/workflows/media.yml"
   workflow_dispatch:
 
@@ -19,6 +22,7 @@ jobs:
   deploy:
     name: Wrangler deploy kim-media
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,7 +32,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: sdk/media/package-lock.json
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
 
       - name: Test and deploy
         working-directory: sdk/media
@@ -40,6 +49,5 @@ jobs:
             echo "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set" >&2
             exit 1
           fi
-          npm ci
           npm test
           npx wrangler deploy

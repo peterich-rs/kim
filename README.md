@@ -150,7 +150,7 @@ cargo build --manifest-path /tmp/kim-server-build/Cargo.toml --locked --all-feat
 
 `tools/build/server.Cargo.lock` 是根锁文件的服务端快照，脚本会核对其中的版本、来源和 checksum 都来自根锁。服务端依赖变化后，用新目录运行 `prepare-server-context.py <新目录> --refresh-lock` 更新并审查该文件；缓存完整时可加 `--offline`。不要直接在生成目录中运行无约束的依赖升级。
 
-回归检查：`python3 tools/build/check-server-context.py --build`，它会验证完整解析图及实际编译产物都不包含桌面依赖。也可用 `--context <生成目录>` 检查已有构建上下文；检查同时核对 Dockerfile 与发布配方一致。独立的 Server isolation CI 不检出 Codex 子模块。
+回归检查：`python3 tools/build/check-server-context.py --build`，它会验证完整解析图及实际编译产物都不包含桌面依赖。也可用 `--context <生成目录>` 检查已有构建上下文；检查同时核对 Dockerfile 与发布配方一致。CI 按改动范围调用 Server isolation，不检出 Codex 子模块，并缓存隔离 workspace 的 `target`。
 
 镜像也使用上面生成的目录：`docker build -t kim:local /tmp/kim-server-build`。根 Dockerfile 是该上下文的构建配方，不能直接以仓库根目录为 context。Image 工作流先生成隔离目录，再执行 `--release --locked --all-features` 构建；PR 只构建和检查镜像，main/tag 才推送 GHCR。
 
@@ -158,10 +158,15 @@ cargo build --manifest-path /tmp/kim-server-build/Cargo.toml --locked --all-feat
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 env -u REDIS_URL cargo test --workspace
-cd sdk/web && npm ci && npm test
+npm ci
+npm test --workspace sdk/web
 ```
 
-push 和 pull request 会跑同一套检查（见 `.github/workflows/ci.yml`）。
+`main` push 和 pull request 按改动范围选择检查（见 `.github/workflows/ci.yml`）：服务端改动运行 Rust、隔离构建、PostgreSQL / Redis 和 Web 网关 E2E；共享协议还触发移动端；客户端 Rust / Codex 改动触发 Rust 和移动端；Web 应用、Media、Flutter 各自独立。纯文档改动只跑轻量仓库门禁。Web SDK 源码 / 测试改动额外运行网关 E2E，Web 应用改动会检查 SDK 和 SPA 的生产构建。Redis 会话真实服务回归通过专用 Redis service 显式运行原本被 `#[ignore]` 跳过的测试。
+
+`tools/ci/changes.py` 读取完整 Git diff，覆盖 PR merge-base、多提交 push、删除和重命名。未知路径或无法读取 diff 时运行全量检查；修改 CI 本身也运行全量。`workflow_dispatch` 可手动全量回归。移动端分析 / 插件测试与原生测试并行，Rust 格式检查只跑一次。统一的 `CI passed` 汇总失败和取消结果，可用于 required status check；未受影响的任务允许跳过。
+
+本地校验 CI：`python3 -m unittest discover -s tools/tests`、`python3 -m unittest discover -s deploy -p 'test_*.py'`、`actionlint -shellcheck= -pyflakes=`。CI 同时检查 crate / Flutter 边界、页面尺寸、npm workspace 链接和 Shell 语法；CI 路由有独立回归测试。
 
 ## 许可
 
