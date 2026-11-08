@@ -43,7 +43,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: crate boundaries
-        run: python3 tools/check_crate_boundaries.py
+        run: |
+          python3 -m unittest discover -s tools/tests -p test_crate_boundaries.py
+          python3 tools/check_crate_boundaries.py
 
       - name: npm workspace links
         run: python3 tools/check_npm_workspace.py
@@ -95,6 +97,8 @@ jobs:
       - name: chat postgres tests
         run: |
           cargo build -p kim-server-migrate
+          cargo run -p kim-server-migrate --quiet
+          cargo test -p royal --features postgres,redis --lib -- --test-threads=1
           cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
 
       - name: backfill and tuple diff (empty and after tests)

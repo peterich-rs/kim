@@ -1534,6 +1534,8 @@ dependencies = [
  "kim-server-data",
  "prost",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -1562,6 +1564,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2389,12 +2392,12 @@ dependencies = [
  "async-trait",
  "axum",
  "bytes",
- "chat",
  "http-body-util",
  "kim-core",
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-royal-client",
  "kim-server-config",
  "kim-server-data",
  "kim-session",

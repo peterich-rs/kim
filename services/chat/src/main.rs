@@ -288,17 +288,37 @@ async fn main() -> anyhow::Result<()> {
     let node = resolve_snowflake_node(Some(cfg.this.snowflake_node))?;
     let idgen: Arc<dyn IdGenerator> = Arc::new(SnowflakeGen::try_new(node)?);
     let metrics = kim_metrics::KimMetrics::new(&service_id, &service_name).ok();
-    let (store, groups, users, social, agent_specs) = if let Some(royal) =
+    let bot_control_url = std::env::var("BOT_CONTROL_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty());
+    let (store, groups, users, social, agent_specs, bots) = if let Some(royal) =
         royal_url_from_env_or_cfg(&cfg.this.royal_url)
     {
         let observer = metrics
             .clone()
             .map(|m| Arc::new(MetricsRpcObserver(m)) as Arc<dyn RpcObserver>);
-        let pool = Arc::new(RoyalPool::with_observer(Some(&royal), &hmac, observer)?);
+        let pool = Arc::new(RoyalPool::with_observer(
+            Some(&royal),
+            &hmac,
+            observer.clone(),
+        )?);
         spawn_royal_refresh(pool.clone(), consul.as_ref().map(|_| naming.clone()));
         let (store, groups, users, social) = http_backends_with_pool(pool.clone())?;
+        let bot_pool = if let Some(url) = bot_control_url.as_deref() {
+            Arc::new(RoyalPool::with_observer(Some(url), &hmac, observer)?)
+        } else {
+            pool.clone()
+        };
+        let (users, social) = if bot_control_url.is_some() {
+            let (_, _, users, social) = http_backends_with_pool(bot_pool.clone())?;
+            (users, social)
+        } else {
+            (users, social)
+        };
+        let bots: Arc<dyn chat::bot_control::BotControl> =
+            Arc::new(kim_royal_client::HttpBotControl::from_pool(bot_pool));
         let agent_specs: Arc<dyn AgentSpecStore> = Arc::new(HttpAgentSpecStore::from_pool(pool));
-        (store, groups, users, social, agent_specs)
+        (store, groups, users, social, agent_specs, bots)
     } else {
         let store = open_message_store(
             database_url_from_env_or_cfg(&cfg.this.database_url).as_deref(),
@@ -323,7 +343,24 @@ async fn main() -> anyhow::Result<()> {
             open_agent_spec_store(database_url_from_env_or_cfg(&cfg.this.database_url).as_deref())
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
-        (store, groups, users, social, agent_specs)
+        let (bots, users, social): (Arc<dyn chat::bot_control::BotControl>, _, _) =
+            if let Some(url) = bot_control_url.as_deref() {
+                let pool = Arc::new(RoyalPool::new(Some(url), &hmac)?);
+                // Identity and friendship authority follows BotControl; messages stay on the actual local store.
+                let (_, _, users, social) = http_backends_with_pool(pool.clone())?;
+                (
+                    Arc::new(kim_royal_client::HttpBotControl::from_pool(pool)),
+                    users,
+                    social,
+                )
+            } else {
+                (
+                    Arc::new(chat::bot_control::UnavailableBotControl),
+                    users,
+                    social,
+                )
+            };
+        (store, groups, users, social, agent_specs, bots)
     };
     let users = CachedUserDirectory::wrap(users);
     let social = CachedSocial::wrap(social);
@@ -356,7 +393,7 @@ async fn main() -> anyhow::Result<()> {
         kim_server_data::store::pending_receipt_enabled(),
         interest,
         agent_specs,
-        Arc::new(chat::bot_control::UnavailableBotControl),
+        bots,
     ));
     if let Some(m) = metrics.clone() {
         handler.with_metrics(m);

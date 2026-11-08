@@ -41,6 +41,149 @@ fn status_of(frame: &kim_core::Frame) -> i32 {
     }
 }
 
+#[tokio::test]
+async fn bot_delete_over_chat_http_is_owner_checked_and_retryable() {
+    let stack = spawn_bot_stack().await;
+    let (alice, _) = login("alice", &ws_url(stack.gw_addr)).await;
+    let (bob, _) = login("bob", &ws_url(stack.gw_addr)).await;
+    let mut create = dest_pkt(CMD_BOT_CREATE, 1, "");
+    create.write_body(&BotCreateReq {
+        client_profile_id: "delete-test".into(),
+        nickname: "Delete test".into(),
+        ..Default::default()
+    });
+    alice.send(marshal(&Packet::Logic(create))).await.unwrap();
+    let response = wait_resp(&alice, CMD_BOT_CREATE).await;
+    assert_eq!(response.header.status, Status::Success as i32);
+    let record: BotCreateResp = response.read_body().unwrap();
+    let bot = record.profile.unwrap().account;
+    let delete = kim_protocol::CMD_BOT_DELETE;
+    bob.send(marshal(&Packet::Logic(dest_pkt(delete, 2, &bot))))
+        .await
+        .unwrap();
+    assert_eq!(
+        wait_resp(&bob, delete).await.header.status,
+        Status::NotBotOwner as i32
+    );
+    for seq in 3..5 {
+        alice
+            .send(marshal(&Packet::Logic(dest_pkt(delete, seq, &bot))))
+            .await
+            .unwrap();
+        assert_eq!(
+            wait_resp(&alice, delete).await.header.status,
+            Status::Success as i32
+        );
+    }
+    alice
+        .send(marshal(&Packet::Logic(talk_pkt(5, &bot, "after delete"))))
+        .await
+        .unwrap();
+    assert_eq!(
+        wait_resp(&alice, CMD_CHAT_USER_TALK).await.header.status,
+        Status::UserNotFound as i32
+    );
+}
+
+#[tokio::test]
+async fn standalone_chat_does_not_create_a_local_bot_writer() {
+    let stack = spawn_stack().await;
+    let (alice, _) = login("alice", &ws_url(stack.gw_addr)).await;
+    let mut create = dest_pkt(CMD_BOT_CREATE, 1, "");
+    create.write_body(&BotCreateReq {
+        client_profile_id: "unconfigured".into(),
+        nickname: "No Royal".into(),
+        ..Default::default()
+    });
+    alice.send(marshal(&Packet::Logic(create))).await.unwrap();
+    assert_eq!(
+        wait_resp(&alice, CMD_BOT_CREATE).await.header.status,
+        Status::ServiceUnavailable as i32
+    );
+}
+
+/// Explicit operations check. The caller owns cleanup of the uniquely named fixture account.
+#[tokio::test]
+async fn deployed_bot_lifecycle_canary() {
+    let Ok(url) = std::env::var("KIM_OPS_CANARY_WS") else {
+        return;
+    };
+    let account = std::env::var("KIM_OPS_CANARY_ACCOUNT").unwrap();
+    let profile = std::env::var("KIM_OPS_CANARY_PROFILE").unwrap();
+    assert!(account.starts_with("ops_bot_") && profile.starts_with("ops_bot_"));
+    let token = std::env::var("KIM_OPS_CANARY_TOKEN").unwrap();
+    let (mut client, _) = login_with_token(&account, &url, token).await;
+    let mut create = dest_pkt(CMD_BOT_CREATE, 1, "");
+    create.write_body(&BotCreateReq {
+        client_profile_id: profile,
+        nickname: "Operations canary".into(),
+        ..Default::default()
+    });
+    client.send(marshal(&Packet::Logic(create))).await.unwrap();
+    let response = wait_resp(&client, CMD_BOT_CREATE).await;
+    assert_eq!(response.header.status, Status::Success as i32);
+    let record: BotCreateResp = response.read_body().unwrap();
+    let bot = record.profile.unwrap().account;
+    // Machine-readable fixture identity, never a token or credential.
+    println!("OPS_BOT_CREATED {bot}");
+    let mut update = dest_pkt(CMD_BOT_UPDATE, 2, &bot);
+    update.write_body(&BotUpdateReq {
+        nickname: "Operations updated".into(),
+        model: "operations-check".into(),
+        ..Default::default()
+    });
+    client.send(marshal(&Packet::Logic(update))).await.unwrap();
+    assert_eq!(
+        wait_resp(&client, CMD_BOT_UPDATE).await.header.status,
+        Status::Success as i32
+    );
+    client
+        .send(marshal(&Packet::Logic(talk_pkt(
+            3,
+            &account,
+            "protected canary self-chat",
+        ))))
+        .await
+        .unwrap();
+    let protected = wait_resp(&client, CMD_CHAT_USER_TALK).await;
+    assert_eq!(protected.header.status, Status::Success as i32);
+    let protected: MessageResp = protected.read_body().unwrap();
+    client
+        .send(marshal(&Packet::Logic(talk_pkt(
+            4,
+            &bot,
+            "canary bot thread",
+        ))))
+        .await
+        .unwrap();
+    assert_eq!(
+        wait_resp(&client, CMD_CHAT_USER_TALK).await.header.status,
+        Status::Success as i32
+    );
+    for seq in 5..7 {
+        client
+            .send(marshal(&Packet::Logic(dest_pkt(
+                kim_protocol::CMD_BOT_DELETE,
+                seq,
+                &bot,
+            ))))
+            .await
+            .unwrap();
+        assert_eq!(
+            wait_resp(&client, kim_protocol::CMD_BOT_DELETE)
+                .await
+                .header
+                .status,
+            Status::Success as i32
+        );
+    }
+    client.close().await.unwrap();
+    println!(
+        "OPS_BOT_CANARY {}",
+        serde_json::json!({"account":account,"bot":bot,"protected_message_id":protected.message_id})
+    );
+}
+
 async fn read_logic(client: &kim_ws::WsClient) -> LogicPkt {
     match read(&timeout_read(client).await.payload).expect("decode") {
         Packet::Logic(p) => p,
@@ -68,7 +211,7 @@ async fn wait_push(client: &kim_ws::WsClient, command: &str) -> LogicPkt {
 
 #[tokio::test]
 async fn bot_create_talk_reply_and_gates() {
-    let stack = spawn_stack().await;
+    let stack = spawn_bot_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login_with_device("alice", &url, "web").await;
     let (alice2, _) = login_with_device("alice", &url, "web").await;
@@ -256,7 +399,7 @@ async fn bot_create_talk_reply_and_gates() {
 
 #[tokio::test]
 async fn bot_create_and_update_persist_owner_only_config() {
-    let stack = spawn_stack().await;
+    let stack = spawn_bot_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login("alice", &url).await;
     let (bob, _) = login("bob", &url).await;
@@ -328,7 +471,7 @@ async fn bot_create_and_update_persist_owner_only_config() {
 
 #[tokio::test]
 async fn bot_typing_owner_only_and_typer_is_bot() {
-    let stack = spawn_stack().await;
+    let stack = spawn_bot_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login_with_device("alice", &url, "web").await;
     let (alice_phone, _) = login_with_device("alice", &url, "phone").await;
@@ -397,7 +540,7 @@ async fn bot_typing_owner_only_and_typer_is_bot() {
 
 #[tokio::test]
 async fn owner_typing_to_bot_reaches_other_devices() {
-    let stack = spawn_stack().await;
+    let stack = spawn_bot_stack().await;
     let url = ws_url(stack.gw_addr);
     let (alice, _) = login_with_device("alice", &url, "web").await;
     let (alice_phone, _) = login_with_device("alice", &url, "phone").await;

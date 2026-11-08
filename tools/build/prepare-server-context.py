@@ -135,6 +135,9 @@ def main() -> int:
         stage.mkdir()
         (stage / "Cargo.toml").write_text(projected_manifest(root, members, inherited, seeds))
         shutil.copy2(ROOT / "rust-toolchain.toml", stage / "rust-toolchain.toml")
+        for name in ("clippy.toml", "rustfmt.toml", ".clippy.toml", ".rustfmt.toml"):
+            if (ROOT / name).is_file():
+                shutil.copy2(ROOT / name, stage / name)
         for member in members:
             shutil.copytree(ROOT / member, stage / member, ignore=shutil.ignore_patterns("target", ".git", ".DS_Store", "__pycache__"))
         for config in CONFIGS:

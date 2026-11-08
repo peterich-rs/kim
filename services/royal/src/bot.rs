@@ -14,6 +14,79 @@ use kim_server_data::users::{BotConfig, BotPatch, CreateBot, UserError};
 
 use crate::product::to_pb;
 use crate::{backend, decode, encode, insert_from_req, RoyalState};
+use axum::Json;
+use kim_server_data::bot_control::{
+    BotControlError, CompleteDelete, DeleteIdentity, DeletionLease,
+};
+use kim_server_data::store::StoreScope;
+
+fn control_http(err: BotControlError) -> (StatusCode, String) {
+    let status = match err {
+        BotControlError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+        BotControlError::NotFound => StatusCode::NOT_FOUND,
+        BotControlError::NotOwner => StatusCode::FORBIDDEN,
+        BotControlError::Invalid => StatusCode::BAD_REQUEST,
+        BotControlError::Backend(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, err.to_string())
+}
+
+fn check_app(st: &RoyalState, app: &str) -> Result<(), (StatusCode, String)> {
+    if app != st.app {
+        return Err((StatusCode::BAD_REQUEST, "app mismatch".into()));
+    }
+    Ok(())
+}
+
+pub async fn store_scope(
+    State(st): State<RoyalState>,
+) -> Result<Json<StoreScope>, (StatusCode, String)> {
+    st.store
+        .resolve_scope()
+        .await
+        .map(Json)
+        .map_err(|err| (StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+}
+
+pub async fn delete_identity(
+    State(st): State<RoyalState>,
+    Json(req): Json<DeleteIdentity>,
+) -> Result<Json<DeletionLease>, (StatusCode, String)> {
+    check_app(&st, &req.app)?;
+    st.bots
+        .delete_identity_or_resume(&st.app, &req.actor, &req.bot, &req.scope)
+        .await
+        .map(Json)
+        .map_err(control_http)
+}
+
+pub async fn complete_delete(
+    State(st): State<RoyalState>,
+    Json(req): Json<CompleteDelete>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    check_app(&st, &req.app)?;
+    st.bots
+        .complete_delete(&st.app, &req.deletion_id, &req.actor, &req.scope)
+        .await
+        .map_err(control_http)?;
+    Ok(Json(true))
+}
+
+pub async fn scoped_purge(
+    State(st): State<RoyalState>,
+    Json(req): Json<DeleteIdentity>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    check_app(&st, &req.app)?;
+    if req.actor.is_empty() || req.bot.is_empty() || req.actor == req.bot || !req.scope.is_scoped()
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid purge target".into()));
+    }
+    st.store
+        .purge_peer_dm_scoped(&req.scope, &st.app, &req.actor, &req.bot)
+        .await
+        .map_err(store_http)?;
+    Ok(Json(true))
+}
 
 fn to_pb_config(c: BotConfig) -> PbBotConfig {
     PbBotConfig {
@@ -53,7 +126,7 @@ pub async fn bot_create(
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InternalBotCreate>(&body)?;
     let record = st
-        .users
+        .bots
         .create_bot(
             &st.app,
             &CreateBot {
@@ -69,7 +142,7 @@ pub async fn bot_create(
             },
         )
         .await
-        .map_err(user_http)?;
+        .map_err(control_http)?;
     Ok(encode(&BotCreateResp {
         profile: Some(to_pb(record.profile)),
         config: Some(to_pb_config(record.config)),
@@ -81,14 +154,24 @@ pub async fn bot_delete(
     body: Bytes,
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<AccountPair>(&body)?;
-    st.users
-        .delete_bot(&st.app, &req.account, &req.peer)
-        .await
-        .map_err(user_http)?;
-    st.store
-        .purge_peer_dm(&st.app, &req.account, &req.peer)
-        .await
-        .map_err(store_http)?;
+    kim_server_data::bot_control::coordinate_delete(
+        st.bots.as_ref(),
+        st.store.as_ref(),
+        &st.app,
+        &req.account,
+        &req.peer,
+    )
+    .await
+    .map_err(|status| {
+        let http = match status {
+            kim_protocol::pkt::Status::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            kim_protocol::pkt::Status::UserNotFound => StatusCode::NOT_FOUND,
+            kim_protocol::pkt::Status::NotBotOwner => StatusCode::FORBIDDEN,
+            kim_protocol::pkt::Status::InvalidPacketBody => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (http, format!("bot delete: {}", status as i32))
+    })?;
     Ok(encode(&AccountExists {
         exists: true,
         kind: 0,
@@ -118,7 +201,7 @@ pub async fn bot_update(
 ) -> Result<Bytes, (StatusCode, String)> {
     let req = decode::<InternalBotUpdate>(&body)?;
     let record = st
-        .users
+        .bots
         .update_bot(
             &st.app,
             &req.owner,
@@ -134,7 +217,7 @@ pub async fn bot_update(
             },
         )
         .await
-        .map_err(user_http)?;
+        .map_err(control_http)?;
     Ok(encode(&BotCreateResp {
         profile: Some(to_pb(record.profile)),
         config: Some(to_pb_config(record.config)),

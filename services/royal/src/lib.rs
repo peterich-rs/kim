@@ -4,6 +4,7 @@ mod account;
 mod agent_spec;
 mod auth;
 mod bot;
+mod bot_identity;
 mod device;
 mod product;
 mod revoke;
@@ -19,6 +20,9 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
+pub use bot_identity::MemoryBotIdentity;
+#[cfg(feature = "postgres")]
+pub use bot_identity::PostgresBotIdentity;
 use http_body_util::BodyExt;
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
@@ -33,6 +37,7 @@ use kim_protocol::{
     hmac_headers_from, resolve_internal_hmac_secret, sign_internal_hmac, verify_internal_hmac,
 };
 use kim_server_data::agent_spec::{AgentSpecStore, MemoryAgentSpecStore};
+use kim_server_data::bot_control::{BotControl, UnavailableBotControl};
 use kim_server_data::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
 use kim_server_data::hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
 use kim_server_data::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
@@ -73,6 +78,7 @@ impl Default for JwtConfig {
 
 #[derive(Clone)]
 pub struct RoyalState {
+    bots: Arc<dyn BotControl>,
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,
     pub(crate) users: Arc<dyn UserDirectory>,
@@ -114,17 +120,19 @@ impl RoyalState {
         } else {
             Arc::new(MemoryMessageStore::new(idgen.clone()))
         };
-        let social: Arc<dyn SocialDirectory> = Arc::new(MemorySocialDirectory::new());
-        let users = Arc::new(
-            MemoryUserDirectory::new()
-                .with_social(social.clone())
-                .with_idgen(idgen.clone()),
-        );
+        let social = Arc::new(MemorySocialDirectory::new());
+        let users = Arc::new(MemoryUserDirectory::new());
         let accounts = Arc::new(MemoryAccountAuth::new(users.clone()));
+        let bots = Arc::new(MemoryBotIdentity::new(
+            users.clone(),
+            social.clone(),
+            idgen.clone(),
+        ));
         Self {
+            bots: bots.clone(),
             store,
             groups: Arc::new(MemoryGroupDirectory::new(idgen)),
-            users,
+            users: bots,
             accounts,
             social,
             jwt,
@@ -194,6 +202,7 @@ impl RoyalState {
         revoke: Arc<dyn TokenRevocation>,
     ) -> Self {
         Self {
+            bots: Arc::new(UnavailableBotControl),
             store,
             groups,
             users,
@@ -219,6 +228,19 @@ impl RoyalState {
     pub fn with_accounts(mut self, accounts: Arc<dyn AccountAuthStore>) -> Self {
         self.accounts = accounts;
         self
+    }
+
+    #[must_use]
+    pub fn with_bots(mut self, bots: Arc<dyn BotControl>) -> Self {
+        self.bots = bots;
+        self
+    }
+
+    pub fn bot_control(&self) -> Arc<dyn BotControl> {
+        self.bots.clone()
+    }
+    pub fn user_directory(&self) -> Arc<dyn UserDirectory> {
+        self.users.clone()
     }
 
     pub fn with_agent_specs(mut self, store: Arc<dyn AgentSpecStore>) -> Self {
@@ -312,6 +334,16 @@ pub fn router(state: RoyalState) -> Router {
         .route("/api/v1/inbox/states", post(product::inbox_states))
         .route("/api/v1/bot", post(bot::bot_create))
         .route("/api/v1/bot", delete(bot::bot_delete))
+        .route("/internal/v1/bot/store-scope", get(bot::store_scope))
+        .route(
+            "/internal/v1/bot/delete/identity",
+            post(bot::delete_identity),
+        )
+        .route(
+            "/internal/v1/bot/delete/complete",
+            post(bot::complete_delete),
+        )
+        .route("/internal/v1/bot/purge", post(bot::scoped_purge))
         .route("/api/v1/message/purge-dm", post(bot::purge_dm))
         .route("/api/v1/bot/update", post(bot::bot_update))
         .route("/api/v1/bot/config", post(bot::bot_config))
@@ -970,7 +1002,7 @@ mod tests {
         let base = format!("http://{addr}");
         tokio::time::sleep(Duration::from_millis(20)).await;
 
-        let (store, groups, _users, _social) = chat::http_backends(&base).unwrap();
+        let (store, groups, _users, _social) = kim_royal_client::http_backends(&base).unwrap();
         let gid = groups
             .create(
                 "kim",
@@ -1058,7 +1090,7 @@ mod tests {
         let base = format!("http://{addr}");
         tokio::time::sleep(Duration::from_millis(20)).await;
 
-        let (store, _, _, _) = chat::http_backends(&base).unwrap();
+        let (store, _, _, _) = kim_royal_client::http_backends(&base).unwrap();
         let first = store
             .insert_user(
                 "kim",
@@ -1116,7 +1148,7 @@ mod tests {
             .unwrap();
         assert!(health.status().is_success());
 
-        let (store, _, _, _) = chat::http_backends(&base).unwrap();
+        let (store, _, _, _) = kim_royal_client::http_backends(&base).unwrap();
         let first = store
             .insert_user(
                 "kim",
@@ -1753,7 +1785,7 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(20)).await;
         let (store, groups, _, _) =
-            chat::http_backends(&format!("http://{addr}")).expect("backends");
+            kim_royal_client::http_backends(&format!("http://{addr}")).expect("backends");
 
         let inserted = store
             .insert_user(
@@ -2017,7 +2049,7 @@ mod tests {
             let _ = serve(listener, state).await;
         });
         tokio::time::sleep(Duration::from_millis(20)).await;
-        let (store, _, _, _) = chat::http_backends(&format!("http://{addr}")).unwrap();
+        let (store, _, _, _) = kim_royal_client::http_backends(&format!("http://{addr}")).unwrap();
         let req = InsertMessage {
             sender: "alice".into(),
             dest: "bob".into(),
@@ -2054,9 +2086,12 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(20)).await;
         let secret = resolve_internal_hmac_secret("");
-        let (store, _, _, _) =
-            chat::http_backends_with_hmac_receipt(&format!("http://{addr}"), &secret, true)
-                .unwrap();
+        let (store, _, _, _) = kim_royal_client::http_backends_with_hmac_receipt(
+            &format!("http://{addr}"),
+            &secret,
+            true,
+        )
+        .unwrap();
         let err = store.ack("kim", "bob", "j1", &[11]).await.unwrap_err();
         match err {
             kim_server_data::store::StoreError::Http { status, msg } => {
@@ -2190,23 +2225,26 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(20)).await;
         let base = format!("http://{addr}");
-        let (store, _, users, _) = chat::http_backends(&base).unwrap();
+        let (store, _, users, _) = kim_royal_client::http_backends(&base).unwrap();
         users.upsert("kim", "alice").await.unwrap();
-        let bot = users
-            .create_bot(
-                "kim",
-                &kim_server_data::users::CreateBot {
-                    owner: "alice".into(),
-                    client_profile_id: "goose".into(),
-                    nickname: "助手".into(),
-                    avatar: String::new(),
-                    bio: String::new(),
-                    ..Default::default()
-                },
-            )
-            .await
-            .unwrap()
-            .profile;
+        let bot = kim_royal_client::HttpBotControl::from_pool(Arc::new(
+            kim_royal_client::RoyalPool::new(Some(&base), &resolve_internal_hmac_secret(""))
+                .unwrap(),
+        ))
+        .create_bot(
+            "kim",
+            &kim_server_data::users::CreateBot {
+                owner: "alice".into(),
+                client_profile_id: "goose".into(),
+                nickname: "助手".into(),
+                avatar: String::new(),
+                bio: String::new(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .profile;
         let user_msg = store
             .insert_user(
                 "kim",

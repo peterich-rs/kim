@@ -77,6 +77,38 @@ Consul HTTP catalog 是 `kim-naming` feature `consul`。`subscribe` 用 blocking
 
 ---
 
+## Bot 生命周期与删除恢复
+
+创建、配置写入、配额和身份删除由 Royal 的私有 `MemoryBotIdentity` / `PostgresBotIdentity` 持有。共享 `UserDirectory` 保留公开资料和 IM 查询，没有 create/update/delete/count bot 写口。普通 profile 更新不能修改 bot；`b_` 为新 bot 保留的账号前缀，普通注册和 upsert 不能重新创建已删除的 bot 账号。
+
+Chat 的 HTTP 消息模式复用 Royal pool 装配 `HttpBotControl`。消息直连 PG / Memory 时，可独立设置 `BOT_CONTROL_URL`，公开目录和社交关系跟随该身份权威，消息仍写原来的 store。缺少控制 endpoint 时，bot 写返回 `ServiceUnavailable(3)`，不回退本地 writer。
+
+```text
+Chat 删除协调器
+  │ ① 取得实际消息 store 的 scope
+  │ ▼ Royal：delete identity / resume（核对原 owner，事务内保存回执并删身份）
+  │ ② actual store：scoped purge（核对 scope，清理消息并阻止迟到写入）
+  │ ▼ Royal：complete（同一 actor、scope，回执标记 Done）
+  └─ 返回 Success；中间失败则保留 Pending，供同一 owner 重试
+```
+
+现有 `/api/v1/bot` 等接口继续使用 protobuf。新合同位于 `/internal/v1/bot/*`，使用 JSON，全部经过同一 HMAC / nonce middleware；版本不支持时返回不可用，不调用旧完整删除作为 fallback。
+
+| 方法 | 路径 | JSON 合同 |
+|---|---|---|
+| GET | `/internal/v1/bot/store-scope` | 返回 `{kind,id}`；PG 的 id 来自数据集元数据，Memory 是当前实例 UUID |
+| POST | `/internal/v1/bot/delete/identity` | `{app,actor,bot,scope:{kind,id}}` → `{deletion_id,original_owner,cleanup_scope,done}`；同一入口恢复 Pending / Done |
+| POST | `/internal/v1/bot/purge` | `{app,actor,bot,scope:{kind,id}}`；消息端核对实际 scope 后清理 |
+| POST | `/internal/v1/bot/delete/complete` | `{app,deletion_id,actor,scope:{kind,id}}`；只有实际清理成功后调用 |
+
+PG 在身份删除的同一事务写 `bot_deletion`，没有事务跨 HTTP 等待。`0018` 初始化 `message_store_identity`；独立可写的数据库克隆必须换 dataset id。HTTP 消息池逐实例检查 scope，拒绝将不同 Memory / PG 数据集混成一个池。Memory 身份与回执由同一私有状态持有，仅支持当前生命周期，换实例后不能继承旧 Done。
+
+PG scoped purge 在同一事务写 `message_thread_tombstone`，并与消息写入共用账号锁；Memory 使用同一状态锁。迟到的消息或回复不能重建已删除的 bot DM。普通 `/api/v1/message/purge-dm` 不写这个删除标记，清空普通会话后仍可继续发消息。
+
+每次恢复都核对 actor 与 original owner；scope 一经绑定不能更换。错误 owner 为 112，没有身份和回执为 108，不支持控制合同为 3；scope 错误、清理后端失败和完成确认失败为 99。清理阶段的 HTTP 400/403/404 保持 101/112/108。Done 重复请求返回 Success；Pending 和必要的 Done 授权记录不按消息 GC。
+
+兼容的 `DELETE /api/v1/bot` 内部也走协调器，清理 Royal 自己的消息 store；新 Chat 使用身份阶段加实际 store 的 scoped purge，避免重复完整删除。发布和验收顺序见 [deploy.md](deploy.md)。
+
 ## pkt-client
 
 | 变量 | 行为 |

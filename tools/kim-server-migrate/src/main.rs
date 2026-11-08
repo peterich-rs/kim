@@ -3,8 +3,12 @@ use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let Some(url) = env::args().nth(1).filter(|arg| !arg.is_empty()) else {
-        eprintln!("usage: kim-server-migrate <postgres-url>");
+    let Some(url) = env::args()
+        .nth(1)
+        .or_else(|| env::var("DATABASE_URL").ok())
+        .filter(|arg| !arg.is_empty())
+    else {
+        eprintln!("usage: kim-server-migrate <postgres-url> (or DATABASE_URL)");
         return ExitCode::from(2);
     };
     let pool = match sqlx::postgres::PgPoolOptions::new()

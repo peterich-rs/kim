@@ -201,6 +201,9 @@ async fn finish_auth(st: &RoyalState, account: &str, req: &AuthReq) -> AuthResul
 pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Bytes> {
     let req = decode::<AuthReq>(&body)?;
     let account = valid_account(&req.account)?.to_string();
+    if account.starts_with("b_") {
+        return Err(bad_request("reserved bot account"));
+    }
     let password = resolve_password_field(&st, &req.password, &req.password_sealed, &req.key_id)?;
     let hashed = tokio::task::spawn_blocking(move || hash_password(password))
         .await

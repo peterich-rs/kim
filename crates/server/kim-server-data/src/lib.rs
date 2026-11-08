@@ -5,6 +5,7 @@
 //! nonces, and agent spec records.
 
 pub mod agent_spec;
+pub mod bot_control;
 pub mod directory;
 pub mod hmac_nonce;
 pub mod idgen;

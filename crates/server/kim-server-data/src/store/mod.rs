@@ -479,6 +479,12 @@ pub trait MessageStore: Send + Sync {
         StoreScope::unscoped()
     }
 
+    async fn resolve_scope(&self) -> Result<StoreScope, StoreError> {
+        Err(StoreError::Backend(
+            "message backend does not support scoped bot cleanup".into(),
+        ))
+    }
+
     /// Reject a purge aimed at a different dataset, then run [`purge_peer_dm`].
     async fn purge_peer_dm_scoped(
         &self,
@@ -487,8 +493,8 @@ pub trait MessageStore: Send + Sync {
         actor: &str,
         bot: &str,
     ) -> Result<(), StoreError> {
-        let actual = self.store_scope();
-        if !expected.id.is_empty() && actual.id != expected.id {
+        let actual = self.resolve_scope().await?;
+        if !expected.is_scoped() || actual != *expected {
             return Err(StoreError::Backend(format!(
                 "store scope mismatch: expected {} got {}",
                 expected.id, actual.id
@@ -499,13 +505,21 @@ pub trait MessageStore: Send + Sync {
 }
 
 /// Proof that a purge hits the store that holds the messages, not a URL string.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StoreScope {
     pub kind: String,
     pub id: String,
 }
 
 impl StoreScope {
+    pub fn key(&self) -> String {
+        format!("{}:{}", self.kind, self.id)
+    }
+
+    pub fn is_scoped(&self) -> bool {
+        matches!(self.kind.as_str(), "memory" | "postgres")
+            && uuid::Uuid::parse_str(&self.id).is_ok()
+    }
     pub fn unscoped() -> Self {
         Self {
             kind: "unscoped".into(),
@@ -609,6 +623,7 @@ pub struct MemoryMessageStore {
 #[derive(Default)]
 struct Inner {
     contents: HashMap<i64, StoredMessage>,
+    deleted_threads: HashSet<(String, String, String)>,
     indexes_by_account: HashMap<String, HashMap<String, Vec<InboxRow>>>,
     indexes_by_message: HashMap<i64, Vec<InboxRow>>,
     idempotency: HashMap<(String, String, String), (i64, i64)>,
@@ -781,11 +796,7 @@ impl MemoryMessageStore {
         pending_receipt: bool,
         ack_observer: Option<Arc<dyn AckObserver>>,
     ) -> Self {
-        static NEXT_SCOPE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let scope_id = format!(
-            "memory-{}",
-            NEXT_SCOPE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        );
+        let scope_id = uuid::Uuid::new_v4().to_string();
         Self {
             idgen,
             ack,
@@ -885,24 +896,6 @@ impl MemoryMessageStore {
         } else {
             None
         };
-        if !req.client_id.is_empty() {
-            let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
-            let inner = self.read();
-            if let Some(&(message_id, send_time)) = inner.idempotency.get(&key) {
-                let fanout = Self::fanout_from_memory(&inner, message_id)?;
-                drop(inner);
-                if self.pending_receipt {
-                    let mut inner = self.write();
-                    Self::upsert_receipts(&mut inner, app, message_id, req, members_opt);
-                }
-                return Ok(InsertResult {
-                    message_id,
-                    send_time,
-                    duplicate: true,
-                    fanout,
-                });
-            }
-        }
         let message_id = self.idgen.next_id()?;
         let content = StoredMessage {
             message_id,
@@ -957,6 +950,13 @@ impl MemoryMessageStore {
             let _ = self.idgen.next_id()?;
         }
         let mut inner = self.write();
+        if kind == MessageKind::User
+            && inner
+                .deleted_threads
+                .contains(&thread_key(app, &req.sender, &req.dest))
+        {
+            return Err(StoreError::NotFound);
+        }
         if !req.client_id.is_empty() {
             let key = (app.to_string(), req.sender.clone(), req.client_id.clone());
             if let Some(&(id, send_time)) = inner.idempotency.get(&key) {
@@ -1043,6 +1043,9 @@ impl MemoryMessageStore {
 impl MessageStore for MemoryMessageStore {
     fn store_scope(&self) -> StoreScope {
         StoreScope::memory(self.scope_id.clone())
+    }
+    async fn resolve_scope(&self) -> Result<StoreScope, StoreError> {
+        Ok(self.store_scope())
     }
 
     async fn insert_user(
@@ -1482,6 +1485,9 @@ impl MessageStore for MemoryMessageStore {
             return Err(StoreError::Invalid("in_reply_to".into()));
         }
         let mut inner = self.write();
+        if inner.deleted_threads.contains(&thread_key(app, owner, bot)) {
+            return Err(StoreError::NotFound);
+        }
         let orig = inner
             .contents
             .get(&in_reply_to)
@@ -1636,65 +1642,28 @@ impl MessageStore for MemoryMessageStore {
         if account.is_empty() || peer.is_empty() || account == peer {
             return Ok(());
         }
+        Self::purge_inner(&mut self.write(), app, account, peer);
+        Ok(())
+    }
+
+    async fn purge_peer_dm_scoped(
+        &self,
+        expected: &StoreScope,
+        app: &str,
+        actor: &str,
+        bot: &str,
+    ) -> Result<(), StoreError> {
+        if !expected.is_scoped() || *expected != self.store_scope() {
+            return Err(StoreError::Backend("store scope mismatch".into()));
+        }
         let mut inner = self.write();
-        let mut ids: Vec<i64> = Vec::new();
-        for who in [account, peer] {
-            if let Some(by_acct) = inner.indexes_by_account.get_mut(app) {
-                if let Some(rows) = by_acct.get_mut(who) {
-                    let (keep, drop): (Vec<_>, Vec<_>) = rows.drain(..).partition(|r| {
-                        !(r.group_id.is_empty()
-                            && ((r.account_a == account && r.account_b == peer)
-                                || (r.account_a == peer && r.account_b == account)))
-                    });
-                    *rows = keep;
-                    for r in drop {
-                        ids.push(r.message_id);
-                    }
-                }
-            }
-        }
-        ids.sort_unstable();
-        ids.dedup();
-        for id in &ids {
-            if let Some(rows) = inner.indexes_by_message.get_mut(id) {
-                rows.retain(|r| {
-                    !(r.app == app
-                        && r.group_id.is_empty()
-                        && ((r.account_a == account && r.account_b == peer)
-                            || (r.account_a == peer && r.account_b == account)))
-                });
-                if rows.is_empty() {
-                    inner.indexes_by_message.remove(id);
-                    inner.contents.remove(id);
-                }
-            } else {
-                inner.contents.remove(id);
-            }
-            inner
-                .pending
-                .retain(|(a, _, _, mid), _| !(a == app && mid == id));
-        }
-        inner.reads.retain(|(a, acct, p, gid), _| {
-            !(a == app
-                && gid.is_empty()
-                && ((acct == account && p == peer) || (acct == peer && p == account)))
-        });
-        inner.state_versions.retain(|(a, acct, dest, kind), _| {
-            !(a == app
-                && *kind == 0
-                && ((acct == account && dest == peer) || (acct == peer && dest == account)))
-        });
-        inner
-            .bot_turns
-            .retain(|(a, bot, _), _| !(a == app && (bot == peer || bot == account)));
-        inner.idempotency.retain(|(a, sender, _), (mid, _)| {
-            !(a == app && ids.contains(mid) && (sender == account || sender == peer))
-        });
+        inner.deleted_threads.insert(thread_key(app, actor, bot));
+        Self::purge_inner(&mut inner, app, actor, bot);
         Ok(())
     }
 }
 
-/// Postgres backends for Royal. Migrates once via `connect_pool`.
+/// Postgres backends for Royal. The external migration runner initializes the schema.
 /// ACK stays crate-private; Redis/Memory is chosen here.
 pub struct PgBackends {
     pub store: Arc<dyn MessageStore>,
@@ -1821,9 +1790,8 @@ async fn open_pg_backends_inner(
     let groups: Arc<dyn GroupDirectory> = Arc::new(
         crate::directory::PostgresGroupDirectory::from_pool(pg.clone(), idgen.clone()),
     );
-    let users: Arc<dyn UserDirectory> = Arc::new(
-        crate::users::PostgresUserDirectory::from_pool_with_idgen(pg.clone(), idgen),
-    );
+    let users: Arc<dyn UserDirectory> =
+        Arc::new(crate::users::PostgresUserDirectory::from_pool(pg.clone()));
     let social: Arc<dyn crate::social::SocialDirectory> =
         Arc::new(crate::social::PostgresSocialDirectory::from_pool(pg));
     Ok(PgBackends {
@@ -1859,6 +1827,68 @@ async fn open_postgres_store(
     Err(StoreError::Backend(
         "rebuild with --features postgres".into(),
     ))
+}
+
+fn thread_key(app: &str, a: &str, b: &str) -> (String, String, String) {
+    let (a, b) = crate::social::ordered_pair(a, b);
+    (app.into(), a.into(), b.into())
+}
+
+impl MemoryMessageStore {
+    fn purge_inner(inner: &mut Inner, app: &str, account: &str, peer: &str) {
+        let mut ids: Vec<i64> = Vec::new();
+        for who in [account, peer] {
+            if let Some(by_acct) = inner.indexes_by_account.get_mut(app) {
+                if let Some(rows) = by_acct.get_mut(who) {
+                    let (keep, drop): (Vec<_>, Vec<_>) = rows.drain(..).partition(|r| {
+                        !(r.group_id.is_empty()
+                            && ((r.account_a == account && r.account_b == peer)
+                                || (r.account_a == peer && r.account_b == account)))
+                    });
+                    *rows = keep;
+                    for r in drop {
+                        ids.push(r.message_id);
+                    }
+                }
+            }
+        }
+        let ids: HashSet<i64> = ids.into_iter().collect();
+        for id in &ids {
+            if let Some(rows) = inner.indexes_by_message.get_mut(id) {
+                rows.retain(|r| {
+                    !(r.app == app
+                        && r.group_id.is_empty()
+                        && ((r.account_a == account && r.account_b == peer)
+                            || (r.account_a == peer && r.account_b == account)))
+                });
+                if rows.is_empty() {
+                    inner.indexes_by_message.remove(id);
+                    inner.contents.remove(id);
+                }
+            } else {
+                inner.contents.remove(id);
+            }
+            inner
+                .pending
+                .retain(|(a, _, _, mid), _| !(a == app && mid == id));
+        }
+        inner.reads.retain(|(a, acct, p, gid), _| {
+            !(a == app
+                && gid.is_empty()
+                && ((acct == account && p == peer) || (acct == peer && p == account)))
+        });
+        inner.state_versions.retain(|(a, acct, dest, kind), _| {
+            !(a == app
+                && *kind == 0
+                && ((acct == account && dest == peer) || (acct == peer && dest == account)))
+        });
+        inner.bot_turns.retain(|(a, _, in_reply_to), reply_id| {
+            !(a == app && (ids.contains(in_reply_to) || ids.contains(reply_id)))
+        });
+        inner.idempotency.retain(|(a, sender, _), (mid, _)| {
+            !(a == app && ids.contains(mid) && (sender == account || sender == peer))
+        });
+    }
 }
 
 #[cfg(test)]

@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
-use chat::open_uncached_session_store;
 use kim_naming::{open_naming, DefaultRegistration, Naming};
 use kim_protocol::PasswordSealKey;
 use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret, ALLOWED_APP};
 use kim_server_data::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use kim_server_data::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
+use kim_session::open_uncached_session_store;
 use royal::{
     router, DeviceDirectory, DeviceHot, JwtConfig, MemoryDeviceDirectory, MemoryDeviceHot,
     MemoryRevocation, RoyalState, TokenRevocation,
@@ -108,6 +108,23 @@ fn jwt_secret(cfg: &str) -> String {
         tracing::warn!(secret = "demo-default", "do not use in production");
         kim_protocol::DEMO_DEFAULT_SECRET.to_string()
     })
+}
+
+async fn open_bots(
+    url: &str,
+    idgen: Arc<dyn IdGenerator>,
+) -> anyhow::Result<Arc<dyn kim_server_data::bot_control::BotControl>> {
+    #[cfg(feature = "postgres")]
+    {
+        Ok(Arc::new(
+            royal::PostgresBotIdentity::connect(url, idgen).await?,
+        ))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (url, idgen);
+        anyhow::bail!("rebuild royal with --features postgres")
+    }
 }
 
 async fn open_accounts(url: &str) -> anyhow::Result<Arc<dyn royal::AccountAuthStore>> {
@@ -285,7 +302,7 @@ async fn main() -> anyhow::Result<()> {
         let backends = open_pg_backends(
             &db,
             redis.as_deref(),
-            idgen,
+            idgen.clone(),
             PoolConfig::default(),
             sessions,
             pending_receipt,
@@ -301,6 +318,7 @@ async fn main() -> anyhow::Result<()> {
             revoke,
         )
         .with_accounts(open_accounts(&db).await?)
+        .with_bots(open_bots(&db, idgen.clone()).await?)
         .with_pending_receipt(pending_receipt)
         .with_agent_specs(
             kim_server_data::agent_spec::open_agent_spec_store(Some(&db))

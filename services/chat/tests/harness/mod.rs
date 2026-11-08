@@ -55,6 +55,45 @@ pub async fn spawn_stack() -> Stack {
     spawn_stack_with_chat(ChatHandler::new).await
 }
 
+pub async fn spawn_bot_stack() -> Stack {
+    let state =
+        royal::RoyalState::memory(Arc::new(kim_server_data::idgen::SequenceIdGen::new(20_001)));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("royal bind");
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let _ = royal::serve(listener, state).await;
+    });
+    let pool = Arc::new(
+        kim_royal_client::RoyalPool::new(
+            Some(&base),
+            &kim_protocol::resolve_internal_hmac_secret(""),
+        )
+        .unwrap(),
+    );
+    let (store, groups, users, social) =
+        kim_royal_client::http_backends_with_pool(pool.clone()).unwrap();
+    let bots = Arc::new(kim_royal_client::HttpBotControl::from_pool(pool));
+    spawn_stack_with_chat(move |c, cache| {
+        ChatHandler::with_agent_specs(
+            c,
+            cache,
+            store,
+            groups,
+            String::new(),
+            Arc::new(chat::NoopFilter),
+            users,
+            social,
+            false,
+            Arc::new(chat::MemoryRoomInterest::new()),
+            Arc::new(chat::MemoryAgentSpecStore::new()),
+            bots,
+        )
+    })
+    .await
+}
+
 pub async fn spawn_stack_seams(
     store: Arc<dyn MessageStore>,
     groups: Arc<dyn GroupDirectory>,

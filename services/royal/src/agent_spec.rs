@@ -85,7 +85,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use chat::HttpAgentSpecStore;
+    use kim_royal_client::HttpAgentSpecStore;
     use kim_server_data::agent_spec::{AgentSpecRecord, AgentSpecStore};
     use kim_server_data::idgen::SequenceIdGen;
 

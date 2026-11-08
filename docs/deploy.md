@@ -104,6 +104,14 @@ TLS：
 
 公网 TGateway 进程内 rustls 已落地。`tls_cert` / `tls_key` / `max_connections` 写在 `deploy/tgateway.toml` **文件根**（不要放进 `[self]` 或 `[route.whitelist]`：后者是 `HashMap<String, String>`，整数会让 `load_config` 启动失败）。证书路径空则同一二进制走明文。默认 compose **不**起 tgateway。怎么暴露（灰云或独立 IP:port）和同城双活仍是以后。UFW 默认只放 22/80/443。
 
+## Bot 控制与删除合同升级
+
+先运行同一镜像的 `kim-server-migrate`，再逐个更新 `royal`、`royal-2`，确认两实例健康且 `/internal/v1/bot/store-scope` 返回相同的 PG scope 后，再逐个更新 `chat-gray`、`chat`。`0017` 已部署时继续增加 `0018`，不修改旧迁移。迁移 runner 支持从 `DATABASE_URL` 读取地址，避免把密码写进命令行。
+
+Chat 的生产 `ROYAL_URL` 会同时装配消息 HTTP adapter 和 BotControl。只有消息走直连 PG / Memory 时才需另配 `BOT_CONTROL_URL`；它指定 bot 身份、公开目录和社交关系的权威。跨数据集的删除由实际消息 store 执行，不能用 URL 相同代替 scope 校验。
+
+验收包含：创建、配置写入、错误 owner 删除被拒绝、正确删除、重复删除成功、清理失败后身份已不存在仍能恢复，以及另一个普通会话保持完整。历史已删身份但没有回执的数据作为独立运维修复处理，不根据消息对端自动补 owner 授权。状态码和内部合同见 [group-royal.md](group-royal.md#bot-生命周期与删除恢复)。
+
 ## 产品 H5（Cloudflare Worker）
 
 静态页走 Workers Static Assets，登录 protobuf 和 WebSocket 仍回源 VPS。`kim.ainexc.com` 必须是 Cloudflare 橙云 DNS（A/AAAA 指向 VPS）。**不要**把该主机名做成 Worker Custom Domain，否则后台收不到请求。
