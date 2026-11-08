@@ -12,7 +12,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn history_is_0001_through_0018() {
-        assert_eq!(versions(), (1..=18).collect::<Vec<_>>());
+    fn history_is_0001_through_0019() {
+        assert_eq!(versions(), (1..=19).collect::<Vec<_>>());
     }
 }

@@ -26,7 +26,7 @@
 
 ## 关系
 
-`friend_requests` / `friendships`（`account_a < account_b`）/ `blocks`。
+`friend_requests` / `friendships` / `blocks`。好友关系的账号对按 Rust `ordered_pair` 的字节序保存，数据库 CHECK 显式使用 `account_a COLLATE "C" < account_b COLLATE "C"`，避免默认语言排序对下划线、大小写等的处理与 Rust 不一致。迁移 `0019` 替换并验证该约束，保留历史迁移校验和与已有记录；若已有非规范账号对，迁移失败并回滚。
 
 | command | dest | 行为 |
 |---|---|---|

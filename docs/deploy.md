@@ -128,11 +128,14 @@ npm run deploy:app
 
 | Workflow | 何时 | 做什么 |
 |---|---|---|
-| `ci.yml` | push / PR | fmt、clippy、test |
-| `image.yml` | `main` / tag `v*` | 编 linux/amd64，推 `ghcr.io/<owner>/kim`。`v*` 成功后再部署 |
+| `ci.yml` | `main` push / PR，或手动全量 | 按完整 Git diff 选择 Rust、PostgreSQL / Redis、Web、Media、移动端检查；始终校验 workflow / 仓库门禁，`CI passed` 汇总结果 |
+| `server.yml` | CI 按服务端改动调用，或手动 | 不检出子模块，解析并编译隔离的服务端依赖图；缓存隔离 workspace 的 `target` |
+| `image.yml` | 服务端 / 镜像输入的 PR、`main` push，或 tag `v*` / 手动 | 编 linux/amd64；PR 只 smoke test，main/tag 推 `ghcr.io/<owner>/kim`。`v*` 成功后再部署 |
 | `deploy.yml` | Image 在 `v*` 成功后，或手动 | SSH 到 VPS，同步并校验部署文件，执行 `remote-up.sh`；不会自动删除数据卷 |
-| `web.yml` | `main` 上 `sdk/web/**` 或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
-| `media.yml` | `main` 上 `sdk/media/**` 或手动 | `npm test` 后 `wrangler deploy` 到 `upload.kim.ainexc.com` |
+| `web.yml` | `main` 上 `sdk/web/**` / 根 npm 配置，或手动 | `npm run build:app` 后 `wrangler deploy` 到 `kim.ainexc.com`。Job 的 `if` 不能读 `secrets`；缺 token 时 deploy step 失败 |
+| `media.yml` | `main` 上 `sdk/media/**` / 根 npm 配置，或手动 | `npm test` 后 `wrangler deploy` 到 `upload.kim.ainexc.com` |
+
+npm 检查、发布和 Dependabot 统一使用根 `package-lock.json` workspace，固定 npm 11.19.0。Docker 层缓存使用 `kim-server-amd64` scope；`buildkit-cache-dance` 另外持久化 Dockerfile 的 Cargo registry / target mounts，因为 `type=gha` 层缓存不会导出这些 mount 的内容。PR / main 新提交取消同分支的旧镜像构建，版本 tag 构建不取消。
 
 GitHub Secrets（只放在 GitHub，不进 git）：
 

@@ -56,4 +56,4 @@ cd sdk/mobile && flutter analyze
 
 ## FFI import 边界
 
-生成 FFI（`package:kim_mobile/src/rust/`）只允许出现在 `lib/bridge/**`。`bridge/projection.dart` 是生成投影类型的唯一出口；能力调用走 bridge 里的 port。`SharedPreferences` 只允许 `core/settings.dart` 与 agent 表单的 UI 态文件。门禁：`tools/check_flutter_boundaries.sh`（CI 的 `sdk-mobile` job 在 analyze 前跑）。
+生成 FFI（`package:kim_mobile/src/rust/`）只允许出现在 `lib/bridge/**`。`bridge/projection.dart` 是生成投影类型的唯一出口；能力调用走 bridge 里的 port。`SharedPreferences` 只允许 `core/settings.dart` 与 agent 表单的 UI 态文件。门禁：`tools/check_flutter_boundaries.sh`（CI 的 `quality` job 每次运行，页面尺寸门禁也在该 job）。

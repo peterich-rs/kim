@@ -1,72 +1,38 @@
 name: Server isolation
 
+# CI owns path routing, so this gate cannot race a second push/PR run.
 on:
-  pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "Dockerfile"
-      - "crates/shared/**"
-      - "crates/server/**"
-      - "services/**"
-      - "examples/pkt-client/**"
-      - "examples/kimbench/**"
-      - "tools/build/**"
-      - "tools/kim-server-migrate/**"
-      - "deploy/*.toml"
-      - "deploy/*.py"
-      - "deploy/remote-up.sh"
-      - ".github/workflows/server.yml"
-  push:
-    branches: [main]
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "Dockerfile"
-      - "crates/shared/**"
-      - "crates/server/**"
-      - "services/**"
-      - "examples/pkt-client/**"
-      - "examples/kimbench/**"
-      - "tools/build/**"
-      - "tools/kim-server-migrate/**"
-      - "deploy/*.toml"
-      - "deploy/*.py"
-      - "deploy/remote-up.sh"
-      - ".github/workflows/server.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: server-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  RUSTUP_TOOLCHAIN: "1.95.0"
 
 jobs:
   isolated-build:
     name: Build server without desktop manifests or Codex checkout
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout without submodules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: false
-
-      - name: Install protobuf build dependencies
+      - name: Prepare isolated server context
+        run: python3 tools/build/prepare-server-context.py "$RUNNER_TEMP/kim-server-context"
+      - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make pkg-config
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
         with:
           toolchain: 1.95.0
-
+      - name: Cache isolated server dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ runner.temp }}/kim-server-context -> target
       - name: Resolve and build isolated server graph
-        run: python3 tools/build/check-server-context.py --build --target-dir "$RUNNER_TEMP/server-target"
-
-      - name: Check Royal rollout gate
-        run: |
-          bash -n deploy/remote-up.sh
-          python3 -m unittest discover -s deploy -p 'test_bot_scope.py'
+        run: python3 tools/build/check-server-context.py --context "$RUNNER_TEMP/kim-server-context" --build --target-dir "$RUNNER_TEMP/kim-server-context/target"

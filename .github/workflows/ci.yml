@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,50 +16,101 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # CI never debugs these binaries. Keep compile/link time and caches small.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
   RUST_BACKTRACE: "1"
+  RUSTUP_TOOLCHAIN: "1.95.0"
 
 jobs:
+  changes:
+    name: Select affected checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      server: ${{ steps.scope.outputs.server }}
+      postgres: ${{ steps.scope.outputs.postgres }}
+      web: ${{ steps.scope.outputs.web }}
+      web_e2e: ${{ steps.scope.outputs.web_e2e }}
+      mobile: ${{ steps.scope.outputs.mobile }}
+      media: ${{ steps.scope.outputs.media }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full superproject history for PR merge-base and multi-commit pushes;
+          # no submodule history and no API changed-file truncation.
+          fetch-depth: 0
+      - id: scope
+        run: python3 tools/ci/changes.py
+
+  quality:
+    name: Workflow and repository gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate workflows
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes=
+      - name: Repository gates and their tests
+        run: |
+          python3 -m unittest discover -s tools/tests
+          python3 -m unittest discover -s deploy -p 'test_*.py'
+          python3 tools/check_npm_workspace.py
+          tools/check_flutter_boundaries.sh
+          tools/check_page_size.sh
+          git ls-files -z '*.sh' | xargs -0 -r -n 1 bash -n
+
   check:
     name: fmt, clippy, test
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: true
-
-      - name: Install protobuf-src build deps
+      - name: Checkout Cargo path dependency only
+        run: git submodule update --init --depth 1 third_party/codex
+      - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
       - name: rustfmt
         run: cargo fmt --all -- --check
-
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: crate boundaries
-        run: |
-          python3 -m unittest discover -s tools/tests -p test_crate_boundaries.py
-          python3 tools/check_crate_boundaries.py
-
-      - name: npm workspace links
-        run: python3 tools/check_npm_workspace.py
-
+        run: python3 tools/check_crate_boundaries.py
       - name: clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: test
-        run: cargo test --workspace --all-features
+        run: cargo test --locked --workspace --all-features
+
+  server:
+    name: Server isolation
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    uses: ./.github/workflows/server.yml
 
   postgres:
-    name: postgres integration
+    name: postgres and redis integration
+    needs: changes
+    if: needs.changes.outputs.postgres == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -73,41 +125,47 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgres://kim:kim@127.0.0.1:5432/kim
       KIM_TEST_MESSAGE_DATABASE_URL: postgres://kim:kim@127.0.0.1:5432/kim_bot_messages
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # kim-agent-host and kim-codex-helper path-depend on the Codex
-          # submodule. Cargo reads those manifests for every workspace command.
-          submodules: true
-
-      - name: Install protobuf-src build deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare server workspace without desktop manifests
+        run: python3 tools/build/prepare-server-context.py "$RUNNER_TEMP/kim-server-context"
+      - name: Install native build and PostgreSQL tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make postgresql-client
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
         with:
           toolchain: 1.95.0
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ runner.temp }}/kim-server-context -> target
       - name: chat postgres tests
+        working-directory: ${{ runner.temp }}/kim-server-context
         run: |
-          cargo build -p kim-server-migrate
-          cargo run -p kim-server-migrate --quiet
+          cargo run --locked -p kim-server-migrate --quiet
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE kim_bot_messages'
-          DATABASE_URL="$KIM_TEST_MESSAGE_DATABASE_URL" cargo run -p kim-server-migrate --quiet
-          cargo test -p royal --features postgres,redis --lib -- --test-threads=1
-          cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
-
+          DATABASE_URL="$KIM_TEST_MESSAGE_DATABASE_URL" cargo run --locked -p kim-server-migrate --quiet
+          cargo test --locked -p royal --features postgres,redis --lib -- --test-threads=1
+          cargo test --locked -p chat --features postgres,redis --all-targets -- --test-threads=1
+      - name: Live Redis session regression
+        working-directory: ${{ runner.temp }}/kim-server-context
+        # Normal workspace tests skip this #[ignore] suite. It uses loopback
+        # Redis explicitly and must never receive production Redis credentials.
+        run: cargo test --locked -p kim-session --features redis --lib -- --ignored --test-threads=1
       - name: backfill and tuple diff (empty and after tests)
         run: |
           set -euo pipefail
-          cargo run -p kim-server-migrate --quiet -- "$DATABASE_URL"
+          "$RUNNER_TEMP/kim-server-context/target/debug/kim-server-migrate" "$DATABASE_URL"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           leftover=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -tA -f deploy/diff-inbox.sql)
@@ -118,145 +176,187 @@ jobs:
           fi
 
   sdk-web:
-    name: web sdk
+    name: web sdk and production build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Same Codex path deps as the Rust jobs. `cargo build -p chat`
-          # still loads every workspace member manifest.
-          submodules: true
-
-      - name: Install protobuf-src build deps
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
-        with:
-          toolchain: 1.95.0
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
-      - name: Build gateway binaries
-        run: cargo build -p chat -p gateway
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: package-lock.json
-
       - name: Install workspace
         run: |
-          corepack enable
-          corepack prepare npm@11.19.0 --activate
-          npm ci
-
-      - name: Install and unit test
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
+      - name: Typecheck, unit test, build SDK and SPA
         working-directory: sdk/web
         run: |
           npm run typecheck
           npm test
+          npm run build
+          npm run build:app
 
+  sdk-web-e2e:
+    name: web gateway integration
+    needs: changes
+    if: needs.changes.outputs.web_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare server workspace
+        run: python3 tools/build/prepare-server-context.py "$RUNNER_TEMP/kim-server-context"
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ runner.temp }}/kim-server-context -> target
+      - name: Build gateway binaries
+        working-directory: ${{ runner.temp }}/kim-server-context
+        run: |
+          cargo build --locked -p chat -p gateway
+          mkdir -p "$GITHUB_WORKSPACE/target/debug"
+          cp target/debug/chat target/debug/gateway "$GITHUB_WORKSPACE/target/debug/"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install workspace
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
       - name: E2E
         working-directory: sdk/web
         run: npm run test:e2e
 
-  sdk-mobile:
-    name: mobile sdk
+  sdk-mobile-analyze:
+    name: mobile analysis and plugin tests
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
-    env:
-      # rust-toolchain.toml lists every app target; CI only needs the host.
-      RUSTUP_TOOLCHAIN: "1.95.0"
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Desktop Flutter tests compile kim-client-ffi, which enables the
-          # Codex feature. `cargo fmt --all` also needs those manifests.
-          submodules: true
-
-      - name: Install protobuf-src build deps
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
-        with:
-          toolchain: 1.95.0
-          components: rustfmt
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: crates/client/kim-client-ffi -> crates/client/kim-client-ffi/target
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version-file: sdk/mobile/.fvmrc
           cache: true
-
       - name: Pub get
         working-directory: sdk/mobile
         run: flutter pub get --enforce-lockfile
-
-      - name: dart format
+      - name: Format, lint and analyze
         working-directory: sdk/mobile
-        run: dart format --output=none --set-exit-if-changed lib test hook plugins/kim_media_picker/lib plugins/kim_media_picker/test
-
-      - name: flutter boundary gate
         run: |
-          tools/check_flutter_boundaries.sh
-          tools/check_page_size.sh
-
-      - name: custom_lint
-        working-directory: sdk/mobile
-        run: dart run custom_lint
-
-      - name: flutter analyze
-        working-directory: sdk/mobile
-        run: flutter analyze --fatal-infos --fatal-warnings
-
-      - name: plugin test
+          dart format --output=none --set-exit-if-changed lib test hook packages/kim_lints/lib plugins/kim_media_picker/lib plugins/kim_media_picker/test
+          dart run custom_lint
+          flutter analyze --fatal-infos --fatal-warnings --no-pub
+      - name: Plugin analyze and test
         working-directory: sdk/mobile/plugins/kim_media_picker
         run: |
           flutter pub get
-          flutter analyze --fatal-infos --fatal-warnings
-          flutter test
+          flutter analyze --fatal-infos --fatal-warnings --no-pub
+          flutter test --no-pub
 
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-
-      - name: flutter test
+  sdk-mobile:
+    name: mobile sdk
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # hooks 2.x derives outputDirectory from out_dir_shared + config checksum.
+      NATIVE_CARGO_TARGETS: sdk/mobile/.dart_tool/hooks_runner/shared/kim_mobile/build/*/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: git submodule update --init --depth 1 third_party/codex
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ make
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # 2026-08-05
+        with:
+          toolchain: 1.95.0
+      - name: Cache desktop helper dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version-file: sdk/mobile/.fvmrc
+          cache: true
+      - name: Native cache identity
+        id: native
+        run: echo "codex=$(git rev-parse HEAD:third_party/codex)" >> "$GITHUB_OUTPUT"
+      - name: Cache Native Assets cargo targets
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          # native_toolchain_rust builds under the hook output. Cache only Cargo
+          # artifacts; hook output.json and dependency timestamps stay fresh.
+          path: ${{ env.NATIVE_CARGO_TARGETS }}
+          key: native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-${{ steps.native.outputs.codex }}-${{ hashFiles('crates/**/*.rs', 'sdk/mobile/hook/**') }}
+          restore-keys: |
+            native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-
+      - name: Pub get
         working-directory: sdk/mobile
-        run: flutter test
+        run: flutter pub get --enforce-lockfile
+      - name: flutter test (real native hook)
+        working-directory: sdk/mobile
+        run: flutter test --no-pub
+      - name: Verify native cache paths
+        run: |
+          test -x target/debug/kim-codex-helper
+          if ! compgen -G "${NATIVE_CARGO_TARGETS}/x86_64-unknown-linux-gnu/debug/libkim_client_ffi.so"; then
+            echo "::error::Native Assets library missing from cache glob: $NATIVE_CARGO_TARGETS"
+            exit 1
+          fi
 
   sdk-media:
     name: media worker
+    needs: changes
+    if: needs.changes.outputs.media == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: package-lock.json
-
       - name: Install workspace
         run: |
-          corepack enable
-          corepack prepare npm@11.19.0 --activate
-          npm ci
-
-      - name: Install, typecheck, test
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
+      - name: Typecheck and test
         working-directory: sdk/media
         run: |
           npm run typecheck
           npm test
+
+  result:
+    name: CI passed
+    if: always()
+    needs: [changes, quality, check, server, postgres, sdk-web, sdk-web-e2e, sdk-mobile-analyze, sdk-mobile, sdk-media]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require selected jobs to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = [name for name, job in results.items() if job['result'] not in ('success', 'skipped')]
+          if failed:
+              raise SystemExit(f"CI failed or cancelled: {', '.join(failed)}")
+          print('All selected checks passed.')
+          PY

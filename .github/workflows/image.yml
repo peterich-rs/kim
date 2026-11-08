@@ -6,7 +6,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - ".cargo/**"
       - "Dockerfile"
+      - ".dockerignore"
       - "crates/shared/**"
       - "crates/server/**"
       - "services/**"
@@ -19,11 +21,27 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "crates/shared/**"
+      - "crates/server/**"
+      - "services/**"
+      - "examples/pkt-client/**"
+      - "examples/kimbench/**"
+      - "tools/build/**"
+      - "tools/kim-server-migrate/**"
+      - "deploy/*.toml"
+      - ".github/workflows/image.yml"
   workflow_dispatch:
 
 concurrency:
   group: image-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -36,6 +54,7 @@ jobs:
   build:
     name: Build linux/amd64 (push outside PRs)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       tag: ${{ steps.meta.outputs.version }}
     steps:
@@ -58,7 +77,29 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Set up Docker Buildx
+        id: buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # The gha layer backend does not export RUN --mount=type=cache contents.
+      # Persist the actual Cargo mounts so a source edit reuses compiled deps.
+      - name: Cache Docker Cargo mounts
+        id: cargo-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/buildkit-cargo
+          # Immutable dependency caches avoid uploading the same large target
+          # tree for every source-only commit. Cargo revalidates local sources.
+          key: image-cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'tools/build/server.Cargo.lock') }}
+          restore-keys: |
+            image-cargo-v1-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore Docker Cargo mounts
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-dir: ${{ runner.temp }}/buildkit-cargo
+          dockerfile: Dockerfile
+          skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }}
 
       - name: Login to GHCR
         if: github.event_name != 'pull_request'
@@ -78,8 +119,8 @@ jobs:
           load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=kim-server-amd64
+          cache-to: type=gha,scope=kim-server-amd64,mode=max
 
       - name: Smoke test PR image
         if: github.event_name == 'pull_request'
