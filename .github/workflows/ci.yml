@@ -272,6 +272,9 @@ jobs:
     if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # hooks 2.x derives outputDirectory from out_dir_shared + config checksum.
+      NATIVE_CARGO_TARGETS: sdk/mobile/.dart_tool/hooks_runner/shared/kim_mobile/build/*/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: git submodule update --init --depth 1 third_party/codex
@@ -297,10 +300,10 @@ jobs:
         with:
           # native_toolchain_rust builds under the hook output. Cache only Cargo
           # artifacts; hook output.json and dependency timestamps stay fresh.
-          path: sdk/mobile/.dart_tool/hooks_runner/kim_mobile/*/out/target
-          key: native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-${{ steps.native.outputs.codex }}-${{ hashFiles('crates/**/*.rs', 'sdk/mobile/hook/**') }}
+          path: ${{ env.NATIVE_CARGO_TARGETS }}
+          key: native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-${{ steps.native.outputs.codex }}-${{ hashFiles('crates/**/*.rs', 'sdk/mobile/hook/**') }}
           restore-keys: |
-            native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-
+            native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/rust-toolchain.toml', 'sdk/mobile/.fvmrc', 'sdk/mobile/pubspec.lock', '.github/workflows/ci.yml') }}-
       - name: Pub get
         working-directory: sdk/mobile
         run: flutter pub get --enforce-lockfile
@@ -310,7 +313,10 @@ jobs:
       - name: Verify native cache paths
         run: |
           test -x target/debug/kim-codex-helper
-          compgen -G 'sdk/mobile/.dart_tool/hooks_runner/kim_mobile/*/out/target/x86_64-unknown-linux-gnu/debug/libkim_client_ffi.so'
+          if ! compgen -G "${NATIVE_CARGO_TARGETS}/x86_64-unknown-linux-gnu/debug/libkim_client_ffi.so"; then
+            echo "::error::Native Assets library missing from cache glob: $NATIVE_CARGO_TARGETS"
+            exit 1
+          fi
 
   sdk-media:
     name: media worker
