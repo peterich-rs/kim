@@ -177,7 +177,9 @@ services:
   migrate:
     image: ${KIM_IMAGE:?set KIM_IMAGE}
     restart: "no"
-    command: ["kim-server-migrate", "${DATABASE_URL:?set DATABASE_URL}"]
+    command: ["kim-server-migrate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
     depends_on:
       postgres:
         condition: service_healthy

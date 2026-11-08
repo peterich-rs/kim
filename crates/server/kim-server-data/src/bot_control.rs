@@ -146,10 +146,17 @@ pub async fn coordinate_delete(
     actor: &str,
     bot: &str,
 ) -> Result<(), Status> {
-    let scope = store
-        .resolve_scope()
-        .await
-        .map_err(|_| Status::ServiceUnavailable)?;
+    let scope = store.resolve_scope().await.map_err(|error| {
+        tracing::warn!(?error, "bot cleanup scope resolution failed");
+        match error {
+            StoreError::ScopedCleanupUnsupported
+            | StoreError::Http {
+                status: 404 | 405 | 501,
+                ..
+            } => Status::ServiceUnavailable,
+            _ => Status::SystemException,
+        }
+    })?;
     if !scope.is_scoped() {
         return Err(Status::ServiceUnavailable);
     }

@@ -15,6 +15,8 @@ on:
       - "tools/build/**"
       - "tools/kim-server-migrate/**"
       - "deploy/*.toml"
+      - "deploy/*.py"
+      - "deploy/remote-up.sh"
       - ".github/workflows/server.yml"
   push:
     branches: [main]
@@ -31,6 +33,8 @@ on:
       - "tools/build/**"
       - "tools/kim-server-migrate/**"
       - "deploy/*.toml"
+      - "deploy/*.py"
+      - "deploy/remote-up.sh"
       - ".github/workflows/server.yml"
   workflow_dispatch:
 
@@ -61,3 +65,8 @@ jobs:
 
       - name: Resolve and build isolated server graph
         run: python3 tools/build/check-server-context.py --build --target-dir "$RUNNER_TEMP/server-target"
+
+      - name: Check Royal rollout gate
+        run: |
+          bash -n deploy/remote-up.sh
+          python3 -m unittest discover -s deploy -p 'test_bot_scope.py'

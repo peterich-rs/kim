@@ -769,6 +769,7 @@ fn group_err(e: StoreError) -> GroupError {
         StoreError::Backend(s) | StoreError::Invalid(s) => GroupError::Backend(s),
         StoreError::NotFound => GroupError::NotFound,
         StoreError::Id(e) => GroupError::Id(e),
+        StoreError::ScopedCleanupUnsupported => GroupError::Backend(e.to_string()),
     }
 }
 

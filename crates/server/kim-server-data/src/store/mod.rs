@@ -90,6 +90,8 @@ pub(crate) fn recv_accounts(req: &InsertMessage, members: Option<&[String]>) -> 
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
+    #[error("message backend does not support scoped bot cleanup")]
+    ScopedCleanupUnsupported,
     #[error("idgen: {0}")]
     Id(#[from] IdError),
     #[error("royal http {status}: {msg}")]
@@ -480,9 +482,7 @@ pub trait MessageStore: Send + Sync {
     }
 
     async fn resolve_scope(&self) -> Result<StoreScope, StoreError> {
-        Err(StoreError::Backend(
-            "message backend does not support scoped bot cleanup".into(),
-        ))
+        Err(StoreError::ScopedCleanupUnsupported)
     }
 
     /// Reject a purge aimed at a different dataset, then run [`purge_peer_dm`].

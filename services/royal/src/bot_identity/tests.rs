@@ -73,7 +73,7 @@ async fn mixed_memory_pool_is_rejected_before_identity_deletion() {
         coordinate_delete(&control, store.as_ref(), "kim", "alice", &bot)
             .await
             .unwrap_err(),
-        Status::ServiceUnavailable
+        Status::SystemException
     );
     assert!(state.users.lookup("kim", &bot).await.unwrap().is_some());
     message_pool
@@ -226,6 +226,34 @@ async fn completion_interruption_and_lost_done_response_are_retryable() {
         coordinate_delete(&control, state.store.as_ref(), "kim", "alice", &bot)
             .await
             .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn scope_capability_and_backend_failure_keep_distinct_statuses() {
+    use axum::{routing::get, Router};
+    for (http_status, expected) in [
+        (501, Status::ServiceUnavailable),
+        (503, Status::SystemException),
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/internal/v1/bot/store-scope",
+            get(move || async move { axum::http::StatusCode::from_u16(http_status).unwrap() }),
+        );
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let control = HttpBotControl::from_pool(rpc_pool(&base));
+        let (store, _, _, _) = kim_royal_client::http_backends_with_pool(rpc_pool(&base)).unwrap();
+        assert_eq!(
+            coordinate_delete(&control, store.as_ref(), "kim", "alice", "b_unknown")
+                .await
+                .unwrap_err(),
+            expected
+        );
+        server.abort();
     }
 }
 
@@ -881,4 +909,227 @@ async fn postgres_receipt_survives_new_authority_and_concurrent_retry() {
     task_a.abort();
     task_b.abort();
     pool.close().await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn postgres_separate_message_dataset_recovers_each_deletion_boundary() {
+    let (Ok(identity_url), Ok(message_url)) = (
+        std::env::var("DATABASE_URL"),
+        std::env::var("KIM_TEST_MESSAGE_DATABASE_URL"),
+    ) else {
+        return;
+    };
+    let idgen: Arc<dyn kim_server_data::idgen::IdGenerator> = Arc::new(SequenceIdGen::new(
+        (uuid::Uuid::new_v4().as_u128() & 0x3fff_ffff_ffff_ffff) as i64,
+    ));
+    let authority = PostgresBotIdentity::connect(&identity_url, idgen.clone())
+        .await
+        .unwrap();
+    let messages = kim_server_data::store::open_pg_backends(
+        &message_url,
+        None,
+        idgen.clone(),
+        Default::default(),
+        None,
+        false,
+        None,
+    )
+    .await
+    .unwrap();
+    let identity_store = kim_server_data::store::open_pg_backends(
+        &identity_url,
+        None,
+        idgen.clone(),
+        Default::default(),
+        None,
+        false,
+        None,
+    )
+    .await
+    .unwrap();
+    let message_pool = kim_server_data::store::connect_pool(&message_url, Default::default())
+        .await
+        .unwrap();
+    let identity_scope = identity_store.store.resolve_scope().await.unwrap();
+    let scope = messages.store.resolve_scope().await.unwrap();
+    assert_ne!(identity_scope, scope);
+    let owner = format!("direct-pg-{}", uuid::Uuid::new_v4());
+    let bot = authority
+        .create_bot(
+            "kim",
+            &CreateBot {
+                owner: owner.clone(),
+                ..request("direct-pg")
+            },
+        )
+        .await
+        .unwrap()
+        .profile
+        .account;
+    let mut written = message(&bot, "direct-pg-bot");
+    written.sender = owner.clone();
+    let inserted = messages.store.insert_user("kim", &written).await.unwrap();
+    let protected = format!("protected-{}", uuid::Uuid::new_v4());
+    let mut other = message(&protected, "direct-pg-protected");
+    other.sender = owner.clone();
+    let protected_id = messages
+        .store
+        .insert_user("kim", &other)
+        .await
+        .unwrap()
+        .message_id;
+    messages
+        .store
+        .mark_read("kim", &owner, &protected, MessageKind::User, protected_id)
+        .await
+        .unwrap();
+    // Fail the actual message purge transaction, after identity deletion committed elsewhere.
+    let blocker = format!("purge_blocker_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "CREATE TABLE {blocker}(message_id BIGINT REFERENCES message_content(id))"
+    )))
+    .execute(&message_pool)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "INSERT INTO {blocker} VALUES($1)"
+    )))
+    .bind(inserted.message_id)
+    .execute(&message_pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        coordinate_delete(&authority, messages.store.as_ref(), "kim", &owner, &bot)
+            .await
+            .unwrap_err(),
+        Status::SystemException
+    );
+    assert!(identity_store
+        .users
+        .lookup("kim", &bot)
+        .await
+        .unwrap()
+        .is_none());
+    let lease = authority
+        .delete_identity_or_resume("kim", &owner, &bot, &scope)
+        .await
+        .unwrap();
+    assert!(!lease.done);
+    assert_eq!(
+        messages
+            .store
+            .history("kim", &owner, &bot, MessageKind::User, 0, 20)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP TABLE {blocker}")))
+        .execute(&message_pool)
+        .await
+        .unwrap();
+    drop(authority);
+    // Restart after identity deletion, then reject both wrong owner and wrong dataset.
+    let authority = PostgresBotIdentity::connect(&identity_url, idgen.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        coordinate_delete(
+            &authority,
+            messages.store.as_ref(),
+            "kim",
+            "wrong-owner",
+            &bot
+        )
+        .await
+        .unwrap_err(),
+        Status::NotBotOwner
+    );
+    assert_eq!(
+        coordinate_delete(
+            &authority,
+            identity_store.store.as_ref(),
+            "kim",
+            &owner,
+            &bot
+        )
+        .await
+        .unwrap_err(),
+        Status::SystemException
+    );
+    messages
+        .store
+        .purge_peer_dm_scoped(&scope, "kim", &owner, &bot)
+        .await
+        .unwrap();
+    drop(authority);
+    drop(messages);
+    // Restart after purge but before completion; recovery must purge the same dataset again.
+    let authority = PostgresBotIdentity::connect(&identity_url, idgen.clone())
+        .await
+        .unwrap();
+    let messages = kim_server_data::store::open_pg_backends(
+        &message_url,
+        None,
+        idgen.clone(),
+        Default::default(),
+        None,
+        false,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(messages.store.resolve_scope().await.unwrap(), scope);
+    assert!(
+        !authority
+            .delete_identity_or_resume("kim", &owner, &bot, &scope)
+            .await
+            .unwrap()
+            .done
+    );
+    coordinate_delete(&authority, messages.store.as_ref(), "kim", &owner, &bot)
+        .await
+        .unwrap();
+    drop(authority);
+    // Treat the successful Done response as lost and restart the authority once more.
+    let authority = PostgresBotIdentity::connect(&identity_url, idgen)
+        .await
+        .unwrap();
+    coordinate_delete(&authority, messages.store.as_ref(), "kim", &owner, &bot)
+        .await
+        .unwrap();
+    assert!(
+        authority
+            .delete_identity_or_resume("kim", &owner, &bot, &scope)
+            .await
+            .unwrap()
+            .done
+    );
+    assert!(messages
+        .store
+        .history("kim", &owner, &bot, MessageKind::User, 0, 20)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        messages
+            .store
+            .history("kim", &owner, &protected, MessageKind::User, 0, 20)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    let protected_read: i64 = sqlx::query_scalar(
+        "SELECT last_read_id FROM conversation_reads WHERE app='kim' AND account=$1 AND peer=$2",
+    )
+    .bind(&owner)
+    .bind(&protected)
+    .fetch_one(&message_pool)
+    .await
+    .unwrap();
+    assert_eq!(protected_read, protected_id);
+    assert!(messages.store.insert_user("kim", &written).await.is_err());
+    message_pool.close().await;
 }

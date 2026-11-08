@@ -41,11 +41,13 @@ fn check_app(st: &RoyalState, app: &str) -> Result<(), (StatusCode, String)> {
 pub async fn store_scope(
     State(st): State<RoyalState>,
 ) -> Result<Json<StoreScope>, (StatusCode, String)> {
-    st.store
-        .resolve_scope()
-        .await
-        .map(Json)
-        .map_err(|err| (StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+    st.store.resolve_scope().await.map(Json).map_err(|err| {
+        let status = match err {
+            StoreError::ScopedCleanupUnsupported => StatusCode::NOT_IMPLEMENTED,
+            _ => StatusCode::SERVICE_UNAVAILABLE,
+        };
+        (status, err.to_string())
+    })
 }
 
 pub async fn delete_identity(
