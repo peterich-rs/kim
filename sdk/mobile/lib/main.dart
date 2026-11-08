@@ -10,14 +10,13 @@ import 'package:kim_mobile/app.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/core/runtime.dart';
-import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/bridge/secret_store_executor.dart';
 import 'package:kim_mobile/features/agent/providers/agent_permission.dart';
 import 'package:kim_mobile/features/agent/providers/agent_presence.dart';
 import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/bridge/agent_host.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
-import 'package:kim_mobile/src/rust/api/bootstrap.dart';
-import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as agent_catalog;
+import 'package:kim_mobile/bridge/boot.dart' as boot;
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 import 'package:kim_mobile/design/kim_theme.dart';
@@ -79,7 +78,7 @@ class _KimBootState extends State<KimBoot> {
     final runtime = await KimRuntime.bootstrap(requestNotifications: false);
     final bridge = KimBridge();
     if (!kIsWeb) {
-      await platformBootstrap(
+      await boot.platformBootstrap(
         documents: runtime.paths.documents.path,
         support: runtime.paths.support.path,
         cache: runtime.paths.cache.path,
@@ -89,9 +88,7 @@ class _KimBootState extends State<KimBoot> {
         simulator: platformIsSimulator,
       );
       if (agentHostSupported) {
-        await agent_catalog.setPlatformSupportRoot(
-          support: runtime.paths.support.path,
-        );
+        await boot.setPlatformSupportRoot(runtime.paths.support.path);
       }
       final secrets = SecretStoreExecutor();
       _secrets = secrets;

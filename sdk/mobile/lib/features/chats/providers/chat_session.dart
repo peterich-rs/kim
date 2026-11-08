@@ -1,5 +1,7 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' show OutgoingContent;
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -11,7 +13,6 @@ import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/bridge/conversation_port.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' show OutgoingContent;
 import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 

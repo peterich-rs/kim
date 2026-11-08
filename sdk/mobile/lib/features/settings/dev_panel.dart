@@ -1,5 +1,6 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' as rust_types;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,6 @@ import 'package:kim_mobile/features/session/link.dart';
 import 'package:kim_mobile/features/session/panic.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/features/settings/dev_panel_state.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 class DevPanelPage extends ConsumerStatefulWidget {
   const DevPanelPage({super.key});

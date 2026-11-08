@@ -1,5 +1,7 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' show OutgoingContent;
+
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -7,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' show OutgoingContent;
 
 /// Executes deferred KIM tools the Goose host yields to Dart.
 class KimImTools {

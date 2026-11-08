@@ -5,7 +5,7 @@ use kim_protocol::pkt::{
 use kim_router::{Context, RouterError};
 use tracing::{info, warn};
 
-use crate::store::{MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
+use kim_server_data::store::{MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
 
 #[derive(Debug, thiserror::Error)]
 enum OfflineError {
@@ -144,8 +144,8 @@ mod tests {
     use kim_session::MemorySessionStore;
 
     use super::do_offline_content;
-    use crate::idgen::{IdGenerator, SequenceIdGen};
-    use crate::store::{MemoryMessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
+    use kim_server_data::idgen::{IdGenerator, SequenceIdGen};
+    use kim_server_data::store::{MemoryMessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
 
     fn session() -> Session {
         Session {

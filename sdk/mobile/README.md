@@ -1,6 +1,6 @@
 # KIM mobile shell
 
-Flutter **3.47.2** UI around `crates/kim-client`. See [docs/mobile-client.md](../../docs/mobile-client.md).
+Flutter **3.47.2** UI around `crates/client/kim-client`. See [docs/mobile-client.md](../../docs/mobile-client.md).
 
 ```bash
 export PATH=/workspace/flutter-3.47.2/bin:$PATH

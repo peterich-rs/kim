@@ -1,3 +1,4 @@
+import type { WireConversationReadState, WirePresence, WireReadReceipt, WireTyping } from "@kim/web-sdk";
 import {
   Content,
   InboxKind,
@@ -7,8 +8,8 @@ import {
   Message,
   MessageType,
   State,
-} from "../../src/index.ts";
-import type { WireInboxItem, WireProfile } from "../../src/proto.ts";
+} from "@kim/web-sdk";
+import type { WireInboxItem, WireProfile } from "@kim/web-sdk";
 import { COPY } from "../copy.ts";
 import { mapWireStatus } from "./errors.ts";
 import type { Kind } from "./threads.ts";
@@ -21,10 +22,10 @@ export interface ChatHandlers {
   onFriend?: (from: string, nickname: string) => void;
   onFriendAccepted?: (from: string, nickname: string) => void;
   onProfileUpdated?: (profile: WireProfile) => void;
-  onPresence?: (entries: import("../../src/proto.ts").WirePresence[]) => void;
-  onTyping?: (t: import("../../src/proto.ts").WireTyping) => void;
-  onReceiptRead?: (r: import("../../src/proto.ts").WireReadReceipt) => void;
-  onReadSync?: (s: import("../../src/proto.ts").WireConversationReadState) => void;
+  onPresence?: (entries: WirePresence[]) => void;
+  onTyping?: (t: WireTyping) => void;
+  onReceiptRead?: (r: WireReadReceipt) => void;
+  onReadSync?: (s: WireConversationReadState) => void;
   onToken?: (token: string, exp: number) => void;
 }
 

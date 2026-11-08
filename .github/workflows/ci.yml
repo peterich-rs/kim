@@ -42,6 +42,12 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all -- --check
 
+      - name: crate boundaries
+        run: python3 tools/check_crate_boundaries.py
+
+      - name: npm workspace links
+        run: python3 tools/check_npm_workspace.py
+
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
@@ -87,11 +93,14 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: chat postgres tests
-        run: cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
+        run: |
+          cargo build -p kim-server-migrate
+          cargo test -p chat --features postgres,redis --all-targets -- --test-threads=1
 
       - name: backfill and tuple diff (empty and after tests)
         run: |
           set -euo pipefail
+          cargo run -p kim-server-migrate --quiet -- "$DATABASE_URL"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           leftover=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -tA -f deploy/diff-inbox.sql)
@@ -131,12 +140,17 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: sdk/web/package-lock.json
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace
+        run: |
+          corepack enable
+          corepack prepare npm@11.19.0 --activate
+          npm ci
 
       - name: Install and unit test
         working-directory: sdk/web
         run: |
-          npm ci
           npm run typecheck
           npm test
 
@@ -170,7 +184,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: crates/kim-client-ffi -> crates/kim-client-ffi/target
+          workspaces: crates/client/kim-client-ffi -> crates/client/kim-client-ffi/target
 
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -226,11 +240,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: sdk/media/package-lock.json
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace
+        run: |
+          corepack enable
+          corepack prepare npm@11.19.0 --activate
+          npm ci
 
       - name: Install, typecheck, test
         working-directory: sdk/media
         run: |
-          npm ci
           npm run typecheck
           npm test

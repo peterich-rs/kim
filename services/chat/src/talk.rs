@@ -6,13 +6,13 @@ use kim_protocol::AccountId;
 use kim_router::{Context, RouterError, SessionError};
 use tracing::{info, warn};
 
-use crate::directory::{GroupDirectory, GroupError};
 use crate::filter::ContentFilter;
-use crate::social::SocialDirectory;
-use crate::store::{
+use kim_server_data::directory::{GroupDirectory, GroupError};
+use kim_server_data::social::SocialDirectory;
+use kim_server_data::store::{
     unique_accounts, DeliveryTarget, Fanout, InsertMessage, InsertResult, MessageKind, MessageStore,
 };
-use crate::users::UserDirectory;
+use kim_server_data::users::UserDirectory;
 
 pub(crate) const TALK_PUSH_BUDGET: Duration = Duration::from_secs(3);
 
@@ -78,7 +78,7 @@ pub async fn do_user_talk(
     }
     let receiver = ctx.header().dest.as_str();
     const DIRECTORY_BUDGET: Duration = Duration::from_millis(800);
-    let directory = crate::royal::with_rpc_deadline(DIRECTORY_BUDGET, async {
+    let directory = crate::with_rpc_deadline(DIRECTORY_BUDGET, async {
         let owned_bot = match users.lookup(&ctx.session().app, receiver).await {
             Ok(Some(p)) if p.exists => {
                 if p.kind == kim_protocol::PROFILE_KIND_BOT
@@ -436,16 +436,18 @@ mod tests {
     use prometheus::Encoder;
 
     use super::{do_group_talk, do_user_talk};
-    use crate::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
     use crate::filter::{ContentFilter, ImageFilter, NoopFilter, TextWordFilter};
-    use crate::idgen::{IdGenerator, SequenceIdGen};
-    use crate::social::{MemorySocialDirectory, SocialDirectory, SocialError};
-    use crate::social_cache::CachedSocial;
-    use crate::store::{
+    use crate::talk::TALK_PUSH_BUDGET;
+    use kim_server_data::directory::{
+        CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory,
+    };
+    use kim_server_data::idgen::{IdGenerator, SequenceIdGen};
+    use kim_server_data::social::{MemorySocialDirectory, SocialDirectory, SocialError};
+    use kim_server_data::social_cache::CachedSocial;
+    use kim_server_data::store::{
         InsertMessage, InsertResult, MemoryMessageStore, MessageKind, MessageStore, StoreError,
     };
-    use crate::talk::TALK_PUSH_BUDGET;
-    use crate::users::{MemoryUserDirectory, UserDirectory};
+    use kim_server_data::users::{MemoryUserDirectory, UserDirectory};
 
     fn sender_session() -> Session {
         Session {
@@ -505,7 +507,7 @@ mod tests {
             app: &str,
             from: &str,
             to: &str,
-        ) -> Result<crate::social::FriendRequestOutcome, SocialError> {
+        ) -> Result<kim_server_data::social::FriendRequestOutcome, SocialError> {
             self.inner.request(app, from, to).await
         }
         async fn accept(&self, app: &str, account: &str, from: &str) -> Result<(), SocialError> {
@@ -710,7 +712,7 @@ mod tests {
             _target_id: &str,
             _message_id: i64,
             _resume: bool,
-        ) -> Result<(Vec<crate::store::MessageIndexRow>, bool), StoreError> {
+        ) -> Result<(Vec<kim_server_data::store::MessageIndexRow>, bool), StoreError> {
             Ok((Vec::new(), false))
         }
 
@@ -719,7 +721,7 @@ mod tests {
             _app: &str,
             _account: &str,
             _message_ids: &[i64],
-        ) -> Result<Vec<crate::store::MessageContentRow>, StoreError> {
+        ) -> Result<Vec<kim_server_data::store::MessageContentRow>, StoreError> {
             Ok(Vec::new())
         }
 
@@ -728,7 +730,7 @@ mod tests {
             _app: &str,
             _account: &str,
             _limit: i32,
-        ) -> Result<Vec<crate::store::InboxEntry>, StoreError> {
+        ) -> Result<Vec<kim_server_data::store::InboxEntry>, StoreError> {
             Ok(Vec::new())
         }
 
@@ -740,7 +742,7 @@ mod tests {
             _kind: MessageKind,
             _before_id: i64,
             _limit: i32,
-        ) -> Result<Vec<crate::store::HistoryEntry>, StoreError> {
+        ) -> Result<Vec<kim_server_data::store::HistoryEntry>, StoreError> {
             Ok(Vec::new())
         }
 
@@ -751,8 +753,10 @@ mod tests {
             dest: &str,
             kind: MessageKind,
             _message_id: i64,
-        ) -> Result<crate::store::ConversationReadState, StoreError> {
-            Ok(crate::store::ConversationReadState::missing(dest, kind))
+        ) -> Result<kim_server_data::store::ConversationReadState, StoreError> {
+            Ok(kim_server_data::store::ConversationReadState::missing(
+                dest, kind,
+            ))
         }
         async fn insert_bot_reply(
             &self,
@@ -770,7 +774,7 @@ mod tests {
             _owner: &str,
             _bot: &str,
             _limit: i32,
-        ) -> Result<Vec<crate::store::BotPendingItem>, StoreError> {
+        ) -> Result<Vec<kim_server_data::store::BotPendingItem>, StoreError> {
             Ok(Vec::new())
         }
         async fn purge_peer_dm(
@@ -1821,7 +1825,7 @@ mod tests {
             &self,
             _app: &str,
             _group_id: &str,
-        ) -> Result<crate::directory::GroupInfo, GroupError> {
+        ) -> Result<kim_server_data::directory::GroupInfo, GroupError> {
             Err(GroupError::Backend("detail failed".into()))
         }
     }

@@ -297,12 +297,12 @@ async fn send_ack_ids(client: &WsClient, seq: u32, ids: &[i64]) -> i32 {
 }
 
 async fn pending_stack() -> Stack {
-    let idgen: std::sync::Arc<dyn chat::idgen::IdGenerator> =
-        std::sync::Arc::new(chat::idgen::SequenceIdGen::default());
-    let store = std::sync::Arc::new(chat::store::MemoryMessageStore::with_pending_receipt(
-        idgen.clone(),
-    ));
-    let groups = std::sync::Arc::new(chat::directory::MemoryGroupDirectory::new(idgen));
+    let idgen: std::sync::Arc<dyn kim_server_data::idgen::IdGenerator> =
+        std::sync::Arc::new(kim_server_data::idgen::SequenceIdGen::default());
+    let store = std::sync::Arc::new(
+        kim_server_data::store::MemoryMessageStore::with_pending_receipt(idgen.clone()),
+    );
+    let groups = std::sync::Arc::new(kim_server_data::directory::MemoryGroupDirectory::new(idgen));
     spawn_stack_pending(store, groups).await
 }
 

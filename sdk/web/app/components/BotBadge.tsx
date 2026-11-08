@@ -1,4 +1,4 @@
-import { PROFILE_KIND_BOT } from "../../src/proto.ts";
+import { PROFILE_KIND_BOT } from "@kim/web-sdk";
 import { COPY } from "../copy.ts";
 import { Badge } from "./ui/badge.tsx";
 

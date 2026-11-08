@@ -1,6 +1,6 @@
 # 可观测（已落地）
 
-对照小册第 31 章。`crates/kim-metrics` 只被 examples path-dep。不要加进 `kim-core` / `kim-tcp` / `kim-container`。
+对照小册第 31 章。`crates/server/kim-metrics` 只被 examples path-dep。不要加进 `kim-core` / `kim-tcp` / `kim-container`。
 
 每个进程一个 `prometheus::Registry`（不是全局）。
 

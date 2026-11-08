@@ -1,19 +1,20 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' hide ProfileKind, Relation;
+import 'package:kim_mobile/bridge/projection.dart'
+    as rust_kind
+    show ProfileKind, Relation;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/features/agent/data/mention.dart';
-import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/bridge/errors.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide ProfileKind, Relation;
-import 'package:kim_mobile/src/rust/api/types.dart'
-    as rust_kind
-    show ProfileKind, Relation;
 import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';

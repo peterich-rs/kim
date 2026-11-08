@@ -1,0 +1,20 @@
+[package]
+name = "kim-server-migrate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Apply kim-server-schema. The only crate allowed to link it."
+
+[[bin]]
+name = "kim-server-migrate"
+path = "src/main.rs"
+
+[dependencies]
+kim-server-schema = { path = "../../crates/server/kim-server-schema" }
+sqlx = { workspace = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate"] }
+tokio.workspace = true
+
+[lints]
+workspace = true

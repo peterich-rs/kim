@@ -1678,14 +1678,17 @@ dependencies = [
  "axum",
  "bytes",
  "dashmap 6.2.1",
- "gateway",
  "http-body-util",
  "kim-container",
  "kim-core",
+ "kim-gateway-runtime",
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
  "kim-router",
+ "kim-royal-client",
+ "kim-server-config",
+ "kim-server-data",
  "kim-session",
  "kim-tcp",
  "kim-ws",
@@ -5155,22 +5158,9 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "bytes",
- "crc32fast",
- "kim-container",
- "kim-core",
- "kim-metrics",
- "kim-naming",
- "kim-protocol",
- "kim-session",
+ "kim-gateway-runtime",
  "kim-ws",
- "prost 0.13.5",
- "redis",
- "reqwest 0.12.28",
- "serde",
  "tokio",
- "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
 ]
@@ -7354,8 +7344,7 @@ dependencies = [
 name = "kim-agent-codec"
 version = "0.1.0"
 dependencies = [
- "goose-provider-types",
- "kim-agent-host",
+ "kim-agent-model",
  "kim-protocol",
  "prost 0.13.5",
  "serde",
@@ -7379,6 +7368,7 @@ dependencies = [
  "goose-agent",
  "goose-provider-types",
  "goose-providers",
+ "kim-agent-model",
  "nix 0.29.0",
  "rama-error",
  "rama-macros",
@@ -7395,6 +7385,14 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "kim-agent-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -7494,6 +7492,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-gateway-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "crc32fast",
+ "kim-container",
+ "kim-core",
+ "kim-metrics",
+ "kim-naming",
+ "kim-protocol",
+ "kim-server-config",
+ "kim-session",
+ "prost 0.13.5",
+ "redis",
+ "reqwest 0.12.28",
+ "serde",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
 name = "kim-log"
 version = "0.1.0"
 dependencies = [
@@ -7563,6 +7585,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-royal-client"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "axum",
+ "bytes",
+ "kim-protocol",
+ "kim-server-data",
+ "prost 0.13.5",
+ "reqwest 0.12.28",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "kim-sdk"
 version = "0.1.0"
 dependencies = [
@@ -7582,6 +7620,48 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "kim-server-config"
+version = "0.1.0"
+dependencies = [
+ "kim-protocol",
+ "url",
+]
+
+[[package]]
+name = "kim-server-data"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kim-protocol",
+ "kim-router",
+ "kim-session",
+ "redis",
+ "serde",
+ "serde_json",
+ "snowflake_me",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "kim-server-migrate"
+version = "0.1.0"
+dependencies = [
+ "kim-server-schema",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "kim-server-schema"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
 ]
 
 [[package]]
@@ -7637,27 +7717,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kim_agent_ffi"
+name = "kim_client_ffi"
 version = "0.1.0"
 dependencies = [
  "flutter_rust_bridge",
  "kim-agent-codec",
  "kim-agent-host",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "kim_client_ffi"
-version = "0.1.0"
-dependencies = [
- "flutter_rust_bridge",
  "kim-client",
  "kim-desktop-runtime",
  "kim-log",
  "kim-sdk",
  "libc",
+ "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -10468,6 +10539,7 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-server-config",
  "prometheus",
  "reqwest 0.12.28",
  "serde",
@@ -10495,6 +10567,8 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-server-config",
+ "kim-server-data",
  "kim-session",
  "prost 0.13.5",
  "rand_core 0.6.4",
@@ -12266,8 +12340,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
- "gateway",
  "kim-core",
+ "kim-gateway-runtime",
  "kim-tcp",
  "rustls",
  "rustls-pemfile",

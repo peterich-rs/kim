@@ -10,8 +10,8 @@ publish = false
 anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-gateway = { path = "../gateway" }
 kim-core.workspace = true
+kim-gateway-runtime.workspace = true
 kim-tcp.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
 rustls-pemfile = "2"

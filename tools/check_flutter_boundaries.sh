@@ -3,7 +3,7 @@
 # docs/flutter-layering.md: FFI capability surfaces (client / auth / handles
 # / bootstrap / generated loaders) are only reachable from lib/bridge/** and
 # the approved core boot files. Projection types (src/rust/api/types.dart,
-# src/rust_agent/api/catalog.dart) are pure data and may be imported anywhere,
+# src/rust/api/catalog.dart) are pure data and may be imported anywhere,
 # like protobuf generated code.
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,24 +12,12 @@ cd "$mobile"
 
 fail=0
 
-# 1. Client FFI capability surface: bridge layer + boot files only.
-violators="$(rg -l "package:kim_mobile/src/rust/(api/(client|auth|handles|bootstrap|simple)\.dart|frb_generated\.dart)" lib --glob '!lib/src/**' 2>/dev/null \
-  | grep -v '^lib/bridge/' \
-  | grep -v '^lib/core/secret_store_executor.dart$' \
-  | grep -v '^lib/main.dart$' || true)"
+# 1. Generated FFI: only the bridge layer may import it. Features, design,
+#    models, core, and main go through bridge/projection.dart or the ports.
+violators="$(rg -l "package:kim_mobile/src/rust/" lib --glob '!lib/src/**' 2>/dev/null \
+  | grep -v '^lib/bridge/' || true)"
 if [ -n "$violators" ]; then
-  echo "client FFI capability surface imported outside the bridge layer:"
-  echo "$violators"
-  fail=1
-fi
-
-# 2. Agent catalog loader: goose bridge + main only (types.dart of rust_agent
-#    is projection data and stays allowed).
-violators="$(rg -l "package:kim_mobile/src/rust_agent/frb_generated\.dart" lib --glob '!lib/src/**' 2>/dev/null \
-  | grep -v '^lib/bridge/goose_bridge.dart$' \
-  | grep -v '^lib/main.dart$' || true)"
-if [ -n "$violators" ]; then
-  echo "agent FFI loader imported outside the approved files:"
+  echo "generated FFI imported outside the bridge layer:"
   echo "$violators"
   fail=1
 fi

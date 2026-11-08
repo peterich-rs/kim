@@ -6,8 +6,8 @@ use kim_session::exclusive_device;
 use tracing::{error, info, warn};
 
 use crate::presence::PresenceHub;
-use crate::store::MessageStore;
-use crate::users::UserDirectory;
+use kim_server_data::store::MessageStore;
+use kim_server_data::users::UserDirectory;
 
 pub async fn do_sys_login(ctx: Context, users: &dyn UserDirectory) -> Result<(), RouterError> {
     do_sys_login_with_zone(ctx, "", users, None, false, None).await
@@ -165,7 +165,7 @@ mod tests {
     use kim_session::MemorySessionStore;
 
     use super::do_sys_login;
-    use crate::users::MemoryUserDirectory;
+    use kim_server_data::users::MemoryUserDirectory;
 
     #[derive(Default)]
     struct RecordingDispatcher {
@@ -407,21 +407,23 @@ mod tests {
     struct FailBackfill;
 
     #[async_trait]
-    impl crate::store::MessageStore for FailBackfill {
+    impl kim_server_data::store::MessageStore for FailBackfill {
         async fn insert_user(
             &self,
             _: &str,
-            _: &crate::store::InsertMessage,
-        ) -> Result<crate::store::InsertResult, crate::store::StoreError> {
-            Err(crate::store::StoreError::Backend("unused".into()))
+            _: &kim_server_data::store::InsertMessage,
+        ) -> Result<kim_server_data::store::InsertResult, kim_server_data::store::StoreError>
+        {
+            Err(kim_server_data::store::StoreError::Backend("unused".into()))
         }
         async fn insert_group(
             &self,
             _: &str,
-            _: &crate::store::InsertMessage,
+            _: &kim_server_data::store::InsertMessage,
             _: &[String],
-        ) -> Result<crate::store::InsertResult, crate::store::StoreError> {
-            Err(crate::store::StoreError::Backend("unused".into()))
+        ) -> Result<kim_server_data::store::InsertResult, kim_server_data::store::StoreError>
+        {
+            Err(kim_server_data::store::StoreError::Backend("unused".into()))
         }
         async fn ack(
             &self,
@@ -429,7 +431,7 @@ mod tests {
             _: &str,
             _: &str,
             _: &[i64],
-        ) -> Result<(), crate::store::StoreError> {
+        ) -> Result<(), kim_server_data::store::StoreError> {
             Ok(())
         }
         async fn offline_index(
@@ -439,7 +441,10 @@ mod tests {
             _: &str,
             _: i64,
             _: bool,
-        ) -> Result<(Vec<crate::store::MessageIndexRow>, bool), crate::store::StoreError> {
+        ) -> Result<
+            (Vec<kim_server_data::store::MessageIndexRow>, bool),
+            kim_server_data::store::StoreError,
+        > {
             Ok((Vec::new(), false))
         }
         async fn backfill_delivery(
@@ -447,15 +452,20 @@ mod tests {
             _: &str,
             _: &str,
             _: &str,
-        ) -> Result<(), crate::store::StoreError> {
-            Err(crate::store::StoreError::Backend("backfill down".into()))
+        ) -> Result<(), kim_server_data::store::StoreError> {
+            Err(kim_server_data::store::StoreError::Backend(
+                "backfill down".into(),
+            ))
         }
         async fn offline_content(
             &self,
             _: &str,
             _: &str,
             _: &[i64],
-        ) -> Result<Vec<crate::store::MessageContentRow>, crate::store::StoreError> {
+        ) -> Result<
+            Vec<kim_server_data::store::MessageContentRow>,
+            kim_server_data::store::StoreError,
+        > {
             Ok(Vec::new())
         }
         async fn inbox(
@@ -463,7 +473,8 @@ mod tests {
             _: &str,
             _: &str,
             _: i32,
-        ) -> Result<Vec<crate::store::InboxEntry>, crate::store::StoreError> {
+        ) -> Result<Vec<kim_server_data::store::InboxEntry>, kim_server_data::store::StoreError>
+        {
             Ok(Vec::new())
         }
         async fn history(
@@ -471,10 +482,11 @@ mod tests {
             _: &str,
             _: &str,
             _: &str,
-            _: crate::store::MessageKind,
+            _: kim_server_data::store::MessageKind,
             _: i64,
             _: i32,
-        ) -> Result<Vec<crate::store::HistoryEntry>, crate::store::StoreError> {
+        ) -> Result<Vec<kim_server_data::store::HistoryEntry>, kim_server_data::store::StoreError>
+        {
             Ok(Vec::new())
         }
         async fn mark_read(
@@ -482,10 +494,13 @@ mod tests {
             _: &str,
             _: &str,
             dest: &str,
-            kind: crate::store::MessageKind,
+            kind: kim_server_data::store::MessageKind,
             _: i64,
-        ) -> Result<crate::store::ConversationReadState, crate::store::StoreError> {
-            Ok(crate::store::ConversationReadState::missing(dest, kind))
+        ) -> Result<kim_server_data::store::ConversationReadState, kim_server_data::store::StoreError>
+        {
+            Ok(kim_server_data::store::ConversationReadState::missing(
+                dest, kind,
+            ))
         }
         async fn insert_bot_reply(
             &self,
@@ -493,9 +508,10 @@ mod tests {
             _: &str,
             _: &str,
             _: i64,
-            _: &crate::store::InsertMessage,
-        ) -> Result<crate::store::InsertResult, crate::store::StoreError> {
-            Err(crate::store::StoreError::Backend("unused".into()))
+            _: &kim_server_data::store::InsertMessage,
+        ) -> Result<kim_server_data::store::InsertResult, kim_server_data::store::StoreError>
+        {
+            Err(kim_server_data::store::StoreError::Backend("unused".into()))
         }
         async fn bot_pending(
             &self,
@@ -503,7 +519,8 @@ mod tests {
             _: &str,
             _: &str,
             _: i32,
-        ) -> Result<Vec<crate::store::BotPendingItem>, crate::store::StoreError> {
+        ) -> Result<Vec<kim_server_data::store::BotPendingItem>, kim_server_data::store::StoreError>
+        {
             Ok(Vec::new())
         }
         async fn purge_peer_dm(
@@ -511,7 +528,7 @@ mod tests {
             _: &str,
             _: &str,
             _: &str,
-        ) -> Result<(), crate::store::StoreError> {
+        ) -> Result<(), kim_server_data::store::StoreError> {
             Ok(())
         }
     }

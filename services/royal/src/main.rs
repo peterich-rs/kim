@@ -4,15 +4,12 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
-use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
 use chat::open_uncached_session_store;
-use chat::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
 use kim_naming::{open_naming, DefaultRegistration, Naming};
 use kim_protocol::PasswordSealKey;
-use kim_protocol::{
-    check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
-    ALLOWED_APP,
-};
+use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret, ALLOWED_APP};
+use kim_server_data::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
+use kim_server_data::store::{open_pg_backends, pending_receipt_enabled, AckObserver, PoolConfig};
 use royal::{
     router, DeviceDirectory, DeviceHot, JwtConfig, MemoryDeviceDirectory, MemoryDeviceHot,
     MemoryRevocation, RoyalState, TokenRevocation,
@@ -113,6 +110,21 @@ fn jwt_secret(cfg: &str) -> String {
     })
 }
 
+async fn open_accounts(url: &str) -> anyhow::Result<Arc<dyn royal::AccountAuthStore>> {
+    #[cfg(feature = "postgres")]
+    {
+        let store = royal::PostgresAccountAuth::connect(url)
+            .await
+            .map_err(|err| anyhow::anyhow!(err))?;
+        Ok(Arc::new(store))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = url;
+        anyhow::bail!("rebuild royal with --features postgres")
+    }
+}
+
 async fn open_devices(url: &str) -> anyhow::Result<Arc<dyn DeviceDirectory>> {
     #[cfg(feature = "postgres")]
     {
@@ -159,9 +171,11 @@ async fn open_revoke(url: &str) -> anyhow::Result<Arc<dyn TokenRevocation>> {
 }
 
 #[cfg(feature = "redis")]
-async fn open_nonce(url: &str) -> anyhow::Result<Arc<dyn chat::HmacNonceGuard>> {
+async fn open_nonce(
+    url: &str,
+) -> anyhow::Result<Arc<dyn kim_server_data::hmac_nonce::HmacNonceGuard>> {
     Ok(Arc::new(
-        chat::RedisHmacNonceGuard::open(url)
+        kim_server_data::hmac_nonce::RedisHmacNonceGuard::open(url)
             .await
             .map_err(anyhow::Error::msg)
             .context("redis")?,
@@ -169,7 +183,9 @@ async fn open_nonce(url: &str) -> anyhow::Result<Arc<dyn chat::HmacNonceGuard>> 
 }
 
 #[cfg(not(feature = "redis"))]
-async fn open_nonce(_url: &str) -> anyhow::Result<Arc<dyn chat::HmacNonceGuard>> {
+async fn open_nonce(
+    _url: &str,
+) -> anyhow::Result<Arc<dyn kim_server_data::hmac_nonce::HmacNonceGuard>> {
     anyhow::bail!("rebuild royal with --features redis")
 }
 
@@ -226,7 +242,7 @@ async fn main() -> anyhow::Result<()> {
     let allow_plaintext = env_nonempty("KIM_AUTH_ALLOW_PLAINTEXT_PASSWORD")
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(password_seal.is_none());
-    check_strict_runtime(StrictCheck {
+    kim_server_config::check_strict_runtime(kim_server_config::StrictCheck {
         hmac: Some(&hmac),
         jwt: Some(&jwt.secret),
         redis_url: redis.as_deref(),
@@ -241,9 +257,9 @@ async fn main() -> anyhow::Result<()> {
         Some(url) => open_revoke(url).await?,
         None => Arc::new(MemoryRevocation::new()),
     };
-    let nonce: Arc<dyn chat::HmacNonceGuard> = match redis.as_deref() {
+    let nonce: Arc<dyn kim_server_data::hmac_nonce::HmacNonceGuard> = match redis.as_deref() {
         Some(url) => open_nonce(url).await?,
-        None => Arc::new(chat::MemoryHmacNonceGuard::new()),
+        None => Arc::new(kim_server_data::hmac_nonce::MemoryHmacNonceGuard::new()),
     };
 
     let pending_receipt = pending_receipt_enabled();
@@ -255,7 +271,12 @@ async fn main() -> anyhow::Result<()> {
         cfg.this.service_name.clone()
     };
     let metrics = kim_metrics::KimMetrics::new(&service_id, &service_name)?;
-    let ack_observer: Option<Arc<dyn AckObserver>> = Some(metrics.clone() as Arc<dyn AckObserver>);
+    let histogram = metrics.clone();
+    let ack_observer: Option<Arc<dyn AckObserver>> = Some(Arc::new(
+        kim_server_data::store::ProcessAckObserver(move |seconds: f64| {
+            histogram.observe_send_to_ack(std::time::Duration::from_secs_f64(seconds))
+        }),
+    ));
     let mut state = if let Some(db) = env_or_cfg("DATABASE_URL", &cfg.this.database_url) {
         let sessions = match redis.as_deref() {
             None | Some("") => None,
@@ -279,9 +300,10 @@ async fn main() -> anyhow::Result<()> {
             jwt,
             revoke,
         )
+        .with_accounts(open_accounts(&db).await?)
         .with_pending_receipt(pending_receipt)
         .with_agent_specs(
-            chat::open_agent_spec_store(Some(&db))
+            kim_server_data::agent_spec::open_agent_spec_store(Some(&db))
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?,
         )
@@ -290,7 +312,7 @@ async fn main() -> anyhow::Result<()> {
     };
     state = state.with_metrics(metrics.clone());
     let app = env_or_cfg("KIM_APP", &cfg.this.app).unwrap_or_else(|| ALLOWED_APP.into());
-    if kim_protocol::strict_runtime() && app != ALLOWED_APP {
+    if kim_server_config::strict_runtime() && app != ALLOWED_APP {
         anyhow::bail!("production KIM_APP must be {ALLOWED_APP}");
     }
     let chat_url = env_or_cfg("CHAT_URL", &cfg.this.chat_url).unwrap_or_default();

@@ -5,6 +5,7 @@
 
 import 'api/auth.dart';
 import 'api/bootstrap.dart';
+import 'api/catalog.dart';
 import 'api/client.dart';
 import 'api/failure.dart';
 import 'api/handles.dart';
@@ -177,7 +178,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TimelineSnapshot dco_decode_box_autoadd_timeline_snapshot(dynamic raw);
 
   @protected
+  CapabilityEntry dco_decode_capability_entry(dynamic raw);
+
+  @protected
   CapabilityPreview dco_decode_capability_preview(dynamic raw);
+
+  @protected
+  CatalogValidate dco_decode_catalog_validate(dynamic raw);
 
   @protected
   ContactsSnapshot dco_decode_contacts_snapshot(dynamic raw);
@@ -204,6 +211,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AgentProfile> dco_decode_list_agent_profile(dynamic raw);
 
   @protected
+  List<CapabilityEntry> dco_decode_list_capability_entry(dynamic raw);
+
+  @protected
   List<MessageView> dco_decode_list_message_view(dynamic raw);
 
   @protected
@@ -225,7 +235,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<RoomMember> dco_decode_list_room_member(dynamic raw);
 
   @protected
+  List<Skill> dco_decode_list_skill(dynamic raw);
+
+  @protected
   List<ThreadView> dco_decode_list_thread_view(dynamic raw);
+
+  @protected
+  List<Vendor> dco_decode_list_vendor(dynamic raw);
 
   @protected
   LocalMedia dco_decode_local_media(dynamic raw);
@@ -276,6 +292,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderAccount dco_decode_provider_account(dynamic raw);
 
   @protected
+  ReasoningSurface dco_decode_reasoning_surface(dynamic raw);
+
+  @protected
   Relation dco_decode_relation(dynamic raw);
 
   @protected
@@ -298,6 +317,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SettingsPreset dco_decode_settings_preset(dynamic raw);
+
+  @protected
+  Skill dco_decode_skill(dynamic raw);
 
   @protected
   ThreadKind dco_decode_thread_kind(dynamic raw);
@@ -334,6 +356,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt dco_decode_usize(dynamic raw);
+
+  @protected
+  Vendor dco_decode_vendor(dynamic raw);
+
+  @protected
+  VendorGroup dco_decode_vendor_group(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -492,7 +520,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  CapabilityEntry sse_decode_capability_entry(SseDeserializer deserializer);
+
+  @protected
   CapabilityPreview sse_decode_capability_preview(SseDeserializer deserializer);
+
+  @protected
+  CatalogValidate sse_decode_catalog_validate(SseDeserializer deserializer);
 
   @protected
   ContactsSnapshot sse_decode_contacts_snapshot(SseDeserializer deserializer);
@@ -523,6 +557,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<CapabilityEntry> sse_decode_list_capability_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<MessageView> sse_decode_list_message_view(SseDeserializer deserializer);
 
   @protected
@@ -546,7 +585,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<RoomMember> sse_decode_list_room_member(SseDeserializer deserializer);
 
   @protected
+  List<Skill> sse_decode_list_skill(SseDeserializer deserializer);
+
+  @protected
   List<ThreadView> sse_decode_list_thread_view(SseDeserializer deserializer);
+
+  @protected
+  List<Vendor> sse_decode_list_vendor(SseDeserializer deserializer);
 
   @protected
   LocalMedia sse_decode_local_media(SseDeserializer deserializer);
@@ -601,6 +646,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderAccount sse_decode_provider_account(SseDeserializer deserializer);
 
   @protected
+  ReasoningSurface sse_decode_reasoning_surface(SseDeserializer deserializer);
+
+  @protected
   Relation sse_decode_relation(SseDeserializer deserializer);
 
   @protected
@@ -623,6 +671,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SettingsPreset sse_decode_settings_preset(SseDeserializer deserializer);
+
+  @protected
+  Skill sse_decode_skill(SseDeserializer deserializer);
 
   @protected
   ThreadKind sse_decode_thread_kind(SseDeserializer deserializer);
@@ -659,6 +710,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
+  Vendor sse_decode_vendor(SseDeserializer deserializer);
+
+  @protected
+  VendorGroup sse_decode_vendor_group(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -859,8 +916,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_capability_entry(
+    CapabilityEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_capability_preview(
     CapabilityPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_catalog_validate(
+    CatalogValidate self,
     SseSerializer serializer,
   );
 
@@ -894,6 +963,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_agent_profile(
     List<AgentProfile> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_capability_entry(
+    List<CapabilityEntry> self,
     SseSerializer serializer,
   );
 
@@ -934,10 +1009,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_skill(List<Skill> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_thread_view(
     List<ThreadView> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_vendor(List<Vendor> self, SseSerializer serializer);
 
   @protected
   void sse_encode_local_media(LocalMedia self, SseSerializer serializer);
@@ -1006,6 +1087,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_reasoning_surface(
+    ReasoningSurface self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_relation(Relation self, SseSerializer serializer);
 
   @protected
@@ -1034,6 +1121,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     SettingsPreset self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_skill(Skill self, SseSerializer serializer);
 
   @protected
   void sse_encode_thread_kind(ThreadKind self, SseSerializer serializer);
@@ -1076,6 +1166,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vendor(Vendor self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_vendor_group(VendorGroup self, SseSerializer serializer);
 }
 
 // Section: wire_class

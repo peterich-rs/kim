@@ -85,7 +85,7 @@ KIM_PING_ONLY=1 cargo run -p pkt-client -- alice
 KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ```
 
-连 `gateway` 的第一帧必须是 JWT `login.signin`。客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。通信层「第一帧当名字」的回声只存在于 `crates/kim-tcp/tests/echo.rs`、`crates/kim-ws/tests/echo.rs`、`crates/kim-container/tests/e2e_echo.rs`，不要和登录握手混。
+连 `gateway` 的第一帧必须是 JWT `login.signin`。客户端连网关是 WebSocket Upgrade，网关连 Chat 是 TCP `InnerHandshakeReq`。通信层「第一帧当名字」的回声只存在于 `crates/shared/kim-tcp/tests/echo.rs`、`crates/shared/kim-ws/tests/echo.rs`、`crates/server/kim-container/tests/e2e_echo.rs`，不要和登录握手混。
 
 ```bash
 env -u REDIS_URL cargo test --workspace
@@ -96,21 +96,21 @@ env -u REDIS_URL cargo test --workspace
 ## 仓库结构
 
 ```
-crates/kim-core         通信层说明书：Conn / Frame / Channel / ChannelMap
-crates/kim-tcp          TCP 分帧（App / 网关↔Chat）
-crates/kim-ws           WebSocket（HTTP Upgrade 之后）
-crates/kim-protocol     Magic + BasicPkt + LogicPkt + JWT
-crates/kim-naming       静态服务发现（不是 Consul）
-crates/kim-container    全连接拨号、Young/Adult、Forward / Push
-crates/kim-router       指令 Router / Context / Dispatch
-crates/kim-session      会话存储（默认 Memory，可选 Redis feature）
+crates/shared/kim-core         通信层说明书：Conn / Frame / Channel / ChannelMap
+crates/shared/kim-tcp          TCP 分帧（App / 网关↔Chat）
+crates/shared/kim-ws           WebSocket（HTTP Upgrade 之后）
+crates/shared/kim-protocol     Magic + BasicPkt + LogicPkt + JWT
+crates/server/kim-naming       静态服务发现（不是 Consul）
+crates/server/kim-container    全连接拨号、Young/Adult、Forward / Push
+crates/server/kim-router       指令 Router / Context / Dispatch
+crates/server/kim-session      会话存储（默认 Memory，可选 Redis feature）
 services/               gateway / tgateway / chat / royal / router
 examples/               pkt-client / kim-client-demo / kimbench
 deploy/                 VPS Compose（gateway / chat / Redis / Postgres）
 sdk/web                 TypeScript Web SDK（第 23–24 章）
 sdk/media               图片上传 Worker（R2 kim-media）
 sdk/mobile              Flutter 壳 + FRB → kim-client（3.47.2）
-crates/kim-client       客户端 session/login/talk（Conn = kim-ws）
+crates/client/kim-client       客户端 session/login/talk（Conn = kim-ws）
 docs/                   词表、分层合同、登录与控制层规格、进阶篇 as-built
 ```
 
@@ -137,6 +137,20 @@ docs/                   词表、分层合同、登录与控制层规格、进�
 17. [docs/deploy.md](docs/deploy.md) — Docker Compose / GHCR / VPS
 
 ## 开发
+
+只开发或编译服务端时，可生成独立 Cargo workspace，不需要初始化 Codex 子模块：
+
+```bash
+# 目标目录必须尚不存在；需要 Python 3.11+。
+python3 tools/build/prepare-server-context.py /tmp/kim-server-build
+cargo build --manifest-path /tmp/kim-server-build/Cargo.toml --locked --all-features
+```
+
+生成目录只包含服务端及其通用依赖，不包含 `crates/client`、`crates/agent`、手机工程或 Codex 的 manifest/源码。默认构建 gateway、tgateway、chat、royal、router 和迁移工具；例如只检查 Chat 可用 `cargo check --manifest-path /tmp/kim-server-build/Cargo.toml -p chat --locked --features redis,postgres,consul`。这是源码快照，修改源文件后要生成到一个新目录。
+
+`tools/build/server.Cargo.lock` 是根锁文件的服务端快照，脚本会核对其中的版本、来源和 checksum 都来自根锁。服务端依赖变化后，用新目录运行 `prepare-server-context.py <新目录> --refresh-lock` 更新并审查该文件；缓存完整时可加 `--offline`。不要直接在生成目录中运行无约束的依赖升级。
+
+回归检查：`python3 tools/build/check-server-context.py --build`，它会验证完整解析图及实际编译产物都不包含桌面依赖。独立的 Server isolation CI 不检出 Codex 子模块。生成目录也带有服务端 Dockerfile，可用 `docker build /tmp/kim-server-build` 验证；当前根 Dockerfile 与镜像发布入口尚未切换。
 
 ```bash
 cargo fmt --all

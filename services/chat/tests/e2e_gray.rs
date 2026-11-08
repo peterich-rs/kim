@@ -6,12 +6,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use chat::store::MessageStore;
 use chat::ChatHandler;
-use gateway::{GatewayHandler, KickHook, Route, RouteFile, RouteSelector, ZoneFile};
 use harness::*;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, MessageListener, OpCode, Server};
+use kim_gateway_runtime::{GatewayHandler, KickHook, Route, RouteFile, RouteSelector, ZoneFile};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{Flag, MessageReq, Session, Status};
 use kim_protocol::{
@@ -19,6 +18,7 @@ use kim_protocol::{
     CMD_FRIEND_REQUEST, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
 };
 use kim_router::SessionStorage;
+use kim_server_data::store::MessageStore;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use kim_ws::{connect_ws, WsServer};
@@ -110,12 +110,12 @@ async fn spawn_chat(
     let h = Arc::new(ChatHandler::with_seams_and_zone(
         c.clone(),
         cache,
-        Arc::new(chat::store::MemoryMessageStore::new(Arc::new(
-            chat::idgen::SequenceIdGen::new(node),
+        Arc::new(kim_server_data::store::MemoryMessageStore::new(Arc::new(
+            kim_server_data::idgen::SequenceIdGen::new(node),
         ))),
-        Arc::new(chat::directory::MemoryGroupDirectory::new(Arc::new(
-            chat::idgen::SequenceIdGen::new(node + 10_000),
-        ))),
+        Arc::new(kim_server_data::directory::MemoryGroupDirectory::new(
+            Arc::new(kim_server_data::idgen::SequenceIdGen::new(node + 10_000)),
+        )),
         zone.into(),
     ));
     chat.set_acceptor(h.clone());
@@ -161,7 +161,7 @@ async fn spawn_gray(whitelist: HashMap<String, String>, with_gray_chat: bool) ->
         after_downlink: vec![hook.clone()],
     });
     let gw_h = Arc::new(GatewayHandler::new(gw.clone(), "wg-1", DEMO_DEFAULT_SECRET));
-    gw_h.set_revoke(Arc::new(gateway::AllowAllRevoke));
+    gw_h.set_revoke(Arc::new(kim_gateway_runtime::AllowAllRevoke));
     gw_server.set_acceptor(gw_h.clone());
     gw_server.set_message_listener(gw_h.clone());
     gw_server.set_state_listener(gw_h.clone());
@@ -365,12 +365,12 @@ impl kim_core::ChannelHandle for NoopHandle {
 #[tokio::test]
 async fn legacy_kim_gray_session_talk_is_unauthorized() {
     let cache = open_session_store(None).await.expect("memory");
-    let store = Arc::new(chat::store::MemoryMessageStore::new(Arc::new(
-        chat::idgen::SequenceIdGen::new(1),
+    let store = Arc::new(kim_server_data::store::MemoryMessageStore::new(Arc::new(
+        kim_server_data::idgen::SequenceIdGen::new(1),
     )));
-    let groups = Arc::new(chat::directory::MemoryGroupDirectory::new(Arc::new(
-        chat::idgen::SequenceIdGen::new(2),
-    )));
+    let groups = Arc::new(kim_server_data::directory::MemoryGroupDirectory::new(
+        Arc::new(kim_server_data::idgen::SequenceIdGen::new(2)),
+    ));
     let container = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
         identity: ident("chat-1", "chat"),

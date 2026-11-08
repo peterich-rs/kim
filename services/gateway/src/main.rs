@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gateway::{load_config, run_gateway};
+use kim_gateway_runtime::{load_config, run_gateway};
 use kim_ws::WsServer;
 
 #[tokio::main]

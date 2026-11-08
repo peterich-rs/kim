@@ -7,11 +7,11 @@ use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chat::users::UserError;
 use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
 use kim_protocol::{
     generate_with_device, parse, AccountId, ProtocolError, PASSWORD_KEY_ID_MISMATCH,
 };
+use kim_server_data::users::UserError;
 use serde::Serialize;
 use zeroize::Zeroizing;
 
@@ -110,7 +110,7 @@ async fn issue(
     };
     let exp = now_ts().saturating_add(ttl);
     let ver = st
-        .users
+        .accounts
         .token_epoch(&st.app, account)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -205,7 +205,7 @@ pub async fn register(State(st): State<RoyalState>, body: Bytes) -> AuthResult<B
     let hashed = tokio::task::spawn_blocking(move || hash_password(password))
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "hash".into()))??;
-    match st.users.create(&st.app, &account, &hashed).await {
+    match st.accounts.create(&st.app, &account, &hashed).await {
         Ok(()) => finish_auth(&st, &account, &req).await,
         Err(UserError::Conflict) => Err((StatusCode::CONFLICT, "账号已存在".into())),
         Err(UserError::Backend(e)) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
@@ -228,7 +228,7 @@ pub async fn login(State(st): State<RoyalState>, body: Bytes) -> AuthResult<Byte
         }
     }
     let stored = st
-        .users
+        .accounts
         .password_hash(&st.app, &account)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -314,7 +314,7 @@ pub(crate) async fn account_epoch(st: &RoyalState, account: &str) -> AuthResult<
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let durable = st
-        .users
+        .accounts
         .token_epoch(&st.app, account)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -383,7 +383,7 @@ pub async fn change_password(
         &req.key_id,
     )?;
     let stored = st
-        .users
+        .accounts
         .password_hash(&st.app, &account)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -403,7 +403,7 @@ pub async fn change_password(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "hash".into()))??;
     let ver = st
-        .users
+        .accounts
         .set_password_and_bump_epoch(&st.app, &account, &hashed)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

@@ -1,0 +1,15 @@
+[package]
+name = "kim-server-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Production startup checks for the server processes. Not part of the wire protocol."
+
+[dependencies]
+kim-protocol.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

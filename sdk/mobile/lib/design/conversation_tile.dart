@@ -1,5 +1,6 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' hide ThreadKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:gap/gap.dart';
@@ -8,7 +9,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/format.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
 import 'package:kim_mobile/design/kim_theme.dart';
 import 'package:kim_mobile/design/kim_avatar.dart';
 import 'package:kim_mobile/design/status_chip.dart';

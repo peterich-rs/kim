@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/bridge/goose_bridge.dart';
 import 'package:kim_mobile/bridge/kim_ports.dart';
-import 'package:kim_mobile/src/rust_agent/api/catalog.dart' show VendorGroup;
 import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
 

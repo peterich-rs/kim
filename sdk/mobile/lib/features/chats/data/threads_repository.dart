@@ -1,13 +1,13 @@
 /// Maps session DTOs + local agent personas into inbox threads.
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' show ThreadView;
 import 'package:kim_mobile/bridge/kim_ports.dart';
 import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' show ThreadView;
 
 class ThreadsRepository {
   const ThreadsRepository(this._client);

@@ -1,0 +1,30 @@
+# Monorepo 依赖重构
+
+分支 `refactor/monorepo`。设计原文留在 `research/monorepo-refactor/plan.md`，不把未落地的目标写成现有行为。
+
+基线是 `origin/main` `5b72e95`。该提交可 `cargo metadata`；调研时工作区里的空 manifest 不在这条基线上。
+
+## 已落地
+
+| 切片 | 结果 |
+|---|---|
+| R07 | `kim-gateway-runtime` 持有 handler / revoke / hooks / run。`gateway` 只绑 WS，`tgateway` 只绑 TCP/TLS。runtime 不依赖 `kim-ws` |
+| R02 | `kim-agent-model` 持有配置数据与 `ApprovalMode`。codec 不再依赖 host / Goose。Host 在调用 Goose / Codex 时做引擎转换 |
+| R05a schema | `kim-server-schema` 嵌入 0001–0016。Chat 不再 `migrate!`。Compose `migrate` 与测试调用外部 runner |
+| R05a auth | `AccountAuthStore` 只在 Royal。公开 `UserDirectory` 没有 create/password/epoch 方法。认证 SQL 不在 Chat |
+| R05c | Chat 删除经 `BotControl` 协调器，purge 核对 `StoreScope`。生产 Chat 无 Royal endpoint 时 bot 写返回不可用。测试栈注入 directory control |
+| R08a | 根 npm workspace 登记 `@kim/web-sdk` 与 `@kim/media`，lock 记录本地 link |
+| R01 | `tools/check_crate_boundaries.py` 检查 normal/build 角色边界；schema 闭包包含 dev |
+| R05b | `kim-server-data` 持有 MessageStore、公开目录、社交、IdGen、nonce、AgentSpec 及其 Memory/PG/Redis adapter。Chat 与 Royal 都依赖它；Royal 对 chat 只剩 HTTP adapter |
+| R12 | 部署检查（strict runtime、Redis 密码、Consul HTTPS）移入 `kim-server-config`。`kim-protocol` 只留 wire 协议与 HMAC 签名。IDs 类型两侧都用，单独成库没有收益，保留在 protocol |
+| R11a | `tools/build/prepare-server-context.py` 按服务端 normal/build/dev/target 本地依赖闭包生成独立 workspace，完全不复制 client/agent/Codex manifest。服务端锁快照沿用并校验根锁版本/来源/checksum。实际 `--locked --all-features` 已编译六个服务端产物；编译清单无桌面或 SQLite。Server isolation CI 不检出子模块；上下文提供单独 Dockerfile，根发布入口未切换 |
+| R10a | crate 按 `crates/shared`、`crates/server`、`crates/client`、`crates/agent` 分组。workspace、FRB、hook、proto 生成、OTA 路径同步更新 |
+| R09 | 手写 Flutter 只在 `lib/bridge` 内引用生成 FFI。`bridge/projection.dart` 是唯一的生成类型出口；错误映射与密钥执行器移入 bridge；边界脚本拒绝 bridge 之外的引用 |
+| R08b | `sdk/web/app` 只从 `@kim/web-sdk` 入口读 SDK，不再跨路径引用 `src`。入口补齐应用实际用到的 proto、密码信封和类型；Vite、tsconfig、vitest 共用同一 alias |
+| R04 | catalog 与 skill 查询并入 `kim_client_ffi`。Flutter 不再初始化第二套 FFI；`kim-agent-ffi`、其 FRB 配置和 `lib/src/rust_agent` 已删除。产物名 `kim_client_ffi` 不变 |
+| R06 | `kim-royal-client` 持有 HTTP adapter 与 endpoint pool。Chat 装配层推 endpoint 快照并桥接 KimMetrics；client 不依赖 naming、metrics、chat、royal |
+| R03 | `MobileAgent` 持有 `Weak<Inner>`，不再强持有 KimSdk。`stop_session` bump epoch 后调 `end_session`；worker 在 host 返回后复核取消与 epoch，迟到回复不落库 |
+
+## 尚未落地
+
+Royal HTTP 的 identity/resume/complete 仍走旧 DELETE 加自身 purge；Chat 删除已走协调器。R10 的 app、web、media 物理换目录尚未做。R11 的服务端 Cargo 隔离已验证本机编译；Linux 容器镜像尚未在本机验证（Docker daemon 未运行），根 Dockerfile 与 image/deploy workflow 保持原入口，待镜像验证后再切换。

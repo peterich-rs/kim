@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/errors.dart';
-import 'package:kim_mobile/core/failures.dart';
+import 'package:kim_mobile/bridge/errors.dart';
+import 'package:kim_mobile/bridge/failures.dart';
 import 'package:kim_mobile/features/agent/providers/agent_profiles.dart';
 import 'package:kim_mobile/features/contacts/providers/contacts.dart';
 import 'package:kim_mobile/features/session/retry.dart';

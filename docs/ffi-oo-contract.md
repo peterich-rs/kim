@@ -1,6 +1,6 @@
 # FFI 边界
 
-Dart 的会话句柄只有 `KimUiHandle`（账号 HTTP 仍是 `KimAuth`）。桌面 turn 在 `kim-desktop-runtime` 里跑完，不经过 Dart 驱动。手机不编 `kim-agent-ffi`。手机 `.so` 经 `kim-agent-codec` 链上的 `kim-agent-host` 不带 `codex`；带 `codex` 的 host 只从桌面 catalog crate 进来。
+Dart 的会话句柄只有 `KimUiHandle`（账号 HTTP 仍是 `KimAuth`）。桌面 turn 在 `kim-desktop-runtime` 里跑完，不经过 Dart 驱动。catalog 与 skill 查询在 `kim-client-ffi`。手机链接 `kim-agent-host` 时不开 `codex` feature；`kim-codex-helper` 只由桌面 hook 另编。
 
 ## 可以跨边界
 
@@ -18,18 +18,16 @@ theme、dest、avatar、`notificationsAsked` 留在 SharedPreferences。
 - api key 明文。模型列表走 `fetchModels(vendor, baseUrl, keyRef)`
 - profile blob。人设文档的 schema 在 `kim-agent-codec`；存储格式不出 FFI
 - SQLite 路径、user agent、HTTP origin、skill 缓存路径。这些由 `Layout` 从 bootstrap 派生
-- 为跑一轮 agent 把 profile、账号、overlay 在 Dart 与两条 FFI 之间搬来搬去
+- 为跑一轮 agent 把 profile、账号、overlay 在 Dart 与 FFI 之间搬来搬去
 - 续签后的 JWT。`TokenRenew` 在投影之前写入 SecretStore
 
-## 两个 crate
+## 一个 FFI crate
 
-`kim-client-ffi` 是手机和桌面都链的 IM 边界。
-
-`kim-agent-ffi` 只在桌面编。它依赖带 `codex` feature 的 `kim-agent-host`，所以不能并进手机 `.so`。它只提供 catalog（厂商、技能、内置人设）。它不依赖 `kim-client`。编排 crate 是 `kim-desktop-runtime`。
+`kim-client-ffi` 是手机和桌面都链的 IM 边界，也提供 catalog（厂商、技能、内置人设）。它依赖不带 `codex` feature 的 `kim-agent-host`，所以手机 `.so` 不链 Codex。编排 crate 仍是 `kim-desktop-runtime`，只在桌面 target 上进入 FFI。
 
 ## 闭集
 
-闭集定义在 `kim-sdk`（`crates/kim-sdk/src/model.rs`）。`kim-client-ffi` `pub use` 它们。Dart 用生成的枚举，不再把种类收成 `i32` 或关系字符串。协议整数（`MESSAGE_TYPE_*`、`INBOX_KIND_*`）只留在 `kim-client` 编解码和 sqlite 绑定。
+闭集定义在 `kim-sdk`（`crates/client/kim-sdk/src/model.rs`）。`kim-client-ffi` `pub use` 它们。Dart 用生成的枚举，不再把种类收成 `i32` 或关系字符串。协议整数（`MESSAGE_TYPE_*`、`INBOX_KIND_*`）只留在 `kim-client` 编解码和 sqlite 绑定。
 
 - `ThreadKind`：`User` / `Group`
 - `MediaKind`：`Text` / `Image` / `Video` / `Voice` / `Card`。`MessageView.kind` 就是这个枚举。`classify_message` 在入库时写定；读路径信任存储的种类。`search_messages` 填真实 `MediaKind`
@@ -45,6 +43,6 @@ theme、dest、avatar、`notificationsAsked` 留在 SharedPreferences。
 
 续签发生在投影之前：`spawn_session_bridge` 收到 `SessionEvent::TokenRenew` 时先 `write_global(KEY_JWT, token)`，然后丢弃该事件。`SessionUpdate` 没有 `TokenRenew`。JWT 字符串不出 FFI。键名仍是 `kim.jwt`、`account.<keyRef>`。没有 `import_legacy_prefs`。
 
-`kim-agent-ffi` 保持桌面 catalog。它依赖带 `codex` feature 的 `kim-agent-host`，并进 `kim-client-ffi` 会把该 host 链进手机 `.so`。手机 hook（`sdk/mobile/hook/build.dart`）跳过它。它不提供 session API，也不依赖 `kim-client`。
+catalog 在 `kim-client-ffi`，不提供 session API。手机 hook（`sdk/mobile/hook/build.dart`）不编 `kim-codex-helper`。`codex` feature 不进 `kim-client-ffi` 的依赖。
 
 本地 sqlite：`user_version` 低于当前 schema 时删除该客户端库文件并按新 `CREATE` 重建。没有第二条 `ensure_column` 兼容迁移。服务端 Postgres 不在这条路径上。时间只在协议边界用现有的 `store::send_time_ms`。

@@ -1,6 +1,6 @@
 library;
 
-import 'package:kim_mobile/src/rust/api/types.dart' show ThreadPreview;
+import 'package:kim_mobile/bridge/projection.dart' show ThreadPreview;
 
 enum ThreadKind { user, group }
 

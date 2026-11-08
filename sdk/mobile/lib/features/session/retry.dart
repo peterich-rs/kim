@@ -3,8 +3,8 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 
-import 'package:kim_mobile/core/errors.dart';
-import 'package:kim_mobile/core/failures.dart';
+import 'package:kim_mobile/bridge/errors.dart';
+import 'package:kim_mobile/bridge/failures.dart';
 
 /// Retry transient provider failures; never retry auth / validation errors.
 ///

@@ -2,24 +2,29 @@
 resolver = "2"
 exclude = ["third_party"]
 members = [
-    "crates/kim-core",
-    "crates/kim-tcp",
-    "crates/kim-ws",
-    "crates/kim-protocol",
-    "crates/kim-naming",
-    "crates/kim-container",
-    "crates/kim-router",
-    "crates/kim-session",
-    "crates/kim-metrics",
-    "crates/kim-client",
-    "crates/kim-sdk",
-    "crates/kim-agent-host",
-    "crates/kim-codex-helper",
-    "crates/kim-agent-codec",
-    "crates/kim-log",
-    "crates/kim-desktop-runtime",
-    "crates/kim-client-ffi",
-    "crates/kim-agent-ffi",
+    "crates/shared/kim-core",
+    "crates/shared/kim-tcp",
+    "crates/shared/kim-ws",
+    "crates/shared/kim-protocol",
+    "crates/server/kim-naming",
+    "crates/server/kim-container",
+    "crates/server/kim-router",
+    "crates/server/kim-session",
+    "crates/server/kim-metrics",
+    "crates/server/kim-gateway-runtime",
+    "crates/server/kim-server-schema",
+    "crates/server/kim-server-data",
+    "crates/server/kim-royal-client",
+    "crates/server/kim-server-config",
+    "crates/client/kim-client",
+    "crates/client/kim-sdk",
+    "crates/agent/kim-agent-model",
+    "crates/agent/kim-agent-host",
+    "crates/agent/kim-codex-helper",
+    "crates/agent/kim-agent-codec",
+    "crates/shared/kim-log",
+    "crates/agent/kim-desktop-runtime",
+    "crates/client/kim-client-ffi",
     "services/gateway",
     "services/chat",
     "services/royal",
@@ -28,6 +33,7 @@ members = [
     "examples/pkt-client",
     "examples/kim-client-demo",
     "examples/kimbench",
+    "tools/kim-server-migrate",
 ]
 
 [workspace.package]
@@ -58,15 +64,15 @@ jsonwebtoken = "9"
 serde = { version = "1", features = ["derive"] }
 crc32fast = "1"
 redis = { version = "0.32", default-features = false, features = ["tokio-comp", "connection-manager", "script"] }
-kim-core = { path = "crates/kim-core" }
-kim-tcp = { path = "crates/kim-tcp" }
-kim-ws = { path = "crates/kim-ws" }
-kim-protocol = { path = "crates/kim-protocol" }
-kim-naming = { path = "crates/kim-naming" }
-kim-container = { path = "crates/kim-container" }
-kim-router = { path = "crates/kim-router" }
-kim-session = { path = "crates/kim-session" }
-kim-sdk = { path = "crates/kim-sdk" }
+kim-core = { path = "crates/shared/kim-core" }
+kim-tcp = { path = "crates/shared/kim-tcp" }
+kim-ws = { path = "crates/shared/kim-ws" }
+kim-protocol = { path = "crates/shared/kim-protocol" }
+kim-naming = { path = "crates/server/kim-naming" }
+kim-container = { path = "crates/server/kim-container" }
+kim-router = { path = "crates/server/kim-router" }
+kim-session = { path = "crates/server/kim-session" }
+kim-sdk = { path = "crates/client/kim-sdk" }
 snowflake_me = "2"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "sqlite-bundled", "macros", "migrate"] }
 # Same crate Codex rust-v0.155.1 locks. sqlx 0.9 accepts this; 0.8 cannot.
@@ -79,8 +85,12 @@ serde_norway = "0.9"
 clap = { version = "4", features = ["derive"] }
 humantime = "2"
 prometheus = { version = "0.14", default-features = false }
-kim-metrics = { path = "crates/kim-metrics" }
-kim-client = { path = "crates/kim-client" }
+kim-metrics = { path = "crates/server/kim-metrics" }
+kim-gateway-runtime = { path = "crates/server/kim-gateway-runtime" }
+kim-server-data = { path = "crates/server/kim-server-data" }
+kim-royal-client = { path = "crates/server/kim-royal-client" }
+kim-server-config = { path = "crates/server/kim-server-config" }
+kim-client = { path = "crates/client/kim-client" }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 hmac = "0.12"
 sha2 = "0.10"
@@ -91,10 +101,11 @@ tempfile = "3"
 dashmap = "6"
 arc-swap = "1"
 moka = { version = "0.12", features = ["sync"] }
-kim-agent-codec = { path = "crates/kim-agent-codec" }
-kim-agent-host = { path = "crates/kim-agent-host" }
-kim-desktop-runtime = { path = "crates/kim-desktop-runtime" }
-kim-log = { path = "crates/kim-log" }
+kim-agent-codec = { path = "crates/agent/kim-agent-codec" }
+kim-agent-model = { path = "crates/agent/kim-agent-model" }
+kim-agent-host = { path = "crates/agent/kim-agent-host" }
+kim-desktop-runtime = { path = "crates/agent/kim-desktop-runtime" }
+kim-log = { path = "crates/shared/kim-log" }
 flutter_rust_bridge = "=2.13.0"
 
 # Codex pin rust-v0.155.1 patches crates.io copies that lack the `proxy`
@@ -105,12 +116,9 @@ flutter_rust_bridge = "=2.13.0"
 # so lldb cannot bind breakpoints after Flutter copies the library into the
 # app framework. `unpacked` keeps those objects; lldb follows the absolute
 # paths. `packed` writes a `.dSYM` beside the cargo output, which the
-# framework copy does not include. This stays on the two FFI packages so a
-# root profile change cannot drop their object files.
+# framework copy does not include. This stays on the FFI package so a
+# root profile change cannot drop its object files.
 [profile.dev.package.kim_client_ffi]
-split-debuginfo = "unpacked"
-
-[profile.dev.package.kim_agent_ffi]
 split-debuginfo = "unpacked"
 
 [patch.crates-io]

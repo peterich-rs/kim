@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/bridge/secret_store_executor.dart';
 import 'package:kim_mobile/core/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

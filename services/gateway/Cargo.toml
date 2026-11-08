@@ -8,25 +8,12 @@ publish = false
 
 [features]
 default = []
-consul = ["kim-naming/consul"]
+consul = ["kim-gateway-runtime/consul"]
 
 [dependencies]
 anyhow.workspace = true
-async-trait.workspace = true
-bytes.workspace = true
-crc32fast.workspace = true
-kim-container.workspace = true
-kim-core.workspace = true
-kim-metrics.workspace = true
-kim-naming.workspace = true
-kim-protocol.workspace = true
-kim-session = { workspace = true, features = ["redis"] }
-prost.workspace = true
+kim-gateway-runtime.workspace = true
 kim-ws.workspace = true
-redis.workspace = true
-reqwest.workspace = true
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

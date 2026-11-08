@@ -3,14 +3,14 @@
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
-use chat::store::StoreError;
-use chat::users::{BotConfig, BotPatch, CreateBot, UserError};
 use kim_protocol::pkt::{
     AccountExists, AccountPair, BotConfig as PbBotConfig, BotCreateResp,
     BotPendingItem as PbPending, BotPendingQuery, BotPendingResp, BotReplyStoreReq,
     InternalBotConfig, InternalBotCreate, InternalBotUpdate,
 };
 use kim_protocol::PROFILE_KIND_BOT;
+use kim_server_data::store::StoreError;
+use kim_server_data::users::{BotConfig, BotPatch, CreateBot, UserError};
 
 use crate::product::to_pb;
 use crate::{backend, decode, encode, insert_from_req, RoyalState};

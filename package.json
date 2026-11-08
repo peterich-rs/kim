@@ -1,0 +1,9 @@
+{
+  "name": "kim",
+  "private": true,
+  "packageManager": "npm@11.19.0",
+  "workspaces": [
+    "sdk/web",
+    "sdk/media"
+  ]
+}

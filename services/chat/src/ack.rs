@@ -2,7 +2,7 @@ use kim_protocol::pkt::{MessageAckReq, Status};
 use kim_router::{Context, RouterError};
 use tracing::{info, warn};
 
-use crate::store::{collect_ack_ids, MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
+use kim_server_data::store::{collect_ack_ids, MessageStore, MESSAGE_MAX_COUNT_PER_PAGE};
 
 #[derive(Debug, thiserror::Error)]
 enum AckError {
@@ -69,8 +69,8 @@ mod tests {
     use kim_session::MemorySessionStore;
 
     use super::do_talk_ack;
-    use crate::idgen::{IdGenerator, SequenceIdGen};
-    use crate::store::{InsertMessage, MemoryMessageStore, MessageStore};
+    use kim_server_data::idgen::{IdGenerator, SequenceIdGen};
+    use kim_server_data::store::{InsertMessage, MemoryMessageStore, MessageStore};
 
     fn session() -> Session {
         Session {
@@ -92,7 +92,7 @@ mod tests {
                 &InsertMessage {
                     sender: "alice".into(),
                     dest: "bob".into(),
-                    send_time: crate::store::now_unix_nano(),
+                    send_time: kim_server_data::store::now_unix_nano(),
                     msg_type: 1,
                     body: "hi".into(),
                     extra: String::new(),

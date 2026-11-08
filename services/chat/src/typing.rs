@@ -8,8 +8,8 @@ use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
 use crate::interest::RoomInterestStore;
-use crate::social::SocialDirectory;
-use crate::users::UserDirectory;
+use kim_server_data::social::SocialDirectory;
+use kim_server_data::users::UserDirectory;
 
 /// Validate friend + private; fanout to peer devices that entered the typer's room.
 /// Owned-bot dests fan out to the owner's other devices (bot has no Location).

@@ -3,7 +3,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/bridge/secret_store_executor.dart';
 
 const _kMode = 'agent.llm_backend';
 const _kBaseUrl = 'agent.base_url';

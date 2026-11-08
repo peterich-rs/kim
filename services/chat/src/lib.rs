@@ -4,13 +4,11 @@ mod ack;
 pub mod admin;
 mod agent_spec;
 mod bot;
-pub mod directory;
+pub mod bot_control;
 mod echo;
 pub mod filter;
 mod friends;
 mod group;
-mod hmac_nonce;
-pub mod idgen;
 mod inbox;
 mod interest;
 mod login;
@@ -19,14 +17,8 @@ mod offline;
 mod presence;
 mod profile;
 mod room;
-pub mod royal;
-pub mod royal_pool;
-pub mod social;
-pub mod social_cache;
-pub mod store;
 mod talk;
 mod typing;
-pub mod users;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -45,22 +37,18 @@ use prost::Message;
 use std::sync::Mutex;
 use tracing::{info, warn};
 
-use crate::directory::{GroupDirectory, MemoryGroupDirectory};
-use crate::idgen::{IdGenerator, SequenceIdGen};
 use crate::presence::{offline_debounce_from_env, PresenceHub};
 use crate::room::{do_room_enter, do_room_leave};
-use crate::social::{MemorySocialDirectory, SocialDirectory};
-use crate::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
 use crate::typing::do_typing;
-use crate::users::{MemoryUserDirectory, UserDirectory};
+use kim_server_data::directory::{GroupDirectory, MemoryGroupDirectory};
+use kim_server_data::idgen::{IdGenerator, SequenceIdGen};
+use kim_server_data::social::{MemorySocialDirectory, SocialDirectory};
+use kim_server_data::store::{pending_receipt_enabled, MemoryMessageStore, MessageStore};
+use kim_server_data::users::{MemoryUserDirectory, UserDirectory};
 
 pub use ack::do_talk_ack;
 pub use admin::{router as admin_router, serve as serve_admin, ChatAdmin};
-pub use agent_spec::{
-    account_from_pb, account_to_pb, do_agent_spec_sync, do_agent_spec_upsert,
-    open_agent_spec_store, record_from_pb, record_to_pb, AgentProviderAccount, AgentSpecError,
-    AgentSpecRecord, AgentSpecStore, MemoryAgentSpecStore,
-};
+pub use agent_spec::{do_agent_spec_sync, do_agent_spec_upsert};
 pub use bot::{
     do_bot_create, do_bot_delete, do_bot_pending, do_bot_reply, do_bot_typing, do_bot_update,
 };
@@ -76,23 +64,28 @@ pub use group::{
     do_group_create, do_group_detail, do_group_invite, do_group_join, do_group_members,
     do_group_quit,
 };
-#[cfg(feature = "redis")]
-pub use hmac_nonce::RedisHmacNonceGuard;
-pub use hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
-pub use inbox::{do_history, do_inbox_list, do_inbox_read, do_inbox_states, parse_kind};
+pub use inbox::{do_history, do_inbox_list, do_inbox_read, do_inbox_states};
 #[cfg(feature = "redis")]
 pub use interest::RedisRoomInterest;
 pub use interest::{open_room_interest, MemoryRoomInterest, RoomInterestStore};
+pub use kim_royal_client::{
+    http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt,
+    http_backends_with_pool, with_rpc_deadline, Endpoint, HttpAgentSpecStore, RoyalPool,
+    RpcObserver, RpcSample,
+};
+pub use kim_server_data::agent_spec::{
+    account_from_pb, account_to_pb, open_agent_spec_store, record_from_pb, record_to_pb,
+    AgentProviderAccount, AgentSpecError, AgentSpecRecord, AgentSpecStore, MemoryAgentSpecStore,
+};
+#[cfg(feature = "redis")]
+pub use kim_server_data::hmac_nonce::RedisHmacNonceGuard;
+pub use kim_server_data::hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
+pub use kim_server_data::social_cache::{CachedSocial, CachedUserDirectory};
+pub use kim_server_data::store::parse_kind;
 pub use kim_session::open_uncached_session_store;
 pub use login::{do_sys_login, do_sys_login_with_zone, do_sys_logout};
 pub use offline::{do_offline_content, do_offline_index};
 pub use profile::{do_user_profile, do_user_search, do_user_update};
-pub use royal::{
-    http_backends, http_backends_with_hmac, http_backends_with_hmac_receipt,
-    http_backends_with_pool, HttpAgentSpecStore,
-};
-pub use royal_pool::RoyalPool;
-pub use social_cache::{CachedSocial, CachedUserDirectory};
 pub use talk::{do_group_talk, do_user_talk};
 
 #[derive(Clone)]
@@ -101,6 +94,7 @@ pub(crate) struct ChatSvc {
     groups: Arc<dyn GroupDirectory>,
     filter: Arc<dyn ContentFilter>,
     users: Arc<dyn UserDirectory>,
+    bots: Arc<dyn bot_control::BotControl>,
     social: Arc<dyn SocialDirectory>,
     agent_specs: Arc<dyn AgentSpecStore>,
     presence: Arc<PresenceHub>,
@@ -204,6 +198,9 @@ impl ChatHandler {
             pending_receipt_enabled(),
             Arc::new(MemoryRoomInterest::new()),
             agent_specs,
+            Arc::new(bot_control::DirectoryBotControl::new(Arc::new(
+                MemoryUserDirectory::new(),
+            ))),
         )
     }
 
@@ -325,11 +322,12 @@ impl ChatHandler {
             groups,
             zone,
             filter,
-            users,
+            users.clone(),
             social,
             pending_receipt,
             interest,
             Arc::new(MemoryAgentSpecStore::new()),
+            Arc::new(bot_control::DirectoryBotControl::new(users)),
         )
     }
 
@@ -346,6 +344,7 @@ impl ChatHandler {
         pending_receipt: bool,
         interest: Arc<dyn RoomInterestStore>,
         agent_specs: Arc<dyn AgentSpecStore>,
+        bots: Arc<dyn bot_control::BotControl>,
     ) -> Self {
         let dispatcher: Arc<dyn Dispatcher> = Arc::new(ContainerDispatcher(container.clone()));
         let presence = Arc::new(PresenceHub::new(
@@ -391,6 +390,7 @@ impl ChatHandler {
             groups,
             filter,
             users,
+            bots,
             social,
             agent_specs,
             presence,
@@ -661,21 +661,21 @@ impl ChatHandler {
             let svc = svc.clone();
             router.handle(Command::BotCreate, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_create(ctx, svc.users.as_ref()).await }
+                async move { do_bot_create(ctx, svc.bots.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(Command::BotDelete, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_delete(ctx, svc.users.as_ref(), svc.store.as_ref()).await }
+                async move { do_bot_delete(ctx, svc.bots.as_ref(), svc.store.as_ref()).await }
             });
         }
         {
             let svc = svc.clone();
             router.handle(Command::BotUpdate, move |ctx| {
                 let svc = svc.clone();
-                async move { do_bot_update(ctx, svc.users.as_ref()).await }
+                async move { do_bot_update(ctx, svc.bots.as_ref()).await }
             });
         }
         {
@@ -883,11 +883,11 @@ mod tests {
     use kim_session::MemorySessionStore;
 
     use super::*;
-    use crate::directory::MemoryGroupDirectory;
-    use crate::idgen::SequenceIdGen;
-    use crate::social::{MemorySocialDirectory, SocialDirectory};
-    use crate::store::MemoryMessageStore;
-    use crate::users::{MemoryUserDirectory, UserDirectory};
+    use kim_server_data::directory::MemoryGroupDirectory;
+    use kim_server_data::idgen::SequenceIdGen;
+    use kim_server_data::social::{MemorySocialDirectory, SocialDirectory};
+    use kim_server_data::store::MemoryMessageStore;
+    use kim_server_data::users::{MemoryUserDirectory, UserDirectory};
 
     struct NoopHandle;
 

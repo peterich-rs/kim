@@ -1,4 +1,4 @@
-/** Wire Status. Numbers match `kim.pkt.Status` / crates/kim-protocol. */
+/** Wire Status. Numbers match `kim.pkt.Status` / crates/shared/kim-protocol. */
 export const Status = {
   Success: 0,
   InvalidPacket: 1,
