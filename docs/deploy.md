@@ -71,7 +71,9 @@ inbox 物化读（`KIM_INBOX_MATERIALIZED`，royal / royal-2 only）：
 
 | 路径 | 用途 |
 |---|---|
-| `Dockerfile` | gateway / chat / royal / router（`consul` + chat/royal 的 redis,postgres） |
+| `Dockerfile` | 隔离上下文的镜像配方；gateway / tgateway / chat / royal / router / kim-server-migrate，`--locked --all-features` |
+| `tools/build/prepare-server-context.py` | 只复制服务端依赖闭包并生成独立 Cargo workspace，不需要手机、桌面或 Codex 的 manifest/源码 |
+| `.github/workflows/image.yml` | 使用生成目录构建 linux/amd64；PR 不推送，main/tag 推送 GHCR，tag 成功后部署 |
 | `deploy/compose.yml` | 生产栈 |
 | `deploy/chat.toml` / `gateway.toml` / `royal.toml` / `router.toml` | 容器内配置（听 `0.0.0.0`） |
 | `deploy/kim.env.example` | 环境变量模板；真正的 `kim.env` 只活在 VPS |
@@ -84,11 +86,15 @@ inbox 物化读（`KIM_INBOX_MATERIALIZED`，royal / royal-2 only）：
 
 ```bash
 # 有 Docker 的机器上本地试跑镜像（先 build）
-docker build -t ghcr.io/peterich-rs/kim:local .
+# 需要 Python 3.11+，目标目录必须尚不存在。
+python3 tools/build/prepare-server-context.py /tmp/kim-server-image
+docker build -t ghcr.io/peterich-rs/kim:local /tmp/kim-server-image
 cp deploy/kim.env.example deploy/kim.env   # 改密钥后再 up
 # 在仓库根目录：
 KIM_IMAGE=ghcr.io/peterich-rs/kim:local docker compose -f deploy/compose.yml --env-file deploy/kim.env up -d
 ```
+
+根 Cargo workspace 仍包含客户端与桌面 Agent，不能直接作为 Docker context。Image 工作流和本地构建都先运行生成脚本，再以生成目录作为 context；生成目录同时包含独立的 Cargo.toml、服务端锁文件和根 Dockerfile 的副本。修改源码后需生成新目录。锁文件更新流程见根 README 的「开发」。PR 对同一工作流执行镜像构建，并检查六个二进制、配置文件和非 root 用户。
 
 TLS：
 

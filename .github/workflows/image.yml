@@ -1,6 +1,21 @@
 name: Image
 
 on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "Dockerfile"
+      - "crates/shared/**"
+      - "crates/server/**"
+      - "services/**"
+      - "examples/pkt-client/**"
+      - "examples/kimbench/**"
+      - "tools/build/**"
+      - "tools/kim-server-migrate/**"
+      - "deploy/*.toml"
+      - ".github/workflows/image.yml"
   push:
     branches: [main]
     tags: ["v*"]
@@ -19,13 +34,18 @@ env:
 
 jobs:
   build:
-    name: Build and push linux/amd64
+    name: Build linux/amd64 (push outside PRs)
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.version }}
     steps:
-      - name: Checkout
+      - name: Checkout without submodules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Prepare isolated server context
+        run: python3 tools/build/prepare-server-context.py "$RUNNER_TEMP/kim-server-context"
 
       - name: Image metadata
         id: meta
@@ -41,6 +61,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Login to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -50,14 +71,31 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
-          file: Dockerfile
+          context: ${{ runner.temp }}/kim-server-context
+          file: ${{ runner.temp }}/kim-server-context/Dockerfile
           platforms: linux/amd64
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test PR image
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image_ref="${IMAGE_TAGS%%$'\n'*}"
+          docker run --rm --entrypoint /bin/sh "$image_ref" -ec '
+            test "$(id -u)" = 10001
+            for bin in gateway tgateway chat royal router kim-server-migrate; do
+              test -x "/usr/local/bin/$bin"
+            done
+            for name in gateway tgateway chat royal router; do
+              test -r "/etc/kim/$name.toml"
+            done'
 
   deploy:
     name: Deploy tag to VPS

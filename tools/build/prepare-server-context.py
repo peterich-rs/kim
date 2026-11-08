@@ -141,7 +141,7 @@ def main() -> int:
             target = stage / "deploy" / config
             target.parent.mkdir(exist_ok=True)
             shutil.copy2(ROOT / "deploy" / config, target)
-        shutil.copy2(ROOT / "tools/build/Dockerfile.server", stage / "Dockerfile")
+        shutil.copy2(ROOT / "Dockerfile", stage / "Dockerfile")
         shutil.copy2(ROOT / "Cargo.lock" if args.refresh_lock else SERVER_LOCK, stage / "Cargo.lock")
         if args.refresh_lock:
             command = ["cargo", "metadata", "--format-version", "1"]

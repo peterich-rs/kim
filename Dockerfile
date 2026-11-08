@@ -1,44 +1,40 @@
-# linux/amd64 image with gateway / chat / royal / router.
-# Build: docker build -t ghcr.io/<owner>/kim:local .
+# syntax=docker/dockerfile:1
+# Build the isolated context, rather than the repository root:
+# python3 tools/build/prepare-server-context.py /tmp/kim-server-build
+# docker build -t ghcr.io/<owner>/kim:local /tmp/kim-server-build
 FROM rust:1.95.0-bookworm AS builder
-
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake g++ make pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates ./crates
+COPY crates/shared ./crates/shared
+COPY crates/server ./crates/server
 COPY services ./services
-COPY examples ./examples
+COPY examples/kimbench ./examples/kimbench
+COPY examples/pkt-client ./examples/pkt-client
 COPY tools/kim-server-migrate ./tools/kim-server-migrate
+ENV CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0
 
-ENV CARGO_TERM_COLOR=always \
-    CARGO_INCREMENTAL=0
-
-RUN cargo build --release -p gateway --features consul \
-    && cargo build --release -p chat --features redis,postgres,consul \
-    && cargo build --release -p royal --features postgres,redis,consul \
-    && cargo build --release -p router --features consul \
-    && cargo build --release -p kim-server-migrate \
-    && strip target/release/gateway target/release/chat \
-         target/release/royal target/release/router \
-         target/release/kim-server-migrate
+# default-members selects the five services and migrator, not test helpers.
+RUN --mount=type=cache,id=kim-server-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=kim-server-target,target=/src/target,sharing=locked \
+    cargo build --release --locked --all-features \
+    && mkdir /out \
+    && for bin in gateway tgateway chat royal router kim-server-migrate; do \
+         install -m 755 "target/release/$bin" "/out/$bin"; \
+         strip "/out/$bin"; \
+       done
 
 FROM debian:bookworm-slim
-
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin kim
 
-COPY --from=builder /src/target/release/gateway /usr/local/bin/gateway
-COPY --from=builder /src/target/release/chat /usr/local/bin/chat
-COPY --from=builder /src/target/release/royal /usr/local/bin/royal
-COPY --from=builder /src/target/release/router /usr/local/bin/router
-COPY --from=builder /src/target/release/kim-server-migrate /usr/local/bin/kim-server-migrate
-COPY deploy/chat.toml deploy/gateway.toml deploy/royal.toml deploy/router.toml /etc/kim/
-
+COPY --from=builder /out/ /usr/local/bin/
+COPY deploy/*.toml /etc/kim/
 USER kim
 WORKDIR /
 CMD ["chat", "/etc/kim/chat.toml"]
