@@ -213,7 +213,7 @@ Chat 的消息/公开目录保留“经 Royal HTTP”与“直接数据库/Memor
 - 明确选择**不保留生产或本地 Chat 的独立 bot 身份 writer**。即使消息走直连 DB，也配置独立 BotControl endpoint（可以复用原 Royal URL，但不能由消息 backend 选择隐式决定）。没有 endpoint 的独立 Chat 仍能做已有普通 IM，bot 创建/配置/删除明确返回 ServiceUnavailable；不返回假成功、不回退本地身份写。完整本地 bot 演示启动 Royal；清理仍按下表绑定实际消息 store。
 - 已有 Chat 独立 bot 测试改为注入记录请求的 BotControl fake；Royal 自己测试 Memory/PG writer、配额、幂等 client_profile_id、owner 校验和删除。fake 不另实现配额/持久化规则；本地 bot fixture 由 Royal 测试 setup 创建，不在 Chat 暗藏第二实现。
 - 撤回“Royal 统一清理、Chat 一律不再 purge”的设计，也撤回“同一 URL/配置即证明同一 store”的前提。身份权威与消息存储可以分离；实际 purge 必须落到接收/查询这些消息的那个 MessageStore。
-- 保持既有限额与协议状态编号；删除的补偿、授权和重试需要实质行为修复，不能标为纯接口搬迁。并发配额改进仍另立切片。
+- 保持既有限额与协议状态编号；删除的补偿、授权和重试需要实质行为修复，不能标为纯接口搬迁。为保证创建与删除的生命周期排序，Royal writer 采用 owner 级锁；它也顺带串行配额检查，不再保留这条已被该锁覆盖的并发竞态。
 - R05c1–c3 先在当前 Chat/Royal 文件布局中完成删除回执、存储路由与接口替换，不等待 R06 抽出 client crate。其后 R05b 才迁移剩余共享实现，避免把 bot 身份 writer 顺带移进共享库。
 
 **Bot 删除的存储路由与补偿合同（R05c）**

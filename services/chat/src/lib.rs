@@ -152,11 +152,7 @@ impl ChatHandler {
         // Test constructor: SequenceIdGen. Production `main` fails on Snowflake init.
         let idgen: Arc<dyn IdGenerator> = Arc::new(SequenceIdGen::new(10_001));
         let social = Arc::new(MemorySocialDirectory::new());
-        let users = Arc::new(
-            MemoryUserDirectory::new()
-                .with_social(social.clone())
-                .with_idgen(idgen.clone()),
-        );
+        let users = Arc::new(MemoryUserDirectory::new());
         Self::with_social(
             container,
             cache,
@@ -198,9 +194,7 @@ impl ChatHandler {
             pending_receipt_enabled(),
             Arc::new(MemoryRoomInterest::new()),
             agent_specs,
-            Arc::new(bot_control::DirectoryBotControl::new(Arc::new(
-                MemoryUserDirectory::new(),
-            ))),
+            Arc::new(bot_control::UnavailableBotControl),
         )
     }
 
@@ -327,7 +321,7 @@ impl ChatHandler {
             pending_receipt,
             interest,
             Arc::new(MemoryAgentSpecStore::new()),
-            Arc::new(bot_control::DirectoryBotControl::new(users)),
+            Arc::new(bot_control::UnavailableBotControl),
         )
     }
 

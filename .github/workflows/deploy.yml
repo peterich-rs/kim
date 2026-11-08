@@ -99,6 +99,7 @@ jobs:
             deploy/prometheus \
             deploy/bootstrap.sh \
             deploy/remote-up.sh \
+            deploy/check-bot-scope.py \
             deploy/psql-compose.sh \
             deploy/backfill-inbox.sh \
             deploy/backfill-inbox.sql \

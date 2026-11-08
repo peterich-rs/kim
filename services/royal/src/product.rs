@@ -3,7 +3,6 @@
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
-use chat::parse_kind;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, ConversationRead,
     ConversationStatesQuery, ConversationStatesResp, HistoryItem, HistoryQuery, HistoryResp,
@@ -13,6 +12,7 @@ use kim_protocol::pkt::{
 use kim_protocol::PROFILE_KIND_BOT;
 use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};
 use kim_server_data::social::{FriendRequestOutcome, SocialError};
+use kim_server_data::store::parse_kind;
 use kim_server_data::store::InboxEntry;
 use kim_server_data::users::{ProfilePatch, UserError, UserProfile};
 

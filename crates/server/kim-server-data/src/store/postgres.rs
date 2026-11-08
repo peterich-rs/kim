@@ -211,6 +211,9 @@ impl PostgresMessageStore {
             Some(list) => list.to_vec(),
         };
         lock_inbox_accounts(&mut tx, app, &lock_accounts).await?;
+        if members.is_none() {
+            reject_deleted_thread(&mut tx, app, &req.sender, &req.dest).await?;
+        }
         sqlx::query(
             "INSERT INTO message_content (id, app, msg_type, body, extra, send_time)
              VALUES ($1, $2, $3, $4, $5, $6)",
@@ -349,6 +352,9 @@ impl PostgresMessageStore {
         let mut locked = recv.clone();
         locked.push(req.sender.clone());
         lock_inbox_accounts(&mut tx, app, &locked).await?;
+        if members.is_none() {
+            reject_deleted_thread(&mut tx, app, &req.sender, &req.dest).await?;
+        }
 
         let existing = if req.client_id.is_empty() {
             None
@@ -927,6 +933,18 @@ async fn load_fanout(pool: &PgPool, app: &str, message_id: i64) -> Result<Fanout
 
 #[async_trait]
 impl MessageStore for PostgresMessageStore {
+    async fn resolve_scope(&self) -> Result<super::StoreScope, StoreError> {
+        let id: String = sqlx::query_scalar(
+            "SELECT dataset_id::text FROM message_store_identity WHERE singleton",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(pg_err)?;
+        Ok(super::StoreScope {
+            kind: "postgres".into(),
+            id,
+        })
+    }
     async fn insert_user(
         &self,
         app: &str,
@@ -1471,6 +1489,7 @@ impl MessageStore for PostgresMessageStore {
             .map_err(|_| StoreError::Backend("msg_type does not fit smallint".into()))?;
         let mut tx: Transaction<'_, Postgres> = self.pool.begin().await.map_err(pg_err)?;
         lock_inbox_accounts(&mut tx, app, &[owner.to_string(), bot.to_string()]).await?;
+        reject_deleted_thread(&mut tx, app, owner, bot).await?;
         let valid: Option<(i64,)> = sqlx::query_as(
             "SELECT i.message_id FROM message_index i
               JOIN message_content c ON c.id = i.message_id
@@ -1662,10 +1681,49 @@ impl MessageStore for PostgresMessageStore {
     }
 
     async fn purge_peer_dm(&self, app: &str, account: &str, peer: &str) -> Result<(), StoreError> {
+        self.purge_thread(app, account, peer, None).await
+    }
+    async fn purge_peer_dm_scoped(
+        &self,
+        expected: &super::StoreScope,
+        app: &str,
+        actor: &str,
+        bot: &str,
+    ) -> Result<(), StoreError> {
+        if !expected.is_scoped() {
+            return Err(StoreError::Backend("store scope mismatch".into()));
+        }
+        self.purge_thread(app, actor, bot, Some(expected)).await
+    }
+}
+
+impl PostgresMessageStore {
+    async fn purge_thread(
+        &self,
+        app: &str,
+        account: &str,
+        peer: &str,
+        expected: Option<&super::StoreScope>,
+    ) -> Result<(), StoreError> {
         if account.is_empty() || peer.is_empty() || account == peer {
             return Ok(());
         }
         let mut tx = self.pool.begin().await.map_err(pg_err)?;
+        lock_inbox_accounts(&mut tx, app, &[account.to_owned(), peer.to_owned()]).await?;
+        if let Some(expected) = expected {
+            let actual: String = sqlx::query_scalar(
+                "SELECT dataset_id::text FROM message_store_identity WHERE singleton FOR SHARE",
+            )
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            if expected.kind != "postgres" || expected.id != actual {
+                return Err(StoreError::Backend("store scope mismatch".into()));
+            }
+            let (a, b) = crate::social::ordered_pair(account, peer);
+            sqlx::query("INSERT INTO message_thread_tombstone(app,account_a,account_b) VALUES($1,$2,$3) ON CONFLICT DO NOTHING").bind(app).bind(a).bind(b).execute(&mut *tx).await.map_err(pg_err)?;
+        }
+
         let ids: Vec<(i64,)> = sqlx::query_as(
             "SELECT DISTINCT message_id FROM message_index
               WHERE app = $1 AND group_id = ''
@@ -1734,21 +1792,35 @@ impl MessageStore for PostgresMessageStore {
         .await
         .map_err(pg_err)?;
         if !message_ids.is_empty() {
-            sqlx::query("DELETE FROM message_content WHERE id = ANY($1)")
-                .bind(&message_ids)
+            sqlx::query("DELETE FROM message_content c WHERE c.app = $1 AND c.id = ANY($2) AND NOT EXISTS (SELECT 1 FROM message_index i WHERE i.app = c.app AND i.message_id = c.id)")
+                .bind(app).bind(&message_ids)
                 .execute(&mut *tx)
                 .await
                 .map_err(pg_err)?;
         }
-        sqlx::query("DELETE FROM bot_turns WHERE app = $1 AND bot_account = $2")
+        sqlx::query("DELETE FROM bot_turns WHERE app = $1 AND (in_reply_to = ANY($2) OR reply_message_id = ANY($2))")
             .bind(app)
-            .bind(peer)
+            .bind(&message_ids)
             .execute(&mut *tx)
             .await
             .map_err(pg_err)?;
         tx.commit().await.map_err(pg_err)?;
         Ok(())
     }
+}
+
+async fn reject_deleted_thread(
+    tx: &mut Transaction<'_, Postgres>,
+    app: &str,
+    a: &str,
+    b: &str,
+) -> Result<(), StoreError> {
+    let (a, b) = crate::social::ordered_pair(a, b);
+    let deleted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM message_thread_tombstone WHERE app=$1 AND account_a=$2 AND account_b=$3)").bind(app).bind(a).bind(b).fetch_one(&mut **tx).await.map_err(pg_err)?;
+    if deleted {
+        return Err(StoreError::NotFound);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

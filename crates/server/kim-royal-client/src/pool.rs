@@ -61,6 +61,50 @@ pub struct RoyalPool {
 }
 
 impl RoyalPool {
+    pub(crate) async fn resolve_store_scope(
+        &self,
+    ) -> Result<kim_server_data::store::StoreScope, StoreError> {
+        let clients = self.clients.load_full();
+        if clients.is_empty() {
+            return Err(StoreError::Backend("no royal available".into()));
+        }
+        let mut result = None;
+        // Every configured message endpoint must prove it serves the same dataset.
+        // Independent Memory instances are not interchangeable HA replicas.
+        for client in clients.iter() {
+            let response = client
+                .signed_with_type(
+                    reqwest::Method::GET,
+                    "/internal/v1/bot/store-scope",
+                    &[],
+                    "application/json",
+                )?
+                .timeout(attempt_timeout())
+                .send()
+                .await
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            let status = response.status();
+            let body = response
+                .bytes()
+                .await
+                .map_err(|e| StoreError::Backend(e.to_string()))?;
+            if !status.is_success() {
+                return Err(http_status_err(status, &body));
+            }
+            let scope: kim_server_data::store::StoreScope =
+                serde_json::from_slice(&body).map_err(|e| StoreError::Backend(e.to_string()))?;
+            if !scope.is_scoped() {
+                return Err(StoreError::Backend("royal has no cleanup scope".into()));
+            }
+            if result.as_ref().is_some_and(|expected| expected != &scope) {
+                return Err(StoreError::Backend(
+                    "royal endpoints serve different message datasets".into(),
+                ));
+            }
+            result = Some(scope);
+        }
+        result.ok_or_else(|| StoreError::Backend("no royal available".into()))
+    }
     /// Static single address. Discovery, when used, pushes snapshots later.
     pub fn new(royal_url: Option<&str>, hmac: &str) -> Result<Self, StoreError> {
         Self::with_observer(royal_url, hmac, None)
@@ -205,6 +249,42 @@ impl RoyalPool {
     ) -> Result<T, (RpcCause, StoreError)> {
         let bytes = body.map(|b| Bytes::from(b.encode_to_vec()));
         let payload = bytes.as_deref().unwrap_or(&[]);
+        let buf = self
+            .send_payload(method, path, payload, "application/x-protobuf")
+            .await?;
+        T::decode(buf.as_ref()).map_err(|e| (RpcCause::Decode, StoreError::Backend(e.to_string())))
+    }
+
+    pub(crate) async fn send_json<T: serde::de::DeserializeOwned, B: serde::Serialize>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T, StoreError> {
+        let payload = body
+            .map(serde_json::to_vec)
+            .transpose()
+            .map_err(|e| StoreError::Backend(e.to_string()))?
+            .unwrap_or_default();
+        let started = Instant::now();
+        let out = self
+            .send_payload(method, path, &payload, "application/json")
+            .await
+            .and_then(|bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| (RpcCause::Decode, StoreError::Backend(e.to_string())))
+            });
+        self.observe_rpc(classify(path), started, &out);
+        out.map_err(|(_, error)| error)
+    }
+
+    async fn send_payload(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        payload: &[u8],
+        content_type: &str,
+    ) -> Result<Bytes, (RpcCause, StoreError)> {
         let mut last = (
             RpcCause::Transport,
             StoreError::Backend("royal request failed".into()),
@@ -217,7 +297,7 @@ impl RoyalPool {
                 Ok(c) => c,
                 Err(e) => return Err((RpcCause::NoClient, e)),
             };
-            let req = match client.signed(method.clone(), path, payload) {
+            let req = match client.signed_with_type(method.clone(), path, payload, content_type) {
                 Ok(r) => r.timeout(attempt_timeout()),
                 Err(e) => return Err((RpcCause::Transport, e)),
             };
@@ -237,8 +317,7 @@ impl RoyalPool {
                     };
                     if status.is_success() {
                         self.report_success(&client);
-                        return T::decode(buf.as_ref())
-                            .map_err(|e| (RpcCause::Decode, StoreError::Backend(e.to_string())));
+                        return Ok(buf);
                     }
                     last = (RpcCause::Http, http_status_err(status, &buf));
                     if circuit_failure_status(status) {

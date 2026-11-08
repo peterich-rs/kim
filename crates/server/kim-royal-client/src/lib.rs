@@ -1,3 +1,5 @@
+mod bot_control;
+pub use bot_control::HttpBotControl;
 mod pool;
 
 pub use pool::{Endpoint, RoyalPool, RpcObserver, RpcSample};
@@ -11,15 +13,15 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, AckMessageReq, AgentSpecSyncResp,
-    AgentSpecUpsertResp, BotCreateResp, BotPendingQuery, BotPendingResp, BotReplyStoreReq,
-    ConversationRead, ConversationStateKey as PbConversationStateKey, ConversationStatesQuery,
+    AgentSpecUpsertResp, BotPendingQuery, BotPendingResp, BotReplyStoreReq, ConversationRead,
+    ConversationStateKey as PbConversationStateKey, ConversationStatesQuery,
     ConversationStatesResp, DeliveryBackfillReq, DeliveryTarget as PbDeliveryTarget,
     GroupCreateResp, GroupDetail, GroupListReq, GroupListResp, GroupMembersResp, HistoryQuery,
     HistoryResp, InboxQuery, InboxResp, InsertFanout, InsertMessageReq, InsertMessageResp,
-    InternalAgentSpecQuery, InternalAgentSpecUpsert, InternalBotConfig, InternalBotCreate,
-    InternalBotUpdate, InternalGroupCreate, InternalGroupMember, InternalGroupQuery,
-    MessageContentReq, MessageContentResp, MessageIndexResp, MessageReq, OfflineIndexReq,
-    ProfileUpdateReq, UserListResp, UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
+    InternalAgentSpecQuery, InternalAgentSpecUpsert, InternalBotConfig, InternalGroupCreate,
+    InternalGroupMember, InternalGroupQuery, MessageContentReq, MessageContentResp,
+    MessageIndexResp, MessageReq, OfflineIndexReq, ProfileUpdateReq, UserListResp,
+    UserProfile as PbProfile, UserSearchQuery, UserSearchResp,
 };
 use kim_protocol::{resolve_internal_hmac_secret, sign_internal_hmac};
 use reqwest::StatusCode;
@@ -40,8 +42,7 @@ use kim_server_data::store::{
     StoreError,
 };
 use kim_server_data::users::{
-    BotConfig, BotPatch, BotRecord, CreateBot, ProfilePatch, UserDirectory, UserError,
-    UserPresence, UserProfile,
+    BotConfig, ProfilePatch, UserDirectory, UserError, UserPresence, UserProfile,
 };
 
 pub(crate) const RETRIES: usize = 3;
@@ -217,14 +218,24 @@ impl RoyalClient {
         path: &str,
         body: &[u8],
     ) -> Result<reqwest::RequestBuilder, StoreError> {
+        self.signed_with_type(method, path, body, "application/x-protobuf")
+    }
+
+    pub(crate) fn signed_with_type(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: &[u8],
+        content_type: &str,
+    ) -> Result<reqwest::RequestBuilder, StoreError> {
         let url = format!("{}{path}", self.base);
         let headers = sign_internal_hmac(self.hmac_secret.as_bytes(), method.as_str(), path, body)
             .map_err(|e| StoreError::Backend(e.to_string()))?;
         let mut req = self
             .http
             .request(method, &url)
-            .header("Content-Type", "application/x-protobuf")
-            .header("Accept", "application/x-protobuf");
+            .header("Content-Type", content_type)
+            .header("Accept", content_type);
         for (k, v) in headers.pairs() {
             req = req.header(k, v);
         }
@@ -264,6 +275,37 @@ impl HttpMessageStore {
 
 #[async_trait]
 impl MessageStore for HttpMessageStore {
+    async fn resolve_scope(&self) -> Result<kim_server_data::store::StoreScope, StoreError> {
+        self.pool.resolve_store_scope().await
+    }
+
+    async fn purge_peer_dm_scoped(
+        &self,
+        expected: &kim_server_data::store::StoreScope,
+        app: &str,
+        actor: &str,
+        bot: &str,
+    ) -> Result<(), StoreError> {
+        let purged: bool = self
+            .pool
+            .send_json(
+                reqwest::Method::POST,
+                "/internal/v1/bot/purge",
+                Some(&kim_server_data::bot_control::DeleteIdentity {
+                    app: app.into(),
+                    actor: actor.into(),
+                    bot: bot.into(),
+                    scope: expected.clone(),
+                }),
+            )
+            .await?;
+        if !purged {
+            return Err(StoreError::Backend(
+                "Royal did not confirm scoped purge".into(),
+            ));
+        }
+        Ok(())
+    }
     async fn insert_user(
         &self,
         app: &str,
@@ -727,6 +769,7 @@ fn group_err(e: StoreError) -> GroupError {
         StoreError::Backend(s) | StoreError::Invalid(s) => GroupError::Backend(s),
         StoreError::NotFound => GroupError::NotFound,
         StoreError::Id(e) => GroupError::Id(e),
+        StoreError::ScopedCleanupUnsupported => GroupError::Backend(e.to_string()),
     }
 }
 
@@ -967,64 +1010,6 @@ impl UserDirectory for HttpUserDirectory {
         Ok(resp.users.into_iter().map(from_pb_profile).collect())
     }
 
-    async fn create_bot(&self, _app: &str, req: &CreateBot) -> Result<BotRecord, UserError> {
-        let body = InternalBotCreate {
-            owner: req.owner.clone(),
-            client_profile_id: req.client_profile_id.clone(),
-            nickname: req.nickname.clone(),
-            avatar: req.avatar.clone(),
-            bio: req.bio.clone(),
-            model: req.model.clone(),
-            thinking_effort: req.thinking_effort.clone(),
-            context_tokens: req.context_tokens,
-            visibility: req.visibility.clone(),
-        };
-        let resp: BotCreateResp = self
-            .pool
-            .send_pb(reqwest::Method::POST, "/api/v1/bot", Some(&body))
-            .await
-            .map_err(user_err)?;
-        match resp.profile {
-            Some(p) => Ok(BotRecord {
-                profile: from_pb_profile(p),
-                config: from_pb_config(resp.config),
-            }),
-            None => Err(UserError::Backend("bot create missing profile".into())),
-        }
-    }
-
-    async fn update_bot(
-        &self,
-        _app: &str,
-        owner: &str,
-        account: &str,
-        patch: &BotPatch,
-    ) -> Result<BotRecord, UserError> {
-        let body = InternalBotUpdate {
-            owner: owner.to_string(),
-            account: account.to_string(),
-            nickname: patch.nickname.clone(),
-            avatar: patch.avatar.clone(),
-            bio: patch.bio.clone(),
-            model: patch.model.clone(),
-            thinking_effort: patch.thinking_effort.clone(),
-            context_tokens: patch.context_tokens,
-            visibility: patch.visibility.clone(),
-        };
-        let resp: BotCreateResp = self
-            .pool
-            .send_pb(reqwest::Method::POST, "/api/v1/bot/update", Some(&body))
-            .await
-            .map_err(user_err)?;
-        match resp.profile {
-            Some(p) => Ok(BotRecord {
-                profile: from_pb_profile(p),
-                config: from_pb_config(resp.config),
-            }),
-            None => Err(UserError::Backend("bot update missing profile".into())),
-        }
-    }
-
     async fn bot_config(
         &self,
         _app: &str,
@@ -1052,24 +1037,6 @@ impl UserDirectory for HttpUserDirectory {
                 None
             }
         }))
-    }
-
-    async fn delete_bot(&self, _app: &str, owner: &str, account: &str) -> Result<(), UserError> {
-        let body = AccountPair {
-            account: owner.to_string(),
-            peer: account.to_string(),
-        };
-        let _: AccountExists = self
-            .pool
-            .send_pb(reqwest::Method::DELETE, "/api/v1/bot", Some(&body))
-            .await
-            .map_err(user_err)?;
-        Ok(())
-    }
-
-    async fn count_bots(&self, app: &str, owner: &str) -> Result<u32, UserError> {
-        let _ = (app, owner);
-        Err(UserError::Backend("count_bots is royal-only".into()))
     }
 
     async fn lookup(&self, _app: &str, account: &str) -> Result<Option<UserPresence>, UserError> {

@@ -8,6 +8,7 @@ Named exceptions are current violations with the slice that must remove them.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,11 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # (from_package, to_package_or_prefix, reason) still present on this branch.
 EXCEPTIONS = {
-    ("royal", "chat"): "R05 removes royal's normal dependency on chat",
 }
 
 # package -> forbidden package names or prefixes in the normal/build closure.
 FORBIDDEN = {
+    "royal": ("chat", "gateway", "tgateway", "router"),
+    "chat": ("royal", "gateway", "tgateway", "router"),
     "kim-agent-model": ("kim-agent-host", "kim-agent-codec", "goose-", "rmcp", "codex-"),
     "kim-agent-codec": ("kim-agent-host", "goose-", "rmcp", "codex-", "kim-desktop-runtime"),
     "kim-sdk": ("kim-agent-host", "kim-desktop-runtime", "kim-codex-helper", "goose-", "rmcp"),
@@ -28,8 +30,11 @@ FORBIDDEN = {
     "kim-gateway-runtime": ("kim-ws",),
     "kim-royal-client": ("kim-naming", "kim-metrics", "chat", "royal"),
     "tgateway": ("gateway",),
-    "gateway": ("kim-tcp",),
 }
+
+# The gateway runtime legitimately uses TCP for the internal Chat link.
+# The WS process must not bind the frontend TCP implementation directly.
+DIRECT_FORBIDDEN = {"gateway": ("kim-tcp",)}
 
 SCHEMA_PACKAGE = "kim-server-schema"
 SCHEMA_ALLOWED = {"kim-server-schema", "kim-server-migrate"}
@@ -50,7 +55,7 @@ def dep_names(node: dict, kind: str) -> list[str]:
     names = []
     for dep in node.get("deps", []):
         kinds = dep.get("dep_kinds") or []
-        if any(item.get("kind") == kind for item in kinds):
+        if any((item.get("kind") or "normal") == kind for item in kinds):
             names.append(dep["name"])
     return names
 
@@ -81,14 +86,27 @@ def forbidden_hit(package: str, dep: str) -> bool:
     return False
 
 
-def main() -> int:
-    data = metadata()
+def graph_nodes(data: dict) -> dict[str, dict]:
+    names = {package["id"]: package["name"] for package in data["packages"]}
     nodes = {}
     for node in data["resolve"]["nodes"]:
-        name = node["id"].split(" ")[0]
-        nodes[name] = node
+        name = names[node["id"]]
+        entry = nodes.setdefault(name, {"deps": []})
+        entry["deps"].extend(
+            {**dep, "name": names[dep["pkg"]]} for dep in node.get("deps", [])
+        )
+    return nodes
+
+
+def main() -> int:
+    data = metadata()
+    nodes = graph_nodes(data)
 
     failures = []
+    for package, banned in DIRECT_FORBIDDEN.items():
+        if package in nodes:
+            direct = set(dep_names(nodes[package], "normal") + dep_names(nodes[package], "build"))
+            failures.extend(f"{package} directly depends on {dep}" for dep in banned if dep in direct)
     for package, banned in FORBIDDEN.items():
         if package not in nodes:
             continue
@@ -122,6 +140,9 @@ def main() -> int:
             )
 
     auth_sql = ("password_hash", "token_epoch", "device_credentials")
+    directory_source = ROOT / "crates/server/kim-server-data/src/users.rs"
+    for name in re.findall(r"\bfn\s+(create_bot|update_bot|delete_bot|count_bots)\b", directory_source.read_text()):
+        failures.append(f"shared public directory contains Royal-owned bot writer: {name}")
     chat_root = ROOT / "services" / "chat"
     for path in chat_root.rglob("*.rs"):
         text = path.read_text(errors="replace")

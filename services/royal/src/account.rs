@@ -39,6 +39,9 @@ impl MemoryAccountAuth {
 #[async_trait]
 impl AccountAuthStore for MemoryAccountAuth {
     async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
+        if account.starts_with("b_") {
+            return Err(UserError::InvalidProfile);
+        }
         self.users.create(app, account, password_hash).await
     }
 
@@ -104,6 +107,9 @@ fn pg_err(err: sqlx::Error) -> UserError {
 #[async_trait]
 impl AccountAuthStore for PostgresAccountAuth {
     async fn create(&self, app: &str, account: &str, password_hash: &str) -> Result<(), UserError> {
+        if account.starts_with("b_") {
+            return Err(UserError::InvalidProfile);
+        }
         let res = sqlx::query(
             "INSERT INTO users (app, account, password_hash, nickname)
              VALUES ($1, $2, $3, $2)

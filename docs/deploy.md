@@ -34,7 +34,7 @@ docker volume rm kim_consul_data
 docker compose --env-file kim.env --profile metrics up -d
 ```
 
-自动部署会同步并校验 `consul/agent.hcl`、`consul/acl-init.sh` 为普通文件；旧版短挂载误建的同名空目录也会在上传前清理。Compose 的 Consul 文件挂载禁止自动建目录，缺文件会立即报错。Consul agent 以 uid 100 读取 server / CA 私钥和 `secrets.hcl`；业务容器通过专用补充组 gid 10001 只读取共享 client key。`remote-up.sh` 每次 **force-recreate `consul-acl`**（oneshot 已成功时，bind-mount 脚本变更不会自行重跑），然后 `up -d`，再等到 consul / postgres / redis / royal / royal-2 / chat / chat-gray / gateway / router 全部 `healthy`，并探测 `127.0.0.1:8080/health` 与 `:8088/health`。任一项失败都非 0，并打印上述服务日志；`compose up -d` 成功不等于 Router 已注册。手工排障也可看 `docker logs kim-consul-1` / `docker logs kim-royal-1` / `docker logs kim-router-1`：`permission denied` 是 TLS/secrets 文件权限不匹配（bootstrap 会修复）；`encryption key` / `invalid config` 是旧数据卷；`consul register 403` 是 Router ACL 缺少 `service "router" { policy = "write" }`。
+自动部署会同步并校验 `consul/agent.hcl`、`consul/acl-init.sh` 为普通文件；旧版短挂载误建的同名空目录也会在上传前清理。Compose 的 Consul 文件挂载禁止自动建目录，缺文件会立即报错。Consul agent 以 uid 100 读取 server / CA 私钥和 `secrets.hcl`；业务容器通过专用补充组 gid 10001 只读取共享 client key。`remote-up.sh` 每次 **force-recreate `consul-acl`**（oneshot 已成功时，bind-mount 脚本变更不会自行重跑），再执行独立迁移任务，逐个更新 Royal；两实例健康且签名 scope 检查一致后，依次更新 chat-gray / chat / gateway / router 并等待 `healthy`，并探测 `127.0.0.1:8080/health` 与 `:8088/health`。任一项失败都非 0，并打印上述服务日志；`compose up -d` 成功不等于 Router 已注册。手工排障也可看 `docker logs kim-consul-1` / `docker logs kim-royal-1` / `docker logs kim-router-1`：`permission denied` 是 TLS/secrets 文件权限不匹配（bootstrap 会修复）；`encryption key` / `invalid config` 是旧数据卷；`consul register 403` 是 Router ACL 缺少 `service "router" { policy = "write" }`。
 
 已有 VPS 的 `kim.env` **已有密钥不会**被 `bootstrap.sh` 改写。脚本会 **preflight**：补齐缺失的 Consul TLS leaf、`secrets.hcl`（含 gossip `encrypt`），并对空的必填键 **只追加**（`KIM_ENV`、`CONSUL_HTTP_ADDR`、`KIM_IMAGE`、从 URL 抄出的 `REDIS_PASSWORD` / `POSTGRES_PASSWORD`、新 HMAC / Consul token；`CONSUL_MANAGEMENT_TOKEN` 若 `secrets.hcl` 已有则复用）。`REDIS_URL` 没有密码时会写入新密码并改 URL（下次 `compose up` Redis 带 `--requirepass`）。Postgres 数据卷只在首次初始化读密码，因此 **不会**给已有库另造 `POSTGRES_PASSWORD`。不会只因 CA 文件存在就跳过。Gossip 共享密钥只进 Consul agent 的 `secrets.hcl`，不进业务容器。`consul-acl` 创建 token 失败必须非 0（compose 不得放行业务）。Gateway 在 `REDIS_URL` 已配置但 revoke store 打不开时 **拒绝启动**，不得跳过吊销检查。部署新栈前确认：`KIM_ENV=production`、`REDIS_PASSWORD` / 带密码的 `REDIS_URL`、每服务 `CONSUL_TOKEN_*`、Consul 私有 CA 与 client cert、非 demo 的 `KIM_JWT_SECRET` / `KIM_INTERNAL_HMAC_SECRET`。缺任一项，生产进程拒绝启动。Chat **不再**直连 `DATABASE_URL`：消息 / 好友 / AgentSpec 云副本都经 `ROYAL_URL` HMAC，Postgres 只由 Royal 写。
 
@@ -80,7 +80,7 @@ inbox 物化读（`KIM_INBOX_MATERIALIZED`，royal / royal-2 only）：
 | `deploy/Caddyfile` | `--profile edge` 时栈自己占 80/443（docker DNS：`royal:8080`） |
 | `deploy/host.Caddyfile` | 宿主机 Caddy 的 `kim.ainexc.com` 块（loopback 端口） |
 | `deploy/bootstrap.sh` | 生成 `kim.env`（一次）、Consul 私有 CA/mTLS、gossip encrypt、每服务 ACL token；已有 `kim.env` 做 TLS/`secrets.hcl` preflight，并追加空的必填键（不打印密钥，不改已有值，永不写 `change-me`） |
-| `deploy/remote-up.sh` | CI 调用：login GHCR → pull → `up --profile metrics` |
+| `deploy/remote-up.sh` / `check-bot-scope.py` | CI 调用：pull → migrate → Royal 逐个健康与 scope 门禁 → Chat / Gateway / Router 逐个更新 |
 | `deploy/psql-compose.sh` | 在 postgres 容器内跑 SQL（回填 / diff） |
 | `deploy/backfill-inbox.sh` / `diff-inbox.sql` / `scan-empty-jti.sh` | inbox 回填与 pending-receipt SCAN 门闩 |
 
@@ -103,6 +103,14 @@ TLS：
 - 宿主机已经有反代：不要开 `edge`。把 `deploy/host.Caddyfile` 的 `kim.ainexc.com` 块合进 `/etc/caddy/Caddyfile`：`/api/v1/auth/*` → `127.0.0.1:8080`（Royal），`/api/lookup` → `:8088`，Upgrade → `:8001`（关读超时）。**不要**把整站 `reverse_proxy` 到网关，否则注册 POST 会 404。
 
 公网 TGateway 进程内 rustls 已落地。`tls_cert` / `tls_key` / `max_connections` 写在 `deploy/tgateway.toml` **文件根**（不要放进 `[self]` 或 `[route.whitelist]`：后者是 `HashMap<String, String>`，整数会让 `load_config` 启动失败）。证书路径空则同一二进制走明文。默认 compose **不**起 tgateway。怎么暴露（灰云或独立 IP:port）和同城双活仍是以后。UFW 默认只放 22/80/443。
+
+## Bot 控制与删除合同升级
+
+先运行同一镜像的 `kim-server-migrate`，再逐个更新 `royal`、`royal-2`，确认两实例健康且 `/internal/v1/bot/store-scope` 返回相同的 PG scope 后，再逐个更新 `chat-gray`、`chat`。`0017` 已部署时继续增加 `0018`，不修改旧迁移。迁移 runner 从 `DATABASE_URL` 环境变量读取地址，避免把密码写进命令行。`remote-up.sh` 已执行这一顺序；`check-bot-scope.py` 会签名探测每个 Royal，任一版本不支持、不可达或数据集不一致都会在更新 Chat 前失败。
+
+Chat 的生产 `ROYAL_URL` 会同时装配消息 HTTP adapter 和 BotControl。只有消息走直连 PG / Memory 时才需另配 `BOT_CONTROL_URL`；它指定 bot 身份、公开目录和社交关系的权威。跨数据集的删除由实际消息 store 执行，不能用 URL 相同代替 scope 校验。
+
+验收包含：创建、配置写入、错误 owner 删除被拒绝、正确删除、重复删除成功、清理失败后身份已不存在仍能恢复，以及另一个普通会话保持完整。历史已删身份但没有回执的数据作为独立运维修复处理，不根据消息对端自动补 owner 授权。状态码和内部合同见 [group-royal.md](group-royal.md#bot-生命周期与删除恢复)。
 
 ## 产品 H5（Cloudflare Worker）
 
