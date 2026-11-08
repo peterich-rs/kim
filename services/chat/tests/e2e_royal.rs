@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use chat::idgen::SequenceIdGen;
-use chat::royal::{http_backends, HttpAgentSpecStore};
+use chat::{http_backends, HttpAgentSpecStore};
 use harness::*;
 use kim_protocol::pkt::{
     AgentSpecRecord, AgentSpecSyncResp, AgentSpecUpsertReq, AgentSpecUpsertResp, Flag,
@@ -18,6 +17,7 @@ use kim_protocol::{
     marshal, read, LogicPkt, Packet, CMD_AGENT_SPEC_SYNC, CMD_AGENT_SPEC_UPSERT, CMD_GROUP_CREATE,
     CMD_GROUP_DETAIL,
 };
+use kim_server_data::idgen::SequenceIdGen;
 use royal::{serve, RoyalState};
 
 #[tokio::test]

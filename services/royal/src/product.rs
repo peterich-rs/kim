@@ -4,9 +4,6 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
 use chat::parse_kind;
-use chat::social::{FriendRequestOutcome, SocialError};
-use chat::store::InboxEntry;
-use chat::users::{ProfilePatch, UserError, UserProfile};
 use kim_protocol::pkt::{
     AccountExists, AccountList, AccountPair, AccountQuery, ConversationRead,
     ConversationStatesQuery, ConversationStatesResp, HistoryItem, HistoryQuery, HistoryResp,
@@ -15,6 +12,9 @@ use kim_protocol::pkt::{
 };
 use kim_protocol::PROFILE_KIND_BOT;
 use kim_protocol::{INBOX_KIND_GROUP, INBOX_KIND_USER};
+use kim_server_data::social::{FriendRequestOutcome, SocialError};
+use kim_server_data::store::InboxEntry;
+use kim_server_data::users::{ProfilePatch, UserError, UserProfile};
 
 use crate::{backend, decode, encode, RoyalState};
 
@@ -284,10 +284,10 @@ pub async fn block_check(
     }))
 }
 
-fn inbox_kind(kind: chat::store::MessageKind) -> i32 {
+fn inbox_kind(kind: kim_server_data::store::MessageKind) -> i32 {
     match kind {
-        chat::store::MessageKind::User => INBOX_KIND_USER,
-        chat::store::MessageKind::Group => INBOX_KIND_GROUP,
+        kim_server_data::store::MessageKind::User => INBOX_KIND_USER,
+        kim_server_data::store::MessageKind::Group => INBOX_KIND_GROUP,
     }
 }
 
@@ -387,7 +387,7 @@ pub async fn inbox_states(
         if key.dest.is_empty() {
             return Err((StatusCode::BAD_REQUEST, "dest".into()));
         }
-        keys.push(chat::store::ConversationStateKey {
+        keys.push(kim_server_data::store::ConversationStateKey {
             dest: key.dest,
             kind,
         });
@@ -400,7 +400,7 @@ pub async fn inbox_states(
     Ok(encode(&ConversationStatesResp {
         states: states
             .iter()
-            .map(chat::store::ConversationReadState::to_proto)
+            .map(kim_server_data::store::ConversationReadState::to_proto)
             .collect(),
     }))
 }

@@ -1,4 +1,4 @@
-import { MessageType } from "../../src/command.ts";
+import { MessageType } from "@kim/web-sdk";
 import { COPY } from "../copy.ts";
 import { truncate } from "./format.ts";
 

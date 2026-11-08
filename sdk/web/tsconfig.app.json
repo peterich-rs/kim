@@ -17,7 +17,8 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./app/*"]
+      "@/*": ["./app/*"],
+      "@kim/web-sdk": ["./src/index.ts"]
     }
   },
   "include": ["app"]

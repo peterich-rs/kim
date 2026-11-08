@@ -18,6 +18,7 @@ kim-core.workspace = true
 kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
+kim-server-config.workspace = true
 prometheus.workspace = true
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }

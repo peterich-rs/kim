@@ -10,9 +10,9 @@ use tracing::warn;
 use crate::bot_control::{self, BotControl};
 use crate::filter::ContentFilter;
 use crate::profile::to_pb;
-use crate::store::{BotPendingItem, InsertMessage, MessageStore, StoreError};
 use crate::talk::{fallback_targets, persist_then_push, unix_nano, TalkError};
-use crate::users::{
+use kim_server_data::store::{BotPendingItem, InsertMessage, MessageStore, StoreError};
+use kim_server_data::users::{
     valid_client_profile_id, BotConfig, BotPatch, CreateBot, UserDirectory, UserError, UserPresence,
 };
 

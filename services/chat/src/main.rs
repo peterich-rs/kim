@@ -5,23 +5,22 @@ use std::time::Duration;
 
 use anyhow::Context;
 
-use chat::directory::MemoryGroupDirectory;
-use chat::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
-use chat::royal::{http_backends_with_pool, HttpAgentSpecStore};
-use chat::royal_pool::RoyalPool;
-use chat::social_cache::{CachedSocial, CachedUserDirectory};
-use chat::store::{open_message_store, PoolConfig};
-use chat::users::MemoryUserDirectory;
 use chat::ChatHandler;
+use chat::{
+    http_backends_with_pool, Endpoint, HttpAgentSpecStore, RoyalPool, RpcObserver, RpcSample,
+};
 use chat::{open_agent_spec_store, AgentSpecStore};
 use chat::{open_room_interest, RoomInterestStore};
 use chat::{HmacNonceGuard, MemoryHmacNonceGuard};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer};
 use kim_core::Server;
 use kim_naming::{open_naming, DefaultRegistration};
-use kim_protocol::{
-    check_strict_runtime, is_demo_internal_hmac, resolve_internal_hmac_secret, StrictCheck,
-};
+use kim_protocol::{is_demo_internal_hmac, resolve_internal_hmac_secret};
+use kim_server_data::directory::MemoryGroupDirectory;
+use kim_server_data::idgen::{resolve_snowflake_node, IdGenerator, SnowflakeGen};
+use kim_server_data::social_cache::{CachedSocial, CachedUserDirectory};
+use kim_server_data::store::{open_message_store, PoolConfig};
+use kim_server_data::users::MemoryUserDirectory;
 use kim_session::open_session_store;
 use kim_tcp::{SocketOpts, TcpServer};
 use serde::Deserialize;
@@ -115,6 +114,59 @@ fn royal_url_from_env_or_cfg(cfg: &str) -> Option<String> {
     }
 }
 
+struct MetricsRpcObserver(Arc<kim_metrics::KimMetrics>);
+
+impl RpcObserver for MetricsRpcObserver {
+    fn completed(&self, sample: RpcSample) {
+        match sample.error {
+            None => self.0.observe_royal_rpc(sample.group, sample.elapsed),
+            Some(cause) => self.0.on_royal_rpc_error(sample.group, cause),
+        }
+    }
+}
+
+fn endpoint_of(reg: &DefaultRegistration) -> Option<Endpoint> {
+    let proto = reg
+        .meta
+        .get("protocol")
+        .cloned()
+        .unwrap_or_else(|| reg.protocol.clone())
+        .to_ascii_lowercase();
+    if !proto.is_empty() && proto != "http" && proto != "https" {
+        return None;
+    }
+    if reg.public_address.is_empty() || reg.public_port == 0 {
+        return None;
+    }
+    let scheme = if proto == "https" { "https" } else { "http" };
+    Some(Endpoint {
+        id: reg.service_id.clone(),
+        base_url: format!("{scheme}://{}:{}", reg.public_address, reg.public_port),
+    })
+}
+
+fn spawn_royal_refresh(pool: Arc<RoyalPool>, naming: Option<Arc<dyn kim_naming::Naming>>) {
+    let Some(naming) = naming else {
+        return;
+    };
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(10));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tick.tick().await;
+            match naming.find("royal", &[]).await {
+                Ok(regs) => {
+                    let endpoints = regs.iter().filter_map(endpoint_of).collect::<Vec<_>>();
+                    if let Err(err) = pool.replace_endpoints(&endpoints) {
+                        tracing::warn!(%err, "royal pool refresh failed");
+                    }
+                }
+                Err(err) => tracing::warn!(%err, "royal discovery failed"),
+            }
+        }
+    });
+}
+
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
@@ -182,13 +234,13 @@ async fn main() -> anyhow::Result<()> {
     if is_demo_internal_hmac(&hmac) {
         tracing::warn!(secret = "demo-default-hmac", "do not use in production");
     }
-    check_strict_runtime(StrictCheck {
+    kim_server_config::check_strict_runtime(kim_server_config::StrictCheck {
         hmac: Some(&hmac),
         jwt: None,
         redis_url: redis_url.as_deref(),
         require_redis: true,
         consul_addr: consul.as_deref(),
-        ..StrictCheck::default()
+        ..kim_server_config::StrictCheck::default()
     })
     .map_err(anyhow::Error::msg)?;
     let naming = open_naming(consul.as_deref(), vec![]).context("naming")?;
@@ -239,13 +291,11 @@ async fn main() -> anyhow::Result<()> {
     let (store, groups, users, social, agent_specs) = if let Some(royal) =
         royal_url_from_env_or_cfg(&cfg.this.royal_url)
     {
-        let pool = Arc::new(RoyalPool::with_metrics(
-            Some(&royal),
-            consul.as_ref().map(|_| naming.clone()),
-            &hmac,
-            metrics.clone(),
-        )?);
-        pool.spawn_refresh();
+        let observer = metrics
+            .clone()
+            .map(|m| Arc::new(MetricsRpcObserver(m)) as Arc<dyn RpcObserver>);
+        let pool = Arc::new(RoyalPool::with_observer(Some(&royal), &hmac, observer)?);
+        spawn_royal_refresh(pool.clone(), consul.as_ref().map(|_| naming.clone()));
         let (store, groups, users, social) = http_backends_with_pool(pool.clone())?;
         let agent_specs: Arc<dyn AgentSpecStore> = Arc::new(HttpAgentSpecStore::from_pool(pool));
         (store, groups, users, social, agent_specs)
@@ -263,11 +313,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .await
         .context("store")?;
-        let groups: Arc<dyn chat::directory::GroupDirectory> =
+        let groups: Arc<dyn kim_server_data::directory::GroupDirectory> =
             Arc::new(MemoryGroupDirectory::new(idgen));
-        let users: Arc<dyn chat::users::UserDirectory> = Arc::new(MemoryUserDirectory::new());
-        let social: Arc<dyn chat::social::SocialDirectory> =
-            Arc::new(chat::social::MemorySocialDirectory::new());
+        let users: Arc<dyn kim_server_data::users::UserDirectory> =
+            Arc::new(MemoryUserDirectory::new());
+        let social: Arc<dyn kim_server_data::social::SocialDirectory> =
+            Arc::new(kim_server_data::social::MemorySocialDirectory::new());
         let agent_specs =
             open_agent_spec_store(database_url_from_env_or_cfg(&cfg.this.database_url).as_deref())
                 .await
@@ -302,7 +353,7 @@ async fn main() -> anyhow::Result<()> {
         chat::builtin_talk_filter(cfg.this.sensitive_words, cfg.this.blocked_image),
         users,
         social,
-        chat::store::pending_receipt_enabled(),
+        kim_server_data::store::pending_receipt_enabled(),
         interest,
         agent_specs,
         Arc::new(chat::bot_control::UnavailableBotControl),

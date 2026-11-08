@@ -79,23 +79,27 @@
 
 ```text
 im/
-  crates/kim-core          说明书
-  crates/kim-tcp           TCP 实现（App / 内网）
-  crates/kim-ws            WebSocket 实现（Web）
-  crates/kim-protocol      业务包 + JWT
-  crates/kim-naming        StaticNaming；生产 Consul HTTP catalog
-  crates/kim-container     拨号、Young/Adult、转发
-  crates/kim-router        指令 Router
-  crates/kim-session       会话（Memory / 可选 Redis）
-  crates/kim-metrics       Prometheus registry（仅进程，不进通信层）
-  crates/kim-gateway-runtime  网关 handler / revoke / run；WS 只在 gateway 进程，TCP/TLS 只在 tgateway
-  crates/kim-agent-model   Agent 配置数据；不链接 Goose / Codex / MCP
-  crates/kim-server-schema PostgreSQL 0001–0016；只有 tools/kim-server-migrate 链接它
+  crates/shared/kim-core          说明书
+  crates/shared/kim-tcp           TCP 实现（App / 内网）
+  crates/shared/kim-ws            WebSocket 实现（Web）
+  crates/shared/kim-protocol      业务包 + JWT
+  crates/server/kim-naming        StaticNaming；生产 Consul HTTP catalog
+  crates/server/kim-container     拨号、Young/Adult、转发
+  crates/server/kim-router        指令 Router
+  crates/server/kim-session       会话（Memory / 可选 Redis）
+  crates/server/kim-metrics       Prometheus registry（仅进程，不进通信层）
+  crates/server/kim-gateway-runtime  网关 handler / revoke / run；WS 只在 gateway 进程，TCP/TLS 只在 tgateway
+  crates/agent/kim-agent-model   Agent 配置数据；不链接 Goose / Codex / MCP
+  crates/server/kim-server-schema PostgreSQL migrations；只有 tools/kim-server-migrate 链接它
+  crates/server/kim-server-data   消息、公开目录、社交、IdGen、nonce、AgentSpec
+  crates/server/kim-royal-client  Royal HTTP adapter 与 endpoint pool
+  crates/server/kim-server-config 启动检查；不进 wire 协议
+  crates/client/kim-client        客户端（Conn = kim-ws）
+  crates/client/kim-client-ffi    唯一 FRB。catalog 在这里；手机链接不开 codex
   services/                gateway / tgateway / chat / royal / router
   examples/                pkt-client / kim-client-demo / kimbench
   sdk/web                  TypeScript Web SDK
   sdk/mobile               Flutter 壳；kim-client 经 FRB
-  crates/kim-client        客户端（Conn = kim-ws）
   docs/                    本目录
   research/                可行性调研
 ```

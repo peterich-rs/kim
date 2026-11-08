@@ -25,10 +25,10 @@ import {
   previewBody,
   readImageSize,
 } from "../lib/image.ts";
-import { InboxKind, MessageType } from "../../src/command.ts";
+import { InboxKind, MessageType } from "@kim/web-sdk";
 import { gatewayUrl } from "../lib/gateway.ts";
-import { uploadImage } from "../../src/media.ts";
-import { Content, type Message } from "../../src/index.ts";
+import { uploadImage } from "@kim/web-sdk";
+import { Content, type Message } from "@kim/web-sdk";
 import { clearSession, loadSession, saveSession, type StoredSession } from "../lib/session.ts";
 import {
   loadThreads,

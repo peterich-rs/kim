@@ -10,7 +10,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'failure.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `from_client`, `unavailable`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `fmt`, `from`, `from`, `from`
 
 @freezed
 sealed class ApiFailure with _$ApiFailure implements FrbException {

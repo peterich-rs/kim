@@ -103,8 +103,8 @@
 
 **文件**
 
-- `services/chat/src/store/redis_ack.rs` — `key` / `set`（约 19–50 行）：`SET chat:ack:{account}`
-- `services/chat/src/store/postgres.rs` — `offline_index`：`send_time > start LIMIT 2000`
+- `crates/server/kim-server-data/src/store/redis_ack.rs` — `key` / `set`（约 19–50 行）：`SET chat:ack:{account}`
+- `crates/server/kim-server-data/src/store/postgres.rs` — `offline_index`：`send_time > start LIMIT 2000`
 - `sdk/web/src/client.ts` — `messageAckLoop`（约 819–840 行）：只 ACK `lastMessage`
 - `docs/reliable-delivery.md`：读索引只保存每个账号最新 ACK 的 `messageId`
 
@@ -132,10 +132,10 @@ Snowflake `message_id` **不能**当无洞 ACK 游标。G-03、G-04、G-10 必�
 **文件**
 
 - `services/chat/src/ack.rs` — `do_talk_ack`：`store.ack(app, account, message_id)`，不用 `session.device`
-- `services/chat/src/store/redis_ack.rs` — `chat:ack:{account}`
-- `crates/kim-server-schema/migrations/0006_user_social_inbox.sql` — `conversation_reads` 主键 `(app, account, peer, group_id)`
-- `crates/kim-session/src/lib.rs` — `exclusive_device`（约 24–29 行）
-- `crates/kim-router/src/context.rs` — `dispatch` 跳过发送方自己的 `channel_id`（约 101–103 行）
+- `crates/server/kim-server-data/src/store/redis_ack.rs` — `chat:ack:{account}`
+- `crates/server/kim-server-schema/migrations/0006_user_social_inbox.sql` — `conversation_reads` 主键 `(app, account, peer, group_id)`
+- `crates/server/kim-session/src/lib.rs` — `exclusive_device`（约 24–29 行）
+- `crates/server/kim-router/src/context.rs` — `dispatch` 跳过发送方自己的 `channel_id`（约 101–103 行）
 
 **问题**
 
@@ -161,8 +161,8 @@ G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条
 
 **文件**
 
-- `services/chat/src/store/mod.rs` — `OFFLINE_SYNC_INDEX_COUNT = 2000`、`EXPIRES_NANOS = 15 天`
-- `services/chat/src/store/postgres.rs` — `offline_index` / `sent_time`（约 200–277 行）
+- `crates/server/kim-server-data/src/store/mod.rs` — `OFFLINE_SYNC_INDEX_COUNT = 2000`、`EXPIRES_NANOS = 15 天`
+- `crates/server/kim-server-data/src/store/postgres.rs` — `offline_index` / `sent_time`（约 200–277 行）
 - `sdk/web/src/client.ts` — `loadOfflineMessage`（约 759–779 行）会按 last messageId 循环
 
 **问题**
@@ -188,10 +188,10 @@ G-04 只解决「哪台设备的游标」。无洞语义强制选 G-03 的两条
 
 **文件**
 
-- `crates/kim-protocol/proto/pkt.proto` — `AuthReq` / `AuthResp` / `LoginReq` 可选凭证字段
+- `crates/shared/kim-protocol/proto/pkt.proto` — `AuthReq` / `AuthResp` / `LoginReq` 可选凭证字段
 - `services/royal/src/device.rs` / `auth.rs` — enroll / 出示；仅成功时 JWT 写 `did`
 - `services/gateway/src/lib.rs` — 有 `did` 或 `deviceCredential` 才校验 `kim:device:{did}`
-- `crates/kim-session/src/lib.rs` — `exclusive_device` 仍只看 `LoginReq.device`
+- `crates/server/kim-session/src/lib.rs` — `exclusive_device` 仍只看 `LoginReq.device`
 
 **已落地（B2 服务端半边）**
 
@@ -287,7 +287,7 @@ Web 同一次 `talk()` 内 `clientId` 稳定；`kim-client` 每次新 UUID，上
 
 **文件**
 
-- `crates/kim-session/src/dual.rs` — 读 primary；mirror 失败只 warn
+- `crates/server/kim-session/src/dual.rs` — 读 primary；mirror 失败只 warn
 - `deploy/compose.yml` — Redis 64MB、`volatile-lru`
 
 主 Redis 挂：session 查不到 → `SessionNotFound`。gateway 心跳吊销查询存储错误有界宽限（连续 3 次后断开）；登录 revoke 仍 fail-closed。
@@ -534,12 +534,12 @@ OS 能力：`TCP_NODELAY` 与 keepalive 已开。BufWriter 8KiB。reuseport / ve
 
 一期不必全改。语义修复仍以 G-xx 的文件为准。
 
-- `crates/kim-core` — 读循环隔离、`try_push`、可选 ChannelMap 分片
-- `crates/kim-tcp` / `kim-ws` — keepalive / 连接上限 / TLS 前端已落地；ws 仍明文；reuseport / vectored 延后
-- `crates/kim-container` — token、退避、forward 熔断
-- `crates/kim-session` — pipeline、有界 cache、mirror 指标
-- `crates/kim-metrics` — dispatch/mailbox/push_drop；command 白名单
-- `crates/kim-protocol` — secret 校验；非 HS256 只留注入点
+- `crates/shared/kim-core` — 读循环隔离、`try_push`、可选 ChannelMap 分片
+- `crates/shared/kim-tcp` / `kim-ws` — keepalive / 连接上限 / TLS 前端已落地；ws 仍明文；reuseport / vectored 延后
+- `crates/server/kim-container` — token、退避、forward 熔断
+- `crates/server/kim-session` — pipeline、有界 cache、mirror 指标
+- `crates/server/kim-metrics` — dispatch/mailbox/push_drop；command 白名单
+- `crates/shared/kim-protocol` — secret 校验；非 HS256 只留注入点
 - `services/chat`（talk / idgen / RoyalPool / 社交缓存 / postgres pool）、各 `main` 的 runtime 与 SIGTERM
 - `deploy/compose.yml` 与 docs：PgBouncer / Redis 容量写进 [deploy.md](deploy.md)，不要把 64MB 当成生产默认不说明
 

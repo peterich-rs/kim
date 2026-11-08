@@ -1,0 +1,24 @@
+[package]
+name = "kim-royal-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Royal HTTP adapters and the endpoint pool. Discovery and metrics stay with the process that assembles them."
+
+[dependencies]
+arc-swap.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+kim-protocol.workspace = true
+kim-server-data.workspace = true
+prost.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+
+tokio.workspace = true
+
+[lints]
+workspace = true

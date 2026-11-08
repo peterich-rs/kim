@@ -7,8 +7,8 @@ use kim_router::{Context, RouterError};
 use tracing::warn;
 
 use crate::notify::notify_account;
-use crate::social::SocialDirectory;
-use crate::users::{
+use kim_server_data::social::SocialDirectory;
+use kim_server_data::users::{
     validate_patch, ProfilePatch, UserDirectory, UserError, UserProfile, SEARCH_LIMIT,
 };
 

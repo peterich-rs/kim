@@ -5,26 +5,17 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/features/agent/data/host_support.dart';
-import 'package:kim_mobile/src/rust_agent/api/catalog.dart' as catalog;
-import 'package:kim_mobile/src/rust_agent/frb_generated.dart';
+import 'package:kim_mobile/src/rust/api/catalog.dart' as catalog;
 
-export 'package:kim_mobile/src/rust_agent/api/catalog.dart'
-    show CapabilityEntry, CatalogValidate, Skill, Vendor;
+export 'package:kim_mobile/src/rust/api/catalog.dart'
+    show CapabilityEntry, CatalogValidate, Skill, Vendor, VendorGroup;
 
 final agentBridgeProvider = Provider<AgentBridge>((ref) => AgentBridge());
 
 class AgentBridge {
-  static bool _inited = false;
+  Future<void> ensure() async {}
 
-  Future<void> ensure() async {
-    if (_inited || !agentHostSupported) {
-      return;
-    }
-    await AgentRustLib.init();
-    _inited = true;
-  }
-
-  bool get isReady => _inited;
+  bool get isReady => agentHostSupported;
 
   Future<List<String>> builtinProfiles() async {
     await ensure();

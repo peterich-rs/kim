@@ -1686,6 +1686,9 @@ dependencies = [
  "kim-naming",
  "kim-protocol",
  "kim-router",
+ "kim-royal-client",
+ "kim-server-config",
+ "kim-server-data",
  "kim-session",
  "kim-tcp",
  "kim-ws",
@@ -7501,6 +7504,7 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-server-config",
  "kim-session",
  "prost 0.13.5",
  "redis",
@@ -7581,6 +7585,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-royal-client"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "axum",
+ "bytes",
+ "kim-protocol",
+ "kim-server-data",
+ "prost 0.13.5",
+ "reqwest 0.12.28",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "kim-sdk"
 version = "0.1.0"
 dependencies = [
@@ -7600,6 +7620,32 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "kim-server-config"
+version = "0.1.0"
+dependencies = [
+ "kim-protocol",
+ "url",
+]
+
+[[package]]
+name = "kim-server-data"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kim-protocol",
+ "kim-router",
+ "kim-session",
+ "redis",
+ "serde",
+ "serde_json",
+ "snowflake_me",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -7671,27 +7717,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kim_agent_ffi"
+name = "kim_client_ffi"
 version = "0.1.0"
 dependencies = [
  "flutter_rust_bridge",
  "kim-agent-codec",
  "kim-agent-host",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "kim_client_ffi"
-version = "0.1.0"
-dependencies = [
- "flutter_rust_bridge",
  "kim-client",
  "kim-desktop-runtime",
  "kim-log",
  "kim-sdk",
  "libc",
+ "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -10502,6 +10539,7 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-server-config",
  "prometheus",
  "reqwest 0.12.28",
  "serde",
@@ -10529,6 +10567,8 @@ dependencies = [
  "kim-metrics",
  "kim-naming",
  "kim-protocol",
+ "kim-server-config",
+ "kim-server-data",
  "kim-session",
  "prost 0.13.5",
  "rand_core 0.6.4",

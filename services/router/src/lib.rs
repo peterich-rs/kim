@@ -18,7 +18,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
 use kim_naming::{open_naming, DefaultRegistration};
-use kim_protocol::{check_strict_runtime, StrictCheck, DEMO_DEFAULT_SECRET};
+use kim_protocol::DEMO_DEFAULT_SECRET;
+use kim_server_config::StrictCheck;
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -203,13 +204,13 @@ pub fn load(path: &std::path::Path) -> anyhow::Result<(String, AppState)> {
         });
     let jwt_secret = resolve_jwt_secret(&cfg.this.jwt_secret);
     let naming = if consul.is_some() {
-        check_strict_runtime(StrictCheck {
+        kim_server_config::check_strict_runtime(kim_server_config::StrictCheck {
             hmac: None,
             jwt: Some(jwt_secret.as_str()),
             redis_url: None,
             require_redis: false,
             consul_addr: consul.as_deref(),
-            ..StrictCheck::default()
+            ..kim_server_config::StrictCheck::default()
         })
         .map_err(anyhow::Error::msg)?;
         open_naming(consul.as_deref(), vec![]).context("naming")?

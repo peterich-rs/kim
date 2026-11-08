@@ -7,7 +7,7 @@ use tracing::warn;
 
 use crate::interest::RoomInterestStore;
 use crate::presence::PresenceHub;
-use crate::social::SocialDirectory;
+use kim_server_data::social::SocialDirectory;
 
 pub async fn do_room_enter(
     ctx: Context,

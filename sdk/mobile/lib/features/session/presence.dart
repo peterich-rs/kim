@@ -1,8 +1,7 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'package:kim_mobile/src/rust/api/types.dart';
 
 import 'package:kim_mobile/models/models.dart';
 

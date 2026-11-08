@@ -7,11 +7,11 @@ use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chat::users::UserError;
 use kim_protocol::pkt::{AuthReq, AuthResp, PasswordChangeReq, PasswordKeyResp};
 use kim_protocol::{
     generate_with_device, parse, AccountId, ProtocolError, PASSWORD_KEY_ID_MISMATCH,
 };
+use kim_server_data::users::UserError;
 use serde::Serialize;
 use zeroize::Zeroizing;
 

@@ -4,9 +4,9 @@
 
 源码：
 
-- 说明书：`crates/kim-core/src/`
-- TCP：`crates/kim-tcp/src/`
-- 验收：`crates/kim-tcp/tests/echo.rs`（TCP）、`crates/kim-tcp/tests/tls.rs`（TGateway 形状：TLS / keepalive / 连接上限）、`crates/kim-ws/tests/echo.rs`（WS）。没有独立 echo 二进制。
+- 说明书：`crates/shared/kim-core/src/`
+- TCP：`crates/shared/kim-tcp/src/`
+- 验收：`crates/shared/kim-tcp/tests/echo.rs`（TCP）、`crates/shared/kim-tcp/tests/tls.rs`（TGateway 形状：TLS / keepalive / 连接上限）、`crates/shared/kim-ws/tests/echo.rs`（WS）。没有独立 echo 二进制。
 
 ## 这一层解决什么问题
 
@@ -98,7 +98,7 @@ TCP 没有「一条消息」的边界。`kim-tcp` 使用：
 ```
 
 `opcode` 与 WebSocket 对齐：Binary / Close / Ping / Pong。  
-编解码：`crates/kim-tcp/src/codec.rs`。单测覆盖半包、粘包、超大包拒绝。
+编解码：`crates/shared/kim-tcp/src/codec.rs`。单测覆盖半包、粘包、超大包拒绝。
 
 这是**应用层帧**，不是 TCP 段，也不是 IP 包。内核仍按自己的 MSS/窗口把数据切成段。
 
@@ -140,7 +140,7 @@ TcpServer::start
 - **两个写**交错：帧头和内容搅在一起
 - **两个读**互偷字节
 
-服务端 `Channel` **已经**按「专员」模型实现，不是还没做到。图见上文第 2 张。源码：`crates/kim-core/src/channel.rs`、`channel_map.rs`，握手后 `TcpConn::into_split`。`TcpConn<S>` 对齐 `WsConn<S>`：明文仍是 `TcpConn::new(TcpStream)`（内设 `TCP_NODELAY`），TGateway 用 `with_peer` 包 `TlsStream`，accept 后、rustls 握手前同样 `set_nodelay(true)`。`TcpServer` 不泛型化。明文与 TLS 前端共用 `FrontendState`：`socket2` keepalive（默认 idle 30s / interval 10s / retries 3）、`Option<Semaphore>` 连接上限（`try_acquire_owned`，满了立刻关流）。reuseport / vectored write 不做。
+服务端 `Channel` **已经**按「专员」模型实现，不是还没做到。图见上文第 2 张。源码：`crates/shared/kim-core/src/channel.rs`、`channel_map.rs`，握手后 `TcpConn::into_split`。`TcpConn<S>` 对齐 `WsConn<S>`：明文仍是 `TcpConn::new(TcpStream)`（内设 `TCP_NODELAY`），TGateway 用 `with_peer` 包 `TlsStream`，accept 后、rustls 握手前同样 `set_nodelay(true)`。`TcpServer` 不泛型化。明文与 TLS 前端共用 `FrontendState`：`socket2` keepalive（默认 idle 30s / interval 10s / retries 3）、`Option<Semaphore>` 连接上限（`try_acquire_owned`，满了立刻关流）。reuseport / vectored write 不做。
 
 - **写**：N 对 1。谁都可以 `push`，顺序 = **入队顺序**。真正碰插座的只有写协程。
 - **读**：1 对 1。读专员自己守网线，有数据再喊业务。别人不持有「读信箱」去使唤他。
@@ -161,7 +161,7 @@ TcpServer::start
 
 ## echo 执行链（已跑通）
 
-以 `crates/kim-tcp/tests/echo.rs` 的回声发第一条 `hello 0`：
+以 `crates/shared/kim-tcp/tests/echo.rs` 的回声发第一条 `hello 0`：
 
 1. Server `bind` 占用端口，内核开始 listen。  
 2. Client `connect`：内核三次握手；`IdentityDialer` 发第一帧，内容是 `"alice"`。  

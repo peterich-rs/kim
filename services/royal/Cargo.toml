@@ -8,8 +8,8 @@ publish = false
 
 [features]
 default = []
-postgres = ["chat/postgres", "dep:sqlx"]
-redis = ["chat/redis", "kim-session/redis", "dep:redis"]
+postgres = ["chat/postgres", "kim-server-data/postgres", "dep:sqlx"]
+redis = ["chat/redis", "kim-server-data/redis", "kim-session/redis", "dep:redis"]
 consul = ["kim-naming/consul"]
 
 [dependencies]
@@ -28,7 +28,9 @@ kim-core.workspace = true
 kim-metrics.workspace = true
 kim-naming.workspace = true
 kim-protocol.workspace = true
+kim-server-config.workspace = true
 kim-session.workspace = true
+kim-server-data.workspace = true
 prost.workspace = true
 redis = { workspace = true, optional = true }
 reqwest.workspace = true

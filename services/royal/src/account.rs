@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chat::users::{MemoryUserDirectory, UserError};
+use kim_server_data::users::{MemoryUserDirectory, UserError};
 
 #[async_trait]
 pub trait AccountAuthStore: Send + Sync {
@@ -87,9 +87,10 @@ impl PostgresAccountAuth {
     }
 
     pub async fn connect(url: &str) -> Result<Self, UserError> {
-        let pool = chat::store::connect_pool(url, chat::store::PoolOpts::default())
-            .await
-            .map_err(|err| UserError::Backend(err.to_string()))?;
+        let pool =
+            kim_server_data::store::connect_pool(url, kim_server_data::store::PoolOpts::default())
+                .await
+                .map_err(|err| UserError::Backend(err.to_string()))?;
         Ok(Self { pool })
     }
 }

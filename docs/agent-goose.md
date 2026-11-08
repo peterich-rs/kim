@@ -1,17 +1,18 @@
 # Local Goose agent in KIM
 
 Goose runs on the **desktop IM** (macOS / Windows / Linux). iOS and Android
-are IM clients only: they do not compile or ship `kim_agent_ffi`. Mobile and
-Web can view and send in a registered 1:1; only desktop runs Goose.
+are IM clients only: they do not enable the host `codex` feature or ship
+`kim-codex-helper`. Mobile and Web can view and send in a registered 1:1;
+only desktop runs Goose.
 
 KIM does not ship a custom agent loop. Desktop IM talks to a **local Goose host**:
 
 - Loop: [`goose-agent`](https://crates.io/crates/goose-agent) state machine, assembled per `AgentProfile` by `MachineFactory`
 - Providers: [`goose-providers`](https://crates.io/crates/goose-providers) (OpenAI Completions/Responses, Anthropic Messages)
-- Model: `crates/kim-agent-model` holds persisted profile data and `ApprovalMode`. It does not link Goose, Codex, or MCP. `kim-agent-codec` depends on this crate, not the host
-- Host: `crates/kim-agent-host` (engine conversion, vendor catalog, session map, @mention helper, system prompt)
+- Model: `crates/agent/kim-agent-model` holds persisted profile data and `ApprovalMode`. It does not link Goose, Codex, or MCP. `kim-agent-codec` depends on this crate, not the host
+- Host: `crates/agent/kim-agent-host` (engine conversion, vendor catalog, session map, @mention helper, system prompt)
 - Catalog: `catalog/vendors.json` + `catalog_surface` 投影。UI switches on `ReasoningSurface.kind`, not vendor id. Catalog URLs feed `build_openai` / `build_anthropic`.
-- FFI: `crates/kim-agent-ffi` (`kim_agent_ffi`) — still isolated from `kim_client_ffi`
+- FFI: catalog and skill queries are in `crates/client/kim-client-ffi` (`kim_client_ffi`). There is no second bridge. Phone links `kim-agent-host` without the `codex` feature; `kim-codex-helper` is a desktop hook binary
 - Dest: a stored row with `id=goose` still uses local dest `goose` (alias of `agent:goose`). Other personas use `agent:<profile_id>`. After `chat.bot.create`, the IM dest is the server-assigned `serverAccount` (`b_…`). New installs have an empty agent list; goose is not synthesized.
 
 Three layers: **Agent** (`AgentProfile`: persona + model + `ReasoningChoice`), **ProviderAccount** (vendor + URL + key), **ModelChoice** (model id + reasoning). Disk profiles do not persist `provider`; `session_open` injects it.

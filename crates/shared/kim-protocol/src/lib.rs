@@ -1,0 +1,224 @@
+//! KIM 业务包：Magic、BasicPkt、LogicPkt、身份 ID。
+
+mod basic;
+mod command;
+mod error;
+mod ids;
+mod internal_hmac;
+mod logic;
+mod magic;
+mod password_seal;
+mod token;
+mod wire;
+
+pub mod pkt {
+    include!(concat!(env!("OUT_DIR"), "/kim.pkt.rs"));
+}
+
+pub mod agent {
+    include!(concat!(env!("OUT_DIR"), "/kim.agent.rs"));
+}
+
+pub use basic::{BasicPkt, CODE_PING, CODE_PONG};
+pub use command::Command;
+pub use error::ProtocolError;
+pub use ids::{AccountId, ChannelId, DestId, GatewayId, ACCOUNT_MAX, ACCOUNT_MIN};
+pub use internal_hmac::{
+    hmac_headers_from, hmac_nonce_key, is_demo_internal_hmac, resolve_internal_hmac_secret,
+    sign as sign_internal_hmac, sign_at as sign_internal_hmac_at, verify as verify_internal_hmac,
+    verify_at as verify_internal_hmac_at, HmacHeaders, DEMO_INTERNAL_HMAC_SECRET, HEADER_NONCE,
+    HEADER_SIGNATURE, HEADER_TIMESTAMP, HMAC_NONCE_TTL_SECS, MAX_SKEW_SECS,
+};
+pub use logic::LogicPkt;
+pub use magic::{Magic, MAGIC_BASIC_PKT, MAGIC_LOGIC_PKT};
+pub use password_seal::{
+    PasswordSealError, PasswordSealKey, PasswordSealPublic, PASSWORD_KEY_ID_MISMATCH,
+    PASSWORD_SEAL_ALG,
+};
+pub use token::{
+    device_hot_key, generate, generate_with_device, generate_with_jti, generate_with_session,
+    parse, token_epoch_key, token_revoke_key, Claims, ALLOWED_APP, DEMO_DEFAULT_SECRET,
+};
+pub use wire::{
+    profile_kind, service_name, CMD_AGENT_SPEC_SYNC, CMD_AGENT_SPEC_UPSERT, CMD_BLOCK_ADD,
+    CMD_BLOCK_LIST, CMD_BLOCK_REMOVE, CMD_BOT_CREATE, CMD_BOT_DELETE, CMD_BOT_PENDING,
+    CMD_BOT_REPLY, CMD_BOT_TYPING, CMD_BOT_UPDATE, CMD_CHAT_GROUP_TALK, CMD_CHAT_TALK_ACK,
+    CMD_CHAT_USER_TALK, CMD_DEMO_ECHO, CMD_FRIEND_ACCEPT, CMD_FRIEND_INCOMING, CMD_FRIEND_LIST,
+    CMD_FRIEND_REJECT, CMD_FRIEND_REMOVE, CMD_FRIEND_REQUEST, CMD_GROUP_CREATE, CMD_GROUP_DETAIL,
+    CMD_GROUP_INVITE, CMD_GROUP_JOIN, CMD_GROUP_MEMBERS, CMD_GROUP_QUIT, CMD_HISTORY,
+    CMD_INBOX_LIST, CMD_INBOX_READ, CMD_INBOX_READ_SYNC, CMD_INBOX_STATES, CMD_LOGIN_RENEW,
+    CMD_LOGIN_SIGN_IN, CMD_LOGIN_SIGN_OUT, CMD_OFFLINE_CONTENT, CMD_OFFLINE_INDEX, CMD_PRESENCE,
+    CMD_RECEIPT_READ, CMD_ROOM_ENTER, CMD_ROOM_LEAVE, CMD_TYPING, CMD_USER_PROFILE,
+    CMD_USER_SEARCH, CMD_USER_UPDATE, CMD_USER_UPDATED, INBOX_KIND_GROUP, INBOX_KIND_USER,
+    MESSAGE_TYPE_IMAGE, MESSAGE_TYPE_TEXT, MESSAGE_TYPE_VIDEO, MESSAGE_TYPE_VOICE, META_ACCOUNT,
+    META_APP, META_DEST_CHANNELS, META_DEST_SERVER, PROFILE_KIND_BOT, PROFILE_KIND_USER, SN_CHAT,
+    SN_LOGIN, SN_ROYAL, SN_TGATEWAY, SN_WGATEWAY, TYPING_PHASE_COMPOSING, TYPING_PHASE_QUEUED,
+    TYPING_PHASE_RUNNING, TYPING_PHASE_TOOL, TYPING_PHASE_WAIT_PERMISSION,
+};
+
+use std::sync::Arc;
+
+use bytes::Bytes;
+
+pub enum Packet {
+    Basic(BasicPkt),
+    Logic(LogicPkt),
+}
+
+pub fn read(buf: &[u8]) -> Result<Packet, ProtocolError> {
+    if buf.len() < 4 {
+        return Err(ProtocolError::Incomplete);
+    }
+    let magic = [buf[0], buf[1], buf[2], buf[3]];
+    let rest = &buf[4..];
+    if magic == MAGIC_BASIC_PKT {
+        Ok(Packet::Basic(BasicPkt::decode(rest)?))
+    } else if magic == MAGIC_LOGIC_PKT {
+        Ok(Packet::Logic(LogicPkt::decode(rest)?))
+    } else {
+        Err(ProtocolError::BadMagic)
+    }
+}
+
+pub fn marshal(pkt: &Packet) -> Bytes {
+    match pkt {
+        Packet::Basic(p) => p.encode(),
+        Packet::Logic(p) => p.encode(),
+    }
+}
+
+pub fn read_logic(buf: &[u8]) -> Result<LogicPkt, ProtocolError> {
+    match read(buf)? {
+        Packet::Logic(p) => Ok(p),
+        Packet::Basic(_) => Err(ProtocolError::NotLogic),
+    }
+}
+
+pub fn logic_channel_id(buf: &[u8]) -> Option<Arc<str>> {
+    read_logic(buf)
+        .ok()
+        .map(|p| p.header.channel_id)
+        .filter(|s| !s.is_empty())
+        .map(Arc::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bad_magic() {
+        assert!(matches!(read(&[1, 2, 3, 4]), Err(ProtocolError::BadMagic)));
+    }
+
+    #[test]
+    fn status_numbers_stable() {
+        use pkt::Status;
+        assert_eq!(Status::Success as i32, 0);
+        assert_eq!(Status::InvalidPacket as i32, 1);
+        assert_eq!(Status::CommandNotFound as i32, 2);
+        assert_eq!(Status::ServiceUnavailable as i32, 3);
+        assert_eq!(Status::SystemException as i32, 99);
+        assert_eq!(Status::InvalidPacketBody as i32, 101);
+        assert_eq!(Status::InvalidCommand as i32, 103);
+        assert_eq!(Status::Unauthorized as i32, 105);
+        assert_eq!(Status::ContentBlocked as i32, 106);
+        assert_eq!(Status::NotGroupMember as i32, 107);
+        assert_eq!(Status::UserNotFound as i32, 108);
+        assert_eq!(Status::NotFriends as i32, 109);
+        assert_eq!(Status::Blocked as i32, 110);
+        assert_eq!(Status::IdempotencyConflict as i32, 111);
+        assert_eq!(Status::NotBotOwner as i32, 112);
+        assert_eq!(Status::BotSocialDenied as i32, 113);
+        assert_eq!(Status::NoDestination as i32, 300);
+        assert_eq!(Status::SessionNotFound as i32, 404);
+        assert!(Status::try_from(100).is_err());
+        assert!(Status::try_from(300).is_ok());
+    }
+
+    #[test]
+    fn allowed_app_is_kim() {
+        assert_eq!(ALLOWED_APP, "kim");
+    }
+
+    #[test]
+    fn agent_spec_roundtrip_preserves_closed_fields() {
+        use prost::Message;
+
+        let spec = agent::AgentSpec {
+            schema_version: 1,
+            id: "goose".into(),
+            display_name: "助手".into(),
+            aliases: vec!["助手".into()],
+            enabled: Some(true),
+            placement: agent::Placement::Local as i32,
+            updated_at: 1_700_000_000_000,
+            system_prompt: "be concise".into(),
+            server_account: "b_abc".into(),
+            model_ref: Some(agent::ModelRef {
+                account_id: "acct-goose".into(),
+                model: "gpt-4o".into(),
+                reasoning: Some(agent::ReasoningChoice {
+                    v: 1,
+                    kind: "effort_enum".into(),
+                    on: None,
+                    value: Some("medium".into()),
+                    budget: None,
+                    advanced_json: Vec::new(),
+                }),
+            }),
+            capabilities: vec![agent::CapabilityRef {
+                kind: "im.send".into(),
+                id: String::new(),
+                params_json: b"{}".to_vec(),
+                enabled: Some(true),
+            }],
+            permission_rules: vec![agent::PermissionRule {
+                r#match: Some(agent::permission_rule::Match::ToolName(
+                    "send_message".into(),
+                )),
+                effect: agent::PermissionEffect::AskBefore as i32,
+            }],
+            workspace: Some(agent::WorkspaceSpec {
+                kind: agent::WorkspaceKind::Sandbox as i32,
+            }),
+            skills: vec![agent::SkillRef {
+                id: "kim-im".into(),
+                class: "app".into(),
+                origin: "bundled".into(),
+                version: String::new(),
+                enabled: Some(true),
+            }],
+            portable_denylist: vec!["noisy".into()],
+            steer: String::new(),
+            max_turns: 0,
+            mode: agent::GooseMode::SmartApprove as i32,
+            extra_json: Vec::new(),
+        };
+        let bytes = spec.encode_to_vec();
+        let back = match agent::AgentSpec::decode(bytes.as_slice()) {
+            Ok(s) => s,
+            Err(e) => panic!("decode AgentSpec: {e}"),
+        };
+        assert_eq!(back.id, "goose");
+        assert_eq!(back.display_name, "助手");
+        assert_eq!(back.enabled, Some(true));
+        assert_eq!(back.placement, agent::Placement::Local as i32);
+        assert_eq!(
+            back.model_ref.as_ref().map(|m| m.model.as_str()),
+            Some("gpt-4o")
+        );
+        assert_eq!(back.capabilities.len(), 1);
+        assert_eq!(back.skills[0].id, "kim-im");
+        assert_eq!(back.mode, agent::GooseMode::SmartApprove as i32);
+    }
+
+    #[test]
+    fn agent_spec_zeros_are_distinct_from_explicit_local() {
+        assert_eq!(agent::Placement::Unspecified as i32, 0);
+        assert_eq!(agent::Placement::Local as i32, 1);
+        assert_eq!(agent::GooseMode::Unspecified as i32, 0);
+        assert_eq!(agent::GooseMode::SmartApprove as i32, 1);
+        assert_eq!(agent::WorkspaceKind::Sandbox as i32, 1);
+    }
+}

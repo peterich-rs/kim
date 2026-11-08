@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use chat::store::MessageStore;
 use chat::ChatHandler;
 use harness::*;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
@@ -19,6 +18,7 @@ use kim_protocol::{
     CMD_FRIEND_REQUEST, DEMO_DEFAULT_SECRET, MESSAGE_TYPE_TEXT,
 };
 use kim_router::SessionStorage;
+use kim_server_data::store::MessageStore;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use kim_ws::{connect_ws, WsServer};
@@ -110,12 +110,12 @@ async fn spawn_chat(
     let h = Arc::new(ChatHandler::with_seams_and_zone(
         c.clone(),
         cache,
-        Arc::new(chat::store::MemoryMessageStore::new(Arc::new(
-            chat::idgen::SequenceIdGen::new(node),
+        Arc::new(kim_server_data::store::MemoryMessageStore::new(Arc::new(
+            kim_server_data::idgen::SequenceIdGen::new(node),
         ))),
-        Arc::new(chat::directory::MemoryGroupDirectory::new(Arc::new(
-            chat::idgen::SequenceIdGen::new(node + 10_000),
-        ))),
+        Arc::new(kim_server_data::directory::MemoryGroupDirectory::new(
+            Arc::new(kim_server_data::idgen::SequenceIdGen::new(node + 10_000)),
+        )),
         zone.into(),
     ));
     chat.set_acceptor(h.clone());
@@ -365,12 +365,12 @@ impl kim_core::ChannelHandle for NoopHandle {
 #[tokio::test]
 async fn legacy_kim_gray_session_talk_is_unauthorized() {
     let cache = open_session_store(None).await.expect("memory");
-    let store = Arc::new(chat::store::MemoryMessageStore::new(Arc::new(
-        chat::idgen::SequenceIdGen::new(1),
+    let store = Arc::new(kim_server_data::store::MemoryMessageStore::new(Arc::new(
+        kim_server_data::idgen::SequenceIdGen::new(1),
     )));
-    let groups = Arc::new(chat::directory::MemoryGroupDirectory::new(Arc::new(
-        chat::idgen::SequenceIdGen::new(2),
-    )));
+    let groups = Arc::new(kim_server_data::directory::MemoryGroupDirectory::new(
+        Arc::new(kim_server_data::idgen::SequenceIdGen::new(2)),
+    ));
     let container = Container::new(ContainerOpts {
         naming: Arc::new(StaticNaming::from_slice(vec![])),
         identity: ident("chat-1", "chat"),

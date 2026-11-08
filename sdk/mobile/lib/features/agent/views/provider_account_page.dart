@@ -13,7 +13,7 @@ import 'package:kim_mobile/features/agent/providers/provider_account_form.dart';
 
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/layout.dart';
-import 'package:kim_mobile/core/secret_store_executor.dart';
+import 'package:kim_mobile/bridge/secret_store_executor.dart';
 import 'package:kim_mobile/features/agent/providers/provider_accounts.dart';
 import 'package:kim_mobile/features/session/providers.dart';
 import 'package:kim_mobile/design/kim_header.dart';

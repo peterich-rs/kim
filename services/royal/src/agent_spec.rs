@@ -3,9 +3,11 @@
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
-use chat::{account_from_pb, account_to_pb, record_from_pb, record_to_pb, AgentSpecError};
 use kim_protocol::pkt::{
     AgentSpecSyncResp, AgentSpecUpsertResp, InternalAgentSpecQuery, InternalAgentSpecUpsert,
+};
+use kim_server_data::agent_spec::{
+    account_from_pb, account_to_pb, record_from_pb, record_to_pb, AgentSpecError,
 };
 
 use crate::{backend, decode, encode, RoyalState};
@@ -83,8 +85,9 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use chat::idgen::SequenceIdGen;
-    use chat::{AgentSpecRecord, AgentSpecStore, HttpAgentSpecStore};
+    use chat::HttpAgentSpecStore;
+    use kim_server_data::agent_spec::{AgentSpecRecord, AgentSpecStore};
+    use kim_server_data::idgen::SequenceIdGen;
 
     use super::*;
     use crate::{serve, RoyalState};

@@ -17,9 +17,9 @@ crate 测试（`kim-tcp` / `kim-ws` / `kim-container` 的 echo）仍是第一帧
 
 | 路径 | 职责 |
 |---|---|
-| `crates/kim-core` | 说明书：`Conn` / `Frame` / `OpCode` / `Channel::pair` / `ChannelMap` / `Acceptor` / `MessageListener` / `StateListener` / `ChannelHandle` / `Server` / `Client` |
-| `crates/kim-tcp` | TCP 履行者：`opcode 1B \| len 4B LE \| payload`，`TcpServer` / `TcpClient` / `IdentityDialer` |
-| `crates/kim-tcp/tests/echo.rs` | 进程内 TCP 回声验收：第一帧当名字，原文加 ` from server` |
+| `crates/shared/kim-core` | 说明书：`Conn` / `Frame` / `OpCode` / `Channel::pair` / `ChannelMap` / `Acceptor` / `MessageListener` / `StateListener` / `ChannelHandle` / `Server` / `Client` |
+| `crates/shared/kim-tcp` | TCP 履行者：`opcode 1B \| len 4B LE \| payload`，`TcpServer` / `TcpClient` / `IdentityDialer` |
+| `crates/shared/kim-tcp/tests/echo.rs` | 进程内 TCP 回声验收：第一帧当名字，原文加 ` from server` |
 
 已经拍板、且代码里已经是这样的：
 
@@ -194,19 +194,19 @@ chat 的日志里不允许出现这条 ping。
 
 ```
 im/
-  crates/kim-core          已有。本阶段不改 `channel.rs`（超时语义见 §4.7）
-  crates/kim-tcp           已有。App / TGateway + 网关↔Chat。不改业务分支、不套 TLS；PR3.5：`TcpClient::read(&self)` + `TcpServer` shutdown 不丢唤醒
-  crates/kim-ws            新增。Web / WGateway 的第二种 Conn
-  crates/kim-protocol      新增。Magic / BasicPkt / LogicPkt
-  crates/kim-naming        新增。Naming + StaticNaming
-  crates/kim-container     新增。托管 Server、拨号、Forward/Push
+  crates/shared/kim-core          已有。本阶段不改 `channel.rs`（超时语义见 §4.7）
+  crates/shared/kim-tcp           已有。App / TGateway + 网关↔Chat。不改业务分支、不套 TLS；PR3.5：`TcpClient::read(&self)` + `TcpServer` shutdown 不丢唤醒
+  crates/shared/kim-ws            新增。Web / WGateway 的第二种 Conn
+  crates/shared/kim-protocol      新增。Magic / BasicPkt / LogicPkt
+  crates/server/kim-naming        新增。Naming + StaticNaming
+  crates/server/kim-container     新增。托管 Server、拨号、Forward/Push
   examples/echo-*          已有。TCP 回声 = App/TGateway 路径，回归用
   examples/ws-echo-*       新增。同一 EchoHandler，Web/WS 传输
   services/gateway    新增。M2 假 **WGateway**（Web）
   services/chat       新增。M2 假 Chat
   examples/pkt-client      新增。Web 客户端：发 ping + LogicPkt（ws://）
   proto/pkt.proto          新增。给 kim-protocol 的 build.rs 用
-                           （也可以放 crates/kim-protocol/proto/pkt.proto）
+                           （也可以放 crates/shared/kim-protocol/proto/pkt.proto）
 ```
 
 原则仍然是：**换传输只加 `Conn` 实现，不改业务。** 长连接按小册双网关，HTTPS 只包 REST。
@@ -230,7 +230,7 @@ App  ── kim-tcp ──► TGateway          （本机明文；公网以后 T
 
 ### 4.1 依赖与 crate 清单
 
-`crates/kim-ws/Cargo.toml`：
+`crates/shared/kim-ws/Cargo.toml`：
 
 ```toml
 [package]
@@ -261,12 +261,12 @@ tracing-subscriber.workspace = true
 
 ```toml
 members = [
-    "crates/kim-core",
-    "crates/kim-tcp",
-    "crates/kim-ws",
-    "crates/kim-protocol",
-    "crates/kim-naming",
-    "crates/kim-container",
+    "crates/shared/kim-core",
+    "crates/shared/kim-tcp",
+    "crates/shared/kim-ws",
+    "crates/shared/kim-protocol",
+    "crates/server/kim-naming",
+    "crates/server/kim-container",
     "examples/echo-server",
     "examples/echo-client",
     "examples/ws-echo-server",
@@ -278,10 +278,10 @@ members = [
 
 [workspace.dependencies]
 # 已有 bytes / thiserror / tokio / tracing / async-trait / kim-core / kim-tcp
-kim-ws = { path = "crates/kim-ws" }
-kim-protocol = { path = "crates/kim-protocol" }
-kim-naming = { path = "crates/kim-naming" }
-kim-container = { path = "crates/kim-container" }
+kim-ws = { path = "crates/shared/kim-ws" }
+kim-protocol = { path = "crates/shared/kim-protocol" }
+kim-naming = { path = "crates/server/kim-naming" }
+kim-container = { path = "crates/server/kim-container" }
 prost = "0.13"
 ```
 
@@ -290,12 +290,12 @@ prost = "0.13"
 ### 4.2 文件布局
 
 ```
-crates/kim-ws/src/lib.rs      再导出
-crates/kim-ws/src/opcode.rs   fastwebsockets::OpCode ↔ kim_core::OpCode
-crates/kim-ws/src/conn.rs     WsConn / WsReadHalf / WsWriteHalf
-crates/kim-ws/src/server.rs   WsServer（hyper accept + Upgrade + Channel::pair）
-crates/kim-ws/src/client.rs   WsClient / WsIdentityDialer
-crates/kim-ws/tests/echo.rs   与 kim-tcp/tests/echo.rs 同构
+crates/shared/kim-ws/src/lib.rs      再导出
+crates/shared/kim-ws/src/opcode.rs   fastwebsockets::OpCode ↔ kim_core::OpCode
+crates/shared/kim-ws/src/conn.rs     WsConn / WsReadHalf / WsWriteHalf
+crates/shared/kim-ws/src/server.rs   WsServer（hyper accept + Upgrade + Channel::pair）
+crates/shared/kim-ws/src/client.rs   WsClient / WsIdentityDialer
+crates/shared/kim-ws/tests/echo.rs   与 kim-tcp/tests/echo.rs 同构
 ```
 
 ### 4.3 HTTP Upgrade（只发生一次）
@@ -513,7 +513,7 @@ TCP 粘包由 `kim-tcp` 解决；WS 自带帧边界。`kim-protocol` 假定传�
 ### 5.2 Magic（小册原值）
 
 ```rust
-// crates/kim-protocol/src/magic.rs
+// crates/shared/kim-protocol/src/magic.rs
 pub type Magic = [u8; 4];
 
 /// 逻辑协议
@@ -552,7 +552,7 @@ pub struct BasicPkt {
 
 ### 5.4 LogicPkt Header（protobuf）
 
-文件：`crates/kim-protocol/proto/pkt.proto`  
+文件：`crates/shared/kim-protocol/proto/pkt.proto`  
 `build.rs`：`prost_build` 编译进 `kim-protocol`。
 
 ```protobuf
@@ -676,15 +676,15 @@ pub fn read_logic(buf: &[u8]) -> Result<LogicPkt, ProtocolError>; // Chat 用：
 ### 5.7 `kim-protocol` 的 Cargo 与 build.rs
 
 ```
-crates/kim-protocol/Cargo.toml
-crates/kim-protocol/build.rs
-crates/kim-protocol/proto/pkt.proto
-crates/kim-protocol/src/lib.rs
-crates/kim-protocol/src/magic.rs
-crates/kim-protocol/src/basic.rs
-crates/kim-protocol/src/logic.rs
-crates/kim-protocol/src/error.rs
-crates/kim-protocol/src/wire.rs
+crates/shared/kim-protocol/Cargo.toml
+crates/shared/kim-protocol/build.rs
+crates/shared/kim-protocol/proto/pkt.proto
+crates/shared/kim-protocol/src/lib.rs
+crates/shared/kim-protocol/src/magic.rs
+crates/shared/kim-protocol/src/basic.rs
+crates/shared/kim-protocol/src/logic.rs
+crates/shared/kim-protocol/src/error.rs
+crates/shared/kim-protocol/src/wire.rs
 ```
 
 ```toml
@@ -731,10 +731,10 @@ prost_build::Config::new()
 ### 6.2 `kim-naming`
 
 ```
-crates/kim-naming/src/lib.rs
-crates/kim-naming/src/registration.rs
-crates/kim-naming/src/naming.rs
-crates/kim-naming/src/static_naming.rs
+crates/server/kim-naming/src/lib.rs
+crates/server/kim-naming/src/registration.rs
+crates/server/kim-naming/src/naming.rs
+crates/server/kim-naming/src/static_naming.rs
 ```
 
 ```rust
@@ -840,11 +840,11 @@ Chat 本阶段 **没有 deps**。网关 deps = `["chat"]`。解析用 `serde` + 
 Rust **不用**小册那种进程级单例 `container.Default()`。一个进程一个 `Arc<Container>`，测试能并排起两套。Go 单例把 Handler↔Container 的环藏起来了；这里用两阶段装配。**禁止** `static OnceLock<Container>`；`Server` 句柄用字段级 `OnceLock` 是另一回事（见 6.3.4）。
 
 ```
-crates/kim-container/src/lib.rs
-crates/kim-container/src/container.rs
-crates/kim-container/src/client_map.rs
-crates/kim-container/src/selector.rs
-crates/kim-container/src/dialer.rs
+crates/server/kim-container/src/lib.rs
+crates/server/kim-container/src/container.rs
+crates/server/kim-container/src/client_map.rs
+crates/server/kim-container/src/selector.rs
+crates/server/kim-container/src/dialer.rs
 ```
 
 #### 6.3.1 公开 API
@@ -906,7 +906,7 @@ Chat 进程同样 6 步，Handler 调 `container.push("wg-1", resp)`，deps 为�
 **选定形状**（写侧 Mutex 保留，不改 mpsc）：
 
 ```rust
-// crates/kim-tcp/src/client.rs
+// crates/shared/kim-tcp/src/client.rs
 pub struct TcpClient {
     reader: Option<Mutex<TcpReadHalf>>,          // 原来是 Option<TcpReadHalf>
     writer: Option<Arc<Mutex<TcpWriteHalf>>>,    // 已有
@@ -1244,7 +1244,7 @@ cargo test -p kim-tcp --test echo
 
 ### 9.2 M1b：同一 EchoHandler，第二条电线
 
-自动化：`crates/kim-ws/tests/echo.rs`，从 `kim-tcp/tests/echo.rs` 复制，把 `TcpServer`/`TcpClient`/`IdentityDialer` 换成 `WsServer`/`WsClient`/`WsIdentityDialer`，地址用 `127.0.0.1:0` 再拼 `ws://{addr}/`。
+自动化：`crates/shared/kim-ws/tests/echo.rs`，从 `kim-tcp/tests/echo.rs` 复制，把 `TcpServer`/`TcpClient`/`IdentityDialer` 换成 `WsServer`/`WsClient`/`WsIdentityDialer`，地址用 `127.0.0.1:0` 再拼 `ws://{addr}/`。
 
 断言：`payload == b"hello from server"`。
 
@@ -1312,7 +1312,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 | 6 | chat 日志 **不含** `ping`、`MagicBasicPkt`、`basic pkt` |
 | 7 | 只起 gateway、不起 chat：`KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice` 收到 Response `status == ServiceUnavailable`；ping 仍在网关本地回。网关进程必须还在听（dial 失败不 abort `start`） |
 
-进程内集成测试放 `crates/kim-container/tests/e2e_echo.rs`（**PR5 才加**；给 `kim-container` 增加 **dev-dependency** `kim-ws`，生产依赖始终没有 kim-ws）：
+进程内集成测试放 `crates/server/kim-container/tests/e2e_echo.rs`（**PR5 才加**；给 `kim-container` 增加 **dev-dependency** `kim-ws`，生产依赖始终没有 kim-ws）：
 
 - 线程内 `TcpServer`（Chat）+ `WsServer`（Gateway）+ `WsClient`。
 - Chat Handler 把收到的 command 推进 `Arc<Mutex<Vec<String>>>`。
@@ -1440,7 +1440,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 - **标题：** `feat(kim-ws): WebSocket Conn via HTTP Upgrade and Channel specialists`
 - **文件 / 组件：**  
   `Cargo.toml`（加 `kim-ws`、`ws-echo-*` members 与依赖）  
-  `crates/kim-ws/**`  
+  `crates/shared/kim-ws/**`  
   `examples/ws-echo-server/**`、`examples/ws-echo-client/**`（`publish = false`）  
   可选：`docs/communication-layer.md` 末尾指向 protocol-container
 - **依赖：** 无。不要改 `kim-core`。不要删 kim-tcp。
@@ -1450,7 +1450,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ### PR2 — `kim-protocol`：Magic + BasicPkt + LogicPkt
 
 - **标题：** `feat(kim-protocol): Magic, BasicPkt and protobuf LogicPkt`
-- **文件 / 组件：** `crates/kim-protocol/**`（含 `proto/pkt.proto`、`build.rs` + `protobuf-src`）
+- **文件 / 组件：** `crates/shared/kim-protocol/**`（含 `proto/pkt.proto`、`build.rs` + `protobuf-src`）
 - **依赖：** 无（可与 PR1 并行）
 - **内容：** 编解码、`service_name`、`InnerHandshakeReq`。`build.rs` 用 vendored `protoc`。  
 - **验收：** 干净环境 `cargo test -p kim-protocol`（不要求事先 brew install protobuf）。
@@ -1458,7 +1458,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ### PR3 — `kim-naming`：trait + StaticNaming
 
 - **标题：** `feat(kim-naming): Naming trait and StaticNaming from config`
-- **文件 / 组件：** `crates/kim-naming/**`
+- **文件 / 组件：** `crates/server/kim-naming/**`
 - **依赖：** 无（可与 PR1/PR2 并行）
 - **内容：** `find` = 快照；`subscribe` = **只通知以后的变更**（不 dump）。`insert()` 单测。不解析 TOML。  
 - **验收：** `cargo test -p kim-naming`。没有 Consul。
@@ -1466,15 +1466,15 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 ### PR3.5 — `TcpClient::read(&self)` + Server shutdown 不丢唤醒
 
 - **标题：** `fix(kim-tcp): concurrent send/read and loss-free Server shutdown`
-- **文件 / 组件：** `crates/kim-tcp/src/client.rs`、`crates/kim-tcp/src/server.rs`
+- **文件 / 组件：** `crates/shared/kim-tcp/src/client.rs`、`crates/shared/kim-tcp/src/server.rs`
 - **依赖：** 无。可与 PR1–PR3 并行，必须在 PR4 之前合入。
 - **内容：** `reader: Mutex<TcpReadHalf>`；`read(&self)`。写侧 Mutex **不动**。`TcpServer`：`closed` AtomicBool + `notify_waiters` + `notify_one`；`start` 进 accept 前若 closed 则返回。单测：loopback `read` 挂起时 `send` 仍能完成；`bind` 后立刻 `shutdown` 能让 `start` 退出。无 TLS、无业务分支、无写侧 mpsc。  
-- **验收：** 新单测 + 原 `crates/kim-tcp/tests/echo.rs` 仍绿。
+- **验收：** 新单测 + 原 `crates/shared/kim-tcp/tests/echo.rs` 仍绿。
 
 ### PR4 — `kim-container`：全连接、Young/Adult、Forward/Push
 
 - **标题：** `feat(kim-container): dial all instances, Young/Adult, Forward`
-- **文件 / 组件：** `crates/kim-container/**`  
+- **文件 / 组件：** `crates/server/kim-container/**`  
   生产依赖：kim-core、kim-tcp、kim-protocol、kim-naming。**没有 kim-ws。**
 - **依赖：** PR2、PR3、PR3.5。
 - **内容：** 公开 API（`new` / `attach_server` / `start` / `shutdown` / `forward` / `push`）；`dyn Server + Send + Sync`；dial 失败非致命；`build_client → Result<bool>`（`true` 才 sleep+CAS）；`start` 在 spawn `server.start` 前后若 closed 则再调 `srv.shutdown()`；`adult_services` 排序；`InnerTcpDialer` 含 `flush`。单测全部 loopback `TcpServer`：Young（insert）、Find→Adult、双实例稳定路由。  
@@ -1485,7 +1485,7 @@ KIM_EXPECT_UNAVAILABLE=1 cargo run -p pkt-client -- alice
 - **标题：** `feat(demo): fake WGateway and Chat with BasicPkt local ping`
 - **文件 / 组件：**  
   `services/gateway/**`、`services/chat/**`、`examples/pkt-client/**`（`publish = false`）  
-  `crates/kim-container/tests/e2e_echo.rs`  
+  `crates/server/kim-container/tests/e2e_echo.rs`  
   `kim-container` **dev-dependencies** += `kim-ws`（只在这一 PR 加）
 - **依赖：** PR1–PR4
 - **内容：** 两阶段装配 Handler；`forward` / `push`；pkt-client 默认 URL、`KIM_EXPECT_UNAVAILABLE`、`KIM_PING_ONLY`。e2e：ping 不进 Chat；不起 Chat 时 ServiceUnavailable。  

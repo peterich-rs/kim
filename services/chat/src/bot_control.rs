@@ -6,8 +6,8 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use kim_protocol::pkt::Status;
 
-use crate::store::{MessageStore, StoreError};
-use crate::users::{BotPatch, BotRecord, CreateBot, UserDirectory, UserError};
+use kim_server_data::store::{MessageStore, StoreError};
+use kim_server_data::users::{BotPatch, BotRecord, CreateBot, UserDirectory, UserError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BotControlError {
@@ -268,16 +268,18 @@ pub fn purge_status(err: &StoreError) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::idgen::SequenceIdGen;
-    use crate::store::{MemoryMessageStore, StoreScope};
-    use crate::users::MemoryUserDirectory;
+    use kim_server_data::idgen::SequenceIdGen;
+    use kim_server_data::store::{MemoryMessageStore, StoreScope};
+    use kim_server_data::users::MemoryUserDirectory;
     use std::sync::Arc;
 
     #[tokio::test]
     async fn purge_failure_keeps_pending_and_retry_skips_missing_row() {
         let users = Arc::new(
             MemoryUserDirectory::new()
-                .with_social(Arc::new(crate::social::MemorySocialDirectory::new()))
+                .with_social(Arc::new(
+                    kim_server_data::social::MemorySocialDirectory::new(),
+                ))
                 .with_idgen(Arc::new(SequenceIdGen::new(1))),
         );
         users.upsert("kim", "alice").await.unwrap();

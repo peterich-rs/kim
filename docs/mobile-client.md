@@ -8,7 +8,7 @@
 
 ## Crate
 
-`crates/kim-client` 协议；`crates/kim-sdk` 业务核心（sqlx 0.8 sqlite-only，不进 workspace postgres feature）。FFI crate 在 `crates/kim-client-ffi`（`kim_client_ffi`）和桌面的 `crates/kim-agent-ffi`。业务只碰 [`kim_core::Conn`]。Conn 实现是 `kim_ws::connect_ws`（`ws://` 明文 Upgrade，`wss://` 先 TLS）。
+`crates/client/kim-client` 协议；`crates/client/kim-sdk` 业务核心（sqlx 0.8 sqlite-only，不进 workspace postgres feature）。FFI 只有 `crates/client/kim-client-ffi`（`kim_client_ffi`），catalog 与 skill 查询也在这里。手机链接 `kim-agent-host` 时不开 `codex` feature；`kim-codex-helper` 只在桌面 hook 里另编。业务只碰 [`kim_core::Conn`]。Conn 实现是 `kim_ws::connect_ws`（`ws://` 明文 Upgrade，`wss://` 先 TLS）。
 
 ```rust
 let mut cli = KimClient::new(ClientConfig::local(token)); // ws://127.0.0.1:8001/
@@ -68,7 +68,7 @@ flutter run
 
 CI（`.github/workflows/ci.yml` `sdk-mobile`）：`dart format`、`dart run custom_lint`、`flutter analyze --fatal-infos --fatal-warnings`、`flutter test`。Flutter 钉 `.fvmrc`（3.47.2）。`flutter test` 会走 Native Assets hook 编 `kim_client_ffi`，所以 job 里装 host Rust（`RUSTUP_TOOLCHAIN` 避免 rust-toolchain.toml 里那些 cross target）。FFI crate 随 workspace `cargo` 检查，不再有 `sdk/mobile/rust/Cargo.toml`。
 
-FFI：`crates/kim-client-ffi`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-sdk` / `kim-client`。账号 HTTP 走 `KimAuth.create()`（无参，origin 从 settings 派生）。长连接走 `KimUiHandle.create`，然后 `platformBootstrap`、`attachStore()`、`startSession()`（无参）。编译走 `sdk/mobile/hook/build.dart`。生成代码的 `unsafe` 只在 `lib.rs` 的 `mod frb_generated` 上放行，workspace 对其余 crate 仍是 `unsafe_code = deny`。桌面另编 `crates/kim-agent-ffi`（catalog；手机跳过，避免链上带 `codex` 的 agent host）。边界见 [ffi-oo-contract.md](ffi-oo-contract.md)。投影种类是 `kim-sdk` 闭集（`ThreadKind`、`MediaKind`、`Relation`、`ThreadPreview`、`OutgoingContent`、`AgentCard`）。人设文档只经 `kim-agent-codec`。本地库 `user_version` 低于当前 schema 时删除该 sqlite 文件并重建。
+FFI：`crates/client/kim-client-ffi`（`kim_client_ffi`）用 **flutter_rust_bridge 2.13 Native Assets** 调 `kim-sdk` / `kim-client`。账号 HTTP 走 `KimAuth.create()`（无参，origin 从 settings 派生）。长连接走 `KimUiHandle.create`，然后 `platformBootstrap`、`attachStore()`、`startSession()`（无参）。编译走 `sdk/mobile/hook/build.dart`。生成代码的 `unsafe` 只在 `lib.rs` 的 `mod frb_generated` 上放行，workspace 对其余 crate 仍是 `unsafe_code = deny`。没有第二套 FFI。手写 Dart 只在 `lib/bridge` 引用生成代码。边界见 [ffi-oo-contract.md](ffi-oo-contract.md)。投影种类是 `kim-sdk` 闭集（`ThreadKind`、`MediaKind`、`Relation`、`ThreadPreview`、`OutgoingContent`、`AgentCard`）。人设文档只经 `kim-agent-codec`。本地库 `user_version` 低于当前 schema 时删除该 sqlite 文件并重建。
 
 好友、会话、时间线是结构体投影，不是 JSON 列表。没有 NDK / Xcode 时仍可用 CLI 验证协议。
 

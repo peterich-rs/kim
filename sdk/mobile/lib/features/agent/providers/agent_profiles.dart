@@ -1,5 +1,7 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' as rust_types;
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -9,11 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/features/agent/data/mention.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/errors.dart';
-import 'package:kim_mobile/core/failures.dart';
+import 'package:kim_mobile/bridge/errors.dart';
+import 'package:kim_mobile/bridge/failures.dart';
 import 'package:kim_mobile/core/logger.dart';
-import 'package:kim_mobile/core/secret_store_executor.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
+import 'package:kim_mobile/bridge/secret_store_executor.dart';
 import 'package:kim_mobile/features/agent/data/agent_catalog.dart';
 import 'package:kim_mobile/features/agent/providers/agent_settings.dart';
 import 'package:kim_mobile/features/agent/widgets/context_window.dart';

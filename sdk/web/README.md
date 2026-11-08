@@ -70,4 +70,4 @@ npm run test:e2e
 npm run gen-proto   # proto 变更后重生成 src/proto/pkt.json
 ```
 
-`pkt.proto` 的唯一来源是 `crates/kim-protocol/proto/pkt.proto`。
+`pkt.proto` 的唯一来源是 `crates/shared/kim-protocol/proto/pkt.proto`。

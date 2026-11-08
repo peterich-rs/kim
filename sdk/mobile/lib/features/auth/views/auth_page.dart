@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/bridge/errors.dart';
 import 'package:kim_mobile/core/haptics.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/validation.dart';

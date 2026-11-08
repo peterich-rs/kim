@@ -5,8 +5,8 @@ use tracing::warn;
 
 use crate::notify::notify_account;
 use crate::profile::profiles_pb;
-use crate::social::{FriendRequestOutcome, SocialDirectory, SocialError};
-use crate::users::{UserDirectory, UserError};
+use kim_server_data::social::{FriendRequestOutcome, SocialDirectory, SocialError};
+use kim_server_data::users::{UserDirectory, UserError};
 
 #[derive(Debug, thiserror::Error)]
 enum FriendCmdError {

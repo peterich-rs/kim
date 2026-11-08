@@ -1,12 +1,13 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' hide ThreadKind;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/models/models.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' hide ThreadKind;
 import 'package:kim_mobile/features/auth/providers/auth.dart';
 import 'package:kim_mobile/features/chats/providers/inbox.dart';
 import 'package:kim_mobile/features/session/kim_session.dart';

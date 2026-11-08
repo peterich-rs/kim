@@ -7,8 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use chat::directory::GroupDirectory;
-use chat::store::MessageStore;
 use chat::{AgentSpecStore, ChatHandler};
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
 use kim_core::{Conn, OpCode, Server};
@@ -20,6 +18,8 @@ use kim_protocol::{
     DEMO_DEFAULT_SECRET,
 };
 use kim_router::SessionStorage;
+use kim_server_data::directory::GroupDirectory;
+use kim_server_data::store::MessageStore;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use kim_ws::{connect_ws, ClientOptions, WsClient, WsServer};

@@ -1,5 +1,7 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart' as rust_types;
+
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +11,6 @@ import 'package:kim_mobile/bridge/kim_bridge.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/logger.dart';
 import 'package:kim_mobile/features/session/providers.dart';
-import 'package:kim_mobile/src/rust/api/types.dart' as rust_types;
 
 const kProviderAccountsPref = 'agent.provider_accounts';
 const kGooseAccountId = 'acct-goose';

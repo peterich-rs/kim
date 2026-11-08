@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use chat::idgen::SequenceIdGen;
-use chat::royal::http_backends;
+use chat::http_backends;
 use chat::ChatHandler;
 use harness::*;
 use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, ADULT};
@@ -17,6 +16,7 @@ use kim_gateway_runtime::{GatewayHandler, KickHook};
 use kim_naming::{DefaultRegistration, StaticNaming};
 use kim_protocol::pkt::{GroupCreateReq, GroupCreateResp, GroupDetail, Status};
 use kim_protocol::{marshal, read, LogicPkt, Packet, CMD_GROUP_CREATE, CMD_GROUP_DETAIL};
+use kim_server_data::idgen::SequenceIdGen;
 use kim_session::open_session_store;
 use kim_tcp::TcpServer;
 use kim_ws::WsServer;
@@ -36,8 +36,8 @@ fn ident(id: &str, name: &str) -> DefaultRegistration {
 
 async fn spawn_chat_gw(
     cache: Arc<dyn kim_router::SessionStorage>,
-    store: Arc<dyn chat::store::MessageStore>,
-    groups: Arc<dyn chat::directory::GroupDirectory>,
+    store: Arc<dyn kim_server_data::store::MessageStore>,
+    groups: Arc<dyn kim_server_data::directory::GroupDirectory>,
     chat_id: &str,
     gw_id: &str,
 ) -> (Arc<Container>, Arc<Container>, std::net::SocketAddr) {

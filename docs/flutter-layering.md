@@ -56,4 +56,4 @@ cd sdk/mobile && flutter analyze
 
 ## FFI import 边界
 
-FFI 能力面（`src/rust/api/{client,auth,handles,bootstrap,simple}.dart`、`frb_generated.dart`）只允许出现在 `lib/bridge/**`、`lib/core/secret_store_executor.dart`、`lib/main.dart`；桌面 catalog loader（`src/rust_agent/frb_generated.dart`）只在 `goose_bridge.dart` 与 `main.dart`。投影类型（`src/rust/api/types.dart`、`src/rust_agent/api/catalog.dart`）是纯数据，任意层可 import，与 protobuf 生成码同待遇。`SharedPreferences` 只允许 `core/settings.dart` 与 agent 表单的 UI 态文件。门禁：`tools/check_flutter_boundaries.sh`（CI 的 `sdk-mobile` job 在 analyze 前跑）。
+生成 FFI（`package:kim_mobile/src/rust/`）只允许出现在 `lib/bridge/**`。`bridge/projection.dart` 是生成投影类型的唯一出口；能力调用走 bridge 里的 port。`SharedPreferences` 只允许 `core/settings.dart` 与 agent 表单的 UI 态文件。门禁：`tools/check_flutter_boundaries.sh`（CI 的 `sdk-mobile` job 在 analyze 前跑）。

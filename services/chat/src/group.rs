@@ -9,8 +9,10 @@ use kim_protocol::{AccountId, PROFILE_KIND_BOT};
 use kim_router::{Context, RouterError, SessionError};
 use tracing::warn;
 
-use crate::directory::{normalize_members, CreateGroup, GroupDirectory, GroupError, GroupInfo};
-use crate::users::UserDirectory;
+use kim_server_data::directory::{
+    normalize_members, CreateGroup, GroupDirectory, GroupError, GroupInfo,
+};
+use kim_server_data::users::UserDirectory;
 
 const MAX_GROUP_MEMBERS: usize = 500;
 const MEMBER_LOOKUP_BUDGET: Duration = Duration::from_secs(3);
@@ -59,7 +61,7 @@ async fn ensure_human_accounts(
     users: &dyn UserDirectory,
     accounts: &[String],
 ) -> Result<Result<(), ()>, RouterError> {
-    let deadline = crate::royal::with_rpc_deadline(MEMBER_LOOKUP_BUDGET, async {
+    let deadline = crate::with_rpc_deadline(MEMBER_LOOKUP_BUDGET, async {
         for account in accounts {
             match users.lookup(&ctx.session().app, account).await {
                 Ok(Some(p)) if p.exists && p.kind != PROFILE_KIND_BOT => {}
@@ -427,11 +429,11 @@ mod tests {
         do_group_create, do_group_detail, do_group_invite, do_group_join, do_group_members,
         do_group_quit,
     };
-    use crate::directory::{
+    use kim_server_data::directory::{
         CreateGroup, GroupDirectory, GroupError, GroupInfo, MemoryGroupDirectory,
     };
-    use crate::idgen::{IdGenerator, SequenceIdGen};
-    use crate::users::{MemoryUserDirectory, UserDirectory};
+    use kim_server_data::idgen::{IdGenerator, SequenceIdGen};
+    use kim_server_data::users::{MemoryUserDirectory, UserDirectory};
 
     fn alice() -> Session {
         Session {

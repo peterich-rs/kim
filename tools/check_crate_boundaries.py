@@ -26,6 +26,7 @@ FORBIDDEN = {
     "kim-sdk": ("kim-agent-host", "kim-desktop-runtime", "kim-codex-helper", "goose-", "rmcp"),
     "kim-agent-host": ("kim-sdk", "kim-desktop-runtime"),
     "kim-gateway-runtime": ("kim-ws",),
+    "kim-royal-client": ("kim-naming", "kim-metrics", "chat", "royal"),
     "tgateway": ("gateway",),
     "gateway": ("kim-tcp",),
 }

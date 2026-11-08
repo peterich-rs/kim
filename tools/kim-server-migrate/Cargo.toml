@@ -12,7 +12,7 @@ name = "kim-server-migrate"
 path = "src/main.rs"
 
 [dependencies]
-kim-server-schema = { path = "../../crates/kim-server-schema" }
+kim-server-schema = { path = "../../crates/server/kim-server-schema" }
 sqlx = { workspace = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate"] }
 tokio.workspace = true
 

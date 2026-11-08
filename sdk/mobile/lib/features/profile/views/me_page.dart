@@ -15,7 +15,7 @@ import 'package:toastification/toastification.dart';
 import 'package:kim_mobile/features/agent/data/host_support.dart';
 import 'package:kim_mobile/copy.dart';
 import 'package:kim_mobile/core/env.dart';
-import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/bridge/errors.dart';
 import 'package:kim_mobile/core/layout.dart';
 import 'package:kim_mobile/core/ota_info.dart';
 import 'package:kim_mobile/models/models.dart';

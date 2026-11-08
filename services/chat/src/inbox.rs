@@ -6,22 +6,10 @@ use kim_protocol::{CMD_INBOX_READ_SYNC, CMD_RECEIPT_READ, INBOX_KIND_GROUP, INBO
 use kim_router::{Context, RouterError};
 use tracing::warn;
 
-use crate::directory::GroupDirectory;
 use crate::notify::notify_account;
-use crate::store::{MessageKind, MessageStore};
-use crate::users::UserDirectory;
-
-fn kind_of(kind: i32) -> Result<MessageKind, ()> {
-    match kind {
-        INBOX_KIND_USER => Ok(MessageKind::User),
-        INBOX_KIND_GROUP => Ok(MessageKind::Group),
-        _ => Err(()),
-    }
-}
-
-pub fn parse_kind(kind: i32) -> Option<MessageKind> {
-    kind_of(kind).ok()
-}
+use kim_server_data::directory::GroupDirectory;
+use kim_server_data::store::{parse_kind, MessageKind, MessageStore};
+use kim_server_data::users::UserDirectory;
 
 pub async fn do_inbox_list(
     ctx: Context,
@@ -248,7 +236,7 @@ pub async fn do_inbox_states(ctx: Context, store: &dyn MessageStore) -> Result<(
                 .await?;
             return Ok(());
         }
-        keys.push(crate::store::ConversationStateKey {
+        keys.push(kim_server_data::store::ConversationStateKey {
             dest: key.dest,
             kind,
         });
@@ -261,7 +249,7 @@ pub async fn do_inbox_states(ctx: Context, store: &dyn MessageStore) -> Result<(
             let resp = ConversationStatesResp {
                 states: states
                     .iter()
-                    .map(crate::store::ConversationReadState::to_proto)
+                    .map(kim_server_data::store::ConversationReadState::to_proto)
                     .collect(),
             };
             ctx.resp(Status::Success, Some(&resp)).await?;

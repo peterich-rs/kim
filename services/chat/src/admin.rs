@@ -18,7 +18,7 @@ use kim_router::{Dispatcher, SessionError, SessionStorage};
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::hmac_nonce::HmacNonceGuard;
+use kim_server_data::hmac_nonce::HmacNonceGuard;
 
 #[derive(Clone)]
 pub struct ChatAdmin {
@@ -159,11 +159,11 @@ pub async fn serve(listen: SocketAddr, app: Router) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hmac_nonce::MemoryHmacNonceGuard;
     use async_trait::async_trait;
     use kim_protocol::pkt::Session;
     use kim_protocol::{sign_internal_hmac, sign_internal_hmac_at, MAX_SKEW_SECS};
     use kim_router::test_support::RecordingDispatcher;
+    use kim_server_data::hmac_nonce::MemoryHmacNonceGuard;
     use kim_session::MemorySessionStore;
     use std::time::Duration;
 

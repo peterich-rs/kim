@@ -8,21 +8,17 @@ void main(List<String> args) async {
     final extraEnv = _appleLinkeditStripWorkaround(input);
     final rustMode = _rustBuildMode(input);
     await FlutterRustBridgeNativeAssetsBuilder(
-      cratePath: '../../crates/kim-client-ffi',
+      cratePath: '../../crates/client/kim-client-ffi',
       assetName: 'src/rust/frb_generated.io.dart',
       buildMode: rustMode,
       extraCargoEnvironmentVariables: extraEnv,
     ).run(input: input, output: output);
     // Goose is a desktop host (bash/fs/MCP). Phone IM does not ship it.
+    // Catalog and skill queries live in the main FFI; only the helper binary
+    // is still a separate desktop artifact.
     if (!_desktopAgentHost(input)) {
       return;
     }
-    await FlutterRustBridgeNativeAssetsBuilder(
-      cratePath: '../../crates/kim-agent-ffi',
-      assetName: 'src/rust_agent/frb_generated.io.dart',
-      buildMode: rustMode,
-      extraCargoEnvironmentVariables: extraEnv,
-    ).run(input: input, output: output);
     await _buildCodexHelper(input, extraEnv, rustMode);
   });
 }
@@ -66,7 +62,7 @@ bool _desktopAgentHost(BuildInput input) {
   return os == OS.macOS || os == OS.windows || os == OS.linux;
 }
 
-/// Sandbox re-exec target. Not linked into `rust_agent`. Phone builds skip it.
+/// Sandbox re-exec target. Not linked into the app FFI. Phone builds skip it.
 Future<void> _buildCodexHelper(
   BuildInput input,
   Map<String, String> extraEnv,
@@ -155,7 +151,8 @@ Future<String?> _macosSdkPath() async {
 Directory _repoRoot() {
   var dir = Directory.current;
   for (var i = 0; i < 6; i++) {
-    if (File('${dir.path}/crates/kim-codex-helper/Cargo.toml').existsSync()) {
+    if (File('${dir.path}/crates/agent/kim-codex-helper/Cargo.toml')
+        .existsSync()) {
       return dir;
     }
     final parent = dir.parent;

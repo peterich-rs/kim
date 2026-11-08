@@ -19,15 +19,6 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
-use chat::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
-use chat::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
-use chat::social::{MemorySocialDirectory, SocialDirectory};
-use chat::store::{
-    collect_ack_ids, DeliveryTarget, InsertMessage, InsertResult, MemoryMessageStore, MessageKind,
-    MessageStore,
-};
-use chat::users::{MemoryUserDirectory, UserDirectory, UserError};
-use chat::{AgentSpecStore, HmacNonceGuard, MemoryAgentSpecStore, MemoryHmacNonceGuard};
 use http_body_util::BodyExt;
 use kim_metrics::KimMetrics;
 use kim_protocol::pkt::{
@@ -41,11 +32,21 @@ use kim_protocol::pkt::{
 use kim_protocol::{
     hmac_headers_from, resolve_internal_hmac_secret, sign_internal_hmac, verify_internal_hmac,
 };
+use kim_server_data::agent_spec::{AgentSpecStore, MemoryAgentSpecStore};
+use kim_server_data::directory::{CreateGroup, GroupDirectory, GroupError, MemoryGroupDirectory};
+use kim_server_data::hmac_nonce::{HmacNonceGuard, MemoryHmacNonceGuard};
+use kim_server_data::idgen::{IdGenerator, SequenceIdGen, SnowflakeGen};
+use kim_server_data::social::{MemorySocialDirectory, SocialDirectory};
+use kim_server_data::store::{
+    collect_ack_ids, DeliveryTarget, InsertMessage, InsertResult, MemoryMessageStore, MessageKind,
+    MessageStore,
+};
+use kim_server_data::users::{MemoryUserDirectory, UserDirectory, UserError};
 use prost::Message;
 
-pub use account::{AccountAuthStore, MemoryAccountAuth};
 #[cfg(feature = "postgres")]
 pub use account::PostgresAccountAuth;
+pub use account::{AccountAuthStore, MemoryAccountAuth};
 #[cfg(feature = "postgres")]
 pub use device::PostgresDeviceDirectory;
 #[cfg(feature = "redis")]
@@ -2058,7 +2059,7 @@ mod tests {
                 .unwrap();
         let err = store.ack("kim", "bob", "j1", &[11]).await.unwrap_err();
         match err {
-            chat::store::StoreError::Http { status, msg } => {
+            kim_server_data::store::StoreError::Http { status, msg } => {
                 assert_eq!(status, 503);
                 assert!(msg.contains("pending-not-enabled"));
             }
@@ -2069,7 +2070,7 @@ mod tests {
             .await
             .unwrap_err();
         match err {
-            chat::store::StoreError::Http { status, .. } => assert_eq!(status, 503),
+            kim_server_data::store::StoreError::Http { status, .. } => assert_eq!(status, 503),
             other => panic!("{other}"),
         }
     }
@@ -2194,7 +2195,7 @@ mod tests {
         let bot = users
             .create_bot(
                 "kim",
-                &chat::users::CreateBot {
+                &kim_server_data::users::CreateBot {
                     owner: "alice".into(),
                     client_profile_id: "goose".into(),
                     nickname: "助手".into(),

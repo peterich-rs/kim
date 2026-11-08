@@ -1,8 +1,8 @@
 library;
 
+import 'package:kim_mobile/bridge/projection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kim_mobile/features/session/providers.dart';
-import 'package:kim_mobile/src/rust/api/types.dart';
 
 /// Rust settings-table projection (ws_url / origin / env). Revision-bumped
 /// after a preset switch by `DevPanelUi.bump` consumers.

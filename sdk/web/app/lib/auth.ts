@@ -3,12 +3,12 @@ import {
   decodePasswordKeyResp,
   encodeAuthReq,
   encodePasswordChangeReq,
-} from "../../src/proto.ts";
+} from "@kim/web-sdk";
 import {
   decodePublicKeyB64,
   PASSWORD_SEAL_ALG,
   sealPasswordUtf8,
-} from "../../src/password_seal.ts";
+} from "@kim/web-sdk";
 import { assertPageAuthTransport } from "./secure_origin.ts";
 
 export interface AuthSession {

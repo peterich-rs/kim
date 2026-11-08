@@ -1,0 +1,30 @@
+[package]
+name = "kim-server-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "IM data ports and adapters. Royal owns account auth and bot identity writes."
+
+[features]
+default = []
+redis = ["kim-session/redis", "dep:redis"]
+postgres = ["dep:sqlx"]
+
+[dependencies]
+async-trait.workspace = true
+kim-protocol.workspace = true
+kim-router.workspace = true
+kim-session.workspace = true
+redis = { workspace = true, optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+snowflake_me.workspace = true
+sqlx = { workspace = true, optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
