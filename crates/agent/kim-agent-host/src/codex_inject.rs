@@ -29,7 +29,6 @@ use codex_core_api::OPENAI_PROVIDER_ID;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_utils_redacted_string::RedactedString;
-use goose_provider_types::thinking::ThinkingEffort;
 use kim_agent_model::{ApprovalMode, ReasoningEffort as ModelEffort};
 
 use crate::capability::interpolate_identity;

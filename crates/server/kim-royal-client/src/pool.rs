@@ -14,8 +14,6 @@ use crate::{
 };
 use kim_server_data::store::StoreError;
 
-const REFRESH: Duration = Duration::from_secs(10);
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RpcCause {
     NoClient,

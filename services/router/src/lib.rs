@@ -19,7 +19,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use kim_naming::{open_naming, DefaultRegistration};
 use kim_protocol::DEMO_DEFAULT_SECRET;
-use kim_server_config::StrictCheck;
 use serde::Deserialize;
 
 #[derive(Clone)]

@@ -1,7 +1,7 @@
 //! Production startup checks. The wire protocol does not know about Consul,
 //! Redis passwords, or demo secrets; the processes that bind them do.
 
-use kim_protocol::{is_demo_internal_hmac, DEMO_DEFAULT_SECRET, DEMO_INTERNAL_HMAC_SECRET};
+use kim_protocol::is_demo_internal_hmac;
 
 const PLACEHOLDER_SECRET: &str = "change-me";
 
@@ -112,8 +112,11 @@ pub fn check_strict_runtime(check: StrictCheck<'_>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use kim_protocol::DEMO_INTERNAL_HMAC_SECRET;
+
     use super::*;
 
+    #[test]
     fn redis_url_password_truth_table() {
         assert!(!redis_url_has_password("redis://127.0.0.1:6379/0"));
         assert!(!redis_url_has_password("redis://user@host:6379/0"));
@@ -191,6 +194,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn strict_runtime_env_table() {
         let env = EnvGuard::lock();
         env.set_kim(Some("production"));

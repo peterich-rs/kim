@@ -100,6 +100,7 @@ jobs:
       - name: backfill and tuple diff (empty and after tests)
         run: |
           set -euo pipefail
+          cargo run -p kim-server-migrate --quiet -- "$DATABASE_URL"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -f deploy/backfill-inbox.sql
           leftover=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -tA -f deploy/diff-inbox.sql)
@@ -139,12 +140,17 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: sdk/web/package-lock.json
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace
+        run: |
+          corepack enable
+          corepack prepare npm@11.19.0 --activate
+          npm ci
 
       - name: Install and unit test
         working-directory: sdk/web
         run: |
-          npm ci
           npm run typecheck
           npm test
 
@@ -234,11 +240,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: sdk/media/package-lock.json
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace
+        run: |
+          corepack enable
+          corepack prepare npm@11.19.0 --activate
+          npm ci
 
       - name: Install, typecheck, test
         working-directory: sdk/media
         run: |
-          npm ci
           npm run typecheck
           npm test

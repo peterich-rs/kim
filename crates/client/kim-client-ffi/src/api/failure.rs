@@ -140,6 +140,14 @@ impl From<SdkError> for ApiFailure {
     }
 }
 
+impl From<kim_agent_host::HostError> for ApiFailure {
+    fn from(err: kim_agent_host::HostError) -> Self {
+        Self::Internal {
+            message: err.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,13 +195,5 @@ mod tests {
             ApiFailure::from(ClientError::Status(109)),
             ApiFailure::NotFriends { .. }
         ));
-    }
-}
-
-impl From<kim_agent_host::HostError> for ApiFailure {
-    fn from(err: kim_agent_host::HostError) -> Self {
-        Self::Internal {
-            message: err.to_string(),
-        }
     }
 }

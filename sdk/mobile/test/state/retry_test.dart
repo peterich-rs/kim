@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kim_mobile/copy.dart';
-import 'package:kim_mobile/core/errors.dart';
+import 'package:kim_mobile/bridge/errors.dart';
 import 'package:kim_mobile/features/session/retry.dart';
 import 'package:kim_mobile/src/rust/api/failure.dart';
 

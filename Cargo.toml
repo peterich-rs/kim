@@ -116,12 +116,9 @@ flutter_rust_bridge = "=2.13.0"
 # so lldb cannot bind breakpoints after Flutter copies the library into the
 # app framework. `unpacked` keeps those objects; lldb follows the absolute
 # paths. `packed` writes a `.dSYM` beside the cargo output, which the
-# framework copy does not include. This stays on the two FFI packages so a
-# root profile change cannot drop their object files.
+# framework copy does not include. This stays on the FFI package so a
+# root profile change cannot drop its object files.
 [profile.dev.package.kim_client_ffi]
-split-debuginfo = "unpacked"
-
-[profile.dev.package.kim_agent_ffi]
 split-debuginfo = "unpacked"
 
 [patch.crates-io]

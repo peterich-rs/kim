@@ -26,7 +26,6 @@ pub const HMAC_NONCE_TTL_SECS: u64 = 2 * (MAX_SKEW_SECS as u64) + 1;
 
 const NONCE_MIN: usize = 8;
 const NONCE_MAX: usize = 128;
-const PLACEHOLDER_SECRET: &str = "change-me";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HmacHeaders {

@@ -10,7 +10,6 @@ use kim_container::{Container, ContainerOpts, HashSelector, InnerTcpDialer, Sele
 use kim_core::{Server, WriteFullPolicy};
 use kim_metrics::KimMetrics;
 use kim_naming::{open_naming, DefaultRegistration};
-use kim_server_config::StrictCheck;
 use serde::Deserialize;
 
 use crate::selector::{Route, RouteFile, RouteSelector};
