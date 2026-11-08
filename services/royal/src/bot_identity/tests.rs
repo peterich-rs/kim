@@ -642,6 +642,46 @@ async fn json_rpc<T: serde::de::DeserializeOwned>(
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
+async fn postgres_bot_friendship_uses_byte_order() {
+    use kim_server_data::social::{PostgresSocialDirectory, SocialDirectory};
+
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = kim_server_data::store::connect_pool(&url, Default::default())
+        .await
+        .unwrap();
+    let app = format!("bot-collation-{}", uuid::Uuid::new_v4());
+    let identity = PostgresBotIdentity::new(pool.clone(), Arc::new(SequenceIdGen::new(35)));
+    let req = CreateBot {
+        owner: "bot-test-owner".into(),
+        ..request("collation")
+    };
+    // Rust orders b_Z before bot-test-owner. Locale-aware databases can reverse
+    // that order, so the friendship CHECK must explicitly use byte ordering.
+    for _ in 0..2 {
+        let bot = identity.create_bot(&app, &req).await.unwrap();
+        assert_eq!(bot.profile.account, "b_Z");
+    }
+    let social = PostgresSocialDirectory::from_pool(pool.clone());
+    assert!(social.is_friend(&app, &req.owner, "b_Z").await.unwrap());
+    assert!(social.is_friend(&app, "b_Z", &req.owner).await.unwrap());
+    let invalid =
+        sqlx::query("INSERT INTO friendships (app, account_a, account_b) VALUES ($1, $2, $3)")
+            .bind(&app)
+            .bind(&req.owner)
+            .bind("b_Z")
+            .execute(&pool)
+            .await
+            .unwrap_err();
+    assert_eq!(
+        invalid.as_database_error().unwrap().constraint(),
+        Some("friendships_check")
+    );
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
 async fn postgres_receipt_survives_new_authority_and_concurrent_retry() {
     let Ok(url) = std::env::var("DATABASE_URL") else {
         return;
