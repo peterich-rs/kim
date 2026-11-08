@@ -17,7 +17,7 @@
 | R01 | `tools/check_crate_boundaries.py` 检查 normal/build 角色边界；schema 闭包包含 dev |
 | R05b | `kim-server-data` 持有 MessageStore、公开目录、社交、IdGen、nonce、AgentSpec 及其 Memory/PG/Redis adapter。Chat 与 Royal 都依赖它；Royal 对 chat 只剩 HTTP adapter |
 | R12 | 部署检查（strict runtime、Redis 密码、Consul HTTPS）移入 `kim-server-config`。`kim-protocol` 只留 wire 协议与 HMAC 签名。IDs 类型两侧都用，单独成库没有收益，保留在 protocol |
-| R11a | `tools/build/prepare-server-context.py` 按服务端 normal/build/dev/target 本地依赖闭包生成独立 workspace，完全不复制 client/agent/Codex manifest。服务端锁快照沿用并校验根锁版本/来源/checksum。实际 `--locked --all-features` 已编译六个服务端产物；编译清单无桌面或 SQLite。Server isolation CI 不检出子模块；上下文提供单独 Dockerfile，根发布入口未切换 |
+| R11a | `tools/build/prepare-server-context.py` 按服务端 normal/build/dev/target 本地依赖闭包生成独立 workspace，完全不复制 client/agent/Codex manifest。服务端锁快照沿用并校验根锁版本/来源/checksum。实际 `--locked --all-features` 已编译六个服务端产物；编译清单无桌面或 SQLite。Server isolation CI 不检出子模块；Image 工作流已接生成上下文，根 Dockerfile 是唯一配方；PR 构建镜像且不推送 |
 | R10a | crate 按 `crates/shared`、`crates/server`、`crates/client`、`crates/agent` 分组。workspace、FRB、hook、proto 生成、OTA 路径同步更新 |
 | R09 | 手写 Flutter 只在 `lib/bridge` 内引用生成 FFI。`bridge/projection.dart` 是唯一的生成类型出口；错误映射与密钥执行器移入 bridge；边界脚本拒绝 bridge 之外的引用 |
 | R08b | `sdk/web/app` 只从 `@kim/web-sdk` 入口读 SDK，不再跨路径引用 `src`。入口补齐应用实际用到的 proto、密码信封和类型；Vite、tsconfig、vitest 共用同一 alias |
@@ -27,4 +27,4 @@
 
 ## 尚未落地
 
-Royal HTTP 的 identity/resume/complete 仍走旧 DELETE 加自身 purge；Chat 删除已走协调器。R10 的 app、web、media 物理换目录尚未做。R11 的服务端 Cargo 隔离已验证本机编译；Linux 容器镜像尚未在本机验证（Docker daemon 未运行），根 Dockerfile 与 image/deploy workflow 保持原入口，待镜像验证后再切换。
+Royal HTTP 的 identity/resume/complete 仍走旧 DELETE 加自身 purge；Chat 删除已走协调器。R10 的 app、web、media 物理换目录尚未做。R11 的服务端 Cargo 隔离已验证本机编译，镜像发布配置已接生成上下文；Linux 容器镜像尚未在本机验证（Docker daemon 未运行），由 PR 的 Image 工作流检查。部署仍沿用现有 tag 成功后触发的流程。

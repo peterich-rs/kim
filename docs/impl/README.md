@@ -46,7 +46,7 @@
 
 | 切片 | 覆盖 |
 |---|---|
-| Monorepo 依赖重构 | [monorepo-refactor.md](./monorepo-refactor.md)：分支 `refactor/monorepo`。角色目录、数据/Royal/配置抽库、FFI 合库和 Web 入口已落地。app/web/media 物理换目录和根镜像入口未切 |
+| Monorepo 依赖重构 | [monorepo-refactor.md](./monorepo-refactor.md)：分支 `refactor/monorepo`。角色目录、数据/Royal/配置抽库、FFI 合库和 Web 入口已落地；镜像入口已接服务端隔离上下文。app/web/media 物理换目录尚未做 |
 | pending receipt rollout | [b0-pending-receipt-rollout.md](./b0-pending-receipt-rollout.md)：G-03 / G-04 / G-10。代码已合入，关 gaps 等运维三条同时成立 |
 | 服务端会话隐藏 | [chat-inbox-hide.md](./chat-inbox-hide.md)：Delete conversation for me。尚未合入 |
 | Codex harness 嵌入 | [codex-embed.md](./codex-embed.md)：分支 `feat/codex-agent-embed`。Goose 与 Codex 并列，`runtime` 选择 |

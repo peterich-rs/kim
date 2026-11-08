@@ -150,7 +150,9 @@ cargo build --manifest-path /tmp/kim-server-build/Cargo.toml --locked --all-feat
 
 `tools/build/server.Cargo.lock` 是根锁文件的服务端快照，脚本会核对其中的版本、来源和 checksum 都来自根锁。服务端依赖变化后，用新目录运行 `prepare-server-context.py <新目录> --refresh-lock` 更新并审查该文件；缓存完整时可加 `--offline`。不要直接在生成目录中运行无约束的依赖升级。
 
-回归检查：`python3 tools/build/check-server-context.py --build`，它会验证完整解析图及实际编译产物都不包含桌面依赖。独立的 Server isolation CI 不检出 Codex 子模块。生成目录也带有服务端 Dockerfile，可用 `docker build /tmp/kim-server-build` 验证；当前根 Dockerfile 与镜像发布入口尚未切换。
+回归检查：`python3 tools/build/check-server-context.py --build`，它会验证完整解析图及实际编译产物都不包含桌面依赖。也可用 `--context <生成目录>` 检查已有构建上下文；检查同时核对 Dockerfile 与发布配方一致。独立的 Server isolation CI 不检出 Codex 子模块。
+
+镜像也使用上面生成的目录：`docker build -t kim:local /tmp/kim-server-build`。根 Dockerfile 是该上下文的构建配方，不能直接以仓库根目录为 context。Image 工作流先生成隔离目录，再执行 `--release --locked --all-features` 构建；PR 只构建和检查镜像，main/tag 才推送 GHCR。
 
 ```bash
 cargo fmt --all

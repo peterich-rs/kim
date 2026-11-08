@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--target-dir", type=Path)
+    parser.add_argument("--context", type=Path, help="check an existing generated context, including the Dockerfile used for publishing")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="kim-server-check-") as tmp:
         existing = Path(tmp) / "existing"
@@ -32,8 +33,11 @@ def main() -> int:
         )
         if refused.returncode == 0 or not sentinel.exists():
             raise RuntimeError("context generator replaced an existing destination")
-        context = Path(tmp) / "context"
-        subprocess.run([sys.executable, str(ROOT / "tools/build/prepare-server-context.py"), str(context)], check=True)
+        context = args.context.resolve() if args.context else Path(tmp) / "context"
+        if not args.context:
+            subprocess.run([sys.executable, str(ROOT / "tools/build/prepare-server-context.py"), str(context)], check=True)
+        if (context / "Dockerfile").read_bytes() != (ROOT / "Dockerfile").read_bytes():
+            raise RuntimeError("server context uses a different Dockerfile from the image publishing recipe")
         manifest = context / "Cargo.toml"
         base = ["cargo", "--offline"] if args.offline else ["cargo"]
         metadata = subprocess.run(
